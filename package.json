@@ -1,0 +1,24 @@
+{
+  "name": "rite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rust & TypeScript Interface for Terminal Environment",
+  "repository": "https://github.com/yourusername/rite",
+  "license": "MIT OR Apache-2.0",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --filter desktop dev",
+    "build": "pnpm --filter desktop build",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2"
+  }
+}
