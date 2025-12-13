@@ -1,0 +1,58 @@
+[package]
+name = "rite"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+default-run = "rite"
+
+[[bin]]
+name = "rite"
+path = "src/main.rs"
+
+[[bin]]
+name = "check_db_path"
+path = "src/bin/check_db_path.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { workspace = true }
+tauri-plugin-shell = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Workspace packages
+rite-crypto = { path = "../../../packages/crypto" }
+rite-protocols = { path = "../../../packages/protocols" }
+
+# Database
+sqlx = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+chrono = { workspace = true }
+dirs = "5.0"
+
+# Crypto (for auth module)
+argon2 = { workspace = true }
+zeroize = { workspace = true }
+sha2 = "0.10"
+base64 = "0.22"
+
+# SSH
+russh = "0.45"
+russh-keys = "0.45"
+async-trait = "0.1"
+
+# Local PTY (for local terminal support)
+portable-pty = "0.8"
+
+[dev-dependencies]
+tempfile = "3.13"
