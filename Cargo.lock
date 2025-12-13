@@ -3991,6 +3991,7 @@ dependencies = [
  "russh",
  "russh-keys",
  "serde",
+ "serde_json",
  "suppaftp",
  "thiserror 1.0.69",
  "tokio",
