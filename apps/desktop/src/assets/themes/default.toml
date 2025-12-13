@@ -1,0 +1,45 @@
+# RITE Default Theme
+# Inspired by Catppuccin Mocha
+# https://github.com/catppuccin/catppuccin
+
+[metadata]
+name = "RITE Default"
+author = "RITE Team"
+version = "1.0.0"
+
+[colors]
+# Base colors
+background = "#1e1e2e"  # Main background
+foreground = "#cdd6f4"  # Primary text color
+cursor = "#f5e0dc"      # Cursor color
+selection = "#585b70"   # Selected text background
+
+# ANSI colors (standard 16-color palette)
+black = "#45475a"
+red = "#f38ba8"         # Errors, important alerts
+green = "#a6e3a1"       # Success messages, confirmations
+yellow = "#f9e2af"      # Warnings, highlights
+blue = "#89b4fa"        # Information, links
+magenta = "#f5c2e7"     # Special elements
+cyan = "#94e2d5"        # Accents, emphasis
+white = "#bac2de"       # Secondary text
+
+# Bright ANSI colors (for bold/intense text)
+bright_black = "#585b70"
+bright_red = "#f38ba8"
+bright_green = "#a6e3a1"
+bright_yellow = "#f9e2af"
+bright_blue = "#89b4fa"
+bright_magenta = "#f5c2e7"
+bright_cyan = "#94e2d5"
+bright_white = "#a6adc8"
+
+[terminal]
+font_family = "JetBrains Mono"  # Monospace font for terminal
+font_size = 14                   # Font size in pixels
+line_height = 1.2                # Line spacing multiplier
+
+[ui]
+accent = "#89b4fa"      # Primary accent color (buttons, highlights)
+border = "#313244"      # Border colors
+hover = "#585b70"       # Hover state background
