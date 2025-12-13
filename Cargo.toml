@@ -9,9 +9,9 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["RITE Contributors"]
+authors = ["Ange Cesari"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/yourusername/rite"
+repository = "https://github.com/Altagen/Rite"
 
 [workspace.dependencies]
 # Async runtime
