@@ -143,16 +143,20 @@ jobs:
           if [ "${{ matrix.platform.os }}" = "ubuntu-22.04" ]; then
             PLATFORM="linux"
             ARCH="x86_64"
-            BUNDLE_PATH="apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle"
+            # Cargo workspace builds to root target/ directory
+            BUNDLE_PATH="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/bundle"
+
+            echo "Looking for artifacts in: $BUNDLE_PATH"
+            ls -la "$BUNDLE_PATH" || echo "Bundle path not found"
 
             # Find and rename .deb
-            find "$BUNDLE_PATH/deb" -name "*.deb" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.deb \; 2>/dev/null || true
+            find "$BUNDLE_PATH/deb" -name "*.deb" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.deb \; 2>/dev/null || echo "No .deb found"
 
             # Find and rename .rpm
-            find "$BUNDLE_PATH/rpm" -name "*.rpm" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.rpm \; 2>/dev/null || true
+            find "$BUNDLE_PATH/rpm" -name "*.rpm" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.rpm \; 2>/dev/null || echo "No .rpm found"
 
             # Find and rename .AppImage
-            find "$BUNDLE_PATH/appimage" -name "*.AppImage" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.AppImage \; 2>/dev/null || true
+            find "$BUNDLE_PATH/appimage" -name "*.AppImage" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.AppImage \; 2>/dev/null || echo "No .AppImage found"
 
           elif [ "${{ matrix.platform.os }}" = "macos-latest" ]; then
             PLATFORM="macos"
@@ -161,13 +165,17 @@ jobs:
             else
               ARCH="aarch64"
             fi
-            BUNDLE_PATH="apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle"
+            # Cargo workspace builds to root target/ directory
+            BUNDLE_PATH="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/bundle"
+
+            echo "Looking for artifacts in: $BUNDLE_PATH"
+            ls -la "$BUNDLE_PATH" || echo "Bundle path not found"
 
             # Find and rename .dmg
-            find "$BUNDLE_PATH/dmg" -name "*.dmg" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.dmg \; 2>/dev/null || true
+            find "$BUNDLE_PATH/dmg" -name "*.dmg" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.dmg \; 2>/dev/null || echo "No .dmg found"
 
             # Find and rename .app.tar.gz if exists
-            find "$BUNDLE_PATH/macos" -name "*.app.tar.gz" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.app.tar.gz \; 2>/dev/null || true
+            find "$BUNDLE_PATH/macos" -name "*.app.tar.gz" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.app.tar.gz \; 2>/dev/null || echo "No .app.tar.gz found"
           fi
 
           # List what we found
@@ -384,11 +392,18 @@ jobs:
           VERSION="${{ needs.generate-changelog.outputs.version }}"
           cd checksums
 
-          # Concatenate all .sha256 files into one
-          cat *.sha256 > "rite-${VERSION}-checksums.txt"
+          echo "Downloaded .sha256 files:"
+          ls -la
 
-          echo "Consolidated checksums file created:"
-          cat "rite-${VERSION}-checksums.txt"
+          # Concatenate all .sha256 files into one
+          if ls *.sha256 1> /dev/null 2>&1; then
+            cat *.sha256 > "rite-${VERSION}-checksums.txt"
+            echo "Consolidated checksums file created:"
+            cat "rite-${VERSION}-checksums.txt"
+          else
+            echo "ERROR: No .sha256 files found!"
+            exit 1
+          fi
 
       - name: Upload consolidated checksums to release
         uses: softprops/action-gh-release@v1
