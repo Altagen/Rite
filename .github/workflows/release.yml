@@ -54,6 +54,17 @@ jobs:
           path: CHANGELOG_RELEASE.md
           retention-days: 7
 
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: 'RITE ${{ steps.version.outputs.version }}'
+          body: 'Release is being built... artifacts will be available shortly.'
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-tauri:
     name: Build ${{ matrix.platform.name }}
     needs: generate-changelog
@@ -120,14 +131,7 @@ jobs:
         run: pnpm install
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: apps/desktop
-          tauriScript: pnpm tauri
-          includeRelease: false
-          args: --target ${{ matrix.platform.target }}
+        run: cd apps/desktop && pnpm tauri build --target ${{ matrix.platform.target }}
 
       - name: Prepare and rename artifacts
         shell: bash
