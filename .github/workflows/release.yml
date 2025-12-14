@@ -3,9 +3,7 @@ name: Release
 on:
   push:
     tags:
-      # GitHub Actions uses glob patterns here (not regex).
-      # This matches tags like 0.1.0, 12.34.567 (no 'v' prefix).
-      - '[0-9][0-9]*.[0-9][0-9]*.[0-9][0-9]*'
+      - '*.*.*'
 
 permissions:
   contents: write
