@@ -193,28 +193,43 @@ jobs:
           done
           ls -lh
 
-      - name: Create tar.gz archive (Linux only)
-        if: matrix.platform.os == 'ubuntu-22.04'
+      - name: Create standalone binary tar.gz
         shell: bash
         run: |
           VERSION="${{ needs.generate-changelog.outputs.version }}"
-          PLATFORM="linux"
-          ARCH="x86_64"
 
-          cd dist
-          # Create tar.gz with all Linux artifacts (excluding .sha256 files)
-          tar -czf "rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" \
-            --exclude='*.sha256' \
-            --exclude='*.tar.gz' \
-            *.deb *.rpm *.AppImage 2>/dev/null || true
+          # Determine platform and architecture
+          if [ "${{ matrix.platform.os }}" = "ubuntu-22.04" ]; then
+            PLATFORM="linux"
+            ARCH="x86_64"
+            BINARY_PATH="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/rite"
+          elif [ "${{ matrix.platform.os }}" = "macos-latest" ]; then
+            PLATFORM="macos"
+            if [ "${{ matrix.platform.target }}" = "x86_64-apple-darwin" ]; then
+              ARCH="x86_64"
+            else
+              ARCH="aarch64"
+            fi
+            BINARY_PATH="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/rite"
+          fi
 
-          # Generate checksum for the tar.gz
-          if [ -f "rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" ]; then
-            shasum -a 256 "rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" > "rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz.sha256"
+          # Create tar.gz with standalone binary
+          if [ -f "$BINARY_PATH" ]; then
+            echo "Creating standalone binary tar.gz from: $BINARY_PATH"
+            mkdir -p temp_binary
+            cp "$BINARY_PATH" temp_binary/rite
+            tar -czf "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" -C temp_binary rite
+            rm -rf temp_binary
+
+            # Generate checksum for the tar.gz
+            shasum -a 256 "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" > "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz.sha256"
+            echo "Created: rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz"
+          else
+            echo "WARNING: Binary not found at $BINARY_PATH"
           fi
 
           echo "Final artifacts:"
-          ls -lh
+          ls -lh dist/
 
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v1
@@ -272,25 +287,42 @@ jobs:
           ./rite-$VERSION-linux-x86_64.AppImage
           ```
 
-          **All-in-one Archive (.tar.gz)**
+          **Standalone Binary (.tar.gz)**
           ```bash
           wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.tar.gz
           tar -xzf rite-$VERSION-linux-x86_64.tar.gz
-          # Contains: .deb, .rpm, and .AppImage
+          chmod +x rite
+          ./rite
           ```
 
           ### macOS
 
-          **Intel (x86_64)**
+          **Intel (x86_64) - DMG Installer**
           ```bash
           wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-macos-x86_64.dmg
           open rite-$VERSION-macos-x86_64.dmg
           ```
 
-          **Apple Silicon (ARM64)**
+          **Intel (x86_64) - Standalone Binary**
+          ```bash
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-macos-x86_64.tar.gz
+          tar -xzf rite-$VERSION-macos-x86_64.tar.gz
+          chmod +x rite
+          ./rite
+          ```
+
+          **Apple Silicon (ARM64) - DMG Installer**
           ```bash
           wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-macos-aarch64.dmg
           open rite-$VERSION-macos-aarch64.dmg
+          ```
+
+          **Apple Silicon (ARM64) - Standalone Binary**
+          ```bash
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-macos-aarch64.tar.gz
+          tar -xzf rite-$VERSION-macos-aarch64.tar.gz
+          chmod +x rite
+          ./rite
           ```
 
           ## 🔒 Security
