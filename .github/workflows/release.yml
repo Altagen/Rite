@@ -143,24 +143,16 @@ jobs:
           if [ "${{ matrix.platform.os }}" = "ubuntu-22.04" ]; then
             PLATFORM="linux"
             ARCH="x86_64"
+            BUNDLE_PATH="apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle"
 
             # Find and rename .deb
-            if [ -f apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/deb/*.deb ]; then
-              cp apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/deb/*.deb \
-                 dist/rite-${VERSION}-${PLATFORM}-${ARCH}.deb
-            fi
+            find "$BUNDLE_PATH/deb" -name "*.deb" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.deb \; 2>/dev/null || true
 
             # Find and rename .rpm
-            if [ -f apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/rpm/*.rpm ]; then
-              cp apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/rpm/*.rpm \
-                 dist/rite-${VERSION}-${PLATFORM}-${ARCH}.rpm
-            fi
+            find "$BUNDLE_PATH/rpm" -name "*.rpm" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.rpm \; 2>/dev/null || true
 
             # Find and rename .AppImage
-            if [ -f apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/appimage/*.AppImage ]; then
-              cp apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/appimage/*.AppImage \
-                 dist/rite-${VERSION}-${PLATFORM}-${ARCH}.AppImage
-            fi
+            find "$BUNDLE_PATH/appimage" -name "*.AppImage" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.AppImage \; 2>/dev/null || true
 
           elif [ "${{ matrix.platform.os }}" = "macos-latest" ]; then
             PLATFORM="macos"
@@ -169,19 +161,18 @@ jobs:
             else
               ARCH="aarch64"
             fi
+            BUNDLE_PATH="apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle"
 
             # Find and rename .dmg
-            if [ -f apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/dmg/*.dmg ]; then
-              cp apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/dmg/*.dmg \
-                 dist/rite-${VERSION}-${PLATFORM}-${ARCH}.dmg
-            fi
+            find "$BUNDLE_PATH/dmg" -name "*.dmg" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.dmg \; 2>/dev/null || true
 
             # Find and rename .app.tar.gz if exists
-            if [ -f apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/macos/*.app.tar.gz ]; then
-              cp apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/macos/*.app.tar.gz \
-                 dist/rite-${VERSION}-${PLATFORM}-${ARCH}.app.tar.gz
-            fi
+            find "$BUNDLE_PATH/macos" -name "*.app.tar.gz" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.app.tar.gz \; 2>/dev/null || true
           fi
+
+          # List what we found
+          echo "Artifacts prepared:"
+          ls -lh dist/ || echo "No artifacts found"
 
       - name: Generate checksums
         shell: bash
@@ -192,6 +183,29 @@ jobs:
               shasum -a 256 "$file" > "$file.sha256"
             fi
           done
+          ls -lh
+
+      - name: Create tar.gz archive (Linux only)
+        if: matrix.platform.os == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          VERSION="${{ needs.generate-changelog.outputs.version }}"
+          PLATFORM="linux"
+          ARCH="x86_64"
+
+          cd dist
+          # Create tar.gz with all Linux artifacts (excluding .sha256 files)
+          tar -czf "rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" \
+            --exclude='*.sha256' \
+            --exclude='*.tar.gz' \
+            *.deb *.rpm *.AppImage 2>/dev/null || true
+
+          # Generate checksum for the tar.gz
+          if [ -f "rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" ]; then
+            shasum -a 256 "rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" > "rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz.sha256"
+          fi
+
+          echo "Final artifacts:"
           ls -lh
 
       - name: Upload artifacts to release
@@ -233,35 +247,59 @@ jobs:
 
           **Debian/Ubuntu (.deb)**
           ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite_$VERSION_amd64.deb
-          sudo dpkg -i rite_$VERSION_amd64.deb
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.deb
+          sudo dpkg -i rite-$VERSION-linux-x86_64.deb
           ```
 
           **Fedora/RHEL (.rpm)**
           ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-1.x86_64.rpm
-          sudo rpm -i rite-$VERSION-1.x86_64.rpm
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.rpm
+          sudo rpm -i rite-$VERSION-linux-x86_64.rpm
           ```
 
+          **AppImage (Universal)**
+          ```bash
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.AppImage
+          chmod +x rite-$VERSION-linux-x86_64.AppImage
+          ./rite-$VERSION-linux-x86_64.AppImage
+          ```
+
+          **All-in-one Archive (.tar.gz)**
+          ```bash
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.tar.gz
+          tar -xzf rite-$VERSION-linux-x86_64.tar.gz
+          # Contains: .deb, .rpm, and .AppImage
           ```
 
           ### macOS
 
           **Intel (x86_64)**
           ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/RITE_$VERSION_x64.dmg
-          open RITE_$VERSION_x64.dmg
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-macos-x86_64.dmg
+          open rite-$VERSION-macos-x86_64.dmg
           ```
 
           **Apple Silicon (ARM64)**
           ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/RITE_$VERSION_aarch64.dmg
-          open RITE_$VERSION_aarch64.dmg
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-macos-aarch64.dmg
+          open rite-$VERSION-macos-aarch64.dmg
           ```
 
           ## 🔒 Security
 
-          Verify your download with the provided checksums (`.sig` files) in the release assets.
+          Verify your download with the provided checksums:
+          - Individual `.sha256` files for each artifact
+          - `rite-$VERSION-checksums.txt` - Summary file containing all checksums
+
+          **Example verification:**
+          ```bash
+          # Download artifact and its checksum
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.deb
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.deb.sha256
+
+          # Verify integrity
+          shasum -a 256 -c rite-$VERSION-linux-x86_64.deb.sha256
+          ```
 
           ## 📚 Documentation
 
@@ -326,5 +364,36 @@ jobs:
           files: |
             sbom-${{ needs.generate-changelog.outputs.version }}.json
             sbom-${{ needs.generate-changelog.outputs.version }}.json.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  consolidate-checksums:
+    name: Consolidate Checksums
+    needs: [generate-changelog, build-tauri, generate-sbom]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all release assets
+        uses: robinraju/release-downloader@v1
+        with:
+          tag: ${{ needs.generate-changelog.outputs.version }}
+          fileName: "*.sha256"
+          out-file-path: "checksums"
+
+      - name: Create consolidated checksums file
+        run: |
+          VERSION="${{ needs.generate-changelog.outputs.version }}"
+          cd checksums
+
+          # Concatenate all .sha256 files into one
+          cat *.sha256 > "rite-${VERSION}-checksums.txt"
+
+          echo "Consolidated checksums file created:"
+          cat "rite-${VERSION}-checksums.txt"
+
+      - name: Upload consolidated checksums to release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.generate-changelog.outputs.version }}
+          files: checksums/rite-${{ needs.generate-changelog.outputs.version }}-checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
