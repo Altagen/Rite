@@ -89,9 +89,7 @@ pub async fn unlock(
     let response = match result {
         UnlockResult::Success => UnlockResponse::Success,
         UnlockResult::InvalidPassword => UnlockResponse::InvalidPassword,
-        UnlockResult::RateLimited { wait_seconds } => {
-            UnlockResponse::RateLimited { wait_seconds }
-        }
+        UnlockResult::RateLimited { wait_seconds } => UnlockResponse::RateLimited { wait_seconds },
     };
 
     Ok(response)
@@ -202,7 +200,11 @@ pub async fn import_ssh_config_entries(
         match state.connections.create_connection(input).await {
             Ok(info) => imported.push(info),
             Err(e) => {
-                tracing::warn!("[commands.rs] Failed to import entry '{}': {}", entry.host, e);
+                tracing::warn!(
+                    "[commands.rs] Failed to import entry '{}': {}",
+                    entry.host,
+                    e
+                );
             }
         }
     }
@@ -253,15 +255,26 @@ pub async fn connect_terminal(
     connection_id: String,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    tracing::info!("[commands.rs] connect_terminal called with connection_id: {}", connection_id);
+    tracing::info!(
+        "[commands.rs] connect_terminal called with connection_id: {}",
+        connection_id
+    );
 
-    match state.sessions.create_session(connection_id.clone(), app_handle).await {
+    match state
+        .sessions
+        .create_session(connection_id.clone(), app_handle)
+        .await
+    {
         Ok(session_id) => {
             tracing::info!("[commands.rs] Session created successfully: {}", session_id);
             Ok(session_id)
         }
         Err(e) => {
-            tracing::error!("[commands.rs] Failed to create session for connection {}: {}", connection_id, e);
+            tracing::error!(
+                "[commands.rs] Failed to create session for connection {}: {}",
+                connection_id,
+                e
+            );
             Err(format!("Failed to connect: {}", e))
         }
     }
@@ -278,7 +291,10 @@ pub async fn connect_local_terminal(
 
     match state.sessions.create_local_session(app_handle, shell).await {
         Ok(session_id) => {
-            tracing::info!("[commands.rs] Local session created successfully: {}", session_id);
+            tracing::info!(
+                "[commands.rs] Local session created successfully: {}",
+                session_id
+            );
             Ok(session_id)
         }
         Err(e) => {
@@ -307,17 +323,26 @@ pub fn get_installed_shells(shells: Vec<String>) -> Vec<String> {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum QuickAuthMethod {
-    Password { password: String },
-    PublicKey { key_path: String, passphrase: Option<String> },
+    Password {
+        password: String,
+    },
+    PublicKey {
+        key_path: String,
+        passphrase: Option<String>,
+    },
 }
 
 impl From<QuickAuthMethod> for AuthMethod {
     fn from(quick: QuickAuthMethod) -> Self {
         match quick {
             QuickAuthMethod::Password { password } => AuthMethod::Password { password },
-            QuickAuthMethod::PublicKey { key_path, passphrase } => {
-                AuthMethod::PublicKey { key_path, passphrase }
-            }
+            QuickAuthMethod::PublicKey {
+                key_path,
+                passphrase,
+            } => AuthMethod::PublicKey {
+                key_path,
+                passphrase,
+            },
         }
     }
 }
@@ -334,7 +359,12 @@ pub async fn quick_ssh_connect(
     auth_method: QuickAuthMethod,
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
-    tracing::info!("[commands.rs] quick_ssh_connect called for {}@{}:{}", username, host, port);
+    tracing::info!(
+        "[commands.rs] quick_ssh_connect called for {}@{}:{}",
+        username,
+        host,
+        port
+    );
 
     // Build a temporary Connection object (not saved to DB)
     let connection = Connection {
@@ -365,7 +395,11 @@ pub async fn quick_ssh_connect(
     };
 
     // Create SSH session directly (no database, no encryption needed)
-    match state.sessions.create_quick_ssh_session(connection, auth_method.into(), app_handle).await {
+    match state
+        .sessions
+        .create_quick_ssh_session(connection, auth_method.into(), app_handle)
+        .await
+    {
         Ok(session_id) => {
             tracing::info!("[commands.rs] Quick SSH session created: {}", session_id);
             Ok(session_id)
@@ -431,7 +465,10 @@ pub async fn list_terminal_sessions(state: State<'_, AppState>) -> Result<Vec<St
 
 /// Get a setting value
 #[tauri::command]
-pub async fn get_setting(state: State<'_, AppState>, key: String) -> Result<Option<String>, String> {
+pub async fn get_setting(
+    state: State<'_, AppState>,
+    key: String,
+) -> Result<Option<String>, String> {
     state
         .db
         .get_setting(&key)
@@ -441,7 +478,11 @@ pub async fn get_setting(state: State<'_, AppState>, key: String) -> Result<Opti
 
 /// Set a setting value
 #[tauri::command]
-pub async fn set_setting(state: State<'_, AppState>, key: String, value: String) -> Result<(), String> {
+pub async fn set_setting(
+    state: State<'_, AppState>,
+    key: String,
+    value: String,
+) -> Result<(), String> {
     state
         .db
         .set_setting(&key, &value)
@@ -451,7 +492,9 @@ pub async fn set_setting(state: State<'_, AppState>, key: String, value: String)
 
 /// Get all settings
 #[tauri::command]
-pub async fn get_all_settings(state: State<'_, AppState>) -> Result<std::collections::HashMap<String, String>, String> {
+pub async fn get_all_settings(
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, String>, String> {
     state
         .db
         .get_all_settings()

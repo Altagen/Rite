@@ -1,0 +1,12 @@
+# Cargo audit configuration
+# Ignore known vulnerabilities that cannot be fixed
+
+[advisories]
+# RUSTSEC-2023-0071: Marvin Attack in RSA
+# Status: No fixed upgrade available (russh dependency)
+# Severity: Medium (5.9)
+# Note: This is a timing sidechannel vulnerability in RSA key recovery.
+# While concerning, it requires specific attack conditions and is a
+# dependency of russh (our SSH library). The vulnerability will be
+# included in the SBOM for transparency.
+ignore = ["RUSTSEC-2023-0071"]

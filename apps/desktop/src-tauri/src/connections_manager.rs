@@ -63,7 +63,8 @@ impl ConnectionsManager {
     pub async fn get_all_connections(&self) -> Result<Vec<ConnectionInfo>> {
         debug!("Fetching all connections");
         let rows = self.db.get_all_connections().await?;
-        let connections: Vec<ConnectionInfo> = rows.iter().map(|row| self.row_to_info(row)).collect();
+        let connections: Vec<ConnectionInfo> =
+            rows.iter().map(|row| self.row_to_info(row)).collect();
         Ok(connections)
     }
 
@@ -86,7 +87,8 @@ impl ConnectionsManager {
     pub async fn get_connections_by_folder(&self, folder: &str) -> Result<Vec<ConnectionInfo>> {
         debug!("Fetching connections in folder: {}", folder);
         let rows = self.db.get_connections_by_folder(folder).await?;
-        let connections: Vec<ConnectionInfo> = rows.iter().map(|row| self.row_to_info(row)).collect();
+        let connections: Vec<ConnectionInfo> =
+            rows.iter().map(|row| self.row_to_info(row)).collect();
         Ok(connections)
     }
 
@@ -151,9 +153,14 @@ impl ConnectionsManager {
     // Helper methods
 
     /// Convert database row to Connection (with decrypted credentials)
-    fn row_to_connection(&self, row: &ConnectionRow, master_key: &crate::auth::MasterKey) -> Result<Connection> {
+    fn row_to_connection(
+        &self,
+        row: &ConnectionRow,
+        master_key: &crate::auth::MasterKey,
+    ) -> Result<Connection> {
         let protocol = crate::connection::Protocol::from_str(&row.protocol)?;
-        let auth_method = Connection::decrypt_credentials(&row.encrypted_credentials, &row.nonce, master_key)?;
+        let auth_method =
+            Connection::decrypt_credentials(&row.encrypted_credentials, &row.nonce, master_key)?;
 
         Ok(Connection {
             id: row.id.clone(),

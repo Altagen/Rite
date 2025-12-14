@@ -48,14 +48,20 @@ impl client::Handler for SshClientHandler {
         &mut self,
         server_public_key: &key::PublicKey,
     ) -> Result<bool, Self::Error> {
-        tracing::info!("[terminal.rs] Verifying host key for {}:{}", self.host, self.port);
+        tracing::info!(
+            "[terminal.rs] Verifying host key for {}:{}",
+            self.host,
+            self.port
+        );
 
         // Quick SSH: force accept all host keys (similar to ssh -o StrictHostKeyChecking=no)
         if self.force_accept_host_key {
             tracing::info!("[terminal.rs] Quick SSH mode: auto-accepting host key (TOFU)");
 
             // Save the host key to known_hosts for future use
-            if let Err(e) = known_hosts::add_host_key(&self.db, &self.host, self.port, server_public_key).await {
+            if let Err(e) =
+                known_hosts::add_host_key(&self.db, &self.host, self.port, server_public_key).await
+            {
                 tracing::warn!("[terminal.rs] Failed to save host key for Quick SSH: {}", e);
                 // Don't fail the connection if we can't save the key
             }
@@ -65,7 +71,7 @@ impl client::Handler for SshClientHandler {
 
         // Get the host key verification mode from settings
         let verification_mode = match sqlx::query_scalar::<_, String>(
-            "SELECT value FROM settings WHERE key = 'host_key_verification_mode'"
+            "SELECT value FROM settings WHERE key = 'host_key_verification_mode'",
         )
         .fetch_optional(&*self.db)
         .await
@@ -76,22 +82,38 @@ impl client::Handler for SshClientHandler {
                 "strict".to_string()
             }
             Err(e) => {
-                tracing::error!("[terminal.rs] Failed to read host_key_verification_mode: {}", e);
+                tracing::error!(
+                    "[terminal.rs] Failed to read host_key_verification_mode: {}",
+                    e
+                );
                 "strict".to_string() // Default to strict on error for security
             }
         };
 
-        tracing::info!("[terminal.rs] Host key verification mode: {}", verification_mode);
+        tracing::info!(
+            "[terminal.rs] Host key verification mode: {}",
+            verification_mode
+        );
 
         // Verify the host key using our known_hosts system
-        match known_hosts::verify_host_key(&self.db, &self.host, self.port, server_public_key).await {
+        match known_hosts::verify_host_key(&self.db, &self.host, self.port, server_public_key).await
+        {
             Ok(HostKeyVerificationResult::Accepted) => {
                 tracing::info!("[terminal.rs] Host key accepted (known host)");
                 Ok(true)
             }
-            Ok(HostKeyVerificationResult::Unknown { host, port, key_type, fingerprint }) => {
+            Ok(HostKeyVerificationResult::Unknown {
+                host,
+                port,
+                key_type,
+                fingerprint,
+            }) => {
                 tracing::warn!("[terminal.rs] Unknown host {}:{}", host, port);
-                tracing::warn!("[terminal.rs] Key type: {}, Fingerprint: {}", key_type, fingerprint);
+                tracing::warn!(
+                    "[terminal.rs] Key type: {}, Fingerprint: {}",
+                    key_type,
+                    fingerprint
+                );
 
                 match verification_mode.as_str() {
                     "strict" => {
@@ -99,12 +121,15 @@ impl client::Handler for SshClientHandler {
                         // User must explicitly accept the key via the modal
                         tracing::warn!("[terminal.rs] Strict mode: Rejecting connection and requesting user confirmation");
 
-                        let _ = self.app_handle.emit("ssh:host-key-unknown", serde_json::json!({
-                            "host": host,
-                            "port": port,
-                            "keyType": key_type,
-                            "fingerprint": fingerprint,
-                        }));
+                        let _ = self.app_handle.emit(
+                            "ssh:host-key-unknown",
+                            serde_json::json!({
+                                "host": host,
+                                "port": port,
+                                "keyType": key_type,
+                                "fingerprint": fingerprint,
+                            }),
+                        );
 
                         Err(russh::Error::Disconnect)
                     }
@@ -112,24 +137,35 @@ impl client::Handler for SshClientHandler {
                         // Warn mode: Accept the key but notify the user
                         tracing::info!("[terminal.rs] Warn mode: Accepting key and notifying user");
 
-                        if let Err(e) = known_hosts::add_host_key(&self.db, &host, port, server_public_key).await {
+                        if let Err(e) =
+                            known_hosts::add_host_key(&self.db, &host, port, server_public_key)
+                                .await
+                        {
                             tracing::error!("[terminal.rs] Failed to save host key: {}", e);
                         }
 
-                        let _ = self.app_handle.emit("ssh:host-key-added", serde_json::json!({
-                            "host": host,
-                            "port": port,
-                            "keyType": key_type,
-                            "fingerprint": fingerprint,
-                        }));
+                        let _ = self.app_handle.emit(
+                            "ssh:host-key-added",
+                            serde_json::json!({
+                                "host": host,
+                                "port": port,
+                                "keyType": key_type,
+                                "fingerprint": fingerprint,
+                            }),
+                        );
 
                         Ok(true)
                     }
                     _ => {
                         // Accept mode (or default): Silent TOFU
-                        tracing::info!("[terminal.rs] Accept mode: Silently accepting and saving key (TOFU)");
+                        tracing::info!(
+                            "[terminal.rs] Accept mode: Silently accepting and saving key (TOFU)"
+                        );
 
-                        if let Err(e) = known_hosts::add_host_key(&self.db, &host, port, server_public_key).await {
+                        if let Err(e) =
+                            known_hosts::add_host_key(&self.db, &host, port, server_public_key)
+                                .await
+                        {
                             tracing::error!("[terminal.rs] Failed to save host key: {}", e);
                         }
 
@@ -137,7 +173,13 @@ impl client::Handler for SshClientHandler {
                     }
                 }
             }
-            Ok(HostKeyVerificationResult::Changed { host, port, old_fingerprint, new_fingerprint, .. }) => {
+            Ok(HostKeyVerificationResult::Changed {
+                host,
+                port,
+                old_fingerprint,
+                new_fingerprint,
+                ..
+            }) => {
                 // Host key changed - potential MITM attack!
                 // ALWAYS reject regardless of mode (security critical)
                 tracing::error!("[terminal.rs] ⚠️  WARNING: HOST KEY HAS CHANGED! ⚠️");
@@ -148,12 +190,15 @@ impl client::Handler for SshClientHandler {
                 tracing::error!("[terminal.rs] Connection REJECTED for security");
 
                 // Emit event to notify frontend of changed key
-                let _ = self.app_handle.emit("ssh:host-key-changed", serde_json::json!({
-                    "host": host,
-                    "port": port,
-                    "oldFingerprint": old_fingerprint,
-                    "newFingerprint": new_fingerprint,
-                }));
+                let _ = self.app_handle.emit(
+                    "ssh:host-key-changed",
+                    serde_json::json!({
+                        "host": host,
+                        "port": port,
+                        "oldFingerprint": old_fingerprint,
+                        "newFingerprint": new_fingerprint,
+                    }),
+                );
 
                 Err(russh::Error::Disconnect)
             }
@@ -181,11 +226,19 @@ impl SshSession {
         auth_method: AuthMethod,
         app_handle: AppHandle,
         keep_alive_interval: Option<u64>, // Keep-alive interval in seconds (None = disabled)
-        force_accept_host_key: bool, // For Quick SSH: bypass host key verification
+        force_accept_host_key: bool,      // For Quick SSH: bypass host key verification
     ) -> Result<Self> {
         let session_id = Uuid::new_v4().to_string();
-        tracing::info!("[terminal.rs] SshSession::connect - Session ID: {}", session_id);
-        tracing::info!("[terminal.rs] Connecting to {}:{} as {}", connection.hostname, connection.port, connection.username);
+        tracing::info!(
+            "[terminal.rs] SshSession::connect - Session ID: {}",
+            session_id
+        );
+        tracing::info!(
+            "[terminal.rs] Connecting to {}:{} as {}",
+            connection.hostname,
+            connection.port,
+            connection.username
+        );
 
         // Get database for host key verification
         let state = app_handle.state::<AppState>();
@@ -220,7 +273,10 @@ impl SshSession {
                 ref key_path,
                 ref passphrase,
             } => {
-                tracing::debug!("[terminal.rs] Using public key authentication from: {}", key_path);
+                tracing::debug!(
+                    "[terminal.rs] Using public key authentication from: {}",
+                    key_path
+                );
                 // Load private key
                 let key_data = tokio::fs::read(key_path).await?;
                 let key = if let Some(pass) = passphrase {
@@ -252,10 +308,10 @@ impl SshSession {
             .request_pty(
                 true,
                 "xterm-256color",
-                80, // cols
-                24, // rows
-                0,  // pix_width
-                0,  // pix_height
+                80,  // cols
+                24,  // rows
+                0,   // pix_width
+                0,   // pix_height
                 &[], // terminal modes
             )
             .await?;
@@ -313,8 +369,13 @@ impl SshSession {
                 // Initialize keep-alive on first loop iteration (after we're already listening)
                 if !keep_alive_initialized {
                     keep_alive_timer = if let Some(interval_secs) = keep_alive_interval {
-                        tracing::info!("[terminal.rs] Keep-alive enabled: {} seconds", interval_secs);
-                        Some(tokio::time::interval(std::time::Duration::from_secs(interval_secs)))
+                        tracing::info!(
+                            "[terminal.rs] Keep-alive enabled: {} seconds",
+                            interval_secs
+                        );
+                        Some(tokio::time::interval(std::time::Duration::from_secs(
+                            interval_secs,
+                        )))
                     } else {
                         tracing::info!("[terminal.rs] Keep-alive disabled");
                         None
@@ -535,7 +596,10 @@ impl SessionManager {
         connection_id: String,
         app_handle: AppHandle,
     ) -> Result<SessionId> {
-        tracing::info!("[terminal.rs] create_session called for connection_id: {}", connection_id);
+        tracing::info!(
+            "[terminal.rs] create_session called for connection_id: {}",
+            connection_id
+        );
 
         // Load connection from database
         tracing::debug!("[terminal.rs] Loading connection from database...");
@@ -544,7 +608,12 @@ impl SessionManager {
             .get_connection(&connection_id)
             .await?
             .ok_or_else(|| anyhow!("Connection not found"))?;
-        tracing::info!("[terminal.rs] Connection loaded: {} ({}:{})", row.name, row.hostname, row.port);
+        tracing::info!(
+            "[terminal.rs] Connection loaded: {} ({}:{})",
+            row.name,
+            row.hostname,
+            row.port
+        );
 
         // Determine keep-alive settings (per-connection only, no global fallback)
         tracing::debug!("[terminal.rs] Determining keep-alive settings...");
@@ -556,7 +625,10 @@ impl SessionManager {
             Some("enabled") => {
                 // Use connection-specific interval, default to 30 seconds
                 let interval = row.ssh_keep_alive_interval.unwrap_or(30) as u64;
-                tracing::info!("[terminal.rs] Keep-alive enabled with interval: {} seconds", interval);
+                tracing::info!(
+                    "[terminal.rs] Keep-alive enabled with interval: {} seconds",
+                    interval
+                );
                 Some(interval)
             }
             Some(other) => {
@@ -572,11 +644,8 @@ impl SessionManager {
 
         // Decrypt auth method
         tracing::debug!("[terminal.rs] Decrypting credentials...");
-        let auth_method = Connection::decrypt_credentials(
-            &row.encrypted_credentials,
-            &row.nonce,
-            &master_key,
-        )?;
+        let auth_method =
+            Connection::decrypt_credentials(&row.encrypted_credentials, &row.nonce, &master_key)?;
         tracing::info!("[terminal.rs] Credentials decrypted successfully");
 
         // Build Connection object
@@ -602,8 +671,18 @@ impl SessionManager {
         };
 
         // Create SSH session
-        tracing::info!("[terminal.rs] Creating SSH session for {}...", connection.name);
-        let ssh_session = SshSession::connect(connection, auth_method, app_handle, keep_alive_interval, false).await?;
+        tracing::info!(
+            "[terminal.rs] Creating SSH session for {}...",
+            connection.name
+        );
+        let ssh_session = SshSession::connect(
+            connection,
+            auth_method,
+            app_handle,
+            keep_alive_interval,
+            false,
+        )
+        .await?;
         let session_id = ssh_session.id.clone();
         tracing::info!("[terminal.rs] SSH session created with ID: {}", session_id);
 
@@ -616,11 +695,22 @@ impl SessionManager {
             .unwrap()
             .as_secs() as i64;
 
-        if let Err(e) = self.db.update_connection_last_used(&connection_id, now).await {
-            tracing::warn!("[terminal.rs] Failed to update last_used_at for connection {}: {}", connection_id, e);
+        if let Err(e) = self
+            .db
+            .update_connection_last_used(&connection_id, now)
+            .await
+        {
+            tracing::warn!(
+                "[terminal.rs] Failed to update last_used_at for connection {}: {}",
+                connection_id,
+                e
+            );
             // Don't fail the connection if we can't update the timestamp
         } else {
-            tracing::debug!("[terminal.rs] Updated last_used_at timestamp for connection {}", connection_id);
+            tracing::debug!(
+                "[terminal.rs] Updated last_used_at timestamp for connection {}",
+                connection_id
+            );
         }
 
         // Store session
@@ -644,7 +734,10 @@ impl SessionManager {
         // Create local session
         let local_session = crate::local_terminal::LocalSession::spawn(app_handle, shell).await?;
         let session_id = local_session.id.clone();
-        tracing::info!("[terminal.rs] Local session created with ID: {}", session_id);
+        tracing::info!(
+            "[terminal.rs] Local session created with ID: {}",
+            session_id
+        );
 
         // Wrap in Session enum
         let session = Session::Local(local_session);
@@ -666,13 +759,19 @@ impl SessionManager {
         auth_method: AuthMethod,
         app_handle: AppHandle,
     ) -> Result<SessionId> {
-        tracing::info!("[terminal.rs] create_quick_ssh_session called for {}", connection.name);
+        tracing::info!(
+            "[terminal.rs] create_quick_ssh_session called for {}",
+            connection.name
+        );
 
         // Determine keep-alive settings (use connection override or disable)
         let keep_alive_interval = match connection.ssh_keep_alive_override.as_deref() {
             Some("enabled") => {
                 let interval = connection.ssh_keep_alive_interval.unwrap_or(30) as u64;
-                tracing::info!("[terminal.rs] Keep-alive enabled with interval: {} seconds", interval);
+                tracing::info!(
+                    "[terminal.rs] Keep-alive enabled with interval: {} seconds",
+                    interval
+                );
                 Some(interval)
             }
             _ => {
@@ -683,10 +782,23 @@ impl SessionManager {
 
         // Create SSH session (no database save, no master key needed)
         // force_accept_host_key = true: bypass host key verification for Quick SSH
-        tracing::info!("[terminal.rs] Creating quick SSH session for {}...", connection.name);
-        let ssh_session = SshSession::connect(connection, auth_method, app_handle, keep_alive_interval, true).await?;
+        tracing::info!(
+            "[terminal.rs] Creating quick SSH session for {}...",
+            connection.name
+        );
+        let ssh_session = SshSession::connect(
+            connection,
+            auth_method,
+            app_handle,
+            keep_alive_interval,
+            true,
+        )
+        .await?;
         let session_id = ssh_session.id.clone();
-        tracing::info!("[terminal.rs] Quick SSH session created with ID: {}", session_id);
+        tracing::info!(
+            "[terminal.rs] Quick SSH session created with ID: {}",
+            session_id
+        );
 
         // Wrap in Session enum
         let session = Session::Ssh(ssh_session);

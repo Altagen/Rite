@@ -95,7 +95,10 @@ impl Database {
                 if current_version > 0 {
                     info!("Creating backup before migration {}...", version);
                     if let Err(e) = self.create_migration_backup().await {
-                        warn!("Failed to create backup: {}. Continuing with migration...", e);
+                        warn!(
+                            "Failed to create backup: {}. Continuing with migration...",
+                            e
+                        );
                         // Don't fail migration if backup fails, but warn user
                     }
                 }
@@ -112,7 +115,10 @@ impl Database {
         }
 
         if current_version == latest_version {
-            info!("Database schema is up to date (version {})", current_version);
+            info!(
+                "Database schema is up to date (version {})",
+                current_version
+            );
         } else {
             info!(
                 "Database migrations completed: {} → {}",
@@ -128,7 +134,7 @@ impl Database {
         // Check if schema_version table exists
         let table_exists: bool = sqlx::query_scalar(
             "SELECT COUNT(*) > 0 FROM sqlite_master \
-             WHERE type='table' AND name='schema_version'"
+             WHERE type='table' AND name='schema_version'",
         )
         .fetch_one(&self.pool)
         .await?;
@@ -138,11 +144,9 @@ impl Database {
         }
 
         // Get max version from schema_version table
-        let version: Option<i64> = sqlx::query_scalar(
-            "SELECT MAX(version) FROM schema_version"
-        )
-        .fetch_one(&self.pool)
-        .await?;
+        let version: Option<i64> = sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+            .fetch_one(&self.pool)
+            .await?;
 
         Ok(version.unwrap_or(0))
     }
@@ -158,10 +162,9 @@ impl Database {
 
     /// Get the current schema version
     pub async fn get_schema_version(&self) -> Result<i64> {
-        let version: i64 =
-            sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
-                .fetch_one(&self.pool)
-                .await?;
+        let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+            .fetch_one(&self.pool)
+            .await?;
 
         Ok(version)
     }
@@ -208,14 +211,12 @@ impl Database {
     pub async fn record_unlock_attempt(&self, success: bool) -> Result<()> {
         let now = chrono::Utc::now().timestamp_millis();
 
-        sqlx::query(
-            "INSERT INTO unlock_attempts (timestamp, success) VALUES (?1, ?2)",
-        )
-        .bind(now)
-        .bind(success as i32)
-        .execute(&self.pool)
-        .await
-        .context("Failed to record unlock attempt")?;
+        sqlx::query("INSERT INTO unlock_attempts (timestamp, success) VALUES (?1, ?2)")
+            .bind(now)
+            .bind(success as i32)
+            .execute(&self.pool)
+            .await
+            .context("Failed to record unlock attempt")?;
 
         Ok(())
     }
@@ -299,12 +300,10 @@ impl Database {
     /// Create automatic migration backup with timestamp
     async fn create_migration_backup(&self) -> Result<()> {
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-        let backup_filename = format!(
-            "vault_pre_migration_{}.db",
-            timestamp
-        );
+        let backup_filename = format!("vault_pre_migration_{}.db", timestamp);
 
-        let backup_dir = self.db_path
+        let backup_dir = self
+            .db_path
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Invalid database path"))?
             .join("backups");
@@ -372,12 +371,11 @@ impl Database {
 
     /// Get connection by ID
     pub async fn get_connection(&self, id: &str) -> Result<Option<ConnectionRow>> {
-        let connection = sqlx::query_as::<_, ConnectionRow>(
-            "SELECT * FROM connections WHERE id = ?1"
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let connection =
+            sqlx::query_as::<_, ConnectionRow>("SELECT * FROM connections WHERE id = ?1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
 
         Ok(connection)
     }
@@ -385,7 +383,7 @@ impl Database {
     /// Get all connections
     pub async fn get_all_connections(&self) -> Result<Vec<ConnectionRow>> {
         let connections = sqlx::query_as::<_, ConnectionRow>(
-            "SELECT * FROM connections ORDER BY name COLLATE NOCASE"
+            "SELECT * FROM connections ORDER BY name COLLATE NOCASE",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -396,7 +394,7 @@ impl Database {
     /// Get connections by folder
     pub async fn get_connections_by_folder(&self, folder: &str) -> Result<Vec<ConnectionRow>> {
         let connections = sqlx::query_as::<_, ConnectionRow>(
-            "SELECT * FROM connections WHERE folder = ?1 ORDER BY name COLLATE NOCASE"
+            "SELECT * FROM connections WHERE folder = ?1 ORDER BY name COLLATE NOCASE",
         )
         .bind(folder)
         .fetch_all(&self.pool)

@@ -45,7 +45,10 @@ impl LocalSession {
         let shell_cmd = if std::path::Path::new(&requested_shell).exists() {
             requested_shell
         } else {
-            tracing::warn!("Requested shell not found: {}, trying fallbacks...", requested_shell);
+            tracing::warn!(
+                "Requested shell not found: {}, trying fallbacks...",
+                requested_shell
+            );
 
             // Fallback list: try $SHELL, common shell paths
             let fallbacks = vec![
@@ -53,8 +56,8 @@ impl LocalSession {
                 Some("/usr/bin/bash".to_string()),
                 Some("/usr/bin/fish".to_string()),
                 Some("/usr/bin/sh".to_string()),
-                Some("/bin/bash".to_string()),  // Legacy path fallback
-                Some("/bin/sh".to_string()),    // Legacy path fallback
+                Some("/bin/bash".to_string()), // Legacy path fallback
+                Some("/bin/sh".to_string()),   // Legacy path fallback
             ];
 
             fallbacks
@@ -96,11 +99,11 @@ impl LocalSession {
 
         // Fish-specific: Tell fish about terminal capabilities to avoid DA queries
         // These env vars inform fish what the terminal supports without needing to query
-        cmd.env("fish_term24bit", "1");              // Terminal supports 24-bit color
-        cmd.env("fish_wcwidth_version", "3");        // Unicode width version
-        cmd.env("fish_ambiguous_width", "1");        // Width of ambiguous-width chars
-        cmd.env("TERM_PROGRAM", "vscode");           // Pretend we're VSCode (fish trusts it)
-        cmd.env("TERM_PROGRAM_VERSION", "1.0.0");    // Version for compatibility
+        cmd.env("fish_term24bit", "1"); // Terminal supports 24-bit color
+        cmd.env("fish_wcwidth_version", "3"); // Unicode width version
+        cmd.env("fish_ambiguous_width", "1"); // Width of ambiguous-width chars
+        cmd.env("TERM_PROGRAM", "vscode"); // Pretend we're VSCode (fish trusts it)
+        cmd.env("TERM_PROGRAM_VERSION", "1.0.0"); // Version for compatibility
 
         let mut child = pair
             .slave
@@ -119,7 +122,9 @@ impl LocalSession {
             .map_err(|e| anyhow!("Failed to clone PTY reader: {}", e))?;
 
         // Clone writer for input, keep master for resizing
-        let writer = pair.master.take_writer()
+        let writer = pair
+            .master
+            .take_writer()
             .map_err(|e| anyhow!("Failed to take PTY writer: {}", e))?;
         let writer_mutex = Arc::new(StdMutex::new(writer));
         let master_mutex = Arc::new(StdMutex::new(pair.master));
@@ -183,7 +188,8 @@ impl LocalSession {
                 match reader.read(&mut buffer) {
                     Ok(n) if n > 0 => {
                         // Encode raw bytes as base64 to preserve all data (including ANSI codes)
-                        let data_base64 = base64::engine::general_purpose::STANDARD.encode(&buffer[..n]);
+                        let data_base64 =
+                            base64::engine::general_purpose::STANDARD.encode(&buffer[..n]);
 
                         let _ = app_handle_clone2.emit(
                             "terminal-data",

@@ -36,8 +36,8 @@ impl MasterKey {
     /// - Parallelism: 4
     pub fn derive(password: &str, salt: &[u8]) -> Result<Self> {
         let argon2 = Argon2::default();
-        let salt_string = SaltString::encode_b64(salt)
-            .map_err(|e| anyhow!("Invalid salt: {}", e))?;
+        let salt_string =
+            SaltString::encode_b64(salt).map_err(|e| anyhow!("Invalid salt: {}", e))?;
 
         let hash = argon2
             .hash_password(password.as_bytes(), &salt_string)
@@ -52,8 +52,8 @@ impl MasterKey {
 
     /// Verify password against stored hash
     pub fn verify(password: &str, hash: &str) -> Result<bool> {
-        let parsed_hash = PasswordHash::new(hash)
-            .map_err(|e| anyhow!("Invalid password hash: {}", e))?;
+        let parsed_hash =
+            PasswordHash::new(hash).map_err(|e| anyhow!("Invalid password hash: {}", e))?;
 
         Ok(Argon2::default()
             .verify_password(password.as_bytes(), &parsed_hash)
@@ -127,7 +127,10 @@ pub fn validate_password_strength(password: &str) -> (bool, u8, Vec<String>) {
     if password.len() >= 12 {
         score += 2;
     } else {
-        feedback.push(format!("Password must be at least 12 characters (current: {})", password.len()));
+        feedback.push(format!(
+            "Password must be at least 12 characters (current: {})",
+            password.len()
+        ));
     }
 
     if password.len() >= 16 {
@@ -160,8 +163,7 @@ pub fn validate_password_strength(password: &str) -> (bool, u8, Vec<String>) {
     }
 
     // Common patterns
-    if password.to_lowercase().contains("password")
-        || password.to_lowercase().contains("123456") {
+    if password.to_lowercase().contains("password") || password.to_lowercase().contains("123456") {
         score = score.saturating_sub(3);
         feedback.push("Avoid common patterns".to_string());
     }

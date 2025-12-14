@@ -58,8 +58,13 @@ pub enum ProtocolType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum AuthMethod {
-    Password { password: String },
-    PublicKey { key_path: PathBuf, passphrase: Option<String> },
+    Password {
+        password: String,
+    },
+    PublicKey {
+        key_path: PathBuf,
+        passphrase: Option<String>,
+    },
     Agent,
 }
 

@@ -3,8 +3,8 @@
 //! Provides SSH and SFTP support via russh.
 
 use crate::{
-    ConnectionConfig, FileEntry, FileTransferProtocol, Protocol, ProtocolError,
-    ProtocolType, Result, TerminalProtocol,
+    ConnectionConfig, FileEntry, FileTransferProtocol, Protocol, ProtocolError, ProtocolType,
+    Result, TerminalProtocol,
 };
 use async_trait::async_trait;
 use std::path::Path;
@@ -40,7 +40,10 @@ impl Protocol for SshClient {
     }
 
     async fn connect(&mut self, config: &ConnectionConfig) -> Result<()> {
-        info!("Connecting to {}@{}:{}", config.username, config.hostname, config.port);
+        info!(
+            "Connecting to {}@{}:{}",
+            config.username, config.hostname, config.port
+        );
 
         // TODO: Implement actual SSH connection with russh
         // For now, this is a stub for architecture demonstration

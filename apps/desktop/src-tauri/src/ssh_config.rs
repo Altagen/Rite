@@ -26,10 +26,7 @@ pub struct SshConfigEntry {
 impl SshConfigEntry {
     /// Convert to ConnectionInfo preview (for UI selection)
     pub fn to_preview(&self) -> String {
-        let hostname = self
-            .hostname
-            .as_ref()
-            .unwrap_or(&self.host);
+        let hostname = self.hostname.as_ref().unwrap_or(&self.host);
         let user = self
             .user
             .as_ref()
@@ -50,15 +47,9 @@ impl SshConfigEntry {
 
     /// Convert to CreateConnectionInput (for import)
     pub fn to_connection_input(&self) -> CreateConnectionInput {
-        let hostname = self
-            .hostname
-            .clone()
-            .unwrap_or_else(|| self.host.clone());
+        let hostname = self.hostname.clone().unwrap_or_else(|| self.host.clone());
 
-        let username = self
-            .user
-            .clone()
-            .unwrap_or_else(|| "root".to_string());
+        let username = self.user.clone().unwrap_or_else(|| "root".to_string());
 
         let port = self.port.unwrap_or(22);
 
@@ -78,9 +69,7 @@ impl SshConfigEntry {
         };
 
         // Convert server_alive_interval to seconds (if present)
-        let ssh_keep_alive_interval = self
-            .server_alive_interval
-            .map(|seconds| seconds as i64);
+        let ssh_keep_alive_interval = self.server_alive_interval.map(|seconds| seconds as i64);
 
         CreateConnectionInput {
             name: self.host.clone(),
@@ -151,7 +140,8 @@ pub fn parse_ssh_config<P: AsRef<Path>>(config_path: P) -> Result<Vec<SshConfigE
             }
             "identityfile" => {
                 // Take first identity file only for MVP
-                current_props.entry("identityfile".to_string())
+                current_props
+                    .entry("identityfile".to_string())
                     .or_insert(value);
             }
             "serveraliveinterval" => {
@@ -184,9 +174,7 @@ fn build_entry(host: String, props: &HashMap<String, String>) -> Option<SshConfi
         host: host.clone(),
         hostname: props.get("hostname").cloned(),
         user: props.get("user").cloned(),
-        port: props
-            .get("port")
-            .and_then(|p| p.parse::<u16>().ok()),
+        port: props.get("port").and_then(|p| p.parse::<u16>().ok()),
         identity_file: props.get("identityfile").cloned(),
         server_alive_interval: props
             .get("serveraliveinterval")

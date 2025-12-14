@@ -93,7 +93,7 @@ pub async fn verify_host_key(
 
     // Check if host is already known
     let existing = sqlx::query_as::<_, (String, String, Vec<u8>)>(
-        "SELECT id, fingerprint, public_key_data FROM known_hosts WHERE host = ? AND port = ?"
+        "SELECT id, fingerprint, public_key_data FROM known_hosts WHERE host = ? AND port = ?",
     )
     .bind(host)
     .bind(port as i64)
@@ -142,7 +142,11 @@ pub async fn add_host_key(
     port: u16,
     server_public_key: &PublicKey,
 ) -> Result<()> {
-    tracing::info!("[known_hosts] Adding/updating host key for {}:{}", host, port);
+    tracing::info!(
+        "[known_hosts] Adding/updating host key for {}:{}",
+        host,
+        port
+    );
 
     let fingerprint = calculate_fingerprint(server_public_key)?;
     let key_type = get_key_type(server_public_key);
@@ -204,24 +208,26 @@ pub async fn remove_host_key(db: &SqlitePool, host: &str, port: u16) -> Result<(
 pub async fn list_known_hosts(db: &SqlitePool) -> Result<Vec<KnownHost>> {
     let rows = sqlx::query_as::<_, (String, String, i64, String, String, Vec<u8>, i64, i64)>(
         "SELECT id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at
-         FROM known_hosts ORDER BY host, port"
+         FROM known_hosts ORDER BY host, port",
     )
     .fetch_all(db)
     .await?;
 
     Ok(rows
         .into_iter()
-        .map(|(id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at)| {
-            KnownHost {
-                id,
-                host,
-                port: port as u16,
-                key_type,
-                fingerprint,
-                public_key_data,
-                added_at,
-                last_seen_at,
-            }
-        })
+        .map(
+            |(id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at)| {
+                KnownHost {
+                    id,
+                    host,
+                    port: port as u16,
+                    key_type,
+                    fingerprint,
+                    public_key_data,
+                    added_at,
+                    last_seen_at,
+                }
+            },
+        )
         .collect())
 }

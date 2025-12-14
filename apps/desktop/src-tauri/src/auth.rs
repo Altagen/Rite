@@ -59,8 +59,8 @@ impl AuthManager {
 
         // Generate salt for Argon2
         let salt = generate_salt();
-        let salt_string = SaltString::encode_b64(&salt)
-            .map_err(|e| anyhow!("Failed to encode salt: {}", e))?;
+        let salt_string =
+            SaltString::encode_b64(&salt).map_err(|e| anyhow!("Failed to encode salt: {}", e))?;
 
         // Hash password with Argon2id
         let argon2 = Argon2::default();
@@ -76,8 +76,8 @@ impl AuthManager {
             .context("Failed to store master password")?;
 
         // Derive and store master key in memory
-        let master_key = Arc::new(MasterKey::derive(password, &salt)
-            .context("Failed to derive master key")?);
+        let master_key =
+            Arc::new(MasterKey::derive(password, &salt).context("Failed to derive master key")?);
 
         *self.master_key.write().await = Some(master_key);
 
@@ -89,7 +89,9 @@ impl AuthManager {
     pub async fn unlock(&self, password: &str) -> Result<UnlockResult> {
         // Check rate limiting
         if let Some(wait_time) = self.check_rate_limit().await? {
-            return Ok(UnlockResult::RateLimited { wait_seconds: wait_time });
+            return Ok(UnlockResult::RateLimited {
+                wait_seconds: wait_time,
+            });
         }
 
         // Get stored password hash and salt
@@ -116,8 +118,8 @@ impl AuthManager {
         }
 
         // Derive master key
-        let master_key = Arc::new(MasterKey::derive(password, &salt)
-            .context("Failed to derive master key")?);
+        let master_key =
+            Arc::new(MasterKey::derive(password, &salt).context("Failed to derive master key")?);
 
         // Store in memory
         *self.master_key.write().await = Some(master_key);

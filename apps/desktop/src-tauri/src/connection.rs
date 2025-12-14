@@ -44,8 +44,13 @@ impl Protocol {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AuthMethod {
-    Password { password: String },
-    PublicKey { key_path: String, passphrase: Option<String> },
+    Password {
+        password: String,
+    },
+    PublicKey {
+        key_path: String,
+        passphrase: Option<String>,
+    },
 }
 
 /// Connection metadata (not encrypted)
@@ -69,7 +74,7 @@ pub struct Connection {
     pub auth_method: AuthMethod,
     pub metadata: ConnectionMetadata,
     pub ssh_keep_alive_override: Option<String>, // NULL, "disabled", or "enabled"
-    pub ssh_keep_alive_interval: Option<i64>, // Interval in seconds, NULL = use global
+    pub ssh_keep_alive_interval: Option<i64>,    // Interval in seconds, NULL = use global
     pub created_at: i64,
     pub updated_at: i64,
     pub last_used_at: Option<i64>,
@@ -91,7 +96,7 @@ pub struct ConnectionInfo {
     pub folder: Option<String>,
     pub notes: Option<String>,
     pub ssh_keep_alive_override: Option<String>, // NULL, "disabled", or "enabled"
-    pub ssh_keep_alive_interval: Option<i64>, // Interval in seconds
+    pub ssh_keep_alive_interval: Option<i64>,    // Interval in seconds
     pub created_at: i64,
     pub updated_at: i64,
     pub last_used_at: Option<i64>,
@@ -112,7 +117,7 @@ pub struct CreateConnectionInput {
     pub folder: Option<String>,
     pub notes: Option<String>,
     pub ssh_keep_alive_override: Option<String>, // NULL, "disabled", or "enabled"
-    pub ssh_keep_alive_interval: Option<i64>, // Interval in seconds
+    pub ssh_keep_alive_interval: Option<i64>,    // Interval in seconds
 }
 
 /// Input for updating a connection
@@ -131,7 +136,7 @@ pub struct UpdateConnectionInput {
     pub folder: Option<String>,
     pub notes: Option<String>,
     pub ssh_keep_alive_override: Option<Option<String>>, // Nested Option to allow setting to NULL
-    pub ssh_keep_alive_interval: Option<Option<i64>>, // Nested Option to allow setting to NULL
+    pub ssh_keep_alive_interval: Option<Option<i64>>,    // Nested Option to allow setting to NULL
 }
 
 impl Connection {
@@ -175,7 +180,8 @@ impl Connection {
         nonce: &[u8],
         master_key: &MasterKey,
     ) -> Result<AuthMethod> {
-        let nonce_array: [u8; 12] = nonce.try_into()
+        let nonce_array: [u8; 12] = nonce
+            .try_into()
             .map_err(|_| anyhow::anyhow!("Invalid nonce length"))?;
         let encrypted_data = EncryptedData {
             data: encrypted_credentials.to_vec(),
