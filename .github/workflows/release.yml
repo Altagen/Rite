@@ -3,7 +3,9 @@ name: Release
 on:
   push:
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'  # Matches tags like 0.1.0 (NO 'v' prefix)
+      # GitHub Actions uses glob patterns here (not regex).
+      # This matches tags like 0.1.0, 12.34.567 (no 'v' prefix).
+      - '[0-9][0-9]*.[0-9][0-9]*.[0-9][0-9]*'
 
 permissions:
   contents: write
@@ -101,12 +103,7 @@ jobs:
         if: matrix.platform.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
+          sudo apt-get install -y             libwebkit2gtk-4.1-dev             libgtk-3-dev             libayatana-appindicator3-dev             librsvg2-dev             patchelf
 
       - name: Get pnpm store directory
         id: pnpm-cache
@@ -154,76 +151,69 @@ jobs:
         run: |
           VERSION="${{ needs.generate-changelog.outputs.version }}"
 
-          # Read changelog
-          if [ -f "CHANGELOG_RELEASE.md" ]; then
-            CHANGELOG=$(cat CHANGELOG_RELEASE.md)
-          else
-            CHANGELOG="See commits for changes in this release."
-          fi
-
           # Create release notes from template
           cat > RELEASE_NOTES.md << 'TEMPLATE'
-# 🚀 RITE $VERSION
+          # 🚀 RITE $VERSION
 
-## 📋 What's Changed
+          ## 📋 What's Changed
 
-$CHANGELOG
+          $CHANGELOG
 
-## 📦 Installation
+          ## 📦 Installation
 
-### Linux (x86_64)
+          ### Linux (x86_64)
 
-**Debian/Ubuntu (.deb)**
-```bash
-wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite_$VERSION_amd64.deb
-sudo dpkg -i rite_$VERSION_amd64.deb
-```
+          **Debian/Ubuntu (.deb)**
+          ```bash
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite_$VERSION_amd64.deb
+          sudo dpkg -i rite_$VERSION_amd64.deb
+          ```
 
-**Fedora/RHEL (.rpm)**
-```bash
-wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-1.x86_64.rpm
-sudo rpm -i rite-$VERSION-1.x86_64.rpm
-```
+          **Fedora/RHEL (.rpm)**
+          ```bash
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-1.x86_64.rpm
+          sudo rpm -i rite-$VERSION-1.x86_64.rpm
+          ```
 
-**AppImage (Universal)**
-```bash
-wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite_$VERSION_amd64.AppImage
-chmod +x rite_$VERSION_amd64.AppImage
-./rite_$VERSION_amd64.AppImage
-```
+          ```
 
-### macOS
+          ### macOS
 
-**Intel (x86_64)**
-```bash
-wget https://github.com/${{ github.repository }}/releases/download/$VERSION/RITE_$VERSION_x64.dmg
-open RITE_$VERSION_x64.dmg
-```
+          **Intel (x86_64)**
+          ```bash
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/RITE_$VERSION_x64.dmg
+          open RITE_$VERSION_x64.dmg
+          ```
 
-**Apple Silicon (ARM64)**
-```bash
-wget https://github.com/${{ github.repository }}/releases/download/$VERSION/RITE_$VERSION_aarch64.dmg
-open RITE_$VERSION_aarch64.dmg
-```
+          **Apple Silicon (ARM64)**
+          ```bash
+          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/RITE_$VERSION_aarch64.dmg
+          open RITE_$VERSION_aarch64.dmg
+          ```
 
-## 🔒 Security
+          ## 🔒 Security
 
-Verify your download with the provided checksums (`.sig` files) in the release assets.
+          Verify your download with the provided checksums (`.sig` files) in the release assets.
 
-## 📚 Documentation
+          ## 📚 Documentation
 
-- [README](https://github.com/${{ github.repository }}/blob/$VERSION/README.md)
-- [Technical Documentation](https://github.com/${{ github.repository }}/blob/$VERSION/docs/technical.md)
+          - [README](https://github.com/${{ github.repository }}/blob/$VERSION/README.md)
 
----
+          ---
 
-🤖 **SBOM** (Software Bill of Materials) is available in the release assets for security auditing.
-TEMPLATE
+          🤖 **SBOM** (Software Bill of Materials) is available in the release assets for security auditing.
+          TEMPLATE
 
-          # Replace variables
+          # Inject changelog content in place of $CHANGELOG
+          if [ -f "CHANGELOG_RELEASE.md" ]; then
+            sed -i "s/\$CHANGELOG/$(sed 's/[&/]/\\&/g' CHANGELOG_RELEASE.md | tr '\n' '\r')/g" RELEASE_NOTES.md
+            tr '\r' '\n' < RELEASE_NOTES.md > RELEASE_NOTES.md.tmp && mv RELEASE_NOTES.md.tmp RELEASE_NOTES.md
+          else
+            sed -i "s/\$CHANGELOG/See commits for changes in this release./g" RELEASE_NOTES.md
+          fi
+
+          # Replace version placeholders
           sed -i "s/\$VERSION/$VERSION/g" RELEASE_NOTES.md
-          sed -i "/\$CHANGELOG/r CHANGELOG_RELEASE.md" RELEASE_NOTES.md
-          sed -i "/\$CHANGELOG/d" RELEASE_NOTES.md
 
       - name: Update GitHub Release
         uses: softprops/action-gh-release@v1
