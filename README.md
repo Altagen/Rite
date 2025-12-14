@@ -4,6 +4,8 @@
 
 A modern, secure, and extensible terminal client for SSH, SFTP, FTP, and more.
 
+[![Release](https://img.shields.io/github/v/release/Altagen/Rite)](https://github.com/Altagen/Rite/releases)
+
 > ⚠️ **Early Development**: RITE is in active development. Many features are not yet implemented. See the [Roadmap](./docs/ROADMAP.md) for planned features.
 
 ## Features
