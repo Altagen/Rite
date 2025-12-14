@@ -40,6 +40,9 @@ jobs:
         id: read_changelog
         run: |
           if [ -f "CHANGELOG_RELEASE.md" ]; then
+            # Replace commit hash placeholders with full GitHub URLs
+            sed -i "s|(\([a-f0-9]\{7\}\))|https://github.com/${{ github.repository }}/commit/\1|g" CHANGELOG_RELEASE.md
+
             echo "changelog<<EOF" >> $GITHUB_OUTPUT
             cat CHANGELOG_RELEASE.md >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
