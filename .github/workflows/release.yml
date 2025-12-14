@@ -392,11 +392,18 @@ jobs:
           VERSION="${{ needs.generate-changelog.outputs.version }}"
           cd checksums
 
-          # Concatenate all .sha256 files into one
-          cat *.sha256 > "rite-${VERSION}-checksums.txt"
+          echo "Downloaded .sha256 files:"
+          ls -la
 
-          echo "Consolidated checksums file created:"
-          cat "rite-${VERSION}-checksums.txt"
+          # Concatenate all .sha256 files into one
+          if ls *.sha256 1> /dev/null 2>&1; then
+            cat *.sha256 > "rite-${VERSION}-checksums.txt"
+            echo "Consolidated checksums file created:"
+            cat "rite-${VERSION}-checksums.txt"
+          else
+            echo "ERROR: No .sha256 files found!"
+            exit 1
+          fi
 
       - name: Upload consolidated checksums to release
         uses: softprops/action-gh-release@v1
