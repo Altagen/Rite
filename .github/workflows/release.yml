@@ -5,48 +5,60 @@ on:
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'  # Matches tags like 0.1.0 (NO 'v' prefix)
 
-env:
-  CARGO_TERM_COLOR: always
-
 permissions:
   contents: write
 
 jobs:
-  create-release:
-    name: Create Release
+  generate-changelog:
+    name: Generate Changelog
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.get_version.outputs.version }}
+      changelog: ${{ steps.read_changelog.outputs.changelog }}
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed for git-cliff
+          fetch-depth: 0
 
-      - name: Get version from tag
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Get version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
 
       - name: Generate changelog
         uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
-          args: --tag ${{ steps.get_version.outputs.version }} --strip all
+          args: --tag ${{ steps.version.outputs.version }} --strip header
         env:
-          OUTPUT: CHANGELOG-${{ steps.get_version.outputs.version }}.md
+          OUTPUT: CHANGELOG_RELEASE.md
 
-      - name: Create GitHub Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
+      - name: Read changelog
+        id: read_changelog
+        run: |
+          if [ -f "CHANGELOG_RELEASE.md" ]; then
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            cat CHANGELOG_RELEASE.md >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changelog=No changelog generated" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref }}
-          name: RITE ${{ steps.get_version.outputs.version }}
-          body_path: CHANGELOG-${{ steps.get_version.outputs.version }}.md
-          draft: false
-          prerelease: false
+          name: changelog
+          path: CHANGELOG_RELEASE.md
+          retention-days: 7
 
   build-tauri:
     name: Build ${{ matrix.platform.name }}
-    needs: create-release
+    needs: generate-changelog
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -54,15 +66,12 @@ jobs:
           - name: Linux x86_64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            bundles: deb,rpm,appimage
           - name: macOS x86_64
             os: macos-latest
             target: x86_64-apple-darwin
-            bundles: dmg
           - name: macOS ARM64
             os: macos-latest
             target: aarch64-apple-darwin
-            bundles: dmg
 
     runs-on: ${{ matrix.platform.os }}
     steps:
@@ -121,53 +130,112 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop
+          tagName: ${{ needs.generate-changelog.outputs.version }}
+          releaseName: 'RITE ${{ needs.generate-changelog.outputs.version }}'
+          releaseBody: 'Downloading assets...'
+          releaseDraft: false
+          prerelease: false
           args: --target ${{ matrix.platform.target }}
 
-      - name: Prepare Linux artifacts
-        if: matrix.platform.os == 'ubuntu-22.04'
+  update-release-notes:
+    name: Update Release Notes
+    needs: [generate-changelog, build-tauri]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download changelog
+        uses: actions/download-artifact@v4
+        with:
+          name: changelog
+          path: .
+
+      - name: Create formatted release notes
         run: |
-          mkdir -p dist
+          VERSION="${{ needs.generate-changelog.outputs.version }}"
 
-          # Copy packages
-          find apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/deb -name "*.deb" -exec cp {} dist/ \; 2>/dev/null || true
-          find apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/rpm -name "*.rpm" -exec cp {} dist/ \; 2>/dev/null || true
-          find apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/appimage -name "*.AppImage" -exec cp {} dist/ \; 2>/dev/null || true
-
-          # Create tar.gz with binary only (installation docs on GitHub)
-          if [ -f "apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/rite" ]; then
-            cp apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/rite dist/rite-${{ needs.create-release.outputs.version }}-linux-x86_64
-
-            cd dist
-            tar -czf rite-${{ needs.create-release.outputs.version }}-linux-x86_64.tar.gz rite-${{ needs.create-release.outputs.version }}-linux-x86_64
-            rm rite-${{ needs.create-release.outputs.version }}-linux-x86_64
-            cd ..
+          # Read changelog
+          if [ -f "CHANGELOG_RELEASE.md" ]; then
+            CHANGELOG=$(cat CHANGELOG_RELEASE.md)
+          else
+            CHANGELOG="See commits for changes in this release."
           fi
 
-      - name: Prepare macOS artifacts
-        if: matrix.platform.os == 'macos-latest'
-        run: |
-          mkdir -p dist
-          find apps/desktop/src-tauri/target/${{ matrix.platform.target }}/release/bundle/dmg -name "*.dmg" -exec cp {} dist/ \; 2>/dev/null || true
+          # Create release notes from template
+          cat > RELEASE_NOTES.md << 'TEMPLATE'
+# 🚀 RITE $VERSION
 
-      - name: Generate checksums
-        run: |
-          cd dist
-          for file in *; do
-            if [ -f "$file" ]; then
-              shasum -a 256 "$file" > "$file.sha256"
-            fi
-          done
+## 📋 What's Changed
 
-      - name: Upload artifacts to release
+$CHANGELOG
+
+## 📦 Installation
+
+### Linux (x86_64)
+
+**Debian/Ubuntu (.deb)**
+```bash
+wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite_$VERSION_amd64.deb
+sudo dpkg -i rite_$VERSION_amd64.deb
+```
+
+**Fedora/RHEL (.rpm)**
+```bash
+wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-1.x86_64.rpm
+sudo rpm -i rite-$VERSION-1.x86_64.rpm
+```
+
+**AppImage (Universal)**
+```bash
+wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite_$VERSION_amd64.AppImage
+chmod +x rite_$VERSION_amd64.AppImage
+./rite_$VERSION_amd64.AppImage
+```
+
+### macOS
+
+**Intel (x86_64)**
+```bash
+wget https://github.com/${{ github.repository }}/releases/download/$VERSION/RITE_$VERSION_x64.dmg
+open RITE_$VERSION_x64.dmg
+```
+
+**Apple Silicon (ARM64)**
+```bash
+wget https://github.com/${{ github.repository }}/releases/download/$VERSION/RITE_$VERSION_aarch64.dmg
+open RITE_$VERSION_aarch64.dmg
+```
+
+## 🔒 Security
+
+Verify your download with the provided checksums (`.sig` files) in the release assets.
+
+## 📚 Documentation
+
+- [README](https://github.com/${{ github.repository }}/blob/$VERSION/README.md)
+- [Technical Documentation](https://github.com/${{ github.repository }}/blob/$VERSION/docs/technical.md)
+
+---
+
+🤖 **SBOM** (Software Bill of Materials) is available in the release assets for security auditing.
+TEMPLATE
+
+          # Replace variables
+          sed -i "s/\$VERSION/$VERSION/g" RELEASE_NOTES.md
+          sed -i "/\$CHANGELOG/r CHANGELOG_RELEASE.md" RELEASE_NOTES.md
+          sed -i "/\$CHANGELOG/d" RELEASE_NOTES.md
+
+      - name: Update GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/*
+          tag_name: ${{ needs.generate-changelog.outputs.version }}
+          body_path: RELEASE_NOTES.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   generate-sbom:
     name: Generate SBOM
-    needs: create-release
+    needs: [generate-changelog, build-tauri]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -188,16 +256,17 @@ jobs:
         run: cargo cyclonedx --format json
 
       - name: Rename SBOM
-        run: mv apps/desktop/src-tauri/rite.cdx.json sbom-${{ needs.create-release.outputs.version }}.json
+        run: mv apps/desktop/src-tauri/rite.cdx.json sbom-${{ needs.generate-changelog.outputs.version }}.json
 
       - name: Generate SBOM checksum
-        run: shasum -a 256 sbom-${{ needs.create-release.outputs.version }}.json > sbom-${{ needs.create-release.outputs.version }}.json.sha256
+        run: shasum -a 256 sbom-${{ needs.generate-changelog.outputs.version }}.json > sbom-${{ needs.generate-changelog.outputs.version }}.json.sha256
 
       - name: Upload SBOM to release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ needs.generate-changelog.outputs.version }}
           files: |
-            sbom-${{ needs.create-release.outputs.version }}.json
-            sbom-${{ needs.create-release.outputs.version }}.json.sha256
+            sbom-${{ needs.generate-changelog.outputs.version }}.json
+            sbom-${{ needs.generate-changelog.outputs.version }}.json.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
