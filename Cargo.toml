@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/desktop/src-tauri",
+    "packages/crypto",
+    "packages/protocols",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Ange Cesari"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Altagen/Rite"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.41", features = ["full"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Crypto
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+age = "0.10"
+zeroize = { version = "1.8", features = ["derive"] }
+rand = "0.8"
+
+# SSH
+russh = "0.45"
+russh-keys = "0.45"
+
+# FTP (for future use)
+suppaftp = "6.0"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Tauri
+tauri = { version = "2.1", features = [] }
+tauri-plugin-shell = "2.0"
+
+# Utilities
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

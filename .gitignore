@@ -1,0 +1,50 @@
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# Node.js / pnpm
+node_modules/
+dist/
+.pnpm-debug.log*
+
+# Tauri
+apps/desktop/src-tauri/target/
+
+# Build outputs
+*.tar.gz
+*.zip
+*.dmg
+*.deb
+*.rpm
+*.AppImage
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.claude/
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+
+# Database (dev)
+*.db
+*.db-shm
+*.db-wal
+
+# User data (don't commit user configs)
+.config/
+.local/
+
+# Temporary files
+tmp/
+temp/

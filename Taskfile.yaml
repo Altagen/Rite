@@ -1,0 +1,283 @@
+version: '3'
+
+vars:
+  VERSION:
+    sh: grep '"version"' apps/desktop/src-tauri/tauri.conf.json | head -1 | sed 's/.*"\([0-9.]*\)".*/\1/'
+  APP_NAME: rite
+  DIST_DIR: ./dist
+  TAURI_DIR: apps/desktop/src-tauri
+  FRONTEND_DIR: apps/desktop
+
+tasks:
+  # Development tasks
+  dev:
+    desc: Run development build with hot reload
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - pnpm tauri dev
+
+  dev:frontend:
+    desc: Run frontend dev server only
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - pnpm dev:frontend
+
+  # Testing tasks
+  test:
+    desc: Run all tests (Rust + TypeScript)
+    cmds:
+      - task: test-rust
+      - task: test-ts
+
+  test-rust:
+    desc: Run Rust tests
+    dir: "{{.TAURI_DIR}}"
+    cmds:
+      - cargo test --lib --all-features
+
+  test-ts:
+    desc: Run TypeScript type checking
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - pnpm typecheck
+
+  # Linting tasks
+  lint:
+    desc: Run all linters (Rust + TypeScript)
+    cmds:
+      - task: lint-rust
+      - task: lint-ts
+
+  lint-rust:
+    desc: Run Rust linters (clippy + fmt check)
+    dir: "{{.TAURI_DIR}}"
+    cmds:
+      - cargo clippy --all-targets --all-features -- -D warnings
+      - cargo fmt -- --check
+
+  lint-ts:
+    desc: Run TypeScript linter
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - pnpm lint
+      - pnpm typecheck
+
+  fmt:
+    desc: Format code (Rust + TypeScript)
+    cmds:
+      - task: fmt-rust
+      - task: fmt-ts
+
+  fmt-rust:
+    desc: Format Rust code
+    dir: "{{.TAURI_DIR}}"
+    cmds:
+      - cargo fmt
+
+  fmt-ts:
+    desc: Format TypeScript code (if configured)
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - echo "TypeScript formatting via ESLint (pnpm lint --fix if configured)"
+
+  # Security audit
+  audit:
+    desc: Run security audit on dependencies
+    dir: "{{.TAURI_DIR}}"
+    cmds:
+      - cargo audit
+
+  # Build tasks
+  build:
+    desc: Build for current platform (release)
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - pnpm tauri build
+
+  build-linux-amd64:
+    desc: Build for Linux x86_64 (.deb, .AppImage)
+    vars:
+      TARGET: x86_64-unknown-linux-gnu
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - rustup target add {{.TARGET}}
+      - pnpm tauri build --target {{.TARGET}}
+      - task: copy-linux-artifacts
+
+  build-macos-amd64:
+    desc: Build for macOS x86_64 (.dmg, .app)
+    vars:
+      TARGET: x86_64-apple-darwin
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - rustup target add {{.TARGET}}
+      - pnpm tauri build --target {{.TARGET}}
+      - task: copy-macos-artifacts
+
+  build-macos-arm64:
+    desc: Build for macOS Apple Silicon (.dmg, .app)
+    vars:
+      TARGET: aarch64-apple-darwin
+    dir: "{{.FRONTEND_DIR}}"
+    cmds:
+      - rustup target add {{.TARGET}}
+      - pnpm tauri build --target {{.TARGET}}
+      - task: copy-macos-artifacts
+
+  # Copy artifacts to dist directory
+  copy-linux-artifacts:
+    desc: Copy Linux build artifacts to dist/
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - |
+        # Copy .deb files
+        find target/x86_64-unknown-linux-gnu/release/bundle/deb -name "*.deb" -exec cp {} {{.DIST_DIR}}/ \; 2>/dev/null || true
+        # Copy .rpm files
+        find target/x86_64-unknown-linux-gnu/release/bundle/rpm -name "*.rpm" -exec cp {} {{.DIST_DIR}}/ \; 2>/dev/null || true
+        # Copy .AppImage files
+        find target/x86_64-unknown-linux-gnu/release/bundle/appimage -name "*.AppImage" -exec cp {} {{.DIST_DIR}}/ \; 2>/dev/null || true
+
+        # Copy raw binary and create tar.gz (binary only - docs on GitHub)
+        if [ -f "target/x86_64-unknown-linux-gnu/release/rite" ]; then
+          cp target/x86_64-unknown-linux-gnu/release/rite {{.DIST_DIR}}/rite-{{.VERSION}}-linux-x86_64
+
+          # Create tar.gz with binary only
+          cd {{.DIST_DIR}}
+          tar -czf rite-{{.VERSION}}-linux-x86_64.tar.gz rite-{{.VERSION}}-linux-x86_64
+          rm rite-{{.VERSION}}-linux-x86_64
+          cd -
+
+          echo "Created tar.gz with binary: rite-{{.VERSION}}-linux-x86_64.tar.gz"
+        fi
+
+        echo "Linux artifacts copied to {{.DIST_DIR}}/"
+        ls -lh {{.DIST_DIR}}/
+
+  copy-macos-artifacts:
+    desc: Copy macOS build artifacts to dist/
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - |
+        # Copy .dmg files
+        find {{.TAURI_DIR}}/target/release/bundle/dmg -name "*.dmg" -exec cp {} {{.DIST_DIR}}/ \; 2>/dev/null || true
+        # Copy .app bundles (as tar.gz for easier distribution)
+        find {{.TAURI_DIR}}/target/release/bundle/macos -name "*.app" -exec tar -czf {{.DIST_DIR}}/$(basename {} .app)-{{.VERSION}}-macos.app.tar.gz -C $(dirname {}) $(basename {}) \; 2>/dev/null || true
+        echo "macOS artifacts copied to {{.DIST_DIR}}/"
+        ls -lh {{.DIST_DIR}}/
+
+  # Checksum generation
+  checksums:
+    desc: Generate SHA256 checksums for all artifacts
+    dir: "{{.DIST_DIR}}"
+    cmds:
+      - |
+        for file in *; do
+          if [ -f "$file" ] && [[ ! "$file" =~ \.sha256$ ]] && [[ ! "$file" =~ \.json$ ]] && [[ ! "$file" =~ \.md$ ]]; then
+            sha256sum "$file" > "$file.sha256"
+            echo "Generated checksum for $file"
+          fi
+        done
+
+  # SBOM generation
+  sbom:
+    desc: Generate Software Bill of Materials (SBOM)
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - |
+        echo "Generating SBOM..."
+
+        # Check if cargo-cyclonedx is installed
+        if ! command -v cargo-cyclonedx &> /dev/null; then
+          echo "Installing cargo-cyclonedx..."
+          cargo install cargo-cyclonedx
+        fi
+
+        # Generate SBOM for Rust dependencies
+        cd {{.TAURI_DIR}}
+        cargo cyclonedx --format json
+
+        # Move the generated SBOM to dist/
+        if [ -f "rite.cdx.json" ]; then
+          mv rite.cdx.json ../../../{{.DIST_DIR}}/sbom.json
+          echo "SBOM generated at {{.DIST_DIR}}/sbom.json"
+        else
+          echo "Warning: SBOM file not found"
+        fi
+
+        cd ../../..
+        echo "SBOM generation complete"
+
+  # Complete release preparation
+  prepare-release:
+    desc: Build for all platforms and prepare release artifacts
+    cmds:
+      - rm -rf {{.DIST_DIR}}
+      - echo "Building for current platform only (use CI for multi-platform builds)..."
+      - task: build
+      - task: copy-linux-artifacts
+      - task: sbom
+      - task: checksums
+      - echo "Release artifacts prepared in {{.DIST_DIR}}/"
+      - echo "Note: Changelog is generated automatically in CI/CD via git-cliff"
+      - ls -lh {{.DIST_DIR}}/
+
+  # Cleanup tasks
+  clean:
+    desc: Clean all build artifacts
+    cmds:
+      - rm -rf {{.DIST_DIR}}
+      - rm -rf {{.TAURI_DIR}}/target
+      - rm -rf {{.FRONTEND_DIR}}/dist
+      - rm -rf {{.FRONTEND_DIR}}/node_modules/.vite
+
+  clean-dist:
+    desc: Clean distribution directory only
+    cmds:
+      - rm -rf {{.DIST_DIR}}
+
+  # Changelog preview (git-cliff génère automatiquement en CI)
+  changelog-preview:
+    desc: Preview unreleased changes for next release
+    cmds:
+      - |
+        if ! command -v git-cliff &> /dev/null; then
+          echo "git-cliff is not installed. Install with:"
+          echo "  cargo install git-cliff"
+          echo ""
+          echo "Note: Changelog is generated automatically in CI/CD."
+          echo "This command is only for previewing local changes."
+          exit 1
+        fi
+        echo "Preview of unreleased changes:"
+        echo "================================"
+        git-cliff --unreleased
+
+  # Version management
+  version:
+    desc: Show current version
+    cmds:
+      - echo "{{.VERSION}}"
+
+  # Installation
+  install:
+    desc: Install RITE locally (Linux only)
+    cmds:
+      - |
+        if [ -f "{{.DIST_DIR}}/RITE_{{.VERSION}}_amd64.deb" ]; then
+          sudo dpkg -i {{.DIST_DIR}}/RITE_{{.VERSION}}_amd64.deb
+          echo "Installed RITE {{.VERSION}}"
+        elif [ -f "{{.DIST_DIR}}/rite_{{.VERSION}}_amd64.AppImage" ]; then
+          mkdir -p ~/.local/bin
+          cp {{.DIST_DIR}}/rite_{{.VERSION}}_amd64.AppImage ~/.local/bin/rite
+          chmod +x ~/.local/bin/rite
+          echo "Installed RITE {{.VERSION}} to ~/.local/bin/rite"
+        else
+          echo "No build artifacts found. Run 'task build' first."
+          exit 1
+        fi
+
+  # Help
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
