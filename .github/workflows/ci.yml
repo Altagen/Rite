@@ -6,8 +6,14 @@ on:
   pull_request:
     branches: [main, develop]
 
+  # Allow Release to call this as a job
+  workflow_call:
+
 env:
   CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
 
 jobs:
   test-rust:
@@ -102,7 +108,6 @@ jobs:
       - name: Run type check
         working-directory: apps/desktop
         run: pnpm typecheck
-
 
   security-audit:
     name: Security Audit
