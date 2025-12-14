@@ -3,7 +3,6 @@
  *
  * Manages SSH connections with encrypted credentials storage
  */
-
 use anyhow::Result;
 use tracing::{debug, info};
 

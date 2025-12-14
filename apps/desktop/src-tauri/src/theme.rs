@@ -3,7 +3,6 @@
 /// Supports loading themes from:
 /// 1. User config directory (~/.config/rite/themes/)
 /// 2. Embedded default themes (fallback)
-
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;

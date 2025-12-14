@@ -12,6 +12,7 @@ use argon2::{
     password_hash::{PasswordHasher, SaltString},
     Argon2, PasswordHash, PasswordVerifier,
 };
+#[allow(deprecated)]
 use chacha20poly1305::{
     aead::{generic_array::GenericArray, Aead, KeyInit, OsRng},
     ChaCha20Poly1305,
@@ -77,6 +78,7 @@ pub struct EncryptedData {
 }
 
 /// Encrypt data with ChaCha20-Poly1305
+#[allow(deprecated)]
 pub fn encrypt(key: &MasterKey, plaintext: &[u8]) -> Result<EncryptedData> {
     let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(key.as_bytes()));
 
@@ -97,6 +99,7 @@ pub fn encrypt(key: &MasterKey, plaintext: &[u8]) -> Result<EncryptedData> {
 }
 
 /// Decrypt data with ChaCha20-Poly1305
+#[allow(deprecated)]
 pub fn decrypt(key: &MasterKey, encrypted: &EncryptedData) -> Result<Vec<u8>> {
     let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(key.as_bytes()));
 

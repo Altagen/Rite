@@ -1,7 +1,6 @@
 /// Application state
 ///
 /// Manages global state across Tauri commands
-
 use crate::auth::AuthManager;
 use crate::connections_manager::ConnectionsManager;
 use crate::db::Database;

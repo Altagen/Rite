@@ -3,7 +3,6 @@
  *
  * Handles SSH connection data with encrypted credentials
  */
-
 use anyhow::Result;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -15,6 +14,7 @@ use rite_crypto::{decrypt, encrypt, EncryptedData};
 /// SSH connection protocol type
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[allow(clippy::upper_case_acronyms)]
 pub enum Protocol {
     SSH,
     SFTP,

@@ -317,6 +317,7 @@ impl Database {
     // ===== Connection CRUD Operations =====
 
     /// Create a new connection
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_connection(
         &self,
         id: &str,
@@ -405,6 +406,7 @@ impl Database {
     }
 
     /// Update connection
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_connection(
         &self,
         id: &str,

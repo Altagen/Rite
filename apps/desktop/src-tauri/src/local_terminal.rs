@@ -3,7 +3,6 @@
  *
  * Manages local shell sessions using portable-pty
  */
-
 use anyhow::{anyhow, Result};
 use base64::Engine as _;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
@@ -82,16 +81,13 @@ impl LocalSession {
             .map_err(|e| anyhow!("Failed to create PTY: {}", e))?;
 
         let mut cmd = CommandBuilder::new(&shell_cmd);
-        let shell_name = shell_cmd.split('/').last().unwrap_or("");
+        let shell_name = shell_cmd.split('/').next_back().unwrap_or("");
 
         tracing::debug!("Launching {} as interactive shell", shell_name);
 
         // Configure shell-specific environment variables
-        match shell_name {
-            "fish" => {
-                cmd.env("fish_features", "no-query-term");
-            }
-            _ => {}
+        if shell_name == "fish" {
+            cmd.env("fish_features", "no-query-term");
         }
 
         // Set common terminal environment variables

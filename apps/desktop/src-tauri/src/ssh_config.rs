@@ -3,7 +3,6 @@
  *
  * Parses OpenSSH config files and converts them to Rite connections
  */
-
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -93,7 +92,7 @@ impl SshConfigEntry {
             color: None,
             icon: None,
             folder: None,
-            notes: Some(format!("Imported from SSH config")),
+            notes: Some("Imported from SSH config".to_string()),
             ssh_keep_alive_override: if ssh_keep_alive_interval.is_some() {
                 Some("enabled".to_string())
             } else {

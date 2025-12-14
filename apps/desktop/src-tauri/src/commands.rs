@@ -1,7 +1,6 @@
 /// Tauri commands
 ///
 /// Backend functions callable from the frontend
-
 use crate::auth::UnlockResult;
 use crate::connection::{AuthMethod, Connection};
 use crate::state::AppState;

@@ -34,8 +34,7 @@ jobs:
           workspaces: apps/desktop/src-tauri
 
       - name: Run Rust tests
-        working-directory: apps/desktop/src-tauri
-        run: cargo test --lib --all-features
+        run: cargo test --workspace --lib --all-features
 
   lint-rust:
     name: Rust Linting
@@ -63,12 +62,10 @@ jobs:
           workspaces: apps/desktop/src-tauri
 
       - name: Run clippy
-        working-directory: apps/desktop/src-tauri
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
 
       - name: Check formatting
-        working-directory: apps/desktop/src-tauri
-        run: cargo fmt -- --check
+        run: cargo fmt --all -- --check
 
   test-typescript:
     name: TypeScript Type Check

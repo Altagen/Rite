@@ -3,7 +3,6 @@
  *
  * Manages SSH terminal sessions with russh
  */
-
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use base64::Engine as _;
@@ -126,7 +125,7 @@ impl client::Handler for SshClientHandler {
 
                         Ok(true)
                     }
-                    "accept" | _ => {
+                    _ => {
                         // Accept mode (or default): Silent TOFU
                         tracing::info!("[terminal.rs] Accept mode: Silently accepting and saving key (TOFU)");
 

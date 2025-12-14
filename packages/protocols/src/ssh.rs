@@ -7,7 +7,7 @@ use crate::{
     ProtocolType, Result, TerminalProtocol,
 };
 use async_trait::async_trait;
-use std::path::PathBuf;
+use std::path::Path;
 use tracing::{debug, info, warn};
 
 /// SSH client implementation
@@ -192,7 +192,7 @@ impl FileTransferProtocol for SftpClient {
         Ok(Vec::new())
     }
 
-    async fn download(&mut self, remote_path: &str, local_path: &PathBuf) -> Result<()> {
+    async fn download(&mut self, remote_path: &str, local_path: &Path) -> Result<()> {
         if !self.is_connected() {
             return Err(ProtocolError::NotConnected);
         }
@@ -202,7 +202,7 @@ impl FileTransferProtocol for SftpClient {
         Ok(())
     }
 
-    async fn upload(&mut self, local_path: &PathBuf, remote_path: &str) -> Result<()> {
+    async fn upload(&mut self, local_path: &Path, remote_path: &str) -> Result<()> {
         if !self.is_connected() {
             return Err(ProtocolError::NotConnected);
         }

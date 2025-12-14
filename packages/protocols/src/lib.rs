@@ -11,7 +11,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 pub mod ssh;
@@ -134,10 +134,10 @@ pub trait FileTransferProtocol: Protocol {
     async fn list_dir(&mut self, path: &str) -> Result<Vec<FileEntry>>;
 
     /// Download file
-    async fn download(&mut self, remote_path: &str, local_path: &PathBuf) -> Result<()>;
+    async fn download(&mut self, remote_path: &str, local_path: &Path) -> Result<()>;
 
     /// Upload file
-    async fn upload(&mut self, local_path: &PathBuf, remote_path: &str) -> Result<()>;
+    async fn upload(&mut self, local_path: &Path, remote_path: &str) -> Result<()>;
 
     /// Delete file or directory
     async fn delete(&mut self, path: &str) -> Result<()>;
