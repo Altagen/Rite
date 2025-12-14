@@ -41,9 +41,6 @@ trim = true
 # Parse conventional commits
 conventional_commits = true
 
-# Filter out commits
-filter_commits = false
-
 # Protect breaking changes from being skipped
 protect_breaking_commits = false
 
