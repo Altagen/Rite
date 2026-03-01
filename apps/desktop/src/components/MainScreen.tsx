@@ -21,7 +21,7 @@ import { ImportSSHConfigModal } from './ImportSSHConfigModal';
 import { UnlockScreen } from './UnlockScreen';
 import { Toast } from './Toast';
 import { ErrorBoundary } from './ErrorBoundary';
-import { SplitDirection, Tab } from '../types/pane';
+import { AnyPaneNode, SplitDirection, Tab } from '../types/pane';
 import {
   createTerminalPane,
   splitPane,
@@ -35,7 +35,7 @@ import {
   extractPane,
   reorganizePane,
 } from '../utils/paneTree';
-import riteLandscape from '../assets/RITE-icon-landscape.png';
+import riteLandscape from '../assets/rite.png';
 
 export function MainScreen() {
   const { isLocked, lock } = useAuthStore();
@@ -638,7 +638,7 @@ export function MainScreen() {
       type: 'split' as const,
       direction: 'vertical' as const,
       ratio: 0.5,
-      children: [targetTab.paneTree, sourceTab.paneTree] as [any, any],
+      children: [targetTab.paneTree, sourceTab.paneTree] as [AnyPaneNode, AnyPaneNode],
     };
 
     // Update tabs: remove source, update target
@@ -711,7 +711,7 @@ export function MainScreen() {
     <div className="flex h-screen flex-col bg-background text-foreground">
       {/* Header */}
       <header className="border-b border-border bg-card">
-        <div className="flex items-center justify-between px-6 py-4">
+        <div className="flex items-center justify-between pl-2 pr-6 py-4">
           <div className="flex items-center gap-3">
             <img src={riteLandscape} alt="RITE" className="h-10 rounded-md" />
           </div>

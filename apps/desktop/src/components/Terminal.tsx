@@ -426,7 +426,8 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         }
       }
     };
-  }, [existingSessionId]); // Only recreate terminal if session ID changes (should never happen)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only recreates on session ID change
+  }, [existingSessionId]);
 
   const handleClose = async () => {
     // Mark that user explicitly closed this terminal

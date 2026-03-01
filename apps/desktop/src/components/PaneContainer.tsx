@@ -63,6 +63,7 @@ export function PaneContainer({ node, onSplitRatioChange, onClosePane, onFocusPa
 
     document.addEventListener('dragover', handleGlobalDragOver);
     return () => document.removeEventListener('dragover', handleGlobalDragOver);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setDropTarget is a stable Zustand setter
   }, [draggedPaneId, node]);
 
   if (node.type === 'terminal') {

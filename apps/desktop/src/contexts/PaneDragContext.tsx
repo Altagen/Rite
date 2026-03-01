@@ -52,6 +52,7 @@ export function PaneDragProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- context hook co-located with provider
 export function usePaneDrag() {
   const context = useContext(PaneDragContext);
   if (!context) {
