@@ -214,8 +214,6 @@ impl client::Handler for SshClientHandler {
 /// Represents an active SSH terminal session
 pub struct SshSession {
     pub id: SessionId,
-    pub connection_id: String,
-    pub connection_name: String,
     command_tx: mpsc::Sender<SessionCommand>,
 }
 
@@ -499,8 +497,6 @@ impl SshSession {
 
         Ok(Self {
             id: session_id,
-            connection_id: connection.id,
-            connection_name: connection.name,
             command_tx,
         })
     }
@@ -564,13 +560,6 @@ impl Session {
         }
     }
 
-    /// Get the session ID
-    pub fn id(&self) -> &str {
-        match self {
-            Session::Ssh(s) => &s.id,
-            Session::Local(s) => &s.id,
-        }
-    }
 }
 
 /// Manages all active terminal sessions
@@ -850,17 +839,4 @@ impl SessionManager {
         sessions.keys().cloned().collect()
     }
 
-    /// Close all sessions
-    pub async fn close_all_sessions(&self) -> Result<()> {
-        let mut sessions = self.sessions.lock().await;
-        let session_ids: Vec<_> = sessions.keys().cloned().collect();
-
-        for session_id in session_ids {
-            if let Some(session) = sessions.remove(&session_id) {
-                let _ = session.close().await; // Best effort
-            }
-        }
-
-        Ok(())
-    }
 }

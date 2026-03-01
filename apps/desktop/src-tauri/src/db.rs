@@ -160,7 +160,8 @@ impl Database {
         Ok(count == 0)
     }
 
-    /// Get the current schema version
+    /// Get the current schema version (used in tests)
+    #[cfg(test)]
     pub async fn get_schema_version(&self) -> Result<i64> {
         let version: i64 = sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
             .fetch_one(&self.pool)

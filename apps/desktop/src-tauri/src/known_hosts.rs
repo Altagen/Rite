@@ -7,22 +7,10 @@ use anyhow::Result;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use russh::keys::key::PublicKey;
 use russh_keys::PublicKeyBase64;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sqlx::SqlitePool;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KnownHost {
-    pub id: String,
-    pub host: String,
-    pub port: u16,
-    pub key_type: String,
-    pub fingerprint: String,
-    pub public_key_data: Vec<u8>,
-    pub added_at: i64,
-    pub last_seen_at: i64,
-}
 
 /// Result of host key verification
 #[derive(Debug, Clone, Serialize)]
@@ -189,45 +177,4 @@ async fn update_last_seen(db: &SqlitePool, id: &str) -> Result<()> {
         .execute(db)
         .await?;
     Ok(())
-}
-
-/// Remove a host key from known_hosts
-pub async fn remove_host_key(db: &SqlitePool, host: &str, port: u16) -> Result<()> {
-    tracing::info!("[known_hosts] Removing host key for {}:{}", host, port);
-
-    sqlx::query("DELETE FROM known_hosts WHERE host = ? AND port = ?")
-        .bind(host)
-        .bind(port as i64)
-        .execute(db)
-        .await?;
-
-    Ok(())
-}
-
-/// List all known hosts
-pub async fn list_known_hosts(db: &SqlitePool) -> Result<Vec<KnownHost>> {
-    let rows = sqlx::query_as::<_, (String, String, i64, String, String, Vec<u8>, i64, i64)>(
-        "SELECT id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at
-         FROM known_hosts ORDER BY host, port",
-    )
-    .fetch_all(db)
-    .await?;
-
-    Ok(rows
-        .into_iter()
-        .map(
-            |(id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at)| {
-                KnownHost {
-                    id,
-                    host,
-                    port: port as u16,
-                    key_type,
-                    fingerprint,
-                    public_key_data,
-                    added_at,
-                    last_seen_at,
-                }
-            },
-        )
-        .collect())
 }
