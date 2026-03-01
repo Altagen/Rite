@@ -9,6 +9,16 @@ vars:
   FRONTEND_DIR: apps/desktop
 
 tasks:
+  # Pre-push check — mirrors CI exactly
+  check:
+    desc: "Run all CI checks locally before pushing (fmt, clippy, tests, audit, typecheck)"
+    cmds:
+      - cargo fmt --all -- --check
+      - cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
+      - cargo test --workspace --lib --all-features
+      - cargo audit
+      - pnpm --filter desktop typecheck
+
   # Development tasks
   dev:
     desc: Run development build with hot reload
@@ -218,7 +228,7 @@ tasks:
       - task: sbom
       - task: checksums
       - echo "Release artifacts prepared in {{.DIST_DIR}}/"
-      - echo "Note: Changelog is generated automatically in CI/CD via git-cliff"
+      - 'echo "Note: Changelog is generated automatically in CI/CD via git-cliff"'
       - ls -lh {{.DIST_DIR}}/
 
   # Cleanup tasks

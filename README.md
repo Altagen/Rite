@@ -70,6 +70,16 @@ task dev
 
 `task dev` starts the Vite dev server and the Tauri app with hot-reload.
 
+### Before Pushing
+
+Run the full CI check suite locally before every push:
+
+```bash
+task check
+```
+
+This runs in order: `cargo fmt --check`, `clippy`, `cargo test`, `cargo audit`, and `tsc`. Same checks as CI — if it passes locally, it passes on the remote.
+
 ### Building for Production
 
 ```bash
