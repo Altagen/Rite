@@ -559,7 +559,6 @@ impl Session {
             Session::Local(s) => s.close().await,
         }
     }
-
 }
 
 /// Manages all active terminal sessions
@@ -838,5 +837,4 @@ impl SessionManager {
         let sessions = self.sessions.lock().await;
         sessions.keys().cloned().collect()
     }
-
 }

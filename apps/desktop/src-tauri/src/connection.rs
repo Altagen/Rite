@@ -263,5 +263,4 @@ impl Connection {
         self.updated_at = Utc::now().timestamp_millis();
         Ok(())
     }
-
 }
