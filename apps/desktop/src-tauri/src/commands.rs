@@ -4,6 +4,7 @@
 use crate::auth::UnlockResult;
 use crate::connection::{AuthMethod, Connection};
 use crate::state::AppState;
+use base64::Engine as _;
 use rite_crypto::validate_password_strength;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -451,6 +452,20 @@ pub async fn disconnect_terminal(
         .close_session(&session_id)
         .await
         .map_err(|e| format!("Failed to disconnect: {}", e))
+}
+
+/// Claim the initial output buffer for a terminal session.
+///
+/// Returns all SSH data that arrived before the frontend registered its event
+/// listener, encoded as base64. Switches the session to streaming mode so
+/// future data is emitted as `terminal-data` events.
+#[tauri::command]
+pub async fn claim_session_output(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<String, String> {
+    let data = state.sessions.claim_session_output(&session_id).await;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&data))
 }
 
 /// List all active terminal sessions

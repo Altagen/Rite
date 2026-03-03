@@ -1065,9 +1065,9 @@ export function MainScreen() {
                     </div>
                     <span className="text-xs text-muted-foreground">{shell.path}</span>
                   </div>
-                  {settings.defaultShell === shell.path && (
-                    <span className="text-lg text-yellow-500">⭐</span>
-                  )}
+                  <span className={`text-lg ${settings.defaultShell === shell.path ? 'text-yellow-500' : 'text-muted-foreground/30'}`}>
+                    {settings.defaultShell === shell.path ? '⭐' : '☆'}
+                  </span>
                 </button>
               );
             })}
