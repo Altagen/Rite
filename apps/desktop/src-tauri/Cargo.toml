@@ -48,7 +48,7 @@ base64 = "0.22"
 
 # SSH
 russh = "0.57"
-russh-keys = "0.45"
+russh-keys = "0.49"
 async-trait = "0.1"
 
 # Local PTY (for local terminal support)
