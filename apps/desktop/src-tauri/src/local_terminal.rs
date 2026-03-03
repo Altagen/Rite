@@ -20,6 +20,10 @@ pub type SessionId = String;
 pub struct LocalSession {
     pub id: SessionId,
     command_tx: mpsc::Sender<SessionCommand>,
+    /// Buffer for initial shell output (prompt, fastfetch, etc.).
+    /// `Some(bytes)` = buffering; `None` = streaming mode (frontend has claimed).
+    /// Uses std::sync::Mutex because the PTY reader runs in spawn_blocking.
+    initial_buffer: Arc<StdMutex<Option<Vec<u8>>>>,
 }
 
 impl LocalSession {
@@ -115,6 +119,16 @@ impl LocalSession {
         // Create command channel
         let (command_tx, mut command_rx) = mpsc::channel::<SessionCommand>(100);
 
+        // Buffer for initial shell output (prompt, fastfetch, etc.).
+        // Same rationale as SshSession: the shell starts writing immediately when
+        // the PTY opens, before the React frontend has had time to mount the
+        // Terminal component and register its event listener. We buffer everything
+        // until the frontend calls claim_session_output(), which drains the buffer
+        // and switches to streaming mode.
+        let initial_buffer: Arc<StdMutex<Option<Vec<u8>>>> =
+            Arc::new(StdMutex::new(Some(Vec::new())));
+        let initial_buffer_clone = Arc::clone(&initial_buffer);
+
         // Clone reader before taking writer
         let mut reader = pair
             .master
@@ -187,17 +201,22 @@ impl LocalSession {
             loop {
                 match reader.read(&mut buffer) {
                     Ok(n) if n > 0 => {
-                        // Encode raw bytes as base64 to preserve all data (including ANSI codes)
-                        let data_base64 =
-                            base64::engine::general_purpose::STANDARD.encode(&buffer[..n]);
-
-                        let _ = app_handle_clone2.emit(
-                            "terminal-data",
-                            serde_json::json!({
-                                "sessionId": session_id_clone2,
-                                "data": data_base64,
-                            }),
-                        );
+                        let mut buf_guard = initial_buffer_clone.lock().unwrap();
+                        if let Some(ref mut buf) = *buf_guard {
+                            // Buffering mode: accumulate until frontend calls claim.
+                            buf.extend_from_slice(&buffer[..n]);
+                        } else {
+                            // Streaming mode: frontend has claimed the buffer.
+                            let data_base64 =
+                                base64::engine::general_purpose::STANDARD.encode(&buffer[..n]);
+                            let _ = app_handle_clone2.emit(
+                                "terminal-data",
+                                serde_json::json!({
+                                    "sessionId": session_id_clone2,
+                                    "data": data_base64,
+                                }),
+                            );
+                        }
                     }
                     Ok(_) => {
                         tracing::info!("PTY EOF detected for session {}", session_id_clone2);
@@ -240,7 +259,16 @@ impl LocalSession {
         Ok(Self {
             id: session_id,
             command_tx,
+            initial_buffer,
         })
+    }
+
+    /// Drain the initial output buffer and switch to streaming mode.
+    /// Returns all bytes received before the frontend registered its listener.
+    /// After this call, new PTY data is emitted as `terminal-data` events.
+    pub fn claim_initial_output(&self) -> Vec<u8> {
+        let mut guard = self.initial_buffer.lock().unwrap();
+        guard.take().unwrap_or_default()
     }
 
     /// Send input to the local terminal

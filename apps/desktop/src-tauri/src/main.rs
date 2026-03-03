@@ -78,6 +78,7 @@ fn main() {
             commands::send_terminal_input,
             commands::resize_terminal,
             commands::disconnect_terminal,
+            commands::claim_session_output,
             commands::list_terminal_sessions,
             commands::get_setting,
             commands::set_setting,

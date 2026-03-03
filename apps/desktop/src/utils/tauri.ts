@@ -278,6 +278,14 @@ export const TauriTerminal = {
     invokeWithValidation('resize_terminal', z.null(), { sessionId, cols, rows }),
 
   /**
+   * Claim the initial output buffer for a terminal session.
+   * Returns base64-encoded bytes that arrived before the frontend registered
+   * its listener, and switches the session to streaming mode.
+   */
+  claimSessionOutput: (sessionId: string) =>
+    invokeWithValidation('claim_session_output', z.string(), { sessionId }),
+
+  /**
    * Disconnect a terminal session
    */
   disconnectTerminal: (sessionId: string) =>

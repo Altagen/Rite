@@ -4,10 +4,9 @@
  * Manages SSH terminal sessions with russh
  */
 use anyhow::{anyhow, Result};
-use async_trait::async_trait;
 use base64::Engine as _;
 use russh::client::{self};
-use russh::keys::key;
+use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
 use russh::ChannelMsg;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
@@ -40,13 +39,12 @@ struct SshClientHandler {
     force_accept_host_key: bool, // For Quick SSH: bypass host key verification
 }
 
-#[async_trait]
 impl client::Handler for SshClientHandler {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &key::PublicKey,
+        server_public_key: &PublicKey,
     ) -> Result<bool, Self::Error> {
         tracing::info!(
             "[terminal.rs] Verifying host key for {}:{}",
@@ -215,6 +213,9 @@ impl client::Handler for SshClientHandler {
 pub struct SshSession {
     pub id: SessionId,
     command_tx: mpsc::Sender<SessionCommand>,
+    /// Buffer for the initial SSH output (MOTD, welcome message, first prompt).
+    /// `Some(bytes)` = still buffering; `None` = streaming mode (frontend has claimed).
+    initial_buffer: Arc<Mutex<Option<Vec<u8>>>>,
 }
 
 impl SshSession {
@@ -278,18 +279,21 @@ impl SshSession {
                 // Load private key
                 let key_data = tokio::fs::read(key_path).await?;
                 let key = if let Some(pass) = passphrase {
-                    russh_keys::decode_secret_key(&String::from_utf8(key_data)?, Some(pass))?
+                    russh::keys::decode_secret_key(&String::from_utf8(key_data)?, Some(pass))?
                 } else {
-                    russh_keys::decode_secret_key(&String::from_utf8(key_data)?, None)?
+                    russh::keys::decode_secret_key(&String::from_utf8(key_data)?, None)?
                 };
 
                 session
-                    .authenticate_publickey(&connection.username, Arc::new(key))
+                    .authenticate_publickey(
+                        &connection.username,
+                        PrivateKeyWithHashAlg::new(Arc::new(key), None),
+                    )
                     .await?
             }
         };
 
-        if !auth_result {
+        if !matches!(auth_result, russh::client::AuthResult::Success) {
             tracing::error!("[terminal.rs] Authentication failed!");
             return Err(anyhow!("Authentication failed"));
         }
@@ -319,6 +323,14 @@ impl SshSession {
         // This ensures we can send commands immediately
         let (command_tx, mut command_rx) = mpsc::channel::<SessionCommand>(100);
 
+        // Buffer for initial SSH output (MOTD, welcome message, first prompt).
+        // Emitting events before the frontend has registered its listener causes those
+        // events to be silently dropped. Instead we buffer all data until the frontend
+        // calls claim_session_output(), which atomically drains the buffer and switches
+        // to streaming mode. No timing hacks needed.
+        let initial_buffer: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(Some(Vec::new())));
+        let initial_buffer_clone = Arc::clone(&initial_buffer);
+
         // Spawn task to manage the SSH channel BEFORE requesting shell
         // This ensures the listener is active when MOTD arrives
         let session_id_clone = session_id.clone();
@@ -336,32 +348,12 @@ impl SshSession {
                 );
                 return;
             }
-            tracing::info!("[terminal.rs] Shell started, listener is now active");
-
-            // WORKAROUND: Send command to start a login shell
-            // This is a workaround because russh's request_shell() doesn't support login shell flag
-            // The shell command will replace the current shell with a login shell
-            tracing::info!("[terminal.rs] Sending command to start login shell...");
-            let login_cmd = "exec $SHELL -l\n";
-            if let Err(e) = channel.data(login_cmd.as_bytes()).await {
-                tracing::error!("[terminal.rs] Failed to send login shell command: {}", e);
-            }
-
-            // CRITICAL FIX: Give frontend time to configure event listeners
-            // React needs ~200ms to mount the Terminal component and setup listeners
-            // Without this delay, early events (MOTD) are lost in Quick SSH mode
-            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+            tracing::info!("[terminal.rs] Shell started, buffering initial output");
 
             // Start the event loop immediately to capture all output including MOTD
             // Keep-alive timer will be initialized on first tick
             let mut keep_alive_timer: Option<tokio::time::Interval> = None;
             let mut keep_alive_initialized = false;
-
-            // CRITICAL FIX: Ignore all data until we see the login shell starting
-            // The first shell outputs a prompt before we send exec $SHELL -l
-            // We need to skip that initial prompt and only start sending data
-            // AFTER the login shell has started (when we see the MOTD)
-            let mut login_shell_started = false;
 
             loop {
                 // Initialize keep-alive on first loop iteration (after we're already listening)
@@ -435,36 +427,21 @@ impl SshSession {
                     msg = channel.wait() => {
                         match msg {
                             Some(ChannelMsg::Data { ref data }) => {
-                                let preview = String::from_utf8_lossy(data);
-
-                                // Skip initial prompt until login shell starts
-                                // Detect login shell start by looking for typical MOTD content (> 200 bytes)
-                                // or typical MOTD markers like "Linux", "Welcome", etc.
-                                if !login_shell_started {
-                                    if data.len() > 200 || preview.contains("Linux ") || preview.contains("Debian ") || preview.contains("Ubuntu ") {
-                                        login_shell_started = true;
-                                    } else {
-                                        continue; // Skip this data, don't send to frontend
-                                    }
+                                let mut buf_guard = initial_buffer_clone.lock().await;
+                                if let Some(ref mut buf) = *buf_guard {
+                                    // Buffering mode: accumulate until frontend calls claim.
+                                    buf.extend_from_slice(data);
+                                } else {
+                                    // Streaming mode: frontend has already claimed the buffer.
+                                    let data_base64 = base64::engine::general_purpose::STANDARD.encode(data);
+                                    let _ = app_handle.emit(
+                                        "terminal-data",
+                                        serde_json::json!({
+                                            "sessionId": session_id_clone,
+                                            "data": data_base64,
+                                        }),
+                                    );
                                 }
-
-                                // Filter out the echo of our "exec $SHELL -l" command
-                                // This command is sent to start a login shell and gets echoed back by the shell
-                                if preview.contains("exec $SHELL") {
-                                    continue;
-                                }
-
-                                // Encode raw bytes as base64 to preserve all data (including ANSI codes)
-                                // This prevents UTF-8 conversion from corrupting terminal control sequences
-                                let data_base64 = base64::engine::general_purpose::STANDARD.encode(data);
-
-                                let _ = app_handle.emit(
-                                    "terminal-data",
-                                    serde_json::json!({
-                                        "sessionId": session_id_clone,
-                                        "data": data_base64,
-                                    }),
-                                );
                             }
                             Some(ChannelMsg::ExitStatus { exit_status }) => {
                                 let _ = app_handle.emit(
@@ -498,7 +475,16 @@ impl SshSession {
         Ok(Self {
             id: session_id,
             command_tx,
+            initial_buffer,
         })
+    }
+
+    /// Drain the initial output buffer and switch to streaming mode.
+    /// Returns all bytes received before the frontend registered its listener.
+    /// After this call, new SSH data is emitted as `terminal-data` events.
+    pub async fn claim_initial_output(&self) -> Vec<u8> {
+        let mut guard = self.initial_buffer.lock().await;
+        guard.take().unwrap_or_default()
     }
 
     /// Send input to the SSH channel
@@ -536,6 +522,14 @@ pub enum Session {
 }
 
 impl Session {
+    /// Claim the initial output buffer (SSH and local terminals).
+    pub async fn claim_initial_output(&self) -> Vec<u8> {
+        match self {
+            Session::Ssh(s) => s.claim_initial_output().await,
+            Session::Local(s) => s.claim_initial_output(),
+        }
+    }
+
     /// Send input to the session
     pub async fn send_input(&self, data: &[u8]) -> Result<()> {
         match self {
@@ -797,6 +791,17 @@ impl SessionManager {
         tracing::info!("[terminal.rs] Quick SSH session stored in SessionManager");
 
         Ok(session_id)
+    }
+
+    /// Claim the initial output buffer for a session.
+    /// Returns all SSH data buffered before the frontend registered its listener,
+    /// and switches the session to streaming mode (future data emitted as events).
+    pub async fn claim_session_output(&self, session_id: &str) -> Vec<u8> {
+        let sessions = self.sessions.lock().await;
+        match sessions.get(session_id) {
+            Some(session) => session.claim_initial_output().await,
+            None => Vec::new(),
+        }
     }
 
     /// Send input to a session

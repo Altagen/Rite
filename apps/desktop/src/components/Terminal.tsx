@@ -260,6 +260,11 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
       // IMPORTANT: Always register backend event listeners on every mount
       // These listeners must be re-registered when the component remounts (e.g., after tab switch)
 
+      // Set sessionIdRef BEFORE registering listeners to avoid a race condition:
+      // if the backend emits terminal-data between listen() and the later assignment,
+      // the null-check would silently drop the event (including the initial SSH prompt).
+      sessionIdRef.current = existingSessionId;
+
       // Set up event listeners for terminal data
       // This must be done on EVERY mount to receive backend output
       unlistenData = await listen<TerminalDataEvent>('terminal-data', (event) => {
@@ -274,7 +279,8 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           xtermRef.current.write(dataString);
 
           // Intelligent prompt detection: check if we have printable characters
-          if (isLocalTerminal && !promptDetectedRef.current) {
+          // Applies to all terminals (local and SSH) to cancel the fallback timer.
+          if (!promptDetectedRef.current) {
             const hasPrintable = dataString.split('').some((c: string) => {
               const code = c.charCodeAt(0);
               // Printable ASCII range (space to ~) or common unicode
@@ -322,59 +328,46 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
       const isNewTerminal = !terminalInitializedCache.has(existingSessionId);
 
       if (isNewTerminal) {
-        // Start intelligent prompt detection for local terminals
-        if (isLocalTerminal) {
-          promptDetectedRef.current = false;
+        setStatus('connected');
+        terminalInitializedCache.add(existingSessionId);
 
-          promptDetectionTimerRef.current = setTimeout(() => {
-            if (!promptDetectedRef.current && sessionIdRef.current && xtermRef.current) {
-              // Send newline to trigger prompt display if no output yet
-              sendTerminalInput('\n');
-            }
-          }, 150); // 150ms for ultra-fast UX
+        // Write connection banner for SSH terminals before claiming buffered output,
+        // so the display order is: "Connected to X" → MOTD → shell prompt.
+        if (!isLocalTerminal) {
+          term.write(`Connected to ${connectionNameRef.current}\r\n\n`);
         }
 
-        // Connect to SSH or use existing session (listeners are now ready)
+        // Claim the initial output buffer: SSH data that arrived before the
+        // frontend's listeners were registered is held in the Rust buffer.
+        // Claiming it atomically drains the buffer and switches to streaming mode,
+        // so future data is emitted as terminal-data events (caught by the
+        // listeners registered above). This eliminates the race condition —
+        // no timing hacks needed.
+        promptDetectedRef.current = false;
         try {
-          if (existingSessionId) {
-            // Use existing session (for local terminals and quick SSH)
-            sessionIdRef.current = existingSessionId;
-            setStatus('connected');
-
-            // Mark session as initialized
-            terminalInitializedCache.add(existingSessionId);
-
-            // For local terminals, don't write connection message - let shell display directly
-            // For SSH, write connection message
-            if (!isLocalTerminal) {
-              term.write(`Connected to ${connectionNameRef.current}\r\n\n`);
+          const bufferedBase64 = await Tauri.Terminal.claimSessionOutput(existingSessionId);
+          if (bufferedBase64 && bufferedBase64.length > 0 && xtermRef.current) {
+            const dataBytes = Uint8Array.from(atob(bufferedBase64), c => c.charCodeAt(0));
+            const decoder = new TextDecoder('utf-8', { fatal: false });
+            const dataString = decoder.decode(dataBytes);
+            if (dataString.length > 0) {
+              xtermRef.current.write(dataString);
+              promptDetectedRef.current = true;
             }
-            // For local terminals: do nothing, shells display their own prompt
-          } else {
-            // Create new SSH session (for saved connections)
-            term.write(`Connecting to ${connectionNameRef.current}...\r\n`);
-
-            const sessionId = await Tauri.Terminal.connectTerminal(connectionIdRef.current);
-
-            sessionIdRef.current = sessionId;
-            setStatus('connected');
-            term.write('Connected!\r\n\n');
           }
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : String(err);
-          errorHandler.handle('Terminal connection failed', {
-            severity: ErrorSeverity.ERROR,
-            category: ErrorCategory.TERMINAL,
-            originalError: err,
-            context: {
-              component: 'Terminal',
-              connectionId: connectionIdRef.current,
-              connectionName: connectionNameRef.current,
-            },
-          });
-          setError(errorMessage);
-          setStatus('error');
-          term.write(`\x1b[31mConnection failed: ${errorMessage}\x1b[0m\r\n`);
+        } catch {
+          // claim is best-effort; streaming mode still activates on claim error
+        }
+
+        // Fallback: if the buffer was empty (local terminal, or SSH connected
+        // so fast that no data arrived yet), send a newline after a short delay
+        // to make the shell re-display its prompt.
+        if (!promptDetectedRef.current) {
+          promptDetectionTimerRef.current = setTimeout(() => {
+            if (!promptDetectedRef.current && sessionIdRef.current && xtermRef.current) {
+              sendTerminalInput('\n');
+            }
+          }, isLocalTerminal ? 150 : 400);
         }
       } else {
         // Terminal already exists - reattaching to existing instance
