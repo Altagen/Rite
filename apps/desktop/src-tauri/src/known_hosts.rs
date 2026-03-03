@@ -4,9 +4,7 @@
  * Manages SSH server host key verification for MITM protection
  */
 use anyhow::Result;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use russh::keys::key::PublicKey;
-use russh_keys::PublicKeyBase64;
+use russh::keys::{HashAlg, PublicKey};
 use serde::Serialize;
 use sqlx::SqlitePool;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -47,24 +45,13 @@ fn current_timestamp() -> i64 {
 }
 
 /// Calculate SHA256 fingerprint of a public key
-fn calculate_fingerprint(public_key: &PublicKey) -> Result<String> {
-    use sha2::{Digest, Sha256};
-
-    // Serialize public key to bytes
-    let key_bytes = public_key.public_key_bytes();
-
-    // Calculate SHA256 hash
-    let mut hasher = Sha256::new();
-    hasher.update(&key_bytes);
-    let hash = hasher.finalize();
-
-    // Format as SHA256:base64 (standard SSH fingerprint format)
-    Ok(format!("SHA256:{}", BASE64.encode(hash)))
+fn calculate_fingerprint(public_key: &PublicKey) -> String {
+    public_key.fingerprint(HashAlg::Sha256).to_string()
 }
 
 /// Get the key type string from a PublicKey
 fn get_key_type(public_key: &PublicKey) -> String {
-    public_key.name().to_string()
+    public_key.algorithm().to_string()
 }
 
 /// Verify a server's host key
@@ -76,7 +63,7 @@ pub async fn verify_host_key(
 ) -> Result<HostKeyVerificationResult> {
     tracing::info!("[known_hosts] Verifying host key for {}:{}", host, port);
 
-    let fingerprint = calculate_fingerprint(server_public_key)?;
+    let fingerprint = calculate_fingerprint(server_public_key);
     let key_type = get_key_type(server_public_key);
 
     // Check if host is already known
@@ -136,9 +123,9 @@ pub async fn add_host_key(
         port
     );
 
-    let fingerprint = calculate_fingerprint(server_public_key)?;
+    let fingerprint = calculate_fingerprint(server_public_key);
     let key_type = get_key_type(server_public_key);
-    let public_key_data = server_public_key.public_key_bytes();
+    let public_key_data = server_public_key.to_bytes()?;
     let now = current_timestamp();
 
     // Delete existing entry if any (REPLACE doesn't work with UNIQUE constraint)
