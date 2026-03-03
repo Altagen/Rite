@@ -49,8 +49,8 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # Tauri
-tauri = { version = "2.1", features = [] }
-tauri-plugin-shell = "2.0"
+tauri = { version = "2.9", features = [] }
+tauri-plugin-shell = "2.3"
 
 # Utilities
 uuid = { version = "1.21", features = ["v4", "serde"] }
