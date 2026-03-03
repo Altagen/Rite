@@ -198,7 +198,8 @@ impl AuthManager {
         Ok(())
     }
 
-    /// Get statistics about recent unlock attempts
+    /// Get statistics about recent unlock attempts (used in tests)
+    #[cfg(test)]
     pub async fn get_unlock_stats(&self) -> Result<UnlockStats> {
         let attempts = self.db.get_recent_unlock_attempts(60).await?; // Last hour
 
@@ -222,7 +223,8 @@ pub enum UnlockResult {
     RateLimited { wait_seconds: u64 },
 }
 
-/// Statistics about unlock attempts
+/// Statistics about unlock attempts (used in tests)
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub struct UnlockStats {
     pub total_attempts_last_hour: usize,

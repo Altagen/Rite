@@ -263,10 +263,4 @@ impl Connection {
         self.updated_at = Utc::now().timestamp_millis();
         Ok(())
     }
-
-    /// Mark connection as used
-    pub fn mark_used(&mut self) {
-        self.last_used_at = Some(Utc::now().timestamp_millis());
-        self.updated_at = Utc::now().timestamp_millis();
-    }
 }

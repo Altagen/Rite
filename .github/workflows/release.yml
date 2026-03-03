@@ -3,71 +3,52 @@ name: Release
 on:
   push:
     tags:
-      - '*.*.*'
+      - '[0-9]+.[0-9]+.[0-9]+*'
 
 permissions:
   contents: write
 
 jobs:
-  generate-changelog:
-    name: Generate Changelog
+  # Create draft release with changelog
+  create-release:
+    name: 📋 Create Release
     runs-on: ubuntu-latest
     outputs:
-      changelog: ${{ steps.read_changelog.outputs.changelog }}
+      release_id: ${{ steps.create_release.outputs.id }}
       version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Get version
+      - name: Get version from tag
         id: version
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
       - name: Generate changelog
         uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
-          args: --tag ${{ steps.version.outputs.version }} --strip header
+          args: --latest --strip header
         env:
-          OUTPUT: CHANGELOG_RELEASE.md
+          OUTPUT: changelog.md
 
-      - name: Read changelog
-        id: read_changelog
-        run: |
-          if [ -f "CHANGELOG_RELEASE.md" ]; then
-            echo "changelog<<EOF" >> $GITHUB_OUTPUT
-            cat CHANGELOG_RELEASE.md >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "changelog=No changelog generated" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Upload changelog artifact
-        uses: actions/upload-artifact@v4
+      - name: Create draft release
+        id: create_release
+        uses: softprops/action-gh-release@v2
         with:
-          name: changelog
-          path: CHANGELOG_RELEASE.md
-          retention-days: 7
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: 'RITE ${{ steps.version.outputs.version }}'
-          body: 'Release is being built... artifacts will be available shortly.'
-          draft: false
-          prerelease: false
+          tag_name: ${{ github.ref_name }}
+          name: RITE ${{ steps.version.outputs.version }}
+          body_path: changelog.md
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Build for all platforms
   build-tauri:
-    name: Build ${{ matrix.platform.name }}
-    needs: generate-changelog
+    name: 🔨 Build (${{ matrix.platform.name }})
+    needs: create-release
     permissions:
       contents: write
     strategy:
@@ -77,12 +58,22 @@ jobs:
           - name: Linux x86_64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            arch: x86_64
+
+          - name: Linux ARM64
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            arch: aarch64
+
           - name: macOS x86_64
             os: macos-latest
             target: x86_64-apple-darwin
+            arch: x86_64
+
           - name: macOS ARM64
             os: macos-latest
             target: aarch64-apple-darwin
+            arch: aarch64
 
     runs-on: ${{ matrix.platform.os }}
     steps:
@@ -107,12 +98,18 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri
+          key: ${{ matrix.platform.target }}
 
-      - name: Install system dependencies (Ubuntu only)
-        if: matrix.platform.os == 'ubuntu-22.04'
+      - name: Install system dependencies (Linux)
+        if: startsWith(matrix.platform.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y             libwebkit2gtk-4.1-dev             libgtk-3-dev             libayatana-appindicator3-dev             librsvg2-dev             patchelf
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
       - name: Get pnpm store directory
         id: pnpm-cache
@@ -136,51 +133,39 @@ jobs:
       - name: Prepare and rename artifacts
         shell: bash
         run: |
-          VERSION="${{ needs.generate-changelog.outputs.version }}"
+          VERSION="${{ needs.create-release.outputs.version }}"
           mkdir -p dist
 
-          # Determine platform name
-          if [ "${{ matrix.platform.os }}" = "ubuntu-22.04" ]; then
+          if [[ "${{ matrix.platform.os }}" == ubuntu* ]]; then
             PLATFORM="linux"
-            ARCH="x86_64"
-            # Cargo workspace builds to root target/ directory
+            ARCH="${{ matrix.platform.arch }}"
             BUNDLE_PATH="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/bundle"
 
-            echo "Looking for artifacts in: $BUNDLE_PATH"
-            ls -la "$BUNDLE_PATH" || echo "Bundle path not found"
+            find "$BUNDLE_PATH/deb" -name "*.deb" -type f -exec cp {} "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.deb" \; 2>/dev/null || true
+            find "$BUNDLE_PATH/rpm" -name "*.rpm" -type f -exec cp {} "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.rpm" \; 2>/dev/null || true
+            find "$BUNDLE_PATH/appimage" -name "*.AppImage" -type f -exec cp {} "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.AppImage" \; 2>/dev/null || true
 
-            # Find and rename .deb
-            find "$BUNDLE_PATH/deb" -name "*.deb" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.deb \; 2>/dev/null || echo "No .deb found"
-
-            # Find and rename .rpm
-            find "$BUNDLE_PATH/rpm" -name "*.rpm" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.rpm \; 2>/dev/null || echo "No .rpm found"
-
-            # Find and rename .AppImage
-            find "$BUNDLE_PATH/appimage" -name "*.AppImage" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.AppImage \; 2>/dev/null || echo "No .AppImage found"
-
-          elif [ "${{ matrix.platform.os }}" = "macos-latest" ]; then
-            PLATFORM="macos"
-            if [ "${{ matrix.platform.target }}" = "x86_64-apple-darwin" ]; then
-              ARCH="x86_64"
-            else
-              ARCH="aarch64"
+            BINARY="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/rite"
+            if [ -f "$BINARY" ]; then
+              tar -czf "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" -C "$(dirname $BINARY)" rite
             fi
-            # Cargo workspace builds to root target/ directory
-            BUNDLE_PATH="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/bundle"
-
-            echo "Looking for artifacts in: $BUNDLE_PATH"
-            ls -la "$BUNDLE_PATH" || echo "Bundle path not found"
-
-            # Find and rename .dmg
-            find "$BUNDLE_PATH/dmg" -name "*.dmg" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.dmg \; 2>/dev/null || echo "No .dmg found"
-
-            # Find and rename .app.tar.gz if exists
-            find "$BUNDLE_PATH/macos" -name "*.app.tar.gz" -type f -exec cp {} dist/rite-${VERSION}-${PLATFORM}-${ARCH}.app.tar.gz \; 2>/dev/null || echo "No .app.tar.gz found"
           fi
 
-          # List what we found
-          echo "Artifacts prepared:"
-          ls -lh dist/ || echo "No artifacts found"
+          if [ "${{ matrix.platform.os }}" = "macos-latest" ]; then
+            PLATFORM="macos"
+            ARCH="${{ matrix.platform.arch }}"
+            BUNDLE_PATH="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/bundle"
+
+            find "$BUNDLE_PATH/dmg" -name "*.dmg" -type f -exec cp {} "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.dmg" \; 2>/dev/null || true
+
+            BINARY="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/rite"
+            if [ -f "$BINARY" ]; then
+              tar -czf "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" -C "$(dirname $BINARY)" rite
+            fi
+          fi
+
+          echo "Artifacts:"
+          ls -lh dist/
 
       - name: Generate checksums
         shell: bash
@@ -188,201 +173,30 @@ jobs:
           cd dist
           for file in *; do
             if [ -f "$file" ] && [[ "$file" != *.sha256 ]]; then
-              shasum -a 256 "$file" > "$file.sha256"
+              sha256sum "$file" > "$file.sha256"
             fi
           done
-          ls -lh
-
-      - name: Create standalone binary tar.gz
-        shell: bash
-        run: |
-          VERSION="${{ needs.generate-changelog.outputs.version }}"
-
-          # Determine platform and architecture
-          if [ "${{ matrix.platform.os }}" = "ubuntu-22.04" ]; then
-            PLATFORM="linux"
-            ARCH="x86_64"
-            BINARY_PATH="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/rite"
-          elif [ "${{ matrix.platform.os }}" = "macos-latest" ]; then
-            PLATFORM="macos"
-            if [ "${{ matrix.platform.target }}" = "x86_64-apple-darwin" ]; then
-              ARCH="x86_64"
-            else
-              ARCH="aarch64"
-            fi
-            BINARY_PATH="${{ github.workspace }}/target/${{ matrix.platform.target }}/release/rite"
-          fi
-
-          # Create tar.gz with standalone binary
-          if [ -f "$BINARY_PATH" ]; then
-            echo "Creating standalone binary tar.gz from: $BINARY_PATH"
-            mkdir -p temp_binary
-            cp "$BINARY_PATH" temp_binary/rite
-            tar -czf "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" -C temp_binary rite
-            rm -rf temp_binary
-
-            # Generate checksum for the tar.gz
-            shasum -a 256 "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz" > "dist/rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz.sha256"
-            echo "Created: rite-${VERSION}-${PLATFORM}-${ARCH}.tar.gz"
-          else
-            echo "WARNING: Binary not found at $BINARY_PATH"
-          fi
-
-          echo "Final artifacts:"
-          ls -lh dist/
 
       - name: Upload artifacts to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.generate-changelog.outputs.version }}
+          tag_name: ${{ github.ref_name }}
           files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  update-release-notes:
-    name: Update Release Notes
-    needs: [generate-changelog, build-tauri]
+  # Generate SBOM and consolidated checksums
+  finalize:
+    name: 📦 Finalize Release
+    needs: [create-release, build-tauri]
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download changelog
-        uses: actions/download-artifact@v4
-        with:
-          name: changelog
-          path: .
-
-      - name: Create formatted release notes
-        run: |
-          VERSION="${{ needs.generate-changelog.outputs.version }}"
-
-          # Create release notes from template
-          cat > RELEASE_NOTES.md << 'TEMPLATE'
-          # 🚀 RITE $VERSION
-
-          ## 📋 What's Changed
-
-          $CHANGELOG
-
-          ## 📦 Installation
-
-          ### Linux (x86_64)
-
-          **Debian/Ubuntu (.deb)**
-          ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.deb
-          sudo dpkg -i rite-$VERSION-linux-x86_64.deb
-          ```
-
-          **Fedora/RHEL (.rpm)**
-          ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.rpm
-          sudo rpm -i rite-$VERSION-linux-x86_64.rpm
-          ```
-
-          **AppImage (Universal)**
-          ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.AppImage
-          chmod +x rite-$VERSION-linux-x86_64.AppImage
-          ./rite-$VERSION-linux-x86_64.AppImage
-          ```
-
-          **Standalone Binary (.tar.gz)**
-          ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.tar.gz
-          tar -xzf rite-$VERSION-linux-x86_64.tar.gz
-          chmod +x rite
-          ./rite
-          ```
-
-          ### macOS
-
-          **Intel (x86_64) - DMG Installer**
-          ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-macos-x86_64.dmg
-          open rite-$VERSION-macos-x86_64.dmg
-          ```
-
-          **Intel (x86_64) - Standalone Binary**
-          ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-macos-x86_64.tar.gz
-          tar -xzf rite-$VERSION-macos-x86_64.tar.gz
-          chmod +x rite
-          ./rite
-          ```
-
-          **Apple Silicon (ARM64) - DMG Installer**
-          ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-macos-aarch64.dmg
-          open rite-$VERSION-macos-aarch64.dmg
-          ```
-
-          **Apple Silicon (ARM64) - Standalone Binary**
-          ```bash
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-macos-aarch64.tar.gz
-          tar -xzf rite-$VERSION-macos-aarch64.tar.gz
-          chmod +x rite
-          ./rite
-          ```
-
-          ## 🔒 Security
-
-          Verify your download with the provided checksums:
-          - Individual `.sha256` files for each artifact
-          - `rite-$VERSION-checksums.txt` - Summary file containing all checksums
-
-          **Example verification:**
-          ```bash
-          # Download artifact and its checksum
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.deb
-          wget https://github.com/${{ github.repository }}/releases/download/$VERSION/rite-$VERSION-linux-x86_64.deb.sha256
-
-          # Verify integrity
-          shasum -a 256 -c rite-$VERSION-linux-x86_64.deb.sha256
-          ```
-
-          ## 📚 Documentation
-
-          - [README](https://github.com/${{ github.repository }}/blob/$VERSION/README.md)
-
-          ---
-
-          🤖 **SBOM** (Software Bill of Materials) is available in the release assets for security auditing.
-          TEMPLATE
-
-          # Inject changelog content in place of $CHANGELOG
-          if [ -f "CHANGELOG_RELEASE.md" ]; then
-            sed -i "s/\$CHANGELOG/$(sed 's/[&/]/\\&/g' CHANGELOG_RELEASE.md | tr '\n' '\r')/g" RELEASE_NOTES.md
-            tr '\r' '\n' < RELEASE_NOTES.md > RELEASE_NOTES.md.tmp && mv RELEASE_NOTES.md.tmp RELEASE_NOTES.md
-          else
-            sed -i "s/\$CHANGELOG/See commits for changes in this release./g" RELEASE_NOTES.md
-          fi
-
-          # Replace version placeholders
-          sed -i "s/\$VERSION/$VERSION/g" RELEASE_NOTES.md
-
-      - name: Update GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.generate-changelog.outputs.version }}
-          body_path: RELEASE_NOTES.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  generate-sbom:
-    name: Generate SBOM
-    needs: [generate-changelog, build-tauri]
-    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: apps/desktop/src-tauri
 
       - name: Install cargo-cyclonedx
         run: cargo install cargo-cyclonedx
@@ -392,55 +206,51 @@ jobs:
         run: cargo cyclonedx --format json
 
       - name: Rename SBOM
-        run: mv apps/desktop/src-tauri/rite.cdx.json sbom-${{ needs.generate-changelog.outputs.version }}.json
+        run: |
+          VERSION="${{ needs.create-release.outputs.version }}"
+          mv apps/desktop/src-tauri/rite.cdx.json sbom-${VERSION}.json
 
-      - name: Generate SBOM checksum
-        run: shasum -a 256 sbom-${{ needs.generate-changelog.outputs.version }}.json > sbom-${{ needs.generate-changelog.outputs.version }}.json.sha256
-
-      - name: Upload SBOM to release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ needs.generate-changelog.outputs.version }}
-          files: |
-            sbom-${{ needs.generate-changelog.outputs.version }}.json
-            sbom-${{ needs.generate-changelog.outputs.version }}.json.sha256
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  consolidate-checksums:
-    name: Consolidate Checksums
-    needs: [generate-changelog, build-tauri, generate-sbom]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all release assets
+      - name: Download release assets
         uses: robinraju/release-downloader@v1
         with:
-          tag: ${{ needs.generate-changelog.outputs.version }}
+          releaseId: ${{ needs.create-release.outputs.release_id }}
           fileName: "*.sha256"
           out-file-path: "checksums"
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create consolidated checksums file
         run: |
-          VERSION="${{ needs.generate-changelog.outputs.version }}"
+          VERSION="${{ needs.create-release.outputs.version }}"
           cd checksums
+          cat *.sha256 > "../rite-${VERSION}-checksums.txt"
+          echo "Consolidated checksums:"
+          cat "../rite-${VERSION}-checksums.txt"
 
-          echo "Downloaded .sha256 files:"
-          ls -la
-
-          # Concatenate all .sha256 files into one
-          if ls *.sha256 1> /dev/null 2>&1; then
-            cat *.sha256 > "rite-${VERSION}-checksums.txt"
-            echo "Consolidated checksums file created:"
-            cat "rite-${VERSION}-checksums.txt"
-          else
-            echo "ERROR: No .sha256 files found!"
-            exit 1
-          fi
-
-      - name: Upload consolidated checksums to release
-        uses: softprops/action-gh-release@v1
+      - name: Upload SBOM and checksums
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.generate-changelog.outputs.version }}
-          files: checksums/rite-${{ needs.generate-changelog.outputs.version }}-checksums.txt
+          tag_name: ${{ github.ref_name }}
+          files: |
+            sbom-${{ needs.create-release.outputs.version }}.json
+            rite-${{ needs.create-release.outputs.version }}-checksums.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish release (remove draft status)
+  publish:
+    name: 🚀 Publish Release
+    needs: [create-release, finalize]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ needs.create-release.outputs.release_id }},
+              draft: false
+            });

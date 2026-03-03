@@ -24,27 +24,6 @@ pub struct SshConfigEntry {
 }
 
 impl SshConfigEntry {
-    /// Convert to ConnectionInfo preview (for UI selection)
-    pub fn to_preview(&self) -> String {
-        let hostname = self.hostname.as_ref().unwrap_or(&self.host);
-        let user = self
-            .user
-            .as_ref()
-            .map(|u| format!("{}@", u))
-            .unwrap_or_default();
-        let port = if let Some(p) = self.port {
-            if p != 22 {
-                format!(":{}", p)
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        };
-
-        format!("{}{}{}", user, hostname, port)
-    }
-
     /// Convert to CreateConnectionInput (for import)
     pub fn to_connection_input(&self) -> CreateConnectionInput {
         let hostname = self.hostname.clone().unwrap_or_else(|| self.host.clone());

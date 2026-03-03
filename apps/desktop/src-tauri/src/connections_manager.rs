@@ -142,14 +142,6 @@ impl ConnectionsManager {
         Ok(())
     }
 
-    /// Mark connection as used
-    pub async fn mark_connection_used(&self, id: &str) -> Result<()> {
-        debug!("Marking connection as used: {}", id);
-        let now = chrono::Utc::now().timestamp_millis();
-        self.db.update_connection_last_used(id, now).await?;
-        Ok(())
-    }
-
     // Helper methods
 
     /// Convert database row to Connection (with decrypted credentials)
