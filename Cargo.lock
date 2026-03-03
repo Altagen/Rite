@@ -3977,7 +3977,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "zeroize",
 ]
@@ -3993,7 +3993,7 @@ dependencies = [
  "serde",
  "serde_json",
  "suppaftp",
- "thiserror 1.0.69",
+ "thiserror 2.0.17",
  "tokio",
  "tracing",
 ]
