@@ -270,8 +270,12 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
 
-      - name: Build check
+      - name: Rust build check
         run: cargo check --workspace
+
+      - name: Frontend build check
+        working-directory: apps/desktop
+        run: pnpm build:frontend
 
   # Dependency review (PRs only)
   dependency-review:
