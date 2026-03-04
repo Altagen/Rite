@@ -167,6 +167,20 @@ jobs:
           echo "Artifacts:"
           ls -lh dist/
 
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd dist
+          for file in *; do
+            [ -f "$file" ] && sha256sum "$file" >> "../checksums-${{ matrix.platform.target }}.txt"
+          done
+
+      - name: Upload checksums as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-${{ matrix.platform.target }}
+          path: checksums-${{ matrix.platform.target }}.txt
+
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v2
         with:
@@ -200,21 +214,19 @@ jobs:
           VERSION="${{ needs.create-release.outputs.version }}"
           mv apps/desktop/src-tauri/rite.cdx.json sbom-${VERSION}.json
 
-      - name: Download release assets
-        uses: robinraju/release-downloader@v1
+      - name: Download checksum artifacts
+        uses: actions/download-artifact@v4
         with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          fileName: "*.sha256"
-          out-file-path: "checksums"
-          token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: checksums-*
+          path: checksums
+          merge-multiple: true
 
       - name: Create consolidated checksums file
         run: |
           VERSION="${{ needs.create-release.outputs.version }}"
-          cd checksums
-          cat *.sha256 > "../rite-${VERSION}-checksums.txt"
+          cat checksums/*.txt > "rite-${VERSION}-checksums.txt"
           echo "Consolidated checksums:"
-          cat "../rite-${VERSION}-checksums.txt"
+          cat "rite-${VERSION}-checksums.txt"
 
       - name: Upload SBOM and checksums
         uses: softprops/action-gh-release@v2
