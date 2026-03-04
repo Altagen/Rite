@@ -167,16 +167,6 @@ jobs:
           echo "Artifacts:"
           ls -lh dist/
 
-      - name: Generate checksums
-        shell: bash
-        run: |
-          cd dist
-          for file in *; do
-            if [ -f "$file" ] && [[ "$file" != *.sha256 ]]; then
-              sha256sum "$file" > "$file.sha256"
-            fi
-          done
-
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v2
         with:
