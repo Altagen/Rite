@@ -9,4 +9,13 @@
 # While concerning, it requires specific attack conditions and is a
 # dependency of russh (our SSH library). The vulnerability will be
 # included in the SBOM for transparency.
-ignore = ["RUSTSEC-2023-0071"]
+ignore = [
+  # RUSTSEC-2023-0071: Marvin Attack in RSA
+  # Fixed in rsa 0.9.10 — keeping entry for history
+  "RUSTSEC-2023-0071",
+
+  # RUSTSEC-2024-0429: Unsoundness in glib::VariantStrIter
+  # Transitive via tauri → webkit2gtk/gtk → glib 0.18.x (GTK3 bindings)
+  # No fix available in the 0.18 series; requires Tauri to migrate to GTK4.
+  "RUSTSEC-2024-0429",
+]
