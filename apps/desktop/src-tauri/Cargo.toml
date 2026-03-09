@@ -38,7 +38,7 @@ sqlx = { workspace = true }
 # Utilities
 uuid = { workspace = true }
 chrono = { workspace = true }
-dirs = "5.0"
+dirs = "6.0"
 
 # Crypto (for auth module)
 argon2 = { workspace = true }
