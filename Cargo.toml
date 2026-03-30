@@ -53,7 +53,7 @@ tauri = { version = "2.10", features = [] }
 tauri-plugin-shell = "2.3"
 
 # Utilities
-uuid = { version = "1.22", features = ["v4", "serde"] }
+uuid = { version = "1.23", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 [profile.release]
