@@ -43,7 +43,7 @@ dirs = "5.0"
 # Crypto (for auth module)
 argon2 = { workspace = true }
 zeroize = { workspace = true }
-sha2 = "0.10"
+sha2 = "0.11"
 base64 = "0.22"
 
 # SSH
