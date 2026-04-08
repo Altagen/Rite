@@ -215,7 +215,7 @@ jobs:
           mv apps/desktop/src-tauri/rite.cdx.json sbom-${VERSION}.json
 
       - name: Download checksum artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: checksums-*
           path: checksums
