@@ -35,7 +35,7 @@ russh = "0.58"
 russh-keys = "0.49"
 
 # FTP (for future use)
-suppaftp = "6.0"
+suppaftp = "8.0"
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
