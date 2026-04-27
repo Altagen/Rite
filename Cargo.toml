@@ -31,7 +31,7 @@ zeroize = { version = "1.8", features = ["derive"] }
 rand = "0.8"
 
 # SSH
-russh = "0.58"
+russh = "0.60"
 russh-keys = "0.49"
 
 # FTP (for future use)
