@@ -33,7 +33,9 @@ export function Settings({ onClose }: SettingsProps) {
   }, [fetchSettings]);
 
   useEffect(() => {
-    // Initialize selectedTimeout based on current settings
+    // Initialize the editable form state from the loaded settings. These
+    // setState calls intentionally run only when `settings` changes.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (!settings.autoLockEnabled) {
       setSelectedTimeout(0);
     } else if ([1, 3, 5].includes(settings.autoLockTimeout)) {
@@ -47,6 +49,7 @@ export function Settings({ onClose }: SettingsProps) {
 
     setClipboardClearEnabled(settings.clipboardClearEnabled);
     setHostKeyVerificationMode(settings.hostKeyVerificationMode);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [settings]);
 
   // Close dropdown when clicking outside

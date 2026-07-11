@@ -104,6 +104,7 @@ export function MainScreen() {
     if (!isLocked && pendingActionAfterUnlock) {
       console.log('[MainScreen] Executing pending action after unlock');
       pendingActionAfterUnlock();
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the one-shot pending action after running it
       setPendingActionAfterUnlock(null);
     }
   }, [isLocked, pendingActionAfterUnlock]);
@@ -137,6 +138,7 @@ export function MainScreen() {
   // Close unlock modal when unlocked
   useEffect(() => {
     if (!isLocked && showUnlockModal) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- close the unlock modal once the vault is unlocked
       setShowUnlockModal(false);
       fetchConnections();
     }
@@ -144,6 +146,8 @@ export function MainScreen() {
 
   // Show sidebar button for 3 seconds when sidebar closes
   useEffect(() => {
+    // React to the sidebar opening/closing to drive the reveal button.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (!isSidebarOpen) {
       setShowSidebarButton(true);
       const timer = setTimeout(() => {
@@ -153,6 +157,7 @@ export function MainScreen() {
     } else {
       setShowSidebarButton(false);
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [isSidebarOpen]);
 
   // Update default shell dropdown position when it opens
