@@ -17,7 +17,7 @@ use chacha20poly1305::{
     ChaCha20Poly1305,
     aead::{Aead, KeyInit, OsRng, generic_array::GenericArray},
 };
-use rand::RngCore;
+use chacha20poly1305::aead::rand_core::RngCore;
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
