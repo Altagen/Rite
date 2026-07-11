@@ -154,18 +154,16 @@ pub fn load_theme(name: String) -> Result<Theme, String> {
 pub fn list_themes() -> Vec<String> {
     let mut themes = vec!["default".to_string()];
 
-    if let Some(themes_dir) = get_user_themes_dir() {
-        if themes_dir.exists() {
-            if let Ok(entries) = fs::read_dir(&themes_dir) {
-                for entry in entries.flatten() {
-                    if let Some(ext) = entry.path().extension() {
-                        if ext == "toml" {
-                            if let Some(name) = entry.path().file_stem() {
-                                themes.push(name.to_string_lossy().to_string());
-                            }
-                        }
-                    }
-                }
+    if let Some(themes_dir) = get_user_themes_dir()
+        && themes_dir.exists()
+        && let Ok(entries) = fs::read_dir(&themes_dir)
+    {
+        for entry in entries.flatten() {
+            if let Some(ext) = entry.path().extension()
+                && ext == "toml"
+                && let Some(name) = entry.path().file_stem()
+            {
+                themes.push(name.to_string_lossy().to_string());
             }
         }
     }

@@ -3,7 +3,7 @@
  *
  * Manages local shell sessions using portable-pty
  */
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use base64::Engine as _;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use std::io::{Read, Write};
@@ -151,8 +151,8 @@ impl LocalSession {
         tokio::spawn(async move {
             while let Some(cmd) = command_rx.recv().await {
                 match cmd {
-                    SessionCommand::SendInput(data) => {
-                        if let Ok(mut writer) = writer_mutex_clone.lock() {
+                    SessionCommand::SendInput(data) => match writer_mutex_clone.lock() {
+                        Ok(mut writer) => {
                             if let Err(e) = writer.write_all(&data) {
                                 tracing::error!("Failed to write to PTY: {}", e);
                                 break;
@@ -160,26 +160,33 @@ impl LocalSession {
                             if let Err(e) = writer.flush() {
                                 tracing::error!("Failed to flush PTY: {}", e);
                             }
-                        } else {
+                        }
+                        _ => {
                             tracing::error!("Failed to lock writer mutex");
                         }
-                    }
+                    },
                     SessionCommand::Resize { cols, rows } => {
                         tracing::debug!("Resizing terminal to cols={}, rows={}", cols, rows);
-                        if let Ok(master) = master_mutex_clone.lock() {
-                            let new_size = PtySize {
-                                rows: rows as u16,
-                                cols: cols as u16,
-                                pixel_width: 0,
-                                pixel_height: 0,
-                            };
-                            if let Err(e) = master.resize(new_size) {
-                                tracing::error!("Failed to resize PTY: {}", e);
-                            } else {
-                                tracing::debug!("Terminal resized successfully");
+                        match master_mutex_clone.lock() {
+                            Ok(master) => {
+                                let new_size = PtySize {
+                                    rows: rows as u16,
+                                    cols: cols as u16,
+                                    pixel_width: 0,
+                                    pixel_height: 0,
+                                };
+                                match master.resize(new_size) {
+                                    Err(e) => {
+                                        tracing::error!("Failed to resize PTY: {}", e);
+                                    }
+                                    _ => {
+                                        tracing::debug!("Terminal resized successfully");
+                                    }
+                                }
                             }
-                        } else {
-                            tracing::error!("Failed to lock master PTY mutex for resize");
+                            _ => {
+                                tracing::error!("Failed to lock master PTY mutex for resize");
+                            }
                         }
                     }
                     SessionCommand::Close => {

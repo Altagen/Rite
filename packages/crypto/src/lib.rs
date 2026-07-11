@@ -7,15 +7,15 @@
 //! - Encryption: ChaCha20-Poly1305 (AEAD)
 //! - File encryption: age (for sync/export)
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use argon2::{
-    password_hash::{PasswordHasher, SaltString},
     Argon2, PasswordHash, PasswordVerifier,
+    password_hash::{PasswordHasher, SaltString},
 };
 #[allow(deprecated)]
 use chacha20poly1305::{
-    aead::{generic_array::GenericArray, Aead, KeyInit, OsRng},
     ChaCha20Poly1305,
+    aead::{Aead, KeyInit, OsRng, generic_array::GenericArray},
 };
 use rand::RngCore;
 use serde::{Deserialize, Serialize};

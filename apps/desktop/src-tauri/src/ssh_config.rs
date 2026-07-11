@@ -133,10 +133,10 @@ pub fn parse_ssh_config<P: AsRef<Path>>(config_path: P) -> Result<Vec<SshConfigE
     }
 
     // Save last host
-    if let Some(host) = current_host {
-        if let Some(entry) = build_entry(host, &current_props) {
-            entries.push(entry);
-        }
+    if let Some(host) = current_host
+        && let Some(entry) = build_entry(host, &current_props)
+    {
+        entries.push(entry);
     }
 
     Ok(entries)
@@ -163,10 +163,10 @@ fn build_entry(host: String, props: &HashMap<String, String>) -> Option<SshConfi
 
 /// Expand ~ to home directory
 fn expand_tilde(path: &str) -> String {
-    if path.starts_with("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
-            return path.replacen("~", &home.to_string_lossy(), 1);
-        }
+    if path.starts_with("~/")
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        return path.replacen("~", &home.to_string_lossy(), 1);
     }
     path.to_string()
 }

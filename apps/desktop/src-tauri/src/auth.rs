@@ -3,10 +3,10 @@
 //! Handles master password setup, verification, and unlock rate limiting.
 
 use crate::db::Database;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
 };
 use rite_crypto::{generate_salt, validate_password_strength};
 use std::sync::Arc;
