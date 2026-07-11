@@ -1,0 +1,38 @@
+[package]
+name = "rite-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Workspace packages
+rite-crypto = { path = "../crypto" }
+
+# Async / errors / logging
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+
+# Crypto (auth module)
+argon2 = { workspace = true }
+zeroize = { workspace = true }
+
+# SSH (host-key types)
+russh = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+tempfile = "3.27"

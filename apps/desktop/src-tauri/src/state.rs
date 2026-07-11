@@ -1,11 +1,11 @@
+use crate::terminal::SessionManager;
+use anyhow::Result;
 /// Application state
 ///
 /// Manages global state across Tauri commands
-use crate::auth::AuthManager;
-use crate::connections_manager::ConnectionsManager;
-use crate::db::Database;
-use crate::terminal::SessionManager;
-use anyhow::Result;
+use rite_core::auth::AuthManager;
+use rite_core::connections_manager::ConnectionsManager;
+use rite_core::db::Database;
 use std::path::PathBuf;
 use std::sync::Arc;
 

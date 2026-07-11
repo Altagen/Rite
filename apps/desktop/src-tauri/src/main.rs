@@ -4,14 +4,8 @@
 use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
 
-mod auth;
 mod commands;
-mod connection;
-mod connections_manager;
-mod db;
-mod known_hosts;
 mod local_terminal;
-mod ssh_config;
 mod state;
 mod terminal;
 mod theme;

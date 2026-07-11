@@ -16,9 +16,9 @@ use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::connection::{AuthMethod, Connection};
-use crate::db::Database;
-use crate::known_hosts::{self, HostKeyVerificationResult};
+use rite_core::connection::{AuthMethod, Connection};
+use rite_core::db::Database;
+use rite_core::known_hosts::{self, HostKeyVerificationResult};
 
 /// Unique identifier for a terminal session
 pub type SessionId = String;
@@ -564,11 +564,11 @@ impl Session {
 pub struct SessionManager {
     sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
     db: Database,
-    auth: crate::auth::AuthManager,
+    auth: rite_core::auth::AuthManager,
 }
 
 impl SessionManager {
-    pub fn new(db: Database, auth: crate::auth::AuthManager) -> Self {
+    pub fn new(db: Database, auth: rite_core::auth::AuthManager) -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             db,
@@ -641,12 +641,12 @@ impl SessionManager {
         let connection = Connection {
             id: row.id.clone(),
             name: row.name.clone(),
-            protocol: crate::connection::Protocol::from_str(&row.protocol)?,
+            protocol: rite_core::connection::Protocol::from_str(&row.protocol)?,
             hostname: row.hostname.clone(),
             port: row.port as u16,
             username: row.username.clone(),
             auth_method: auth_method.clone(),
-            metadata: crate::connection::ConnectionMetadata {
+            metadata: rite_core::connection::ConnectionMetadata {
                 color: row.color.clone(),
                 icon: row.icon.clone(),
                 folder: row.folder.clone(),
