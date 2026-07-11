@@ -12,12 +12,12 @@ use argon2::{
     Argon2, PasswordHash, PasswordVerifier,
     password_hash::{PasswordHasher, SaltString},
 };
+use chacha20poly1305::aead::rand_core::RngCore;
 #[allow(deprecated)]
 use chacha20poly1305::{
     ChaCha20Poly1305,
     aead::{Aead, KeyInit, OsRng, generic_array::GenericArray},
 };
-use chacha20poly1305::aead::rand_core::RngCore;
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
