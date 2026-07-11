@@ -7,7 +7,6 @@ license.workspace = true
 
 [dependencies]
 russh = { workspace = true }
-russh-keys = { workspace = true }
 suppaftp = { workspace = true, optional = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
