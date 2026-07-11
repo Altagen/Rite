@@ -8,6 +8,7 @@
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { z } from 'zod';
 import { errorHandler, ErrorSeverity, ErrorCategory } from './errorHandler';
+import { isTauri, mockInvoke } from './tauriMock';
 
 /**
  * Generic wrapper for Tauri invoke with Zod validation
@@ -18,7 +19,11 @@ async function invokeWithValidation<T>(
   args?: Record<string, unknown>
 ): Promise<T> {
   try {
-    const response = await tauriInvoke(command, args);
+    // Outside the Tauri WebView (browser preview), route to the local mock so
+    // the UI works without the Rust backend. In the real app this is a no-op.
+    const response = isTauri()
+      ? await tauriInvoke(command, args)
+      : await mockInvoke(command, args);
 
     // Validate response with Zod
     const result = schema.safeParse(response);
