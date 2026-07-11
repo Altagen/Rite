@@ -3,22 +3,22 @@
  *
  * Manages SSH terminal sessions with russh
  */
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use base64::Engine as _;
+use russh::ChannelMsg;
 use russh::client::{self};
 use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
-use russh::ChannelMsg;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::connection::{AuthMethod, Connection};
 use crate::db::Database;
 use crate::known_hosts::{self, HostKeyVerificationResult};
-use crate::AppState;
 
 /// Unique identifier for a terminal session
 pub type SessionId = String;
@@ -76,7 +76,9 @@ impl client::Handler for SshClientHandler {
         {
             Ok(Some(mode)) => mode,
             Ok(None) => {
-                tracing::warn!("[terminal.rs] No host_key_verification_mode setting found, defaulting to 'strict'");
+                tracing::warn!(
+                    "[terminal.rs] No host_key_verification_mode setting found, defaulting to 'strict'"
+                );
                 "strict".to_string()
             }
             Err(e) => {
@@ -117,7 +119,9 @@ impl client::Handler for SshClientHandler {
                     "strict" => {
                         // Strict mode: Emit event and REJECT connection
                         // User must explicitly accept the key via the modal
-                        tracing::warn!("[terminal.rs] Strict mode: Rejecting connection and requesting user confirmation");
+                        tracing::warn!(
+                            "[terminal.rs] Strict mode: Rejecting connection and requesting user confirmation"
+                        );
 
                         let _ = self.app_handle.emit(
                             "ssh:host-key-unknown",
@@ -614,7 +618,10 @@ impl SessionManager {
                 Some(interval)
             }
             Some(other) => {
-                tracing::warn!("[terminal.rs] Unknown ssh_keep_alive_override value: '{}', disabling keep-alive", other);
+                tracing::warn!(
+                    "[terminal.rs] Unknown ssh_keep_alive_override value: '{}', disabling keep-alive",
+                    other
+                );
                 None
             }
         };
@@ -677,22 +684,25 @@ impl SessionManager {
             .unwrap()
             .as_secs() as i64;
 
-        if let Err(e) = self
+        match self
             .db
             .update_connection_last_used(&connection_id, now)
             .await
         {
-            tracing::warn!(
-                "[terminal.rs] Failed to update last_used_at for connection {}: {}",
-                connection_id,
-                e
-            );
-            // Don't fail the connection if we can't update the timestamp
-        } else {
-            tracing::debug!(
-                "[terminal.rs] Updated last_used_at timestamp for connection {}",
-                connection_id
-            );
+            Err(e) => {
+                tracing::warn!(
+                    "[terminal.rs] Failed to update last_used_at for connection {}: {}",
+                    connection_id,
+                    e
+                );
+                // Don't fail the connection if we can't update the timestamp
+            }
+            _ => {
+                tracing::debug!(
+                    "[terminal.rs] Updated last_used_at timestamp for connection {}",
+                    connection_id
+                );
+            }
         }
 
         // Store session

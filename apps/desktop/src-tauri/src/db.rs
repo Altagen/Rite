@@ -3,8 +3,8 @@
 //! Handles SQLite database initialization, migrations, and CRUD operations.
 
 use anyhow::{Context, Result};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use sqlx::Row;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 use tracing::{info, warn};
 

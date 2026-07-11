@@ -1,7 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tracing::{info, Level};
+use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
 
 mod auth;
@@ -24,11 +24,14 @@ fn main() {
     // See: https://github.com/tauri-apps/tauri/issues/13493
     #[cfg(target_os = "linux")]
     {
-        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        // SAFETY: runs at the very start of main() before any threads are spawned.
+        unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1") };
+        // SAFETY: runs at the very start of main() before any threads are spawned.
+        unsafe { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1") };
         // Use X11 backend if available, which has better compatibility
         if std::env::var("GDK_BACKEND").is_err() {
-            std::env::set_var("GDK_BACKEND", "x11");
+            // SAFETY: runs at the very start of main() before any threads are spawned.
+            unsafe { std::env::set_var("GDK_BACKEND", "x11") };
         }
     }
 

@@ -69,6 +69,9 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
 
   // Initialize keep-alive dropdown based on connection settings
   useEffect(() => {
+    // Sync the keep-alive dropdown from the connection being edited; these
+    // setState calls intentionally run only when the connection changes.
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (connection) {
       if (sshKeepAliveOverride === null || sshKeepAliveOverride === 'disabled') {
         // No override or disabled
@@ -84,6 +87,7 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
         }
       }
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [connection, sshKeepAliveOverride, sshKeepAliveInterval]);
 
   // Close dropdowns when clicking outside

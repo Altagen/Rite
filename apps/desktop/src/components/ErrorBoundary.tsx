@@ -8,7 +8,7 @@
 import React, { Component, ReactNode } from 'react';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
-interface ErrorBoundaryProps {
+export interface ErrorBoundaryProps {
   children: ReactNode;
   fallback?: (error: Error, errorInfo: React.ErrorInfo, reset: () => void) => ReactNode;
   onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
@@ -221,22 +221,4 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     return children;
   }
-}
-
-/**
- * Hook version for functional components (wraps the class-based ErrorBoundary)
- */
-export function withErrorBoundary<P extends object>(
-  Component: React.ComponentType<P>,
-  errorBoundaryProps?: Omit<ErrorBoundaryProps, 'children'>
-): React.FC<P> {
-  const WrappedComponent: React.FC<P> = (props) => (
-    <ErrorBoundary {...errorBoundaryProps}>
-      <Component {...props} />
-    </ErrorBoundary>
-  );
-
-  WrappedComponent.displayName = `withErrorBoundary(${Component.displayName || Component.name || 'Component'})`;
-
-  return WrappedComponent;
 }

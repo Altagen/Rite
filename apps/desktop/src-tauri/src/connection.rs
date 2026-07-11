@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::MasterKey;
-use rite_crypto::{decrypt, encrypt, EncryptedData};
+use rite_crypto::{EncryptedData, decrypt, encrypt};
 
 /// SSH connection protocol type
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -8,7 +8,8 @@ members = [
 
 [workspace.package]
 version = "0.1.2"
-edition = "2021"
+edition = "2024"
+rust-version = "1.85"
 authors = ["Ange Cesari"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Altagen/Rite"
@@ -28,14 +29,12 @@ argon2 = "0.5"
 chacha20poly1305 = "0.10"
 age = "0.11"
 zeroize = { version = "1.8", features = ["derive"] }
-rand = "0.8"
 
 # SSH
-russh = "0.59"
-russh-keys = "0.49"
+russh = "0.62"
 
 # FTP (for future use)
-suppaftp = "6.0"
+suppaftp = "10.0"
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }

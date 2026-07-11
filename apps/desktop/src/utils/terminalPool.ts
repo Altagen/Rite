@@ -46,7 +46,6 @@ class TerminalPool {
       },
       scrollback: 10000,
       allowTransparency: false,
-      windowsMode: false,
     });
 
     // Add addons
