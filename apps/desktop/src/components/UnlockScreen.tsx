@@ -54,7 +54,7 @@ export function UnlockScreen({ asModal = false, onClose }: UnlockScreenProps = {
   const isRateLimited = rateLimitWaitSeconds !== null && rateLimitWaitSeconds > 0;
 
   // Modal wrapper for compact desktop UI
-  const ModalWrapper = ({ children }: { children: React.ReactNode }) => (
+  const renderModal = (children: React.ReactNode) => (
     <div className="w-full rounded-lg border border-border bg-card shadow-xl">
       {onClose && (
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
@@ -76,7 +76,7 @@ export function UnlockScreen({ asModal = false, onClose }: UnlockScreenProps = {
   );
 
   // Full screen wrapper for standalone use
-  const FullScreenWrapper = ({ children }: { children: React.ReactNode }) => (
+  const renderFullScreen = (children: React.ReactNode) => (
     <div className="flex h-screen items-center justify-center bg-background text-foreground">
       <div className="w-full max-w-md space-y-8 p-8">
         <div className="text-center">
@@ -90,7 +90,6 @@ export function UnlockScreen({ asModal = false, onClose }: UnlockScreenProps = {
     </div>
   );
 
-  const Wrapper = asModal ? ModalWrapper : FullScreenWrapper;
 
   const content = (
     <>
@@ -243,5 +242,5 @@ export function UnlockScreen({ asModal = false, onClose }: UnlockScreenProps = {
     </>
   );
 
-  return <Wrapper>{content}</Wrapper>;
+  return asModal ? renderModal(content) : renderFullScreen(content);
 }
