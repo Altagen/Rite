@@ -54,9 +54,9 @@ See the [Roadmap](docs/ROADMAP.md) for planned features (theme system, SFTP, jum
 
 ### Prerequisites
 
-- **Rust**: 1.70+ — [Install Rust](https://rustup.rs/)
-- **Node.js**: 18+ — [Install Node.js](https://nodejs.org/)
-- **pnpm**: 8+ — [Install pnpm](https://pnpm.io/installation)
+- **Rust**: 1.85+ (edition 2024) — [Install Rust](https://rustup.rs/)
+- **Node.js**: 20+ — [Install Node.js](https://nodejs.org/)
+- **pnpm**: 9+ — [Install pnpm](https://pnpm.io/installation)
 - **Task**: [Install go-task](https://taskfile.dev/installation/)
 
 ### Development Setup
