@@ -15,13 +15,17 @@ use axum::extract::{Path, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use base64::Engine as _;
 use rite_core::auth::{AuthManager, UnlockResult};
-use rite_core::connection::ConnectionInfo;
+use rite_core::connection::{
+    AuthMethod, Connection, ConnectionInfo, ConnectionMetadata, CreateConnectionInput, Protocol,
+    UpdateConnectionInput,
+};
 use rite_core::connections_manager::ConnectionsManager;
 use rite_core::db::Database;
+use rite_core::ssh_config::SshConfigEntry;
 use rite_core::terminal::SessionManager;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -80,7 +84,7 @@ impl ServerState {
 /// Build the HTTP/WebSocket router. The desktop shell and the standalone server
 /// share it.
 pub fn build_router(state: ServerState) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/api/health", get(health))
         .route("/api/capabilities", get(capabilities))
         .route("/api/auth/first-run", get(first_run))
@@ -92,17 +96,39 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/auth/validate-password", post(validate_password))
         .route("/api/settings", get(settings))
         .route("/api/settings/{key}", get(get_setting).put(set_setting))
-        .route("/api/connections", get(get_connections))
+        .route(
+            "/api/connections",
+            get(get_connections).post(create_connection),
+        )
+        .route(
+            "/api/connections/{id}",
+            put(update_connection).delete(delete_connection),
+        )
+        .route("/api/ssh-config/default-path", get(default_ssh_config_path))
+        .route("/api/ssh-config/parse", post(parse_ssh_config))
+        .route("/api/ssh-config/import", post(import_ssh_config))
         .route("/api/shells", post(installed_shells))
         .route("/api/terminal", get(list_sessions))
         .route("/api/terminal/ssh", post(connect_ssh))
+        .route("/api/terminal/quick-ssh", post(quick_ssh))
         .route("/api/terminal/local", post(create_local))
         .route("/api/terminal/{id}/input", post(send_input))
         .route("/api/terminal/{id}/claim", post(claim))
         .route("/api/terminal/{id}/resize", post(resize))
         .route("/api/terminal/{id}", delete(close))
-        .route("/ws", get(ws_handler))
-        .fallback(assets::static_handler)
+        .route("/ws", get(ws_handler));
+
+    // RITE_WEB_DIR (dev harness) serves the frontend from disk so it can be
+    // rebuilt without recompiling the server; default is the compile-time embed.
+    let router = match std::env::var("RITE_WEB_DIR") {
+        Ok(dir) if !dir.is_empty() => {
+            let base = std::path::PathBuf::from(dir);
+            router.fallback(move |uri| assets::dir_handler(base.clone(), uri))
+        }
+        _ => router.fallback(assets::static_handler),
+    };
+
+    router
         .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
 }
@@ -281,6 +307,78 @@ async fn get_connections(
     Ok(Json(state.connections.get_all_connections().await?))
 }
 
+async fn create_connection(
+    State(state): State<ServerState>,
+    Json(input): Json<CreateConnectionInput>,
+) -> Result<Json<ConnectionInfo>, AppError> {
+    Ok(Json(state.connections.create_connection(input).await?))
+}
+
+async fn update_connection(
+    State(state): State<ServerState>,
+    Path(_id): Path<String>,
+    Json(input): Json<UpdateConnectionInput>,
+) -> Result<Json<ConnectionInfo>, AppError> {
+    // `UpdateConnectionInput` carries its own id; the path id is for REST shape.
+    Ok(Json(state.connections.update_connection(input).await?))
+}
+
+async fn delete_connection(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    state.connections.delete_connection(&id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// --- ssh config -------------------------------------------------------------
+
+async fn default_ssh_config_path() -> Json<String> {
+    Json(rite_core::ssh_config::get_default_ssh_config_path())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ParseSshConfigReq {
+    config_path: String,
+}
+
+async fn parse_ssh_config(
+    Json(req): Json<ParseSshConfigReq>,
+) -> Result<Json<Vec<SshConfigEntry>>, AppError> {
+    Ok(Json(rite_core::ssh_config::parse_ssh_config(
+        &req.config_path,
+    )?))
+}
+
+#[derive(Deserialize)]
+struct ImportEntriesReq {
+    entries: Vec<SshConfigEntry>,
+}
+
+async fn import_ssh_config(
+    State(state): State<ServerState>,
+    Json(req): Json<ImportEntriesReq>,
+) -> Result<Json<Vec<ConnectionInfo>>, AppError> {
+    // Best-effort like the desktop command: skip entries that fail, import the rest.
+    let mut imported = Vec::new();
+    for entry in req.entries {
+        match state
+            .connections
+            .create_connection(entry.to_connection_input())
+            .await
+        {
+            Ok(info) => imported.push(info),
+            Err(e) => tracing::warn!(
+                "[rite-server] skipped ssh-config entry '{}': {}",
+                entry.host,
+                e
+            ),
+        }
+    }
+    Ok(Json(imported))
+}
+
 // --- shells -----------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -328,6 +426,80 @@ async fn connect_ssh(
     let id = state
         .sessions
         .create_session(req.connection_id, state.events_sink())
+        .await?;
+    Ok(Json(json!({ "sessionId": id })))
+}
+
+/// Quick-connect auth, mirroring the desktop `QuickAuthMethod` wire shape.
+#[derive(Deserialize, Clone)]
+#[serde(tag = "type", rename_all = "camelCase")]
+enum QuickAuthMethod {
+    Password {
+        password: String,
+    },
+    PublicKey {
+        key_path: String,
+        passphrase: Option<String>,
+    },
+}
+
+impl From<QuickAuthMethod> for AuthMethod {
+    fn from(quick: QuickAuthMethod) -> Self {
+        match quick {
+            QuickAuthMethod::Password { password } => AuthMethod::Password { password },
+            QuickAuthMethod::PublicKey {
+                key_path,
+                passphrase,
+            } => AuthMethod::PublicKey {
+                key_path,
+                passphrase,
+            },
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QuickSshReq {
+    host: String,
+    port: u16,
+    username: String,
+    auth_method: QuickAuthMethod,
+}
+
+async fn quick_ssh(
+    State(state): State<ServerState>,
+    Json(req): Json<QuickSshReq>,
+) -> Result<Json<Value>, AppError> {
+    // Ad-hoc connection, never persisted (mirrors the desktop quick_ssh_connect).
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let auth: AuthMethod = req.auth_method.clone().into();
+    let connection = Connection {
+        id: format!("quick-{}", uuid::Uuid::new_v4()),
+        name: format!("{}@{}", req.username, req.host),
+        protocol: Protocol::SSH,
+        hostname: req.host,
+        port: req.port,
+        username: req.username,
+        auth_method: auth.clone(),
+        metadata: ConnectionMetadata {
+            color: None,
+            icon: Some("⚡".to_string()),
+            folder: None,
+            notes: Some("Quick connect (not saved)".to_string()),
+        },
+        ssh_keep_alive_override: None,
+        ssh_keep_alive_interval: None,
+        last_used_at: None,
+        created_at: now,
+        updated_at: now,
+    };
+    let id = state
+        .sessions
+        .create_quick_ssh_session(connection, auth, state.events_sink())
         .await?;
     Ok(Json(json!({ "sessionId": id })))
 }

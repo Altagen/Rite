@@ -57,6 +57,32 @@ const routes: Record<string, Route> = {
   },
 
   get_all_connections: () => json('/api/connections'),
+  create_connection: (a) => json('/api/connections', post(a.input)),
+  update_connection: (a) => {
+    const input = a.input as { id: string };
+    return json(`/api/connections/${encodeURIComponent(input.id)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(a.input),
+    });
+  },
+  delete_connection: async (a) => {
+    await json(`/api/connections/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
+    return null;
+  },
+
+  get_default_ssh_config_path: () => json('/api/ssh-config/default-path'),
+  parse_ssh_config: (a) => json('/api/ssh-config/parse', post({ configPath: a.configPath })),
+  import_ssh_config_entries: (a) => json('/api/ssh-config/import', post({ entries: a.entries })),
+
+  quick_ssh_connect: async (a) =>
+    (
+      await json<{ sessionId: string }>(
+        '/api/terminal/quick-ssh',
+        post({ host: a.host, port: a.port, username: a.username, authMethod: a.authMethod }),
+      )
+    ).sessionId,
+
   get_installed_shells: (a) => json('/api/shells', post({ shells: a.shells })),
 
   list_sessions: () => json('/api/terminal'),
