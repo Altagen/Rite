@@ -23,7 +23,21 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    // smoke.spec.ts performs the first-run master-password setup through the UI,
+    // establishing the vault the rest of the suite runs against.
+    {
+      name: 'setup',
+      testMatch: /smoke\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'chromium',
+      testIgnore: /smoke\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
+    },
+  ],
   webServer: {
     command: 'sh e2e/serve.sh',
     url: `${BASE_URL}/api/health`,
