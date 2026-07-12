@@ -80,7 +80,7 @@ impl ServerState {
 /// Build the HTTP/WebSocket router. The desktop shell and the standalone server
 /// share it.
 pub fn build_router(state: ServerState) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/api/health", get(health))
         .route("/api/capabilities", get(capabilities))
         .route("/api/auth/first-run", get(first_run))
@@ -101,8 +101,19 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/terminal/{id}/claim", post(claim))
         .route("/api/terminal/{id}/resize", post(resize))
         .route("/api/terminal/{id}", delete(close))
-        .route("/ws", get(ws_handler))
-        .fallback(assets::static_handler)
+        .route("/ws", get(ws_handler));
+
+    // RITE_WEB_DIR (dev harness) serves the frontend from disk so it can be
+    // rebuilt without recompiling the server; default is the compile-time embed.
+    let router = match std::env::var("RITE_WEB_DIR") {
+        Ok(dir) if !dir.is_empty() => {
+            let base = std::path::PathBuf::from(dir);
+            router.fallback(move |uri| assets::dir_handler(base.clone(), uri))
+        }
+        _ => router.fallback(assets::static_handler),
+    };
+
+    router
         .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
 }
