@@ -19,12 +19,23 @@ async fn main() -> Result<()> {
     }
     info!("[rite-server] vault at {}", db_path.display());
 
-    let state = rite_server::ServerState::new(&db_path).await?;
+    let mut state = rite_server::ServerState::new(&db_path).await?;
+    // RITE_TOKEN gates API/WS in local desktop mode (ADR 0009). Absent =>
+    // dev/container mode with no token (shared-server auth comes in Phase 5).
+    if let Ok(token) = std::env::var("RITE_TOKEN")
+        && !token.is_empty()
+    {
+        state = state.with_token(token);
+        info!("[rite-server] local-transport guard enabled (token required)");
+    }
     let app = rite_server::build_router(state);
 
-    let addr = "127.0.0.1:1421";
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    info!("[rite-server] listening on http://{addr}");
+    // RITE_ADDR default = loopback; port 0 lets the OS pick a free port (the
+    // desktop shell reads the bound port back to point the webview at it).
+    let addr = std::env::var("RITE_ADDR").unwrap_or_else(|_| "127.0.0.1:1421".to_string());
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let local = listener.local_addr()?;
+    info!("[rite-server] listening on http://{local}");
     axum::serve(listener, app).await?;
     Ok(())
 }
