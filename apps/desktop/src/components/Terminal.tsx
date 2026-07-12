@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { transport, Unlisten } from '../utils/transport';
 import '@xterm/xterm/css/xterm.css';
 import { terminalPool } from '../utils/terminalPool';
 import { Tauri } from '../utils/tauri';
@@ -133,10 +133,10 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   }, [isFocused, existingSessionId]);
 
   useEffect(() => {
-    let unlistenData: UnlistenFn | null = null;
-    let unlistenExit: UnlistenFn | null = null;
-    let unlistenClosed: UnlistenFn | null = null;
-    let unlistenDead: UnlistenFn | null = null;
+    let unlistenData: Unlisten | null = null;
+    let unlistenExit: Unlisten | null = null;
+    let unlistenClosed: Unlisten | null = null;
+    let unlistenDead: Unlisten | null = null;
 
     async function initializeTerminal() {
       if (!terminalRef.current || !existingSessionId) return;
@@ -267,11 +267,11 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
       // Set up event listeners for terminal data
       // This must be done on EVERY mount to receive backend output
-      unlistenData = await listen<TerminalDataEvent>('terminal-data', (event) => {
-        if (event.payload.sessionId === sessionIdRef.current && xtermRef.current) {
+      unlistenData = await transport().listen<TerminalDataEvent>('terminal-data', (payload) => {
+        if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
           // Decode base64 to get raw bytes, then decode bytes to UTF-8 string
           // This preserves terminal control sequences that would be lost with from_utf8_lossy
-          const dataBase64 = event.payload.data;
+          const dataBase64 = payload.data;
           const dataBytes = Uint8Array.from(atob(dataBase64), c => c.charCodeAt(0));
           const decoder = new TextDecoder('utf-8', { fatal: false });
           const dataString = decoder.decode(dataBytes);
@@ -298,27 +298,27 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         }
       });
 
-      unlistenExit = await listen<TerminalExitEvent>('terminal-exit', (event) => {
-        if (event.payload.sessionId === sessionIdRef.current && xtermRef.current) {
-          xtermRef.current.write(`\r\n\nSession ended with exit status ${event.payload.exitStatus}\r\n`);
+      unlistenExit = await transport().listen<TerminalExitEvent>('terminal-exit', (payload) => {
+        if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
+          xtermRef.current.write(`\r\n\nSession ended with exit status ${payload.exitStatus}\r\n`);
           setStatus('disconnected');
           makeTerminalReadOnly(xtermRef.current);
         }
       });
 
-      unlistenClosed = await listen<TerminalClosedEvent>('terminal-closed', (event) => {
-        if (event.payload.sessionId === sessionIdRef.current && xtermRef.current) {
+      unlistenClosed = await transport().listen<TerminalClosedEvent>('terminal-closed', (payload) => {
+        if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
           xtermRef.current.write('\r\n\nConnection closed\r\n');
           setStatus('disconnected');
           makeTerminalReadOnly(xtermRef.current);
         }
       });
 
-      unlistenDead = await listen<ConnectionDeadEvent>('connection-dead', (event) => {
-        if (event.payload.sessionId === sessionIdRef.current && xtermRef.current) {
-          xtermRef.current.write(`\r\n\n\x1b[31mConnection lost: ${event.payload.reason}\x1b[0m\r\n`);
+      unlistenDead = await transport().listen<ConnectionDeadEvent>('connection-dead', (payload) => {
+        if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
+          xtermRef.current.write(`\r\n\n\x1b[31mConnection lost: ${payload.reason}\x1b[0m\r\n`);
           xtermRef.current.write('\x1b[33mThe connection appears to be dead. You can try to reconnect.\x1b[0m\r\n');
-          setError(`Connection dead: ${event.payload.reason}`);
+          setError(`Connection dead: ${payload.reason}`);
           setStatus('error');
           makeTerminalReadOnly(xtermRef.current);
         }
