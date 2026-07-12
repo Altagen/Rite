@@ -5,10 +5,9 @@
  * All responses from the Rust backend are validated using Zod schemas to ensure type safety.
  */
 
-import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { z } from 'zod';
 import { errorHandler, ErrorSeverity, ErrorCategory } from './errorHandler';
-import { isTauri, mockInvoke } from './tauriMock';
+import { transport } from './transport';
 
 /**
  * Generic wrapper for Tauri invoke with Zod validation
@@ -19,11 +18,9 @@ async function invokeWithValidation<T>(
   args?: Record<string, unknown>
 ): Promise<T> {
   try {
-    // Outside the Tauri WebView (browser preview), route to the local mock so
-    // the UI works without the Rust backend. In the real app this is a no-op.
-    const response = isTauri()
-      ? await tauriInvoke(command, args)
-      : await mockInvoke(command, args);
+    // Route through the active transport (Tauri IPC, HTTP to rite-server, or the
+    // dev mock). Callers and Zod schemas are identical across all three.
+    const response = await transport().invoke(command, args);
 
     // Validate response with Zod
     const result = schema.safeParse(response);
