@@ -1,0 +1,39 @@
+# rite-server production image — the team-deployment shell (ADR 0004/0005).
+#
+# Multi-stage: (1) build the frontend, (2) compile rite-server release with the
+# frontend embedded, (3) ship a minimal runtime. rite-server is GUI-free, so no
+# GTK/WebKit is needed here — unlike the desktop shell.
+#
+# Build:  podman build -f Containerfile.server -t rite-server:local .
+# Run:    podman run --rm -p 1421:1421 rite-server:local
+
+# --- Stage 1: build the frontend bundle ---
+FROM node:24-bookworm-slim AS web
+ENV CI=true
+RUN corepack enable
+WORKDIR /app
+COPY . .
+RUN pnpm install --frozen-lockfile \
+ && pnpm --filter desktop build:frontend
+
+# --- Stage 2: compile rite-server with the embedded frontend ---
+FROM rust:1-bookworm AS builder
+WORKDIR /src
+COPY . .
+# rust-embed reads packages/rite-server/web at compile time (ADR 0004).
+COPY --from=web /app/apps/desktop/dist/. packages/rite-server/web/
+RUN cargo build --release -p rite-server
+
+# --- Stage 3: minimal runtime ---
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --create-home --home-dir /home/rite --shell /usr/sbin/nologin rite
+COPY --from=builder /src/target/release/rite-server /usr/local/bin/rite-server
+USER rite
+# Bind all interfaces so the container is reachable; the vault lives under the
+# rite user's data dir (mount a volume at /home/rite/.local/share/rite to persist).
+ENV RITE_ADDR=0.0.0.0:1421
+EXPOSE 1421
+ENTRYPOINT ["/usr/local/bin/rite-server"]
