@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 rite-core = { path = "../rite-core" }
+rite-crypto = { path = "../crypto" }
 
 axum = { version = "0.8", features = ["ws"] }
 tokio = { workspace = true }

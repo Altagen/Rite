@@ -18,6 +18,7 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use base64::Engine as _;
 use rite_core::auth::{AuthManager, UnlockResult};
+use rite_core::connection::ConnectionInfo;
 use rite_core::connections_manager::ConnectionsManager;
 use rite_core::db::Database;
 use rite_core::terminal::SessionManager;
@@ -71,8 +72,16 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/auth/first-run", get(first_run))
         .route("/api/auth/locked", get(locked))
         .route("/api/auth/unlock", post(unlock))
+        .route("/api/auth/setup", post(setup))
+        .route("/api/auth/lock", post(lock))
+        .route("/api/auth/reset", post(reset))
+        .route("/api/auth/validate-password", post(validate_password))
         .route("/api/settings", get(settings))
+        .route("/api/settings/{key}", get(get_setting).put(set_setting))
+        .route("/api/connections", get(get_connections))
+        .route("/api/shells", post(installed_shells))
         .route("/api/terminal", get(list_sessions))
+        .route("/api/terminal/ssh", post(connect_ssh))
         .route("/api/terminal/local", post(create_local))
         .route("/api/terminal/{id}/input", post(send_input))
         .route("/api/terminal/{id}/claim", post(claim))
@@ -110,13 +119,13 @@ async fn list_sessions(State(state): State<ServerState>) -> Json<Vec<String>> {
 // --- auth -------------------------------------------------------------------
 
 #[derive(Deserialize)]
-struct UnlockReq {
+struct PasswordReq {
     password: String,
 }
 
 async fn unlock(
     State(state): State<ServerState>,
-    Json(req): Json<UnlockReq>,
+    Json(req): Json<PasswordReq>,
 ) -> Result<Json<Value>, AppError> {
     let payload = match state.auth.unlock(&req.password).await? {
         UnlockResult::Success => json!({ "type": "success" }),
@@ -126,6 +135,76 @@ async fn unlock(
         }
     };
     Ok(Json(payload))
+}
+
+async fn setup(
+    State(state): State<ServerState>,
+    Json(req): Json<PasswordReq>,
+) -> Result<StatusCode, AppError> {
+    state.auth.setup_master_password(&req.password).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn lock(State(state): State<ServerState>) -> Result<StatusCode, AppError> {
+    state.auth.lock().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn reset(State(state): State<ServerState>) -> Result<StatusCode, AppError> {
+    state.auth.reset_database().await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn validate_password(Json(req): Json<PasswordReq>) -> Json<Value> {
+    let (is_valid, score, feedback) = rite_crypto::validate_password_strength(&req.password);
+    Json(json!({ "is_valid": is_valid, "score": score, "feedback": feedback }))
+}
+
+// --- settings (per-key) -----------------------------------------------------
+
+async fn get_setting(
+    State(state): State<ServerState>,
+    Path(key): Path<String>,
+) -> Result<Json<Option<String>>, AppError> {
+    Ok(Json(state.db.get_setting(&key).await?))
+}
+
+#[derive(Deserialize)]
+struct ValueReq {
+    value: String,
+}
+
+async fn set_setting(
+    State(state): State<ServerState>,
+    Path(key): Path<String>,
+    Json(req): Json<ValueReq>,
+) -> Result<StatusCode, AppError> {
+    state.db.set_setting(&key, &req.value).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// --- connections ------------------------------------------------------------
+
+async fn get_connections(
+    State(state): State<ServerState>,
+) -> Result<Json<Vec<ConnectionInfo>>, AppError> {
+    Ok(Json(state.connections.get_all_connections().await?))
+}
+
+// --- shells -----------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct ShellsReq {
+    shells: Vec<String>,
+}
+
+async fn installed_shells(Json(req): Json<ShellsReq>) -> Json<Vec<String>> {
+    Json(
+        req.shells
+            .into_iter()
+            .filter(|p| std::path::Path::new(p).exists())
+            .collect(),
+    )
 }
 
 // --- terminal ---------------------------------------------------------------
@@ -142,6 +221,23 @@ async fn create_local(
     let id = state
         .sessions
         .create_local_session(state.events_sink(), req.shell)
+        .await?;
+    Ok(Json(json!({ "sessionId": id })))
+}
+
+#[derive(Deserialize)]
+struct ConnectSshReq {
+    #[serde(rename = "connectionId")]
+    connection_id: String,
+}
+
+async fn connect_ssh(
+    State(state): State<ServerState>,
+    Json(req): Json<ConnectSshReq>,
+) -> Result<Json<Value>, AppError> {
+    let id = state
+        .sessions
+        .create_session(req.connection_id, state.events_sink())
         .await?;
     Ok(Json(json!({ "sessionId": id })))
 }

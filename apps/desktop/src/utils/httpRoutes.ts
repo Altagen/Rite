@@ -35,8 +35,30 @@ const routes: Record<string, Route> = {
   is_first_run: () => json('/api/auth/first-run'),
   is_locked: () => json('/api/auth/locked'),
   unlock: (a) => json('/api/auth/unlock', post({ password: a.password })),
+  setup_master_password: (a) => json('/api/auth/setup', post({ password: a.password })),
+  lock: () => json('/api/auth/lock', { method: 'POST' }),
+  reset_database: () => json('/api/auth/reset', { method: 'POST' }),
+  validate_password: (a) => json('/api/auth/validate-password', post({ password: a.password })),
+
   get_all_settings: () => json('/api/settings'),
+  get_setting: (a) => json(`/api/settings/${encodeURIComponent(String(a.key))}`),
+  set_setting: async (a) => {
+    await json(`/api/settings/${encodeURIComponent(String(a.key))}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value: a.value }),
+    });
+    return null;
+  },
+
+  get_all_connections: () => json('/api/connections'),
+  get_installed_shells: (a) => json('/api/shells', post({ shells: a.shells })),
+
   list_sessions: () => json('/api/terminal'),
+
+  connect_terminal: async (a) =>
+    (await json<{ sessionId: string }>('/api/terminal/ssh', post({ connectionId: a.connectionId })))
+      .sessionId,
 
   connect_local_terminal: async (a) =>
     (await json<{ sessionId: string }>('/api/terminal/local', post({ shell: a.shell }))).sessionId,
