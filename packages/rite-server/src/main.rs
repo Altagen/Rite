@@ -31,8 +31,9 @@ async fn main() -> Result<()> {
     // RITE_ADDR default = loopback; port 0 lets the OS pick a free port (the
     // desktop shell reads the bound port back to point the webview at it).
     let addr = std::env::var("RITE_ADDR").unwrap_or_else(|_| "127.0.0.1:1421".to_string());
+    let host = addr.rsplit_once(':').map_or(addr.as_str(), |(h, _)| h);
     rite_server::serve(state, &addr, |port| {
-        info!("[rite-server] listening on http://127.0.0.1:{port}");
+        info!("[rite-server] listening on http://{host}:{port}");
     })
     .await?;
     Ok(())
