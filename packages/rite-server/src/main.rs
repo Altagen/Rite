@@ -28,14 +28,12 @@ async fn main() -> Result<()> {
         state = state.with_token(token);
         info!("[rite-server] local-transport guard enabled (token required)");
     }
-    let app = rite_server::build_router(state);
-
     // RITE_ADDR default = loopback; port 0 lets the OS pick a free port (the
     // desktop shell reads the bound port back to point the webview at it).
     let addr = std::env::var("RITE_ADDR").unwrap_or_else(|_| "127.0.0.1:1421".to_string());
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
-    let local = listener.local_addr()?;
-    info!("[rite-server] listening on http://{local}");
-    axum::serve(listener, app).await?;
+    rite_server::serve(state, &addr, |port| {
+        info!("[rite-server] listening on http://127.0.0.1:{port}");
+    })
+    .await?;
     Ok(())
 }

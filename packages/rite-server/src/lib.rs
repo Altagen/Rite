@@ -107,6 +107,16 @@ pub fn build_router(state: ServerState) -> Router {
         .with_state(state)
 }
 
+/// Bind `addr`, report the bound port (useful when `addr` uses port 0), then
+/// serve until shutdown. The desktop shell uses this to learn the random local
+/// port for its webview.
+pub async fn serve(state: ServerState, addr: &str, on_bound: impl FnOnce(u16)) -> Result<()> {
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    on_bound(listener.local_addr()?.port());
+    axum::serve(listener, build_router(state)).await?;
+    Ok(())
+}
+
 /// ADR 0009 local-transport guard. When a token is configured (local desktop
 /// shell), API and WebSocket requests must come from a loopback Host and carry
 /// the bearer token (query param `token` for `/ws`, since browsers can't set
