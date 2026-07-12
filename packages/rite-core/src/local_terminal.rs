@@ -4,14 +4,13 @@
  * Manages local shell sessions using portable-pty
  */
 use anyhow::{Result, anyhow};
-use base64::Engine as _;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex as StdMutex};
-use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use crate::events::SharedEvents;
 use crate::terminal::SessionCommand;
 
 pub type SessionId = String;
@@ -30,7 +29,7 @@ impl LocalSession {
     /// Create a new local terminal session
     ///
     /// Spawns a local shell (bash/zsh/fish) using portable-pty
-    pub async fn spawn(app_handle: AppHandle, shell: Option<String>) -> Result<Self> {
+    pub async fn spawn(events: SharedEvents, shell: Option<String>) -> Result<Self> {
         let session_id = Uuid::new_v4().to_string();
         tracing::info!("Creating local session: {}", session_id);
 
@@ -200,7 +199,6 @@ impl LocalSession {
 
         // Spawn separate task for reading PTY output
         let session_id_clone2 = session_id.clone();
-        let app_handle_clone2 = app_handle.clone();
         tokio::task::spawn_blocking(move || {
             tracing::debug!("PTY reader loop starting for session {}", session_id_clone2);
             let mut buffer = [0u8; 8192];
@@ -214,15 +212,7 @@ impl LocalSession {
                             buf.extend_from_slice(&buffer[..n]);
                         } else {
                             // Streaming mode: frontend has claimed the buffer.
-                            let data_base64 =
-                                base64::engine::general_purpose::STANDARD.encode(&buffer[..n]);
-                            let _ = app_handle_clone2.emit(
-                                "terminal-data",
-                                serde_json::json!({
-                                    "sessionId": session_id_clone2,
-                                    "data": data_base64,
-                                }),
-                            );
+                            events.terminal_data(&session_id_clone2, &buffer[..n]);
                         }
                     }
                     Ok(_) => {
@@ -240,25 +230,14 @@ impl LocalSession {
             match child.wait() {
                 Ok(exit_status) => {
                     tracing::info!("Shell exited with status: {:?}", exit_status);
-                    let _ = app_handle_clone2.emit(
-                        "terminal-exit",
-                        serde_json::json!({
-                            "sessionId": session_id_clone2,
-                            "exitStatus": exit_status.exit_code(),
-                        }),
-                    );
+                    events.terminal_exit(&session_id_clone2, exit_status.exit_code());
                 }
                 Err(e) => {
                     tracing::error!("Failed to wait for shell: {}", e);
                 }
             }
 
-            let _ = app_handle_clone2.emit(
-                "terminal-closed",
-                serde_json::json!({
-                    "sessionId": session_id_clone2,
-                }),
-            );
+            events.terminal_closed(&session_id_clone2);
 
             tracing::debug!("PTY reader exiting");
         });

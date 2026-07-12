@@ -26,8 +26,9 @@ sqlx = { workspace = true }
 argon2 = { workspace = true }
 zeroize = { workspace = true }
 
-# SSH (host-key types)
+# SSH + local PTY
 russh = { workspace = true }
+portable-pty = "0.9"
 
 # Utilities
 uuid = { workspace = true }

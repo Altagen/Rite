@@ -261,9 +261,10 @@ pub async fn connect_terminal(
         connection_id
     );
 
+    let events = std::sync::Arc::new(crate::tauri_events::TauriSessionEvents::new(app_handle));
     match state
         .sessions
-        .create_session(connection_id.clone(), app_handle)
+        .create_session(connection_id.clone(), events)
         .await
     {
         Ok(session_id) => {
@@ -290,7 +291,8 @@ pub async fn connect_local_terminal(
 ) -> Result<String, String> {
     tracing::info!("[commands.rs] connect_local_terminal called");
 
-    match state.sessions.create_local_session(app_handle, shell).await {
+    let events = std::sync::Arc::new(crate::tauri_events::TauriSessionEvents::new(app_handle));
+    match state.sessions.create_local_session(events, shell).await {
         Ok(session_id) => {
             tracing::info!(
                 "[commands.rs] Local session created successfully: {}",
@@ -396,9 +398,10 @@ pub async fn quick_ssh_connect(
     };
 
     // Create SSH session directly (no database, no encryption needed)
+    let events = std::sync::Arc::new(crate::tauri_events::TauriSessionEvents::new(app_handle));
     match state
         .sessions
-        .create_quick_ssh_session(connection, auth_method.into(), app_handle)
+        .create_quick_ssh_session(connection, auth_method.into(), events)
         .await
     {
         Ok(session_id) => {

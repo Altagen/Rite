@@ -9,5 +9,8 @@ pub mod auth;
 pub mod connection;
 pub mod connections_manager;
 pub mod db;
+pub mod events;
 pub mod known_hosts;
+pub mod local_terminal;
 pub mod ssh_config;
+pub mod terminal;

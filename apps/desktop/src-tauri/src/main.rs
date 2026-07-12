@@ -5,9 +5,8 @@ use tracing::{Level, info};
 use tracing_subscriber::FmtSubscriber;
 
 mod commands;
-mod local_terminal;
 mod state;
-mod terminal;
+mod tauri_events;
 mod theme;
 
 use state::AppState;

@@ -4,21 +4,19 @@
  * Manages SSH terminal sessions with russh
  */
 use anyhow::{Result, anyhow};
-use base64::Engine as _;
 use russh::ChannelMsg;
 use russh::client::{self};
 use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
 
-use crate::AppState;
-use rite_core::connection::{AuthMethod, Connection};
-use rite_core::db::Database;
-use rite_core::known_hosts::{self, HostKeyVerificationResult};
+use crate::connection::{AuthMethod, Connection};
+use crate::db::Database;
+use crate::events::SharedEvents;
+use crate::known_hosts::{self, HostKeyVerificationResult};
 
 /// Unique identifier for a terminal session
 pub type SessionId = String;
@@ -35,7 +33,7 @@ struct SshClientHandler {
     db: Arc<SqlitePool>,
     host: String,
     port: u16,
-    app_handle: AppHandle,
+    events: SharedEvents,
     force_accept_host_key: bool, // For Quick SSH: bypass host key verification
 }
 
@@ -123,15 +121,8 @@ impl client::Handler for SshClientHandler {
                             "[terminal.rs] Strict mode: Rejecting connection and requesting user confirmation"
                         );
 
-                        let _ = self.app_handle.emit(
-                            "ssh:host-key-unknown",
-                            serde_json::json!({
-                                "host": host,
-                                "port": port,
-                                "keyType": key_type,
-                                "fingerprint": fingerprint,
-                            }),
-                        );
+                        self.events
+                            .host_key_unknown(&host, port, &key_type, &fingerprint);
 
                         Err(russh::Error::Disconnect)
                     }
@@ -146,15 +137,8 @@ impl client::Handler for SshClientHandler {
                             tracing::error!("[terminal.rs] Failed to save host key: {}", e);
                         }
 
-                        let _ = self.app_handle.emit(
-                            "ssh:host-key-added",
-                            serde_json::json!({
-                                "host": host,
-                                "port": port,
-                                "keyType": key_type,
-                                "fingerprint": fingerprint,
-                            }),
-                        );
+                        self.events
+                            .host_key_added(&host, port, &key_type, &fingerprint);
 
                         Ok(true)
                     }
@@ -191,16 +175,9 @@ impl client::Handler for SshClientHandler {
                 tracing::error!("[terminal.rs] This could indicate a Man-in-the-Middle attack!");
                 tracing::error!("[terminal.rs] Connection REJECTED for security");
 
-                // Emit event to notify frontend of changed key
-                let _ = self.app_handle.emit(
-                    "ssh:host-key-changed",
-                    serde_json::json!({
-                        "host": host,
-                        "port": port,
-                        "oldFingerprint": old_fingerprint,
-                        "newFingerprint": new_fingerprint,
-                    }),
-                );
+                // Notify the UI of the changed key
+                self.events
+                    .host_key_changed(&host, port, &old_fingerprint, &new_fingerprint);
 
                 Err(russh::Error::Disconnect)
             }
@@ -227,7 +204,8 @@ impl SshSession {
     pub async fn connect(
         connection: Connection,
         auth_method: AuthMethod,
-        app_handle: AppHandle,
+        events: SharedEvents,
+        db_pool: Arc<SqlitePool>,
         keep_alive_interval: Option<u64>, // Keep-alive interval in seconds (None = disabled)
         force_accept_host_key: bool,      // For Quick SSH: bypass host key verification
     ) -> Result<Self> {
@@ -243,17 +221,13 @@ impl SshSession {
             connection.username
         );
 
-        // Get database for host key verification
-        let state = app_handle.state::<AppState>();
-        let db = state.db.pool().clone();
-
         // Create SSH client configuration
         let config = Arc::new(client::Config::default());
         let handler = SshClientHandler {
-            db: Arc::new(db),
+            db: db_pool,
             host: connection.hostname.clone(),
             port: connection.port,
-            app_handle: app_handle.clone(),
+            events: events.clone(),
             force_accept_host_key,
         };
 
@@ -343,13 +317,7 @@ impl SshSession {
             tracing::info!("[terminal.rs] Requesting shell...");
             if let Err(e) = channel.request_shell(true).await {
                 tracing::error!("[terminal.rs] Failed to request shell: {}", e);
-                let _ = app_handle.emit(
-                    "terminal-error",
-                    serde_json::json!({
-                        "sessionId": session_id_clone,
-                        "error": format!("Failed to start shell: {}", e),
-                    }),
-                );
+                events.terminal_error(&session_id_clone, &format!("Failed to start shell: {}", e));
                 return;
             }
             tracing::info!("[terminal.rs] Shell started, buffering initial output");
@@ -390,19 +358,8 @@ impl SshSession {
                         // If this fails, the connection is likely dead
                         if let Err(e) = channel.window_change(80, 24, 0, 0).await {
                             tracing::error!("[terminal.rs] Keep-alive failed: {}. Connection appears dead.", e);
-                            let _ = app_handle.emit(
-                                "connection-dead",
-                                serde_json::json!({
-                                    "sessionId": session_id_clone,
-                                    "reason": "Keep-alive failed",
-                                }),
-                            );
-                            let _ = app_handle.emit(
-                                "terminal-closed",
-                                serde_json::json!({
-                                    "sessionId": session_id_clone,
-                                }),
-                            );
+                            events.connection_dead(&session_id_clone, "Keep-alive failed");
+                            events.terminal_closed(&session_id_clone);
                             break;
                         }
                     }
@@ -437,33 +394,15 @@ impl SshSession {
                                     buf.extend_from_slice(data);
                                 } else {
                                     // Streaming mode: frontend has already claimed the buffer.
-                                    let data_base64 = base64::engine::general_purpose::STANDARD.encode(data);
-                                    let _ = app_handle.emit(
-                                        "terminal-data",
-                                        serde_json::json!({
-                                            "sessionId": session_id_clone,
-                                            "data": data_base64,
-                                        }),
-                                    );
+                                    events.terminal_data(&session_id_clone, &data[..]);
                                 }
                             }
                             Some(ChannelMsg::ExitStatus { exit_status }) => {
-                                let _ = app_handle.emit(
-                                    "terminal-exit",
-                                    serde_json::json!({
-                                        "sessionId": session_id_clone,
-                                        "exitStatus": exit_status,
-                                    }),
-                                );
+                                events.terminal_exit(&session_id_clone, exit_status);
                                 break;
                             }
                             Some(ChannelMsg::Eof) => {
-                                let _ = app_handle.emit(
-                                    "terminal-closed",
-                                    serde_json::json!({
-                                        "sessionId": session_id_clone,
-                                    }),
-                                );
+                                events.terminal_closed(&session_id_clone);
                                 break;
                             }
                             None => break,
@@ -564,11 +503,11 @@ impl Session {
 pub struct SessionManager {
     sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
     db: Database,
-    auth: rite_core::auth::AuthManager,
+    auth: crate::auth::AuthManager,
 }
 
 impl SessionManager {
-    pub fn new(db: Database, auth: rite_core::auth::AuthManager) -> Self {
+    pub fn new(db: Database, auth: crate::auth::AuthManager) -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             db,
@@ -580,7 +519,7 @@ impl SessionManager {
     pub async fn create_session(
         &self,
         connection_id: String,
-        app_handle: AppHandle,
+        events: SharedEvents,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_session called for connection_id: {}",
@@ -641,12 +580,12 @@ impl SessionManager {
         let connection = Connection {
             id: row.id.clone(),
             name: row.name.clone(),
-            protocol: rite_core::connection::Protocol::from_str(&row.protocol)?,
+            protocol: crate::connection::Protocol::from_str(&row.protocol)?,
             hostname: row.hostname.clone(),
             port: row.port as u16,
             username: row.username.clone(),
             auth_method: auth_method.clone(),
-            metadata: rite_core::connection::ConnectionMetadata {
+            metadata: crate::connection::ConnectionMetadata {
                 color: row.color.clone(),
                 icon: row.icon.clone(),
                 folder: row.folder.clone(),
@@ -667,7 +606,8 @@ impl SessionManager {
         let ssh_session = SshSession::connect(
             connection,
             auth_method,
-            app_handle,
+            events,
+            Arc::new(self.db.pool().clone()),
             keep_alive_interval,
             false,
         )
@@ -718,13 +658,13 @@ impl SessionManager {
     /// Spawns a local shell (bash/zsh/fish) based on $SHELL env variable
     pub async fn create_local_session(
         &self,
-        app_handle: AppHandle,
+        events: SharedEvents,
         shell: Option<String>,
     ) -> Result<SessionId> {
         tracing::info!("[terminal.rs] create_local_session called");
 
         // Create local session
-        let local_session = crate::local_terminal::LocalSession::spawn(app_handle, shell).await?;
+        let local_session = crate::local_terminal::LocalSession::spawn(events, shell).await?;
         let session_id = local_session.id.clone();
         tracing::info!(
             "[terminal.rs] Local session created with ID: {}",
@@ -749,7 +689,7 @@ impl SessionManager {
         &self,
         connection: Connection,
         auth_method: AuthMethod,
-        app_handle: AppHandle,
+        events: SharedEvents,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_quick_ssh_session called for {}",
@@ -781,7 +721,8 @@ impl SessionManager {
         let ssh_session = SshSession::connect(
             connection,
             auth_method,
-            app_handle,
+            events,
+            Arc::new(self.db.pool().clone()),
             keep_alive_interval,
             true,
         )
