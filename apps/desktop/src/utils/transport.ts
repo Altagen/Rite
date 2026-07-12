@@ -69,7 +69,10 @@ class HttpTransport implements Transport {
   private ensureSocket(): void {
     if (this.ws) return;
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    const socket = new WebSocket(`${proto}://${window.location.host}/ws`);
+    // Browsers can't set WebSocket headers, so the shell token goes in the query.
+    const token = window.__RITE_TOKEN__;
+    const query = token ? `?token=${encodeURIComponent(token)}` : '';
+    const socket = new WebSocket(`${proto}://${window.location.host}/ws${query}`);
     socket.onmessage = (ev) => {
       try {
         const { event, payload } = JSON.parse(ev.data) as { event: string; payload: unknown };
