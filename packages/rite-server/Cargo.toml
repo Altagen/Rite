@@ -18,6 +18,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 base64 = "0.22"
 dirs = "6.0"
+rust-embed = { version = "8", features = ["mime-guess"] }
 
 [dev-dependencies]
 tempfile = "3.27"

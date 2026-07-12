@@ -25,6 +25,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
 
+mod assets;
 mod ws_events;
 use ws_events::WsSessionEvents;
 
@@ -78,6 +79,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/terminal/{id}/resize", post(resize))
         .route("/api/terminal/{id}", delete(close))
         .route("/ws", get(ws_handler))
+        .fallback(assets::static_handler)
         .with_state(state)
 }
 

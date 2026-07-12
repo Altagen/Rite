@@ -49,3 +49,7 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# rite-server embedded frontend (copied from apps/desktop/dist at build time)
+/packages/rite-server/web/*
+!/packages/rite-server/web/.gitkeep
