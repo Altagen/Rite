@@ -4369,6 +4369,7 @@ dependencies = [
  "base64 0.22.1",
  "dirs",
  "rite-core",
+ "rite-crypto",
  "rust-embed",
  "serde",
  "serde_json",
