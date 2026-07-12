@@ -69,6 +69,7 @@ impl ServerState {
 pub fn build_router(state: ServerState) -> Router {
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/capabilities", get(capabilities))
         .route("/api/auth/first-run", get(first_run))
         .route("/api/auth/locked", get(locked))
         .route("/api/auth/unlock", post(unlock))
@@ -96,6 +97,23 @@ pub fn build_router(state: ServerState) -> Router {
 
 async fn health() -> Json<Value> {
     Json(json!({ "status": "ok", "service": "rite-server" }))
+}
+
+/// Bump ONLY on a breaking API change. New endpoints are additive and do NOT
+/// bump this — clients feature-detect (a missing endpoint 404s). See ADR 0008.
+const API_VERSION: u32 = 1;
+/// Oldest client semver this server still supports.
+const MIN_CLIENT: &str = "0.1.2";
+
+/// Version/capability handshake for loose client/server coupling (ADR 0008).
+/// A client compares this against what it needs and prompts to update whichever
+/// side is behind, instead of demanding an exact version match.
+async fn capabilities() -> Json<Value> {
+    Json(json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "apiVersion": API_VERSION,
+        "minClient": MIN_CLIENT,
+    }))
 }
 
 async fn first_run(State(state): State<ServerState>) -> Result<Json<bool>, AppError> {
@@ -358,6 +376,20 @@ mod tests {
         let res = app
             .oneshot(
                 Request::get("/api/auth/first-run")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn capabilities_reports_version() {
+        let app = build_router(test_state().await);
+        let res = app
+            .oneshot(
+                Request::get("/api/capabilities")
                     .body(Body::empty())
                     .unwrap(),
             )
