@@ -11,8 +11,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocketUpgrade};
-use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::extract::{Path, Request, State};
+use axum::http::{StatusCode, header};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
@@ -39,6 +40,10 @@ pub struct ServerState {
     pub connections: Arc<ConnectionsManager>,
     pub sessions: Arc<SessionManager>,
     pub events_tx: broadcast::Sender<String>,
+    /// When set (local desktop shell), API/WS requests require this bearer token
+    /// and a loopback Host — the ADR 0009 local-transport guard. `None` in
+    /// dev/container mode (real auth for shared servers comes in Phase 5).
+    pub token: Option<Arc<String>>,
 }
 
 impl ServerState {
@@ -55,7 +60,15 @@ impl ServerState {
             connections,
             sessions,
             events_tx,
+            token: None,
         })
+    }
+
+    /// Enable the local-transport guard: API/WS then require this bearer token
+    /// (loopback Host enforced too). Set by the desktop shell.
+    pub fn with_token(mut self, token: impl Into<String>) -> Self {
+        self.token = Some(Arc::new(token.into()));
+        self
     }
 
     /// A `SessionEvents` sink that broadcasts session output to WebSocket clients.
@@ -90,7 +103,56 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/terminal/{id}", delete(close))
         .route("/ws", get(ws_handler))
         .fallback(assets::static_handler)
+        .layer(middleware::from_fn_with_state(state.clone(), guard))
         .with_state(state)
+}
+
+/// ADR 0009 local-transport guard. When a token is configured (local desktop
+/// shell), API and WebSocket requests must come from a loopback Host and carry
+/// the bearer token (query param `token` for `/ws`, since browsers can't set
+/// WebSocket headers). Static assets and dev/container mode (no token) pass
+/// through. Defends the loopback port against DNS rebinding and other local
+/// processes.
+async fn guard(State(state): State<ServerState>, req: Request, next: Next) -> Response {
+    let path = req.uri().path();
+    let is_api = path.starts_with("/api") || path == "/ws";
+
+    if is_api && let Some(token) = state.token.as_deref() {
+        if !host_is_loopback(&req) {
+            return (StatusCode::FORBIDDEN, "non-loopback host rejected").into_response();
+        }
+        let ok = if path == "/ws" {
+            req.uri()
+                .query()
+                .into_iter()
+                .flat_map(|q| q.split('&'))
+                .filter_map(|kv| kv.strip_prefix("token="))
+                .any(|t| t == token)
+        } else {
+            req.headers()
+                .get(header::AUTHORIZATION)
+                .and_then(|h| h.to_str().ok())
+                .and_then(|h| h.strip_prefix("Bearer "))
+                .is_some_and(|t| t == token)
+        };
+        if !ok {
+            return (StatusCode::UNAUTHORIZED, "missing or invalid token").into_response();
+        }
+    }
+
+    next.run(req).await
+}
+
+/// True if the request's Host header names a loopback address.
+fn host_is_loopback(req: &Request) -> bool {
+    let host = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    // strip a trailing :port (IPv4 / hostname); IPv6 literals bind 127.0.0.1 here
+    let hostname = host.rsplit_once(':').map_or(host, |(h, _)| h);
+    matches!(hostname, "127.0.0.1" | "localhost")
 }
 
 // --- read endpoints ---------------------------------------------------------
@@ -390,6 +452,46 @@ mod tests {
         let res = app
             .oneshot(
                 Request::get("/api/capabilities")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn token_guard_rejects_and_allows() {
+        let app = build_router(test_state().await.with_token("secret"));
+
+        // No Host + no token => rejected (non-loopback host).
+        let res = app
+            .clone()
+            .oneshot(Request::get("/api/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+
+        // Loopback Host but wrong token => 401.
+        let res = app
+            .clone()
+            .oneshot(
+                Request::get("/api/health")
+                    .header("host", "127.0.0.1")
+                    .header("authorization", "Bearer nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+
+        // Loopback Host + correct token => OK.
+        let res = app
+            .oneshot(
+                Request::get("/api/health")
+                    .header("host", "127.0.0.1")
+                    .header("authorization", "Bearer secret")
                     .body(Body::empty())
                     .unwrap(),
             )
