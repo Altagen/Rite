@@ -1,6 +1,6 @@
 {
   "productName": "RITE",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "identifier": "com.rite.app",
   "build": {
     "beforeDevCommand": "pnpm dev:frontend",
