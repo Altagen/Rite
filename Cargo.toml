@@ -5,6 +5,7 @@ members = [
     "packages/crypto",
     "packages/protocols",
     "packages/rite-core",
+    "packages/rite-server",
 ]
 
 [workspace.package]

@@ -1,0 +1,25 @@
+[package]
+name = "rite-server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+rite-core = { path = "../rite-core" }
+
+axum = { version = "0.8", features = ["ws"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+base64 = "0.22"
+dirs = "6.0"
+rust-embed = { version = "8", features = ["mime-guess"] }
+
+[dev-dependencies]
+tempfile = "3.27"
+tower = { version = "0.5", features = ["util"] }
