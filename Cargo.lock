@@ -4191,18 +4191,16 @@ name = "rite"
 version = "0.1.2"
 dependencies = [
  "anyhow",
- "argon2 0.5.3",
  "async-trait",
  "base64 0.22.1",
  "chrono",
  "dirs",
- "portable-pty",
+ "rite-core",
  "rite-crypto",
  "rite-protocols",
  "russh",
  "serde",
  "serde_json",
- "sha2 0.11.0",
  "sqlx",
  "tauri",
  "tauri-build",
@@ -4212,6 +4210,25 @@ dependencies = [
  "toml 0.9.12+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "rite-core"
+version = "0.1.2"
+dependencies = [
+ "anyhow",
+ "argon2 0.5.3",
+ "chrono",
+ "portable-pty",
+ "rite-crypto",
+ "russh",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tempfile",
+ "tokio",
+ "tracing",
  "uuid",
  "zeroize",
 ]

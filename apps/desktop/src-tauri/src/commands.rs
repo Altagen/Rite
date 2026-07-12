@@ -1,10 +1,10 @@
+use crate::state::AppState;
+use base64::Engine as _;
 /// Tauri commands
 ///
 /// Backend functions callable from the frontend
-use crate::auth::UnlockResult;
-use crate::connection::{AuthMethod, Connection};
-use crate::state::AppState;
-use base64::Engine as _;
+use rite_core::auth::UnlockResult;
+use rite_core::connection::{AuthMethod, Connection};
 use rite_crypto::validate_password_strength;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -122,8 +122,8 @@ pub async fn reset_database(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 pub async fn create_connection(
     state: State<'_, AppState>,
-    input: crate::connection::CreateConnectionInput,
-) -> Result<crate::connection::ConnectionInfo, String> {
+    input: rite_core::connection::CreateConnectionInput,
+) -> Result<rite_core::connection::ConnectionInfo, String> {
     state
         .connections
         .create_connection(input)
@@ -135,7 +135,7 @@ pub async fn create_connection(
 #[tauri::command]
 pub async fn get_all_connections(
     state: State<'_, AppState>,
-) -> Result<Vec<crate::connection::ConnectionInfo>, String> {
+) -> Result<Vec<rite_core::connection::ConnectionInfo>, String> {
     state
         .connections
         .get_all_connections()
@@ -148,7 +148,7 @@ pub async fn get_all_connections(
 pub async fn get_connection(
     state: State<'_, AppState>,
     id: String,
-) -> Result<Option<crate::connection::ConnectionInfo>, String> {
+) -> Result<Option<rite_core::connection::ConnectionInfo>, String> {
     match state.connections.get_connection(&id).await {
         Ok(Some(conn)) => Ok(Some(conn.to_info())),
         Ok(None) => Ok(None),
@@ -160,8 +160,8 @@ pub async fn get_connection(
 #[tauri::command]
 pub async fn update_connection(
     state: State<'_, AppState>,
-    input: crate::connection::UpdateConnectionInput,
-) -> Result<crate::connection::ConnectionInfo, String> {
+    input: rite_core::connection::UpdateConnectionInput,
+) -> Result<rite_core::connection::ConnectionInfo, String> {
     state
         .connections
         .update_connection(input)
@@ -183,8 +183,8 @@ pub async fn delete_connection(state: State<'_, AppState>, id: String) -> Result
 #[tauri::command]
 pub async fn parse_ssh_config(
     config_path: String,
-) -> Result<Vec<crate::ssh_config::SshConfigEntry>, String> {
-    crate::ssh_config::parse_ssh_config(&config_path)
+) -> Result<Vec<rite_core::ssh_config::SshConfigEntry>, String> {
+    rite_core::ssh_config::parse_ssh_config(&config_path)
         .map_err(|e| format!("Failed to parse SSH config: {}", e))
 }
 
@@ -192,8 +192,8 @@ pub async fn parse_ssh_config(
 #[tauri::command]
 pub async fn import_ssh_config_entries(
     state: State<'_, AppState>,
-    entries: Vec<crate::ssh_config::SshConfigEntry>,
-) -> Result<Vec<crate::connection::ConnectionInfo>, String> {
+    entries: Vec<rite_core::ssh_config::SshConfigEntry>,
+) -> Result<Vec<rite_core::connection::ConnectionInfo>, String> {
     let mut imported = Vec::new();
 
     for entry in entries {
@@ -216,7 +216,7 @@ pub async fn import_ssh_config_entries(
 /// Get default SSH config path
 #[tauri::command]
 pub fn get_default_ssh_config_path() -> String {
-    crate::ssh_config::get_default_ssh_config_path()
+    rite_core::ssh_config::get_default_ssh_config_path()
 }
 
 /// Get connections by folder
@@ -224,7 +224,7 @@ pub fn get_default_ssh_config_path() -> String {
 pub async fn get_connections_by_folder(
     state: State<'_, AppState>,
     folder: String,
-) -> Result<Vec<crate::connection::ConnectionInfo>, String> {
+) -> Result<Vec<rite_core::connection::ConnectionInfo>, String> {
     state
         .connections
         .get_connections_by_folder(&folder)
@@ -261,9 +261,10 @@ pub async fn connect_terminal(
         connection_id
     );
 
+    let events = std::sync::Arc::new(crate::tauri_events::TauriSessionEvents::new(app_handle));
     match state
         .sessions
-        .create_session(connection_id.clone(), app_handle)
+        .create_session(connection_id.clone(), events)
         .await
     {
         Ok(session_id) => {
@@ -290,7 +291,8 @@ pub async fn connect_local_terminal(
 ) -> Result<String, String> {
     tracing::info!("[commands.rs] connect_local_terminal called");
 
-    match state.sessions.create_local_session(app_handle, shell).await {
+    let events = std::sync::Arc::new(crate::tauri_events::TauriSessionEvents::new(app_handle));
+    match state.sessions.create_local_session(events, shell).await {
         Ok(session_id) => {
             tracing::info!(
                 "[commands.rs] Local session created successfully: {}",
@@ -371,12 +373,12 @@ pub async fn quick_ssh_connect(
     let connection = Connection {
         id: format!("quick-{}", uuid::Uuid::new_v4()),
         name: format!("{}@{}", username, host),
-        protocol: crate::connection::Protocol::SSH,
+        protocol: rite_core::connection::Protocol::SSH,
         hostname: host,
         port,
         username,
         auth_method: auth_method.clone().into(),
-        metadata: crate::connection::ConnectionMetadata {
+        metadata: rite_core::connection::ConnectionMetadata {
             color: None,
             icon: Some("⚡".to_string()), // Quick connect indicator
             folder: None,
@@ -396,9 +398,10 @@ pub async fn quick_ssh_connect(
     };
 
     // Create SSH session directly (no database, no encryption needed)
+    let events = std::sync::Arc::new(crate::tauri_events::TauriSessionEvents::new(app_handle));
     match state
         .sessions
-        .create_quick_ssh_session(connection, auth_method.into(), app_handle)
+        .create_quick_ssh_session(connection, auth_method.into(), events)
         .await
     {
         Ok(session_id) => {

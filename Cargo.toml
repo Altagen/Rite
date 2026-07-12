@@ -4,6 +4,7 @@ members = [
     "apps/desktop/src-tauri",
     "packages/crypto",
     "packages/protocols",
+    "packages/rite-core",
 ]
 
 [workspace.package]

@@ -30,6 +30,9 @@ impl Protocol {
         }
     }
 
+    // Inherent method kept (not a FromStr impl) to avoid touching call sites
+    // during the rite-core extraction; converting to FromStr is a future cleanup.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self> {
         match s.to_lowercase().as_str() {
             "ssh" => Ok(Protocol::SSH),
