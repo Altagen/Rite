@@ -4346,6 +4346,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "rite-desktop"
+version = "0.1.2"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "rite-server",
+ "tao",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "wry",
+]
+
+[[package]]
 name = "rite-protocols"
 version = "0.1.2"
 dependencies = [
