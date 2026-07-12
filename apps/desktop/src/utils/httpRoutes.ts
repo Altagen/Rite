@@ -10,8 +10,13 @@
 type Args = Record<string, unknown>;
 type Route = (args: Args) => Promise<unknown>;
 
-async function json<T = unknown>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+async function json<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  // Desktop shell (wry) injects a token guarding the loopback rite-server.
+  if (window.__RITE_TOKEN__) {
+    headers.set('Authorization', `Bearer ${window.__RITE_TOKEN__}`);
+  }
+  const res = await fetch(path, { ...init, headers });
   if (!res.ok) {
     let detail = res.statusText;
     try {
