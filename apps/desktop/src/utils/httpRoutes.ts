@@ -75,6 +75,15 @@ const routes: Record<string, Route> = {
   parse_ssh_config: (a) => json('/api/ssh-config/parse', post({ configPath: a.configPath })),
   import_ssh_config_entries: (a) => json('/api/ssh-config/import', post({ entries: a.entries })),
 
+  accept_host_key: async (a) => {
+    await json('/api/ssh/host-key/accept', post({ host: a.host, port: a.port }));
+    return null;
+  },
+  reject_host_key: async (a) => {
+    await json('/api/ssh/host-key/reject', post({ host: a.host, port: a.port }));
+    return null;
+  },
+
   quick_ssh_connect: async (a) =>
     (
       await json<{ sessionId: string }>(

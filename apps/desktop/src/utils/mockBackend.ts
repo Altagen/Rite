@@ -158,6 +158,9 @@ export async function mockInvoke(
       return [];
     case 'import_ssh_config_entries':
       return [];
+    case 'accept_host_key':
+    case 'reject_host_key':
+      return null;
 
     // --- Terminal (no backend PTY in the browser; sessions are inert) ---
     case 'get_installed_shells':
