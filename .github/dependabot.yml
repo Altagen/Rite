@@ -31,10 +31,6 @@ updates:
     labels:
       - "dependencies"
       - "rust"
-    groups:
-      tauri:
-        patterns:
-          - "tauri*"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"

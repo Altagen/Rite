@@ -2,7 +2,7 @@
 //!
 //! Holds the backend logic shared by every delivery shell: the encrypted vault
 //! (auth + connections + SQLite), SSH host-key verification, and SSH-config
-//! parsing. No UI and no Tauri here — the Tauri app (and, later, rite-server)
+//! parsing. No UI here — the shells (rite-server and the wry desktop client)
 //! depend on this crate and provide the transport/UI on top.
 
 pub mod auth;

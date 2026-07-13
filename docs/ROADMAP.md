@@ -269,7 +269,7 @@ This document outlines the planned features for RITE, organized by development p
 
 ### 💻 Web Frontend
 - [ ] React frontend (reuse desktop code)
-- [ ] Replace Tauri with HTTP/WebSocket
+- [x] Replace Tauri with HTTP/WebSocket (rite-server + wry client)
 - [ ] Browser-compatible terminal
 - [ ] Progressive Web App (PWA)
 - [ ] LocalStorage/IndexedDB settings

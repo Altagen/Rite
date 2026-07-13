@@ -23,9 +23,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin
 
 # --- System dependencies -----------------------------------------------------
-# Tauri on Linux needs the GTK3 / WebKit2GTK 4.1 dev headers; patchelf is used
-# by the bundler / build check. build-essential + pkg-config + libssl-dev cover
-# the Rust native builds.
+# The wry desktop client on Linux needs the GTK3 / WebKit2GTK 4.1 dev headers.
+# build-essential + pkg-config + libssl-dev cover the Rust native builds.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \

@@ -9,9 +9,6 @@ dist/
 .pnpm-debug.log*
 .pnpm-store/
 
-# Tauri
-apps/desktop/src-tauri/target/
-
 # Build outputs
 *.tar.gz
 *.zip

@@ -16,8 +16,10 @@ This document describes the technical architecture and design decisions for RITE
 
 ## Overview
 
-RITE is a desktop terminal client built with:
-- **Backend**: Rust (via Tauri) for system operations, crypto, and protocol handling
+RITE is a terminal client built around one Rust core with multiple shells:
+- **Core**: Rust (`rite-core`) — UI-agnostic auth, connections, terminals, crypto
+- **Shells**: `rite-server` (Axum HTTP/WebSocket) and a wry desktop client that
+  embeds it; the frontend talks to either over HTTP + WebSocket (no IPC)
 - **Frontend**: React + TypeScript for UI
 - **Terminal**: xterm.js for terminal emulation
 
@@ -32,15 +34,10 @@ RITE is a desktop terminal client built with:
 ```
 rite/
 ├── apps/
-│   └── desktop/              # Tauri desktop application
-│       ├── src-tauri/        # Rust backend
-│       │   ├── src/
-│       │   │   ├── main.rs          # Tauri entry point
-│       │   │   ├── commands.rs      # Tauri commands (IPC)
-│       │   │   ├── state.rs         # App state management
-│       │   │   └── theme.rs         # Theme loader
-│       │   ├── Cargo.toml
-│       │   └── tauri.conf.json
+│   └── desktop/              # Desktop client
+│       ├── shell/            # wry native shell (binary `rite`)
+│       │   └── src/main.rs   #   generates a token, runs rite-server in-process,
+│       │                     #   opens a webview over loopback HTTP/WS
 │       └── src/              # React frontend
 │           ├── main.tsx
 │           ├── App.tsx
@@ -71,7 +68,8 @@ rite/
 ### Backend (Rust)
 | Purpose | Library | Version | Notes |
 |---------|---------|---------|-------|
-| Framework | `tauri` | 2.x | Desktop app framework |
+| HTTP/WS server | `axum` | 0.8 | rite-server transport |
+| Desktop webview | `wry` / `tao` | 0.55 / 0.35 | Native client window |
 | Async Runtime | `tokio` | 1.x | Async I/O |
 | KDF | `argon2` | 0.5.x | Password hashing |
 | Encryption | `chacha20poly1305` | 0.10.x | AEAD cipher |
@@ -101,9 +99,9 @@ rite/
 │  │Components│ (xterm)  │  System  │(Zustand) │  │
 │  └─────────┴──────────┴──────────┴──────────┘  │
 └────────────────────┬────────────────────────────┘
-                     │ IPC (Tauri Commands)
+                     │ HTTP + WebSocket
 ┌────────────────────▼────────────────────────────┐
-│             Backend (Rust + Tauri)              │
+│           Shell (Rust: rite-server)             │
 │  ┌─────────┬──────────┬──────────┬──────────┐  │
 │  │Commands │  State   │  Theme   │   DB     │  │
 │  │  (IPC)  │Management│  Loader  │ (SQLite) │  │
@@ -489,7 +487,7 @@ No auto-updater (by design - user manages updates).
 - Profile parsing
 
 ### Integration Tests
-- Tauri commands (invoke from test)
+- API endpoints (HTTP request from test)
 - Database operations
 - End-to-end crypto (encrypt → decrypt)
 
@@ -524,7 +522,6 @@ No auto-updater (by design - user manages updates).
 
 ## References
 
-- [Tauri Architecture](https://tauri.app/concepts/architecture/)
 - [russh Documentation](https://docs.rs/russh)
 - [xterm.js Documentation](https://xtermjs.org/)
 - [age Specification](https://age-encryption.org/v1)
