@@ -107,6 +107,8 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/ssh-config/default-path", get(default_ssh_config_path))
         .route("/api/ssh-config/parse", post(parse_ssh_config))
         .route("/api/ssh-config/import", post(import_ssh_config))
+        .route("/api/ssh/host-key/accept", post(accept_host_key))
+        .route("/api/ssh/host-key/reject", post(reject_host_key))
         .route("/api/shells", post(installed_shells))
         .route("/api/terminal", get(list_sessions))
         .route("/api/terminal/ssh", post(connect_ssh))
@@ -377,6 +379,30 @@ async fn import_ssh_config(
         }
     }
     Ok(Json(imported))
+}
+
+// --- ssh host keys ----------------------------------------------------------
+
+#[derive(Deserialize)]
+struct HostKeyReq {
+    host: String,
+    port: u16,
+}
+
+async fn accept_host_key(
+    State(state): State<ServerState>,
+    Json(req): Json<HostKeyReq>,
+) -> Result<StatusCode, AppError> {
+    rite_core::known_hosts::accept_pending_host_key(state.db.pool(), &req.host, req.port).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn reject_host_key(
+    State(state): State<ServerState>,
+    Json(req): Json<HostKeyReq>,
+) -> Result<StatusCode, AppError> {
+    rite_core::known_hosts::reject_pending_host_key(state.db.pool(), &req.host, req.port).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- shells -----------------------------------------------------------------

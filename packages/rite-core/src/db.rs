@@ -68,8 +68,8 @@ impl Database {
         // Define all migrations with their SQL and version number
         let migrations = vec![
             (1, include_str!("../migrations/001_initial_schema.sql")),
+            (2, include_str!("../migrations/002_pending_host_keys.sql")),
             // Future migrations go here:
-            // (2, include_str!("../migrations/002_new_feature.sql")),
             // (3, include_str!("../migrations/003_another_feature.sql")),
         ];
 

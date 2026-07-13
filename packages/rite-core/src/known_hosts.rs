@@ -155,6 +155,108 @@ pub async fn add_host_key(
     Ok(())
 }
 
+/// Store a host key offered by an unknown host, pending user confirmation
+/// (strict mode). Overwrites any previous pending key for the same host:port.
+pub async fn store_pending_host_key(
+    db: &SqlitePool,
+    host: &str,
+    port: u16,
+    server_public_key: &PublicKey,
+) -> Result<()> {
+    let fingerprint = calculate_fingerprint(server_public_key);
+    let key_type = get_key_type(server_public_key);
+    let public_key_data = server_public_key.to_bytes()?;
+    let now = current_timestamp();
+
+    sqlx::query("DELETE FROM pending_host_keys WHERE host = ? AND port = ?")
+        .bind(host)
+        .bind(port as i64)
+        .execute(db)
+        .await?;
+
+    sqlx::query(
+        "INSERT INTO pending_host_keys (host, port, key_type, fingerprint, public_key_data, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(host)
+    .bind(port as i64)
+    .bind(key_type)
+    .bind(fingerprint)
+    .bind(&public_key_data)
+    .bind(now)
+    .execute(db)
+    .await?;
+
+    tracing::info!(
+        "[known_hosts] Stored pending host key for {}:{}",
+        host,
+        port
+    );
+    Ok(())
+}
+
+/// Promote a pending host key to a trusted known host (user accepted it).
+/// Returns `true` if a pending key existed for this host:port.
+pub async fn accept_pending_host_key(db: &SqlitePool, host: &str, port: u16) -> Result<bool> {
+    let pending = sqlx::query_as::<_, (String, String, Vec<u8>)>(
+        "SELECT key_type, fingerprint, public_key_data FROM pending_host_keys WHERE host = ? AND port = ?",
+    )
+    .bind(host)
+    .bind(port as i64)
+    .fetch_optional(db)
+    .await?;
+
+    let Some((key_type, fingerprint, public_key_data)) = pending else {
+        return Ok(false);
+    };
+    let now = current_timestamp();
+
+    sqlx::query("DELETE FROM known_hosts WHERE host = ? AND port = ?")
+        .bind(host)
+        .bind(port as i64)
+        .execute(db)
+        .await?;
+
+    sqlx::query(
+        "INSERT INTO known_hosts (id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind(host)
+    .bind(port as i64)
+    .bind(key_type)
+    .bind(fingerprint)
+    .bind(&public_key_data)
+    .bind(now)
+    .bind(now)
+    .execute(db)
+    .await?;
+
+    sqlx::query("DELETE FROM pending_host_keys WHERE host = ? AND port = ?")
+        .bind(host)
+        .bind(port as i64)
+        .execute(db)
+        .await?;
+
+    tracing::info!("[known_hosts] Accepted host key for {}:{}", host, port);
+    Ok(true)
+}
+
+/// Drop a pending host key (user rejected it).
+pub async fn reject_pending_host_key(db: &SqlitePool, host: &str, port: u16) -> Result<()> {
+    sqlx::query("DELETE FROM pending_host_keys WHERE host = ? AND port = ?")
+        .bind(host)
+        .bind(port as i64)
+        .execute(db)
+        .await?;
+    tracing::info!(
+        "[known_hosts] Rejected pending host key for {}:{}",
+        host,
+        port
+    );
+    Ok(())
+}
+
 /// Update last_seen_at timestamp for a known host
 async fn update_last_seen(db: &SqlitePool, id: &str) -> Result<()> {
     let now = current_timestamp();
