@@ -115,11 +115,26 @@ impl client::Handler for SshClientHandler {
 
                 match verification_mode.as_str() {
                     "strict" => {
-                        // Strict mode: Emit event and REJECT connection
-                        // User must explicitly accept the key via the modal
+                        // Strict mode: stash the offered key, emit the event, and
+                        // REJECT. The user accepts it via the modal, which promotes
+                        // the pending key to a known host; the next connect succeeds.
                         tracing::warn!(
                             "[terminal.rs] Strict mode: Rejecting connection and requesting user confirmation"
                         );
+
+                        if let Err(e) = known_hosts::store_pending_host_key(
+                            &self.db,
+                            &host,
+                            port,
+                            server_public_key,
+                        )
+                        .await
+                        {
+                            tracing::error!(
+                                "[terminal.rs] Failed to store pending host key: {}",
+                                e
+                            );
+                        }
 
                         self.events
                             .host_key_unknown(&host, port, &key_type, &fingerprint);

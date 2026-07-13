@@ -18,6 +18,8 @@ import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
 import { ImportSSHConfigModal } from './ImportSSHConfigModal';
+import { HostKeyModal, type HostKeyPrompt } from './HostKeyModal';
+import { transport } from '../utils/transport';
 import { UnlockScreen } from './UnlockScreen';
 import { Toast } from './Toast';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -68,6 +70,41 @@ export function MainScreen() {
   // Quick SSH and Unlock modals
   const [showQuickSSH, setShowQuickSSH] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
+
+  // Host-key confirmation (strict mode): the pending prompt + the connection that
+  // triggered it, so accepting can retry that exact connection.
+  const [hostKeyPrompt, setHostKeyPrompt] = useState<HostKeyPrompt | null>(null);
+  const [hostKeyBusy, setHostKeyBusy] = useState(false);
+  const lastConnectionRef = useRef<ConnectionInfo | null>(null);
+
+  // Surface strict-mode host-key prompts emitted by the backend over the transport.
+  useEffect(() => {
+    let unlistenUnknown: (() => void) | undefined;
+    let unlistenChanged: (() => void) | undefined;
+    void (async () => {
+      unlistenUnknown = await transport().listen<HostKeyPrompt>('ssh:host-key-unknown', (p) =>
+        setHostKeyPrompt({ ...p, changed: false }),
+      );
+      unlistenChanged = await transport().listen<{
+        host: string;
+        port: number;
+        oldFingerprint: string;
+        newFingerprint: string;
+      }>('ssh:host-key-changed', (p) =>
+        setHostKeyPrompt({
+          host: p.host,
+          port: p.port,
+          fingerprint: p.newFingerprint,
+          oldFingerprint: p.oldFingerprint,
+          changed: true,
+        }),
+      );
+    })();
+    return () => {
+      unlistenUnknown?.();
+      unlistenChanged?.();
+    };
+  }, []);
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -307,6 +344,8 @@ export function MainScreen() {
   // Handle connect - open terminal (allows multiple tabs for same connection)
   const handleConnect = async (connection: ConnectionInfo) => {
     console.log('[MainScreen] handleConnect called for connection:', connection.name, 'ID:', connection.id);
+    // Remember the attempt so an accepted host-key prompt can retry it.
+    lastConnectionRef.current = connection;
 
     try {
       // Call backend to create SSH terminal session
@@ -328,6 +367,12 @@ export function MainScreen() {
       console.error('[MainScreen] Failed to connect to terminal:', error);
       let errorMsg = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Failed to connect';
 
+      // Strict-mode host-key rejection ("Disconnected"): the backend also emits
+      // ssh:host-key-unknown, which opens the confirmation modal — don't also toast.
+      if (errorMsg.includes('Disconnect')) {
+        return;
+      }
+
       // Improve error message for authentication failures (likely empty password)
       if (errorMsg.includes('Authentication failed') || errorMsg.includes('authentication')) {
         errorMsg = `Authentication failed - Configuration is incomplete`;
@@ -343,6 +388,41 @@ export function MainScreen() {
 
       setToastType('error');
       setToastMessage(errorMsg);
+    }
+  };
+
+  // Trust the pending host key, then retry the connection that triggered it.
+  const handleAcceptHostKey = async () => {
+    if (!hostKeyPrompt) return;
+    setHostKeyBusy(true);
+    try {
+      await Backend.Ssh.acceptHostKey(hostKeyPrompt.host, hostKeyPrompt.port);
+      setHostKeyPrompt(null);
+      if (lastConnectionRef.current) {
+        await handleConnect(lastConnectionRef.current);
+      }
+    } catch (error) {
+      console.error('[MainScreen] Failed to accept host key:', error);
+      setToastType('error');
+      setToastMessage('Failed to trust host key');
+    } finally {
+      setHostKeyBusy(false);
+    }
+  };
+
+  // Dismiss the prompt (drop the pending key unless it was a changed-key alert).
+  const handleRejectHostKey = async () => {
+    if (!hostKeyPrompt) return;
+    setHostKeyBusy(true);
+    try {
+      if (!hostKeyPrompt.changed) {
+        await Backend.Ssh.rejectHostKey(hostKeyPrompt.host, hostKeyPrompt.port);
+      }
+    } catch (error) {
+      console.error('[MainScreen] Failed to reject host key:', error);
+    } finally {
+      setHostKeyPrompt(null);
+      setHostKeyBusy(false);
     }
   };
 
@@ -973,6 +1053,16 @@ export function MainScreen() {
         <QuickSSHModal
           onClose={() => setShowQuickSSH(false)}
           onConnected={handleQuickSSHConnected}
+        />
+      )}
+
+      {/* SSH host-key confirmation (strict mode) */}
+      {hostKeyPrompt && (
+        <HostKeyModal
+          prompt={hostKeyPrompt}
+          busy={hostKeyBusy}
+          onAccept={handleAcceptHostKey}
+          onReject={handleRejectHostKey}
         />
       )}
 

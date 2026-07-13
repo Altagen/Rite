@@ -224,6 +224,17 @@ export const BackendConnections = {
     invokeWithValidation('import_ssh_config_entries', ConnectionInfoArraySchema, { entries }),
 } as const;
 
+// SSH host-key confirmation
+export const BackendSsh = {
+  /** Trust a pending unknown host key so the next connection succeeds. */
+  acceptHostKey: (host: string, port: number) =>
+    invokeWithValidation('accept_host_key', z.null(), { host, port }),
+
+  /** Drop a pending unknown host key (user declined). */
+  rejectHostKey: (host: string, port: number) =>
+    invokeWithValidation('reject_host_key', z.null(), { host, port }),
+} as const;
+
 // Terminal Commands
 export const BackendTerminal = {
   /**
@@ -323,6 +334,7 @@ export const Backend = {
   Settings: BackendSettings,
   Connections: BackendConnections,
   Terminal: BackendTerminal,
+  Ssh: BackendSsh,
 } as const;
 
 // Export types for external use

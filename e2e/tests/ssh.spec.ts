@@ -34,16 +34,26 @@ async function createSshConnection(api: APIRequestContext, name: string) {
   expect(res.ok()).toBeTruthy();
 }
 
-test('connect to a saved SSH connection and run a command', async ({ page, request }) => {
-  // TOFU host-key mode so an unknown host is accepted (strict mode correctly
-  // rejects unknown hosts and awaits a confirmation modal — see known-hosts note).
-  await request.put('/api/settings/host_key_verification_mode', { data: { value: 'accept' } });
+test('saved SSH connection: strict host-key prompt, trust, then run a command', async ({
+  page,
+  request,
+}) => {
+  // Strict mode (default): an unknown host must be confirmed via the modal.
+  await request.put('/api/settings/host_key_verification_mode', { data: { value: 'strict' } });
   await createSshConnection(request, 'e2e-ssh-saved');
 
   await page.goto('/');
   const item = page.getByText('e2e-ssh-saved');
   await expect(item).toBeVisible({ timeout: 15_000 });
   await item.dblclick();
+
+  // Unknown host → the confirmation modal appears (connection was refused).
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('Unknown host key')).toBeVisible({ timeout: 20_000 });
+  await expect(dialog.getByText('127.0.0.1:2222')).toBeVisible();
+
+  // Trusting it promotes the pending key and retries the connection.
+  await dialog.getByRole('button', { name: /trust & connect/i }).click();
 
   const screen = page.locator('.xterm-screen').first();
   await expect(screen).toBeVisible({ timeout: 20_000 });
