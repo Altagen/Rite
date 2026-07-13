@@ -9,7 +9,7 @@
  */
 
 import { create } from 'zustand';
-import { Tauri } from '../utils/tauri';
+import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
 interface AuthState {
@@ -40,8 +40,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   checkFirstRun: async () => {
     try {
       set({ isLoading: true, error: null });
-      const isFirstRun = await Tauri.Auth.isFirstRun();
-      const isLocked = await Tauri.Auth.isLocked();
+      const isFirstRun = await Backend.Auth.isFirstRun();
+      const isLocked = await Backend.Auth.isLocked();
 
       set({
         isFirstRun,
@@ -77,7 +77,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
 
       // Call backend
-      await Tauri.Auth.setupMasterPassword(password);
+      await Backend.Auth.setupMasterPassword(password);
 
       // Success - app is now unlocked
       set({
@@ -105,7 +105,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true, error: null, rateLimitWaitSeconds: null });
 
-      const response = await Tauri.Auth.unlock(password);
+      const response = await Backend.Auth.unlock(password);
 
       if (response.type === 'success') {
         set({
@@ -168,7 +168,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // Lock the application
   lock: async () => {
     try {
-      await Tauri.Auth.lock();
+      await Backend.Auth.lock();
       set({
         isLocked: true,
         error: null

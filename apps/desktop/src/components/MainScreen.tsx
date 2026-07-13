@@ -6,7 +6,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Tauri } from '../utils/tauri';
+import { Backend } from '../utils/backend';
 import { useAuthStore } from '../store/authStore';
 import { useConnectionsStore, type ConnectionInfo } from '../store/connectionsStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -125,7 +125,7 @@ export function MainScreen() {
   const checkInstalledShells = async () => {
     try {
       const allShellPaths = shells.map(s => s.path);
-      const installed = await Tauri.Terminal.getInstalledShells(allShellPaths);
+      const installed = await Backend.Terminal.getInstalledShells(allShellPaths);
       console.log('[MainScreen] Installed shells:', installed);
       setInstalledShells(installed);
     } catch (error) {
@@ -311,7 +311,7 @@ export function MainScreen() {
     try {
       // Call backend to create SSH terminal session
       console.log('[MainScreen] Calling backend connect_terminal...');
-      const sessionId = await Tauri.Terminal.connectTerminal(connection.id);
+      const sessionId = await Backend.Terminal.connectTerminal(connection.id);
 
       console.log('[MainScreen] Backend returned session ID:', sessionId);
 
@@ -354,7 +354,7 @@ export function MainScreen() {
 
     try {
       // Call backend to create local terminal session with selected shell
-      const sessionId = await Tauri.Terminal.connectLocalTerminal(shellToUse);
+      const sessionId = await Backend.Terminal.connectLocalTerminal(shellToUse);
 
       // Create terminal session
       const shellName = shellToUse.split('/').pop() || 'shell';
@@ -401,7 +401,7 @@ export function MainScreen() {
     try {
       // Create a new local terminal session for the new pane
       const shellToUse = settings.defaultShell;
-      const sessionId = await Tauri.Terminal.connectLocalTerminal(shellToUse);
+      const sessionId = await Backend.Terminal.connectLocalTerminal(shellToUse);
 
       const shellName = shellToUse.split('/').pop() || 'shell';
       const newSession: TerminalSession = {
@@ -545,7 +545,7 @@ export function MainScreen() {
     await Promise.all(
       sessionsToClose.map(async (session) => {
         try {
-          await Tauri.Terminal.disconnectTerminal(session.id);
+          await Backend.Terminal.disconnectTerminal(session.id);
           console.log('[MainScreen] Disconnected session:', session.id);
         } catch (err) {
           console.error('[MainScreen] Failed to disconnect session:', session.id, err);

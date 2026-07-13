@@ -6,7 +6,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Tauri } from '../utils/tauri';
+import { Backend } from '../utils/backend';
 import { PaneContainer } from './PaneContainer';
 import { Tab } from '../types/pane';
 import { getAllSessions, getFocusedPane, getFirstTerminalPane } from '../utils/paneTree';
@@ -88,7 +88,7 @@ export function TerminalManager({
   const checkInstalledShells = async () => {
     try {
       const allShellPaths = shells.map(s => s.path);
-      const installed = await Tauri.Terminal.getInstalledShells(allShellPaths);
+      const installed = await Backend.Terminal.getInstalledShells(allShellPaths);
       setInstalledShells(installed);
     } catch (error) {
       errorHandler.handle('Failed to check installed shells', {

@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Tauri, type SshConfigEntry } from '../utils/tauri';
+import { Backend, type SshConfigEntry } from '../utils/backend';
 
 interface ImportSSHConfigModalProps {
   onClose: () => void;
@@ -29,7 +29,7 @@ export function ImportSSHConfigModal({ onClose, onImported }: ImportSSHConfigMod
   useEffect(() => {
     const loadDefaultPath = async () => {
       try {
-        const defaultPath = await Tauri.Connections.getDefaultSshConfigPath();
+        const defaultPath = await Backend.Connections.getDefaultSshConfigPath();
         setConfigPath(defaultPath);
       } catch (err) {
         console.error('[ImportSSH] Failed to get default path:', err);
@@ -55,7 +55,7 @@ export function ImportSSHConfigModal({ onClose, onImported }: ImportSSHConfigMod
 
     try {
       console.log('[ImportSSH] Parsing config at:', configPath);
-      const parsedEntries = await Tauri.Connections.parseSshConfig(configPath);
+      const parsedEntries = await Backend.Connections.parseSshConfig(configPath);
 
       console.log('[ImportSSH] Found entries:', parsedEntries.length);
 
@@ -114,7 +114,7 @@ export function ImportSSHConfigModal({ onClose, onImported }: ImportSSHConfigMod
       // Strip the 'selected' and 'preview' fields before sending to backend
       const entriesToImport = selectedEntries.map(({ selected, preview, ...entry }) => entry);
 
-      const imported = await Tauri.Connections.importSshConfigEntries(entriesToImport);
+      const imported = await Backend.Connections.importSshConfigEntries(entriesToImport);
 
       console.log('[ImportSSH] Successfully imported', imported.length, 'connections');
 
