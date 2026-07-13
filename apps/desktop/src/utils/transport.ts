@@ -1,20 +1,19 @@
 /**
  * Backend transport abstraction.
  *
- * The frontend reaches the Rust backend through one of three interchangeable
+ * The frontend reaches the Rust backend through one of two interchangeable
  * transports, chosen once at startup:
- *   - Tauri  — in-process IPC (the desktop app).
- *   - Mock   — local mock data (Vite dev preview, no backend).
- *   - Http   — HTTP + WebSocket to rite-server (browser served by the server).
+ *   - Mock — local mock data (Vite dev preview, no backend).
+ *   - Http — HTTP + WebSocket to rite-server (the browser served by the server
+ *            AND the native desktop client, which loads the in-process server
+ *            over loopback — both run the same built frontend, not IPC).
  *
- * `utils/tauri.ts` calls `transport().invoke(...)` and terminal components call
+ * `utils/backend.ts` calls `transport().invoke(...)` and terminal components call
  * `transport().listen(...)`, so nothing else in the app knows which transport is
  * live. This is the seam the whole multi-shell architecture hangs on.
  */
 
-import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import { listen as tauriListen } from '@tauri-apps/api/event';
-import { isTauri, mockInvoke } from './tauriMock';
+import { mockInvoke } from './mockBackend';
 import { httpInvoke } from './httpRoutes';
 
 export type Unlisten = () => void;
@@ -23,16 +22,6 @@ export interface Transport {
   invoke(command: string, args?: Record<string, unknown>): Promise<unknown>;
   /** Subscribe to a backend event; the handler receives the event payload. */
   listen<T = unknown>(event: string, handler: (payload: T) => void): Promise<Unlisten>;
-}
-
-class TauriTransport implements Transport {
-  invoke(command: string, args?: Record<string, unknown>): Promise<unknown> {
-    return tauriInvoke(command, args);
-  }
-
-  async listen<T>(event: string, handler: (payload: T) => void): Promise<Unlisten> {
-    return tauriListen<T>(event, (e) => handler(e.payload));
-  }
 }
 
 class MockTransport implements Transport {
@@ -90,15 +79,9 @@ class HttpTransport implements Transport {
 
 let current: Transport | null = null;
 
-/** The active transport, selected once: Tauri in the app, Mock in dev, else HTTP. */
+/** The active transport, selected once: Mock in the Vite dev preview, else HTTP. */
 export function transport(): Transport {
   if (current) return current;
-  if (isTauri()) {
-    current = new TauriTransport();
-  } else if (import.meta.env.DEV) {
-    current = new MockTransport();
-  } else {
-    current = new HttpTransport();
-  }
+  current = import.meta.env.DEV ? new MockTransport() : new HttpTransport();
   return current;
 }

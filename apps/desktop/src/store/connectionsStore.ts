@@ -8,7 +8,7 @@
  */
 
 import { create } from 'zustand';
-import { Tauri } from '../utils/tauri';
+import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
 export type Protocol = 'SSH' | 'SFTP' | 'Local';
@@ -105,7 +105,7 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
   fetchConnections: async () => {
     try {
       set({ isLoading: true, error: null });
-      const connections = await Tauri.Connections.getAllConnections();
+      const connections = await Backend.Connections.getAllConnections();
       set({ connections, isLoading: false });
     } catch (error) {
       errorHandler.handle('Failed to fetch connections', {
@@ -125,7 +125,7 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
   createConnection: async (input: CreateConnectionInput) => {
     try {
       set({ isLoading: true, error: null });
-      const connection = await Tauri.Connections.createConnection(input);
+      const connection = await Backend.Connections.createConnection(input);
 
       // Add to local state
       set(state => ({
@@ -153,7 +153,7 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
   updateConnection: async (input: UpdateConnectionInput) => {
     try {
       set({ isLoading: true, error: null });
-      const updatedConnection = await Tauri.Connections.updateConnection(input);
+      const updatedConnection = await Backend.Connections.updateConnection(input);
 
       // Update in local state
       set(state => ({
@@ -183,7 +183,7 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
   deleteConnection: async (id: string) => {
     try {
       set({ isLoading: true, error: null });
-      await Tauri.Connections.deleteConnection(id);
+      await Backend.Connections.deleteConnection(id);
 
       // Remove from local state
       set(state => ({

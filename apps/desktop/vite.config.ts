@@ -10,23 +10,18 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  // Tauri expects a fixed port for development
+  // Fixed dev-server port (rite-server / the wry client proxy expectations).
   server: {
     port: 5173,
     strictPort: true,
   },
-  // prevent vite from obscuring rust errors
   clearScreen: false,
-  // Tauri expects a fixed path for production
   build: {
     outDir: 'dist',
-    // Tauri uses Chromium on Windows and WebKit on macOS and Linux.
-    // Vite 8's Rolldown bundler cannot down-level modern syntax to safari13;
-    // Tauri v2 ships a modern WebKit (WebKitGTK 4.1 / macOS 10.15+), so target safari15.
-    target: process.env.TAURI_PLATFORM == 'windows' ? 'chrome105' : 'safari15',
-    // don't minify for debug builds
-    minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
-    // produce sourcemaps for debug builds
-    sourcemap: !!process.env.TAURI_DEBUG,
+    // The frontend runs in WebKitGTK 4.1 (wry, Linux) and macOS WebKit; Vite 8's
+    // Rolldown bundler can't down-level to safari13, so target safari15.
+    target: 'safari15',
+    minify: 'esbuild',
+    sourcemap: !!process.env.RITE_DEBUG,
   },
 });

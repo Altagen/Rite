@@ -29,8 +29,9 @@ See the [Roadmap](docs/ROADMAP.md) for planned features (theme system, SFTP, jum
 
 ## Tech Stack
 
-- **Backend**: Rust + Tauri 2.x
-- **Frontend**: React + TypeScript + TailwindCSS
+- **Core**: Rust (`rite-core`) — one UI-agnostic library behind every shell
+- **Shells**: `rite-server` (Axum HTTP/WS) + a wry desktop client that embeds it
+- **Frontend**: React + TypeScript + TailwindCSS (served over HTTP/WS)
 - **Terminal**: xterm.js
 - **Database**: SQLite (encrypted)
 - **Crypto**: Argon2id, ChaCha20-Poly1305, age
@@ -68,7 +69,9 @@ pnpm install
 task dev
 ```
 
-`task dev` starts the Vite dev server and the Tauri app with hot-reload.
+`task dev` runs the native wry client (rite-server in-process + webview).
+`task dev:server` runs rite-server standalone, and `task dev:frontend` runs the
+Vite dev server against the mock backend.
 
 ### Before Pushing
 
@@ -112,12 +115,16 @@ See [RELEASE.md](docs/RELEASE.md) for the release process.
 ```
 rite/
 ├── apps/
-│   └── desktop/          # Tauri desktop application
-│       ├── src-tauri/    # Rust backend
-│       └── src/          # React frontend
+│   └── desktop/          # Desktop client
+│       ├── shell/        # wry native shell (binary `rite`, embeds rite-server)
+│       └── src/          # React frontend (served over HTTP/WS)
 ├── packages/
+│   ├── rite-core/        # UI-agnostic core: auth, connections, terminals (Rust)
+│   ├── rite-server/      # Axum HTTP/WS server + embedded frontend (Rust)
 │   ├── crypto/           # Cryptography module (Rust)
 │   └── protocols/        # Protocol implementations (Rust)
+├── e2e/                  # Playwright end-to-end suite
+├── Containerfile.server  # Production rite-server image
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── RELEASE.md

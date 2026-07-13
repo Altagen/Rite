@@ -60,7 +60,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: .
 
       - name: Run Rust tests
         run: cargo test --workspace --lib --all-features
@@ -89,7 +89,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: .
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
@@ -225,7 +225,6 @@ jobs:
         run: cargo install cargo-cyclonedx
 
       - name: Generate Cargo SBOM
-        working-directory: apps/desktop/src-tauri
         run: cargo cyclonedx --format json
 
       - name: Upload SBOM
@@ -268,7 +267,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: .
 
       - name: Rust build check
         run: cargo check --workspace

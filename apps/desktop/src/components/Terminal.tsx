@@ -11,7 +11,7 @@ import { SearchAddon } from '@xterm/addon-search';
 import { transport, Unlisten } from '../utils/transport';
 import '@xterm/xterm/css/xterm.css';
 import { terminalPool } from '../utils/terminalPool';
-import { Tauri } from '../utils/tauri';
+import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
 // Global cache to track if a terminal has already been initialized
@@ -106,7 +106,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
     try {
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
-      await Tauri.Terminal.sendTerminalInput(sessionIdRef.current, bytes);
+      await Backend.Terminal.sendTerminalInput(sessionIdRef.current, bytes);
     } catch (err) {
       errorHandler.handle('Failed to send terminal input', {
         severity: ErrorSeverity.ERROR,
@@ -241,7 +241,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
       const onResizeDisposable = term.onResize(async ({ cols, rows }) => {
         if (sessionIdRef.current) {
           try {
-            await Tauri.Terminal.resizeTerminal(sessionIdRef.current, cols, rows);
+            await Backend.Terminal.resizeTerminal(sessionIdRef.current, cols, rows);
           } catch (err) {
             errorHandler.handle('Failed to resize terminal', {
               severity: ErrorSeverity.WARNING,
@@ -345,7 +345,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         // no timing hacks needed.
         promptDetectedRef.current = false;
         try {
-          const bufferedBase64 = await Tauri.Terminal.claimSessionOutput(existingSessionId);
+          const bufferedBase64 = await Backend.Terminal.claimSessionOutput(existingSessionId);
           if (bufferedBase64 && bufferedBase64.length > 0 && xtermRef.current) {
             const dataBytes = Uint8Array.from(atob(bufferedBase64), c => c.charCodeAt(0));
             const decoder = new TextDecoder('utf-8', { fatal: false });
@@ -428,7 +428,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
     if (sessionIdRef.current) {
       try {
-        await Tauri.Terminal.disconnectTerminal(sessionIdRef.current);
+        await Backend.Terminal.disconnectTerminal(sessionIdRef.current);
       } catch (err) {
         errorHandler.handle('Failed to disconnect terminal', {
           severity: ErrorSeverity.WARNING,
@@ -460,7 +460,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
     term.write(`Reconnecting to ${connectionName}...\r\n`);
 
     try {
-      const sessionId = await Tauri.Terminal.connectTerminal(connectionId);
+      const sessionId = await Backend.Terminal.connectTerminal(connectionId);
 
       sessionIdRef.current = sessionId;
       setStatus('connected');

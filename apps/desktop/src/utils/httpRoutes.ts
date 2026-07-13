@@ -1,9 +1,9 @@
 /**
- * Maps Tauri command names to rite-server HTTP calls.
+ * Maps Backend command names to rite-server HTTP calls.
  *
- * Each route shapes its response to match exactly what the corresponding Tauri
- * command returns, so the Zod schemas in `utils/tauri.ts` validate identically
- * whether the app runs over Tauri or over HTTP. Commands rite-server does not
+ * Each route shapes its response to match exactly what the corresponding Backend
+ * command returns, so the Zod schemas in `utils/backend.ts` validate identically
+ * whether the app runs over Backend or over HTTP. Commands rite-server does not
  * expose yet throw a clear error. Used only by the HTTP transport.
  */
 

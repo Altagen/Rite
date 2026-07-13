@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Tauri, type PasswordStrength } from '../utils/tauri';
+import { Backend, type PasswordStrength } from '../utils/backend';
 import { useAuthStore } from '../store/authStore';
 import { useTranslation } from '../i18n/i18n';
 
@@ -28,7 +28,7 @@ export function SetupScreen() {
       }
 
       try {
-        const result = await Tauri.Auth.validatePassword(password);
+        const result = await Backend.Auth.validatePassword(password);
         setStrength(result);
       } catch (error) {
         console.error('Failed to validate password:', error);

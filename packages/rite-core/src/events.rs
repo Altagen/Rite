@@ -2,9 +2,9 @@
 //!
 //! rite-core runs terminal/SSH sessions but must not know how their output
 //! reaches a UI. It emits through this trait; the shell provides the transport:
-//! the Tauri app implements it with `app_handle.emit(...)`, and rite-server will
-//! implement it with a WebSocket. `terminal_data` receives raw bytes — the sink
-//! decides the wire encoding (the Tauri sink base64-encodes for its JSON event).
+//! rite-server implements it by broadcasting over a WebSocket. `terminal_data`
+//! receives raw bytes — the sink decides the wire encoding (the WS sink
+//! base64-encodes for its JSON event).
 
 use std::sync::Arc;
 

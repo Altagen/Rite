@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { Tauri } from '../utils/tauri';
+import { Backend } from '../utils/backend';
 
 interface QuickSSHModalProps {
   onClose: () => void;
@@ -48,7 +48,7 @@ export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
         : { type: 'publicKey' as const, keyPath, passphrase: passphrase || undefined };
 
       console.log('[QuickSSH] Connecting via quick_ssh_connect...');
-      const sessionId = await Tauri.Terminal.quickSshConnect(
+      const sessionId = await Backend.Terminal.quickSshConnect(
         host,
         username,
         port,

@@ -1,10 +1,9 @@
 //! WebSocket implementation of rite-core's `SessionEvents`.
 //!
-//! The server counterpart of the desktop `TauriSessionEvents`: rite-core emits
-//! session/host-key events through the trait, and this broadcasts them to every
-//! connected WebSocket client as `{ "event": <name>, "payload": {...} }` JSON —
-//! the exact shapes the React frontend already consumes over Tauri, so one
-//! frontend works over either transport.
+//! rite-core emits session/host-key events through the `SessionEvents` trait,
+//! and this broadcasts them to every connected WebSocket client as
+//! `{ "event": <name>, "payload": {...} }` JSON — the exact shapes the React
+//! frontend consumes, so one frontend works over HTTP+WS everywhere.
 
 use base64::Engine as _;
 use rite_core::events::SessionEvents;

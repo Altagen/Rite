@@ -1,17 +1,11 @@
 /**
- * Browser mock for the Tauri IPC layer.
+ * Browser mock backend for the Vite dev preview.
  *
- * When the frontend runs in a plain browser (e.g. `vite` dev server) instead of
- * the Tauri WebView, `window.__TAURI_INTERNALS__` is absent and real `invoke`
- * calls would fail. This module provides schema-valid mock responses so the UI
- * is fully browsable and iterable without the Rust backend. It is a pure
- * dev/preview aid — in the real app `isTauri()` is true and it is never used.
+ * `pnpm dev:frontend` runs the app with no Rust backend, so real calls would
+ * fail. This module provides schema-valid mock responses (via `mockInvoke`) so
+ * the UI is fully browsable and iterable standalone. It is a pure dev/preview
+ * aid: the Http transport is used everywhere the real backend is present.
  */
-
-/** True when running inside the Tauri WebView (real backend available). */
-export function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-}
 
 const now = () => Math.floor(Date.now() / 1000);
 
@@ -108,7 +102,7 @@ function toConnection(input: Record<string, unknown>): MockConnection {
   };
 }
 
-/** Return a mock response for a Tauri command. */
+/** Return a mock response for a Backend command. */
 export async function mockInvoke(
   command: string,
   args?: Record<string, unknown>
@@ -180,7 +174,7 @@ export async function mockInvoke(
       return null;
 
     default:
-      console.warn(`[tauriMock] unhandled command: ${command}`);
+      console.warn(`[mockBackend] unhandled command: ${command}`);
       return null;
   }
 }

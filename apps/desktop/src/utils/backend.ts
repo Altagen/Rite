@@ -1,7 +1,7 @@
 /**
- * Tauri Commands Wrapper with Zod Validation
+ * Backend Commands Wrapper with Zod Validation
  *
- * This module provides type-safe wrappers for all Tauri commands with runtime validation.
+ * This module provides type-safe wrappers for all Backend commands with runtime validation.
  * All responses from the Rust backend are validated using Zod schemas to ensure type safety.
  */
 
@@ -10,7 +10,7 @@ import { errorHandler, ErrorSeverity, ErrorCategory } from './errorHandler';
 import { transport } from './transport';
 
 /**
- * Generic wrapper for Tauri invoke with Zod validation
+ * Generic wrapper for Backend invoke with Zod validation
  */
 async function invokeWithValidation<T>(
   command: string,
@@ -18,7 +18,7 @@ async function invokeWithValidation<T>(
   args?: Record<string, unknown>
 ): Promise<T> {
   try {
-    // Route through the active transport (Tauri IPC, HTTP to rite-server, or the
+    // Route through the active transport (Backend IPC, HTTP to rite-server, or the
     // dev mock). Callers and Zod schemas are identical across all three.
     const response = await transport().invoke(command, args);
 
@@ -27,7 +27,7 @@ async function invokeWithValidation<T>(
 
     if (!result.success) {
       // Log validation error with details
-      errorHandler.handle(`Tauri command '${command}' returned invalid data`, {
+      errorHandler.handle(`Backend command '${command}' returned invalid data`, {
         severity: ErrorSeverity.ERROR,
         category: ErrorCategory.VALIDATION,
         context: {
@@ -45,7 +45,7 @@ async function invokeWithValidation<T>(
   } catch (error) {
     // Re-throw with context if it's not already a validation error
     if (error instanceof Error && !error.message.includes('Invalid response from')) {
-      errorHandler.handle(`Tauri command '${command}' failed`, {
+      errorHandler.handle(`Backend command '${command}' failed`, {
         severity: ErrorSeverity.ERROR,
         category: ErrorCategory.UNKNOWN,
         originalError: error,
@@ -57,7 +57,7 @@ async function invokeWithValidation<T>(
 }
 
 // ============================================================================
-// Zod Schemas for Tauri Command Responses
+// Zod Schemas for Backend Command Responses
 // ============================================================================
 
 // Auth schemas
@@ -118,11 +118,11 @@ const PasswordStrengthSchema = z.object({
 });
 
 // ============================================================================
-// Type-Safe Tauri Command Wrappers
+// Type-Safe Backend Command Wrappers
 // ============================================================================
 
 // Auth Commands
-export const TauriAuth = {
+export const BackendAuth = {
   /**
    * Check if this is the first run of the application
    */
@@ -163,7 +163,7 @@ export const TauriAuth = {
 } as const;
 
 // Settings Commands
-export const TauriSettings = {
+export const BackendSettings = {
   /**
    * Get all settings as a key-value record
    */
@@ -182,7 +182,7 @@ export const TauriSettings = {
 } as const;
 
 // Connection Commands
-export const TauriConnections = {
+export const BackendConnections = {
   /**
    * Get all connections
    */
@@ -225,7 +225,7 @@ export const TauriConnections = {
 } as const;
 
 // Terminal Commands
-export const TauriTerminal = {
+export const BackendTerminal = {
   /**
    * Get list of installed shells
    */
@@ -295,34 +295,34 @@ export const TauriTerminal = {
 } as const;
 
 // ============================================================================
-// Unified Tauri API
+// Unified Backend API
 // ============================================================================
 
 /**
- * Type-safe Tauri API with runtime validation
+ * Type-safe Backend API with runtime validation
  *
  * Usage:
  * ```ts
- * import { Tauri } from '@/utils/tauri';
+ * import { Backend } from '@/utils/backend';
  *
  * // Auth
- * const isFirstRun = await Tauri.Auth.isFirstRun();
+ * const isFirstRun = await Backend.Auth.isFirstRun();
  *
  * // Settings
- * const settings = await Tauri.Settings.getAllSettings();
+ * const settings = await Backend.Settings.getAllSettings();
  *
  * // Connections
- * const connections = await Tauri.Connections.getAllConnections();
+ * const connections = await Backend.Connections.getAllConnections();
  *
  * // Terminal
- * const sessionId = await Tauri.Terminal.connectTerminal(connectionId);
+ * const sessionId = await Backend.Terminal.connectTerminal(connectionId);
  * ```
  */
-export const Tauri = {
-  Auth: TauriAuth,
-  Settings: TauriSettings,
-  Connections: TauriConnections,
-  Terminal: TauriTerminal,
+export const Backend = {
+  Auth: BackendAuth,
+  Settings: BackendSettings,
+  Connections: BackendConnections,
+  Terminal: BackendTerminal,
 } as const;
 
 // Export types for external use
