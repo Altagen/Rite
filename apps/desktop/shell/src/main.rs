@@ -46,13 +46,30 @@ fn main() -> Result<()> {
     tracing::info!("[rite-desktop] serving on {url}");
 
     let event_loop = EventLoop::new();
-    let window = WindowBuilder::new().with_title("Rite").build(&event_loop)?;
+    let window = WindowBuilder::new()
+        .with_title("Rite")
+        .with_window_icon(load_icon())
+        .build(&event_loop)?;
 
     let init = format!("window.__RITE_TOKEN__ = '{token}';");
-    let _webview = WebViewBuilder::new()
+    let builder = WebViewBuilder::new()
         .with_url(&url)
-        .with_initialization_script(&init)
-        .build(&window)?;
+        .with_initialization_script(&init);
+
+    // On Linux, wry is GTK-based: it must be built into the window's GTK vbox,
+    // not from a raw window handle (Wayland handles aren't supported by the
+    // generic `build`). Other platforms use the window handle directly.
+    #[cfg(target_os = "linux")]
+    let _webview = {
+        use tao::platform::unix::WindowExtUnix;
+        use wry::WebViewBuilderExtUnix;
+        let vbox = window
+            .default_vbox()
+            .expect("tao provides a default GTK vbox on Linux");
+        builder.build_gtk(vbox)?
+    };
+    #[cfg(not(target_os = "linux"))]
+    let _webview = builder.build(&window)?;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -64,6 +81,16 @@ fn main() -> Result<()> {
             *control_flow = ControlFlow::Exit;
         }
     });
+}
+
+/// The window icon, decoded from the bundled PNG. Best-effort: on Wayland the
+/// taskbar icon comes from a `.desktop` file matched by app-id, so this mainly
+/// affects X11 and the window itself.
+fn load_icon() -> Option<tao::window::Icon> {
+    let bytes = include_bytes!("../../../../assets/rite-icon-flat.png");
+    let img = image::load_from_memory(bytes).ok()?.into_rgba8();
+    let (w, h) = img.dimensions();
+    tao::window::Icon::from_rgba(img.into_raw(), w, h).ok()
 }
 
 fn db_path() -> std::path::PathBuf {
