@@ -390,3 +390,28 @@ pub async fn delete_user(db: &SqlitePool, user_id: &str) -> Result<bool> {
 pub fn parse_hex_salt(s: &str) -> Result<Vec<u8>> {
     from_hex(s)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Cross-impl proof: the Rust Argon2id derivation (used by the env admin
+    /// bootstrap) must equal the browser's hash-wasm derivation byte-for-byte, or
+    /// a server-created account could never log in from the browser. The expected
+    /// hex is produced by `e2e/argon-check.mjs` (hash-wasm) for the same fixed
+    /// inputs — re-run it if the KDF params ever change.
+    #[test]
+    fn derive_auth_hash_matches_hash_wasm() {
+        let salt: Vec<u8> = (0u8..16).collect();
+        let params = KdfParams {
+            mem: 19456,
+            iter: 2,
+            par: 1,
+        };
+        let got = derive_auth_hash("rite-crossimpl", &salt, params).unwrap();
+        assert_eq!(
+            got,
+            "a2e680d85e0e6e2a1b1195522590802c68d8f4f8ecc4ca123031617f687e10e7"
+        );
+    }
+}
