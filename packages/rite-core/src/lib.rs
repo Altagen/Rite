@@ -12,5 +12,6 @@ pub mod db;
 pub mod events;
 pub mod known_hosts;
 pub mod local_terminal;
+pub mod server_auth;
 pub mod ssh_config;
 pub mod terminal;

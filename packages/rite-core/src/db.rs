@@ -69,8 +69,9 @@ impl Database {
         let migrations = vec![
             (1, include_str!("../migrations/001_initial_schema.sql")),
             (2, include_str!("../migrations/002_pending_host_keys.sql")),
+            (3, include_str!("../migrations/003_server_accounts.sql")),
             // Future migrations go here:
-            // (3, include_str!("../migrations/003_another_feature.sql")),
+            // (4, include_str!("../migrations/004_another_feature.sql")),
         ];
 
         // Expected latest version
