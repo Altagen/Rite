@@ -33,7 +33,12 @@ export default defineConfig({
     },
     {
       name: 'chromium',
-      testIgnore: [/smoke\.spec\.ts/, /accounts\.spec\.ts/, /accounts-env\.spec\.ts/],
+      testIgnore: [
+        /smoke\.spec\.ts/,
+        /accounts\.spec\.ts/,
+        /accounts-env\.spec\.ts/,
+        /proxy\.spec\.ts/,
+      ],
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
     },
@@ -49,6 +54,12 @@ export default defineConfig({
       name: 'accounts-env',
       testMatch: /accounts-env\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1423' },
+    },
+    // Local multiplexer on :1424 proxying to the remote :1423 (ADR 0012 phase 2).
+    {
+      name: 'proxy',
+      testMatch: /proxy\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1424' },
     },
   ],
   webServer: [
@@ -71,6 +82,14 @@ export default defineConfig({
     {
       command: 'sh e2e/serve-accounts-env.sh',
       url: 'http://127.0.0.1:1423/api/health',
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      command: 'sh e2e/serve-proxy.sh',
+      url: 'http://127.0.0.1:1424/api/health',
       reuseExistingServer: false,
       timeout: 30_000,
       stdout: 'pipe',

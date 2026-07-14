@@ -40,8 +40,12 @@ export function clearSessionToken(): void {
   }
 }
 
-/** The bearer token to authenticate with: the session token, else the local
- *  shell's launch token. */
+/** The bearer token to authenticate with.
+ *
+ * Native client (launch token present): always the loopback launch token — the
+ * local server guards that hop (ADR 0009) and holds the remote session itself
+ * when proxying (ADR 0012), so the webview never carries the remote token.
+ * Browser (no launch token): the server session token. */
 export function bearerToken(): string | undefined {
-  return getSessionToken() ?? window.__RITE_TOKEN__ ?? undefined;
+  return window.__RITE_TOKEN__ ?? getSessionToken() ?? undefined;
 }
