@@ -11,6 +11,7 @@ rite-core = { path = "../rite-core" }
 rite-crypto = { path = "../crypto" }
 
 axum = { version = "0.8", features = ["ws"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

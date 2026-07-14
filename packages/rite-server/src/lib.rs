@@ -12,7 +12,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocketUpgrade};
 use axum::extract::{Path, Request, State};
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
@@ -52,6 +52,63 @@ pub struct ServerState {
     /// bearer token) instead of the loopback launch token. Mutually exclusive
     /// with `token` in practice (local shell vs shared server).
     pub accounts: bool,
+    /// Per-account login rate limiter (brute-force protection, server mode).
+    login_limiter: Arc<LoginLimiter>,
+    /// True when rite-server terminates TLS itself (adds HSTS). Behind a reverse
+    /// proxy this stays false and the proxy owns HSTS.
+    pub tls: bool,
+}
+
+/// In-memory per-username login throttle: after `MAX_FAILURES` failures within
+/// `WINDOW`, the account is locked for `LOCKOUT`. Resets on server restart
+/// (acceptable — an attacker who can restart the server has bigger leverage).
+#[derive(Default)]
+struct LoginLimiter {
+    inner: std::sync::Mutex<HashMap<String, Attempt>>,
+}
+
+struct Attempt {
+    failures: u32,
+    window_start: std::time::Instant,
+    locked_until: Option<std::time::Instant>,
+}
+
+impl LoginLimiter {
+    const MAX_FAILURES: u32 = 5;
+    const WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
+    const LOCKOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+    /// Seconds to wait if currently locked, else `None`.
+    fn locked_for(&self, username: &str) -> Option<u64> {
+        let map = self.inner.lock().unwrap();
+        let until = map.get(username)?.locked_until?;
+        until
+            .checked_duration_since(std::time::Instant::now())
+            .map(|d| d.as_secs() + 1)
+    }
+
+    fn record_failure(&self, username: &str) {
+        let now = std::time::Instant::now();
+        let mut map = self.inner.lock().unwrap();
+        let a = map.entry(username.to_string()).or_insert(Attempt {
+            failures: 0,
+            window_start: now,
+            locked_until: None,
+        });
+        if now.duration_since(a.window_start) > Self::WINDOW {
+            a.failures = 0;
+            a.window_start = now;
+            a.locked_until = None;
+        }
+        a.failures += 1;
+        if a.failures >= Self::MAX_FAILURES {
+            a.locked_until = Some(now + Self::LOCKOUT);
+        }
+    }
+
+    fn record_success(&self, username: &str) {
+        self.inner.lock().unwrap().remove(username);
+    }
 }
 
 impl ServerState {
@@ -70,6 +127,8 @@ impl ServerState {
             events_tx,
             token: None,
             accounts: false,
+            login_limiter: Arc::new(LoginLimiter::default()),
+            tls: false,
         })
     }
 
@@ -83,6 +142,12 @@ impl ServerState {
     /// Enable server mode (accounts + sessions, ADR 0010).
     pub fn with_accounts(mut self) -> Self {
         self.accounts = true;
+        self
+    }
+
+    /// Mark that rite-server terminates TLS itself (so it emits HSTS).
+    pub fn with_tls(mut self) -> Self {
+        self.tls = true;
         self
     }
 
@@ -155,7 +220,31 @@ pub fn build_router(state: ServerState) -> Router {
 
     router
         .layer(middleware::from_fn_with_state(state.clone(), guard))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            security_headers,
+        ))
         .with_state(state)
+}
+
+/// Defence-in-depth response headers on every response. Adds HSTS only when
+/// rite-server terminates TLS itself (behind a proxy, the proxy owns HSTS).
+async fn security_headers(State(state): State<ServerState>, req: Request, next: Next) -> Response {
+    let mut res = next.run(req).await;
+    let h = res.headers_mut();
+    h.insert(
+        "X-Content-Type-Options",
+        HeaderValue::from_static("nosniff"),
+    );
+    h.insert("X-Frame-Options", HeaderValue::from_static("DENY"));
+    h.insert("Referrer-Policy", HeaderValue::from_static("no-referrer"));
+    if state.tls {
+        h.insert(
+            "Strict-Transport-Security",
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        );
+    }
+    res
 }
 
 /// Bind `addr`, report the bound port (useful when `addr` uses port 0), then
@@ -165,6 +254,22 @@ pub async fn serve(state: ServerState, addr: &str, on_bound: impl FnOnce(u16)) -
     let listener = tokio::net::TcpListener::bind(addr).await?;
     on_bound(listener.local_addr()?.port());
     axum::serve(listener, build_router(state)).await?;
+    Ok(())
+}
+
+/// Serve over TLS (rustls) with PEM cert/key files. For the standalone server;
+/// the loopback desktop client never needs TLS. Sets HSTS via `with_tls`.
+pub async fn serve_tls(
+    state: ServerState,
+    addr: &str,
+    cert: &std::path::Path,
+    key: &std::path::Path,
+) -> Result<()> {
+    let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
+    let socket: std::net::SocketAddr = addr.parse()?;
+    axum_server::bind_rustls(socket, config)
+        .serve(build_router(state.with_tls()).into_make_service())
+        .await?;
     Ok(())
 }
 
@@ -382,16 +487,27 @@ async fn server_login(
     State(state): State<ServerState>,
     Json(req): Json<LoginReq>,
 ) -> Result<Response, AppError> {
+    if let Some(wait) = state.login_limiter.locked_for(&req.username) {
+        return Ok((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({ "error": "too many attempts, try again later", "retryAfter": wait })),
+        )
+            .into_response());
+    }
     match server_auth::verify_login(state.db.pool(), &req.username, &req.auth_hash).await? {
         Some(user) => {
+            state.login_limiter.record_success(&req.username);
             let token = server_auth::create_session(state.db.pool(), &user.id).await?;
             Ok(Json(json!({ "token": token, "user": user })).into_response())
         }
-        None => Ok((
-            StatusCode::UNAUTHORIZED,
-            Json(json!({ "error": "invalid credentials" })),
-        )
-            .into_response()),
+        None => {
+            state.login_limiter.record_failure(&req.username);
+            Ok((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({ "error": "invalid credentials" })),
+            )
+                .into_response())
+        }
     }
 }
 
