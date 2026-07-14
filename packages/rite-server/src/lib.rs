@@ -61,6 +61,11 @@ pub struct ServerState {
     /// vault, or one remote server. RAM only — resets to Local each launch. The
     /// roster (saved servers) persists in the local vault settings.
     context: Arc<std::sync::Mutex<ActiveContext>>,
+    /// The active remote's session token (ADR 0012 §4): held here, **never** sent
+    /// to the webview. RAM only.
+    remote_token: Arc<std::sync::Mutex<Option<String>>>,
+    /// HTTP client for proxying to the active remote.
+    http_client: reqwest::Client,
 }
 
 /// A saved remote server in the roster (ADR 0012). No token here — the remote
@@ -151,6 +156,8 @@ impl ServerState {
             login_limiter: Arc::new(LoginLimiter::default()),
             tls: false,
             context: Arc::new(std::sync::Mutex::new(ActiveContext::Local)),
+            remote_token: Arc::new(std::sync::Mutex::new(None)),
+            http_client: reqwest::Client::new(),
         })
     }
 
@@ -342,7 +349,95 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
         req.extensions_mut().insert(Arc::new(user));
     }
 
+    // Multiplexer (ADR 0012): when a remote context is active, proxy /api/* to it
+    // (except the local /api/context/* control plane and /api/health for the
+    // harness). /ws is proxied in a later phase.
+    if is_api && path != "/ws" && path != "/api/health" && !path.starts_with("/api/context") {
+        let active = { state.context.lock().unwrap().clone() };
+        if let ActiveContext::Remote(server) = active {
+            return proxy_to_remote(&state, &server, req).await;
+        }
+    }
+
     next.run(req).await
+}
+
+/// Reverse-proxy one request to the active remote (ADR 0012). Injects the stored
+/// remote session token; captures it from a login/bootstrap response and rewrites
+/// it to a placeholder so the real token never reaches the webview.
+async fn proxy_to_remote(state: &ServerState, server: &RemoteServer, req: Request) -> Response {
+    let path = req.uri().path().to_string();
+    let query = req
+        .uri()
+        .query()
+        .map(|q| format!("?{q}"))
+        .unwrap_or_default();
+    let target = format!("{}{}{}", server.url, path, query);
+    let method = req.method().clone();
+    let content_type = req.headers().get(header::CONTENT_TYPE).cloned();
+
+    let body = match axum::body::to_bytes(req.into_body(), 16 * 1024 * 1024).await {
+        Ok(b) => b,
+        Err(_) => return (StatusCode::BAD_REQUEST, "request body too large").into_response(),
+    };
+
+    let is_login = path == "/api/server/login" || path == "/api/server/bootstrap";
+
+    let mut rb = state
+        .http_client
+        .request(method, &target)
+        .body(body.to_vec());
+    if let Some(ct) = content_type {
+        rb = rb.header(header::CONTENT_TYPE, ct);
+    }
+    // Authenticate to the remote with its session token (never for login itself).
+    if !is_login && let Some(tok) = state.remote_token.lock().unwrap().clone() {
+        rb = rb.header(header::AUTHORIZATION, format!("Bearer {tok}"));
+    }
+
+    let resp = match rb.send().await {
+        Ok(r) => r,
+        Err(e) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "error": format!("remote unreachable: {e}") })),
+            )
+                .into_response();
+        }
+    };
+
+    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let resp_ct = resp.headers().get(header::CONTENT_TYPE).cloned();
+    let bytes = resp.bytes().await.unwrap_or_default();
+
+    // Capture the remote token on a successful login/bootstrap; hide the real one.
+    let out = if is_login && status.is_success() {
+        match serde_json::from_slice::<Value>(&bytes) {
+            Ok(mut v) => {
+                if let Some(tok) = v.get("token").and_then(|t| t.as_str()) {
+                    *state.remote_token.lock().unwrap() = Some(tok.to_string());
+                }
+                if let Some(obj) = v.as_object_mut() {
+                    obj.insert("token".into(), json!("proxied"));
+                }
+                serde_json::to_vec(&v).unwrap_or_else(|_| bytes.to_vec())
+            }
+            Err(_) => bytes.to_vec(),
+        }
+    } else {
+        bytes.to_vec()
+    };
+
+    if path == "/api/server/logout" {
+        *state.remote_token.lock().unwrap() = None;
+    }
+
+    let mut response = Response::new(axum::body::Body::from(out));
+    *response.status_mut() = status;
+    if let Some(ct) = resp_ct {
+        response.headers_mut().insert(header::CONTENT_TYPE, ct);
+    }
+    response
 }
 
 /// Endpoints reachable without a session in server mode.
@@ -873,12 +968,12 @@ async fn remove_server(
     let before = roster.len();
     roster.retain(|s| s.id != id);
     save_roster(&state, &roster).await?;
-    // If the removed server was active, fall back to Local.
-    {
-        let mut ctx = state.context.lock().unwrap();
-        if matches!(&*ctx, ActiveContext::Remote(s) if s.id == id) {
-            *ctx = ActiveContext::Local;
-        }
+    // If the removed server was active, revoke its session and fall back to Local.
+    let is_active =
+        matches!(&*state.context.lock().unwrap(), ActiveContext::Remote(s) if s.id == id);
+    if is_active {
+        clear_remote_session(&state).await;
+        *state.context.lock().unwrap() = ActiveContext::Local;
     }
     Ok(if roster.len() < before {
         StatusCode::NO_CONTENT
@@ -897,6 +992,9 @@ async fn set_active_context(
     State(state): State<ServerState>,
     Json(req): Json<SetActiveReq>,
 ) -> Result<Response, AppError> {
+    // Revoke the current remote session before switching (ADR 0012 §5).
+    clear_remote_session(&state).await;
+
     if req.server == "local" {
         *state.context.lock().unwrap() = ActiveContext::Local;
         return Ok(StatusCode::NO_CONTENT.into_response());
@@ -911,6 +1009,24 @@ async fn set_active_context(
             Ok(StatusCode::NO_CONTENT.into_response())
         }
         None => Ok((StatusCode::NOT_FOUND, "unknown server").into_response()),
+    }
+}
+
+/// If a remote context is active, best-effort revoke its session on the remote,
+/// then drop the local token (ADR 0012 §5 — no orphan sessions).
+async fn clear_remote_session(state: &ServerState) {
+    let url = match &*state.context.lock().unwrap() {
+        ActiveContext::Remote(s) => Some(s.url.clone()),
+        ActiveContext::Local => None,
+    };
+    let token = state.remote_token.lock().unwrap().take();
+    if let (Some(url), Some(tok)) = (url, token) {
+        let _ = state
+            .http_client
+            .post(format!("{url}/api/server/logout"))
+            .header(header::AUTHORIZATION, format!("Bearer {tok}"))
+            .send()
+            .await;
     }
 }
 
