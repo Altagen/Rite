@@ -33,7 +33,7 @@ export default defineConfig({
     },
     {
       name: 'chromium',
-      testIgnore: [/smoke\.spec\.ts/, /accounts\.spec\.ts/],
+      testIgnore: [/smoke\.spec\.ts/, /accounts\.spec\.ts/, /accounts-env\.spec\.ts/],
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
     },
@@ -43,6 +43,12 @@ export default defineConfig({
       name: 'accounts',
       testMatch: /accounts\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1422' },
+    },
+    // Env-based admin bootstrap on :1423 (proves server Argon2 == browser Argon2).
+    {
+      name: 'accounts-env',
+      testMatch: /accounts-env\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1423' },
     },
   ],
   webServer: [
@@ -57,6 +63,14 @@ export default defineConfig({
     {
       command: 'sh e2e/serve-accounts.sh',
       url: 'http://127.0.0.1:1422/api/health',
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      command: 'sh e2e/serve-accounts-env.sh',
+      url: 'http://127.0.0.1:1423/api/health',
       reuseExistingServer: false,
       timeout: 30_000,
       stdout: 'pipe',

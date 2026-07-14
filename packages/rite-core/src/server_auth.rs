@@ -167,6 +167,32 @@ pub async fn create_user(
     })
 }
 
+/// Derive the client-equivalent Argon2id auth hash (hex) from a plaintext
+/// password. This MUST match the browser's `hash-wasm` derivation (same
+/// algorithm + params + salt) so that a later browser login verifies against the
+/// stored verifier. Used only by the env-based admin bootstrap — the interactive
+/// first-run stays zero-knowledge (the server never sees the password there).
+pub fn derive_auth_hash(password: &str, salt: &[u8], params: KdfParams) -> Result<String> {
+    let p = argon2::Params::new(params.mem, params.iter, params.par, Some(32))
+        .map_err(|e| anyhow!("argon2 params: {e}"))?;
+    let argon = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, p);
+    let mut out = [0u8; 32];
+    argon
+        .hash_password_into(password.as_bytes(), salt, &mut out)
+        .map_err(|e| anyhow!("argon2 derive: {e}"))?;
+    Ok(to_hex(&out))
+}
+
+/// Create the first admin from a plaintext password (server-side derivation).
+/// For the non-interactive env bootstrap of a headless deploy.
+pub async fn bootstrap_admin(db: &SqlitePool, username: &str, password: &str) -> Result<()> {
+    let salt = generate_salt();
+    let params = KdfParams::recommended();
+    let auth_hash = derive_auth_hash(password, &salt, params)?;
+    create_user(db, username, &salt, params, &auth_hash, Role::Admin).await?;
+    Ok(())
+}
+
 /// KDF salt + params for a username. Unknown users get stable benign defaults
 /// (derived from the username) so responses don't reveal whether an account
 /// exists.

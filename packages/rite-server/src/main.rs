@@ -33,6 +33,15 @@ async fn main() -> Result<()> {
     if std::env::var("RITE_ACCOUNTS").is_ok_and(|v| v == "1" || v == "true") {
         state = state.with_accounts();
         info!("[rite-server] server mode enabled (accounts + sessions)");
+
+        // Non-interactive admin bootstrap for headless deploys: on a fresh
+        // server, RITE_ADMIN_USER + RITE_ADMIN_PASSWORD(_FILE) create the admin.
+        if let Some((user, pass)) = admin_bootstrap_creds()
+            && !rite_core::server_auth::has_any_user(state.db.pool()).await?
+        {
+            rite_core::server_auth::bootstrap_admin(state.db.pool(), &user, &pass).await?;
+            info!("[rite-server] bootstrapped admin '{user}' from the environment");
+        }
     }
     // RITE_ADDR default = loopback; port 0 lets the OS pick a free port (the
     // desktop shell reads the bound port back to point the webview at it).
@@ -78,4 +87,20 @@ async fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Admin bootstrap credentials from the environment: `RITE_ADMIN_USER` plus
+/// either `RITE_ADMIN_PASSWORD_FILE` (preferred — read from a mounted secret) or
+/// `RITE_ADMIN_PASSWORD`. Returns `None` if not fully set.
+fn admin_bootstrap_creds() -> Option<(String, String)> {
+    let user = std::env::var("RITE_ADMIN_USER")
+        .ok()
+        .filter(|v| !v.is_empty())?;
+    let pass = std::env::var("RITE_ADMIN_PASSWORD_FILE")
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .map(|s| s.trim().to_string())
+        .or_else(|| std::env::var("RITE_ADMIN_PASSWORD").ok())
+        .filter(|v| !v.is_empty())?;
+    Some((user, pass))
 }
