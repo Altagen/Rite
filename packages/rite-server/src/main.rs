@@ -38,19 +38,39 @@ async fn main() -> Result<()> {
     // desktop shell reads the bound port back to point the webview at it).
     let addr = std::env::var("RITE_ADDR").unwrap_or_else(|_| "127.0.0.1:1421".to_string());
 
-    // RITE_TLS_CERT + RITE_TLS_KEY (PEM) enable built-in TLS (ADR 0010). For
-    // production behind a reverse proxy, leave these unset (the proxy terminates
-    // TLS) — see docs/RELEASE / decisions/0010.
-    match (
-        std::env::var("RITE_TLS_CERT"),
-        std::env::var("RITE_TLS_KEY"),
-    ) {
-        (Ok(cert), Ok(key)) if !cert.is_empty() && !key.is_empty() => {
+    let host = addr.rsplit_once(':').map_or(addr.as_str(), |(h, _)| h);
+    let is_loopback = matches!(host, "::1" | "localhost") || host.starts_with("127.");
+
+    // RITE_TLS_CERT + RITE_TLS_KEY (PEM) enable built-in TLS (ADR 0010).
+    let cert = std::env::var("RITE_TLS_CERT")
+        .ok()
+        .filter(|v| !v.is_empty());
+    let key = std::env::var("RITE_TLS_KEY").ok().filter(|v| !v.is_empty());
+    let tls_configured = cert.is_some() && key.is_some();
+
+    // Secure-by-default: refuse to serve accounts over plaintext HTTP on a
+    // non-loopback address unless TLS is on, or the operator explicitly accepts
+    // it (behind a TLS-terminating reverse proxy, or a trusted network).
+    let allow_insecure =
+        std::env::var("RITE_ALLOW_INSECURE_HTTP").is_ok_and(|v| v == "1" || v == "true");
+    if state.accounts && !is_loopback && !tls_configured && !allow_insecure {
+        anyhow::bail!(
+            "refusing to serve accounts over plaintext HTTP on {addr}.\n\
+             Set RITE_TLS_CERT + RITE_TLS_KEY for direct TLS (see docs/SERVER.md for a\n\
+             self-signed certificate), or set RITE_ALLOW_INSECURE_HTTP=1 if this is behind\n\
+             a TLS-terminating reverse proxy or on a trusted network."
+        );
+    }
+
+    match (cert, key) {
+        (Some(cert), Some(key)) => {
             info!("[rite-server] listening on https://{addr} (built-in TLS)");
             rite_server::serve_tls(state, &addr, cert.as_ref(), key.as_ref()).await?;
         }
         _ => {
-            let host = addr.rsplit_once(':').map_or(addr.as_str(), |(h, _)| h);
+            if state.accounts && !is_loopback {
+                info!("[rite-server] WARNING: serving accounts over plaintext HTTP on {addr}");
+            }
             rite_server::serve(state, &addr, |port| {
                 info!("[rite-server] listening on http://{host}:{port}");
             })
