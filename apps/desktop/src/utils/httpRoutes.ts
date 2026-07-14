@@ -93,6 +93,31 @@ const routes: Record<string, Route> = {
   },
   server_me: () => json('/api/server/me'),
 
+  admin_list_users: () => json('/api/admin/users'),
+  admin_create_user: (a) =>
+    json(
+      '/api/admin/users',
+      post({
+        username: a.username,
+        salt: a.salt,
+        params: a.params,
+        authHash: a.authHash,
+        role: a.role,
+      }),
+    ),
+  admin_set_status: async (a) => {
+    await json(`/api/admin/users/${encodeURIComponent(String(a.id))}/status`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: a.status }),
+    });
+    return null;
+  },
+  admin_delete_user: async (a) => {
+    await json(`/api/admin/users/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
+    return null;
+  },
+
   accept_host_key: async (a) => {
     await json('/api/ssh/host-key/accept', post({ host: a.host, port: a.port }));
     return null;

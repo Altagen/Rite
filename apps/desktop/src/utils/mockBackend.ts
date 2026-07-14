@@ -189,6 +189,21 @@ export async function mockInvoke(
         status: 'active',
         createdAt: now(),
       };
+    case 'admin_list_users':
+      return [
+        { id: 'mock-admin', username: 'admin', role: 'admin', status: 'active', createdAt: now() },
+      ];
+    case 'admin_create_user':
+      return {
+        id: `mock-${Math.random().toString(36).slice(2, 8)}`,
+        username: String(args?.username ?? 'user'),
+        role: String(args?.role ?? 'user'),
+        status: 'active',
+        createdAt: now(),
+      };
+    case 'admin_set_status':
+    case 'admin_delete_user':
+      return null;
 
     // --- Terminal (no backend PTY in the browser; sessions are inert) ---
     case 'get_installed_shells':

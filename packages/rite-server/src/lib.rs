@@ -15,7 +15,7 @@ use axum::extract::{Path, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use axum::{Extension, Json, Router};
 use base64::Engine as _;
 use rite_core::auth::{AuthManager, UnlockResult};
@@ -104,6 +104,12 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/server/logout", post(server_logout))
         .route("/api/server/bootstrap", post(server_bootstrap))
         .route("/api/server/me", get(server_me))
+        .route(
+            "/api/admin/users",
+            get(admin_list_users).post(admin_create_user),
+        )
+        .route("/api/admin/users/{id}", delete(admin_delete_user))
+        .route("/api/admin/users/{id}/status", patch(admin_set_status))
         .route("/api/auth/first-run", get(first_run))
         .route("/api/auth/locked", get(locked))
         .route("/api/auth/unlock", post(unlock))
@@ -198,6 +204,10 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
             }
             None => return (StatusCode::UNAUTHORIZED, "authentication required").into_response(),
         };
+        // Admin endpoints require the admin role.
+        if path.starts_with("/api/admin") && user.role != Role::Admin {
+            return (StatusCode::FORBIDDEN, "admin role required").into_response();
+        }
         req.extensions_mut().insert(Arc::new(user));
     }
 
@@ -436,6 +446,96 @@ async fn server_bootstrap(
 /// The current authenticated user (guard inserted it).
 async fn server_me(Extension(user): Extension<Arc<User>>) -> Json<User> {
     Json((*user).clone())
+}
+
+// --- admin (role-gated by the guard: /api/admin/* requires role=admin) ------
+
+async fn admin_list_users(State(state): State<ServerState>) -> Result<Json<Vec<User>>, AppError> {
+    Ok(Json(server_auth::list_users(state.db.pool()).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateUserReq {
+    username: String,
+    salt: String, // hex
+    params: KdfParams,
+    auth_hash: String,
+    role: Role,
+}
+
+async fn admin_create_user(
+    State(state): State<ServerState>,
+    Json(req): Json<CreateUserReq>,
+) -> Result<Response, AppError> {
+    let salt = server_auth::parse_hex_salt(&req.salt)?;
+    match server_auth::create_user(
+        state.db.pool(),
+        &req.username,
+        &salt,
+        req.params,
+        &req.auth_hash,
+        req.role,
+    )
+    .await
+    {
+        Ok(user) => Ok((StatusCode::CREATED, Json(user)).into_response()),
+        // Almost always a duplicate username (UNIQUE constraint).
+        Err(_) => Ok((
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "username already exists" })),
+        )
+            .into_response()),
+    }
+}
+
+#[derive(Deserialize)]
+struct StatusReq {
+    status: String,
+}
+
+async fn admin_set_status(
+    State(state): State<ServerState>,
+    Extension(current): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<StatusReq>,
+) -> Result<Response, AppError> {
+    if id == current.id {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "you can't change your own status" })),
+        )
+            .into_response());
+    }
+    if req.status != "active" && req.status != "disabled" {
+        return Ok((StatusCode::BAD_REQUEST, "invalid status").into_response());
+    }
+    let ok = server_auth::set_user_status(state.db.pool(), &id, &req.status).await?;
+    Ok(if ok {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    })
+}
+
+async fn admin_delete_user(
+    State(state): State<ServerState>,
+    Extension(current): Extension<Arc<User>>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    if id == current.id {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "you can't delete yourself" })),
+        )
+            .into_response());
+    }
+    let ok = server_auth::delete_user(state.db.pool(), &id).await?;
+    Ok(if ok {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    })
 }
 
 // --- settings (per-key) -----------------------------------------------------

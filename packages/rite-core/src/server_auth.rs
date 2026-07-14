@@ -318,6 +318,35 @@ pub async fn list_users(db: &SqlitePool) -> Result<Vec<User>> {
         .collect())
 }
 
+/// Enable/disable an account. Disabling also drops its live sessions. Returns
+/// `true` if a user was affected.
+pub async fn set_user_status(db: &SqlitePool, user_id: &str, status: &str) -> Result<bool> {
+    let affected = sqlx::query("UPDATE users SET status = ?, updated_at = ? WHERE id = ?")
+        .bind(status)
+        .bind(now())
+        .bind(user_id)
+        .execute(db)
+        .await?
+        .rows_affected();
+    if status != "active" {
+        sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+            .bind(user_id)
+            .execute(db)
+            .await?;
+    }
+    Ok(affected > 0)
+}
+
+/// Delete an account (its sessions cascade). Returns `true` if it existed.
+pub async fn delete_user(db: &SqlitePool, user_id: &str) -> Result<bool> {
+    let affected = sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(user_id)
+        .execute(db)
+        .await?
+        .rows_affected();
+    Ok(affected > 0)
+}
+
 pub fn parse_hex_salt(s: &str) -> Result<Vec<u8>> {
     from_hex(s)
 }
