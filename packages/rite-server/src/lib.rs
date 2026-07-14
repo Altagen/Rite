@@ -57,6 +57,27 @@ pub struct ServerState {
     /// True when rite-server terminates TLS itself (adds HSTS). Behind a reverse
     /// proxy this stays false and the proxy owns HSTS.
     pub tls: bool,
+    /// Active context for the native client's multiplexer (ADR 0012): the local
+    /// vault, or one remote server. RAM only — resets to Local each launch. The
+    /// roster (saved servers) persists in the local vault settings.
+    context: Arc<std::sync::Mutex<ActiveContext>>,
+}
+
+/// A saved remote server in the roster (ADR 0012). No token here — the remote
+/// session lives in RAM only (see the proxy phase).
+#[derive(Clone, serde::Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteServer {
+    pub id: String,
+    pub url: String,
+    pub label: String,
+}
+
+/// The one active context (ADR 0006 single active context).
+#[derive(Clone)]
+enum ActiveContext {
+    Local,
+    Remote(RemoteServer),
 }
 
 /// In-memory per-username login throttle: after `MAX_FAILURES` failures within
@@ -129,6 +150,7 @@ impl ServerState {
             accounts: false,
             login_limiter: Arc::new(LoginLimiter::default()),
             tls: false,
+            context: Arc::new(std::sync::Mutex::new(ActiveContext::Local)),
         })
     }
 
@@ -175,6 +197,10 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/users/{id}", delete(admin_delete_user))
         .route("/api/admin/users/{id}/status", patch(admin_set_status))
+        .route("/api/context", get(get_context))
+        .route("/api/context/servers", post(add_server))
+        .route("/api/context/servers/{id}", delete(remove_server))
+        .route("/api/context/active", post(set_active_context))
         .route("/api/auth/first-run", get(first_run))
         .route("/api/auth/locked", get(locked))
         .route("/api/auth/unlock", post(unlock))
@@ -755,6 +781,137 @@ async fn import_ssh_config(
         }
     }
     Ok(Json(imported))
+}
+
+// --- context multiplexer (ADR 0012, native client roster) -------------------
+
+async fn load_roster(state: &ServerState) -> Vec<RemoteServer> {
+    state
+        .db
+        .get_setting("remote_servers")
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+async fn save_roster(state: &ServerState, roster: &[RemoteServer]) -> Result<(), AppError> {
+    let json = serde_json::to_string(roster).unwrap_or_else(|_| "[]".to_string());
+    state.db.set_setting("remote_servers", &json).await?;
+    Ok(())
+}
+
+fn active_json(ctx: &ActiveContext) -> Value {
+    match ctx {
+        ActiveContext::Local => json!("local"),
+        ActiveContext::Remote(s) => json!({ "id": s.id, "url": s.url, "label": s.label }),
+    }
+}
+
+/// A remote URL must be https (or http on loopback for local dev).
+fn is_valid_remote_url(url: &str) -> bool {
+    if let Some(rest) = url.strip_prefix("https://") {
+        return !rest.is_empty();
+    }
+    if let Some(rest) = url.strip_prefix("http://") {
+        return rest.starts_with("127.") || rest.starts_with("localhost");
+    }
+    false
+}
+
+async fn get_context(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
+    let roster = load_roster(&state).await;
+    let active = active_json(&state.context.lock().unwrap());
+    Ok(Json(json!({ "active": active, "roster": roster })))
+}
+
+#[derive(Deserialize)]
+struct AddServerReq {
+    url: String,
+    label: Option<String>,
+}
+
+async fn add_server(
+    State(state): State<ServerState>,
+    Json(req): Json<AddServerReq>,
+) -> Result<Response, AppError> {
+    let url = req.url.trim().trim_end_matches('/').to_string();
+    if !is_valid_remote_url(&url) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "remote must be https:// (http:// only on loopback)" })),
+        )
+            .into_response());
+    }
+    let mut roster = load_roster(&state).await;
+    if roster.iter().any(|s| s.url == url) {
+        return Ok((
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "server already in the roster" })),
+        )
+            .into_response());
+    }
+    let entry = RemoteServer {
+        id: uuid::Uuid::new_v4().to_string(),
+        label: req
+            .label
+            .filter(|l| !l.trim().is_empty())
+            .unwrap_or_else(|| url.clone()),
+        url,
+    };
+    roster.push(entry.clone());
+    save_roster(&state, &roster).await?;
+    Ok((StatusCode::CREATED, Json(entry)).into_response())
+}
+
+async fn remove_server(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let mut roster = load_roster(&state).await;
+    let before = roster.len();
+    roster.retain(|s| s.id != id);
+    save_roster(&state, &roster).await?;
+    // If the removed server was active, fall back to Local.
+    {
+        let mut ctx = state.context.lock().unwrap();
+        if matches!(&*ctx, ActiveContext::Remote(s) if s.id == id) {
+            *ctx = ActiveContext::Local;
+        }
+    }
+    Ok(if roster.len() < before {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    })
+}
+
+#[derive(Deserialize)]
+struct SetActiveReq {
+    /// "local" or a roster server id.
+    server: String,
+}
+
+async fn set_active_context(
+    State(state): State<ServerState>,
+    Json(req): Json<SetActiveReq>,
+) -> Result<Response, AppError> {
+    if req.server == "local" {
+        *state.context.lock().unwrap() = ActiveContext::Local;
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    }
+    match load_roster(&state)
+        .await
+        .into_iter()
+        .find(|s| s.id == req.server)
+    {
+        Some(s) => {
+            *state.context.lock().unwrap() = ActiveContext::Remote(s);
+            Ok(StatusCode::NO_CONTENT.into_response())
+        }
+        None => Ok((StatusCode::NOT_FOUND, "unknown server").into_response()),
+    }
 }
 
 // --- ssh host keys ----------------------------------------------------------
