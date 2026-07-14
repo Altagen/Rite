@@ -37,10 +37,25 @@ async fn main() -> Result<()> {
     // RITE_ADDR default = loopback; port 0 lets the OS pick a free port (the
     // desktop shell reads the bound port back to point the webview at it).
     let addr = std::env::var("RITE_ADDR").unwrap_or_else(|_| "127.0.0.1:1421".to_string());
-    let host = addr.rsplit_once(':').map_or(addr.as_str(), |(h, _)| h);
-    rite_server::serve(state, &addr, |port| {
-        info!("[rite-server] listening on http://{host}:{port}");
-    })
-    .await?;
+
+    // RITE_TLS_CERT + RITE_TLS_KEY (PEM) enable built-in TLS (ADR 0010). For
+    // production behind a reverse proxy, leave these unset (the proxy terminates
+    // TLS) — see docs/RELEASE / decisions/0010.
+    match (
+        std::env::var("RITE_TLS_CERT"),
+        std::env::var("RITE_TLS_KEY"),
+    ) {
+        (Ok(cert), Ok(key)) if !cert.is_empty() && !key.is_empty() => {
+            info!("[rite-server] listening on https://{addr} (built-in TLS)");
+            rite_server::serve_tls(state, &addr, cert.as_ref(), key.as_ref()).await?;
+        }
+        _ => {
+            let host = addr.rsplit_once(':').map_or(addr.as_str(), |(h, _)| h);
+            rite_server::serve(state, &addr, |port| {
+                info!("[rite-server] listening on http://{host}:{port}");
+            })
+            .await?;
+        }
+    }
     Ok(())
 }

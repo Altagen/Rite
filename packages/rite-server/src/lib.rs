@@ -54,6 +54,9 @@ pub struct ServerState {
     pub accounts: bool,
     /// Per-account login rate limiter (brute-force protection, server mode).
     login_limiter: Arc<LoginLimiter>,
+    /// True when rite-server terminates TLS itself (adds HSTS). Behind a reverse
+    /// proxy this stays false and the proxy owns HSTS.
+    pub tls: bool,
 }
 
 /// In-memory per-username login throttle: after `MAX_FAILURES` failures within
@@ -125,6 +128,7 @@ impl ServerState {
             token: None,
             accounts: false,
             login_limiter: Arc::new(LoginLimiter::default()),
+            tls: false,
         })
     }
 
@@ -138,6 +142,12 @@ impl ServerState {
     /// Enable server mode (accounts + sessions, ADR 0010).
     pub fn with_accounts(mut self) -> Self {
         self.accounts = true;
+        self
+    }
+
+    /// Mark that rite-server terminates TLS itself (so it emits HSTS).
+    pub fn with_tls(mut self) -> Self {
+        self.tls = true;
         self
     }
 
@@ -210,12 +220,16 @@ pub fn build_router(state: ServerState) -> Router {
 
     router
         .layer(middleware::from_fn_with_state(state.clone(), guard))
-        .layer(middleware::from_fn(security_headers))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            security_headers,
+        ))
         .with_state(state)
 }
 
-/// Defence-in-depth response headers on every response.
-async fn security_headers(req: Request, next: Next) -> Response {
+/// Defence-in-depth response headers on every response. Adds HSTS only when
+/// rite-server terminates TLS itself (behind a proxy, the proxy owns HSTS).
+async fn security_headers(State(state): State<ServerState>, req: Request, next: Next) -> Response {
     let mut res = next.run(req).await;
     let h = res.headers_mut();
     h.insert(
@@ -224,6 +238,12 @@ async fn security_headers(req: Request, next: Next) -> Response {
     );
     h.insert("X-Frame-Options", HeaderValue::from_static("DENY"));
     h.insert("Referrer-Policy", HeaderValue::from_static("no-referrer"));
+    if state.tls {
+        h.insert(
+            "Strict-Transport-Security",
+            HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        );
+    }
     res
 }
 
@@ -234,6 +254,22 @@ pub async fn serve(state: ServerState, addr: &str, on_bound: impl FnOnce(u16)) -
     let listener = tokio::net::TcpListener::bind(addr).await?;
     on_bound(listener.local_addr()?.port());
     axum::serve(listener, build_router(state)).await?;
+    Ok(())
+}
+
+/// Serve over TLS (rustls) with PEM cert/key files. For the standalone server;
+/// the loopback desktop client never needs TLS. Sets HSTS via `with_tls`.
+pub async fn serve_tls(
+    state: ServerState,
+    addr: &str,
+    cert: &std::path::Path,
+    key: &std::path::Path,
+) -> Result<()> {
+    let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
+    let socket: std::net::SocketAddr = addr.parse()?;
+    axum_server::bind_rustls(socket, config)
+        .serve(build_router(state.with_tls()).into_make_service())
+        .await?;
     Ok(())
 }
 
