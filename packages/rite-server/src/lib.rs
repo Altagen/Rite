@@ -271,6 +271,20 @@ async fn security_headers(State(state): State<ServerState>, req: Request, next: 
     );
     h.insert("X-Frame-Options", HeaderValue::from_static("DENY"));
     h.insert("Referrer-Policy", HeaderValue::from_static("no-referrer"));
+    // Strict CSP — the frontend is fully self-contained (ADR 0012 §5 hardening).
+    // Skipped in local desktop mode (`token` set) where the wry shell injects its
+    // init script; applied for shared servers and the browser.
+    if state.token.is_none() {
+        h.insert(
+            "Content-Security-Policy",
+            HeaderValue::from_static(
+                "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
+                 style-src 'self' 'unsafe-inline'; img-src 'self' data:; \
+                 font-src 'self' data:; connect-src 'self'; object-src 'none'; \
+                 base-uri 'self'; frame-ancestors 'none'",
+            ),
+        );
+    }
     if state.tls {
         h.insert(
             "Strict-Transport-Security",
@@ -324,6 +338,12 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
         if extract_token(&req).as_deref() != Some(token) {
             return (StatusCode::UNAUTHORIZED, "missing or invalid token").into_response();
         }
+    }
+
+    // Reject cross-site WebSocket upgrades in server mode (ADR 0012 §5 hardening;
+    // the bearer token already gates it — this is defence in depth).
+    if path == "/ws" && state.accounts && !ws_origin_same(&req) {
+        return (StatusCode::FORBIDDEN, "cross-origin websocket rejected").into_response();
     }
 
     // Shared server (ADR 0010): a valid session is required, except for the
@@ -470,6 +490,24 @@ fn extract_token(req: &Request) -> Option<String> {
             .and_then(|h| h.to_str().ok())
             .and_then(|h| h.strip_prefix("Bearer "))
             .map(|t| t.to_string())
+    }
+}
+
+/// True if a WebSocket upgrade is same-origin (or has no Origin — a non-browser
+/// client, gated by the token). Compares the Origin's host[:port] to Host.
+fn ws_origin_same(req: &Request) -> bool {
+    let origin = req
+        .headers()
+        .get(header::ORIGIN)
+        .and_then(|h| h.to_str().ok());
+    let host = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok());
+    match (origin, host) {
+        (Some(o), Some(h)) => o.rsplit("://").next() == Some(h),
+        (None, _) => true,
+        _ => false,
     }
 }
 
