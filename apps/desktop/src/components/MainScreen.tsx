@@ -19,6 +19,7 @@ import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
 import { ImportSSHConfigModal } from './ImportSSHConfigModal';
 import { HostKeyModal, type HostKeyPrompt } from './HostKeyModal';
+import { ContextSwitcher } from './ContextSwitcher';
 import { transport } from '../utils/transport';
 import { UnlockScreen } from './UnlockScreen';
 import { Toast } from './Toast';
@@ -799,6 +800,7 @@ export function MainScreen() {
         <div className="flex items-center justify-between pl-2 pr-6 py-4">
           <div className="flex items-center gap-3">
             <img src={riteLandscape} alt="RITE" className="h-10 rounded-md" />
+            <ContextSwitcher />
           </div>
 
           <div className="flex items-center gap-2">
