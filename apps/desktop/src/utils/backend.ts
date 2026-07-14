@@ -364,6 +364,22 @@ export const BackendServer = {
   me: () => invokeWithValidation('server_me', ServerUserSchema),
 } as const;
 
+// Admin (server mode, role=admin) — account management.
+export const BackendAdmin = {
+  listUsers: () => invokeWithValidation('admin_list_users', z.array(ServerUserSchema)),
+  createUser: (username: string, salt: string, params: unknown, authHash: string, role: string) =>
+    invokeWithValidation('admin_create_user', ServerUserSchema, {
+      username,
+      salt,
+      params,
+      authHash,
+      role,
+    }),
+  setStatus: (id: string, status: 'active' | 'disabled') =>
+    invokeWithValidation('admin_set_status', z.null(), { id, status }),
+  deleteUser: (id: string) => invokeWithValidation('admin_delete_user', z.null(), { id }),
+} as const;
+
 export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
@@ -371,6 +387,7 @@ export const Backend = {
   Terminal: BackendTerminal,
   Ssh: BackendSsh,
   Server: BackendServer,
+  Admin: BackendAdmin,
 } as const;
 
 // Export types for external use
