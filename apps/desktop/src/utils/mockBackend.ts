@@ -205,6 +205,19 @@ export async function mockInvoke(
     case 'admin_delete_user':
       return null;
 
+    // --- Context multiplexer (dev mock: local only, empty roster) ---
+    case 'context_get':
+      return { active: 'local', roster: [] };
+    case 'context_add_server':
+      return {
+        id: `mock-${Math.random().toString(36).slice(2, 8)}`,
+        url: String(args?.url ?? ''),
+        label: String(args?.label || args?.url || ''),
+      };
+    case 'context_remove_server':
+    case 'context_set_active':
+      return null;
+
     // --- Terminal (no backend PTY in the browser; sessions are inert) ---
     case 'get_installed_shells':
       return (args?.shells as string[]) ?? commonShells;

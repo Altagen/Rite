@@ -380,6 +380,24 @@ export const BackendAdmin = {
   deleteUser: (id: string) => invokeWithValidation('admin_delete_user', z.null(), { id }),
 } as const;
 
+// Context multiplexer (ADR 0012) — the native client's roster of contexts.
+const RemoteServerSchema = z.object({ id: z.string(), url: z.string(), label: z.string() });
+const ContextSchema = z.object({
+  active: z.union([z.literal('local'), RemoteServerSchema]),
+  roster: z.array(RemoteServerSchema),
+});
+export type RemoteServer = z.infer<typeof RemoteServerSchema>;
+export type ContextState = z.infer<typeof ContextSchema>;
+
+export const BackendContext = {
+  get: () => invokeWithValidation('context_get', ContextSchema),
+  addServer: (url: string, label?: string) =>
+    invokeWithValidation('context_add_server', RemoteServerSchema, { url, label }),
+  removeServer: (id: string) => invokeWithValidation('context_remove_server', z.null(), { id }),
+  /** `'local'` or a roster server id. */
+  setActive: (server: string) => invokeWithValidation('context_set_active', z.null(), { server }),
+} as const;
+
 export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
@@ -388,6 +406,7 @@ export const Backend = {
   Ssh: BackendSsh,
   Server: BackendServer,
   Admin: BackendAdmin,
+  Context: BackendContext,
 } as const;
 
 // Export types for external use

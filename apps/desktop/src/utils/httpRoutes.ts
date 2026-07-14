@@ -93,6 +93,17 @@ const routes: Record<string, Route> = {
   },
   server_me: () => json('/api/server/me'),
 
+  context_get: () => json('/api/context'),
+  context_add_server: (a) => json('/api/context/servers', post({ url: a.url, label: a.label })),
+  context_remove_server: async (a) => {
+    await json(`/api/context/servers/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
+    return null;
+  },
+  context_set_active: async (a) => {
+    await json('/api/context/active', post({ server: a.server }));
+    return null;
+  },
+
   admin_list_users: () => json('/api/admin/users'),
   admin_create_user: (a) =>
     json(
