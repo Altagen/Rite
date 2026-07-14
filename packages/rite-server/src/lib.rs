@@ -1265,6 +1265,15 @@ async fn close(
 // --- websocket: stream `{event,payload}` messages to the client -------------
 
 async fn ws_handler(State(state): State<ServerState>, ws: WebSocketUpgrade) -> Response {
+    // Multiplexer (ADR 0012 phase 3): when a remote context is active, bridge this
+    // WebSocket to the remote's /ws (server-execute terminals stream through).
+    let active = { state.context.lock().unwrap().clone() };
+    if let ActiveContext::Remote(server) = active {
+        let token = state.remote_token.lock().unwrap().clone();
+        let remote_url = remote_ws_url(&server.url, token.as_deref());
+        return ws.on_upgrade(move |socket| proxy_ws(socket, remote_url));
+    }
+
     let mut rx = state.events_tx.subscribe();
     ws.on_upgrade(move |mut socket| async move {
         loop {
@@ -1279,6 +1288,70 @@ async fn ws_handler(State(state): State<ServerState>, ws: WebSocketUpgrade) -> R
             }
         }
     })
+}
+
+/// Build the remote's ws(s) URL for the proxy, carrying the session token in the
+/// query (browsers can't set WS headers; the local proxy mirrors that).
+fn remote_ws_url(base: &str, token: Option<&str>) -> String {
+    let ws_base = base
+        .replacen("https://", "wss://", 1)
+        .replacen("http://", "ws://", 1);
+    match token {
+        Some(t) => format!("{ws_base}/ws?token={t}"),
+        None => format!("{ws_base}/ws"),
+    }
+}
+
+/// Bridge a webview WebSocket to the active remote's WebSocket, both directions.
+async fn proxy_ws(local: axum::extract::ws::WebSocket, remote_url: String) {
+    use axum::extract::ws::Message as A;
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message as T;
+
+    let remote = match tokio_tungstenite::connect_async(&remote_url).await {
+        Ok((stream, _)) => stream,
+        Err(e) => {
+            tracing::warn!("[rite-server] ws proxy: remote connect failed: {e}");
+            return;
+        }
+    };
+    let (mut local_tx, mut local_rx) = local.split();
+    let (mut remote_tx, mut remote_rx) = remote.split();
+
+    let remote_to_local = async {
+        while let Some(Ok(msg)) = remote_rx.next().await {
+            let out = match msg {
+                T::Text(t) => A::Text(t.as_str().to_owned().into()),
+                T::Binary(b) => A::Binary(b.to_vec().into()),
+                T::Ping(p) => A::Ping(p.to_vec().into()),
+                T::Pong(p) => A::Pong(p.to_vec().into()),
+                T::Close(_) => break,
+                _ => continue,
+            };
+            if local_tx.send(out).await.is_err() {
+                break;
+            }
+        }
+    };
+    let local_to_remote = async {
+        while let Some(Ok(msg)) = local_rx.next().await {
+            let out = match msg {
+                A::Text(t) => T::Text(t.as_str().to_owned().into()),
+                A::Binary(b) => T::Binary(b.to_vec().into()),
+                A::Ping(p) => T::Ping(p.to_vec().into()),
+                A::Pong(p) => T::Pong(p.to_vec().into()),
+                A::Close(_) => break,
+            };
+            if remote_tx.send(out).await.is_err() {
+                break;
+            }
+        }
+    };
+
+    tokio::select! {
+        _ = remote_to_local => {},
+        _ = local_to_remote => {},
+    }
 }
 
 // --- error mapping ----------------------------------------------------------
