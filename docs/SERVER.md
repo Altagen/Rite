@@ -19,6 +19,8 @@ Environment:
 | `RITE_ACCOUNTS=1` | Enable server mode |
 | `RITE_TLS_CERT`, `RITE_TLS_KEY` | PEM cert/key → built-in TLS (HTTPS) |
 | `RITE_ALLOW_INSECURE_HTTP=1` | Allow plaintext HTTP on a non-loopback address (see below) |
+| `RITE_ADMIN_USER`, `RITE_ADMIN_PASSWORD` | Non-interactive first-run admin (headless deploys) |
+| `RITE_ADMIN_PASSWORD_FILE` | Read the admin password from a file/secret instead of the env |
 
 ## TLS is required off-loopback (secure by default)
 
@@ -116,6 +118,17 @@ Put it behind a TLS proxy (Option B) for anything reachable from a network.
 
 On first launch with no accounts, open the server in a browser: it shows
 **Create the server administrator**. That first account is the admin; afterwards
-the admin manages accounts from the users panel. (A non-interactive env-based
-admin bootstrap for headless/automated deploys is planned — for now, do the
-one-time browser first-run.)
+the admin manages accounts from the users panel.
+
+For **headless/automated deploys**, create the admin non-interactively at boot:
+
+```bash
+RITE_ACCOUNTS=1 RITE_ADMIN_USER=admin RITE_ADMIN_PASSWORD_FILE=/run/secrets/rite_admin_pw \
+  rite-server
+```
+
+On a fresh server this creates the admin (the server derives the same Argon2id
+auth hash the browser would, so a later browser login just works). Prefer
+`RITE_ADMIN_PASSWORD_FILE` (a mounted secret) over `RITE_ADMIN_PASSWORD` — env
+vars leak via `ps` / `inspect`. It only acts when there are no accounts yet;
+change the password after the first login.
