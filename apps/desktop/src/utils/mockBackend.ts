@@ -162,6 +162,34 @@ export async function mockInvoke(
     case 'reject_host_key':
       return null;
 
+    // --- Server accounts (dev mock behaves as local: no accounts) ---
+    case 'server_mode':
+      return { accounts: false, needsBootstrap: false };
+    case 'server_prelogin':
+      return { salt: '00112233445566778899aabbccddeeff', params: { mem: 19456, iter: 2, par: 1 } };
+    case 'server_login':
+    case 'server_bootstrap':
+      return {
+        token: 'mock-session',
+        user: {
+          id: 'mock-admin',
+          username: String(args?.username ?? 'admin'),
+          role: 'admin',
+          status: 'active',
+          createdAt: now(),
+        },
+      };
+    case 'server_logout':
+      return null;
+    case 'server_me':
+      return {
+        id: 'mock-admin',
+        username: 'admin',
+        role: 'admin',
+        status: 'active',
+        createdAt: now(),
+      };
+
     // --- Terminal (no backend PTY in the browser; sessions are inert) ---
     case 'get_installed_shells':
       return (args?.shells as string[]) ?? commonShells;

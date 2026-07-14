@@ -12,11 +12,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocketUpgrade};
 use axum::extract::{Path, Request, State};
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use base64::Engine as _;
 use rite_core::auth::{AuthManager, UnlockResult};
 use rite_core::connection::{
@@ -46,8 +46,12 @@ pub struct ServerState {
     pub events_tx: broadcast::Sender<String>,
     /// When set (local desktop shell), API/WS requests require this bearer token
     /// and a loopback Host — the ADR 0009 local-transport guard. `None` in
-    /// dev/container mode (real auth for shared servers comes in Phase 5).
+    /// dev/container mode.
     pub token: Option<Arc<String>>,
+    /// Server mode (ADR 0010): API/WS require a valid session (login-issued
+    /// bearer token) instead of the loopback launch token. Mutually exclusive
+    /// with `token` in practice (local shell vs shared server).
+    pub accounts: bool,
 }
 
 impl ServerState {
@@ -65,6 +69,7 @@ impl ServerState {
             sessions,
             events_tx,
             token: None,
+            accounts: false,
         })
     }
 
@@ -72,6 +77,12 @@ impl ServerState {
     /// (loopback Host enforced too). Set by the desktop shell.
     pub fn with_token(mut self, token: impl Into<String>) -> Self {
         self.token = Some(Arc::new(token.into()));
+        self
+    }
+
+    /// Enable server mode (accounts + sessions, ADR 0010).
+    pub fn with_accounts(mut self) -> Self {
+        self.accounts = true;
         self
     }
 
@@ -87,6 +98,12 @@ pub fn build_router(state: ServerState) -> Router {
     let router = Router::new()
         .route("/api/health", get(health))
         .route("/api/capabilities", get(capabilities))
+        .route("/api/server/mode", get(server_mode))
+        .route("/api/server/prelogin", post(server_prelogin))
+        .route("/api/server/login", post(server_login))
+        .route("/api/server/logout", post(server_logout))
+        .route("/api/server/bootstrap", post(server_bootstrap))
+        .route("/api/server/me", get(server_me))
         .route("/api/auth/first-run", get(first_run))
         .route("/api/auth/locked", get(locked))
         .route("/api/auth/unlock", post(unlock))
@@ -151,34 +168,73 @@ pub async fn serve(state: ServerState, addr: &str, on_bound: impl FnOnce(u16)) -
 /// WebSocket headers). Static assets and dev/container mode (no token) pass
 /// through. Defends the loopback port against DNS rebinding and other local
 /// processes.
-async fn guard(State(state): State<ServerState>, req: Request, next: Next) -> Response {
-    let path = req.uri().path();
+async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -> Response {
+    let path = req.uri().path().to_string();
     let is_api = path.starts_with("/api") || path == "/ws";
 
+    // Local desktop shell (ADR 0009): loopback Host + launch token.
     if is_api && let Some(token) = state.token.as_deref() {
         if !host_is_loopback(&req) {
             return (StatusCode::FORBIDDEN, "non-loopback host rejected").into_response();
         }
-        let ok = if path == "/ws" {
-            req.uri()
-                .query()
-                .into_iter()
-                .flat_map(|q| q.split('&'))
-                .filter_map(|kv| kv.strip_prefix("token="))
-                .any(|t| t == token)
-        } else {
-            req.headers()
-                .get(header::AUTHORIZATION)
-                .and_then(|h| h.to_str().ok())
-                .and_then(|h| h.strip_prefix("Bearer "))
-                .is_some_and(|t| t == token)
-        };
-        if !ok {
+        if extract_token(&req).as_deref() != Some(token) {
             return (StatusCode::UNAUTHORIZED, "missing or invalid token").into_response();
         }
     }
 
+    // Shared server (ADR 0010): a valid session is required, except for the
+    // public auth endpoints (prelogin/login/bootstrap/logout/mode) and health.
+    if is_api && state.accounts && !is_public_server_path(&path) {
+        let user = match extract_token(&req) {
+            Some(token) => {
+                match rite_core::server_auth::validate_session(state.db.pool(), &token).await {
+                    Ok(Some(user)) => user,
+                    Ok(None) => {
+                        return (StatusCode::UNAUTHORIZED, "invalid or expired session")
+                            .into_response();
+                    }
+                    Err(e) => return AppError(e).into_response(),
+                }
+            }
+            None => return (StatusCode::UNAUTHORIZED, "authentication required").into_response(),
+        };
+        req.extensions_mut().insert(Arc::new(user));
+    }
+
     next.run(req).await
+}
+
+/// Endpoints reachable without a session in server mode.
+fn is_public_server_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/health"
+            | "/api/capabilities"
+            | "/api/server/mode"
+            | "/api/server/prelogin"
+            | "/api/server/login"
+            | "/api/server/bootstrap"
+            | "/api/server/logout"
+    )
+}
+
+/// Pull the bearer token from the Authorization header, or the `token` query
+/// param for `/ws` (browsers can't set WebSocket headers).
+fn extract_token(req: &Request) -> Option<String> {
+    if req.uri().path() == "/ws" {
+        req.uri()
+            .query()
+            .into_iter()
+            .flat_map(|q| q.split('&'))
+            .find_map(|kv| kv.strip_prefix("token="))
+            .map(|t| t.to_string())
+    } else {
+        req.headers()
+            .get(header::AUTHORIZATION)
+            .and_then(|h| h.to_str().ok())
+            .and_then(|h| h.strip_prefix("Bearer "))
+            .map(|t| t.to_string())
+    }
 }
 
 /// True if the request's Host header names a loopback address.
@@ -276,6 +332,110 @@ async fn reset(State(state): State<ServerState>) -> Result<StatusCode, AppError>
 async fn validate_password(Json(req): Json<PasswordReq>) -> Json<Value> {
     let (is_valid, score, feedback) = rite_crypto::validate_password_strength(&req.password);
     Json(json!({ "is_valid": is_valid, "score": score, "feedback": feedback }))
+}
+
+// --- server accounts (ADR 0010) ---------------------------------------------
+
+use rite_core::server_auth::{self, KdfParams, PreloginInfo, Role, User};
+
+/// Tell the client whether this is a shared server and if it still needs its
+/// first admin (bootstrap).
+async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
+    let needs_bootstrap = state.accounts && !server_auth::has_any_user(state.db.pool()).await?;
+    Ok(Json(
+        json!({ "accounts": state.accounts, "needsBootstrap": needs_bootstrap }),
+    ))
+}
+
+#[derive(Deserialize)]
+struct PreloginReq {
+    username: String,
+}
+
+async fn server_prelogin(
+    State(state): State<ServerState>,
+    Json(req): Json<PreloginReq>,
+) -> Result<Json<PreloginInfo>, AppError> {
+    Ok(Json(
+        server_auth::prelogin(state.db.pool(), &req.username).await?,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LoginReq {
+    username: String,
+    auth_hash: String,
+}
+
+async fn server_login(
+    State(state): State<ServerState>,
+    Json(req): Json<LoginReq>,
+) -> Result<Response, AppError> {
+    match server_auth::verify_login(state.db.pool(), &req.username, &req.auth_hash).await? {
+        Some(user) => {
+            let token = server_auth::create_session(state.db.pool(), &user.id).await?;
+            Ok(Json(json!({ "token": token, "user": user })).into_response())
+        }
+        None => Ok((
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "error": "invalid credentials" })),
+        )
+            .into_response()),
+    }
+}
+
+async fn server_logout(State(state): State<ServerState>, headers: HeaderMap) -> StatusCode {
+    if let Some(token) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+    {
+        let _ = server_auth::revoke_session(state.db.pool(), token).await;
+    }
+    StatusCode::NO_CONTENT
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BootstrapReq {
+    username: String,
+    salt: String, // hex
+    params: KdfParams,
+    auth_hash: String,
+}
+
+async fn server_bootstrap(
+    State(state): State<ServerState>,
+    Json(req): Json<BootstrapReq>,
+) -> Result<Response, AppError> {
+    if !state.accounts {
+        return Ok((StatusCode::BAD_REQUEST, "not a server").into_response());
+    }
+    if server_auth::has_any_user(state.db.pool()).await? {
+        return Ok((
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "server already initialised" })),
+        )
+            .into_response());
+    }
+    let salt = server_auth::parse_hex_salt(&req.salt)?;
+    let user = server_auth::create_user(
+        state.db.pool(),
+        &req.username,
+        &salt,
+        req.params,
+        &req.auth_hash,
+        Role::Admin,
+    )
+    .await?;
+    let token = server_auth::create_session(state.db.pool(), &user.id).await?;
+    Ok(Json(json!({ "token": token, "user": user })).into_response())
+}
+
+/// The current authenticated user (guard inserted it).
+async fn server_me(Extension(user): Extension<Arc<User>>) -> Json<User> {
+    Json((*user).clone())
 }
 
 // --- settings (per-key) -----------------------------------------------------

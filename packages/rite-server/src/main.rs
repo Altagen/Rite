@@ -28,6 +28,12 @@ async fn main() -> Result<()> {
         state = state.with_token(token);
         info!("[rite-server] local-transport guard enabled (token required)");
     }
+    // RITE_ACCOUNTS enables server mode (accounts + sessions, ADR 0010) for a
+    // shared/team server.
+    if std::env::var("RITE_ACCOUNTS").is_ok_and(|v| v == "1" || v == "true") {
+        state = state.with_accounts();
+        info!("[rite-server] server mode enabled (accounts + sessions)");
+    }
     // RITE_ADDR default = loopback; port 0 lets the OS pick a free port (the
     // desktop shell reads the bound port back to point the webview at it).
     let addr = std::env::var("RITE_ADDR").unwrap_or_else(|_| "127.0.0.1:1421".to_string());

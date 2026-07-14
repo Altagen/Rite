@@ -33,17 +33,34 @@ export default defineConfig({
     },
     {
       name: 'chromium',
-      testIgnore: /smoke\.spec\.ts/,
+      testIgnore: [/smoke\.spec\.ts/, /accounts\.spec\.ts/],
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
     },
+    // Server mode (ADR 0010): its own rite-server on :1422, independent of the
+    // local-vault suite.
+    {
+      name: 'accounts',
+      testMatch: /accounts\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1422' },
+    },
   ],
-  webServer: {
-    command: 'sh e2e/serve.sh',
-    url: `${BASE_URL}/api/health`,
-    reuseExistingServer: false,
-    timeout: 30_000,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  },
+  webServer: [
+    {
+      command: 'sh e2e/serve.sh',
+      url: `${BASE_URL}/api/health`,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      command: 'sh e2e/serve-accounts.sh',
+      url: 'http://127.0.0.1:1422/api/health',
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  ],
 });

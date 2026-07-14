@@ -329,12 +329,48 @@ export const BackendTerminal = {
  * const sessionId = await Backend.Terminal.connectTerminal(connectionId);
  * ```
  */
+// Server accounts (ADR 0010) — shared-server login/bootstrap/session.
+const KdfParamsSchema = z.object({ mem: z.number(), iter: z.number(), par: z.number() });
+const ServerModeSchema = z.object({ accounts: z.boolean(), needsBootstrap: z.boolean() });
+const PreloginSchema = z.object({ salt: z.string(), params: KdfParamsSchema });
+const ServerUserSchema = z.object({
+  id: z.string(),
+  username: z.string(),
+  role: z.enum(['admin', 'user']),
+  status: z.string(),
+  createdAt: z.number(),
+});
+const LoginResultSchema = z.object({ token: z.string(), user: ServerUserSchema });
+
+export type ServerMode = z.infer<typeof ServerModeSchema>;
+export type ServerUser = z.infer<typeof ServerUserSchema>;
+
+export const BackendServer = {
+  /** Whether this endpoint is a shared server and if it still needs its admin. */
+  mode: () => invokeWithValidation('server_mode', ServerModeSchema),
+  /** KDF salt + params for a username (to derive the auth hash client-side). */
+  prelogin: (username: string) =>
+    invokeWithValidation('server_prelogin', PreloginSchema, { username }),
+  login: (username: string, authHash: string) =>
+    invokeWithValidation('server_login', LoginResultSchema, { username, authHash }),
+  bootstrap: (username: string, salt: string, params: unknown, authHash: string) =>
+    invokeWithValidation('server_bootstrap', LoginResultSchema, {
+      username,
+      salt,
+      params,
+      authHash,
+    }),
+  logout: () => invokeWithValidation('server_logout', z.null()),
+  me: () => invokeWithValidation('server_me', ServerUserSchema),
+} as const;
+
 export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
   Connections: BackendConnections,
   Terminal: BackendTerminal,
   Ssh: BackendSsh,
+  Server: BackendServer,
 } as const;
 
 // Export types for external use

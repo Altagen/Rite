@@ -7,14 +7,17 @@
  * expose yet throw a clear error. Used only by the HTTP transport.
  */
 
+import { bearerToken } from './session';
+
 type Args = Record<string, unknown>;
 type Route = (args: Args) => Promise<unknown>;
 
 async function json<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  // Desktop shell (wry) injects a token guarding the loopback rite-server.
-  if (window.__RITE_TOKEN__) {
-    headers.set('Authorization', `Bearer ${window.__RITE_TOKEN__}`);
+  // Session token (server mode) or the loopback launch token (desktop shell).
+  const token = bearerToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
   }
   const res = await fetch(path, { ...init, headers });
   if (!res.ok) {
@@ -74,6 +77,21 @@ const routes: Record<string, Route> = {
   get_default_ssh_config_path: () => json('/api/ssh-config/default-path'),
   parse_ssh_config: (a) => json('/api/ssh-config/parse', post({ configPath: a.configPath })),
   import_ssh_config_entries: (a) => json('/api/ssh-config/import', post({ entries: a.entries })),
+
+  server_mode: () => json('/api/server/mode'),
+  server_prelogin: (a) => json('/api/server/prelogin', post({ username: a.username })),
+  server_login: (a) =>
+    json('/api/server/login', post({ username: a.username, authHash: a.authHash })),
+  server_bootstrap: (a) =>
+    json(
+      '/api/server/bootstrap',
+      post({ username: a.username, salt: a.salt, params: a.params, authHash: a.authHash }),
+    ),
+  server_logout: async () => {
+    await json('/api/server/logout', { method: 'POST' });
+    return null;
+  },
+  server_me: () => json('/api/server/me'),
 
   accept_host_key: async (a) => {
     await json('/api/ssh/host-key/accept', post({ host: a.host, port: a.port }));

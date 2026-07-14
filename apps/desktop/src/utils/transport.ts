@@ -15,6 +15,7 @@
 
 import { mockInvoke } from './mockBackend';
 import { httpInvoke } from './httpRoutes';
+import { bearerToken } from './session';
 
 export type Unlisten = () => void;
 
@@ -58,8 +59,9 @@ class HttpTransport implements Transport {
   private ensureSocket(): void {
     if (this.ws) return;
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-    // Browsers can't set WebSocket headers, so the shell token goes in the query.
-    const token = window.__RITE_TOKEN__;
+    // Browsers can't set WebSocket headers, so the token goes in the query
+    // (session token in server mode, else the loopback launch token).
+    const token = bearerToken();
     const query = token ? `?token=${encodeURIComponent(token)}` : '';
     const socket = new WebSocket(`${proto}://${window.location.host}/ws${query}`);
     socket.onmessage = (ev) => {
