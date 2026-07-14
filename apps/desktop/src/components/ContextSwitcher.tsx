@@ -49,11 +49,11 @@ export function ContextSwitcher() {
     setError(null);
     try {
       await Backend.Context.setActive(server);
-      await refresh();
-      setOpen(false);
+      // Switching context reboots the app: it re-reads the (now proxied) mode and
+      // lands on the local vault or the remote's login (ADR 0012 / 0006).
+      window.location.reload();
     } catch {
       setError('Failed to switch context');
-    } finally {
       setBusy(false);
     }
   };
