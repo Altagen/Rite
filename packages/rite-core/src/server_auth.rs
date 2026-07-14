@@ -195,7 +195,16 @@ pub async fn prelogin(db: &SqlitePool, username: &str) -> Result<PreloginInfo> {
     })
 }
 
-/// Verify a login. Returns the user on success (active accounts only).
+/// A fixed verifier used to equalise login timing for unknown users (so response
+/// time can't reveal whether an account exists). Computed once.
+fn timing_equaliser() -> &'static str {
+    static DUMMY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    DUMMY.get_or_init(|| hash_auth("rite-timing-equaliser").unwrap_or_default())
+}
+
+/// Verify a login. Returns the user on success (active accounts only). Runs one
+/// Argon2 verify on every path (including unknown/disabled users) so it does not
+/// leak account existence via timing.
 pub async fn verify_login(
     db: &SqlitePool,
     username: &str,
@@ -209,9 +218,14 @@ pub async fn verify_login(
     .await?;
 
     let Some((id, verifier, role, status, created_at)) = row else {
+        // Unknown user: still spend a verify against a dummy, then fail.
+        verify_auth(auth_hash, timing_equaliser());
         return Ok(None);
     };
-    if status != "active" || !verify_auth(auth_hash, &verifier) {
+
+    // Always run verify (no short-circuit) so disabled users cost the same.
+    let ok = verify_auth(auth_hash, &verifier);
+    if status != "active" || !ok {
         return Ok(None);
     }
     Ok(Some(User {
