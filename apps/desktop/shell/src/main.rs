@@ -66,8 +66,10 @@ fn main() -> Result<()> {
     let event_loop = {
         use tao::event_loop::EventLoopBuilder;
         use tao::platform::unix::EventLoopBuilderExtUnix;
+        // Must be a valid GApplication id (reverse-DNS, at least one dot),
+        // otherwise gtk_application_new aborts.
         let mut builder = EventLoopBuilder::new();
-        builder.with_app_id("rite");
+        builder.with_app_id("io.github.altagen.rite");
         builder.build()
     };
     #[cfg(not(target_os = "linux"))]
