@@ -216,7 +216,11 @@ export async function mockInvoke(
       };
     case 'context_remove_server':
     case 'context_set_active':
+    case 'context_pin_server':
       return null;
+    case 'context_probe':
+      // Dev mock: pretend every probed remote has a trusted (real) cert.
+      return { trusted: true, fingerprint: null };
 
     // --- Terminal (no backend PTY in the browser; sessions are inert) ---
     case 'get_installed_shells':

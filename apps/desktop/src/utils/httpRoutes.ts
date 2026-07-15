@@ -103,6 +103,11 @@ const routes: Record<string, Route> = {
     await json('/api/context/active', post({ server: a.server }));
     return null;
   },
+  context_probe: (a) => json('/api/context/probe', post({ url: a.url })),
+  context_pin_server: async (a) => {
+    await json(`/api/context/servers/${encodeURIComponent(String(a.id))}/pin`, post({ fingerprint: a.fingerprint }));
+    return null;
+  },
 
   admin_list_users: () => json('/api/admin/users'),
   admin_create_user: (a) =>

@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Backend, type ContextState } from '../utils/backend';
+import { CertTrustModal } from './CertTrustModal';
 
 export function ContextSwitcher() {
   const [ctx, setCtx] = useState<ContextState | null>(null);
@@ -18,6 +19,8 @@ export function ContextSwitcher() {
   const [label, setLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A self-signed remote awaiting fingerprint confirmation (TOFU, ADR 0012 §4).
+  const [pendingTrust, setPendingTrust] = useState<{ fingerprint: string } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
@@ -58,19 +61,50 @@ export function ContextSwitcher() {
     }
   };
 
+  /** Add the server to the roster (optionally pinning a confirmed cert). */
+  const commitAdd = useCallback(
+    async (fingerprint?: string) => {
+      const server = await Backend.Context.addServer(url.trim(), label.trim() || undefined);
+      if (fingerprint) await Backend.Context.pinServer(server.id, fingerprint);
+      setUrl('');
+      setLabel('');
+      setAdding(false);
+      setPendingTrust(null);
+      await refresh();
+    },
+    [url, label, refresh],
+  );
+
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim() || busy) return;
     setBusy(true);
     setError(null);
     try {
-      await Backend.Context.addServer(url.trim(), label.trim() || undefined);
-      setUrl('');
-      setLabel('');
-      setAdding(false);
-      await refresh();
+      // Probe the TLS cert first (ADR 0012 §4). A real cert is trusted straight
+      // away; a self-signed one needs out-of-band fingerprint confirmation.
+      const probe = await Backend.Context.probe(url.trim());
+      if (!probe.trusted && probe.fingerprint) {
+        setPendingTrust({ fingerprint: probe.fingerprint });
+        return;
+      }
+      await commitAdd();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add server');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmTrust = async () => {
+    if (!pendingTrust) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await commitAdd(pendingTrust.fingerprint);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add server');
+      setPendingTrust(null);
     } finally {
       setBusy(false);
     }
@@ -193,6 +227,16 @@ export function ContextSwitcher() {
             </button>
           )}
         </div>
+      )}
+
+      {pendingTrust && (
+        <CertTrustModal
+          url={url.trim()}
+          fingerprint={pendingTrust.fingerprint}
+          busy={busy}
+          onTrust={confirmTrust}
+          onCancel={() => setPendingTrust(null)}
+        />
       )}
     </div>
   );

@@ -381,13 +381,22 @@ export const BackendAdmin = {
 } as const;
 
 // Context multiplexer (ADR 0012) — the native client's roster of contexts.
-const RemoteServerSchema = z.object({ id: z.string(), url: z.string(), label: z.string() });
+const RemoteServerSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  label: z.string(),
+  certFingerprint: z.string().optional(),
+});
 const ContextSchema = z.object({
   active: z.union([z.literal('local'), RemoteServerSchema]),
   roster: z.array(RemoteServerSchema),
 });
+// A self-signed remote returns `trusted: false` + the fingerprint to confirm;
+// a real cert returns `trusted: true` (fingerprint null); loopback http too.
+const ProbeSchema = z.object({ trusted: z.boolean(), fingerprint: z.string().nullable() });
 export type RemoteServer = z.infer<typeof RemoteServerSchema>;
 export type ContextState = z.infer<typeof ContextSchema>;
+export type ProbeResult = z.infer<typeof ProbeSchema>;
 
 export const BackendContext = {
   get: () => invokeWithValidation('context_get', ContextSchema),
@@ -396,6 +405,11 @@ export const BackendContext = {
   removeServer: (id: string) => invokeWithValidation('context_remove_server', z.null(), { id }),
   /** `'local'` or a roster server id. */
   setActive: (server: string) => invokeWithValidation('context_set_active', z.null(), { server }),
+  /** Probe a remote's TLS cert (TOFU) before adding a self-signed server. */
+  probe: (url: string) => invokeWithValidation('context_probe', ProbeSchema, { url }),
+  /** Pin a confirmed self-signed cert fingerprint for a roster server. */
+  pinServer: (id: string, fingerprint: string) =>
+    invokeWithValidation('context_pin_server', z.null(), { id, fingerprint }),
 } as const;
 
 export const Backend = {
