@@ -13,9 +13,10 @@ test('add a remote server to the context roster', async ({ page }) => {
   await page.getByRole('button', { name: /context/i }).click();
   await expect(page.getByText('Local vault')).toBeVisible();
 
-  // Add a server (https).
+  // Add a server. A loopback http remote is a valid dev target and needs no TLS
+  // probe (that path is covered by tls-proxy.spec.ts), keeping this test hermetic.
   await page.getByRole('button', { name: /add server/i }).click();
-  await page.getByPlaceholder('https://rite.example.com').fill('https://team.example.com');
+  await page.getByPlaceholder('https://rite.example.com').fill('http://127.0.0.1:9443');
   await page.getByPlaceholder('Label (optional)').fill('Team');
   await page.getByRole('button', { name: /^add$/i }).click();
 

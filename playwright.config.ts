@@ -38,6 +38,7 @@ export default defineConfig({
         /accounts\.spec\.ts/,
         /accounts-env\.spec\.ts/,
         /proxy\.spec\.ts/,
+        /tls-proxy\.spec\.ts/,
       ],
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
@@ -58,8 +59,16 @@ export default defineConfig({
     // Local multiplexer on :1424 proxying to the remote :1423 (ADR 0012 phase 2).
     {
       name: 'proxy',
-      testMatch: /proxy\.spec\.ts/,
+      // Anchor on a path separator so this doesn't also match tls-proxy.spec.ts.
+      testMatch: /[\\/]proxy\.spec\.ts$/,
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1424' },
+    },
+    // Local multiplexer on :1426 proxying to the self-signed TLS remote :1425 —
+    // cert TOFU pin then login over the TLS proxy (ADR 0012 phase 4).
+    {
+      name: 'tls-proxy',
+      testMatch: /tls-proxy\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1426' },
     },
   ],
   webServer: [
@@ -90,6 +99,24 @@ export default defineConfig({
     {
       command: 'sh e2e/serve-proxy.sh',
       url: 'http://127.0.0.1:1424/api/health',
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      // Self-signed TLS remote: wait on the TCP port (an https health check would
+      // fail cert validation in Node — the mux validates it via the pinned rustls).
+      command: 'sh e2e/serve-accounts-tls.sh',
+      port: 1425,
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      command: 'sh e2e/serve-proxy-tls.sh',
+      url: 'http://127.0.0.1:1426/api/health',
       reuseExistingServer: false,
       timeout: 30_000,
       stdout: 'pipe',
