@@ -30,8 +30,15 @@ test('sign out then sign back in with the same credentials', async ({ page }) =>
   await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
   await page.locator('#username').fill(ADMIN.username);
   await page.locator('#password').fill(ADMIN.password);
+  const loginResp = page.waitForResponse((r) => r.url().endsWith('/api/server/login') && r.status() === 200);
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
+  // The login carries the per-user vault blob (ADR 0011); a successful landing
+  // means the client unwrapped its user key with the password (unwrap is in the
+  // login critical path — it would throw otherwise).
+  const body = await (await loginResp).json();
+  expect(body.vault?.protectedUserKey).toMatch(/^v1\./);
+  expect(body.vault?.kdfMasterSalt).toMatch(/^[0-9a-f]+$/);
   await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
 
   // Wrong password is rejected.
