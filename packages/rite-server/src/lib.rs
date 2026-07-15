@@ -33,6 +33,7 @@ use tokio::sync::broadcast;
 
 mod assets;
 mod tls_pin;
+mod vault_conn;
 mod ws_events;
 use ws_events::WsSessionEvents;
 
@@ -258,6 +259,29 @@ impl ServerState {
     fn events_sink(&self) -> Arc<WsSessionEvents> {
         Arc::new(WsSessionEvents::new(self.events_tx.clone()))
     }
+
+    /// The proxy HTTP client (pinned-TLS), for the vault-connection transform.
+    pub(crate) fn http_client(&self) -> &reqwest::Client {
+        &self.http_client
+    }
+
+    /// The active remote's session token, if any.
+    pub(crate) fn remote_token(&self) -> Option<String> {
+        self.remote_token.lock().unwrap().clone()
+    }
+
+    /// The active remote server, if the context is remote.
+    fn remote_context(&self) -> Option<RemoteServer> {
+        match &*self.context.lock().unwrap() {
+            ActiveContext::Remote(s) => Some(s.clone()),
+            ActiveContext::Local => None,
+        }
+    }
+
+    /// The held vault key if currently unlocked (refreshes the idle timer).
+    fn vault_key(&self) -> Option<[u8; 32]> {
+        self.vault.lock().unwrap().get()
+    }
 }
 
 /// Build the HTTP/WebSocket router. The desktop shell and the standalone server
@@ -462,8 +486,15 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
 
     // Multiplexer (ADR 0012): when a remote context is active, proxy /api/* to it
     // (except the local /api/context/* control plane and /api/health for the
-    // harness). /ws is proxied in a later phase.
-    if is_api && path != "/ws" && path != "/api/health" && !path.starts_with("/api/context") {
+    // harness). `/api/connections` is handled locally instead — the vault-conn
+    // transform (ADR 0011) decrypts the remote's ciphertext blobs there. /ws is
+    // proxied separately in ws_handler.
+    if is_api
+        && path != "/ws"
+        && path != "/api/health"
+        && !path.starts_with("/api/context")
+        && !path.starts_with("/api/connections")
+    {
         let active = { state.context.lock().unwrap().clone() };
         if let ActiveContext::Remote(server) = active {
             return proxy_to_remote(&state, &server, req).await;
@@ -953,34 +984,77 @@ async fn set_setting(
 
 // --- connections ------------------------------------------------------------
 
-async fn get_connections(
-    State(state): State<ServerState>,
-) -> Result<Json<Vec<ConnectionInfo>>, AppError> {
-    Ok(Json(state.connections.get_all_connections().await?))
+/// 423 Locked — a remote context is active but its vault key is not held.
+fn vault_locked() -> Response {
+    (
+        StatusCode::LOCKED,
+        Json(json!({ "error": "vault locked", "locked": true })),
+    )
+        .into_response()
+}
+
+async fn get_connections(State(state): State<ServerState>) -> Result<Response, AppError> {
+    // Remote context (ADR 0011): serve the user's decrypted vault connections.
+    if let Some(server) = state.remote_context() {
+        let Some(key) = state.vault_key() else {
+            return Ok(vault_locked());
+        };
+        return Ok(Json(vault_conn::list(&state, &server, &key).await?).into_response());
+    }
+    Ok(Json(state.connections.get_all_connections().await?).into_response())
 }
 
 async fn create_connection(
     State(state): State<ServerState>,
     Json(input): Json<CreateConnectionInput>,
-) -> Result<Json<ConnectionInfo>, AppError> {
-    Ok(Json(state.connections.create_connection(input).await?))
+) -> Result<Response, AppError> {
+    if let Some(server) = state.remote_context() {
+        let Some(key) = state.vault_key() else {
+            return Ok(vault_locked());
+        };
+        return Ok(Json(vault_conn::create(&state, &server, &key, &input).await?).into_response());
+    }
+    Ok(Json(state.connections.create_connection(input).await?).into_response())
 }
 
 async fn update_connection(
     State(state): State<ServerState>,
-    Path(_id): Path<String>,
+    Path(id): Path<String>,
     Json(input): Json<UpdateConnectionInput>,
-) -> Result<Json<ConnectionInfo>, AppError> {
-    // `UpdateConnectionInput` carries its own id; the path id is for REST shape.
-    Ok(Json(state.connections.update_connection(input).await?))
+) -> Result<Response, AppError> {
+    if let Some(server) = state.remote_context() {
+        let Some(key) = state.vault_key() else {
+            return Ok(vault_locked());
+        };
+        // The vault stores a whole encrypted connection; decrypt it (with its
+        // secrets), apply the update, re-encrypt, and store.
+        let existing = vault_conn::list_raw(&state, &server, &key)
+            .await?
+            .into_iter()
+            .find(|(cid, ..)| *cid == id);
+        let Some((_, input_existing, created_at, _)) = existing else {
+            return Ok((StatusCode::NOT_FOUND, "unknown connection").into_response());
+        };
+        let merged = vault_conn::merge_update(input_existing, input);
+        vault_conn::update(&state, &server, &key, &id, &merged).await?;
+        return Ok(Json(vault_conn::info_for(id, &merged, created_at)).into_response());
+    }
+    Ok(Json(state.connections.update_connection(input).await?).into_response())
 }
 
 async fn delete_connection(
     State(state): State<ServerState>,
     Path(id): Path<String>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if let Some(server) = state.remote_context() {
+        if state.vault_key().is_none() {
+            return Ok(vault_locked());
+        }
+        vault_conn::delete(&state, &server, &id).await?;
+        return Ok(StatusCode::NO_CONTENT.into_response());
+    }
     state.connections.delete_connection(&id).await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 // --- per-user vault connections (ADR 0011) ----------------------------------
