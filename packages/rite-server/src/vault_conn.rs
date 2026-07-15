@@ -9,11 +9,42 @@
 
 use anyhow::{Result, anyhow};
 use axum::http::header;
-use rite_core::connection::{AuthMethod, ConnectionInfo, CreateConnectionInput, UpdateConnectionInput};
+use rite_core::connection::{
+    AuthMethod, Connection, ConnectionInfo, ConnectionMetadata, CreateConnectionInput, Protocol,
+    UpdateConnectionInput,
+};
 use rite_crypto::vault;
 use serde::Deserialize;
 
 use crate::{RemoteServer, ServerState};
+
+/// Build an in-memory `Connection` (+ its auth) from a decrypted vault record,
+/// for client-execute: the local server opens SSH from these creds (ADR 0011 §4).
+pub fn to_connection(id: &str, input: CreateConnectionInput) -> Result<(Connection, AuthMethod)> {
+    let ts = now();
+    let auth = input.auth_method.clone();
+    let conn = Connection {
+        id: id.to_string(),
+        name: input.name,
+        protocol: Protocol::from_str(&input.protocol)?,
+        hostname: input.hostname,
+        port: input.port,
+        username: input.username,
+        auth_method: input.auth_method,
+        metadata: ConnectionMetadata {
+            color: input.color,
+            icon: input.icon,
+            folder: input.folder,
+            notes: input.notes,
+        },
+        ssh_keep_alive_override: input.ssh_keep_alive_override,
+        ssh_keep_alive_interval: input.ssh_keep_alive_interval,
+        created_at: ts,
+        updated_at: ts,
+        last_used_at: None,
+    };
+    Ok((conn, auth))
+}
 
 /// A stored blob row as returned by the remote's `/api/vault/connections`.
 #[derive(Deserialize)]
@@ -138,6 +169,21 @@ pub async fn list_raw(
         out.push((r.id, input, r.created_at, r.updated_at));
     }
     Ok(out)
+}
+
+/// Fetch and decrypt a single connection by id (with its secrets) for
+/// client-execute (ADR 0011 phase 4). `None` if the user has no such connection.
+pub async fn get_input(
+    state: &ServerState,
+    server: &RemoteServer,
+    key: &[u8; 32],
+    id: &str,
+) -> Result<Option<CreateConnectionInput>> {
+    Ok(list_raw(state, server, key)
+        .await?
+        .into_iter()
+        .find(|(cid, ..)| cid == id)
+        .map(|(_, input, ..)| input))
 }
 
 /// GET the user's blobs and decrypt them to frontend-safe `ConnectionInfo`.

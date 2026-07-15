@@ -496,12 +496,33 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
         && !path.starts_with("/api/connections")
     {
         let active = { state.context.lock().unwrap().clone() };
-        if let ActiveContext::Remote(server) = active {
+        if let ActiveContext::Remote(server) = active
+            && !terminal_stays_local(&state, &path).await
+        {
             return proxy_to_remote(&state, &server, req).await;
         }
     }
 
     next.run(req).await
+}
+
+/// In a remote context, decide whether a `/api/terminal/*` request is handled by
+/// the LOCAL server (client-execute) rather than proxied (ADR 0011 §4):
+/// - `ssh` / `quick-ssh` creates open SSH locally from the client's network;
+/// - a control request (`/{id}/…`) is local iff we own that session;
+/// - everything else (`local` shell on the remote, session list) is proxied.
+async fn terminal_stays_local(state: &ServerState, path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/api/terminal") else {
+        return false;
+    };
+    match rest {
+        "/ssh" | "/quick-ssh" => true,
+        "" | "/" | "/local" => false,
+        _ => {
+            let id = rest.trim_start_matches('/').split('/').next().unwrap_or("");
+            !id.is_empty() && state.sessions.has_session(id).await
+        }
+    }
 }
 
 /// Reverse-proxy one request to the active remote (ADR 0012). Injects the stored
@@ -1505,12 +1526,29 @@ struct ConnectSshReq {
 async fn connect_ssh(
     State(state): State<ServerState>,
     Json(req): Json<ConnectSshReq>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Response, AppError> {
+    // Client-execute (ADR 0011 §4 / ADR 0012 phase 6): in a remote context the
+    // saved connection is an encrypted vault record — the local server decrypts
+    // it and opens SSH from its own network position, streaming on the local /ws.
+    if let Some(server) = state.remote_context() {
+        let Some(key) = state.vault_key() else {
+            return Ok(vault_locked());
+        };
+        let input = vault_conn::get_input(&state, &server, &key, &req.connection_id)
+            .await?
+            .ok_or_else(|| AppError(anyhow::anyhow!("connection not found")))?;
+        let (connection, auth) = vault_conn::to_connection(&req.connection_id, input)?;
+        let id = state
+            .sessions
+            .create_quick_ssh_session(connection, auth, state.events_sink())
+            .await?;
+        return Ok(Json(json!({ "sessionId": id })).into_response());
+    }
     let id = state
         .sessions
         .create_session(req.connection_id, state.events_sink())
         .await?;
-    Ok(Json(json!({ "sessionId": id })))
+    Ok(Json(json!({ "sessionId": id })).into_response())
 }
 
 /// Quick-connect auth, mirroring the desktop `QuickAuthMethod` wire shape.
@@ -1635,14 +1673,17 @@ async fn close(
 // --- websocket: stream `{event,payload}` messages to the client -------------
 
 async fn ws_handler(State(state): State<ServerState>, ws: WebSocketUpgrade) -> Response {
-    // Multiplexer (ADR 0012 phase 3): when a remote context is active, bridge this
-    // WebSocket to the remote's /ws (server-execute terminals stream through).
+    // Multiplexer (ADR 0012 / 0011 §4): when a remote context is active, merge the
+    // LOCAL event stream (client-execute SSH sessions run on this machine) with a
+    // bridge to the remote's /ws (server-execute terminals stream through). Both
+    // reach the same webview socket, so the two execution modes coexist.
     let active = { state.context.lock().unwrap().clone() };
     if let ActiveContext::Remote(server) = active {
         let token = state.remote_token.lock().unwrap().clone();
         let remote_url = remote_ws_url(&server.url, token.as_deref());
         let tls = state.tls_config.clone();
-        return ws.on_upgrade(move |socket| proxy_ws(socket, remote_url, tls));
+        let rx = state.events_tx.subscribe();
+        return ws.on_upgrade(move |socket| merge_ws(socket, remote_url, tls, rx));
     }
 
     let mut rx = state.events_tx.subscribe();
@@ -1673,65 +1714,90 @@ fn remote_ws_url(base: &str, token: Option<&str>) -> String {
     }
 }
 
-/// Bridge a webview WebSocket to the active remote's WebSocket, both directions.
-/// The TLS config carries the pinned verifier so a self-signed remote's WS is
-/// validated against the same pin as the HTTP proxy (ADR 0012 §4).
-async fn proxy_ws(
-    local: axum::extract::ws::WebSocket,
+/// Merge, onto one webview WebSocket, the LOCAL event stream (client-execute SSH
+/// sessions) and a bridge to the active remote's `/ws` (server-execute). Events
+/// are server→client (terminal input goes over HTTP), so this is one-directional
+/// fan-in; inbound frames from the webview are drained. The TLS config carries the
+/// pinned verifier (ADR 0012 §4).
+async fn merge_ws(
+    socket: axum::extract::ws::WebSocket,
     remote_url: String,
     tls: Arc<rustls::ClientConfig>,
+    mut local_rx: broadcast::Receiver<String>,
 ) {
-    use axum::extract::ws::Message as A;
     use futures_util::{SinkExt, StreamExt};
-    use tokio_tungstenite::tungstenite::Message as T;
 
-    let connector = tokio_tungstenite::Connector::Rustls(tls);
-    let remote =
-        match tokio_tungstenite::connect_async_tls_with_config(&remote_url, None, false, Some(connector))
-            .await
+    let (mut sink, mut client_stream) = socket.split();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Message>(256);
+
+    // Local events (client-execute terminals on this machine) → the webview.
+    let tx_local = tx.clone();
+    tokio::spawn(async move {
+        loop {
+            match local_rx.recv().await {
+                Ok(msg) => {
+                    if tx_local.send(Message::Text(msg.into())).await.is_err() {
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+
+    // Remote /ws (server-execute terminals on the remote) → the webview.
+    let tx_remote = tx.clone();
+    tokio::spawn(async move {
+        use tokio_tungstenite::tungstenite::Message as T;
+        let connector = tokio_tungstenite::Connector::Rustls(tls);
+        let remote = match tokio_tungstenite::connect_async_tls_with_config(
+            &remote_url,
+            None,
+            false,
+            Some(connector),
+        )
+        .await
         {
             Ok((stream, _)) => stream,
             Err(e) => {
-                tracing::warn!("[rite-server] ws proxy: remote connect failed: {e}");
+                tracing::warn!("[rite-server] ws merge: remote connect failed: {e}");
                 return;
             }
         };
-    let (mut local_tx, mut local_rx) = local.split();
-    let (mut remote_tx, mut remote_rx) = remote.split();
-
-    let remote_to_local = async {
+        let (_w, mut remote_rx) = remote.split();
         while let Some(Ok(msg)) = remote_rx.next().await {
             let out = match msg {
-                T::Text(t) => A::Text(t.as_str().to_owned().into()),
-                T::Binary(b) => A::Binary(b.to_vec().into()),
-                T::Ping(p) => A::Ping(p.to_vec().into()),
-                T::Pong(p) => A::Pong(p.to_vec().into()),
+                T::Text(t) => Message::Text(t.as_str().to_owned().into()),
+                T::Binary(b) => Message::Binary(b.to_vec().into()),
                 T::Close(_) => break,
                 _ => continue,
             };
-            if local_tx.send(out).await.is_err() {
+            if tx_remote.send(out).await.is_err() {
                 break;
             }
         }
-    };
-    let local_to_remote = async {
-        while let Some(Ok(msg)) = local_rx.next().await {
-            let out = match msg {
-                A::Text(t) => T::Text(t.as_str().to_owned().into()),
-                A::Binary(b) => T::Binary(b.to_vec().into()),
-                A::Ping(p) => T::Ping(p.to_vec().into()),
-                A::Pong(p) => T::Pong(p.to_vec().into()),
-                A::Close(_) => break,
-            };
-            if remote_tx.send(out).await.is_err() {
-                break;
-            }
-        }
-    };
+    });
+    drop(tx); // only the two pumps hold senders now
 
-    tokio::select! {
-        _ = remote_to_local => {},
-        _ = local_to_remote => {},
+    // Forward merged events to the webview until it disconnects.
+    loop {
+        tokio::select! {
+            maybe = rx.recv() => match maybe {
+                Some(m) => {
+                    if sink.send(m).await.is_err() {
+                        break;
+                    }
+                }
+                None => break,
+            },
+            inbound = client_stream.next() => {
+                if inbound.is_none() {
+                    break; // webview closed the socket
+                }
+                // Inbound frames are ignored — terminal input is sent over HTTP.
+            }
+        }
     }
 }
 

@@ -808,4 +808,10 @@ impl SessionManager {
         let sessions = self.sessions.lock().await;
         sessions.keys().cloned().collect()
     }
+
+    /// Whether this manager owns `session_id` (used by the multiplexer to route a
+    /// control request to the local client-execute session vs. proxying it).
+    pub async fn has_session(&self, session_id: &str) -> bool {
+        self.sessions.lock().await.contains_key(session_id)
+    }
 }
