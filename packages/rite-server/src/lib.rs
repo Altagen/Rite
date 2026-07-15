@@ -247,6 +247,16 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/connections/{id}",
             put(update_connection).delete(delete_connection),
         )
+        // Per-user zero-knowledge connection store (ADR 0011): opaque ciphertext
+        // blobs, scoped to the authenticated user; the server never reads them.
+        .route(
+            "/api/vault/connections",
+            get(vault_list_connections).post(vault_create_connection),
+        )
+        .route(
+            "/api/vault/connections/{id}",
+            put(vault_update_connection).delete(vault_delete_connection),
+        )
         .route("/api/ssh-config/default-path", get(default_ssh_config_path))
         .route("/api/ssh-config/parse", post(parse_ssh_config))
         .route("/api/ssh-config/import", post(import_ssh_config))
@@ -912,6 +922,60 @@ async fn delete_connection(
 ) -> Result<StatusCode, AppError> {
     state.connections.delete_connection(&id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+// --- per-user vault connections (ADR 0011) ----------------------------------
+// Opaque ciphertext blobs scoped to the authenticated user. The guard requires
+// a session in accounts mode and inserts the `User`; the server never reads the
+// blob. Only reachable in accounts mode (a user must be present).
+
+async fn vault_list_connections(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Value>, AppError> {
+    let items = rite_core::vault_store::list(state.db.pool(), &user.id).await?;
+    Ok(Json(json!(items)))
+}
+
+#[derive(Deserialize)]
+struct VaultBlobReq {
+    blob: String,
+}
+
+async fn vault_create_connection(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<Response, AppError> {
+    let item = rite_core::vault_store::create(state.db.pool(), &user.id, &req.blob).await?;
+    Ok((StatusCode::CREATED, Json(json!(item))).into_response())
+}
+
+async fn vault_update_connection(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<StatusCode, AppError> {
+    let ok = rite_core::vault_store::update(state.db.pool(), &user.id, &id, &req.blob).await?;
+    Ok(if ok {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    })
+}
+
+async fn vault_delete_connection(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let ok = rite_core::vault_store::delete(state.db.pool(), &user.id, &id).await?;
+    Ok(if ok {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    })
 }
 
 // --- ssh config -------------------------------------------------------------
