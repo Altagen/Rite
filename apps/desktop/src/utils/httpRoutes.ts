@@ -115,6 +115,15 @@ const routes: Record<string, Route> = {
     await json(`/api/context/servers/${encodeURIComponent(String(a.id))}/pin`, post({ fingerprint: a.fingerprint }));
     return null;
   },
+  context_vault_unlock: async (a) => {
+    await json('/api/context/vault/unlock', post({ userKey: a.userKey, autoLockSecs: a.autoLockSecs }));
+    return null;
+  },
+  context_vault_status: () => json('/api/context/vault/status'),
+  context_vault_lock: async () => {
+    await json('/api/context/vault/lock', { method: 'POST' });
+    return null;
+  },
 
   admin_list_users: () => json('/api/admin/users'),
   admin_create_user: (a) =>

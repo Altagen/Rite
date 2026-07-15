@@ -16,6 +16,25 @@ import {
   unwrapVaultKey,
 } from '../utils/serverAuth';
 import { setSessionToken, clearSessionToken, getSessionToken } from '../utils/session';
+import { bytesToHex } from '../utils/vaultCrypto';
+
+/**
+ * When a remote context is active (native multiplexer), hand the unwrapped vault
+ * key to the trusted local server so it survives reloads and can decrypt the
+ * user's connections (ADR 0011). In a plain server/browser session the context
+ * is 'local' and nothing is sent — the key never leaves the client.
+ */
+async function syncLocalVault(userKey: Uint8Array | null): Promise<void> {
+  if (!userKey) return;
+  try {
+    const ctx = await Backend.Context.get();
+    if (ctx.active !== 'local') {
+      await Backend.Context.vaultUnlock(bytesToHex(userKey));
+    }
+  } catch {
+    // No context control plane here (not a multiplexer) — nothing to unlock.
+  }
+}
 
 interface ServerSessionState {
   mode: ServerMode | null; // null until loaded
@@ -66,6 +85,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       const userKey = vault
         ? await unwrapVaultKey(password, vault.kdfMasterSalt, vault.protectedUserKey)
         : null;
+      await syncLocalVault(userKey);
       set({ user, userKey, loading: false });
     } catch (e) {
       set({ error: 'Invalid username or password', loading: false });
@@ -92,6 +112,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         vaultKey.protectedUserKey,
       );
       setSessionToken(token);
+      await syncLocalVault(vaultKey.userKey);
       const mode = get().mode;
       set({
         user,

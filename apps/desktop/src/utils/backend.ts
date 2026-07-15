@@ -424,6 +424,7 @@ const ContextSchema = z.object({
 // A self-signed remote returns `trusted: false` + the fingerprint to confirm;
 // a real cert returns `trusted: true` (fingerprint null); loopback http too.
 const ProbeSchema = z.object({ trusted: z.boolean(), fingerprint: z.string().nullable() });
+const VaultStatusSchema = z.object({ unlocked: z.boolean() });
 export type RemoteServer = z.infer<typeof RemoteServerSchema>;
 export type ContextState = z.infer<typeof ContextSchema>;
 export type ProbeResult = z.infer<typeof ProbeSchema>;
@@ -440,6 +441,13 @@ export const BackendContext = {
   /** Pin a confirmed self-signed cert fingerprint for a roster server. */
   pinServer: (id: string, fingerprint: string) =>
     invokeWithValidation('context_pin_server', z.null(), { id, fingerprint }),
+  /** Hand the unwrapped vault key to the trusted local server (ADR 0011). */
+  vaultUnlock: (userKeyHex: string, autoLockSecs?: number) =>
+    invokeWithValidation('context_vault_unlock', z.null(), { userKey: userKeyHex, autoLockSecs }),
+  /** Whether the local server still holds the vault key (survives reloads). */
+  vaultStatus: () => invokeWithValidation('context_vault_status', VaultStatusSchema),
+  /** Zeroize the held vault key (explicit lock). */
+  vaultLock: () => invokeWithValidation('context_vault_lock', z.null()),
 } as const;
 
 export const Backend = {

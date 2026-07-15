@@ -221,10 +221,14 @@ export async function mockInvoke(
     case 'context_remove_server':
     case 'context_set_active':
     case 'context_pin_server':
+    case 'context_vault_unlock':
+    case 'context_vault_lock':
       return null;
     case 'context_probe':
       // Dev mock: pretend every probed remote has a trusted (real) cert.
       return { trusted: true, fingerprint: null };
+    case 'context_vault_status':
+      return { unlocked: false };
 
     // --- Terminal (no backend PTY in the browser; sessions are inert) ---
     case 'get_installed_shells':
