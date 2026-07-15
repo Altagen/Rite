@@ -60,5 +60,15 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
 RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin \
     && task --version
 
+# --- Playwright browser runtime deps -----------------------------------------
+# The e2e harness (local only — not part of GitHub CI) runs chromium headless.
+# GTK/WebKit above pull most of chromium's deps; these are the ones it doesn't
+# (NSS/NSPR crypto libs + ALSA). Keeps the e2e run reproducible in the image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libnss3 \
+        libnspr4 \
+        libasound2t64 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /workspace
 CMD ["bash"]
