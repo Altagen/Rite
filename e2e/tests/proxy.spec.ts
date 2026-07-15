@@ -174,3 +174,83 @@ test('vault connections are stored zero-knowledge on the remote (ADR 0011)', asy
   expect(dump).not.toContain('zk-secret-host'); // host is encrypted
   expect(dump).not.toContain('s3cr3t-zk-pw'); // password is encrypted
 });
+
+test('client-execute: a saved connection opens SSH locally and streams over the mux /ws', async ({
+  page,
+}) => {
+  // Sign in through the mux (unlocks the vault). The connection is encrypted, so
+  // the remote cannot open SSH — the only way this works is client-execute: the
+  // local server decrypts the creds and opens SSH from its own network position.
+  await page.goto('/');
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#username').fill('envadmin');
+  await page.locator('#password').fill('EnvPass123!');
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+
+  const output = await page.evaluate(async () => {
+    const post = (path: string, body?: unknown) =>
+      fetch(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body ?? {}),
+      });
+
+    // Save an encrypted connection to the harness sshd (127.0.0.1:2222).
+    const cr = await post('/api/connections', {
+      name: 'CE box',
+      protocol: 'ssh',
+      hostname: '127.0.0.1',
+      port: 2222,
+      username: 'riteuser',
+      authMethod: { type: 'password', password: 'ritepass123' },
+      color: null,
+      icon: null,
+      folder: null,
+      notes: null,
+      sshKeepAliveOverride: null,
+      sshKeepAliveInterval: null,
+    });
+    if (!cr.ok) return `create-conn-${cr.status}`;
+    const conn = (await cr.json()) as { id: string };
+
+    // Open it — client-execute: SSH runs on the local (mux) server.
+    const sr = await post('/api/terminal/ssh', { connectionId: conn.id });
+    if (!sr.ok) return `ssh-${sr.status}`;
+    const { sessionId } = (await sr.json()) as { sessionId: string };
+
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    const seen = new Promise<string>((resolve) => {
+      const timer = setTimeout(() => resolve('timeout'), 25_000);
+      let buf = '';
+      ws.onmessage = (ev) => {
+        try {
+          const m = JSON.parse(ev.data as string);
+          if (m.event === 'terminal-data' && m.payload?.sessionId === sessionId) {
+            buf += atob(m.payload.data as string);
+            if (buf.includes('RITE_CLIENT_EXEC_OK')) {
+              clearTimeout(timer);
+              resolve('marker-seen');
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      };
+      ws.onerror = () => {
+        clearTimeout(timer);
+        resolve('ws-error');
+      };
+    });
+
+    await new Promise((r) => (ws.onopen = () => r(null)));
+    await new Promise((r) => setTimeout(r, 2000)); // let SSH connect + the proxy subscribe
+    await post(`/api/terminal/${sessionId}/claim`);
+    await post(`/api/terminal/${sessionId}/input`, {
+      data: Array.from(new TextEncoder().encode('echo RITE_CLIENT_EXEC_OK\n')),
+    });
+    return seen;
+  });
+
+  expect(output).toBe('marker-seen');
+});
