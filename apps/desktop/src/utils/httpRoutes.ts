@@ -85,7 +85,14 @@ const routes: Record<string, Route> = {
   server_bootstrap: (a) =>
     json(
       '/api/server/bootstrap',
-      post({ username: a.username, salt: a.salt, params: a.params, authHash: a.authHash }),
+      post({
+        username: a.username,
+        salt: a.salt,
+        params: a.params,
+        authHash: a.authHash,
+        masterSalt: a.masterSalt,
+        protectedUserKey: a.protectedUserKey,
+      }),
     ),
   server_logout: async () => {
     await json('/api/server/logout', { method: 'POST' });
@@ -119,6 +126,8 @@ const routes: Record<string, Route> = {
         params: a.params,
         authHash: a.authHash,
         role: a.role,
+        masterSalt: a.masterSalt,
+        protectedUserKey: a.protectedUserKey,
       }),
     ),
   admin_set_status: async (a) => {

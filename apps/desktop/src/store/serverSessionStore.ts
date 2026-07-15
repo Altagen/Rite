@@ -8,12 +8,22 @@
 
 import { create } from 'zustand';
 import { Backend, type ServerMode, type ServerUser } from '../utils/backend';
-import { deriveAuthHash, randomSaltHex, DEFAULT_KDF_PARAMS } from '../utils/serverAuth';
+import {
+  deriveAuthHash,
+  randomSaltHex,
+  DEFAULT_KDF_PARAMS,
+  createVaultKey,
+  unwrapVaultKey,
+} from '../utils/serverAuth';
 import { setSessionToken, clearSessionToken, getSessionToken } from '../utils/session';
 
 interface ServerSessionState {
   mode: ServerMode | null; // null until loaded
   user: ServerUser | null; // current server user (server mode only)
+  // The unwrapped per-user vault key (ADR 0011), RAM only, never persisted. Set
+  // after login/bootstrap; null after a token-only resume (no password to unwrap)
+  // — phase 3 will let the trusted local server hold it across reloads.
+  userKey: Uint8Array | null;
   loading: boolean;
   error: string | null;
   loadMode: () => Promise<void>;
@@ -26,6 +36,7 @@ interface ServerSessionState {
 export const useServerSession = create<ServerSessionState>((set, get) => ({
   mode: null,
   user: null,
+  userKey: null,
   loading: false,
   error: null,
 
@@ -35,11 +46,11 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
     // Resume an existing session if we still hold a token.
     if (mode.accounts && getSessionToken()) {
       try {
-        const user = await Backend.Server.me();
+        const { user } = await Backend.Server.me();
         set({ user });
       } catch {
         clearSessionToken();
-        set({ user: null });
+        set({ user: null, userKey: null });
       }
     }
   },
@@ -49,9 +60,13 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
     try {
       const { salt, params } = await Backend.Server.prelogin(username);
       const authHash = await deriveAuthHash(password, salt, params);
-      const { token, user } = await Backend.Server.login(username, authHash);
+      const { token, user, vault } = await Backend.Server.login(username, authHash);
       setSessionToken(token);
-      set({ user, loading: false });
+      // Unwrap the per-user vault key with the password (never sent).
+      const userKey = vault
+        ? await unwrapVaultKey(password, vault.kdfMasterSalt, vault.protectedUserKey)
+        : null;
+      set({ user, userKey, loading: false });
     } catch (e) {
       set({ error: 'Invalid username or password', loading: false });
       throw e;
@@ -62,16 +77,28 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const salt = randomSaltHex();
-      const authHash = await deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS);
+      // Derive the auth hash and generate the vault key in parallel (both run
+      // Argon2id) so the extra crypto doesn't slow signup down.
+      const [authHash, vaultKey] = await Promise.all([
+        deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS),
+        createVaultKey(password),
+      ]);
       const { token, user } = await Backend.Server.bootstrap(
         username,
         salt,
         DEFAULT_KDF_PARAMS,
         authHash,
+        vaultKey.masterSaltHex,
+        vaultKey.protectedUserKey,
       );
       setSessionToken(token);
       const mode = get().mode;
-      set({ user, loading: false, mode: mode ? { ...mode, needsBootstrap: false } : mode });
+      set({
+        user,
+        userKey: vaultKey.userKey,
+        loading: false,
+        mode: mode ? { ...mode, needsBootstrap: false } : mode,
+      });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to create the admin', loading: false });
       throw e;
@@ -85,7 +112,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       // best-effort
     }
     clearSessionToken();
-    set({ user: null });
+    set({ user: null, userKey: null });
   },
 
   clearError: () => set({ error: null }),

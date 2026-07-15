@@ -340,10 +340,21 @@ const ServerUserSchema = z.object({
   status: z.string(),
   createdAt: z.number(),
 });
-const LoginResultSchema = z.object({ token: z.string(), user: ServerUserSchema });
+// Per-user vault key material (ADR 0011): the KDF salt + wrapped user key. Null
+// for a user provisioned without a vault. Ciphertext only — safe to hand back.
+const VaultSchema = z
+  .object({ kdfMasterSalt: z.string(), protectedUserKey: z.string() })
+  .nullable();
+const LoginResultSchema = z.object({
+  token: z.string(),
+  user: ServerUserSchema,
+  vault: VaultSchema,
+});
+const MeSchema = z.object({ user: ServerUserSchema, vault: VaultSchema });
 
 export type ServerMode = z.infer<typeof ServerModeSchema>;
 export type ServerUser = z.infer<typeof ServerUserSchema>;
+export type VaultKeyBlob = z.infer<typeof VaultSchema>;
 
 export const BackendServer = {
   /** Whether this endpoint is a shared server and if it still needs its admin. */
@@ -353,27 +364,46 @@ export const BackendServer = {
     invokeWithValidation('server_prelogin', PreloginSchema, { username }),
   login: (username: string, authHash: string) =>
     invokeWithValidation('server_login', LoginResultSchema, { username, authHash }),
-  bootstrap: (username: string, salt: string, params: unknown, authHash: string) =>
+  bootstrap: (
+    username: string,
+    salt: string,
+    params: unknown,
+    authHash: string,
+    masterSalt: string,
+    protectedUserKey: string,
+  ) =>
     invokeWithValidation('server_bootstrap', LoginResultSchema, {
       username,
       salt,
       params,
       authHash,
+      masterSalt,
+      protectedUserKey,
     }),
   logout: () => invokeWithValidation('server_logout', z.null()),
-  me: () => invokeWithValidation('server_me', ServerUserSchema),
+  me: () => invokeWithValidation('server_me', MeSchema),
 } as const;
 
 // Admin (server mode, role=admin) — account management.
 export const BackendAdmin = {
   listUsers: () => invokeWithValidation('admin_list_users', z.array(ServerUserSchema)),
-  createUser: (username: string, salt: string, params: unknown, authHash: string, role: string) =>
+  createUser: (
+    username: string,
+    salt: string,
+    params: unknown,
+    authHash: string,
+    role: string,
+    masterSalt: string,
+    protectedUserKey: string,
+  ) =>
     invokeWithValidation('admin_create_user', ServerUserSchema, {
       username,
       salt,
       params,
       authHash,
       role,
+      masterSalt,
+      protectedUserKey,
     }),
   setStatus: (id: string, status: 'active' | 'disabled') =>
     invokeWithValidation('admin_set_status', z.null(), { id, status }),

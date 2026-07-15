@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Backend, type ServerUser } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
-import { deriveAuthHash, randomSaltHex, DEFAULT_KDF_PARAMS } from '../utils/serverAuth';
+import { deriveAuthHash, randomSaltHex, DEFAULT_KDF_PARAMS, createVaultKey } from '../utils/serverAuth';
 
 export function AdminUsersPanel() {
   const { user: me } = useServerSession();
@@ -42,8 +42,21 @@ export function AdminUsersPanel() {
     setError(null);
     try {
       const salt = randomSaltHex();
-      const authHash = await deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS);
-      await Backend.Admin.createUser(username.trim(), salt, DEFAULT_KDF_PARAMS, authHash, role);
+      // The admin knows the initial password, so it also builds the new user's
+      // per-user vault key here (ADR 0011); the user should change it later.
+      const [authHash, vaultKey] = await Promise.all([
+        deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS),
+        createVaultKey(password),
+      ]);
+      await Backend.Admin.createUser(
+        username.trim(),
+        salt,
+        DEFAULT_KDF_PARAMS,
+        authHash,
+        role,
+        vaultKey.masterSaltHex,
+        vaultKey.protectedUserKey,
+      );
       setUsername('');
       setPassword('');
       setRole('user');

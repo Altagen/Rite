@@ -178,16 +178,20 @@ export async function mockInvoke(
           status: 'active',
           createdAt: now(),
         },
+        vault: null,
       };
     case 'server_logout':
       return null;
     case 'server_me':
       return {
-        id: 'mock-admin',
-        username: 'admin',
-        role: 'admin',
-        status: 'active',
-        createdAt: now(),
+        user: {
+          id: 'mock-admin',
+          username: 'admin',
+          role: 'admin',
+          status: 'active',
+          createdAt: now(),
+        },
+        vault: null,
       };
     case 'admin_list_users':
       return [

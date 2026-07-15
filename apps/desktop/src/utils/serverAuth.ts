@@ -8,6 +8,14 @@
  */
 
 import { argon2id } from 'hash-wasm';
+import {
+  deriveMasterKey,
+  generateUserKey,
+  wrapUserKey,
+  unwrapUserKey,
+  hexToBytes,
+  bytesToHex,
+} from './vaultCrypto';
 
 export interface KdfParams {
   mem: number; // memory in KiB
@@ -17,20 +25,6 @@ export interface KdfParams {
 
 /** OWASP Argon2id baseline — must match the server's `KdfParams::recommended`. */
 export const DEFAULT_KDF_PARAMS: KdfParams = { mem: 19456, iter: 2, par: 1 };
-
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-  }
-  return bytes;
-}
-
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
 
 /** A fresh random salt (hex) for a new account. */
 export function randomSaltHex(byteLength = 16): string {
@@ -54,4 +48,38 @@ export async function deriveAuthHash(
     hashLength: 32,
     outputType: 'hex',
   });
+}
+
+/**
+ * Vault key material generated client-side at signup (ADR 0011). `masterSaltHex`
+ * + `protectedUserKey` are sent to the server; `userKey` is kept locally (never
+ * sent) so the caller can hold it without a second derivation.
+ */
+export interface VaultKeyMaterial {
+  masterSaltHex: string;
+  protectedUserKey: string;
+  userKey: Uint8Array;
+}
+
+/**
+ * Build a fresh per-user vault key: a random user key wrapped by the master key
+ * derived from the password + a new distinct salt. Called by whoever knows the
+ * password at account creation (self at bootstrap, admin for a new user).
+ */
+export async function createVaultKey(password: string): Promise<VaultKeyMaterial> {
+  const masterSaltHex = randomSaltHex();
+  const masterKey = await deriveMasterKey(password, hexToBytes(masterSaltHex));
+  const userKey = generateUserKey();
+  const protectedUserKey = await wrapUserKey(masterKey, userKey);
+  return { masterSaltHex, protectedUserKey, userKey };
+}
+
+/** Unwrap the user key from the login password + the server-returned vault blob. */
+export async function unwrapVaultKey(
+  password: string,
+  masterSaltHex: string,
+  protectedUserKey: string,
+): Promise<Uint8Array> {
+  const masterKey = await deriveMasterKey(password, hexToBytes(masterSaltHex));
+  return unwrapUserKey(masterKey, protectedUserKey);
 }
