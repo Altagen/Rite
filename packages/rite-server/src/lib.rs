@@ -72,6 +72,9 @@ pub struct ServerState {
     cert_pin: Arc<std::sync::Mutex<Option<String>>>,
     /// rustls config carrying the pinned verifier, reused for the WS proxy.
     tls_config: Arc<rustls::ClientConfig>,
+    /// The active remote's unwrapped vault key (ADR 0011), held by this trusted
+    /// local server across webview reloads; zeroized on lock/logout/idle.
+    vault: Arc<std::sync::Mutex<VaultKeyHolder>>,
 }
 
 /// A saved remote server in the roster (ADR 0012). No token here — the remote
@@ -93,6 +96,56 @@ pub struct RemoteServer {
 enum ActiveContext {
     Local,
     Remote(RemoteServer),
+}
+
+/// The unwrapped per-user vault key (ADR 0011 phase 3), held by the trusted local
+/// server so it survives webview reloads. Zeroized on explicit lock, on logout,
+/// and after `timeout` of inactivity (server-side enforcement — the whole point
+/// of "lock": the key must actually leave RAM, not just the UI).
+struct VaultKeyHolder {
+    key: Option<zeroize::Zeroizing<[u8; 32]>>,
+    last_active: std::time::Instant,
+    timeout: Option<std::time::Duration>,
+}
+
+impl VaultKeyHolder {
+    fn new() -> Self {
+        Self {
+            key: None,
+            last_active: std::time::Instant::now(),
+            timeout: None,
+        }
+    }
+
+    fn unlock(&mut self, key: [u8; 32], timeout: Option<std::time::Duration>) {
+        self.key = Some(zeroize::Zeroizing::new(key));
+        self.timeout = timeout;
+        self.last_active = std::time::Instant::now();
+    }
+
+    /// Zeroize the key if idle past the timeout; report whether still unlocked.
+    fn check_expiry(&mut self) -> bool {
+        if let Some(t) = self.timeout
+            && self.key.is_some()
+            && self.last_active.elapsed() > t
+        {
+            self.key = None; // Zeroizing drops → memory zeroized
+        }
+        self.key.is_some()
+    }
+
+    fn lock(&mut self) {
+        self.key = None;
+    }
+
+    /// Fetch the key for use, refreshing the idle timer. `None` if locked/expired.
+    fn get(&mut self) -> Option<[u8; 32]> {
+        if !self.check_expiry() {
+            return None;
+        }
+        self.last_active = std::time::Instant::now();
+        self.key.as_ref().map(|k| **k)
+    }
 }
 
 /// In-memory per-username login throttle: after `MAX_FAILURES` failures within
@@ -178,6 +231,7 @@ impl ServerState {
             http_client,
             cert_pin,
             tls_config,
+            vault: Arc::new(std::sync::Mutex::new(VaultKeyHolder::new())),
         })
     }
 
@@ -230,6 +284,11 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/context/servers/{id}/pin", post(pin_server))
         .route("/api/context/probe", post(probe_remote))
         .route("/api/context/active", post(set_active_context))
+        // Local-only vault-key control plane (ADR 0011): the webview posts the
+        // unwrapped user key here after login; the local server holds it.
+        .route("/api/context/vault/unlock", post(vault_unlock))
+        .route("/api/context/vault/status", get(vault_status))
+        .route("/api/context/vault/lock", post(vault_lock))
         .route("/api/auth/first-run", get(first_run))
         .route("/api/auth/locked", get(locked))
         .route("/api/auth/unlock", post(unlock))
@@ -1247,9 +1306,49 @@ async fn pin_server(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VaultUnlockReq {
+    user_key: String, // hex (32 bytes)
+    /// Idle auto-lock in seconds; 0/absent = no idle lock (explicit lock still works).
+    auto_lock_secs: Option<u64>,
+}
+
+/// The webview posts the unwrapped user key here after login (ADR 0011). Held by
+/// the local server (RAM) so it survives reloads; enforced idle-locked server-side.
+async fn vault_unlock(
+    State(state): State<ServerState>,
+    Json(req): Json<VaultUnlockReq>,
+) -> Result<Response, AppError> {
+    let bytes = server_auth::parse_hex_salt(&req.user_key)?;
+    let key: [u8; 32] = bytes.as_slice().try_into().map_err(|_| {
+        AppError(anyhow::anyhow!("user key must be 32 bytes"))
+    })?;
+    let timeout = req
+        .auto_lock_secs
+        .filter(|s| *s > 0)
+        .map(std::time::Duration::from_secs);
+    state.vault.lock().unwrap().unlock(key, timeout);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Whether the local vault key is currently held (checks the idle timeout).
+async fn vault_status(State(state): State<ServerState>) -> Json<Value> {
+    let unlocked = state.vault.lock().unwrap().check_expiry();
+    Json(json!({ "unlocked": unlocked }))
+}
+
+/// Explicitly zeroize the held vault key (lock).
+async fn vault_lock(State(state): State<ServerState>) -> StatusCode {
+    state.vault.lock().unwrap().lock();
+    StatusCode::NO_CONTENT
+}
+
 /// If a remote context is active, best-effort revoke its session on the remote,
 /// then drop the local token (ADR 0012 §5 — no orphan sessions).
 async fn clear_remote_session(state: &ServerState) {
+    // The held vault key belongs to the context we're leaving — zeroize it.
+    state.vault.lock().unwrap().lock();
     let url = match &*state.context.lock().unwrap() {
         ActiveContext::Remote(s) => Some(s.url.clone()),
         ActiveContext::Local => None,
@@ -1590,6 +1689,27 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt;
+
+    #[test]
+    fn vault_key_holder_locks_and_expires() {
+        use std::time::Duration;
+        let mut h = VaultKeyHolder::new();
+        assert!(h.get().is_none(), "starts locked");
+
+        h.unlock([9u8; 32], Some(Duration::from_secs(1000)));
+        assert_eq!(h.get(), Some([9u8; 32]), "unlocked key is retrievable");
+
+        // Idle past the timeout → the key is zeroized (server-side auto-lock).
+        h.last_active = std::time::Instant::now() - Duration::from_secs(2000);
+        assert!(h.get().is_none(), "idle-expired key is gone");
+        assert!(!h.check_expiry());
+
+        // No-timeout unlock stays until an explicit lock.
+        h.unlock([1u8; 32], None);
+        assert!(h.get().is_some());
+        h.lock();
+        assert!(h.get().is_none(), "explicit lock zeroizes");
+    }
 
     async fn test_state() -> ServerState {
         let dir = Box::leak(Box::new(tempfile::tempdir().unwrap()));

@@ -4213,6 +4213,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "webpki-roots 1.0.8",
+ "zeroize",
 ]
 
 [[package]]
