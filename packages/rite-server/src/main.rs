@@ -10,6 +10,13 @@ use tracing::info;
 async fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
 
+    // Pin the process-level rustls CryptoProvider to ring. Both the TLS server
+    // (axum-server) and the multiplexer's TLS clients (reqwest / tokio-tungstenite)
+    // otherwise fail to auto-select a provider when the tree exposes more than one.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .ok();
+
     let db_path = dirs::data_dir()
         .context("could not resolve the user data directory")?
         .join("rite")

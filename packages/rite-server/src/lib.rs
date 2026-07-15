@@ -32,6 +32,7 @@ use serde_json::{Value, json};
 use tokio::sync::broadcast;
 
 mod assets;
+mod tls_pin;
 mod ws_events;
 use ws_events::WsSessionEvents;
 
@@ -64,8 +65,13 @@ pub struct ServerState {
     /// The active remote's session token (ADR 0012 §4): held here, **never** sent
     /// to the webview. RAM only.
     remote_token: Arc<std::sync::Mutex<Option<String>>>,
-    /// HTTP client for proxying to the active remote.
+    /// HTTP client for proxying to the active remote (uses the pinned verifier).
     http_client: reqwest::Client,
+    /// The active remote's pinned cert fingerprint (SHA-256 hex), if any. Shared
+    /// with the rustls verifier behind `http_client`/`tls_config` (ADR 0012 §4).
+    cert_pin: Arc<std::sync::Mutex<Option<String>>>,
+    /// rustls config carrying the pinned verifier, reused for the WS proxy.
+    tls_config: Arc<rustls::ClientConfig>,
 }
 
 /// A saved remote server in the roster (ADR 0012). No token here — the remote
@@ -76,6 +82,10 @@ pub struct RemoteServer {
     pub id: String,
     pub url: String,
     pub label: String,
+    /// Pinned cert fingerprint (SHA-256 hex) for a self-signed remote (TOFU,
+    /// ADR 0012 §4). `None` = validate via webpki roots (a real cert).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cert_fingerprint: Option<String>,
 }
 
 /// The one active context (ADR 0006 single active context).
@@ -145,6 +155,14 @@ impl ServerState {
         let connections = Arc::new(ConnectionsManager::new(db.clone(), auth.as_ref().clone()));
         let sessions = Arc::new(SessionManager::new(db.clone(), auth.as_ref().clone()));
         let (events_tx, _) = broadcast::channel(1024);
+        let cert_pin = Arc::new(std::sync::Mutex::new(None));
+        let tls_config = Arc::new(tls_pin::client_config(tls_pin::PinnedVerifier::new(
+            cert_pin.clone(),
+        )));
+        let http_client = reqwest::Client::builder()
+            .use_preconfigured_tls((*tls_config).clone())
+            .build()
+            .map_err(|e| anyhow::anyhow!("build http client: {e}"))?;
         Ok(Self {
             db,
             auth,
@@ -157,7 +175,9 @@ impl ServerState {
             tls: false,
             context: Arc::new(std::sync::Mutex::new(ActiveContext::Local)),
             remote_token: Arc::new(std::sync::Mutex::new(None)),
-            http_client: reqwest::Client::new(),
+            http_client,
+            cert_pin,
+            tls_config,
         })
     }
 
@@ -207,6 +227,8 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/context", get(get_context))
         .route("/api/context/servers", post(add_server))
         .route("/api/context/servers/{id}", delete(remove_server))
+        .route("/api/context/servers/{id}/pin", post(pin_server))
+        .route("/api/context/probe", post(probe_remote))
         .route("/api/context/active", post(set_active_context))
         .route("/api/auth/first-run", get(first_run))
         .route("/api/auth/locked", get(locked))
@@ -992,6 +1014,7 @@ async fn add_server(
             .filter(|l| !l.trim().is_empty())
             .unwrap_or_else(|| url.clone()),
         url,
+        cert_fingerprint: None,
     };
     roster.push(entry.clone());
     save_roster(&state, &roster).await?;
@@ -1011,6 +1034,7 @@ async fn remove_server(
         matches!(&*state.context.lock().unwrap(), ActiveContext::Remote(s) if s.id == id);
     if is_active {
         clear_remote_session(&state).await;
+        *state.cert_pin.lock().unwrap() = None;
         *state.context.lock().unwrap() = ActiveContext::Local;
     }
     Ok(if roster.len() < before {
@@ -1034,6 +1058,7 @@ async fn set_active_context(
     clear_remote_session(&state).await;
 
     if req.server == "local" {
+        *state.cert_pin.lock().unwrap() = None;
         *state.context.lock().unwrap() = ActiveContext::Local;
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
@@ -1043,11 +1068,95 @@ async fn set_active_context(
         .find(|s| s.id == req.server)
     {
         Some(s) => {
+            // Point the pinned verifier at this remote's fingerprint (if any)
+            // before any proxy connection is made (ADR 0012 §4).
+            *state.cert_pin.lock().unwrap() = s.cert_fingerprint.clone();
             *state.context.lock().unwrap() = ActiveContext::Remote(s);
             Ok(StatusCode::NO_CONTENT.into_response())
         }
         None => Ok((StatusCode::NOT_FOUND, "unknown server").into_response()),
     }
+}
+
+#[derive(Deserialize)]
+struct ProbeReq {
+    url: String,
+}
+
+/// Probe a remote's TLS cert without trusting it (ADR 0012 §4, TOFU). Returns
+/// the leaf SHA-256 fingerprint and whether webpki roots would accept it, so the
+/// UI can show the fingerprint for out-of-band confirmation before pinning.
+async fn probe_remote(
+    State(state): State<ServerState>,
+    Json(req): Json<ProbeReq>,
+) -> Result<Response, AppError> {
+    let url = req.url.trim().trim_end_matches('/').to_string();
+    if !is_valid_remote_url(&url) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "remote must be https:// (http:// only on loopback)" })),
+        )
+            .into_response());
+    }
+    // A loopback http remote has no cert to probe — trust it as-is.
+    if url.starts_with("http://") {
+        return Ok(Json(json!({ "trusted": true, "fingerprint": null })).into_response());
+    }
+    let captured = Arc::new(std::sync::Mutex::new(None));
+    let config = tls_pin::client_config(tls_pin::CaptureVerifier::new(captured.clone()));
+    let client = reqwest::Client::builder()
+        .use_preconfigured_tls(config)
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| AppError(anyhow::anyhow!("build probe client: {e}")))?;
+    // Best-effort request: the TLS handshake captures the cert regardless of the
+    // HTTP outcome (the endpoint may 401/404 — we only care about the certificate).
+    let _ = client.get(format!("{url}/api/health")).send().await;
+    match captured.lock().unwrap().clone() {
+        Some((fingerprint, trusted)) => {
+            Ok(Json(json!({ "trusted": trusted, "fingerprint": fingerprint })).into_response())
+        }
+        None => Ok((
+            StatusCode::BAD_GATEWAY,
+            Json(json!({ "error": "could not reach remote (TLS handshake failed)" })),
+        )
+            .into_response()),
+    }
+}
+
+#[derive(Deserialize)]
+struct PinReq {
+    fingerprint: String,
+}
+
+/// Pin a self-signed remote's cert fingerprint in the roster (ADR 0012 §4). The
+/// user has confirmed the fingerprint out-of-band; store it so later connects
+/// must match. If the server is the active context, update the live pin too.
+async fn pin_server(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Json(req): Json<PinReq>,
+) -> Result<Response, AppError> {
+    let fp = req.fingerprint.trim().to_ascii_lowercase();
+    if fp.len() != 64 || !fp.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "fingerprint must be 64 hex chars (SHA-256)" })),
+        )
+            .into_response());
+    }
+    let mut roster = load_roster(&state).await;
+    let Some(entry) = roster.iter_mut().find(|s| s.id == id) else {
+        return Ok((StatusCode::NOT_FOUND, "unknown server").into_response());
+    };
+    entry.cert_fingerprint = Some(fp.clone());
+    save_roster(&state, &roster).await?;
+    let is_active =
+        matches!(&*state.context.lock().unwrap(), ActiveContext::Remote(s) if s.id == id);
+    if is_active {
+        *state.cert_pin.lock().unwrap() = Some(fp);
+    }
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// If a remote context is active, best-effort revoke its session on the remote,
@@ -1271,7 +1380,8 @@ async fn ws_handler(State(state): State<ServerState>, ws: WebSocketUpgrade) -> R
     if let ActiveContext::Remote(server) = active {
         let token = state.remote_token.lock().unwrap().clone();
         let remote_url = remote_ws_url(&server.url, token.as_deref());
-        return ws.on_upgrade(move |socket| proxy_ws(socket, remote_url));
+        let tls = state.tls_config.clone();
+        return ws.on_upgrade(move |socket| proxy_ws(socket, remote_url, tls));
     }
 
     let mut rx = state.events_tx.subscribe();
@@ -1303,18 +1413,28 @@ fn remote_ws_url(base: &str, token: Option<&str>) -> String {
 }
 
 /// Bridge a webview WebSocket to the active remote's WebSocket, both directions.
-async fn proxy_ws(local: axum::extract::ws::WebSocket, remote_url: String) {
+/// The TLS config carries the pinned verifier so a self-signed remote's WS is
+/// validated against the same pin as the HTTP proxy (ADR 0012 §4).
+async fn proxy_ws(
+    local: axum::extract::ws::WebSocket,
+    remote_url: String,
+    tls: Arc<rustls::ClientConfig>,
+) {
     use axum::extract::ws::Message as A;
     use futures_util::{SinkExt, StreamExt};
     use tokio_tungstenite::tungstenite::Message as T;
 
-    let remote = match tokio_tungstenite::connect_async(&remote_url).await {
-        Ok((stream, _)) => stream,
-        Err(e) => {
-            tracing::warn!("[rite-server] ws proxy: remote connect failed: {e}");
-            return;
-        }
-    };
+    let connector = tokio_tungstenite::Connector::Rustls(tls);
+    let remote =
+        match tokio_tungstenite::connect_async_tls_with_config(&remote_url, None, false, Some(connector))
+            .await
+        {
+            Ok((stream, _)) => stream,
+            Err(e) => {
+                tracing::warn!("[rite-server] ws proxy: remote connect failed: {e}");
+                return;
+            }
+        };
     let (mut local_tx, mut local_rx) = local.split();
     let (mut remote_tx, mut remote_rx) = remote.split();
 
