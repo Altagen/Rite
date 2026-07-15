@@ -87,13 +87,12 @@ pub async fn update(db: &SqlitePool, user_id: &str, id: &str, blob: &str) -> Res
 
 /// Delete a user's connection blob. Scoped by `user_id`.
 pub async fn delete(db: &SqlitePool, user_id: &str, id: &str) -> Result<bool> {
-    let affected =
-        sqlx::query("DELETE FROM vault_connections WHERE id = ? AND user_id = ?")
-            .bind(id)
-            .bind(user_id)
-            .execute(db)
-            .await?
-            .rows_affected();
+    let affected = sqlx::query("DELETE FROM vault_connections WHERE id = ? AND user_id = ?")
+        .bind(id)
+        .bind(user_id)
+        .execute(db)
+        .await?
+        .rows_affected();
     Ok(affected > 0)
 }
 
@@ -108,10 +107,18 @@ mod tests {
             master_salt: vec![1, 2, 3, 4],
             protected_user_key: "v1.x.y".to_string(),
         };
-        create_user(db, name, b"salt", KdfParams::recommended(), "hash", Role::User, &vault)
-            .await
-            .unwrap()
-            .id
+        create_user(
+            db,
+            name,
+            b"salt",
+            KdfParams::recommended(),
+            "hash",
+            Role::User,
+            &vault,
+        )
+        .await
+        .unwrap()
+        .id
     }
 
     #[tokio::test]

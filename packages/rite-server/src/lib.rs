@@ -1416,9 +1416,10 @@ async fn vault_unlock(
     Json(req): Json<VaultUnlockReq>,
 ) -> Result<Response, AppError> {
     let bytes = server_auth::parse_hex_salt(&req.user_key)?;
-    let key: [u8; 32] = bytes.as_slice().try_into().map_err(|_| {
-        AppError(anyhow::anyhow!("user key must be 32 bytes"))
-    })?;
+    let key: [u8; 32] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| AppError(anyhow::anyhow!("user key must be 32 bytes")))?;
     let timeout = req
         .auto_lock_secs
         .filter(|s| *s > 0)

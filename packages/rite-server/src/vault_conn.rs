@@ -76,7 +76,10 @@ pub fn info_for(id: String, input: &CreateConnectionInput, created_at: i64) -> C
 }
 
 /// Apply an `UpdateConnectionInput` onto the existing decrypted connection.
-pub fn merge_update(mut c: CreateConnectionInput, u: UpdateConnectionInput) -> CreateConnectionInput {
+pub fn merge_update(
+    mut c: CreateConnectionInput,
+    u: UpdateConnectionInput,
+) -> CreateConnectionInput {
     if let Some(v) = u.name {
         c.name = v;
     }
@@ -118,7 +121,12 @@ pub fn merge_update(mut c: CreateConnectionInput, u: UpdateConnectionInput) -> C
 }
 
 /// Build the frontend-safe `ConnectionInfo` from a decrypted input + row id/times.
-fn to_info(id: String, input: &CreateConnectionInput, created_at: i64, updated_at: i64) -> ConnectionInfo {
+fn to_info(
+    id: String,
+    input: &CreateConnectionInput,
+    created_at: i64,
+    updated_at: i64,
+) -> ConnectionInfo {
     ConnectionInfo {
         id,
         name: input.name.clone(),

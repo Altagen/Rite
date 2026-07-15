@@ -77,7 +77,9 @@ pub fn decrypt_string(key: &[u8; KEY_LEN], token: &str) -> Result<Vec<u8>> {
     match (parts.next(), parts.next(), parts.next(), parts.next()) {
         (Some("v1"), Some(iv_b64), Some(ct_b64), None) => {
             let iv = B64.decode(iv_b64).map_err(|e| anyhow!("bad iv: {e}"))?;
-            let ct = B64.decode(ct_b64).map_err(|e| anyhow!("bad ciphertext: {e}"))?;
+            let ct = B64
+                .decode(ct_b64)
+                .map_err(|e| anyhow!("bad ciphertext: {e}"))?;
             if iv.len() != IV_LEN {
                 return Err(anyhow!("bad iv length"));
             }
@@ -147,6 +149,9 @@ mod tests {
         let token = encrypt_with_iv(&key, &iv, b"rite-secret").unwrap();
         assert_eq!(decrypt_string(&key, &token).unwrap(), b"rite-secret");
         // The pinned token both impls must agree on:
-        assert_eq!(token, "v1.AAAAAAAAAAAAAAAA.E7HQ19bhbouTYvuw6lZG9L8YnnKYj2V5ZPNN");
+        assert_eq!(
+            token,
+            "v1.AAAAAAAAAAAAAAAA.E7HQ19bhbouTYvuw6lZG9L8YnnKYj2V5ZPNN"
+        );
     }
 }
