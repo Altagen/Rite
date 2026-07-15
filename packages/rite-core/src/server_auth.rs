@@ -130,6 +130,15 @@ pub async fn has_any_user(db: &SqlitePool) -> Result<bool> {
 
 /// Create an account. `salt` is the client KDF salt; `auth_hash` is the client's
 /// derived hash (never the password).
+/// The per-user vault key material generated client-side at signup (ADR 0011):
+/// the Argon2id salt for the master key + the wrapped user key (`v1.iv.ct`). The
+/// server stores both opaquely and can never unwrap the user key.
+#[derive(Debug, Clone)]
+pub struct VaultKey {
+    pub master_salt: Vec<u8>,
+    pub protected_user_key: String,
+}
+
 pub async fn create_user(
     db: &SqlitePool,
     username: &str,
@@ -137,13 +146,14 @@ pub async fn create_user(
     params: KdfParams,
     auth_hash: &str,
     role: Role,
+    vault: &VaultKey,
 ) -> Result<User> {
     let id = Uuid::new_v4().to_string();
     let verifier = hash_auth(auth_hash)?;
     let ts = now();
     sqlx::query(
-        "INSERT INTO users (id, username, kdf_salt, kdf_mem, kdf_iter, kdf_par, auth_verifier, role, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
+        "INSERT INTO users (id, username, kdf_salt, kdf_mem, kdf_iter, kdf_par, auth_verifier, role, status, created_at, updated_at, kdf_master_salt, protected_user_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(username)
@@ -155,6 +165,8 @@ pub async fn create_user(
     .bind(role.as_str())
     .bind(ts)
     .bind(ts)
+    .bind(&vault.master_salt)
+    .bind(&vault.protected_user_key)
     .execute(db)
     .await?;
 
@@ -189,8 +201,44 @@ pub async fn bootstrap_admin(db: &SqlitePool, username: &str, password: &str) ->
     let salt = generate_salt();
     let params = KdfParams::recommended();
     let auth_hash = derive_auth_hash(password, &salt, params)?;
-    create_user(db, username, &salt, params, &auth_hash, Role::Admin).await?;
+    // The env bootstrap already has the plaintext password, so it can set up the
+    // per-user vault key server-side (a random user key wrapped by the master key
+    // derived from the password + a distinct salt), mirroring the client flow.
+    let master_salt = generate_salt();
+    let master_key = rite_crypto::vault::derive_master_key(password, &master_salt)?;
+    let user_key = rite_crypto::vault::generate_user_key();
+    let protected_user_key = rite_crypto::vault::wrap_user_key(&master_key, &user_key)?;
+    let vault = VaultKey {
+        master_salt: master_salt.to_vec(),
+        protected_user_key,
+    };
+    create_user(db, username, &salt, params, &auth_hash, Role::Admin, &vault).await?;
     Ok(())
+}
+
+/// The per-user vault material returned at login/me so the client can unwrap its
+/// user key. Both fields may be absent for a user provisioned without a vault.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserVault {
+    pub kdf_master_salt: String, // hex
+    pub protected_user_key: String,
+}
+
+/// Fetch a user's vault key material (if set).
+pub async fn get_user_vault(db: &SqlitePool, user_id: &str) -> Result<Option<UserVault>> {
+    let row: Option<(Option<Vec<u8>>, Option<String>)> =
+        sqlx::query_as("SELECT kdf_master_salt, protected_user_key FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_optional(db)
+            .await?;
+    Ok(match row {
+        Some((Some(salt), Some(protected_user_key))) => Some(UserVault {
+            kdf_master_salt: to_hex(&salt),
+            protected_user_key,
+        }),
+        _ => None,
+    })
 }
 
 /// KDF salt + params for a username. Unknown users get stable benign defaults

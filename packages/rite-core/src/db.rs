@@ -70,8 +70,9 @@ impl Database {
             (1, include_str!("../migrations/001_initial_schema.sql")),
             (2, include_str!("../migrations/002_pending_host_keys.sql")),
             (3, include_str!("../migrations/003_server_accounts.sql")),
+            (4, include_str!("../migrations/004_user_vault_keys.sql")),
             // Future migrations go here:
-            // (4, include_str!("../migrations/004_another_feature.sql")),
+            // (5, include_str!("../migrations/005_another_feature.sql")),
         ];
 
         // Expected latest version

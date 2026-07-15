@@ -679,7 +679,8 @@ async fn server_login(
         Some(user) => {
             state.login_limiter.record_success(&req.username);
             let token = server_auth::create_session(state.db.pool(), &user.id).await?;
-            Ok(Json(json!({ "token": token, "user": user })).into_response())
+            let vault = server_auth::get_user_vault(state.db.pool(), &user.id).await?;
+            Ok(Json(json!({ "token": token, "user": user, "vault": vault })).into_response())
         }
         None => {
             state.login_limiter.record_failure(&req.username);
@@ -710,6 +711,9 @@ struct BootstrapReq {
     salt: String, // hex
     params: KdfParams,
     auth_hash: String,
+    // Per-user vault key material generated client-side (ADR 0011).
+    master_salt: String, // hex
+    protected_user_key: String,
 }
 
 async fn server_bootstrap(
@@ -727,6 +731,10 @@ async fn server_bootstrap(
             .into_response());
     }
     let salt = server_auth::parse_hex_salt(&req.salt)?;
+    let vault = server_auth::VaultKey {
+        master_salt: server_auth::parse_hex_salt(&req.master_salt)?,
+        protected_user_key: req.protected_user_key,
+    };
     let user = server_auth::create_user(
         state.db.pool(),
         &req.username,
@@ -734,15 +742,22 @@ async fn server_bootstrap(
         req.params,
         &req.auth_hash,
         Role::Admin,
+        &vault,
     )
     .await?;
     let token = server_auth::create_session(state.db.pool(), &user.id).await?;
-    Ok(Json(json!({ "token": token, "user": user })).into_response())
+    let vault_out = server_auth::get_user_vault(state.db.pool(), &user.id).await?;
+    Ok(Json(json!({ "token": token, "user": user, "vault": vault_out })).into_response())
 }
 
-/// The current authenticated user (guard inserted it).
-async fn server_me(Extension(user): Extension<Arc<User>>) -> Json<User> {
-    Json((*user).clone())
+/// The current authenticated user (guard inserted it) + its vault key material,
+/// so a client that reloaded can re-unwrap its user key without a fresh login.
+async fn server_me(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Value>, AppError> {
+    let vault = server_auth::get_user_vault(state.db.pool(), &user.id).await?;
+    Ok(Json(json!({ "user": (*user).clone(), "vault": vault })))
 }
 
 // --- admin (role-gated by the guard: /api/admin/* requires role=admin) ------
@@ -759,6 +774,10 @@ struct CreateUserReq {
     params: KdfParams,
     auth_hash: String,
     role: Role,
+    // The admin sets the initial password, so its browser generates the new
+    // user's vault key material too (ADR 0011). The user should change it later.
+    master_salt: String, // hex
+    protected_user_key: String,
 }
 
 async fn admin_create_user(
@@ -766,6 +785,10 @@ async fn admin_create_user(
     Json(req): Json<CreateUserReq>,
 ) -> Result<Response, AppError> {
     let salt = server_auth::parse_hex_salt(&req.salt)?;
+    let vault = server_auth::VaultKey {
+        master_salt: server_auth::parse_hex_salt(&req.master_salt)?,
+        protected_user_key: req.protected_user_key.clone(),
+    };
     match server_auth::create_user(
         state.db.pool(),
         &req.username,
@@ -773,6 +796,7 @@ async fn admin_create_user(
         req.params,
         &req.auth_hash,
         req.role,
+        &vault,
     )
     .await
     {
