@@ -74,8 +74,9 @@ impl Database {
             (5, include_str!("../migrations/005_vault_connections.sql")),
             (6, include_str!("../migrations/006_teams.sql")),
             (7, include_str!("../migrations/007_user_keypair.sql")),
+            (8, include_str!("../migrations/008_team_keys.sql")),
             // Future migrations go here:
-            // (8, include_str!("../migrations/008_another_feature.sql")),
+            // (9, include_str!("../migrations/009_another_feature.sql")),
         ];
 
         // Expected latest version
