@@ -1,7 +1,35 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type APIRequestContext } from '@playwright/test';
 import { argon2id } from 'hash-wasm';
 
 const hexToBytes = (h: string) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
+
+const BASE = 'http://127.0.0.1:1422';
+
+/** Log in via the API (browser-equivalent Argon2id) and return the session token. */
+async function login(
+  request: APIRequestContext,
+  username: string,
+  password: string,
+): Promise<string> {
+  const pre = await (
+    await request.post(`${BASE}/api/server/prelogin`, { data: { username } })
+  ).json();
+  const authHash = await argon2id({
+    password,
+    salt: hexToBytes(pre.salt),
+    parallelism: pre.params.par,
+    iterations: pre.params.iter,
+    memorySize: pre.params.mem,
+    hashLength: 32,
+    outputType: 'hex',
+  });
+  const res = await (
+    await request.post(`${BASE}/api/server/login`, { data: { username, authHash } })
+  ).json();
+  return res.token as string;
+}
+
+const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 
 /**
  * Server-mode auth (ADR 0010) end to end, against a real rite-server in accounts
@@ -73,28 +101,8 @@ test('admin creates a user from the admin panel', async ({ page }) => {
 });
 
 test('a terminal session is sealed to its owner (multi-user)', async ({ request }) => {
-  const BASE = 'http://127.0.0.1:1422';
-  const login = async (username: string, password: string) => {
-    const pre = await (
-      await request.post(`${BASE}/api/server/prelogin`, { data: { username } })
-    ).json();
-    const authHash = await argon2id({
-      password,
-      salt: hexToBytes(pre.salt),
-      parallelism: pre.params.par,
-      iterations: pre.params.iter,
-      memorySize: pre.params.mem,
-      hashLength: 32,
-      outputType: 'hex',
-    });
-    const res = await (
-      await request.post(`${BASE}/api/server/login`, { data: { username, authHash } })
-    ).json();
-    return res.token as string;
-  };
-
-  const admin = await login('admin', ADMIN.password);
-  const carol = await login('carol', 'CarolPass123!');
+  const admin = await login(request, 'admin', ADMIN.password);
+  const carol = await login(request, 'carol', 'CarolPass123!');
 
   // Admin opens a local terminal → admin owns the session.
   const created = await request.post(`${BASE}/api/terminal/local`, {
@@ -124,4 +132,64 @@ test('a terminal session is sealed to its owner (multi-user)', async ({ request 
     headers: { authorization: `Bearer ${admin}` },
   });
   expect(adminClaim.status()).toBe(200);
+});
+
+test('teams RBAC: org-admin, team-admin, member, non-member (product-model)', async ({
+  request,
+}) => {
+  const admin = await login(request, 'admin', ADMIN.password);
+  const carol = await login(request, 'carol', 'CarolPass123!');
+
+  // Carol's user id (org-admin lists users).
+  const users = await (await request.get(`${BASE}/api/admin/users`, { headers: auth(admin) })).json();
+  const carolId = users.find((u: { username: string }) => u.username === 'carol').id;
+
+  // Org-admin creates a team and adds carol as a plain member.
+  const eng = await (
+    await request.post(`${BASE}/api/admin/teams`, { headers: auth(admin), data: { name: 'eng' } })
+  ).json();
+  expect(
+    (
+      await request.post(`${BASE}/api/teams/${eng.id}/members`, {
+        headers: auth(admin),
+        data: { userId: carolId, role: 'member' },
+      })
+    ).status(),
+  ).toBe(204);
+
+  // A plain member cannot manage membership.
+  expect(
+    (
+      await request.post(`${BASE}/api/teams/${eng.id}/members`, {
+        headers: auth(carol),
+        data: { userId: carolId, role: 'admin' },
+      })
+    ).status(),
+  ).toBe(403);
+
+  // Org-admin promotes carol to team-admin → she can now manage her team.
+  await request.post(`${BASE}/api/teams/${eng.id}/members`, {
+    headers: auth(admin),
+    data: { userId: carolId, role: 'admin' },
+  });
+  expect(
+    (
+      await request.post(`${BASE}/api/teams/${eng.id}/members`, {
+        headers: auth(carol),
+        data: { userId: users.find((u: { username: string }) => u.username === 'admin').id, role: 'member' },
+      })
+    ).status(),
+  ).toBe(204);
+
+  // Carol sees the team in her list.
+  const carolTeams = await (await request.get(`${BASE}/api/teams`, { headers: auth(carol) })).json();
+  expect(carolTeams.some((t: { name: string }) => t.name === 'eng')).toBe(true);
+
+  // A non-member cannot view a team she's not in.
+  const ops = await (
+    await request.post(`${BASE}/api/admin/teams`, { headers: auth(admin), data: { name: 'ops' } })
+  ).json();
+  expect(
+    (await request.get(`${BASE}/api/teams/${ops.id}/members`, { headers: auth(carol) })).status(),
+  ).toBe(403);
 });
