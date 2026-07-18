@@ -1,4 +1,7 @@
 import { test, expect } from '@playwright/test';
+import { argon2id } from 'hash-wasm';
+
+const hexToBytes = (h: string) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
 
 /**
  * Server-mode auth (ADR 0010) end to end, against a real rite-server in accounts
@@ -67,4 +70,58 @@ test('admin creates a user from the admin panel', async ({ page }) => {
   await page.getByRole('button', { name: /add user/i }).click();
 
   await expect(page.getByText('carol')).toBeVisible({ timeout: 30_000 });
+});
+
+test('a terminal session is sealed to its owner (multi-user)', async ({ request }) => {
+  const BASE = 'http://127.0.0.1:1422';
+  const login = async (username: string, password: string) => {
+    const pre = await (
+      await request.post(`${BASE}/api/server/prelogin`, { data: { username } })
+    ).json();
+    const authHash = await argon2id({
+      password,
+      salt: hexToBytes(pre.salt),
+      parallelism: pre.params.par,
+      iterations: pre.params.iter,
+      memorySize: pre.params.mem,
+      hashLength: 32,
+      outputType: 'hex',
+    });
+    const res = await (
+      await request.post(`${BASE}/api/server/login`, { data: { username, authHash } })
+    ).json();
+    return res.token as string;
+  };
+
+  const admin = await login('admin', ADMIN.password);
+  const carol = await login('carol', 'CarolPass123!');
+
+  // Admin opens a local terminal → admin owns the session.
+  const created = await request.post(`${BASE}/api/terminal/local`, {
+    headers: { authorization: `Bearer ${admin}` },
+    data: { shell: '/bin/bash' },
+  });
+  expect(created.ok()).toBeTruthy();
+  const { sessionId } = await created.json();
+
+  // Carol (a different user) cannot claim, drive, or even see admin's session.
+  const carolClaim = await request.post(`${BASE}/api/terminal/${sessionId}/claim`, {
+    headers: { authorization: `Bearer ${carol}` },
+  });
+  expect(carolClaim.status()).toBe(403);
+  const carolInput = await request.post(`${BASE}/api/terminal/${sessionId}/input`, {
+    headers: { authorization: `Bearer ${carol}` },
+    data: { data: [104, 105] },
+  });
+  expect(carolInput.status()).toBe(403);
+  const carolList = await (
+    await request.get(`${BASE}/api/terminal`, { headers: { authorization: `Bearer ${carol}` } })
+  ).json();
+  expect(carolList).not.toContain(sessionId);
+
+  // The owner still can.
+  const adminClaim = await request.post(`${BASE}/api/terminal/${sessionId}/claim`, {
+    headers: { authorization: `Bearer ${admin}` },
+  });
+  expect(adminClaim.status()).toBe(200);
 });
