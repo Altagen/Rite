@@ -16,7 +16,7 @@ import {
   unwrapVaultKey,
 } from '../utils/serverAuth';
 import { setSessionToken, clearSessionToken, getSessionToken } from '../utils/session';
-import { bytesToHex } from '../utils/vaultCrypto';
+import { bytesToHex, hexToBytes } from '../utils/vaultCrypto';
 
 /**
  * When a remote context is active (native multiplexer), hand the unwrapped vault
@@ -44,6 +44,7 @@ interface ServerSessionState {
   // resume (no password) — a later phase lets the trusted local server hold them.
   userKey: Uint8Array | null;
   privateKey: Uint8Array | null;
+  publicKey: Uint8Array | null; // the user's own X25519 public key (from the vault)
   loading: boolean;
   error: string | null;
   loadMode: () => Promise<void>;
@@ -58,6 +59,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
   user: null,
   userKey: null,
   privateKey: null,
+  publicKey: null,
   loading: false,
   error: null,
 
@@ -71,7 +73,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         set({ user });
       } catch {
         clearSessionToken();
-        set({ user: null, userKey: null, privateKey: null });
+        set({ user: null, userKey: null, privateKey: null, publicKey: null });
       }
     }
   },
@@ -93,7 +95,13 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
           )
         : null;
       await syncLocalVault(keys?.userKey ?? null);
-      set({ user, userKey: keys?.userKey ?? null, privateKey: keys?.privateKey ?? null, loading: false });
+      set({
+        user,
+        userKey: keys?.userKey ?? null,
+        privateKey: keys?.privateKey ?? null,
+        publicKey: vault ? hexToBytes(vault.publicKey) : null,
+        loading: false,
+      });
     } catch (e) {
       set({ error: 'Invalid username or password', loading: false });
       throw e;
@@ -123,6 +131,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         user,
         userKey: vaultKey.userKey,
         privateKey: vaultKey.privateKey,
+        publicKey: hexToBytes(vaultKey.publicKeyHex),
         loading: false,
         mode: mode ? { ...mode, needsBootstrap: false } : mode,
       });
@@ -139,7 +148,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       // best-effort
     }
     clearSessionToken();
-    set({ user: null, userKey: null, privateKey: null });
+    set({ user: null, userKey: null, privateKey: null, publicKey: null });
   },
 
   clearError: () => set({ error: null }),

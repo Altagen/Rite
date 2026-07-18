@@ -209,6 +209,20 @@ export async function mockInvoke(
     case 'admin_delete_user':
       return null;
 
+    // --- Teams (dev mock: empty) ---
+    case 'admin_list_teams':
+    case 'teams_mine':
+    case 'team_members':
+      return [];
+    case 'admin_create_team':
+      return { id: `team-${Math.random().toString(36).slice(2, 8)}`, name: String(args?.name ?? ''), createdAt: now() };
+    case 'admin_delete_team':
+    case 'team_add_member':
+    case 'team_remove_member':
+    case 'team_grant_key':
+    case 'team_revoke_key':
+      return null;
+
     // --- Context multiplexer (dev mock: local only, empty roster) ---
     case 'context_get':
       return { active: 'local', roster: [] };

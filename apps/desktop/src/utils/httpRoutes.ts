@@ -156,6 +156,41 @@ const routes: Record<string, Route> = {
     return null;
   },
 
+  // Teams / RBAC (product-model) + team key sharing (ADR 0013).
+  admin_list_teams: () => json('/api/admin/teams'),
+  admin_create_team: (a) => json('/api/admin/teams', post({ name: a.name })),
+  admin_delete_team: async (a) => {
+    await json(`/api/admin/teams/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
+    return null;
+  },
+  teams_mine: () => json('/api/teams'),
+  team_members: (a) => json(`/api/teams/${encodeURIComponent(String(a.id))}/members`),
+  team_add_member: async (a) => {
+    await json(`/api/teams/${encodeURIComponent(String(a.id))}/members`, post({ userId: a.userId, role: a.role }));
+    return null;
+  },
+  team_remove_member: async (a) => {
+    await json(
+      `/api/teams/${encodeURIComponent(String(a.id))}/members/${encodeURIComponent(String(a.userId))}`,
+      { method: 'DELETE' },
+    );
+    return null;
+  },
+  team_grant_key: async (a) => {
+    await json(
+      `/api/teams/${encodeURIComponent(String(a.id))}/members/${encodeURIComponent(String(a.userId))}/key`,
+      post({ protectedTeamKey: a.protectedTeamKey }),
+    );
+    return null;
+  },
+  team_revoke_key: async (a) => {
+    await json(
+      `/api/teams/${encodeURIComponent(String(a.id))}/members/${encodeURIComponent(String(a.userId))}/key`,
+      { method: 'DELETE' },
+    );
+    return null;
+  },
+
   accept_host_key: async (a) => {
     await json('/api/ssh/host-key/accept', post({ host: a.host, port: a.port }));
     return null;

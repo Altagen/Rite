@@ -5,11 +5,14 @@
  * admin surface land in later phases; for now this proves login end to end.
  */
 
+import { useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { AdminUsersPanel } from './AdminUsersPanel';
+import { TeamsPanel } from './TeamsPanel';
 
 export function ServerHome() {
   const { user, logout } = useServerSession();
+  const [tab, setTab] = useState<'users' | 'teams'>('users');
   if (!user) return null;
 
   const isAdmin = user.role === 'admin';
@@ -32,9 +35,31 @@ export function ServerHome() {
         </div>
       </header>
 
+      {isAdmin && (
+        <nav className="flex gap-1 border-b border-border bg-card px-6">
+          {(['users', 'teams'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium capitalize ${
+                tab === t
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </nav>
+      )}
+
       <main className="flex-1 overflow-y-auto p-8">
         {isAdmin ? (
-          <AdminUsersPanel />
+          tab === 'users' ? (
+            <AdminUsersPanel />
+          ) : (
+            <TeamsPanel />
+          )
         ) : (
           <div className="flex h-full items-center justify-center">
             <div className="max-w-md text-center">
