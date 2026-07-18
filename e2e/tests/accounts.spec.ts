@@ -1,16 +1,17 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
 import { argon2id } from 'hash-wasm';
+import { createRequire } from 'node:module';
 
 const hexToBytes = (h: string) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
 
 const BASE = 'http://127.0.0.1:1422';
 
-/** Log in via the API (browser-equivalent Argon2id) and return the session token. */
-async function login(
+/** Log in via the API (browser-equivalent Argon2id) and return the full result. */
+async function loginFull(
   request: APIRequestContext,
   username: string,
   password: string,
-): Promise<string> {
+): Promise<{ token: string; vault: Record<string, string> }> {
   const pre = await (
     await request.post(`${BASE}/api/server/prelogin`, { data: { username } })
   ).json();
@@ -23,10 +24,38 @@ async function login(
     hashLength: 32,
     outputType: 'hex',
   });
-  const res = await (
+  return (
     await request.post(`${BASE}/api/server/login`, { data: { username, authHash } })
   ).json();
-  return res.token as string;
+}
+
+async function login(request: APIRequestContext, username: string, password: string): Promise<string> {
+  return (await loginFull(request, username, password)).token;
+}
+
+/** Decrypt a `v1.iv.ct` AES-256-GCM value (the vault wire format) in Node. */
+async function aesGcmDecrypt(keyBytes: Uint8Array, token: string): Promise<Uint8Array> {
+  const [, ivB64u, ctB64u] = token.split('.');
+  const b64u = (s: string) => new Uint8Array(Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
+  const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u(ivB64u) }, key, b64u(ctB64u));
+  return new Uint8Array(pt);
+}
+
+/** Replicate the client key unwrap: password + vault → userKey, privateKey, publicKey. */
+async function unlockKeys(password: string, vault: Record<string, string>) {
+  const masterKey = await argon2id({
+    password,
+    salt: hexToBytes(vault.kdfMasterSalt),
+    parallelism: 1,
+    iterations: 2,
+    memorySize: 19456,
+    hashLength: 32,
+    outputType: 'binary',
+  });
+  const userKey = await aesGcmDecrypt(masterKey, vault.protectedUserKey);
+  const privateKey = await aesGcmDecrypt(userKey, vault.protectedPrivateKey);
+  return { userKey, privateKey, publicKey: hexToBytes(vault.publicKey) };
 }
 
 const auth = (token: string) => ({ authorization: `Bearer ${token}` });
@@ -194,5 +223,74 @@ test('teams RBAC: org-admin, team-admin, member, non-member (product-model)', as
   ).json();
   expect(
     (await request.get(`${BASE}/api/teams/${ops.id}/members`, { headers: auth(carol) })).status(),
+  ).toBe(403);
+});
+
+test('team key grant: a granted member unwraps the SAME team key (ADR 0013)', async ({
+  request,
+}) => {
+  const sodium = createRequire(__filename)('libsodium-wrappers');
+  await sodium.ready;
+  const b64 = (b: Uint8Array) => Buffer.from(b).toString('base64');
+  const unb64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
+
+  // Log in both users and unwrap their real keys (as the client does).
+  const adminL = await loginFull(request, 'admin', ADMIN.password);
+  const carolL = await loginFull(request, 'carol', 'CarolPass123!');
+  const adminK = await unlockKeys(ADMIN.password, adminL.vault);
+  const carolK = await unlockKeys('CarolPass123!', carolL.vault);
+  const admin = adminL.token;
+
+  const users = await (await request.get(`${BASE}/api/admin/users`, { headers: auth(admin) })).json();
+  const id = (name: string) => users.find((u: { username: string }) => u.username === name).id;
+
+  // Org-admin creates a team and adds carol as a member (RBAC).
+  const team = await (
+    await request.post(`${BASE}/api/admin/teams`, { headers: auth(admin), data: { name: 'crypto-eng' } })
+  ).json();
+  await request.post(`${BASE}/api/teams/${team.id}/members`, {
+    headers: auth(admin),
+    data: { userId: id('carol'), role: 'member' },
+  });
+  await request.post(`${BASE}/api/teams/${team.id}/members`, {
+    headers: auth(admin),
+    data: { userId: id('admin'), role: 'admin' },
+  });
+
+  // Admin generates a random team key, inits it (sealed to self), then grants it
+  // to carol (sealed to carol's public key from the member list).
+  const teamKey = sodium.randombytes_buf(32) as Uint8Array;
+  await request.post(`${BASE}/api/teams/${team.id}/members/${id('admin')}/key`, {
+    headers: auth(admin),
+    data: { protectedTeamKey: b64(sodium.crypto_box_seal(teamKey, adminK.publicKey)) },
+  });
+  const members = await (
+    await request.get(`${BASE}/api/teams/${team.id}/members`, { headers: auth(admin) })
+  ).json();
+  const carolPub = hexToBytes(members.find((m: { userId: string }) => m.userId === id('carol')).publicKey);
+  expect(
+    (
+      await request.post(`${BASE}/api/teams/${team.id}/members/${id('carol')}/key`, {
+        headers: auth(admin),
+        data: { protectedTeamKey: b64(sodium.crypto_box_seal(teamKey, carolPub)) },
+      })
+    ).status(),
+  ).toBe(204);
+
+  // Carol fetches her teams, opens her sealed team key with her private key →
+  // it is byte-identical to the key admin generated. Zero-knowledge sharing works.
+  const carolTeams = await (await request.get(`${BASE}/api/teams`, { headers: auth(carolL.token) })).json();
+  const mine = carolTeams.find((t: { id: string }) => t.id === team.id);
+  const opened = sodium.crypto_box_seal_open(unb64(mine.protectedTeamKey), carolK.publicKey, carolK.privateKey);
+  expect(Buffer.from(opened).equals(Buffer.from(teamKey))).toBe(true);
+
+  // Authz: a member who is not a team-admin cannot grant keys (carol is a member).
+  expect(
+    (
+      await request.post(`${BASE}/api/teams/${team.id}/members/${id('admin')}/key`, {
+        headers: auth(carolL.token),
+        data: { protectedTeamKey: 'x' },
+      })
+    ).status(),
   ).toBe(403);
 });
