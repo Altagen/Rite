@@ -137,6 +137,9 @@ pub async fn has_any_user(db: &SqlitePool) -> Result<bool> {
 pub struct VaultKey {
     pub master_salt: Vec<u8>,
     pub protected_user_key: String,
+    /// X25519 public key (hex) + private key wrapped by `userKey` (ADR 0013).
+    pub public_key: String,
+    pub protected_private_key: String,
 }
 
 pub async fn create_user(
@@ -152,8 +155,8 @@ pub async fn create_user(
     let verifier = hash_auth(auth_hash)?;
     let ts = now();
     sqlx::query(
-        "INSERT INTO users (id, username, kdf_salt, kdf_mem, kdf_iter, kdf_par, auth_verifier, role, status, created_at, updated_at, kdf_master_salt, protected_user_key)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)",
+        "INSERT INTO users (id, username, kdf_salt, kdf_mem, kdf_iter, kdf_par, auth_verifier, role, status, created_at, updated_at, kdf_master_salt, protected_user_key, public_key, protected_private_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(username)
@@ -167,6 +170,8 @@ pub async fn create_user(
     .bind(ts)
     .bind(&vault.master_salt)
     .bind(&vault.protected_user_key)
+    .bind(&vault.public_key)
+    .bind(&vault.protected_private_key)
     .execute(db)
     .await?;
 
@@ -208,9 +213,14 @@ pub async fn bootstrap_admin(db: &SqlitePool, username: &str, password: &str) ->
     let master_key = rite_crypto::vault::derive_master_key(password, &master_salt)?;
     let user_key = rite_crypto::vault::generate_user_key();
     let protected_user_key = rite_crypto::vault::wrap_user_key(&master_key, &user_key)?;
+    // Per-user keypair (ADR 0013): private key wrapped by the user key.
+    let (public_key, private_key) = rite_crypto::sealbox::generate_keypair();
+    let protected_private_key = rite_crypto::vault::encrypt_string(&user_key, &private_key)?;
     let vault = VaultKey {
         master_salt: master_salt.to_vec(),
         protected_user_key,
+        public_key: to_hex(&public_key),
+        protected_private_key,
     };
     create_user(db, username, &salt, params, &auth_hash, Role::Admin, &vault).await?;
     Ok(())
@@ -223,19 +233,30 @@ pub async fn bootstrap_admin(db: &SqlitePool, username: &str, password: &str) ->
 pub struct UserVault {
     pub kdf_master_salt: String, // hex
     pub protected_user_key: String,
+    /// X25519 keypair (ADR 0013): public key (hex) + private key wrapped by userKey.
+    pub public_key: String,
+    pub protected_private_key: String,
 }
 
 /// Fetch a user's vault key material (if set).
 pub async fn get_user_vault(db: &SqlitePool, user_id: &str) -> Result<Option<UserVault>> {
-    let row: Option<(Option<Vec<u8>>, Option<String>)> =
-        sqlx::query_as("SELECT kdf_master_salt, protected_user_key FROM users WHERE id = ?")
-            .bind(user_id)
-            .fetch_optional(db)
-            .await?;
+    let row: Option<(Option<Vec<u8>>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT kdf_master_salt, protected_user_key, public_key, protected_private_key FROM users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_optional(db)
+    .await?;
     Ok(match row {
-        Some((Some(salt), Some(protected_user_key))) => Some(UserVault {
+        Some((
+            Some(salt),
+            Some(protected_user_key),
+            Some(public_key),
+            Some(protected_private_key),
+        )) => Some(UserVault {
             kdf_master_salt: to_hex(&salt),
             protected_user_key,
+            public_key,
+            protected_private_key,
         }),
         _ => None,
     })

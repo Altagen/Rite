@@ -204,6 +204,8 @@ mod tests {
         let vault = VaultKey {
             master_salt: vec![1, 2, 3, 4],
             protected_user_key: "v1.x.y".to_string(),
+            public_key: "abcd".to_string(),
+            protected_private_key: "v1.p.q".to_string(),
         };
         create_user(
             db,

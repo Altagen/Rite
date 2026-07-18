@@ -926,9 +926,11 @@ struct BootstrapReq {
     salt: String, // hex
     params: KdfParams,
     auth_hash: String,
-    // Per-user vault key material generated client-side (ADR 0011).
+    // Per-user vault key material generated client-side (ADR 0011 / 0013).
     master_salt: String, // hex
     protected_user_key: String,
+    public_key: String, // hex (X25519)
+    protected_private_key: String,
 }
 
 async fn server_bootstrap(
@@ -949,6 +951,8 @@ async fn server_bootstrap(
     let vault = server_auth::VaultKey {
         master_salt: server_auth::parse_hex_salt(&req.master_salt)?,
         protected_user_key: req.protected_user_key,
+        public_key: req.public_key,
+        protected_private_key: req.protected_private_key,
     };
     let user = server_auth::create_user(
         state.db.pool(),
@@ -990,9 +994,11 @@ struct CreateUserReq {
     auth_hash: String,
     role: Role,
     // The admin sets the initial password, so its browser generates the new
-    // user's vault key material too (ADR 0011). The user should change it later.
+    // user's vault key material too (ADR 0011 / 0013). The user changes it later.
     master_salt: String, // hex
     protected_user_key: String,
+    public_key: String, // hex (X25519)
+    protected_private_key: String,
 }
 
 async fn admin_create_user(
@@ -1003,6 +1009,8 @@ async fn admin_create_user(
     let vault = server_auth::VaultKey {
         master_salt: server_auth::parse_hex_salt(&req.master_salt)?,
         protected_user_key: req.protected_user_key.clone(),
+        public_key: req.public_key.clone(),
+        protected_private_key: req.protected_private_key.clone(),
     };
     match server_auth::create_user(
         state.db.pool(),
