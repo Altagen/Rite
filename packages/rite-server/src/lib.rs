@@ -76,6 +76,10 @@ pub struct ServerState {
     /// The active remote's unwrapped vault key (ADR 0011), held by this trusted
     /// local server across webview reloads; zeroized on lock/logout/idle.
     vault: Arc<std::sync::Mutex<VaultKeyHolder>>,
+    /// Terminal session → owning user id (server/accounts mode only). Seals a
+    /// session to its creator: only the owner may drive it or receive its events.
+    /// Empty in local/desktop mode (single implicit user — no scoping needed).
+    session_owners: Arc<std::sync::Mutex<HashMap<String, String>>>,
 }
 
 /// A saved remote server in the roster (ADR 0012). No token here — the remote
@@ -233,6 +237,7 @@ impl ServerState {
             cert_pin,
             tls_config,
             vault: Arc::new(std::sync::Mutex::new(VaultKeyHolder::new())),
+            session_owners: Arc::new(std::sync::Mutex::new(HashMap::new())),
         })
     }
 
@@ -281,6 +286,70 @@ impl ServerState {
     /// The held vault key if currently unlocked (refreshes the idle timer).
     fn vault_key(&self) -> Option<[u8; 32]> {
         self.vault.lock().unwrap().get()
+    }
+
+    /// Record the owner of a freshly-created terminal session (accounts mode only;
+    /// `user` is `None` in local/desktop mode, where sessions aren't scoped).
+    fn record_session_owner(&self, session_id: &str, user: Option<&User>) {
+        if let Some(u) = user {
+            self.session_owners
+                .lock()
+                .unwrap()
+                .insert(session_id.to_string(), u.id.clone());
+        }
+    }
+
+    /// Drop a closed session's ownership record.
+    fn forget_session(&self, session_id: &str) {
+        self.session_owners.lock().unwrap().remove(session_id);
+    }
+
+    /// May `user` drive/receive `session_id`? Local mode (no accounts): always yes
+    /// (single implicit user). Accounts mode: only the recorded owner.
+    fn owns_session(&self, session_id: &str, user: Option<&User>) -> bool {
+        if !self.accounts {
+            return true;
+        }
+        match user {
+            Some(u) => self.session_owners.lock().unwrap().get(session_id) == Some(&u.id),
+            None => false,
+        }
+    }
+}
+
+/// The authenticated user behind an optional `Extension` (present in accounts mode).
+fn as_user(ext: &Option<Extension<Arc<User>>>) -> Option<&User> {
+    ext.as_ref().map(|e| e.0.as_ref())
+}
+
+/// A 403 response for a session the caller does not own.
+fn not_your_session() -> Response {
+    (StatusCode::FORBIDDEN, "not your session").into_response()
+}
+
+/// Whether a broadcast event should reach a given user's WebSocket (accounts mode
+/// scoping). Session-scoped events (those carrying a `sessionId`) go only to the
+/// owner; events without a `sessionId` (e.g. host-key prompts) are not yet scoped
+/// and still broadcast — see the multi-user follow-up in product-model.md.
+fn event_visible_to(
+    accounts: bool,
+    owners: &std::sync::Mutex<HashMap<String, String>>,
+    user_id: Option<&str>,
+    event_json: &str,
+) -> bool {
+    if !accounts {
+        return true;
+    }
+    let Ok(value) = serde_json::from_str::<Value>(event_json) else {
+        return true;
+    };
+    match value
+        .get("payload")
+        .and_then(|p| p.get("sessionId"))
+        .and_then(|s| s.as_str())
+    {
+        Some(session_id) => owners.lock().unwrap().get(session_id).map(String::as_str) == user_id,
+        None => true, // non-session event (host-key, etc.) — follow-up
     }
 }
 
@@ -703,8 +772,17 @@ async fn settings(
     Ok(Json(state.db.get_all_settings().await?))
 }
 
-async fn list_sessions(State(state): State<ServerState>) -> Json<Vec<String>> {
-    Json(state.sessions.list_sessions().await)
+async fn list_sessions(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+) -> Json<Vec<String>> {
+    let mut ids = state.sessions.list_sessions().await;
+    // In accounts mode, only return the caller's own sessions.
+    if state.accounts {
+        let user = as_user(&user);
+        ids.retain(|id| state.owns_session(id, user));
+    }
+    Json(ids)
 }
 
 // --- auth -------------------------------------------------------------------
@@ -1509,12 +1587,14 @@ struct LocalReq {
 
 async fn create_local(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Json(req): Json<LocalReq>,
 ) -> Result<Json<Value>, AppError> {
     let id = state
         .sessions
         .create_local_session(state.events_sink(), req.shell)
         .await?;
+    state.record_session_owner(&id, as_user(&user));
     Ok(Json(json!({ "sessionId": id })))
 }
 
@@ -1526,6 +1606,7 @@ struct ConnectSshReq {
 
 async fn connect_ssh(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Json(req): Json<ConnectSshReq>,
 ) -> Result<Response, AppError> {
     // Client-execute (ADR 0011 §4 / ADR 0012 phase 6): in a remote context the
@@ -1543,12 +1624,14 @@ async fn connect_ssh(
             .sessions
             .create_quick_ssh_session(connection, auth, state.events_sink())
             .await?;
+        state.record_session_owner(&id, as_user(&user));
         return Ok(Json(json!({ "sessionId": id })).into_response());
     }
     let id = state
         .sessions
         .create_session(req.connection_id, state.events_sink())
         .await?;
+    state.record_session_owner(&id, as_user(&user));
     Ok(Json(json!({ "sessionId": id })).into_response())
 }
 
@@ -1591,6 +1674,7 @@ struct QuickSshReq {
 
 async fn quick_ssh(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Json(req): Json<QuickSshReq>,
 ) -> Result<Json<Value>, AppError> {
     // Ad-hoc connection, never persisted (mirrors the desktop quick_ssh_connect).
@@ -1623,6 +1707,7 @@ async fn quick_ssh(
         .sessions
         .create_quick_ssh_session(connection, auth, state.events_sink())
         .await?;
+    state.record_session_owner(&id, as_user(&user));
     Ok(Json(json!({ "sessionId": id })))
 }
 
@@ -1633,16 +1718,27 @@ struct InputReq {
 
 async fn send_input(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Path(id): Path<String>,
     Json(req): Json<InputReq>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if !state.owns_session(&id, as_user(&user)) {
+        return Ok(not_your_session());
+    }
     state.sessions.send_input(&id, req.data).await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-async fn claim(State(state): State<ServerState>, Path(id): Path<String>) -> Json<Value> {
+async fn claim(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Path(id): Path<String>,
+) -> Response {
+    if !state.owns_session(&id, as_user(&user)) {
+        return not_your_session();
+    }
     let data = state.sessions.claim_session_output(&id).await;
-    Json(json!({ "data": base64::engine::general_purpose::STANDARD.encode(&data) }))
+    Json(json!({ "data": base64::engine::general_purpose::STANDARD.encode(&data) })).into_response()
 }
 
 #[derive(Deserialize)]
@@ -1653,31 +1749,46 @@ struct ResizeReq {
 
 async fn resize(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Path(id): Path<String>,
     Json(req): Json<ResizeReq>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if !state.owns_session(&id, as_user(&user)) {
+        return Ok(not_your_session());
+    }
     state
         .sessions
         .resize_terminal(&id, req.cols, req.rows)
         .await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 async fn close(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Path(id): Path<String>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if !state.owns_session(&id, as_user(&user)) {
+        return Ok(not_your_session());
+    }
     state.sessions.close_session(&id).await?;
-    Ok(StatusCode::NO_CONTENT)
+    state.forget_session(&id);
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 // --- websocket: stream `{event,payload}` messages to the client -------------
 
-async fn ws_handler(State(state): State<ServerState>, ws: WebSocketUpgrade) -> Response {
+async fn ws_handler(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    ws: WebSocketUpgrade,
+) -> Response {
     // Multiplexer (ADR 0012 / 0011 §4): when a remote context is active, merge the
     // LOCAL event stream (client-execute SSH sessions run on this machine) with a
     // bridge to the remote's /ws (server-execute terminals stream through). Both
-    // reach the same webview socket, so the two execution modes coexist.
+    // reach the same webview socket, so the two execution modes coexist. The local
+    // multiplexer is single-user (not accounts mode), so no per-owner scoping here;
+    // the remote does its own scoping.
     let active = { state.context.lock().unwrap().clone() };
     if let ActiveContext::Remote(server) = active {
         let token = state.remote_token.lock().unwrap().clone();
@@ -1687,12 +1798,19 @@ async fn ws_handler(State(state): State<ServerState>, ws: WebSocketUpgrade) -> R
         return ws.on_upgrade(move |socket| merge_ws(socket, remote_url, tls, rx));
     }
 
+    // Accounts mode: only forward events for sessions this user owns (ADR 0011
+    // multi-user debt). Local/desktop mode (no accounts) forwards everything.
+    let accounts = state.accounts;
+    let owners = state.session_owners.clone();
+    let user_id = as_user(&user).map(|u| u.id.clone());
     let mut rx = state.events_tx.subscribe();
     ws.on_upgrade(move |mut socket| async move {
         loop {
             match rx.recv().await {
                 Ok(msg) => {
-                    if socket.send(Message::Text(msg.into())).await.is_err() {
+                    if event_visible_to(accounts, &owners, user_id.as_deref(), &msg)
+                        && socket.send(Message::Text(msg.into())).await.is_err()
+                    {
                         break;
                     }
                 }
@@ -1857,6 +1975,59 @@ mod tests {
         ServerState::new(&dir.path().join("vault.db"))
             .await
             .unwrap()
+    }
+
+    fn test_user(id: &str) -> User {
+        User {
+            id: id.to_string(),
+            username: id.to_string(),
+            role: rite_core::server_auth::Role::User,
+            status: "active".to_string(),
+            created_at: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn sessions_are_sealed_to_their_owner() {
+        // Local/desktop mode (no accounts): everything is allowed (single user).
+        let local = test_state().await;
+        assert!(local.owns_session("s1", None));
+
+        // Accounts mode: only the recorded owner may drive the session.
+        let state = test_state().await.with_accounts();
+        let alice = test_user("alice");
+        let bob = test_user("bob");
+        state.record_session_owner("s1", Some(&alice));
+        assert!(state.owns_session("s1", Some(&alice)));
+        assert!(
+            !state.owns_session("s1", Some(&bob)),
+            "another user is denied"
+        );
+        assert!(!state.owns_session("s1", None), "anonymous is denied");
+        assert!(
+            !state.owns_session("ghost", Some(&alice)),
+            "an unrecorded session is denied in accounts mode"
+        );
+        state.forget_session("s1");
+        assert!(
+            !state.owns_session("s1", Some(&alice)),
+            "closed session is forgotten"
+        );
+    }
+
+    #[test]
+    fn ws_events_are_scoped_by_owner() {
+        let owners =
+            std::sync::Mutex::new(HashMap::from([("s1".to_string(), "alice".to_string())]));
+        let data = r#"{"event":"terminal-data","payload":{"sessionId":"s1","data":"x"}}"#;
+        // No accounts → everything is visible (single user).
+        assert!(event_visible_to(false, &owners, Some("bob"), data));
+        // Accounts → a session event reaches only its owner.
+        assert!(event_visible_to(true, &owners, Some("alice"), data));
+        assert!(!event_visible_to(true, &owners, Some("bob"), data));
+        // A non-session event (host-key) is still broadcast (documented follow-up).
+        let hostkey = r#"{"event":"ssh:host-key-unknown","payload":{"host":"h","port":22}}"#;
+        assert!(event_visible_to(true, &owners, Some("bob"), hostkey));
     }
 
     #[tokio::test]
