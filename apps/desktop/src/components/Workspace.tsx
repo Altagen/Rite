@@ -10,7 +10,7 @@
 import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
-import { useConnectionsStore, type ConnectionInfo } from '../store/connectionsStore';
+import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTranslation } from '../i18n/i18n';
 import { ConnectionList } from './ConnectionList';
@@ -51,16 +51,13 @@ export interface WorkspaceAuth {
   renderUnlockModal: (props: { onClose: () => void }) => ReactNode;
 }
 
-export function Workspace({ auth }: { auth: WorkspaceAuth }) {
+export function Workspace({ auth, conns }: { auth: WorkspaceAuth; conns: ConnectionsSource }) {
   const { isLocked, lock } = auth;
   const { t } = useTranslation();
-  const {
-    connections,
-    fetchConnections,
-    deleteConnection,
-    selectConnection,
-    selectedConnectionId,
-  } = useConnectionsStore();
+  const { connections, selectedConnectionId } = conns;
+  const fetchConnections = conns.refresh;
+  const deleteConnection = conns.remove;
+  const selectConnection = conns.select;
   const { settings, fetchSettings, updateSettings } = useSettingsStore();
 
   const [showForm, setShowForm] = useState(false);
@@ -360,9 +357,9 @@ export function Workspace({ auth }: { auth: WorkspaceAuth }) {
     lastConnectionRef.current = connection;
 
     try {
-      // Call backend to create SSH terminal session
-      console.log('[MainScreen] Calling backend connect_terminal...');
-      const sessionId = await Backend.Terminal.connectTerminal(connection.id);
+      // Open a session for this connection via the context's source (local =
+      // server-decrypts; accounts = browser-decrypts → server-execute).
+      const sessionId = await conns.connect(connection);
 
       console.log('[MainScreen] Backend returned session ID:', sessionId);
 

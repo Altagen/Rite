@@ -78,6 +78,21 @@ export interface UpdateConnectionInput {
   sshKeepAliveInterval?: number | null;
 }
 
+/**
+ * The connection source the Workspace reads from (ADR 0014). Local/native shells
+ * back it with this store (`/api/connections`); the accounts/web shell backs it
+ * with browser-decrypted per-user + team connections. `connect` opens a terminal
+ * session for a saved connection and returns its id.
+ */
+export interface ConnectionsSource {
+  connections: ConnectionInfo[];
+  selectedConnectionId: string | null;
+  refresh: () => Promise<void>;
+  select: (id: string | null) => void;
+  remove: (id: string) => Promise<void>;
+  connect: (conn: ConnectionInfo) => Promise<string>;
+}
+
 interface ConnectionsState {
   // State
   connections: ConnectionInfo[];
