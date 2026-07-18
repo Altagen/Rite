@@ -401,3 +401,30 @@ test('teams UI: admin creates a team, adds a member, grants the key', async ({ p
   // No member is left without a key → no grant buttons remain.
   await expect(page.getByRole('button', { name: /grant key/i })).toHaveCount(0);
 });
+
+test('team connections UI: a shared connection is added and decrypted (ADR 0013 4b)', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#username').fill('admin');
+  await page.locator('#password').fill(ADMIN.password);
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+
+  // Connections tab → the team the admin holds a key for (from the teams UI test).
+  await page.getByRole('button', { name: 'connections' }).click();
+  await expect(page.getByRole('heading', { name: 'Team connections' })).toBeVisible();
+  await page.getByRole('button', { name: 'ui-team' }).click();
+
+  // Add a shared connection — the browser encrypts it with the team key.
+  await page.locator('#tc-name').fill('shared-db');
+  await page.locator('#tc-hostname').fill('shared-host');
+  await page.locator('#tc-username').fill('svc');
+  await page.locator('#tc-password').fill('sh-pw');
+  await page.getByRole('button', { name: /^add$/i }).click();
+
+  // It comes back decrypted (browser round-trip through the encrypted store).
+  await expect(page.getByText('shared-db')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('svc@shared-host:22')).toBeVisible();
+});
