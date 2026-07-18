@@ -70,6 +70,9 @@ test('sign out then sign back in with the same credentials', async ({ page }) =>
   const body = await (await loginResp).json();
   expect(body.vault?.protectedUserKey).toMatch(/^v1\./);
   expect(body.vault?.kdfMasterSalt).toMatch(/^[0-9a-f]+$/);
+  // The per-user X25519 keypair (ADR 0013): public key hex + wrapped private key.
+  expect(body.vault?.publicKey).toMatch(/^[0-9a-f]{64}$/);
+  expect(body.vault?.protectedPrivateKey).toMatch(/^v1\./);
   await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
 
   // Wrong password is rejected.
