@@ -42,6 +42,16 @@ async function aesGcmDecrypt(keyBytes: Uint8Array, token: string): Promise<Uint8
   return new Uint8Array(pt);
 }
 
+/** Encrypt to the `v1.iv.ct` AES-256-GCM vault wire format (in Node). */
+async function aesGcmEncrypt(keyBytes: Uint8Array, plaintext: Uint8Array): Promise<string> {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext));
+  const b64u = (b: Uint8Array) =>
+    Buffer.from(b).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `v1.${b64u(iv)}.${b64u(ct)}`;
+}
+
 /** Replicate the client key unwrap: password + vault → userKey, privateKey, publicKey. */
 async function unlockKeys(password: string, vault: Record<string, string>) {
   const masterKey = await argon2id({
@@ -292,5 +302,74 @@ test('team key grant: a granted member unwraps the SAME team key (ADR 0013)', as
         data: { protectedTeamKey: 'x' },
       })
     ).status(),
+  ).toBe(403);
+});
+
+test('team connections are shared zero-knowledge (ADR 0013 phase 4)', async ({ request }) => {
+  const sodium = createRequire(__filename)('libsodium-wrappers');
+  await sodium.ready;
+  const unb64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
+
+  // Both users are key-holders of 'crypto-eng' (from the previous test). Unwrap
+  // each one's team key from their sealed copy.
+  const adminL = await loginFull(request, 'admin', ADMIN.password);
+  const carolL = await loginFull(request, 'carol', 'CarolPass123!');
+  const adminK = await unlockKeys(ADMIN.password, adminL.vault);
+  const carolK = await unlockKeys('CarolPass123!', carolL.vault);
+  const teamKeyFor = async (token: string, keys: { publicKey: Uint8Array; privateKey: Uint8Array }) => {
+    const teams = await (await request.get(`${BASE}/api/teams`, { headers: auth(token) })).json();
+    const t = teams.find((x: { name: string }) => x.name === 'crypto-eng');
+    return sodium.crypto_box_seal_open(unb64(t.protectedTeamKey), keys.publicKey, keys.privateKey) as Uint8Array;
+  };
+  const adminTeamKey = await teamKeyFor(adminL.token, adminK);
+  const carolTeamKey = await teamKeyFor(carolL.token, carolK);
+  const teamId = (
+    await (await request.get(`${BASE}/api/teams`, { headers: auth(adminL.token) })).json()
+  ).find((x: { name: string }) => x.name === 'crypto-eng').id;
+
+  // Admin adds a connection to the team, encrypted with the team key.
+  const conn = {
+    name: 'Prod DB',
+    protocol: 'ssh',
+    hostname: 'team-secret-host',
+    port: 22,
+    username: 'svc',
+    authMethod: { type: 'password', password: 'team-shared-pw' },
+    color: null,
+    icon: null,
+    folder: null,
+    notes: null,
+    sshKeepAliveOverride: null,
+    sshKeepAliveInterval: null,
+  };
+  const blob = await aesGcmEncrypt(adminTeamKey, new TextEncoder().encode(JSON.stringify(conn)));
+  const created = await request.post(`${BASE}/api/teams/${teamId}/connections`, {
+    headers: auth(adminL.token),
+    data: { blob },
+  });
+  expect(created.status()).toBe(201);
+
+  // Carol (a fellow member) reads it and decrypts with HER team key → same plaintext.
+  const list = await (
+    await request.get(`${BASE}/api/teams/${teamId}/connections`, { headers: auth(carolL.token) })
+  ).json();
+  expect(list.length).toBeGreaterThan(0);
+  const pt = await aesGcmDecrypt(carolTeamKey, list[0].blob);
+  const decoded = JSON.parse(new TextDecoder().decode(pt));
+  expect(decoded.hostname).toBe('team-secret-host');
+  expect(decoded.authMethod.password).toBe('team-shared-pw');
+
+  // The server stored only ciphertext — no plaintext host or password.
+  expect(list[0].blob).toMatch(/^v1\./);
+  const dump = JSON.stringify(list);
+  expect(dump).not.toContain('team-secret-host');
+  expect(dump).not.toContain('team-shared-pw');
+
+  // A non-member (own a fresh team carol isn't in) is refused.
+  const solo = await (
+    await request.post(`${BASE}/api/admin/teams`, { headers: auth(adminL.token), data: { name: 'solo' } })
+  ).json();
+  expect(
+    (await request.get(`${BASE}/api/teams/${solo.id}/connections`, { headers: auth(carolL.token) })).status(),
   ).toBe(403);
 });
