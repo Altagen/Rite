@@ -373,3 +373,31 @@ test('team connections are shared zero-knowledge (ADR 0013 phase 4)', async ({ r
     (await request.get(`${BASE}/api/teams/${solo.id}/connections`, { headers: auth(carolL.token) })).status(),
   ).toBe(403);
 });
+
+test('teams UI: admin creates a team, adds a member, grants the key', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#username').fill('admin');
+  await page.locator('#password').fill(ADMIN.password);
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+
+  // Switch to the Teams tab and create a team (the client generates a team key,
+  // seals it to the admin — first key-holder — via the real sealbox crypto).
+  await page.getByRole('button', { name: 'teams' }).click();
+  await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
+  await page.locator('#new-team').fill('ui-team');
+  await page.getByRole('button', { name: /create team/i }).click();
+  await page.getByRole('button', { name: 'ui-team' }).click();
+
+  // Add carol as a member — she starts with no key access.
+  await page.locator('#add-member').selectOption({ label: 'carol' });
+  await page.getByRole('button', { name: /^add$/i }).click();
+  await expect(page.getByRole('cell', { name: 'carol' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: /grant key/i })).toHaveCount(1);
+
+  // Grant carol the team key (admin unwraps its key and re-seals to carol).
+  await page.getByRole('button', { name: /grant key/i }).click();
+  // No member is left without a key → no grant buttons remain.
+  await expect(page.getByRole('button', { name: /grant key/i })).toHaveCount(0);
+});
