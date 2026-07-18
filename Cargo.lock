@@ -1201,6 +1201,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
+name = "dryoc"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4684d84cc4dc1a8705dcbe8be0e258581dfdbb308477ed604f52797c336bb3d2"
+dependencies = [
+ "bitflags 2.13.0",
+ "chacha20 0.9.1",
+ "curve25519-dalek 4.1.3",
+ "generic-array 0.14.7",
+ "lazy_static",
+ "libc",
+ "rand_core 0.9.5",
+ "salsa20 0.10.2",
+ "sha2 0.10.9",
+ "subtle",
+ "winapi",
+ "zeroize",
+]
+
+[[package]]
 name = "dtoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4146,6 +4166,7 @@ dependencies = [
  "argon2 0.5.3",
  "base64 0.22.1",
  "chacha20poly1305",
+ "dryoc",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

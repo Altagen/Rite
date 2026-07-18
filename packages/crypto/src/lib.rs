@@ -8,6 +8,7 @@
 //! - File encryption: age (for sync/export)
 //! - Per-user zero-knowledge vault (ADR 0011): AES-256-GCM, see [`vault`].
 
+pub mod sealbox;
 pub mod vault;
 
 use anyhow::{Result, anyhow};
