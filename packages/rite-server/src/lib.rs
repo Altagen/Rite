@@ -371,6 +371,22 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/users/{id}", delete(admin_delete_user))
         .route("/api/admin/users/{id}/status", patch(admin_set_status))
+        // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
+        // guard-gated to admin); team management is per-team authorized in-handler.
+        .route(
+            "/api/admin/teams",
+            get(admin_list_teams).post(admin_create_team),
+        )
+        .route("/api/admin/teams/{id}", delete(admin_delete_team))
+        .route("/api/teams", get(my_teams))
+        .route(
+            "/api/teams/{id}/members",
+            get(team_members).post(add_team_member),
+        )
+        .route(
+            "/api/teams/{id}/members/{userId}",
+            delete(remove_team_member),
+        )
         .route("/api/context", get(get_context))
         .route("/api/context/servers", post(add_server))
         .route("/api/context/servers/{id}", delete(remove_server))
@@ -1056,6 +1072,145 @@ async fn admin_delete_user(
     } else {
         StatusCode::NOT_FOUND.into_response()
     })
+}
+
+// --- teams / RBAC (product-model.md) ----------------------------------------
+// Org-admin (users.role == Admin) manages all teams and any membership. A
+// team-admin (team_members.role == Admin) manages its own team's membership. A
+// member can view its team. These are the authz primitives the future `scope`
+// (user|team) resource authorization will build on.
+
+fn is_org_admin(user: &User) -> bool {
+    user.role == Role::Admin
+}
+
+/// May `user` administer team `team_id` (manage members)? Org-admin or team-admin.
+async fn can_admin_team(state: &ServerState, user: &User, team_id: &str) -> Result<bool, AppError> {
+    if is_org_admin(user) {
+        return Ok(true);
+    }
+    Ok(
+        rite_core::teams::team_role(state.db.pool(), team_id, &user.id).await?
+            == Some(rite_core::teams::TeamRole::Admin),
+    )
+}
+
+/// May `user` view team `team_id`? Org-admin or any member.
+async fn can_view_team(state: &ServerState, user: &User, team_id: &str) -> Result<bool, AppError> {
+    if is_org_admin(user) {
+        return Ok(true);
+    }
+    Ok(
+        rite_core::teams::team_role(state.db.pool(), team_id, &user.id)
+            .await?
+            .is_some(),
+    )
+}
+
+async fn admin_list_teams(
+    State(state): State<ServerState>,
+) -> Result<Json<Vec<rite_core::teams::Team>>, AppError> {
+    Ok(Json(rite_core::teams::list_teams(state.db.pool()).await?))
+}
+
+#[derive(Deserialize)]
+struct CreateTeamReq {
+    name: String,
+}
+
+async fn admin_create_team(
+    State(state): State<ServerState>,
+    Json(req): Json<CreateTeamReq>,
+) -> Result<Response, AppError> {
+    let name = req.name.trim();
+    if name.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "team name required").into_response());
+    }
+    match rite_core::teams::create_team(state.db.pool(), name).await {
+        Ok(team) => Ok((StatusCode::CREATED, Json(team)).into_response()),
+        Err(_) => Ok((
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "team name already exists" })),
+        )
+            .into_response()),
+    }
+}
+
+async fn admin_delete_team(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    Ok(
+        if rite_core::teams::delete_team(state.db.pool(), &id).await? {
+            StatusCode::NO_CONTENT
+        } else {
+            StatusCode::NOT_FOUND
+        },
+    )
+}
+
+/// Teams the caller belongs to (any authenticated user).
+async fn my_teams(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Vec<rite_core::teams::UserTeam>>, AppError> {
+    Ok(Json(
+        rite_core::teams::list_teams_for_user(state.db.pool(), &user.id).await?,
+    ))
+}
+
+async fn team_members(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    if !can_view_team(&state, &user, &id).await? {
+        return Ok((StatusCode::FORBIDDEN, "not a member of this team").into_response());
+    }
+    Ok(Json(rite_core::teams::list_members(state.db.pool(), &id).await?).into_response())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetMemberReq {
+    user_id: String,
+    role: rite_core::teams::TeamRole,
+}
+
+async fn add_team_member(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<SetMemberReq>,
+) -> Result<Response, AppError> {
+    if !can_admin_team(&state, &user, &id).await? {
+        return Ok((StatusCode::FORBIDDEN, "not a team admin").into_response());
+    }
+    if !rite_core::teams::team_exists(state.db.pool(), &id).await? {
+        return Ok((StatusCode::NOT_FOUND, "unknown team").into_response());
+    }
+    // The FK to users enforces that the target account exists.
+    match rite_core::teams::set_member(state.db.pool(), &id, &req.user_id, req.role).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(_) => Ok((StatusCode::BAD_REQUEST, "unknown user").into_response()),
+    }
+}
+
+async fn remove_team_member(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path((id, user_id)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    if !can_admin_team(&state, &user, &id).await? {
+        return Ok((StatusCode::FORBIDDEN, "not a team admin").into_response());
+    }
+    Ok(
+        if rite_core::teams::remove_member(state.db.pool(), &id, &user_id).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        },
+    )
 }
 
 // --- settings (per-key) -----------------------------------------------------
