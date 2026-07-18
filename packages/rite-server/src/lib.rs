@@ -391,6 +391,16 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/teams/{id}/members/{userId}/key",
             post(grant_team_key).delete(revoke_team_key),
         )
+        // Team shared connections (ADR 0013): opaque ciphertext, only for members
+        // who hold the team key.
+        .route(
+            "/api/teams/{id}/connections",
+            get(team_conn_list).post(team_conn_create),
+        )
+        .route(
+            "/api/teams/{id}/connections/{cid}",
+            put(team_conn_update).delete(team_conn_delete),
+        )
         .route("/api/context", get(get_context))
         .route("/api/context/servers", post(add_server))
         .route("/api/context/servers/{id}", delete(remove_server))
@@ -1282,6 +1292,79 @@ async fn revoke_team_key(
             StatusCode::NO_CONTENT.into_response()
         } else {
             (StatusCode::NOT_FOUND, "no key to revoke").into_response()
+        },
+    )
+}
+
+// --- team connections (ADR 0013) --------------------------------------------
+// Opaque ciphertext scoped by team; only a member who holds the team key (and can
+// therefore decrypt) may read or write. Org-admins without the key have no access
+// — zero-knowledge. The server never parses the blob.
+
+/// A 403 for a caller who isn't a key-holding member of the team.
+async fn require_team_key(
+    state: &ServerState,
+    user: &User,
+    team_id: &str,
+) -> Result<bool, AppError> {
+    Ok(rite_core::teams::member_has_key(state.db.pool(), team_id, &user.id).await?)
+}
+
+async fn team_conn_list(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    if !require_team_key(&state, &user, &id).await? {
+        return Ok((StatusCode::FORBIDDEN, "no team key").into_response());
+    }
+    Ok(Json(rite_core::team_store::list(state.db.pool(), &id).await?).into_response())
+}
+
+async fn team_conn_create(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<Response, AppError> {
+    if !require_team_key(&state, &user, &id).await? {
+        return Ok((StatusCode::FORBIDDEN, "no team key").into_response());
+    }
+    let item = rite_core::team_store::create(state.db.pool(), &id, &req.blob).await?;
+    Ok((StatusCode::CREATED, Json(item)).into_response())
+}
+
+async fn team_conn_update(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path((id, cid)): Path<(String, String)>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<Response, AppError> {
+    if !require_team_key(&state, &user, &id).await? {
+        return Ok((StatusCode::FORBIDDEN, "no team key").into_response());
+    }
+    Ok(
+        if rite_core::team_store::update(state.db.pool(), &id, &cid, &req.blob).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            (StatusCode::NOT_FOUND, "unknown connection").into_response()
+        },
+    )
+}
+
+async fn team_conn_delete(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path((id, cid)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    if !require_team_key(&state, &user, &id).await? {
+        return Ok((StatusCode::FORBIDDEN, "no team key").into_response());
+    }
+    Ok(
+        if rite_core::team_store::delete(state.db.pool(), &id, &cid).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            (StatusCode::NOT_FOUND, "unknown connection").into_response()
         },
     )
 }
