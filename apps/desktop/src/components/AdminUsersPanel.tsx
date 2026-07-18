@@ -48,15 +48,12 @@ export function AdminUsersPanel() {
         deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS),
         createVaultKey(password),
       ]);
-      await Backend.Admin.createUser(
-        username.trim(),
-        salt,
-        DEFAULT_KDF_PARAMS,
-        authHash,
-        role,
-        vaultKey.masterSaltHex,
-        vaultKey.protectedUserKey,
-      );
+      await Backend.Admin.createUser(username.trim(), salt, DEFAULT_KDF_PARAMS, authHash, role, {
+        masterSalt: vaultKey.masterSaltHex,
+        protectedUserKey: vaultKey.protectedUserKey,
+        publicKey: vaultKey.publicKeyHex,
+        protectedPrivateKey: vaultKey.protectedPrivateKey,
+      });
       setUsername('');
       setPassword('');
       setRole('user');

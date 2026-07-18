@@ -13,9 +13,12 @@ import {
   generateUserKey,
   wrapUserKey,
   unwrapUserKey,
+  encryptString,
+  decryptString,
   hexToBytes,
   bytesToHex,
 } from './vaultCrypto';
+import { generateKeypair } from './sealbox';
 
 export interface KdfParams {
   mem: number; // memory in KiB
@@ -59,11 +62,21 @@ export interface VaultKeyMaterial {
   masterSaltHex: string;
   protectedUserKey: string;
   userKey: Uint8Array;
+  // Per-user X25519 keypair (ADR 0013): public key hex is sent, private key is
+  // wrapped by userKey (sent), and both raw keys are kept locally.
+  publicKeyHex: string;
+  protectedPrivateKey: string;
+  privateKey: Uint8Array;
+}
+
+/** The unwrapped in-RAM keys held after login (never persisted). */
+export interface UnlockedKeys {
+  userKey: Uint8Array;
+  privateKey: Uint8Array;
 }
 
 /**
- * Build a fresh per-user vault key: a random user key wrapped by the master key
- * derived from the password + a new distinct salt. Called by whoever knows the
+ * Build a fresh per-user vault key + X25519 keypair. Called by whoever knows the
  * password at account creation (self at bootstrap, admin for a new user).
  */
 export async function createVaultKey(password: string): Promise<VaultKeyMaterial> {
@@ -71,15 +84,27 @@ export async function createVaultKey(password: string): Promise<VaultKeyMaterial
   const masterKey = await deriveMasterKey(password, hexToBytes(masterSaltHex));
   const userKey = generateUserKey();
   const protectedUserKey = await wrapUserKey(masterKey, userKey);
-  return { masterSaltHex, protectedUserKey, userKey };
+  const { publicKey, secretKey } = await generateKeypair();
+  const protectedPrivateKey = await encryptString(userKey, secretKey);
+  return {
+    masterSaltHex,
+    protectedUserKey,
+    userKey,
+    publicKeyHex: bytesToHex(publicKey),
+    protectedPrivateKey,
+    privateKey: secretKey,
+  };
 }
 
-/** Unwrap the user key from the login password + the server-returned vault blob. */
+/** Unwrap the user key + private key from the password + the server vault blob. */
 export async function unwrapVaultKey(
   password: string,
   masterSaltHex: string,
   protectedUserKey: string,
-): Promise<Uint8Array> {
+  protectedPrivateKey: string,
+): Promise<UnlockedKeys> {
   const masterKey = await deriveMasterKey(password, hexToBytes(masterSaltHex));
-  return unwrapUserKey(masterKey, protectedUserKey);
+  const userKey = await unwrapUserKey(masterKey, protectedUserKey);
+  const privateKey = await decryptString(userKey, protectedPrivateKey);
+  return { userKey, privateKey };
 }

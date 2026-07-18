@@ -343,7 +343,12 @@ const ServerUserSchema = z.object({
 // Per-user vault key material (ADR 0011): the KDF salt + wrapped user key. Null
 // for a user provisioned without a vault. Ciphertext only — safe to hand back.
 const VaultSchema = z
-  .object({ kdfMasterSalt: z.string(), protectedUserKey: z.string() })
+  .object({
+    kdfMasterSalt: z.string(),
+    protectedUserKey: z.string(),
+    publicKey: z.string(),
+    protectedPrivateKey: z.string(),
+  })
   .nullable();
 const LoginResultSchema = z.object({
   token: z.string(),
@@ -369,16 +374,19 @@ export const BackendServer = {
     salt: string,
     params: unknown,
     authHash: string,
-    masterSalt: string,
-    protectedUserKey: string,
+    vault: {
+      masterSalt: string;
+      protectedUserKey: string;
+      publicKey: string;
+      protectedPrivateKey: string;
+    },
   ) =>
     invokeWithValidation('server_bootstrap', LoginResultSchema, {
       username,
       salt,
       params,
       authHash,
-      masterSalt,
-      protectedUserKey,
+      ...vault,
     }),
   logout: () => invokeWithValidation('server_logout', z.null()),
   me: () => invokeWithValidation('server_me', MeSchema),
@@ -393,8 +401,12 @@ export const BackendAdmin = {
     params: unknown,
     authHash: string,
     role: string,
-    masterSalt: string,
-    protectedUserKey: string,
+    vault: {
+      masterSalt: string;
+      protectedUserKey: string;
+      publicKey: string;
+      protectedPrivateKey: string;
+    },
   ) =>
     invokeWithValidation('admin_create_user', ServerUserSchema, {
       username,
@@ -402,8 +414,7 @@ export const BackendAdmin = {
       params,
       authHash,
       role,
-      masterSalt,
-      protectedUserKey,
+      ...vault,
     }),
   setStatus: (id: string, status: 'active' | 'disabled') =>
     invokeWithValidation('admin_set_status', z.null(), { id, status }),

@@ -8,6 +8,13 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // libsodium-wrappers' ESM build has a broken self-import (ADR 0013 phase 2);
+      // point at its CommonJS build by absolute path (its `exports` field blocks
+      // the subpath specifier), which the bundler consumes cleanly via CJS interop.
+      'libsodium-wrappers': path.resolve(
+        __dirname,
+        'node_modules/libsodium-wrappers/dist/modules/libsodium-wrappers.js',
+      ),
     },
   },
   // Fixed dev-server port (rite-server / the wry client proxy expectations).

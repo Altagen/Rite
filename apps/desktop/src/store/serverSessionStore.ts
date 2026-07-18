@@ -39,10 +39,11 @@ async function syncLocalVault(userKey: Uint8Array | null): Promise<void> {
 interface ServerSessionState {
   mode: ServerMode | null; // null until loaded
   user: ServerUser | null; // current server user (server mode only)
-  // The unwrapped per-user vault key (ADR 0011), RAM only, never persisted. Set
-  // after login/bootstrap; null after a token-only resume (no password to unwrap)
-  // — phase 3 will let the trusted local server hold it across reloads.
+  // The unwrapped per-user keys (ADR 0011 userKey + ADR 0013 X25519 private key),
+  // RAM only, never persisted. Set after login/bootstrap; null after a token-only
+  // resume (no password) — a later phase lets the trusted local server hold them.
   userKey: Uint8Array | null;
+  privateKey: Uint8Array | null;
   loading: boolean;
   error: string | null;
   loadMode: () => Promise<void>;
@@ -56,6 +57,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
   mode: null,
   user: null,
   userKey: null,
+  privateKey: null,
   loading: false,
   error: null,
 
@@ -69,7 +71,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         set({ user });
       } catch {
         clearSessionToken();
-        set({ user: null, userKey: null });
+        set({ user: null, userKey: null, privateKey: null });
       }
     }
   },
@@ -81,12 +83,17 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       const authHash = await deriveAuthHash(password, salt, params);
       const { token, user, vault } = await Backend.Server.login(username, authHash);
       setSessionToken(token);
-      // Unwrap the per-user vault key with the password (never sent).
-      const userKey = vault
-        ? await unwrapVaultKey(password, vault.kdfMasterSalt, vault.protectedUserKey)
+      // Unwrap the per-user keys with the password (never sent).
+      const keys = vault
+        ? await unwrapVaultKey(
+            password,
+            vault.kdfMasterSalt,
+            vault.protectedUserKey,
+            vault.protectedPrivateKey,
+          )
         : null;
-      await syncLocalVault(userKey);
-      set({ user, userKey, loading: false });
+      await syncLocalVault(keys?.userKey ?? null);
+      set({ user, userKey: keys?.userKey ?? null, privateKey: keys?.privateKey ?? null, loading: false });
     } catch (e) {
       set({ error: 'Invalid username or password', loading: false });
       throw e;
@@ -103,20 +110,19 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS),
         createVaultKey(password),
       ]);
-      const { token, user } = await Backend.Server.bootstrap(
-        username,
-        salt,
-        DEFAULT_KDF_PARAMS,
-        authHash,
-        vaultKey.masterSaltHex,
-        vaultKey.protectedUserKey,
-      );
+      const { token, user } = await Backend.Server.bootstrap(username, salt, DEFAULT_KDF_PARAMS, authHash, {
+        masterSalt: vaultKey.masterSaltHex,
+        protectedUserKey: vaultKey.protectedUserKey,
+        publicKey: vaultKey.publicKeyHex,
+        protectedPrivateKey: vaultKey.protectedPrivateKey,
+      });
       setSessionToken(token);
       await syncLocalVault(vaultKey.userKey);
       const mode = get().mode;
       set({
         user,
         userKey: vaultKey.userKey,
+        privateKey: vaultKey.privateKey,
         loading: false,
         mode: mode ? { ...mode, needsBootstrap: false } : mode,
       });
@@ -133,7 +139,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       // best-effort
     }
     clearSessionToken();
-    set({ user: null, userKey: null });
+    set({ user: null, userKey: null, privateKey: null });
   },
 
   clearError: () => set({ error: null }),

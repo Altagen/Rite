@@ -92,6 +92,8 @@ const routes: Record<string, Route> = {
         authHash: a.authHash,
         masterSalt: a.masterSalt,
         protectedUserKey: a.protectedUserKey,
+        publicKey: a.publicKey,
+        protectedPrivateKey: a.protectedPrivateKey,
       }),
     ),
   server_logout: async () => {
@@ -137,6 +139,8 @@ const routes: Record<string, Route> = {
         role: a.role,
         masterSalt: a.masterSalt,
         protectedUserKey: a.protectedUserKey,
+        publicKey: a.publicKey,
+        protectedPrivateKey: a.protectedPrivateKey,
       }),
     ),
   admin_set_status: async (a) => {
