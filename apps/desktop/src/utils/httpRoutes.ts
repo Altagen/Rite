@@ -190,6 +190,20 @@ const routes: Record<string, Route> = {
     );
     return null;
   },
+  vault_conn_list: () => json('/api/vault/connections'),
+  vault_conn_create: (a) => json('/api/vault/connections', post({ blob: a.blob })),
+  vault_conn_update: async (a) => {
+    await json(`/api/vault/connections/${encodeURIComponent(String(a.id))}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ blob: a.blob }),
+    });
+    return null;
+  },
+  vault_conn_delete: async (a) => {
+    await json(`/api/vault/connections/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
+    return null;
+  },
   team_conn_list: (a) => json(`/api/teams/${encodeURIComponent(String(a.id))}/connections`),
   team_conn_create: (a) =>
     json(`/api/teams/${encodeURIComponent(String(a.id))}/connections`, post({ blob: a.blob })),

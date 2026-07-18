@@ -516,6 +516,17 @@ export const BackendTeams = {
     invokeWithValidation('team_conn_delete', z.null(), { id, cid }),
 } as const;
 
+// Per-user zero-knowledge connection blobs (ADR 0011). The browser encrypts/
+// decrypts with its userKey; the server stores opaque v1.* blobs.
+export const BackendVault = {
+  connections: () => invokeWithValidation('vault_conn_list', z.array(TeamConnBlobSchema)),
+  createConnection: (blob: string) =>
+    invokeWithValidation('vault_conn_create', TeamConnBlobSchema, { blob }),
+  updateConnection: (id: string, blob: string) =>
+    invokeWithValidation('vault_conn_update', z.null(), { id, blob }),
+  deleteConnection: (id: string) => invokeWithValidation('vault_conn_delete', z.null(), { id }),
+} as const;
+
 export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
@@ -526,6 +537,7 @@ export const Backend = {
   Admin: BackendAdmin,
   Context: BackendContext,
   Teams: BackendTeams,
+  Vault: BackendVault,
 } as const;
 
 // Export types for external use

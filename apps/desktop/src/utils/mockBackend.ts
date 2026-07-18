@@ -214,7 +214,13 @@ export async function mockInvoke(
     case 'teams_mine':
     case 'team_members':
     case 'team_conn_list':
+    case 'vault_conn_list':
       return [];
+    case 'vault_conn_create':
+      return { id: `vc-${Math.random().toString(36).slice(2, 8)}`, blob: String(args?.blob ?? ''), createdAt: now(), updatedAt: now() };
+    case 'vault_conn_update':
+    case 'vault_conn_delete':
+      return null;
     case 'admin_create_team':
       return { id: `team-${Math.random().toString(36).slice(2, 8)}`, name: String(args?.name ?? ''), createdAt: now() };
     case 'team_conn_create':
