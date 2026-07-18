@@ -387,6 +387,10 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/teams/{id}/members/{userId}",
             delete(remove_team_member),
         )
+        .route(
+            "/api/teams/{id}/members/{userId}/key",
+            post(grant_team_key).delete(revoke_team_key),
+        )
         .route("/api/context", get(get_context))
         .route("/api/context/servers", post(add_server))
         .route("/api/context/servers/{id}", delete(remove_server))
@@ -1217,6 +1221,67 @@ async fn remove_team_member(
             StatusCode::NO_CONTENT.into_response()
         } else {
             StatusCode::NOT_FOUND.into_response()
+        },
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GrantKeyReq {
+    /// The team key sealed to the target member's public key (ADR 0013).
+    protected_team_key: String,
+}
+
+/// Grant (or initialize) a member's team key. Two cases:
+/// - **Init**: the caller seals the first team key to *themselves* while the team
+///   has no key-holder yet — they must be a team member.
+/// - **Grant**: a key-holder (who can seal the real key) that is also a team-admin
+///   seals it to another member.
+/// The server stores only the sealed blob and can't verify its contents — it
+/// trusts a key-holder to seal the correct key (a griefing risk bounded to the team).
+async fn grant_team_key(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path((id, target)): Path<(String, String)>,
+    Json(req): Json<GrantKeyReq>,
+) -> Result<Response, AppError> {
+    let db = state.db.pool();
+    let is_init = target == user.id && !rite_core::teams::team_has_any_key(db, &id).await?;
+    let allowed = if is_init {
+        rite_core::teams::team_role(db, &id, &user.id)
+            .await?
+            .is_some()
+    } else {
+        can_admin_team(&state, &user, &id).await?
+            && rite_core::teams::member_has_key(db, &id, &user.id).await?
+    };
+    if !allowed {
+        return Ok((StatusCode::FORBIDDEN, "not a key-holder admin").into_response());
+    }
+    Ok(
+        if rite_core::teams::set_member_key(db, &id, &target, &req.protected_team_key).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            (StatusCode::NOT_FOUND, "target is not a team member").into_response()
+        },
+    )
+}
+
+/// Revoke a member's key grant (clears their sealed key). Team-admin / org-admin.
+/// Key rotation (against a cached key) is deferred — see ADR 0013.
+async fn revoke_team_key(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path((id, target)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    if !can_admin_team(&state, &user, &id).await? {
+        return Ok((StatusCode::FORBIDDEN, "not a team admin").into_response());
+    }
+    Ok(
+        if rite_core::teams::clear_member_key(state.db.pool(), &id, &target).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            (StatusCode::NOT_FOUND, "no key to revoke").into_response()
         },
     )
 }
