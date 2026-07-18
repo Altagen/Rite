@@ -1006,6 +1006,8 @@ export function Workspace({ auth, conns }: { auth: WorkspaceAuth; conns: Connect
         <ConnectionForm
           connection={editingConnection}
           prefillData={connectionFormPrefill}
+          create={conns.create}
+          update={conns.update}
           onClose={() => {
             setShowForm(false);
             setEditingConnection(null);

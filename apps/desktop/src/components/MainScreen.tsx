@@ -13,8 +13,15 @@ import { Workspace } from './Workspace';
 
 /** The local vault's connection source: the store + server-side connect. */
 function useLocalConnectionsSource(): ConnectionsSource {
-  const { connections, selectedConnectionId, fetchConnections, deleteConnection, selectConnection } =
-    useConnectionsStore();
+  const {
+    connections,
+    selectedConnectionId,
+    fetchConnections,
+    deleteConnection,
+    selectConnection,
+    createConnection,
+    updateConnection,
+  } = useConnectionsStore();
   return {
     connections,
     selectedConnectionId,
@@ -22,6 +29,12 @@ function useLocalConnectionsSource(): ConnectionsSource {
     select: selectConnection,
     remove: deleteConnection,
     connect: (c) => Backend.Terminal.connectTerminal(c.id),
+    create: async (input) => {
+      await createConnection(input);
+    },
+    update: async (input) => {
+      await updateConnection(input);
+    },
   };
 }
 

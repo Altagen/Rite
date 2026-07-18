@@ -91,6 +91,8 @@ export interface ConnectionsSource {
   select: (id: string | null) => void;
   remove: (id: string) => Promise<void>;
   connect: (conn: ConnectionInfo) => Promise<string>;
+  create: (input: CreateConnectionInput) => Promise<void>;
+  update: (input: UpdateConnectionInput) => Promise<void>;
 }
 
 interface ConnectionsState {

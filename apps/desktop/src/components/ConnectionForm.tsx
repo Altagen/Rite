@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
-import { useConnectionsStore, type CreateConnectionInput, type UpdateConnectionInput, type ConnectionInfo, type Protocol } from '../store/connectionsStore';
+import { type CreateConnectionInput, type UpdateConnectionInput, type ConnectionInfo, type Protocol } from '../store/connectionsStore';
 import { useCollectionsStore } from '../store/collectionsStore';
 import type { QuickSSHConnectionInfo } from './QuickSSHModal';
 
@@ -15,11 +15,21 @@ interface ConnectionFormProps {
   prefillData?: QuickSSHConnectionInfo | null;
   onClose: () => void;
   onSuccess?: () => void;
+  // The active context's connection source (ADR 0014): local = the store; accounts
+  // = browser-crypto over the per-user vault. The form is context-agnostic.
+  create: (input: CreateConnectionInput) => Promise<void>;
+  update: (input: UpdateConnectionInput) => Promise<void>;
 }
 
-export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: ConnectionFormProps) {
+export function ConnectionForm({
+  connection,
+  prefillData,
+  onClose,
+  onSuccess,
+  create,
+  update,
+}: ConnectionFormProps) {
   const { t } = useTranslation();
-  const { createConnection, updateConnection } = useConnectionsStore();
   const { collections, fetchCollections, createCollection } = useCollectionsStore();
 
   // Load collections on mount
@@ -226,7 +236,7 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
           };
         }
 
-        await updateConnection(input);
+        await update(input);
       } else {
         // Create new connection
         const input: CreateConnectionInput = {
@@ -251,7 +261,7 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
           sshKeepAliveInterval: sshKeepAliveInterval,
         };
 
-        await createConnection(input);
+        await create(input);
       }
 
       onSuccess?.();
