@@ -9,10 +9,11 @@ import { useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { AdminUsersPanel } from './AdminUsersPanel';
 import { TeamsPanel } from './TeamsPanel';
+import { TeamConnectionsPanel } from './TeamConnectionsPanel';
 
 export function ServerHome() {
   const { user, logout } = useServerSession();
-  const [tab, setTab] = useState<'users' | 'teams'>('users');
+  const [tab, setTab] = useState<'users' | 'teams' | 'connections'>('users');
   if (!user) return null;
 
   const isAdmin = user.role === 'admin';
@@ -37,7 +38,7 @@ export function ServerHome() {
 
       {isAdmin && (
         <nav className="flex gap-1 border-b border-border bg-card px-6">
-          {(['users', 'teams'] as const).map((t) => (
+          {(['users', 'teams', 'connections'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -57,19 +58,14 @@ export function ServerHome() {
         {isAdmin ? (
           tab === 'users' ? (
             <AdminUsersPanel />
-          ) : (
+          ) : tab === 'teams' ? (
             <TeamsPanel />
+          ) : (
+            <TeamConnectionsPanel />
           )
         ) : (
-          <div className="flex h-full items-center justify-center">
-            <div className="max-w-md text-center">
-              <p className="text-2xl font-medium">Connected as {user.username}</p>
-              <p className="mt-3 text-sm text-muted-foreground">
-                You are authenticated to this Rite server. Your workspace and server-hosted sessions
-                arrive in the next phases.
-              </p>
-            </div>
-          </div>
+          // Members land on their shared team connections.
+          <TeamConnectionsPanel />
         )}
       </main>
     </div>

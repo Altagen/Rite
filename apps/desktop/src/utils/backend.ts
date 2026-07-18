@@ -477,10 +477,18 @@ const UserTeamSchema = z.object({
   role: TeamRoleSchema,
   protectedTeamKey: z.string().nullable().optional(),
 });
+// A team's stored connection blob (opaque ciphertext; decrypted client-side).
+const TeamConnBlobSchema = z.object({
+  id: z.string(),
+  blob: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
 export type Team = z.infer<typeof TeamSchema>;
 export type TeamMember = z.infer<typeof TeamMemberSchema>;
 export type UserTeam = z.infer<typeof UserTeamSchema>;
 export type TeamRole = z.infer<typeof TeamRoleSchema>;
+export type TeamConnBlob = z.infer<typeof TeamConnBlobSchema>;
 
 export const BackendTeams = {
   /** All teams (org-admin). */
@@ -499,6 +507,13 @@ export const BackendTeams = {
     invokeWithValidation('team_grant_key', z.null(), { id, userId, protectedTeamKey }),
   revokeKey: (id: string, userId: string) =>
     invokeWithValidation('team_revoke_key', z.null(), { id, userId }),
+  /** A team's connection blobs (opaque; the caller decrypts with the team key). */
+  connections: (id: string) =>
+    invokeWithValidation('team_conn_list', z.array(TeamConnBlobSchema), { id }),
+  createConnection: (id: string, blob: string) =>
+    invokeWithValidation('team_conn_create', TeamConnBlobSchema, { id, blob }),
+  deleteConnection: (id: string, cid: string) =>
+    invokeWithValidation('team_conn_delete', z.null(), { id, cid }),
 } as const;
 
 export const Backend = {

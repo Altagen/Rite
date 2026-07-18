@@ -213,14 +213,18 @@ export async function mockInvoke(
     case 'admin_list_teams':
     case 'teams_mine':
     case 'team_members':
+    case 'team_conn_list':
       return [];
     case 'admin_create_team':
       return { id: `team-${Math.random().toString(36).slice(2, 8)}`, name: String(args?.name ?? ''), createdAt: now() };
+    case 'team_conn_create':
+      return { id: `tc-${Math.random().toString(36).slice(2, 8)}`, blob: String(args?.blob ?? ''), createdAt: now(), updatedAt: now() };
     case 'admin_delete_team':
     case 'team_add_member':
     case 'team_remove_member':
     case 'team_grant_key':
     case 'team_revoke_key':
+    case 'team_conn_delete':
       return null;
 
     // --- Context multiplexer (dev mock: local only, empty roster) ---

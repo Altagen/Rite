@@ -190,6 +190,16 @@ const routes: Record<string, Route> = {
     );
     return null;
   },
+  team_conn_list: (a) => json(`/api/teams/${encodeURIComponent(String(a.id))}/connections`),
+  team_conn_create: (a) =>
+    json(`/api/teams/${encodeURIComponent(String(a.id))}/connections`, post({ blob: a.blob })),
+  team_conn_delete: async (a) => {
+    await json(
+      `/api/teams/${encodeURIComponent(String(a.id))}/connections/${encodeURIComponent(String(a.cid))}`,
+      { method: 'DELETE' },
+    );
+    return null;
+  },
 
   accept_host_key: async (a) => {
     await json('/api/ssh/host-key/accept', post({ host: a.host, port: a.port }));

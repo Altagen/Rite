@@ -7,7 +7,7 @@
  * private key. The team key then encrypts the team's connections.
  */
 
-import { generateUserKey, hexToBytes } from './vaultCrypto';
+import { generateUserKey, hexToBytes, encryptString, decryptString } from './vaultCrypto';
 import { seal, open } from './sealbox';
 
 /** A fresh random 32-byte team key. */
@@ -32,4 +32,15 @@ export function unwrapTeamKey(
   protectedTeamKey: string,
 ): Promise<Uint8Array> {
   return open(publicKey, privateKey, protectedTeamKey);
+}
+
+/** Encrypt a team connection record with the team key → an opaque `v1.iv.ct` blob. */
+export function encryptTeamConnection(teamKey: Uint8Array, record: unknown): Promise<string> {
+  return encryptString(teamKey, new TextEncoder().encode(JSON.stringify(record)));
+}
+
+/** Decrypt a team connection blob back to its record. */
+export async function decryptTeamConnection<T>(teamKey: Uint8Array, blob: string): Promise<T> {
+  const pt = await decryptString(teamKey, blob);
+  return JSON.parse(new TextDecoder().decode(pt)) as T;
 }
