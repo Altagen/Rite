@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rite · mock</title>
+<link rel="stylesheet" href="rite.css">
+<style>
+  #ctxmenu{position:absolute;left:0;top:calc(100% + 8px);width:320px;background:var(--card);border:1px solid var(--border2);border-radius:14px;box-shadow:var(--shadow);padding:8px;display:none;z-index:40}#ctxmenu.show{display:block}
+  .side-hdr{display:flex;align-items:center;gap:4px;padding:4px 8px 6px 14px}
+  .tnode{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+  .tnode:hover{background:var(--card2)} .tnode.sel{background:rgba(124,156,245,.13);border-color:rgba(124,156,245,.3)}
+  .tnode .ca{width:15px;opacity:.55;display:grid;place-items:center;flex:none}
+  .tnode .nm{flex:1;font-weight:550;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tnode.leaf .nm{font-weight:500}
+  .tnode .acts{display:flex;gap:0;opacity:0}.tnode:hover .acts{opacity:1}.tnode .acts .btn{padding:3px}
+  .mc{font-size:10px;font-weight:700;color:var(--purple);display:flex;align-items:center;gap:2px}
+  .avs{display:flex}.av{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:700;color:#0a0e1a;margin-left:-6px;border:2px solid var(--bg)}.av:first-child{margin-left:0}
+  .collapsebar{display:flex;flex-direction:column;align-items:center;padding-top:10px}
+  .menu{position:fixed;background:var(--card);border:1px solid var(--border2);border-radius:11px;box-shadow:var(--shadow);padding:6px;z-index:60;min-width:200px}.menu .row{padding:8px 10px}
+  .chk{width:17px;height:17px;border:1.5px solid var(--border2);border-radius:5px;display:grid;place-items:center;flex:none}.chk.on{background:var(--accent);border-color:var(--accent);color:#0a0e1a}
+  .mrow{display:flex;align-items:center;gap:11px;padding:8px 6px;border-radius:8px;cursor:pointer}.mrow:hover{background:var(--card2)}
+  .settings-row{display:flex;align-items:center;justify-content:space-between;padding:12px 2px;border-bottom:1px solid var(--border)}
+  .toggle{width:40px;height:22px;border-radius:999px;background:var(--card2);border:1px solid var(--border2);position:relative;cursor:pointer}.toggle.on{background:var(--accent);border-color:var(--accent)}.toggle i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}.toggle.on i{left:20px}
+  .navtab{padding:8px 4px;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-weight:600;font-size:13px}.navtab.on{color:var(--fg);border-color:var(--accent)}
+  /* main tabs + cards */
+  .mtab{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:9px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:550}
+  .mtab.on{background:var(--card);color:var(--fg);border:1px solid var(--border)}
+  .toolbar{display:flex;align-items:center;gap:10px;padding:4px 2px 12px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
+  .cards.list{grid-template-columns:1fr;gap:8px}
+  .ccard{border:1px solid var(--border);background:var(--card);border-radius:12px;padding:14px;cursor:pointer;transition:.13s;position:relative}
+  .ccard:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .cards.list .ccard{display:flex;align-items:center;gap:12px;padding:11px 14px;transform:none}
+  .ccard .h{display:flex;align-items:center;gap:9px;margin-bottom:8px}.cards.list .ccard .h{margin:0}
+  .ccard .nm{font-weight:650}.ccard .tgt{font-size:12px;color:var(--muted);font-family:var(--mono)}
+  .ccard .meta{font-size:11px;color:var(--muted);margin-top:8px;display:flex;gap:10px}.cards.list .ccard .meta{margin:0}
+  .sel-input{display:flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;color:var(--fg-dim);font-size:13px}
+  .sel-input select{background:none;border:none;color:var(--fg);outline:none;font-size:13px}
+  .curtag{font-size:10px;color:var(--accent);font-weight:700;margin-left:4px}
+  #ctxmenu .row.cur{background:rgba(124,156,245,.12);box-shadow:inset 3px 0 0 var(--accent)}
+  #ctxmenu .row{gap:8px}
+  #ctxmenu .row .title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #ctxmenu .row .badge{width:28px;height:28px;border-radius:8px;font-size:12px}
+  #ctxmenu .row .rmv{display:none;color:var(--red)}#ctxmenu .row:hover .rmv{display:inline-flex}
+  #ctxmenu .row .btn{padding:4px;flex:none}
+  .ctxmgr{position:fixed;inset:0;background:var(--bg);z-index:70;overflow:auto}
+  .mgr-wrap{max-width:820px;margin:0 auto;padding:40px 26px 70px}
+  .mgr-grid{display:grid;grid-template-columns:1fr;gap:10px}
+  .mgr-card{display:flex;align-items:center;gap:13px;padding:13px 15px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
+  .mgr-card.cur{border-color:var(--accent);box-shadow:0 0 0 3px rgba(124,156,245,.12)}
+  .mgr-card .grow{flex:1;min-width:0}.mgr-card .nm{font-weight:650}.mgr-card .fl{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sec{display:flex;align-items:center;gap:10px;margin:22px 0 10px}.sec .line{flex:1;height:1px;background:var(--border)}
+  .dashed{border:1px dashed var(--border2);background:transparent;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:10px;border-radius:12px;padding:14px;font-weight:600;cursor:pointer}.dashed:hover{border-color:var(--accent);color:var(--fg)}
+  .swatches{display:flex;gap:9px;flex-wrap:wrap}
+  .sw{width:28px;height:28px;border-radius:9px;border:none;cursor:pointer;position:relative;transition:.1s}
+  .sw:hover{transform:scale(1.08)} .sw.sel{outline:2px solid var(--fg);outline-offset:2px}
+  .sw.sel::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;color:#0a0e1a;font-weight:800;font-size:13px}
+  /* modals must sit above the card-view overlay (z-index 70) + toast (80) */
+  .backdrop{z-index:120}
+  .modal .body{max-height:72vh;overflow:auto}
+  textarea.inp{width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:9px;padding:10px 12px;color:var(--fg);font-family:inherit;font-size:14px;resize:vertical}
+  textarea.inp:focus{outline:none;border-color:var(--accent)}
+  /* responsive: never overflow / overlap */
+  .appbar{flex-wrap:wrap;row-gap:8px}
+  #acts{flex-wrap:wrap;justify-content:flex-end}
+  .badge{flex:none}
+  .ccard{min-width:0}.ccard .nm,.ccard .tgt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mgr-card{flex-wrap:wrap;row-gap:8px}.mgr-card .grow{min-width:140px}
+  .toolbar{flex-wrap:wrap}
+  .mrow{flex-wrap:wrap;row-gap:6px}
+  @media (max-width:760px){ .lbl{display:none} .side{width:240px} }
+  @media (max-width:560px){ .side{position:absolute;z-index:20;height:100%;box-shadow:var(--shadow)} }
+</style>
+</head>
+<body>
+<div style="display:flex;flex-direction:column;height:100vh">
+  <div class="appbar">
+    <div class="brand"><span class="glyph">R</span></div>
+    <div style="position:relative"><button class="chip" id="pill" onclick="toggleMenu(event)"></button><div id="ctxmenu"></div></div>
+    <div class="spacer"></div>
+    <span id="acts" style="display:flex;gap:10px;align-items:center"></span>
+  </div>
+  <div style="flex:1;display:flex;min-height:0">
+    <div class="side" id="side" style="width:290px"></div>
+    <main style="flex:1;display:flex;flex-direction:column;min-width:0;padding:12px">
+      <div id="mtabs" style="display:flex;gap:8px;padding-bottom:10px"></div>
+      <div style="flex:1;min-height:0" id="mbody"></div>
+    </main>
+  </div>
+</div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · mock unique · pastille en haut · dossiers perso + collections (partage) · <a href="#" onclick="openHostKey();return false">host-key</a></div>
+
+<script src="rite.js"></script>
+<script src="full-data.js"></script>
+<script>
+/* ---- icons specific to this mock ---- */
+const M={
+  // Folder = your personal organiser (a plain folder).
+  folder:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>',
+  // Collection = a shareable group of machines (stacked layers = "a set").
+  coll:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"/></svg>',
+  // Machine = an SSH host you connect to (a server unit) — NOT the play/connect action.
+  machine:'<svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M6.5 8h.01M6.5 16h.01M17 8h1.5M17 16h1.5"/></svg>',
+  grid:'<svg class="icon" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
+  list:'<svg class="icon" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>',
+  sort:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 6h12M3 12h9M3 18h6M17 8l3-3 3 3M20 5v14"/></svg>',
+  import:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"/></svg>',
+  signout:'<svg class="icon" viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 3H6a2 2 0 00-2 2v14a2 2 0 002 2h6"/></svg>',
+  image:'<svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-8 8"/></svg>',
+  edit:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>',
+};
+/* hosts "parsed" from ~/.ssh/config (mock) */
+const SSH_HOSTS=[
+  {name:'gitlab',host:'gitlab.com',user:'git',port:22},
+  {name:'prod-bastion',host:'bastion.acme.io',user:'alex',port:22},
+  {name:'db1',host:'10.0.0.20',user:'dba',port:2222},
+  {name:'staging',host:'stg.acme.io',user:'deploy',port:22},
+  {name:'nas',host:'nas.local',user:'admin',port:22},
+];
+const avColor=u=>({alex:'#7c9cf5',carol:'#9ece6a',dan:'#e5b567',erin:'#bb9af7',frank:'#56c7c0'}[u]||'#888');
+const av=u=>`<span class="av" title="${u}" style="background:${avColor(u)}">${u[0].toUpperCase()}</span>`;
+// Vault/server badge — a custom client-side image if set, else a gradient + initial.
+const badgeHTML=item=>item.img
+  ? `<span class="badge" style="background-image:url(${item.img});background-size:cover;background-position:center"></span>`
+  : `<span class="badge ${item.badge}">${item.name[0]}</span>`;
+
+/* ---- library: personal FOLDERS (your org) hold COLLECTIONS (shareable) hold CONNECTIONS ---- */
+const LIB=[
+ {id:'f-perso',type:'folder',color:'#7c9cf5',name:'Personal',open:true,children:[
+   {id:'c-home',type:'coll',color:'#9ece6a',name:'Home lab',shared:false,members:['alex'],roles:{alex:'owner'},open:false,conns:[
+      {name:'Homelab',host:'192.168.1.10',user:'alex',port:22,last:'2h ago'},
+      {name:'Router',host:'192.168.1.1',user:'admin',port:22,last:'3d ago'},
+      {name:'NAS',host:'nas.local',user:'admin',port:22,last:'1w ago'},
+      {name:'Scratch VPS',host:'vps.me',user:'root',port:22,last:'yesterday'}]} ]},
+ {id:'f-acme',type:'folder',color:'#e5b567',name:'Acme',open:true,children:[
+   {id:'f-infra',type:'folder',color:'#56c7c0',name:'Infrastructure',open:true,children:[
+     {id:'c-prod',type:'coll',color:'#f7768e',name:'Production',shared:true,members:['alex','carol','erin'],roles:{alex:'owner',carol:'editor',erin:'viewer'},open:true,conns:[
+        {name:'lb-01',host:'10.0.0.4',user:'deploy',port:22,last:'1h ago'}],children:[
+        {id:'cf-web',type:'folder',color:'#7c9cf5',name:'Web servers',open:true,conns:[
+           {name:'web-01',host:'10.0.0.5',user:'deploy',port:22,last:'5m ago'},
+           {name:'web-02',host:'10.0.0.6',user:'deploy',port:22,last:'12m ago'},
+           {name:'web-03',host:'10.0.0.7',user:'deploy',port:22,last:'2h ago'}]},
+        {id:'cf-cache',type:'folder',color:'#f0a35e',name:'Cache',open:true,conns:[
+           {name:'cache-01',host:'10.0.0.8',user:'ops',port:22,last:'yesterday'}]}]},
+     {id:'c-stg',type:'coll',color:'#bb9af7',name:'Staging',shared:true,members:['alex','carol','dan'],roles:{alex:'owner',carol:'editor',dan:'editor'},open:false,conns:[
+        {name:'stg-web',host:'10.1.0.5',user:'deploy',port:22,last:'3h ago'}]} ]},
+   {id:'c-db',type:'coll',color:'#f0a35e',name:'Databases',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
+      {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,last:'1h ago'},
+      {name:'redis',host:'cache.acme.io',user:'ops',port:22,last:'4h ago'}]} ]},
+];
+function walk(list,fn){list.forEach(n=>{fn(n);if(n.children)walk(n.children,fn);});}
+function find(id){let r=null;walk(LIB,n=>{if(n.id===id)r=n;});return r;}
+function allColls(){const a=[];walk(LIB,n=>{if(n.type==='coll')a.push(n);});return a;}
+
+let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en'};
+const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
+
+/* ================= context pill (top) ================= */
+function renderPill(){const c=STATE.ctx,p=document.getElementById('pill');
+  if(c.type==='home')p.innerHTML=`${ICON.term} <b>Terminal</b> <span class="muted">no vault</span> ${EXICON.chevD}`;
+  else{const st=c.type==='vault'?(c.locked?'locked':'unlocked'):'server';p.innerHTML=`<span class="dot ${st}"></span> <b>${c.name}</b> ${EXICON.chevD}`;}}
+function toggleMenu(e){e.stopPropagation();document.getElementById('ctxmenu').classList.toggle('show');buildMenu();}
+document.addEventListener('click',()=>document.getElementById('ctxmenu').classList.remove('show'));
+function isCur(type,id){const c=STATE.ctx;return (type==='home'&&c.type==='home')||(c.type===type&&c.id===id);}
+function curTag(t,id){return isCur(t,id)?'<span class="curtag">● current</span>':'';}
+function buildMenu(){
+  const vr=v=>`<div class="row${isCur('vault',v.id)?' cur':''}" onclick="pick('vault','${v.id}')">${badgeHTML(v)}<div class="grow"><div class="title">${v.name} ${curTag('vault',v.id)}</div><div class="sub">${v.file}</div></div><span class="tag ${v.locked?'locked':'unlocked'}">${v.locked?'Locked':'Open'}</span>
+    ${!v.locked?`<button class="btn btn-ghost btn-sm" title="Lock" onclick="event.stopPropagation();lockVault('${v.id}')">${ICON.lock}</button>`:''}
+    <button class="btn btn-ghost btn-sm rmv" title="Rename" onclick="event.stopPropagation();dlgRenameVault('${v.id}')">${M.edit}</button>
+    <button class="btn btn-ghost btn-sm rmv" title="Open in new window" onclick="event.stopPropagation();openInNewWindow('${v.name}')">${EXICON.split}</button>
+    <button class="btn btn-ghost btn-sm rmv" title="Remove from list" onclick="event.stopPropagation();removeVault('${v.id}')">${EXICON.trash}</button></div>`;
+  const sr=s=>`<div class="row${isCur('server',s.id)?' cur':''}" onclick="pick('server','${s.id}')">${badgeHTML(s)}<div class="grow"><div class="title">${s.name} ${curTag('server',s.id)}</div><div class="sub">${s.url}</div></div><span class="tag server">Server</span>
+    <button class="btn btn-ghost btn-sm" title="Sign out" onclick="event.stopPropagation();signOutServer('${s.id}')">${M.signout}</button>
+    <button class="btn btn-ghost btn-sm rmv" title="Edit URL / label" onclick="event.stopPropagation();dlgEditServer('${s.id}')">${M.edit}</button>
+    <button class="btn btn-ghost btn-sm rmv" title="Open in new window" onclick="event.stopPropagation();openInNewWindow('${s.name}')">${EXICON.split}</button>
+    <button class="btn btn-ghost btn-sm rmv" title="Remove access" onclick="event.stopPropagation();removeServer('${s.id}')">${EXICON.trash}</button></div>`;
+  document.getElementById('ctxmenu').innerHTML=`<div class="row${isCur('home')?' cur':''}" onclick="pick('home')">${ICON.term}<div class="grow"><div class="title">Terminal ${curTag('home')}</div><div class="sub">Base — no vault</div></div></div>
+    <div class="eyebrow" style="padding:8px 10px 4px">Local vaults</div>${DATA.vaults.map(vr).join('')}
+    <div class="eyebrow" style="padding:10px 10px 4px">Servers</div>${DATA.servers.map(sr).join('')}<div class="sep"></div>
+    <div class="row" onclick="openContextManager()">${M.grid}<div class="grow"><div class="title">Card view — manage all…</div></div></div>
+    <div class="row" onclick="dlgNewVault()">${ICON.plus}<div class="grow"><div class="title">New local vault…</div></div></div>
+    <div class="row" onclick="dlgOpenVaultFile()">${ICON.folder}<div class="grow"><div class="title">Open a vault file…</div></div></div>
+    <div class="row" onclick="dlgAddServer()">${EXICON.shield}<div class="grow"><div class="title">Add a server…</div></div></div>`;}
+function pick(type,id){document.getElementById('ctxmenu').classList.remove('show');
+  if(type==='home'){STATE.ctx={type:'home'};STATE.mainTab='term';STATE.selColl=null;return renderAll();}
+  const it=(type==='vault'?DATA.vaults:DATA.servers).find(x=>x.id===id);STATE.ctx=Object.assign({type},it);STATE.selColl=null;STATE.mainTab='term';renderAll();
+  if(type==='vault'&&it.locked)dlgUnlock(it,()=>{it.locked=false;STATE.ctx.locked=false;renderAll();});}
+function refreshCtx(){renderAll();if(document.getElementById('ctxmgr'))renderCtxMgr();}
+/* Lock a local vault (clears the key from RAM — re-unlock with the master password). */
+function lockVault(id){const v=DATA.vaults.find(x=>x.id===id);if(v)v.locked=true;document.getElementById('ctxmenu').classList.remove('show');
+  if(STATE.ctx.type==='vault'&&STATE.ctx.id===id){STATE.ctx.locked=true;STATE.selColl=null;STATE.mainTab='term';}
+  refreshCtx();toast(`<span class="accent">${v?v.name:'Vault'}</span> locked`);}
+/* Sign out of a server — ends the session but KEEPS it in the roster (re-login later). */
+function signOutServer(id){const s=DATA.servers.find(x=>x.id===id);document.getElementById('ctxmenu').classList.remove('show');
+  if(STATE.ctx.type==='server'&&STATE.ctx.id===id){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
+  refreshCtx();toast(`Signed out of <span class="accent">${s?s.name:'server'}</span> — still saved, sign in again to reconnect`);}
+/* Custom icon image, stored CLIENT-SIDE only (not sent to any server). */
+function setIcon(type,id){const item=(type==='vault'?DATA.vaults:DATA.servers).find(x=>x.id===id);if(!item)return;
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+  inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{item.img=r.result;refreshCtx();toast(`Icon set for <span class="accent">${item.name}</span> (this device)`);};r.readAsDataURL(f);};
+  inp.click();}
+function clearIcon(type,id){const item=(type==='vault'?DATA.vaults:DATA.servers).find(x=>x.id===id);if(item){delete item.img;refreshCtx();toast('Icon reset');}}
+/* Add a server — probes it; unreachable is fine (add anyway, fix later). Nothing
+   is created remotely until you sign in. Overrides the generic mock dialog. */
+function dlgAddServer(){showModal({title:'Add a server',subtitle:"A Rite server holds your connections (its own login).",confirm:'Add',
+  body:`<label class="field"><span>Server URL</span><input class="inp" id="as-url" placeholder="https://rite.example.com"></label>
+    <label class="field"><span>Label (optional)</span><input class="inp" id="as-label" placeholder="Team"></label>
+    <p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.key} We check the server when you add it. If it's unreachable you can still add it and connect (or fix the URL) later — <b>nothing is created remotely</b> until you sign in.</p>`,
+  onConfirm:(m)=>{const url=(m.querySelector('#as-url').value||'').trim();if(!url)return false;const label=(m.querySelector('#as-label').value||'').trim();
+    const reachable=/^https?:\/\/[^\s]+\.[^\s]+/.test(url);
+    DATA.servers.push({id:'s-'+Math.random().toString(36).slice(2,7),name:label||url.replace(/^https?:\/\//,''),url,badge:['s1','s2'][DATA.servers.length%2],online:reachable});
+    refreshCtx();
+    toast(reachable?`Server <span class="accent">${label||url}</span> added`:`Added <span class="accent">${label||url}</span> — couldn't reach it. Open it to retry, or Edit the URL.`);}});}
+function dlgNewVault(){
+  const bd=showModal({title:'New local vault',subtitle:'A named encrypted database on this machine.',confirm:'Create & open',
+    body:`<label class="field"><span>Name</span><input class="inp" id="nv-name" placeholder="e.g. Client Beta"></label>
+      <label class="field"><span>File location</span><div style="display:flex;gap:8px"><input class="inp" id="nv-file" value="~/.local/share/rite/beta.db"><button class="btn btn-sm" onclick="toast('File picker…')">Browse…</button></div></label>
+      <label class="field"><span>Master password</span><input class="inp" id="nv-pw" type="password" placeholder="Create a strong password"><div class="strength"><i id="nv-str"></i></div><div id="nv-hint" class="muted" style="font-size:11px;margin-top:5px">At least 12 characters.</div></label>
+      <label class="field"><span>Confirm master password</span><input class="inp" id="nv-pw2" type="password" placeholder="Repeat it"><div id="nv-match" style="font-size:11px;margin-top:5px;height:14px"></div></label>
+      <p class="muted" style="font-size:12px;margin:2px 0 0">If you lose this password, the vault can't be decrypted — there's no recovery (zero-knowledge).</p>`,
+    onConfirm:(m)=>{const pw=m.querySelector('#nv-pw').value,pw2=m.querySelector('#nv-pw2').value;
+      if(pw.length<12||pw!==pw2)return false; // guarded by the disabled button too
+      const name=(m.querySelector('#nv-name').value||'').trim()||'New vault';
+      DATA.vaults.push({id:'v-'+Math.random().toString(36).slice(2,7),name,file:(m.querySelector('#nv-file').value||'').trim()||'~/vault.db',badge:['v1','v2','v3'][DATA.vaults.length%3],locked:false});
+      refreshCtx();toast(`Vault <span class="accent">${name}</span> created`);}});
+  // live validation (mirrors Rite's SetupScreen: length + match, disable until OK)
+  const pw=bd.querySelector('#nv-pw'),pw2=bd.querySelector('#nv-pw2'),str=bd.querySelector('#nv-str'),match=bd.querySelector('#nv-match'),ok=bd.querySelector('[data-ok]');
+  const upd=()=>{const v=pw.value;
+    const score=(v.length>=12?2:v.length>=8?1:0)+(/[A-Z]/.test(v)?1:0)+(/[0-9]/.test(v)?1:0)+(/[^A-Za-z0-9]/.test(v)?1:0);
+    const valid=v.length>=12;
+    str.style.width=Math.min(100,(v.length/18)*100)+'%';
+    str.style.background=!v?'transparent':valid?(score>=4?'#9ece6a':'#e5b567'):'#f7768e';
+    const matched=!!pw2.value&&v===pw2.value;
+    match.textContent=pw2.value?(matched?'✓ Passwords match':'✕ Passwords don’t match'):'';
+    match.style.color=matched?'var(--green)':'var(--red)';
+    const good=valid&&matched; ok.style.opacity=good?'1':'.45'; ok.style.pointerEvents=good?'':'none';};
+  pw.addEventListener('input',upd);pw2.addEventListener('input',upd);upd();}
+/* Edit a saved server (label + URL) — so a typo'd/bogus one is never stuck. */
+function dlgEditServer(id){const s=DATA.servers.find(x=>x.id===id);if(!s)return;document.getElementById('ctxmenu').classList.remove('show');
+  showModal({title:'Edit server',confirm:'Save',
+    body:`<label class="field"><span>Label</span><input class="inp" id="es-label" value="${s.name}"></label>
+      <label class="field"><span>Server URL</span><input class="inp" id="es-url" value="${s.url}"></label>
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Changing the URL re-checks the server next time you open it. Your saved connections are unaffected.</p>`,
+    onConfirm:(m)=>{s.name=(m.querySelector('#es-label').value||'').trim()||s.name;s.url=(m.querySelector('#es-url').value||'').trim()||s.url;refreshCtx();toast('Server updated');}});}
+function dlgRenameVault(id){const v=DATA.vaults.find(x=>x.id===id);if(!v)return;document.getElementById('ctxmenu').classList.remove('show');
+  showModal({title:'Rename vault',subtitle:v.file,confirm:'Save',
+    body:`<label class="field"><span>Name</span><input class="inp" id="rv-name" value="${v.name}"></label>
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Renames it in your list only — the file on disk is not moved.</p>`,
+    onConfirm:(m)=>{v.name=(m.querySelector('#rv-name').value||'').trim()||v.name;refreshCtx();toast('Vault renamed');}});}
+/* Removing a SERVER forgets it locally — the remote account is untouched. */
+function removeServer(id){const s=DATA.servers.find(x=>x.id===id);if(!s)return;document.getElementById('ctxmenu').classList.remove('show');
+  showModal({title:`Remove “${s.name}”?`,subtitle:s.url,confirm:'Remove from my servers',
+    body:`<div class="card" style="padding:12px;border-color:rgba(124,156,245,.35);background:rgba(124,156,245,.06)">
+        <p style="margin:0;font-size:13px">This only removes the server from <b>this device</b>. <b>Your account on the server is NOT deleted</b> — nothing is touched remotely.</p>
+        <p style="margin:8px 0 0;font-size:13px;color:var(--muted)">To come back: add it again with its URL and sign in with your password (which decrypts your key).</p></div>`,
+    onConfirm:()=>{const i=DATA.servers.findIndex(x=>x.id===id);if(i>=0)DATA.servers.splice(i,1);
+      if(STATE.ctx.type==='server'&&STATE.ctx.id===id){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
+      refreshCtx();toast(`Removed <span class="accent">${s.name}</span> from this device`);}});}
+/* Removing a LOCAL VAULT forgets it; deleting the file is a separate opt-in. */
+function removeVault(id){const v=DATA.vaults.find(x=>x.id===id);if(!v)return;document.getElementById('ctxmenu').classList.remove('show');
+  showModal({title:`Remove “${v.name}”?`,subtitle:v.file,confirm:'Remove',
+    body:`<p style="font-size:13px;margin:0 0 10px">Removes this vault from your list. The database file stays on disk — you can open it again anytime.</p>
+      <label class="mrow" style="cursor:pointer;padding:10px;border:1px solid rgba(247,118,142,.3);border-radius:9px;background:rgba(247,118,142,.06)"
+        onclick="const c=this.querySelector('.chk');c.classList.toggle('on');c.textContent=c.classList.contains('on')?'✓':''">
+        <span class="chk"></span><div class="grow"><div class="title" style="color:var(--red)">Also delete the file permanently</div><div class="sub">Irreversible — erases <span class="mono">${v.file}</span> and all its connections.</div></div></label>`,
+    onConfirm:(m)=>{const del=m.querySelector('.chk').classList.contains('on');
+      const i=DATA.vaults.findIndex(x=>x.id===id);if(i>=0)DATA.vaults.splice(i,1);
+      if(STATE.ctx.type==='vault'&&STATE.ctx.id===id){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
+      refreshCtx();toast(del?`Vault <span class="accent">${v.name}</span> deleted`:`Removed <span class="accent">${v.name}</span> from the list`);}});}
+/* Card view: a management page for when there are many vaults/servers (mock-C idea,
+   as a SECONDARY view — the pill stays the fast switcher). */
+function openContextManager(){document.getElementById('ctxmenu').classList.remove('show');
+  if(!document.getElementById('ctxmgr')){const el=document.createElement('div');el.className='ctxmgr';el.id='ctxmgr';document.body.appendChild(el);}renderCtxMgr();}
+function closeCtxMgr(){const el=document.getElementById('ctxmgr');if(el)el.remove();}
+function renderCtxMgr(){const el=document.getElementById('ctxmgr');if(!el)return;
+  const iconBtns=(type,item)=>`<button class="btn btn-ghost btn-sm" title="Custom icon (this device)" onclick="setIcon('${type}','${item.id}')">${M.image}</button>${item.img?`<button class="btn btn-ghost btn-sm" title="Reset icon" onclick="clearIcon('${type}','${item.id}')">↺</button>`:''}`;
+  const vcard=v=>`<div class="mgr-card ${isCur('vault',v.id)?'cur':''}">${badgeHTML(v)}
+    <div class="grow"><div class="nm">${v.name} ${curTag('vault',v.id)}</div><div class="fl mono">${v.file}</div></div>
+    <span class="tag ${v.locked?'locked':'unlocked'}">${v.locked?'Locked':'Open'}</span>
+    <button class="btn btn-primary btn-sm" onclick="pick('vault','${v.id}');closeCtxMgr()">Open</button>
+    ${!v.locked?`<button class="btn btn-ghost btn-sm" title="Lock" onclick="lockVault('${v.id}')">${ICON.lock}</button>`:''}
+    <button class="btn btn-ghost btn-sm" title="Rename" onclick="dlgRenameVault('${v.id}')">${M.edit}</button>
+    ${iconBtns('vault',v)}
+    <button class="btn btn-ghost btn-sm" title="Open in new window" onclick="openInNewWindow('${v.name}')">${EXICON.split}</button>
+    <button class="btn btn-ghost btn-sm" style="color:var(--red)" title="Remove" onclick="removeVault('${v.id}')">${EXICON.trash}</button></div>`;
+  const scard=s=>`<div class="mgr-card ${isCur('server',s.id)?'cur':''}">${badgeHTML(s)}
+    <div class="grow"><div class="nm">${s.name} ${curTag('server',s.id)}</div><div class="fl mono">${s.url}</div></div>
+    <span class="tag server">Server</span>
+    <button class="btn btn-primary btn-sm" onclick="pick('server','${s.id}');closeCtxMgr()">Open</button>
+    <button class="btn btn-ghost btn-sm" title="Sign out" onclick="signOutServer('${s.id}')">${M.signout}</button>
+    <button class="btn btn-ghost btn-sm" title="Edit URL / label" onclick="dlgEditServer('${s.id}')">${M.edit}</button>
+    ${iconBtns('server',s)}
+    <button class="btn btn-ghost btn-sm" title="Open in new window" onclick="openInNewWindow('${s.name}')">${EXICON.split}</button>
+    <button class="btn btn-ghost btn-sm" style="color:var(--red)" title="Remove access" onclick="removeServer('${s.id}')">${EXICON.trash}</button></div>`;
+  el.innerHTML=`<div class="mgr-wrap">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px"><h1 style="font-size:22px">Contexts</h1><div style="flex:1"></div><button class="btn btn-ghost btn-sm" onclick="closeCtxMgr()">✕ Close</button></div>
+    <p class="muted" style="margin:0 0 20px;font-size:14px">Manage your local vaults and saved servers. Removing a server only forgets it here — your remote account stays.</p>
+    <div class="sec"><span class="eyebrow">Local vaults</span><span class="line"></span></div>
+    <div class="mgr-grid">${DATA.vaults.map(vcard).join('')}<button class="dashed" onclick="dlgNewVault()">${ICON.plus} New local vault</button></div>
+    <div class="sec"><span class="eyebrow">Servers</span><span class="line"></span></div>
+    <div class="mgr-grid">${DATA.servers.map(scard).join('')}<button class="dashed" onclick="dlgAddServer()">${EXICON.shield} Add a server</button></div></div>`;}
+
+/* ================= sidebar library (tree) ================= */
+function renderSide(){const s=document.getElementById('side'),c=STATE.ctx;
+  if(c.type==='home'){s.style.width='290px';s.innerHTML=`<div class="empty" style="height:100%"><div>${ICON.term}</div><div class="big">Base session — terminal & Quick SSH in the toolbar. Pick a vault or server (top-left) for your saved connections.</div></div>`;return;}
+  if(c.type==='vault'&&c.locked){s.style.width='290px';s.innerHTML=`<div class="empty" style="height:100%"><div>${ICON.lock}</div><div class="big">“${c.name}” is locked.</div><button class="btn btn-primary btn-sm" onclick="dlgUnlock(STATE.ctx,()=>{STATE.ctx.locked=false;renderAll()})">Unlock</button></div>`;return;}
+  if(STATE.sideCollapsed){s.style.width='46px';s.innerHTML=`<div class="collapsebar"><button class="btn btn-ghost btn-sm" title="Show library" onclick="STATE.sideCollapsed=false;renderAll()">${EXICON.panel}</button></div>`;return;}
+  s.style.width='290px';
+  s.innerHTML=`<div class="search">${EXICON.search}<input placeholder="Search connections…"></div>
+    <div class="side-hdr"><span class="eyebrow">Library</span>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto;padding:4px" title="New…" onclick="newMenu(event)">${ICON.plus}</button>
+      <button class="btn btn-ghost btn-sm" style="padding:4px" title="Hide panel" onclick="STATE.sideCollapsed=true;renderAll()">${EXICON.chevL}</button></div>
+    <div class="scroll" style="flex:1;padding:0 8px 12px">${tree(LIB,0)}</div>`;}
+function tree(list,depth){let h='';list.forEach(n=>{
+  if(n.type==='conn'){h+=connRow(n,depth);return;}
+  const exp=n.open;
+  h+=nodeRow(n,depth,exp);
+  if(exp){ if(n.children)h+=tree(n.children,depth+1); (n.conns||[]).forEach(cn=>h+=connRow(cn,depth+1)); }
+});return h;}
+function nodeRow(n,depth,exp){const isColl=n.type==='coll';
+  return `<div class="tnode ${STATE.selColl===n.id?'sel':''}" style="padding-left:${6+depth*15}px" onclick="${isColl?`openColl('${n.id}')`:`n_toggle('${n.id}')`}">
+    <span class="ca" onclick="event.stopPropagation();n_toggle('${n.id}')">${exp?EXICON.chevD:EXICON.chevR}</span>
+    <span style="color:${n.color||(isColl?(n.shared?'var(--purple)':'var(--accent)'):'var(--muted)')};display:grid;place-items:center">${isColl?M.coll:M.folder}</span>
+    <span class="nm">${n.name}</span>
+    ${isColl&&n.shared?`<span class="mc" title="${n.members.length} members">${EXICON.users}${STATE.showMemberCount?n.members.length:''}</span>`:''}
+    <span class="acts">${isColl
+      ?`<button class="btn btn-ghost" title="Add" onclick="event.stopPropagation();collAdd('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();collMore('${n.id}',event)">${EXICON.more}</button>`
+      :`<button class="btn btn-ghost" title="New here" onclick="event.stopPropagation();folderMenu('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();folderMore('${n.id}',event)">${EXICON.more}</button>`}</span></div>`;}
+function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click to open')">
+    <span class="ca"></span><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
+    <span class="nm">${cn.name}</span>
+    <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();toast('▶ ${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="Edit" onclick="event.stopPropagation();dlgNewConn('',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${EXICON.more}</button></span></div>`;}
+function n_toggle(id){const n=find(id);n.open=!n.open;renderSide();}
+
+/* ================= main: terminal tabs + collection CARDS ================= */
+function renderMain(){
+  const mt=document.getElementById('mtabs');
+  const coll=STATE.selColl?find(STATE.selColl):null;
+  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term} Terminal</div>
+    ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
+    <div style="flex:1"></div>${STATE.mainTab==='term'?`<button class="btn btn-ghost btn-sm" onclick="toast('Split')">${EXICON.split} Split</button>`:''}`;
+  const b=document.getElementById('mbody');
+  if(STATE.ctx.type==='home'||STATE.mainTab==='term'||!coll){ b.innerHTML=paneGrid(); return; }
+  b.innerHTML=cardsView(coll);
+}
+function paneGrid(){if(STATE.ctx.type==='home')return `<div style="height:100%">${termHTML(null)}</div>`;
+  return `<div style="height:100%;display:flex;gap:10px">
+    <div class="pane"><div class="panehd">${ICON.play} deploy@web-01<span style="flex:1"></span><span class="muted">${EXICON.split}</span> <span class="muted">✕</span></div>${termHTML('deploy@10.0.0.5')}</div>
+    <div class="pane"><div class="panehd">${ICON.play} deploy@lb-01<span style="flex:1"></span><span class="muted">${EXICON.split}</span> <span class="muted">✕</span></div>${termHTML('deploy@10.0.0.4')}</div></div>`;}
+function cardsView(coll){
+  const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
+  const card=cn=>`<div class="ccard" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click')">
+    <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span><span style="flex:1"></span>
+      <button class="btn btn-ghost btn-sm" title="Edit machine" style="padding:3px" onclick="event.stopPropagation();dlgNewConn('${coll.name}',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${EXICON.more}</button>
+      <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();toast('▶ Connecting…')">${ICON.play}</button></div>
+    <div class="tgt">${cn.user}@${cn.host}:${cn.port}</div>
+    <div class="meta"><span>⏱ ${cn.last}</span><span>ssh</span></div></div>`;
+  const grid=list=>`<div class="cards ${STATE.layout}">${sortF(list).map(card).join('')}</div>`;
+  const secHead=(color,name,n)=>`<div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px"><span style="color:${color||'var(--muted)'};display:grid;place-items:center">${M.folder}</span><span class="eyebrow" style="color:var(--fg-dim)">${name}</span><span class="cnt">${n}</span></div>`;
+  // A shared collection can carry its own curated FOLDERS (part of the encrypted
+  // collection) — grouped here as sections; loose machines sit at the root.
+  const folders=coll.children||[];
+  const groups = folders.length
+    ? folders.map(f=>secHead(f.color,f.name,collectMachines(f).length)+grid(collectMachines(f))).join('')
+      + ((coll.conns||[]).length?secHead('var(--muted)','(root)',coll.conns.length)+grid(coll.conns):'')
+    : grid(coll.conns||[]);
+  return `<div style="height:100%;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:12px;padding-bottom:6px">
+      <span style="color:${coll.color||(coll.shared?'var(--purple)':'var(--accent)')}">${M.coll}</span><h2 style="font-size:18px">${coll.name}</h2>
+      ${coll.shared?`<div class="avs">${coll.members.slice(0,4).map(av).join('')}</div>${STATE.showMemberCount?`<span class="muted" style="font-size:12px">${coll.members.length} members</span>`:''}`:'<span class="tag" style="background:var(--card2);color:var(--muted);border:1px solid var(--border)">Personal</span>'}
+      <div style="flex:1"></div>
+      <button class="btn btn-sm" onclick="openMemberPicker('${coll.id}')">${EXICON.users} ${coll.shared?'Members':'Share'}</button></div>
+    <div class="toolbar">
+      <div class="search" style="margin:0;flex:1;max-width:240px">${EXICON.search}<input placeholder="Filter…"></div>
+      <div class="sel-input">${M.sort}<select onchange="STATE.sort=this.value;renderMain()"><option value="name" ${STATE.sort==='name'?'selected':''}>Name</option><option value="host" ${STATE.sort==='host'?'selected':''}>Host</option><option>Last used</option></select></div>
+      <button class="btn btn-ghost btn-sm" title="Grid" onclick="STATE.layout='grid';renderMain()" style="${STATE.layout==='grid'?'color:var(--accent)':''}">${M.grid}</button>
+      <button class="btn btn-ghost btn-sm" title="List" onclick="STATE.layout='list';renderMain()" style="${STATE.layout==='list'?'color:var(--accent)':''}">${M.list}</button>
+      <button class="btn btn-sm" title="Import ~/.ssh/config" onclick="dlgImportSSH('${coll.name}')">${M.import} Import</button>
+      <button class="btn btn-sm" title="New shared folder" onclick="dlgNewFolder('${coll.id}')">${M.folder} Folder</button>
+      <button class="btn btn-primary btn-sm" onclick="dlgNewConn('${coll.name}')">${ICON.plus} Machine</button></div>
+    <div class="scroll" style="flex:1">${groups}</div></div>`;}
+function openColl(id){STATE.selColl=id;STATE.mainTab='coll';renderSide();renderMain();}
+
+/* ================= create menus + dialogs ================= */
+function floatMenu(e,items){document.querySelectorAll('.menu').forEach(m=>m.remove());const m=document.createElement('div');m.className='menu';
+  m.innerHTML=items.map((it,i)=>`<div class="row" data-i="${i}">${it.icon||''}<div class="grow"><div class="title" style="font-size:13px;font-weight:550">${it.label}</div></div></div>`).join('');
+  document.body.appendChild(m);m.style.left=Math.min(e.clientX,innerWidth-220)+'px';m.style.top=Math.min(e.clientY,innerHeight-14-items.length*38)+'px';
+  m.querySelectorAll('.row').forEach((r,i)=>r.onclick=()=>{m.remove();items[i].onclick();});
+  setTimeout(()=>document.addEventListener('click',function h(){m.remove();document.removeEventListener('click',h);}),0);}
+/* colour picker (folders & collections get a custom coloured icon) */
+const COLORS=['#7c9cf5','#9ece6a','#e5b567','#f0a35e','#f7768e','#bb9af7','#56c7c0','#8b93a7'];
+let __pickColor=COLORS[0];
+function swatchRow(initial){__pickColor=initial||COLORS[0];
+  return `<label class="field"><span>Colour</span><div class="swatches">${COLORS.map(c=>`<button type="button" class="sw ${c===__pickColor?'sel':''}" style="background:${c}" onclick="pickColor(this,'${c}')"></button>`).join('')}</div></label>`;}
+function pickColor(el,c){__pickColor=c;el.parentNode.querySelectorAll('.sw').forEach(s=>s.classList.remove('sel'));el.classList.add('sel');}
+/* is a node inside a collection? (→ its folders are SHARED with the collection) */
+function underColl(id){let res=false;(function rec(list,inColl){for(const n of list){if(n.id===id){res=inColl;return;}if(n.children)rec(n.children,inColl||n.type==='coll');}})(LIB,false);return res;}
+function collectMachines(node){let out=[...(node.conns||[])];(node.children||[]).forEach(c=>out=out.concat(collectMachines(c)));return out;}
+function dlgNewFolder(parentId){const parent=parentId?find(parentId):null;
+  const shared=!!parent&&(parent.type==='coll'||underColl(parentId));
+  showModal({title:shared?'New folder in collection':'New folder',
+    subtitle:parent?`inside “${parent.name}”${shared?' · shared with the collection':''}`:'Your personal organiser — colour it to spot it fast.',confirm:'Create',
+    body:`<label class="field"><span>Name</span><input class="inp" id="fname" placeholder="${shared?'e.g. Web servers':'e.g. Client Beta'}"></label>${swatchRow(COLORS[0])}
+      ${shared?`<p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.users} Part of the collection — everyone who has it sees this folder. Owners &amp; editors can change it (re-encrypts).</p>`:''}`,
+    onConfirm:(m)=>{const name=(m.querySelector('#fname').value||'').trim()||'New folder';
+      const node={id:'f-'+Math.random().toString(36).slice(2,7),type:'folder',color:__pickColor,name,open:true,children:[],conns:[]};
+      if(parent){if(!parent.children)parent.children=[];parent.open=true;parent.children.unshift(node);}else LIB.unshift(node);
+      renderSide();renderMain();toast(`Folder <span class="accent">${name}</span> created`);}});}
+function newMenu(e){e.stopPropagation();floatMenu(e,[
+  {icon:M.folder,label:'New folder',onclick:()=>dlgNewFolder(null)},
+  {icon:M.coll,label:'New collection',onclick:()=>openMemberPicker(null,true)}]);}
+function collAdd(id,e){const c=find(id);floatMenu(e,[
+  {icon:ICON.play,label:`New machine in “${c.name}”`,onclick:()=>dlgNewConn(c.name)},
+  {icon:M.folder,label:'New folder (shared with the collection)',onclick:()=>dlgNewFolder(id)},
+  {icon:M.import,label:'Import from ~/.ssh/config…',onclick:()=>dlgImportSSH(c.name)}]);}
+/* Import ~/.ssh/config INTO a collection (machines always live in a collection). */
+function dlgImportSSH(collName){
+  const row=h=>`<label class="mrow" style="cursor:pointer" onclick="const c=this.querySelector('.chk');c.classList.toggle('on');c.textContent=c.classList.contains('on')?'✓':''">
+    <span class="chk on">✓</span><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
+    <div class="grow"><div class="title">${h.name}</div><div class="sub">${h.user}@${h.host}:${h.port}</div></div></label>`;
+  showModal({title:'Import from SSH config',subtitle:`${SSH_HOSTS.length} hosts found`,wide:true,confirm:'Import',
+    body:`<label class="field"><span>SSH config file</span>
+        <div style="display:flex;gap:8px"><input class="inp" id="impfile" value="~/.ssh/config">
+        <button class="btn btn-sm" onclick="toast('File picker…')">Browse…</button></div></label>
+      <label class="field"><span>Into collection</span><select class="inp" id="impcoll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
+      <div class="eyebrow" style="margin:4px 0 6px">Hosts</div>
+      <div class="scroll" style="max-height:230px;overflow:auto">${SSH_HOSTS.map(row).join('')}</div>
+      <p class="muted" style="font-size:12px;margin:9px 0 0">${EXICON.key} Selected hosts become machines in the collection (edit them after). They're encrypted with the collection key — never leave your device in clear.</p>`,
+    onConfirm:(m)=>{const n=m.querySelectorAll('.chk.on').length,into=m.querySelector('#impcoll').value;
+      toast(`Imported <span class="accent">${n}</span> machine${n>1?'s':''} into ${into}`);}});}
+function folderMenu(id,e){const f=find(id),shared=underColl(id);floatMenu(e,[
+  {icon:M.folder,label:`New sub-folder in “${f.name}”`,onclick:()=>dlgNewFolder(id)},
+  ...(shared
+    ?[{icon:ICON.play,label:'New machine here',onclick:()=>dlgNewConn(f.name)}]
+    :[{icon:M.coll,label:'New collection',onclick:()=>openMemberPicker(null,true)}])]);}
+function folderMore(id,e){const f=find(id);floatMenu(e,[
+  {icon:M.folder,label:'Rename…',onclick:()=>toast(`Rename “${f.name}”…`)},
+  {icon:EXICON.trash,label:'Delete folder (keeps collections)',onclick:()=>toast(`Delete “${f.name}”…`)}]);}
+function collMore(id,e){const c=find(id);floatMenu(e,[
+  {icon:EXICON.users,label:'Members & sharing…',onclick:()=>openMemberPicker(id)},
+  {icon:M.coll,label:'Rename…',onclick:()=>toast(`Rename “${c.name}”…`)},
+  {icon:EXICON.trash,label:'Delete collection',onclick:()=>toast(`Delete “${c.name}”…`)}]);}
+function ncAuth(v){const pw=document.getElementById('nc-pw'),k=document.getElementById('nc-key');if(pw&&k){pw.style.display=v==='publicKey'?'none':'';k.style.display=v==='publicKey'?'':'none';}}
+function dlgNewConn(collName,existing){const e=existing||{};const auth=e.authType||'password';
+  showModal({title:existing?'Edit machine':'New machine',subtitle:collName?('in “'+collName+'”'):'',wide:true,confirm:'Save',
+  body:`<label class="field"><span>Name</span><input class="inp" id="nc-name" value="${e.name||''}" placeholder="Prod web"></label>
+    <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>Protocol</span><select class="inp" id="nc-proto"><option ${e.protocol!=='SFTP'?'selected':''}>SSH</option><option ${e.protocol==='SFTP'?'selected':''}>SFTP</option></select></label>
+      <label class="field" style="flex:2"><span>Host</span><input class="inp" id="nc-host" value="${e.host||''}" placeholder="10.0.0.5"></label>
+      <label class="field" style="flex:1"><span>Port</span><input class="inp" id="nc-port" value="${e.port||22}"></label></div>
+    <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>User</span><input class="inp" id="nc-user" value="${e.user||''}" placeholder="deploy"></label>
+      <label class="field" style="flex:1"><span>Authentication</span><select class="inp" id="nc-auth" onchange="ncAuth(this.value)"><option value="password" ${auth!=='publicKey'?'selected':''}>Password</option><option value="publicKey" ${auth==='publicKey'?'selected':''}>Public key</option></select></label></div>
+    <div id="nc-pw" style="${auth==='publicKey'?'display:none':''}"><label class="field"><span>Password</span><input class="inp" type="password" placeholder="${existing?'••••••••':'password'}"></label></div>
+    <div id="nc-key" style="${auth==='publicKey'?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519"></label><label class="field"><span>Key passphrase (optional)</span><input class="inp" type="password" placeholder="if the key is encrypted"></label></div>
+    ${swatchRow(e.color||'#56c7c0')}
+    <div style="display:flex;gap:10px;align-items:flex-end"><label class="field" style="flex:1"><span>Keep-alive</span><select class="inp" id="nc-ka" onchange="document.getElementById('nc-kai').style.display=this.value==='on'?'':'none'"><option value="off" ${e.sshKeepAliveOverride==='enabled'?'':'selected'}>Disabled</option><option value="on" ${e.sshKeepAliveOverride==='enabled'?'selected':''}>Enabled</option></select></label>
+      <label class="field" id="nc-kai" style="flex:1;${e.sshKeepAliveOverride==='enabled'?'':'display:none'}"><span>Interval (s)</span><input class="inp" value="${e.sshKeepAliveInterval||30}"></label></div>
+    <label class="field"><span>Notes</span><textarea class="inp" id="nc-notes" rows="2" placeholder="Optional notes…">${e.notes||''}</textarea></label>
+    <label class="field"><span>Collection</span><select class="inp" id="nc-coll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
+    ${(()=>{const c=allColls().find(x=>x.name===collName);return c&&c.shared?`<p class="muted" style="font-size:12px;margin:6px 0 0">${EXICON.users} Shared collection — saving re-encrypts for all ${c.members.length} members (needs write access · RBAC).</p>`:'';})()}`,
+  onConfirm:(m)=>{const g=s=>m.querySelector(s);
+    const rec={name:(g('#nc-name').value||'').trim()||'machine',protocol:g('#nc-proto').value,host:(g('#nc-host').value||'').trim(),port:Number(g('#nc-port').value)||22,user:(g('#nc-user').value||'').trim(),authType:g('#nc-auth').value,color:__pickColor,notes:(g('#nc-notes').value||'').trim(),sshKeepAliveOverride:g('#nc-ka').value==='on'?'enabled':'disabled',sshKeepAliveInterval:Number((g('#nc-kai').querySelector('input')||{}).value)||30};
+    if(existing){Object.assign(existing,rec);}
+    else{const cn=allColls().find(c=>c.name===g('#nc-coll').value);if(cn){if(!cn.conns)cn.conns=[];cn.conns.push({...rec,last:'just now'});}}
+    renderAll();toast(existing?'Machine updated':`Machine saved to ${g('#nc-coll').value}`);}});}
+
+/* Quick SSH — connect once; optionally save it into a collection (like Rite). */
+function dlgQuickSSH(){showModal({title:'⚡ Quick SSH',subtitle:'Connect once — save it to a collection to keep it.',wide:true,confirm:'Connect',
+  body:`<label class="field"><span>Host</span><input class="inp" id="qs-host" placeholder="user@host  or  host"></label>
+    <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>Port</span><input class="inp" id="qs-port" value="22"></label><label class="field" style="flex:2"><span>Password</span><input class="inp" id="qs-pw" type="password" placeholder="••••••"></label></div>
+    <label class="field"><span>Save to collection (optional)</span><select class="inp" id="qs-save"><option value="">Don't save — connect once</option>${allColls().map(c=>`<option>${c.name}</option>`).join('')}</select></label>`,
+  onConfirm:(m)=>{const into=m.querySelector('#qs-save').value,raw=(m.querySelector('#qs-host').value||'').trim()||'host';
+    if(into){const c=allColls().find(x=>x.name===into);if(c){if(!c.conns)c.conns=[];c.conns.push({name:raw,host:raw.replace(/^.*@/,''),user:(raw.match(/^(.*)@/)||[])[1]||'root',port:Number(m.querySelector('#qs-port').value)||22,last:'just now'});}renderAll();toast(`Connected · saved to <span class="accent">${into}</span>`);}
+    else toast('Opening SSH session…');}});}
+
+/* ================= member picker (collections, ADR 0016) ================= */
+function roleSel(u,role,locked){return `<select class="inp" style="width:auto;padding:4px 7px;font-size:12px" ${locked?'disabled title="the collection needs at least one owner"':''} onclick="event.stopPropagation()" onchange="event.stopPropagation();mpRole('${u}',this.value)">
+  ${['owner','editor','viewer'].map(r=>`<option value="${r}" ${r===role?'selected':''}>${r[0].toUpperCase()+r.slice(1)}</option>`).join('')}</select>`;}
+function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',members:[ORG.me]};const chosen=new Set(coll.members);
+  const roles=Object.assign({},coll.roles||{});chosen.forEach(u=>{if(!roles[u])roles[u]=u===ORG.me?'owner':'editor';});if(!roles[ORG.me])roles[ORG.me]='owner';
+  const folders=[];walk(LIB,n=>{if(n.type==='folder')folders.push(n.name);});
+  const body=`${isNew?`<label class="field"><span>Name</span><input class="inp" placeholder="e.g. Production DBs"></label>${swatchRow(COLORS[4])}`:''}
+    <div style="display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap"><span class="muted" style="font-size:12px">Add from team:</span>
+      ${ORG.teams.map(t=>`<span class="chip" style="cursor:pointer" onclick="mpTeam('${t.name}')">${EXICON.users} ${t.name} <span class="muted">${t.members.length}</span></span>`).join('')}</div>
+    <div class="search" style="margin:0 0 8px">${EXICON.search}<input id="mpsearch" placeholder="Search people…" oninput="mpRender()"></div>
+    <div id="mplist" class="scroll" style="max-height:230px;overflow:auto"></div>
+    <label class="field"><span>Put in folder (your personal organisation — view only)</span><select class="inp"><option>(no folder)</option>${folders.map(f=>`<option>${f}</option>`).join('')}</select></label>
+    <p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.key} Members hold the collection key. <b style="color:var(--fg-dim)">Owner</b> manages sharing &amp; settings (rename/delete/transfer) · <b style="color:var(--fg-dim)">Editor</b> adds/edits machines (re-encrypts) · <b style="color:var(--fg-dim)">Viewer</b> can only connect.</p>`;
+  const bd=showModal({title:isNew?'New collection':`Share · ${coll.name}`,subtitle:`${chosen.size} member${chosen.size>1?'s':''}`,wide:true,body,confirm:isNew?'Create':'Save',
+    onConfirm:()=>{if(isNew){const name=(bd.querySelector('input')?.value||'').trim()||'New collection';
+        LIB.unshift({id:'c-'+Math.random().toString(36).slice(2,7),type:'coll',color:__pickColor,name,shared:chosen.size>1,members:[...chosen],roles:{...roles},open:false,conns:[]});
+        renderSide();toast(`Collection <span class="accent">${name}</span> created · ${chosen.size} member${chosen.size>1?'s':''}`);}
+      else{coll.members=[...chosen];coll.roles={...roles};renderSide();renderMain();toast('Sharing updated');}}});
+  window.__mp={bd,chosen,roles};mpRender();}
+function mpTeam(name){const t=ORG.teams.find(x=>x.name===name);t.members.forEach(u=>{window.__mp.chosen.add(u);if(!window.__mp.roles[u])window.__mp.roles[u]='editor';});toast(`Added ${t.members.length} from <span class="accent">${name}</span>`);mpRender();}
+function mpRender(){const {bd,chosen,roles}=window.__mp,q=(bd.querySelector('#mpsearch')?.value||'').toLowerCase();
+  const owners=[...chosen].filter(u=>roles[u]==='owner');
+  bd.querySelector('#mplist').innerHTML=ORG.users.filter(u=>u.label.toLowerCase().includes(q)).map(u=>{const on=chosen.has(u.u),me=u.u===ORG.me;const lockOwner=roles[u.u]==='owner'&&owners.length<2;
+    return `<div class="mrow" onclick="${me?'':`mpToggle('${u.u}')`}"><span class="chk ${on?'on':''}">${on?'✓':''}</span>${av(u.u)}<div class="grow"><div class="title">${u.label}${roles[u.u]==='owner'?' <span title="owner">👑</span>':''}</div><div class="sub">${u.role}${me?' · you':''}</div></div>${on?roleSel(u.u,roles[u.u]||'editor',lockOwner):''}</div>`;}).join('');
+  const p=bd.querySelector('header p');if(p)p.textContent=`${chosen.size} member${chosen.size>1?'s':''} · ${owners.length} owner${owners.length>1?'s':''}`;}
+function mpToggle(u){const s=window.__mp.chosen,r=window.__mp.roles;if(s.has(u)){s.delete(u);delete r[u];}else{s.add(u);r[u]='editor';}mpRender();}
+function mpRole(u,role){window.__mp.roles[u]=role;mpRender();}
+
+/* ================= admin / settings / host-key ================= */
+function openHostKey(){showModal({title:'Unknown host key',subtitle:'First connection to this host (TOFU).',
+  body:`<div class="card" style="padding:12px;border-color:rgba(229,181,103,.4);background:rgba(229,181,103,.07)"><div style="display:flex;gap:10px;align-items:center"><span style="color:var(--amber)">${ICON.lock}</span><b>web-03.acme.io:22</b></div><div class="mono" style="margin-top:8px;font-size:12px;color:var(--fg-dim);word-break:break-all">SHA256:aX9k2Lm…7pQr4tZ ed25519</div></div><p class="muted" style="font-size:13px;margin:12px 0 0">Verify out-of-band before trusting. Rite pins it for next time.</p>`,
+  confirm:'Trust & connect',onConfirm:()=>toast('Host key pinned')});}
+function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',body:`
+  <div class="settings-row"><div><b>Interface language</b><div class="muted" style="font-size:12px">English / Français</div></div><select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select></div>
+  <div class="settings-row"><div><b>Theme</b><div class="muted" style="font-size:12px">Dark / light</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
+  <div class="settings-row"><div><b>Auto-lock vault</b><div class="muted" style="font-size:12px">After inactivity</div></div><select class="inp" style="width:auto"><option>Disabled</option><option>1 min</option><option>3 min</option><option selected>5 min</option><option>Custom…</option></select></div>
+  <div class="settings-row"><div><b>Auto-clear clipboard</b><div class="muted" style="font-size:12px">Clear 30s after a copy (security)</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
+  <div class="settings-row"><div><b>Default shell</b><div class="muted" style="font-size:12px">New local terminals (also in the toolbar)</div></div><select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name}${s.installed?'':' (not installed)'}</option>`).join('')}</select></div>
+  <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
+  <div class="settings-row"><div><b>Show member count on collections</b><div class="muted" style="font-size:12px">The number next to shared collections (the 👥 shared icon stays either way)</div></div><div class="toggle ${STATE.showMemberCount?'on':''}" onclick="this.classList.toggle('on');STATE.showMemberCount=this.classList.contains('on');renderAll()"><i></i></div></div>
+  <div class="settings-row" style="border:none;border-top:1px solid rgba(247,118,142,.25);margin-top:8px;padding-top:14px"><div><b style="color:var(--red)">Reset vault</b><div class="muted" style="font-size:12px">Erase the master password and all connections — irreversible</div></div><button class="btn btn-sm" style="color:var(--red);border-color:rgba(247,118,142,.4)" onclick="dlgResetVault()">Reset…</button></div>`});}
+function dlgResetVault(){showModal({title:'Reset this vault?',confirm:'Reset everything',
+  body:`<div class="card" style="padding:12px;border-color:rgba(247,118,142,.35);background:rgba(247,118,142,.06)"><p style="margin:0;font-size:13px;color:var(--fg)">This <b>permanently erases</b> the master password and every connection in this vault. It cannot be undone.</p></div>
+    <label class="field" style="margin-top:12px"><span>Type <b class="mono">RESET</b> to confirm</span><input class="inp" id="reset-confirm" placeholder="RESET"></label>`,
+  onConfirm:(m)=>{if((m.querySelector('#reset-confirm').value||'').trim()!=='RESET')return false;toast('Vault reset');}});}
+function openAdmin(){const bd=showModal({title:'Administration',wide:true,confirm:'Close',body:`<div style="display:flex;gap:16px;border-bottom:1px solid var(--border);margin-bottom:12px"><div class="navtab on" onclick="adminTab(this,'users')">Users</div><div class="navtab" onclick="adminTab(this,'teams')">Teams</div></div><div id="admbody"></div>`});window.__adm=bd;adminRender('users');}
+function adminTab(el,t){el.parentNode.querySelectorAll('.navtab').forEach(x=>x.classList.remove('on'));el.classList.add('on');adminRender(t);}
+function adminRender(t){const b=window.__adm.querySelector('#admbody');
+  if(t==='users')b.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><input class="inp" placeholder="New username"><input class="inp" type="password" placeholder="Temp password" style="max-width:150px"><button class="btn btn-primary btn-sm">Add user</button></div>${ORG.users.map(u=>`<div class="mrow">${av(u.u)}<div class="grow"><div class="title">${u.label}</div></div><span class="tag ${u.role==='admin'?'server':'unlocked'}">${u.role}</span></div>`).join('')}`;
+  else b.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><input class="inp" placeholder="New team name"><button class="btn btn-primary btn-sm">Create team</button></div>${ORG.teams.map(tm=>`<div class="mrow"><span style="color:var(--accent)">${EXICON.users}</span><div class="grow"><div class="title">${tm.name}</div><div class="sub">${tm.members.join(', ')}</div></div><div class="avs">${tm.members.map(av).join('')}</div><button class="btn btn-ghost btn-sm" title="Rename team" onclick="dlgRenameTeam('${tm.name}')">${M.edit}</button><button class="btn btn-ghost btn-sm" onclick="toast('Team key granted')">${EXICON.key} Grant</button></div>`).join('')}`;}
+function dlgRenameTeam(name){const t=ORG.teams.find(x=>x.name===name);if(!t)return;
+  showModal({title:'Rename team',confirm:'Save',body:`<label class="field"><span>Team name</span><input class="inp" id="rt-name" value="${t.name}"></label>`,
+    onConfirm:(m)=>{t.name=(m.querySelector('#rt-name').value||'').trim()||t.name;if(window.__adm)adminRender('teams');toast('Team renamed');}});}
+
+/* ================= wire ================= */
+function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on this system`);return;}STATE.defaultShell=s.name;renderActs();toast(`${s.name} set as default shell`);}})));}
+function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHELLS[0];
+  document.getElementById('acts').innerHTML=`<button class="btn btn-primary btn-sm" title="New local terminal (${sh.name})" onclick="toast('New local terminal · ${sh.name}')">${ICON.plus} <span class="lbl">Terminal</span></button>
+  <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
+  <button class="btn btn-sm" onclick="dlgQuickSSH()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>
+  ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Admin" onclick="openAdmin()">${EXICON.shield}</button>`:''}
+  ${STATE.ctx.type==='vault'&&!STATE.ctx.locked?`<button class="btn btn-ghost btn-sm" title="Lock vault" onclick="lockVault('${STATE.ctx.id}')">${ICON.lock}</button>`:''}
+  ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Sign out of ${STATE.ctx.name}" onclick="signOutServer('${STATE.ctx.id}')">${M.signout}</button>`:''}
+  <button class="btn btn-ghost btn-sm" title="Settings" onclick="openSettings()">${EXICON.gear}</button>
+  ${STATE.ctx.type!=='home'?`<button class="btn btn-ghost btn-sm" title="Open in new window" onclick="openInNewWindow('${STATE.ctx.name}')">${EXICON.split}</button>`:''}`;}
+function renderAll(){renderPill();renderActs();renderSide();renderMain();}
+STATE.ctx=Object.assign({type:'server'},DATA.servers[0]); // start on a server to show collections
+renderAll();
+</script>
+</body>
+</html>
