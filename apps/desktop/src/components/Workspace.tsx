@@ -49,11 +49,25 @@ export interface WorkspaceAuth {
   isLocked: boolean;
   lock: () => void;
   renderUnlockModal: (props: { onClose: () => void }) => ReactNode;
+  // Label for the lock/sign-out button. Local vault → "Lock"; an accounts session
+  // has no separate lock (the key lives in RAM), so it signs out → "Sign out".
+  lockLabel?: string;
 }
 
-export function Workspace({ auth, conns }: { auth: WorkspaceAuth; conns: ConnectionsSource }) {
+export function Workspace({
+  auth,
+  conns,
+  headerExtra,
+}: {
+  auth: WorkspaceAuth;
+  conns: ConnectionsSource;
+  // A shell-provided slot in the header's action cluster (e.g. the admin surface
+  // entry for an org-admin). Context-agnostic: local shells pass nothing.
+  headerExtra?: ReactNode;
+}) {
   const { isLocked, lock } = auth;
   const { t } = useTranslation();
+  const lockLabel = auth.lockLabel ?? t('main.lock');
   const { connections, selectedConnectionId } = conns;
   const fetchConnections = conns.refresh;
   const deleteConnection = conns.remove;
@@ -854,6 +868,9 @@ export function Workspace({ auth, conns }: { auth: WorkspaceAuth; conns: Connect
               <span>Quick SSH</span>
             </button>
 
+            {/* Shell-provided actions (e.g. the org-admin surface entry). */}
+            {headerExtra}
+
             {/* Unlock/Lock button */}
             {isLocked ? (
               <button
@@ -881,12 +898,12 @@ export function Workspace({ auth, conns }: { auth: WorkspaceAuth; conns: Connect
                 <button
                   onClick={() => lock()}
                   className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
-                  title={t('main.lock')}
+                  title={lockLabel}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                   </svg>
-                  <span>{t('main.lock')}</span>
+                  <span>{lockLabel}</span>
                 </button>
               </>
             )}

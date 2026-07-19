@@ -38,8 +38,8 @@ test('connect to a remote server through the local proxy', async ({ page }) => {
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
-  // The proxied login lands on the remote's admin panel — served through the proxy.
-  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+  // The proxied login lands in the remote's workspace — served through the proxy.
+  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
 });
 
 test('a remote terminal streams over the WebSocket proxy', async ({ page }) => {
@@ -49,7 +49,7 @@ test('a remote terminal streams over the WebSocket proxy', async ({ page }) => {
   await page.locator('#username').fill('envadmin');
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
 
   // Drive a terminal ON THE REMOTE and listen on the proxied /ws — all same-origin
   // to :1424, which bridges to :1423's /ws.
@@ -109,7 +109,7 @@ test('vault connections are stored zero-knowledge on the remote (ADR 0011)', asy
   await page.locator('#username').fill('envadmin');
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
 
   // Create a connection with a distinctive host through the mux (:1424). The mux
   // encrypts it with the held key and stores an opaque blob on the remote.
@@ -186,7 +186,7 @@ test('client-execute: a saved connection opens SSH locally and streams over the 
   await page.locator('#username').fill('envadmin');
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
 
   const output = await page.evaluate(async () => {
     const post = (path: string, body?: unknown) =>

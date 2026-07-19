@@ -43,6 +43,6 @@ test('pin a self-signed remote cert and log in through the TLS proxy', async ({ 
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
-  // The proxied (TLS + pinned) login lands on the remote's admin panel.
-  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+  // The proxied (TLS + pinned) login lands in the remote's workspace.
+  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
 });

@@ -18,6 +18,6 @@ test('an env-bootstrapped admin can log in from the browser', async ({ page }) =
   await page.locator('#password').fill(ENV_ADMIN.password);
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
-  // Browser-derived Argon2 hash matches the server-derived one → admin panel.
-  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+  // Browser-derived Argon2 hash matches the server-derived one → the workspace.
+  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
 });

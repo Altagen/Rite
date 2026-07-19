@@ -1,6 +1,17 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { argon2id } from 'hash-wasm';
 import { createRequire } from 'node:module';
+
+/** After an accounts login, everyone lands in the shared workspace (ADR 0014). */
+async function expectWorkspace(page: Page): Promise<void> {
+  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
+}
+
+/** Open the org-admin management surface (users/teams/connections) from the header. */
+async function openAdmin(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Admin', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Administration' })).toBeVisible({ timeout: 15_000 });
+}
 
 const hexToBytes = (h: string) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
 
@@ -89,7 +100,10 @@ test('first run bootstraps the admin and lands authenticated', async ({ page }) 
   await page.locator('#password').fill(ADMIN.password);
   await page.getByRole('button', { name: /create administrator/i }).click();
 
-  // Argon2id WASM derivation + bootstrap → the admin lands on the users panel.
+  // Argon2id WASM derivation + bootstrap → the admin lands in the workspace, and
+  // the management panels are one click away (ADR 0014 phase 3).
+  await expectWorkspace(page);
+  await openAdmin(page);
   await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
 });
 
@@ -112,7 +126,7 @@ test('sign out then sign back in with the same credentials', async ({ page }) =>
   // The per-user X25519 keypair (ADR 0013): public key hex + wrapped private key.
   expect(body.vault?.publicKey).toMatch(/^[0-9a-f]{64}$/);
   expect(body.vault?.protectedPrivateKey).toMatch(/^v1\./);
-  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+  await expectWorkspace(page);
 
   // Wrong password is rejected.
   await page.getByRole('button', { name: /sign out/i }).click();
@@ -131,7 +145,9 @@ test('admin creates a user from the admin panel', async ({ page }) => {
   await page.locator('#password').fill(ADMIN.password);
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
-  // Admin lands on the users panel.
+  // Admin lands in the workspace → open the admin surface → the users panel.
+  await expectWorkspace(page);
+  await openAdmin(page);
   await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
 
   // Create a user (its password is Argon2id-hashed in the browser).
@@ -380,6 +396,8 @@ test('teams UI: admin creates a team, adds a member, grants the key', async ({ p
   await page.locator('#username').fill('admin');
   await page.locator('#password').fill(ADMIN.password);
   await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expectWorkspace(page);
+  await openAdmin(page);
   await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
 
   // Switch to the Teams tab and create a team (the client generates a team key,
@@ -462,6 +480,8 @@ test('team connections UI: a shared connection is added and decrypted (ADR 0013 
   await page.locator('#username').fill('admin');
   await page.locator('#password').fill(ADMIN.password);
   await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expectWorkspace(page);
+  await openAdmin(page);
   await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
 
   // Connections tab → the team the admin holds a key for (from the teams UI test).
