@@ -402,6 +402,58 @@ test('teams UI: admin creates a team, adds a member, grants the key', async ({ p
   await expect(page.getByRole('button', { name: /grant key/i })).toHaveCount(0);
 });
 
+test('web member workspace: personal + team connections, zero-knowledge, server-execute (ADR 0014)', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/');
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#username').fill('carol');
+  await page.locator('#password').fill('CarolPass123!');
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+
+  // A member lands in the shared workspace (ADR 0014), not the admin panels.
+  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
+
+  // Create a personal connection through the form: the browser seals it with the
+  // user key (ADR 0011) and the server only ever sees ciphertext.
+  await page.getByRole('button', { name: '+ New' }).click();
+  await expect(page.getByRole('heading', { name: 'New Connection' })).toBeVisible();
+  await page.getByPlaceholder('My Server').fill('my-web-box');
+  await page.getByPlaceholder('example.com or 192.168.1.1').fill('web-secret-host');
+  await page.getByPlaceholder('user').fill('deployer');
+  await page.getByPlaceholder('Enter password...').fill('web-secret-pw');
+  await page.getByRole('button', { name: 'Save Connection' }).click();
+
+  // It comes back decrypted in the sidebar (a full browser round-trip via the vault).
+  await expect(page.getByText('my-web-box')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText('deployer@web-secret-host:22')).toBeVisible();
+
+  // Team-shared connections merge into the same workspace — carol holds the
+  // crypto-eng key (granted earlier), so 'Prod DB' decrypts and shows up here too.
+  await expect(page.getByText('Prod DB')).toBeVisible();
+
+  // The server stored only ciphertext for the personal connection.
+  const token = await login(request, 'carol', 'CarolPass123!');
+  const stored = await (
+    await request.get(`${BASE}/api/vault/connections`, { headers: auth(token) })
+  ).json();
+  expect(stored.length).toBeGreaterThan(0);
+  expect(stored[0].blob).toMatch(/^v1\./);
+  const dump = JSON.stringify(stored);
+  expect(dump).not.toContain('web-secret-host');
+  expect(dump).not.toContain('web-secret-pw');
+
+  // Opening the connection hands the browser-decrypted target to the server to run
+  // SSH (server-execute) — the request carries the plaintext host, never stored.
+  const quickSsh = page.waitForRequest(
+    (r) => r.url().endsWith('/api/terminal/quick-ssh') && r.method() === 'POST',
+  );
+  await page.getByText('my-web-box').dblclick();
+  const req = await quickSsh;
+  expect((req.postDataJSON() as { host: string }).host).toBe('web-secret-host');
+});
+
 test('team connections UI: a shared connection is added and decrypted (ADR 0013 4b)', async ({
   page,
 }) => {

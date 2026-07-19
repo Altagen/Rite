@@ -4,7 +4,7 @@ import { useServerSession } from './store/serverSessionStore';
 import { SetupScreen } from './components/SetupScreen';
 import { MainScreen } from './components/MainScreen';
 import { ServerAuthScreen } from './components/ServerAuthScreen';
-import { ServerHome } from './components/ServerHome';
+import { AccountsShell } from './components/AccountsShell';
 import { useTranslation } from './i18n/i18n';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
@@ -51,8 +51,8 @@ function App() {
       );
     }
     return (
-      <ErrorBoundary level="feature" name="ServerHome">
-        <ServerHome />
+      <ErrorBoundary level="feature" name="AccountsShell">
+        <AccountsShell />
       </ErrorBoundary>
     );
   }
