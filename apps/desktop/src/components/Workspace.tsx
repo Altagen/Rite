@@ -13,7 +13,7 @@ import { Backend } from '../utils/backend';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTranslation } from '../i18n/i18n';
-import { ConnectionList } from './ConnectionList';
+import { LibrarySidebar } from './LibrarySidebar';
 import { ConnectionForm } from './ConnectionForm';
 import { CollectionsManager } from './CollectionsManager';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
@@ -977,9 +977,9 @@ export function Workspace({
             </button>
           </div>
 
-          {/* Connection List */}
+          {/* Library: folders → machines (ADR 0014 nav skeleton) */}
           <div className="flex-1 overflow-y-auto">
-            <ConnectionList
+            <LibrarySidebar
               connections={connections}
               selectedId={selectedConnectionId}
               onSelect={selectConnection}
