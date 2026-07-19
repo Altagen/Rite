@@ -1,25 +1,22 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Context switcher (ADR 0012 phase 1): from the local vault, the roster of
- * contexts can be managed — add a remote server, see it listed. (Connecting to
- * a remote is the proxy phase; here we exercise roster + switcher.)
+ * Context roster (ADR 0012). The native hub manages saved servers; the endpoints
+ * behind it (add + list) are exercised here at the API level, because the roster
+ * UI is native-only — the browser has no desktop shell, so there is no hub to
+ * drive through the page. Switching to a server (the proxy) is covered end to end
+ * by proxy.spec.ts / tls-proxy.spec.ts.
  */
-test('add a remote server to the context roster', async ({ page }) => {
-  await page.goto('/');
-  await expect(page.getByText('Local Terminal')).toBeVisible({ timeout: 15_000 });
+test('a remote server can be added to the context roster', async ({ request }) => {
+  const added = await request.post('/api/context/servers', {
+    data: { url: 'http://127.0.0.1:9443', label: 'Team' },
+  });
+  expect(added.ok()).toBeTruthy();
+  const server = await added.json();
+  expect(server.url).toBe('http://127.0.0.1:9443');
+  expect(server.label).toBe('Team');
 
-  // Open the switcher — the active context is the local vault.
-  await page.getByRole('button', { name: /context/i }).click();
-  await expect(page.getByText('Local vault')).toBeVisible();
-
-  // Add a server. A loopback http remote is a valid dev target and needs no TLS
-  // probe (that path is covered by tls-proxy.spec.ts), keeping this test hermetic.
-  await page.getByRole('button', { name: /add server/i }).click();
-  await page.getByPlaceholder('https://rite.example.com').fill('http://127.0.0.1:9443');
-  await page.getByPlaceholder('Label (optional)').fill('Team');
-  await page.getByRole('button', { name: /^add$/i }).click();
-
-  // It shows up in the roster.
-  await expect(page.getByText('Team')).toBeVisible({ timeout: 10_000 });
+  const ctx = await (await request.get('/api/context')).json();
+  expect(ctx.active).toBe('local');
+  expect(ctx.roster.some((s: { label: string }) => s.label === 'Team')).toBe(true);
 });

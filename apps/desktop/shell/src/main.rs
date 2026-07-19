@@ -89,10 +89,12 @@ fn main() -> Result<()> {
     let mut registry = ContextRegistry::<WindowId>::new();
     let mut windows: std::collections::HashMap<WindowId, WindowState> = std::collections::HashMap::new();
 
-    // The launch context: the local vault, in the first window.
+    // The launch window shows the context hub (ADR 0014). Its server is the local
+    // one, so it's registered as the local context — picking "local vault" in the
+    // hub proceeds in this window; picking a server opens another window.
     let launch = OpenRequest {
         key: ContextKey::local(db_path()),
-        inject: r#"{"kind":"local"}"#.to_string(),
+        inject: r#"{"kind":"hub"}"#.to_string(),
     };
     if let Err(e) = open_window(&event_loop, &proxy, &mut windows, &mut registry, launch) {
         show_error(

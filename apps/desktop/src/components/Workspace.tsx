@@ -21,7 +21,7 @@ import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
 import { ImportSSHConfigModal } from './ImportSSHConfigModal';
 import { HostKeyModal, type HostKeyPrompt } from './HostKeyModal';
-import { ContextSwitcher } from './ContextSwitcher';
+import { ContextButton } from './ContextButton';
 import { transport } from '../utils/transport';
 import { Toast } from './Toast';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -822,7 +822,7 @@ export function Workspace({
         <div className="flex items-center justify-between pl-2 pr-6 py-4">
           <div className="flex items-center gap-3">
             <img src={riteLandscape} alt="RITE" className="h-10 rounded-md" />
-            <ContextSwitcher />
+            <ContextButton />
           </div>
 
           <div className="flex items-center gap-2">

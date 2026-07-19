@@ -24,13 +24,16 @@ test('connect to a remote server through the local proxy', async ({ page }) => {
   await page.locator('button[type="submit"]').click();
   await expect(page.getByText('Local Terminal')).toBeVisible({ timeout: 15_000 });
 
-  // Add the remote server to the roster and switch to it.
-  await page.getByRole('button', { name: /context/i }).click();
-  await page.getByRole('button', { name: /add server/i }).click();
-  await page.getByPlaceholder('https://rite.example.com').fill('http://127.0.0.1:1423');
-  await page.getByPlaceholder('Label (optional)').fill('TeamServer');
-  await page.getByRole('button', { name: /^add$/i }).click();
-  await page.getByText('TeamServer').click(); // select → reboots proxied to the remote
+  // Add the remote to the roster and switch to it. The context hub is native-only
+  // (the browser has no shell), so drive the mux's roster/active endpoints directly,
+  // then reload — the local server reboots proxied to the remote.
+  await page.evaluate(async () => {
+    const post = (path: string, body: unknown) =>
+      fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const s = await (await post('/api/context/servers', { url: 'http://127.0.0.1:1423', label: 'TeamServer' })).json();
+    await post('/api/context/active', { server: s.id });
+  });
+  await page.reload();
 
   // Now proxied to :1423 → the remote's login (env-bootstrapped admin exists).
   await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 20_000 });

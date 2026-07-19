@@ -1,8 +1,9 @@
 /// <reference types="vite/client" />
 
-/** The context a native window was opened for (ADR 0014 phase 4). */
+/** The context a native window was opened for (ADR 0014 phase 4). `hub` is the
+ * launch window: it shows the context picker before any context is chosen. */
 interface RiteNativeContext {
-  kind: 'local' | 'server';
+  kind: 'local' | 'server' | 'hub';
   id?: string | null;
   url?: string | null;
   label?: string | null;

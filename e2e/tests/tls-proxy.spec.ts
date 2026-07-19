@@ -22,21 +22,23 @@ test('pin a self-signed remote cert and log in through the TLS proxy', async ({ 
   await page.locator('button[type="submit"]').click();
   await expect(page.getByText('Local Terminal')).toBeVisible({ timeout: 15_000 });
 
-  // Add the self-signed https remote → probe returns untrusted → TOFU modal.
-  await page.getByRole('button', { name: /context/i }).click();
-  await page.getByRole('button', { name: /add server/i }).click();
-  await page.getByPlaceholder('https://rite.example.com').fill('https://127.0.0.1:1425');
-  await page.getByPlaceholder('Label (optional)').fill('TlsServer');
-  await page.getByRole('button', { name: /^add$/i }).click();
-
-  // Confirm the fingerprint (pins it) — the dropdown stays open with the server.
-  await expect(page.getByRole('heading', { name: /untrusted certificate/i })).toBeVisible({
-    timeout: 15_000,
+  // Add the self-signed https remote: the probe reports it untrusted and returns
+  // the fingerprint, which we pin (TOFU), then switch to it. The context hub is
+  // native-only, so drive the probe/add/pin/active endpoints directly, then reload
+  // — the local server validates the pinned cert via rustls and proxies over TLS.
+  const pinned = await page.evaluate(async () => {
+    const post = (path: string, body: unknown) =>
+      fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const probe = await (await post('/api/context/probe', { url: 'https://127.0.0.1:1425' })).json();
+    const s = await (await post('/api/context/servers', { url: 'https://127.0.0.1:1425', label: 'TlsServer' })).json();
+    if (probe.fingerprint) await post(`/api/context/servers/${s.id}/pin`, { fingerprint: probe.fingerprint });
+    await post('/api/context/active', { server: s.id });
+    return { fingerprint: probe.fingerprint as string | null, trusted: probe.trusted as boolean };
   });
-  await page.getByRole('button', { name: /trust & add/i }).click();
-
-  // Switch to the pinned remote → proxied over TLS to :1425 → remote login.
-  await page.getByText('TlsServer').click();
+  // The self-signed cert must have been reported untrusted with a fingerprint to pin.
+  expect(pinned.trusted).toBe(false);
+  expect(pinned.fingerprint).toMatch(/^[0-9a-f:]+$/i);
+  await page.reload();
 
   await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 20_000 });
   await page.locator('#username').fill('envadmin');
