@@ -19,6 +19,9 @@ use tao::window::WindowBuilder;
 use uuid::Uuid;
 use wry::WebViewBuilder;
 
+mod context_registry;
+use context_registry::{ContextKey, ContextRegistry, OpenOutcome};
+
 const DEFAULT_SIZE: (f64, f64) = (1200.0, 800.0);
 const MIN_SIZE: (f64, f64) = (800.0, 600.0);
 
@@ -102,14 +105,29 @@ fn main() -> Result<()> {
     #[cfg(not(target_os = "linux"))]
     let _webview = webview_builder.build(&window)?;
 
+    // One-window-per-context registry (ADR 0014 phase 4, Option C). At launch the
+    // sole window shows the local vault; opening further contexts in their own
+    // windows (hub + per-window server + IPC) lands in phase 4b. For now the
+    // registry governs process exit: the last window to close ends the loop.
+    let mut registry = ContextRegistry::<tao::window::WindowId>::new();
+    let local_ctx = ContextKey::local(db_path());
+    match registry.open(&local_ctx) {
+        OpenOutcome::New => registry.register(local_ctx, window.id()),
+        OpenOutcome::AlreadyOpen(_) => {}
+    }
+
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         if let Event::WindowEvent {
             event: WindowEvent::CloseRequested,
+            window_id: closed,
             ..
         } = event
         {
-            *control_flow = ControlFlow::Exit;
+            registry.remove_window(&closed);
+            if registry.is_empty() {
+                *control_flow = ControlFlow::Exit;
+            }
         }
     });
 }
