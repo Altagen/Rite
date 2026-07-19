@@ -4184,6 +4184,8 @@ dependencies = [
  "image",
  "rfd",
  "rite-server",
+ "serde",
+ "serde_json",
  "tao",
  "tokio",
  "tracing",

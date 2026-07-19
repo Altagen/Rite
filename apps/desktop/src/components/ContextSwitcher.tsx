@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Backend, type ContextState } from '../utils/backend';
+import { isNativeShell, requestOpenContext } from '../utils/nativeShell';
 import { CertTrustModal } from './CertTrustModal';
 
 export function ContextSwitcher() {
@@ -48,6 +49,19 @@ export function ContextSwitcher() {
     ctx && ctx.active !== 'local' ? ctx.active.label : 'Local';
 
   const select = async (server: string) => {
+    // Native multi-window (ADR 0014 phase 4): open (or focus) the context in its
+    // own window instead of flipping this window's context with a reload.
+    if (isNativeShell()) {
+      if (server === 'local') {
+        requestOpenContext({ kind: 'local' });
+      } else {
+        const s = ctx?.roster.find((r) => r.id === server);
+        if (s) requestOpenContext({ kind: 'server', id: s.id, url: s.url, label: s.label });
+      }
+      setOpen(false);
+      return;
+    }
+    // Web fallback: no shell to open a window, so flip in place with a reload.
     setBusy(true);
     setError(null);
     try {

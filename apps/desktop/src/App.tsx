@@ -6,6 +6,7 @@ import { MainScreen } from './components/MainScreen';
 import { ServerAuthScreen } from './components/ServerAuthScreen';
 import { AccountsShell } from './components/AccountsShell';
 import { useTranslation } from './i18n/i18n';
+import { applyNativeContext } from './utils/nativeShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 function Loading({ label }: { label: string }) {
@@ -24,9 +25,11 @@ function App() {
   const { mode, user, loadMode } = useServerSession();
   const { t } = useTranslation();
 
-  // Discover whether this endpoint is a shared server or a local vault.
+  // On a native server-context window, activate its target server first (may
+  // reload once); a local window or the web build is a no-op. Then discover
+  // whether this endpoint is a shared server or a local vault.
   useEffect(() => {
-    loadMode();
+    void applyNativeContext().then(loadMode);
   }, [loadMode]);
 
   // Local vault only: check first-run for the master-password flow.
