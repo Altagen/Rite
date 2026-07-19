@@ -1,13 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAuthStore } from './store/authStore';
 import { useServerSession } from './store/serverSessionStore';
 import { SetupScreen } from './components/SetupScreen';
 import { MainScreen } from './components/MainScreen';
 import { ServerAuthScreen } from './components/ServerAuthScreen';
 import { AccountsShell } from './components/AccountsShell';
-import { Hub } from './components/Hub';
 import { useTranslation } from './i18n/i18n';
-import { applyNativeContext, isNativeShell, nativeContext } from './utils/nativeShell';
+import { applyNativeContext, isNativeShell } from './utils/nativeShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 function Loading({ label }: { label: string }) {
@@ -26,12 +25,6 @@ function App() {
   const { mode, user, loadMode } = useServerSession();
   const { t } = useTranslation();
 
-  // The native launch window shows the context hub until a context is picked
-  // (ADR 0014). Picking "local vault" reuses this window (→ the local flow);
-  // picking a server opens another window. Web has no hub.
-  const isHubWindow = isNativeShell() && nativeContext()?.kind === 'hub';
-  const [picked, setPicked] = useState(false);
-
   // On a native server-context window, activate its target server first (may
   // reload once); a local window or the web build is a no-op. Then discover
   // whether this endpoint is a shared server or a local vault.
@@ -45,15 +38,6 @@ function App() {
       checkFirstRun();
     }
   }, [mode, checkFirstRun]);
-
-  // Front door: the launch window lists contexts before any authentication.
-  if (isHubWindow && !picked) {
-    return (
-      <ErrorBoundary level="feature" name="Hub">
-        <Hub onOpenLocalInPlace={() => setPicked(true)} />
-      </ErrorBoundary>
-    );
-  }
 
   // Waiting to learn the endpoint mode.
   if (mode === null) {
@@ -76,11 +60,14 @@ function App() {
     );
   }
 
-  // Local vault: master-password setup / main screen.
+  // Local vault. Native (base-first, ADR 0014): always land in the base workspace
+  // — local terminal + Quick SSH work with no vault; setting up / unlocking the
+  // vault (to see saved connections) happens inside it. Web keeps the full-screen
+  // first-run setup (the browser has no base-terminal use before a vault).
   if (isFirstRun === null) {
     return <Loading label={t('app.loading')} />;
   }
-  if (isFirstRun) {
+  if (isFirstRun && !isNativeShell()) {
     return (
       <ErrorBoundary level="feature" name="SetupScreen">
         <SetupScreen />

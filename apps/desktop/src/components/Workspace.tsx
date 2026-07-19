@@ -913,11 +913,26 @@ export function Workspace({
 
       {/* Main Content */}
       <main className="flex flex-1 overflow-hidden relative">
-        {/* Sidebar - only visible when unlocked */}
-        {!isLocked && (
-          <aside className={`border-r border-border bg-card flex flex-col transition-all duration-300 overflow-hidden ${
-            isSidebarOpen ? 'w-80' : 'w-0'
-          }`}>
+        {/* Sidebar: saved connections when a vault is open; otherwise a prompt to
+            open one (the local terminal + Quick SSH in the header work without it). */}
+        <aside className={`border-r border-border bg-card flex flex-col transition-all duration-300 overflow-hidden ${
+          isSidebarOpen ? 'w-80' : 'w-0'
+        }`}>
+          {isLocked ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                Open a vault to see your saved connections. The local terminal and
+                Quick SSH work without one.
+              </p>
+              <button
+                onClick={() => setShowUnlockModal(true)}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Open local vault
+              </button>
+            </div>
+          ) : (
+          <>
           <div className="p-4 border-b border-border space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold text-muted-foreground">{t('main.connections')}</h2>
@@ -973,11 +988,12 @@ export function Workspace({
               onConnect={handleConnect}
             />
           </div>
+          </>
+          )}
         </aside>
-        )}
 
         {/* Hover zone and toggle button when sidebar is closed */}
-        {!isLocked && !isSidebarOpen && (
+        {!isSidebarOpen && (
           <div className="absolute left-0 top-0 h-full w-12 z-10 group">
             <button
               onClick={() => setIsSidebarOpen(true)}

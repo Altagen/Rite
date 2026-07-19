@@ -9,6 +9,7 @@ import { useAuthStore } from '../store/authStore';
 import { useConnectionsStore, type ConnectionsSource } from '../store/connectionsStore';
 import { Backend } from '../utils/backend';
 import { UnlockScreen } from './UnlockScreen';
+import { SetupScreen } from './SetupScreen';
 import { Workspace } from './Workspace';
 
 /** The local vault's connection source: the store + server-side connect. */
@@ -39,14 +40,21 @@ function useLocalConnectionsSource(): ConnectionsSource {
 }
 
 export function MainScreen() {
-  const { isLocked, lock } = useAuthStore();
+  const { isLocked, isFirstRun, lock } = useAuthStore();
   const conns = useLocalConnectionsSource();
   return (
     <Workspace
       auth={{
         isLocked,
         lock,
-        renderUnlockModal: ({ onClose }) => <UnlockScreen asModal onClose={onClose} />,
+        // Opening the local vault: create the master password on first run,
+        // otherwise unlock. Both render inside the workspace (base-first, ADR 0014).
+        renderUnlockModal: ({ onClose }) =>
+          isFirstRun ? (
+            <SetupScreen asModal onClose={onClose} />
+          ) : (
+            <UnlockScreen asModal onClose={onClose} />
+          ),
       }}
       conns={conns}
     />

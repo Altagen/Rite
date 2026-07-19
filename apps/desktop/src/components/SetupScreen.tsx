@@ -9,7 +9,12 @@ import { Backend, type PasswordStrength } from '../utils/backend';
 import { useAuthStore } from '../store/authStore';
 import { useTranslation } from '../i18n/i18n';
 
-export function SetupScreen() {
+interface SetupScreenProps {
+  asModal?: boolean;
+  onClose?: () => void;
+}
+
+export function SetupScreen({ asModal = false, onClose }: SetupScreenProps = {}) {
   const { setupMasterPassword, isLoading, error, clearError } = useAuthStore();
   const { t } = useTranslation();
 
@@ -66,16 +71,16 @@ export function SetupScreen() {
     clearError();
     try {
       await setupMasterPassword(password, confirmPassword);
-      // Success - the store will update and trigger re-render
+      // Success - the store will update and trigger re-render.
+      onClose?.();
     } catch (error) {
       // Error is already set in the store
       console.error('Setup failed:', error);
     }
   };
 
-  return (
-    <div className="flex h-screen items-center justify-center bg-background text-foreground">
-      <div className="w-full max-w-md space-y-8 p-8">
+  const content = (
+    <div className="w-full max-w-md space-y-8 p-8">
         <div className="text-center">
           <h1 className="text-4xl font-bold">{t('setup.title')}</h1>
           <p className="mt-2 text-muted-foreground">
@@ -221,7 +226,13 @@ export function SetupScreen() {
         <p className="text-center text-xs text-muted-foreground">
           {t('setup.warning')}
         </p>
-      </div>
+    </div>
+  );
+
+  if (asModal) return content;
+  return (
+    <div className="flex h-screen items-center justify-center bg-background text-foreground">
+      {content}
     </div>
   );
 }
