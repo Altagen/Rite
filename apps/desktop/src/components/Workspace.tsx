@@ -80,6 +80,7 @@ export function Workspace({
   const [connectionToDelete, setConnectionToDelete] = useState<ConnectionInfo | null>(null);
   const [showCollectionsManager, setShowCollectionsManager] = useState(false);
   const [showImportSSH, setShowImportSSH] = useState(false);
+  const [showNewMenu, setShowNewMenu] = useState(false);
 
   // Tab groups state - each tab has its own pane tree
   const [tabGroups, setTabGroups] = useState<Tab[]>([]);
@@ -933,17 +934,56 @@ export function Workspace({
             </div>
           ) : (
           <>
-          <div className="p-4 border-b border-border space-y-3">
+          <div className="p-4 border-b border-border">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-muted-foreground">{t('main.connections')}</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleNewConnection}
-                  className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                  title={t('main.newConnection')}
-                >
-                  {t('main.newConnection')}
-                </button>
+              <h2 className="text-sm font-semibold text-muted-foreground">Library</h2>
+              <div className="flex items-center gap-1">
+                <div className="relative">
+                  <button
+                    onClick={() => setShowNewMenu((v) => !v)}
+                    aria-label="Add to library"
+                    title="Add to library"
+                    className="rounded-md bg-primary p-1.5 text-primary-foreground hover:bg-primary/90 transition-colors"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
+                    </svg>
+                  </button>
+                  {showNewMenu && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
+                      <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-background p-1 shadow-lg">
+                        <button
+                          onClick={() => {
+                            setShowNewMenu(false);
+                            handleNewConnection();
+                          }}
+                          className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                        >
+                          New machine…
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowNewMenu(false);
+                            setShowImportSSH(true);
+                          }}
+                          className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                        >
+                          Import from SSH config…
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowNewMenu(false);
+                            setShowCollectionsManager(true);
+                          }}
+                          className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                        >
+                          {t('connections.collectionManage')}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
                 <button
                   onClick={() => setIsSidebarOpen(false)}
                   className="rounded p-1 text-muted-foreground hover:bg-muted transition-colors"
@@ -955,26 +995,6 @@ export function Workspace({
                 </button>
               </div>
             </div>
-            <button
-              onClick={() => setShowCollectionsManager(true)}
-              className="w-full flex items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
-              title={t('connections.collectionManage')}
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-              {t('connections.collectionManage')}
-            </button>
-            <button
-              onClick={() => setShowImportSSH(true)}
-              className="w-full flex items-center justify-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
-              title="Import from SSH config"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-              </svg>
-              Import SSH Config
-            </button>
           </div>
 
           {/* Library: folders → machines (ADR 0014 nav skeleton) */}

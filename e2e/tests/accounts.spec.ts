@@ -435,7 +435,8 @@ test('web member workspace: personal + team connections, zero-knowledge, server-
 
   // Create a personal connection through the form: the browser seals it with the
   // user key (ADR 0011) and the server only ever sees ciphertext.
-  await page.getByRole('button', { name: '+ New' }).click();
+  await page.getByRole('button', { name: 'Add to library' }).click();
+  await page.getByRole('button', { name: 'New machine…' }).click();
   await expect(page.getByRole('heading', { name: 'New Connection' })).toBeVisible();
   await page.getByPlaceholder('My Server').fill('my-web-box');
   await page.getByPlaceholder('example.com or 192.168.1.1').fill('web-secret-host');
