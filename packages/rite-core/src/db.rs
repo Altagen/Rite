@@ -117,6 +117,20 @@ impl Database {
                     .await
                     .with_context(|| format!("Failed to run migration {}", version))?;
 
+                // Record the applied version so it is never re-run. The runner owns
+                // this (not each migration file) so it can't be forgotten — a missed
+                // record leaves the DB half-migrated and the next launch re-applies
+                // non-idempotent DDL (`ADD COLUMN` → "duplicate column"), which is
+                // exactly what happened before this was centralized here.
+                sqlx::query(
+                    "INSERT OR IGNORE INTO schema_version (version, applied_at) \
+                     VALUES (?1, strftime('%s', 'now'))",
+                )
+                .bind(version)
+                .execute(&mut *conn)
+                .await
+                .with_context(|| format!("Failed to record schema version {}", version))?;
+
                 info!("Migration {} completed successfully", version);
             }
         }
@@ -600,8 +614,26 @@ mod tests {
         // Should be first run
         assert!(db.is_first_run().await.unwrap());
 
-        // Schema version should be 1
-        assert_eq!(db.get_schema_version().await.unwrap(), 1);
+        // A fresh DB migrates all the way to the latest schema (each applied
+        // migration records its version).
+        assert_eq!(db.get_schema_version().await.unwrap(), 9);
+    }
+
+    #[tokio::test]
+    async fn migrations_are_not_reapplied_on_reopen() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+
+        // First open runs every migration to the latest version.
+        let db1 = Database::new(&db_path).await.unwrap();
+        assert_eq!(db1.get_schema_version().await.unwrap(), 9);
+        drop(db1);
+
+        // Reopening the SAME vault must be a clean no-op: without the recorded
+        // versions the runner would re-apply non-idempotent DDL (`ADD COLUMN` →
+        // "duplicate column") and fail — the exact desktop second-launch bug.
+        let db2 = Database::new(&db_path).await.unwrap();
+        assert_eq!(db2.get_schema_version().await.unwrap(), 9);
     }
 
     #[tokio::test]
