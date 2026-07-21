@@ -31,6 +31,14 @@ export interface ConnectionInfo {
   createdAt: number;
   updatedAt: number;
   lastUsedAt?: number | null;
+  // Collection provenance (ADR 0016): set when this machine lives in a shared
+  // collection, so the sidebar can render it under a first-class collection node
+  // (its own icon, colour and role) rather than a plain personal folder. Absent
+  // for personal-vault and team connections.
+  collectionId?: string | null;
+  collectionName?: string | null;
+  collectionColor?: string | null;
+  collectionRole?: string | null; // 'owner' | 'editor' | 'viewer'
 }
 
 export interface CreateConnectionInput {

@@ -215,7 +215,15 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
             try {
               const record = await decryptCollectionField<StoredRecord>(key, it.blob);
               map.set(it.id, { record, collectionId: col.id });
-              infos.push(toInfo(it.id, record, it.createdAt, it.updatedAt, header.name));
+              // folder stays the record's own (a shared folder inside the collection);
+              // the collection itself is carried as first-class metadata for the tree.
+              infos.push({
+                ...toInfo(it.id, record, it.createdAt, it.updatedAt, record.folder),
+                collectionId: col.id,
+                collectionName: header.name,
+                collectionColor: header.color,
+                collectionRole: col.role,
+              });
             } catch {
               // Undecryptable item — skip.
             }
