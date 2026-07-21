@@ -14,6 +14,7 @@ pub mod known_hosts;
 pub mod local_terminal;
 pub mod server_auth;
 pub mod ssh_config;
+pub mod collection_store;
 pub mod team_store;
 pub mod teams;
 pub mod terminal;
