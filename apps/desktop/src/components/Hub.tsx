@@ -36,6 +36,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingTrust, setPendingTrust] = useState<{ fingerprint: string } | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -166,22 +167,36 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
           {ctx?.roster.map((s) => {
             const isCurrent = current?.kind === 'server' && current.id === s.id;
             return (
-              <button
+              <div
                 key={s.id}
-                onClick={() => openServer(s)}
-                className="group flex items-center gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary hover:bg-muted"
+                className="group flex items-center gap-2 rounded-lg border border-border bg-card p-2 pr-3 transition-colors hover:border-primary"
               >
-                <span className="text-2xl" aria-hidden>
-                  🖧
-                </span>
-                <span className="flex-1 truncate">
-                  <span className="block truncate font-medium">{s.label || s.url}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{s.url}</span>
-                </span>
-                <span className="text-xs font-medium text-muted-foreground group-hover:text-primary">
-                  {isCurrent ? 'Current' : 'Open'}
-                </span>
-              </button>
+                <button
+                  onClick={() => openServer(s)}
+                  className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-2 text-left hover:bg-muted"
+                >
+                  <span className="text-2xl" aria-hidden>
+                    🖧
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    <span className="block truncate font-medium">{s.label || s.url}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{s.url}</span>
+                  </span>
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {isCurrent ? 'Current' : 'Open'}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setConfirmRemove(s.id)}
+                  title="Remove from this device"
+                  aria-label={`Remove ${s.label || s.url}`}
+                  className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
+                  </svg>
+                </button>
+              </div>
             );
           })}
         </div>
@@ -240,6 +255,51 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
           onCancel={() => setPendingTrust(null)}
         />
       )}
+
+      {confirmRemove &&
+        (() => {
+          const s = ctx?.roster.find((x) => x.id === confirmRemove);
+          if (!s) return null;
+          return (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+              <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl">
+                <h3 className="font-semibold">Remove “{s.label || s.url}”?</h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  This only removes the server from <strong>this device</strong>. Your account on the
+                  server is <strong>not</strong> deleted — add it again anytime with its URL and sign
+                  in with your password.
+                </p>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button
+                    onClick={() => setConfirmRemove(null)}
+                    disabled={busy}
+                    className="rounded-md px-3 py-1.5 text-sm hover:bg-muted"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      setBusy(true);
+                      try {
+                        await Backend.Context.removeServer(s.id);
+                        setConfirmRemove(null);
+                        await refresh();
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : 'Failed to remove server');
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                    disabled={busy}
+                    className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
     </div>
   );
 }
