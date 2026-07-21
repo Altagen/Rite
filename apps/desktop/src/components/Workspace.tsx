@@ -19,6 +19,7 @@ import { CollectionsManager } from './CollectionsManager';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
 import { CollectionShareDialog } from './CollectionShareDialog';
+import { CollectionEditDialog } from './CollectionEditDialog';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
 import { ImportSSHConfigModal } from './ImportSSHConfigModal';
@@ -104,6 +105,8 @@ export function Workspace({
   const [mainView, setMainView] = useState<'terminal' | 'collection'>('terminal');
   const [membersCollectionId, setMembersCollectionId] = useState<string | null>(null);
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
+  const [collectionEdit, setCollectionEdit] = useState<{ id?: string; name?: string; color?: string | null } | null>(null);
+  const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{ id: string; name: string } | null>(null);
 
   // Host-key confirmation (strict mode): the pending prompt + the connection that
   // triggered it, so accepting can retry that exact connection.
@@ -836,6 +839,28 @@ export function Workspace({
     setMainView('terminal');
   };
 
+  // Sidebar collection actions (accounts context).
+  const isAccountsContext = conns.writableCollections !== undefined;
+  const handleNewMachineInCollection = (collectionId: string) => {
+    setFormDefaultCollectionId(collectionId);
+    setEditingConnection(null);
+    setConnectionFormPrefill(null);
+    setShowForm(true);
+  };
+  const handleDeleteCollectionConfirmed = async () => {
+    if (!deleteCollectionTarget) return;
+    const { id } = deleteCollectionTarget;
+    try {
+      await Backend.Collections.remove(id);
+      if (openCollectionId === id) handleCloseCollection();
+      await conns.refresh();
+    } catch (err) {
+      console.error('Failed to delete collection:', err);
+    } finally {
+      setDeleteCollectionTarget(null);
+    }
+  };
+
   // Derive the open collection's machines + header from the decrypted connections.
   const openCollectionMachines = openCollectionId
     ? conns.connections.filter((c) => c.collectionId === openCollectionId)
@@ -995,6 +1020,17 @@ export function Workspace({
                         >
                           New machine…
                         </button>
+                        {isAccountsContext && (
+                          <button
+                            onClick={() => {
+                              setShowNewMenu(false);
+                              setCollectionEdit({});
+                            }}
+                            className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                          >
+                            New collection…
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setShowNewMenu(false);
@@ -1041,6 +1077,12 @@ export function Workspace({
               onConnect={handleConnect}
               onOpenCollection={handleOpenCollection}
               openCollectionId={mainView === 'collection' ? openCollectionId : null}
+              onNewMachineInCollection={isAccountsContext ? handleNewMachineInCollection : undefined}
+              onOpenMembers={isAccountsContext ? (id) => setMembersCollectionId(id) : undefined}
+              onRenameCollection={
+                isAccountsContext ? (id, name, color) => setCollectionEdit({ id, name, color }) : undefined
+              }
+              onDeleteCollection={isAccountsContext ? (id, name) => setDeleteCollectionTarget({ id, name }) : undefined}
             />
           </div>
           </>
@@ -1186,6 +1228,44 @@ export function Workspace({
           onClose={() => setMembersCollectionId(null)}
           onChanged={fetchConnections}
         />
+      )}
+
+      {/* Create / rename collection dialog (ADR 0016) */}
+      {collectionEdit && (
+        <CollectionEditDialog
+          collectionId={collectionEdit.id}
+          initialName={collectionEdit.name}
+          initialColor={collectionEdit.color}
+          onClose={() => setCollectionEdit(null)}
+          onSaved={fetchConnections}
+        />
+      )}
+
+      {/* Delete collection confirmation (ADR 0016) */}
+      {deleteCollectionTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteCollectionTarget(null)}>
+          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-2 text-lg font-semibold">Delete “{deleteCollectionTarget.name}”?</h3>
+            <p className="mb-4 text-sm text-muted-foreground">
+              This permanently deletes the collection and its machines for everyone. Members lose access. This cannot be
+              undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDeleteCollectionTarget(null)}
+                className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteCollectionConfirmed}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Delete Confirmation Dialog */}
