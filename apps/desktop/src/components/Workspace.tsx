@@ -1061,6 +1061,7 @@ export function Workspace({
           prefillData={connectionFormPrefill}
           create={conns.create}
           update={conns.update}
+          collectionTargets={conns.writableCollections}
           onClose={() => {
             setShowForm(false);
             setEditingConnection(null);

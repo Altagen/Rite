@@ -19,6 +19,9 @@ interface ConnectionFormProps {
   // = browser-crypto over the per-user vault. The form is context-agnostic.
   create: (input: CreateConnectionInput) => Promise<void>;
   update: (input: UpdateConnectionInput) => Promise<void>;
+  // ADR 0016: shared collections the caller may save into (owner/editor). When
+  // present (accounts context), the form offers a "save to collection" target.
+  collectionTargets?: { id: string; name: string }[];
 }
 
 export function ConnectionForm({
@@ -28,6 +31,7 @@ export function ConnectionForm({
   onSuccess,
   create,
   update,
+  collectionTargets,
 }: ConnectionFormProps) {
   const { t } = useTranslation();
   const { collections, fetchCollections, createCollection } = useCollectionsStore();
@@ -48,6 +52,8 @@ export function ConnectionForm({
   const [keyPath, setKeyPath] = useState(prefillData?.keyPath || '');
   const [keyPassphrase, setKeyPassphrase] = useState(prefillData?.passphrase || '');
   const [collection, setCollection] = useState(connection?.folder || '');
+  // ADR 0016 save target (accounts context): '' = personal vault, else a collection id.
+  const [collectionTargetId, setCollectionTargetId] = useState<string>(connection?.collectionId ?? '');
   const color = connection?.color || ''; // TODO: Implement color picker UI
   const icon = connection?.icon || ''; // TODO: Implement icon picker UI
   const [notes, setNotes] = useState(connection?.notes || '');
@@ -254,6 +260,7 @@ export function ConnectionForm({
                   ...(keyPassphrase && { passphrase: keyPassphrase }),
                 },
           ...(collection && { folder: collection }),
+          ...(collectionTargetId && { collectionId: collectionTargetId }),
           ...(color && { color }),
           ...(icon && { icon }),
           ...(notes && { notes }),
@@ -509,6 +516,29 @@ export function ConnectionForm({
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Save-to-collection target (ADR 0016) — accounts context only */}
+          {collectionTargets && collectionTargets.length > 0 && (
+            <div>
+              <label className="mb-1 block text-sm font-medium">{t('connections.saveToCollection')}</label>
+              <select
+                value={collectionTargetId}
+                onChange={(e) => setCollectionTargetId(e.target.value)}
+                disabled={!!connection}
+                className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none disabled:opacity-60"
+              >
+                <option value="">{t('connections.personalVault')}</option>
+                {collectionTargets.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              {connection && (
+                <p className="mt-1 text-xs text-muted-foreground">{t('connections.collectionMoveUnsupported')}</p>
+              )}
             </div>
           )}
 
