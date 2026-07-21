@@ -17,6 +17,8 @@ import { LibrarySidebar } from './LibrarySidebar';
 import { ConnectionForm } from './ConnectionForm';
 import { CollectionsManager } from './CollectionsManager';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
+import { CollectionView } from './CollectionView';
+import { CollectionShareDialog } from './CollectionShareDialog';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
 import { ImportSSHConfigModal } from './ImportSSHConfigModal';
@@ -94,6 +96,14 @@ export function Workspace({
   // Quick SSH and Unlock modals
   const [showQuickSSH, setShowQuickSSH] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
+
+  // Collection opened in the main area (ADR 0016): which one + which main view is
+  // showing (terminal is kept mounted underneath). Plus the members dialog target
+  // and the create-into-collection default for the machine form.
+  const [openCollectionId, setOpenCollectionId] = useState<string | null>(null);
+  const [mainView, setMainView] = useState<'terminal' | 'collection'>('terminal');
+  const [membersCollectionId, setMembersCollectionId] = useState<string | null>(null);
+  const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
 
   // Host-key confirmation (strict mode): the pending prompt + the connection that
   // triggered it, so accepting can retry that exact connection.
@@ -816,6 +826,29 @@ export function Workspace({
     setShowForm(true);
   };
 
+  // Open a collection in the main area (from the sidebar).
+  const handleOpenCollection = (collectionId: string) => {
+    setOpenCollectionId(collectionId);
+    setMainView('collection');
+  };
+  const handleCloseCollection = () => {
+    setOpenCollectionId(null);
+    setMainView('terminal');
+  };
+
+  // Derive the open collection's machines + header from the decrypted connections.
+  const openCollectionMachines = openCollectionId
+    ? conns.connections.filter((c) => c.collectionId === openCollectionId)
+    : [];
+  const openCollectionMeta = openCollectionMachines[0];
+  const openCollectionName =
+    openCollectionMeta?.collectionName ??
+    conns.writableCollections?.find((c) => c.id === openCollectionId)?.name ??
+    'Collection';
+  const openCollectionRole = openCollectionMeta?.collectionRole ?? null;
+  const openCollectionWritable =
+    !!conns.writableCollections?.some((c) => c.id === openCollectionId);
+
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       {/* Header */}
@@ -1006,6 +1039,8 @@ export function Workspace({
               onEdit={handleEditConnection}
               onDelete={handleDeleteConnection}
               onConnect={handleConnect}
+              onOpenCollection={handleOpenCollection}
+              openCollectionId={mainView === 'collection' ? openCollectionId : null}
             />
           </div>
           </>
@@ -1031,6 +1066,71 @@ export function Workspace({
           </div>
         )}
 
+        {/* Main content: a Terminal / Collection tab strip (only when a collection
+            is open), then the terminal manager (kept mounted so sessions survive)
+            with the collection view overlaid when its tab is active. */}
+        <div className="relative flex min-w-0 flex-1 flex-col">
+          {openCollectionId && (
+            <div className="flex items-center gap-1 border-b border-border bg-card px-2 py-1">
+              <button
+                onClick={() => setMainView('terminal')}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+                  mainView === 'terminal' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16v14H4zM8 9l3 3-3 3M13 15h3" />
+                </svg>
+                {t('main.terminal') !== 'main.terminal' ? t('main.terminal') : 'Terminal'}
+              </button>
+              <div
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+                  mainView === 'collection' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                <button onClick={() => setMainView('collection')} className="flex items-center gap-1.5">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9 5 9-5M3 16.5l9 5 9-5" />
+                  </svg>
+                  <span className="max-w-[160px] truncate">{openCollectionName}</span>
+                </button>
+                <button
+                  onClick={handleCloseCollection}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+                  aria-label="Close collection"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            {/* Collection view overlay (kept above the terminal when its tab is active) */}
+            {openCollectionId && mainView === 'collection' && (
+              <div className="absolute inset-0 z-10 overflow-hidden bg-background">
+                <CollectionView
+                  name={openCollectionName}
+                  color={openCollectionMeta?.collectionColor}
+                  role={openCollectionRole}
+                  machines={openCollectionMachines}
+                  canWrite={openCollectionWritable}
+                  onConnect={handleConnect}
+                  onEdit={handleEditConnection}
+                  onNewMachine={() => {
+                    setFormDefaultCollectionId(openCollectionId);
+                    setEditingConnection(null);
+                    setConnectionFormPrefill(null);
+                    setShowForm(true);
+                  }}
+                  onOpenMembers={() => setMembersCollectionId(openCollectionId)}
+                />
+              </div>
+            )}
+
         {/* Main panel - Terminal Manager */}
         <ErrorBoundary level="feature" name="TerminalManager">
           <TerminalManager
@@ -1052,6 +1152,8 @@ export function Workspace({
             quickSSHSessions={Array.from(quickSSHConnections.keys())}
           />
         </ErrorBoundary>
+          </div>
+        </div>
       </main>
 
       {/* Connection Form Modal */}
@@ -1062,15 +1164,27 @@ export function Workspace({
           create={conns.create}
           update={conns.update}
           collectionTargets={conns.writableCollections}
+          defaultCollectionId={formDefaultCollectionId}
           onClose={() => {
             setShowForm(false);
             setEditingConnection(null);
             setConnectionFormPrefill(null);
+            setFormDefaultCollectionId(null);
           }}
           onSuccess={() => {
             fetchConnections();
             setConnectionFormPrefill(null);
           }}
+        />
+      )}
+
+      {/* Collection members / sharing dialog (ADR 0016) */}
+      {membersCollectionId && (
+        <CollectionShareDialog
+          collectionId={membersCollectionId}
+          title={`Members · ${openCollectionName}`}
+          onClose={() => setMembersCollectionId(null)}
+          onChanged={fetchConnections}
         />
       )}
 

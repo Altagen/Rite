@@ -22,6 +22,9 @@ interface ConnectionFormProps {
   // ADR 0016: shared collections the caller may save into (owner/editor). When
   // present (accounts context), the form offers a "save to collection" target.
   collectionTargets?: { id: string; name: string }[];
+  // Preselect this collection as the save target (e.g. opening the form from a
+  // collection view). Only applies when creating.
+  defaultCollectionId?: string | null;
 }
 
 export function ConnectionForm({
@@ -32,6 +35,7 @@ export function ConnectionForm({
   create,
   update,
   collectionTargets,
+  defaultCollectionId,
 }: ConnectionFormProps) {
   const { t } = useTranslation();
   const { collections, fetchCollections, createCollection } = useCollectionsStore();
@@ -53,7 +57,9 @@ export function ConnectionForm({
   const [keyPassphrase, setKeyPassphrase] = useState(prefillData?.passphrase || '');
   const [collection, setCollection] = useState(connection?.folder || '');
   // ADR 0016 save target (accounts context): '' = personal vault, else a collection id.
-  const [collectionTargetId, setCollectionTargetId] = useState<string>(connection?.collectionId ?? '');
+  const [collectionTargetId, setCollectionTargetId] = useState<string>(
+    connection?.collectionId ?? defaultCollectionId ?? '',
+  );
   const color = connection?.color || ''; // TODO: Implement color picker UI
   const icon = connection?.icon || ''; // TODO: Implement icon picker UI
   const [notes, setNotes] = useState(connection?.notes || '');
