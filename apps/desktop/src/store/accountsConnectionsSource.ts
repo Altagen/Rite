@@ -148,6 +148,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
   const { userKey, publicKey, privateKey } = useServerSession();
   const [connections, setConnections] = useState<ConnectionInfo[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
+  const [writableCollections, setWritableCollections] = useState<{ id: string; name: string }[]>([]);
   const entries = useRef<Map<string, Entry>>(new Map());
   const collections = useRef<Map<string, CollectionCtx>>(new Map());
 
@@ -203,6 +204,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
         .then((all) => all.filter((c) => c.protectedCollectionKey))
         .catch(() => []);
       const ctx = new Map<string, CollectionCtx>();
+      const writable: { id: string; name: string }[] = [];
       for (const col of cols) {
         if (!col.protectedCollectionKey) continue;
         try {
@@ -211,6 +213,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
             () => ({ name: 'Collection', color: null }) as CollectionHeader,
           );
           ctx.set(col.id, { key, role: col.role });
+          if (canWrite(col.role)) writable.push({ id: col.id, name: header.name });
           for (const it of await Backend.Collections.items(col.id)) {
             try {
               const record = await decryptCollectionField<StoredRecord>(key, it.blob);
@@ -233,6 +236,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
         }
       }
       collections.current = ctx;
+      setWritableCollections(writable.sort((a, b) => a.name.localeCompare(b.name)));
     }
 
     entries.current = map;
@@ -275,8 +279,19 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
 
   const create = useCallback(
     async (input: CreateConnectionInput) => {
+      const record = recordFromCreate(input);
+      // Save into a shared collection (ADR 0016) when a target is given, else the
+      // personal vault. Collection writes are gated on owner/editor.
+      if (input.collectionId) {
+        const ctx = collections.current.get(input.collectionId);
+        if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
+        const blob = await encryptCollectionField(ctx.key, record);
+        await Backend.Collections.createItem(input.collectionId, blob);
+        await refresh();
+        return;
+      }
       if (!userKey) throw new Error('vault is locked');
-      const blob = await encryptRecord(userKey, recordFromCreate(input));
+      const blob = await encryptRecord(userKey, record);
       await Backend.Vault.createConnection(blob);
       await refresh();
     },
@@ -304,5 +319,15 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     [userKey, refresh],
   );
 
-  return { connections, selectedConnectionId, refresh, select, remove, connect, create, update };
+  return {
+    connections,
+    selectedConnectionId,
+    refresh,
+    select,
+    remove,
+    connect,
+    create,
+    update,
+    writableCollections,
+  };
 }

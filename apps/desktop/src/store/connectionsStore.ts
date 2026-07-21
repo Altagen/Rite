@@ -61,6 +61,9 @@ export interface CreateConnectionInput {
   notes?: string;
   sshKeepAliveOverride?: string | null;
   sshKeepAliveInterval?: number | null;
+  // ADR 0016: save this machine into a shared collection (encrypted with the
+  // collection key) instead of the personal vault. Absent ⇒ personal vault.
+  collectionId?: string | null;
 }
 
 export interface UpdateConnectionInput {
@@ -101,6 +104,10 @@ export interface ConnectionsSource {
   connect: (conn: ConnectionInfo) => Promise<string>;
   create: (input: CreateConnectionInput) => Promise<void>;
   update: (input: UpdateConnectionInput) => Promise<void>;
+  // ADR 0016: collections the caller may write into (owner/editor), for the
+  // machine form's "save to collection" target. Undefined in the local vault
+  // context (no collections there); populated by the accounts source.
+  writableCollections?: { id: string; name: string }[];
 }
 
 interface ConnectionsState {
