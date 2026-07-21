@@ -401,6 +401,31 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/teams/{id}/connections/{cid}",
             put(team_conn_update).delete(team_conn_delete),
         )
+        // Collections (ADR 0016): the sharing primitive. Members hold the sealed
+        // collection key; roles (owner/editor/viewer) gate manage vs write. The
+        // server stores only opaque blobs (names + items encrypted).
+        .route("/api/directory", get(directory_ep))
+        .route("/api/collections", get(my_collections).post(create_collection_ep))
+        .route(
+            "/api/collections/{id}",
+            patch(update_collection_ep).delete(delete_collection_ep),
+        )
+        .route(
+            "/api/collections/{id}/members",
+            get(collection_members_ep).post(add_collection_member_ep),
+        )
+        .route(
+            "/api/collections/{id}/members/{userId}",
+            patch(set_collection_role_ep).delete(remove_collection_member_ep),
+        )
+        .route(
+            "/api/collections/{id}/items",
+            get(collection_items_ep).post(create_collection_item_ep),
+        )
+        .route(
+            "/api/collections/{id}/items/{itemId}",
+            put(update_collection_item_ep).delete(delete_collection_item_ep),
+        )
         .route("/api/context", get(get_context))
         .route("/api/context/servers", post(add_server))
         .route("/api/context/servers/{id}", delete(remove_server))
@@ -1365,6 +1390,262 @@ async fn team_conn_delete(
             StatusCode::NO_CONTENT.into_response()
         } else {
             (StatusCode::NOT_FOUND, "unknown connection").into_response()
+        },
+    )
+}
+
+// --- collections (ADR 0016) --------------------------------------------------
+// The sharing primitive. Membership = holding the sealed collection key + a role
+// (owner/editor/viewer): owner manages membership/roles/delete, owner+editor write
+// items, any member reads. The server never parses the encrypted name or blobs.
+
+use rite_core::collection_store as coll;
+
+/// The caller's role in a collection, or `None` if they are not a member.
+async fn coll_role(
+    state: &ServerState,
+    user: &User,
+    id: &str,
+) -> Result<Option<coll::CollectionRole>, AppError> {
+    Ok(coll::collection_role(state.db.pool(), id, &user.id).await?)
+}
+
+/// The org user directory (id, username, public key) for the member picker.
+async fn directory_ep(
+    State(state): State<ServerState>,
+) -> Result<Json<Vec<server_auth::DirectoryEntry>>, AppError> {
+    Ok(Json(server_auth::list_directory(state.db.pool()).await?))
+}
+
+async fn my_collections(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Vec<coll::UserCollection>>, AppError> {
+    Ok(Json(
+        coll::list_collections_for_user(state.db.pool(), &user.id).await?,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateCollectionReq {
+    name_enc: String,
+    protected_collection_key: String,
+}
+
+async fn create_collection_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Json(req): Json<CreateCollectionReq>,
+) -> Result<Response, AppError> {
+    let id = coll::create_collection(
+        state.db.pool(),
+        &req.name_enc,
+        &user.id,
+        &req.protected_collection_key,
+    )
+    .await?;
+    Ok((StatusCode::CREATED, Json(json!({ "id": id }))).into_response())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateCollectionReq {
+    name_enc: String,
+}
+
+async fn update_collection_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateCollectionReq>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_write() => {}
+        _ => return Ok((StatusCode::FORBIDDEN, "need write access").into_response()),
+    }
+    Ok(if coll::set_name_enc(state.db.pool(), &id, &req.name_enc).await? {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    })
+}
+
+async fn delete_collection_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_manage() => {}
+        _ => return Ok((StatusCode::FORBIDDEN, "only an owner can delete").into_response()),
+    }
+    Ok(if coll::delete_collection(state.db.pool(), &id).await? {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    })
+}
+
+async fn collection_members_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    if coll_role(&state, &user, &id).await?.is_none() {
+        return Ok((StatusCode::FORBIDDEN, "not a member").into_response());
+    }
+    Ok(Json(coll::list_members(state.db.pool(), &id).await?).into_response())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddCollectionMemberReq {
+    user_id: String,
+    role: coll::CollectionRole,
+    protected_collection_key: String,
+}
+
+async fn add_collection_member_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<AddCollectionMemberReq>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_manage() => {}
+        _ => return Ok((StatusCode::FORBIDDEN, "only an owner can add members").into_response()),
+    }
+    match coll::add_member(
+        state.db.pool(),
+        &id,
+        &req.user_id,
+        req.role,
+        &req.protected_collection_key,
+    )
+    .await
+    {
+        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(_) => Ok((StatusCode::BAD_REQUEST, "unknown user").into_response()),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetRoleReq {
+    role: coll::CollectionRole,
+}
+
+async fn set_collection_role_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path((id, target)): Path<(String, String)>,
+    Json(req): Json<SetRoleReq>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_manage() => {}
+        _ => return Ok((StatusCode::FORBIDDEN, "only an owner can change roles").into_response()),
+    }
+    // Keep at least one owner: refuse to demote the last owner.
+    if req.role != coll::CollectionRole::Owner
+        && coll::collection_role(state.db.pool(), &id, &target).await?
+            == Some(coll::CollectionRole::Owner)
+        && coll::count_owners(state.db.pool(), &id).await? <= 1
+    {
+        return Ok((StatusCode::CONFLICT, "a collection needs at least one owner").into_response());
+    }
+    Ok(if coll::set_role(state.db.pool(), &id, &target, req.role).await? {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        (StatusCode::NOT_FOUND, "not a member").into_response()
+    })
+}
+
+async fn remove_collection_member_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path((id, target)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    let self_leave = target == user.id;
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_manage() || self_leave => {}
+        Some(_) => {
+            return Ok((StatusCode::FORBIDDEN, "only an owner can remove members").into_response())
+        }
+        None => return Ok((StatusCode::FORBIDDEN, "not a member").into_response()),
+    }
+    // Keep at least one owner (also blocks the last owner from leaving).
+    if coll::collection_role(state.db.pool(), &id, &target).await?
+        == Some(coll::CollectionRole::Owner)
+        && coll::count_owners(state.db.pool(), &id).await? <= 1
+    {
+        return Ok((StatusCode::CONFLICT, "a collection needs at least one owner").into_response());
+    }
+    Ok(if coll::remove_member(state.db.pool(), &id, &target).await? {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    })
+}
+
+async fn collection_items_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    if coll_role(&state, &user, &id).await?.is_none() {
+        return Ok((StatusCode::FORBIDDEN, "not a member").into_response());
+    }
+    Ok(Json(coll::list_items(state.db.pool(), &id).await?).into_response())
+}
+
+async fn create_collection_item_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_write() => {}
+        _ => return Ok((StatusCode::FORBIDDEN, "need write access").into_response()),
+    }
+    let item = coll::create_item(state.db.pool(), &id, &req.blob).await?;
+    Ok((StatusCode::CREATED, Json(item)).into_response())
+}
+
+async fn update_collection_item_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path((id, item_id)): Path<(String, String)>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_write() => {}
+        _ => return Ok((StatusCode::FORBIDDEN, "need write access").into_response()),
+    }
+    Ok(
+        if coll::update_item(state.db.pool(), &id, &item_id, &req.blob).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            (StatusCode::NOT_FOUND, "unknown item").into_response()
+        },
+    )
+}
+
+async fn delete_collection_item_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path((id, item_id)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_write() => {}
+        _ => return Ok((StatusCode::FORBIDDEN, "need write access").into_response()),
+    }
+    Ok(
+        if coll::delete_item(state.db.pool(), &id, &item_id).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            (StatusCode::NOT_FOUND, "unknown item").into_response()
         },
     )
 }

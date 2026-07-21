@@ -501,3 +501,90 @@ test('team connections UI: a shared connection is added and decrypted (ADR 0013 
   await expect(page.getByText('shared-db')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('svc@shared-host:22')).toBeVisible();
 });
+
+test('collections: shared zero-knowledge with roles + RBAC (ADR 0016)', async ({ request }) => {
+  const sodium = createRequire(__filename)('libsodium-wrappers');
+  await sodium.ready;
+  const b64 = (b: Uint8Array) => Buffer.from(b).toString('base64');
+  const unb64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
+  const enc = (o: unknown) => new TextEncoder().encode(JSON.stringify(o));
+  const dec = (b: Uint8Array) => JSON.parse(new TextDecoder().decode(b));
+
+  const adminL = await loginFull(request, 'admin', ADMIN.password);
+  const carolL = await loginFull(request, 'carol', 'CarolPass123!');
+  const adminK = await unlockKeys(ADMIN.password, adminL.vault);
+  const carolK = await unlockKeys('CarolPass123!', carolL.vault);
+
+  // The org directory feeds the member picker (id + username + public key).
+  const dir = await (await request.get(`${BASE}/api/directory`, { headers: auth(adminL.token) })).json();
+  const carol = dir.find((u: { username: string }) => u.username === 'carol');
+  const adminId = dir.find((u: { username: string }) => u.username === 'admin').id;
+  expect(carol.publicKey).toMatch(/^[0-9a-f]{64}$/);
+
+  // Admin creates a collection: a random collection key; the name + an item are
+  // encrypted with it; the key is sealed to admin's own public key.
+  const collKey = sodium.randombytes_buf(32) as Uint8Array;
+  const nameEnc = await aesGcmEncrypt(collKey, enc({ name: 'Prod', color: '#f7768e' }));
+  const created = await request.post(`${BASE}/api/collections`, {
+    headers: auth(adminL.token),
+    data: { nameEnc, protectedCollectionKey: b64(sodium.crypto_box_seal(collKey, adminK.publicKey)) },
+  });
+  expect(created.status()).toBe(201);
+  const { id } = await created.json();
+
+  const itemBlob = await aesGcmEncrypt(collKey, enc({ name: 'web-01', host: 'coll-secret-host', user: 'deploy', port: 22 }));
+  expect(
+    (await request.post(`${BASE}/api/collections/${id}/items`, { headers: auth(adminL.token), data: { blob: itemBlob } })).status(),
+  ).toBe(201);
+
+  // A non-member (carol, not added yet) cannot read.
+  expect((await request.get(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token) })).status()).toBe(403);
+
+  // Admin shares with carol as a VIEWER, sealing the key to her directory public key.
+  expect(
+    (await request.post(`${BASE}/api/collections/${id}/members`, {
+      headers: auth(adminL.token),
+      data: { userId: carol.id, role: 'viewer', protectedCollectionKey: b64(sodium.crypto_box_seal(collKey, hexToBytes(carol.publicKey))) },
+    })).status(),
+  ).toBe(204);
+
+  // Carol lists her collections, unwraps HER sealed key → byte-identical, decrypts.
+  const mine = (await (await request.get(`${BASE}/api/collections`, { headers: auth(carolL.token) })).json()).find(
+    (c: { id: string }) => c.id === id,
+  );
+  const carolCollKey = sodium.crypto_box_seal_open(unb64(mine.protectedCollectionKey), carolK.publicKey, carolK.privateKey);
+  expect(Buffer.from(carolCollKey).equals(Buffer.from(collKey))).toBe(true);
+  expect(mine.role).toBe('viewer');
+  expect(dec(await aesGcmDecrypt(carolCollKey, mine.nameEnc)).name).toBe('Prod');
+  const items = await (await request.get(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token) })).json();
+  expect(dec(await aesGcmDecrypt(carolCollKey, items[0].blob)).host).toBe('coll-secret-host');
+
+  // Zero-knowledge: the server stored only ciphertext (name + items).
+  expect(mine.nameEnc).toMatch(/^v1\./);
+  expect(JSON.stringify(items)).not.toContain('coll-secret-host');
+
+  // RBAC: a viewer can neither write items…
+  expect(
+    (await request.post(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token), data: { blob: itemBlob } })).status(),
+  ).toBe(403);
+  // …nor manage membership.
+  expect(
+    (await request.post(`${BASE}/api/collections/${id}/members`, {
+      headers: auth(carolL.token),
+      data: { userId: carol.id, role: 'owner', protectedCollectionKey: 'x' },
+    })).status(),
+  ).toBe(403);
+
+  // Promote carol to editor → she can now write.
+  expect(
+    (await request.patch(`${BASE}/api/collections/${id}/members/${carol.id}`, { headers: auth(adminL.token), data: { role: 'editor' } })).status(),
+  ).toBe(204);
+  expect(
+    (await request.post(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token), data: { blob: itemBlob } })).status(),
+  ).toBe(201);
+
+  // The last owner (admin) can't be demoted → the ≥1-owner invariant.
+  expect(
+    (await request.patch(`${BASE}/api/collections/${id}/members/${adminId}`, { headers: auth(adminL.token), data: { role: 'editor' } })).status(),
+  ).toBe(409);
+});

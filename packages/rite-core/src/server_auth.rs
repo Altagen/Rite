@@ -427,6 +427,33 @@ pub async fn list_users(db: &SqlitePool) -> Result<Vec<User>> {
         .collect())
 }
 
+/// A directory entry: id + username + X25519 public key. Feeds the collection
+/// member picker (ADR 0016) — members are org-visible so an owner can seal the
+/// collection key to any chosen member's public key. Member-readable (not admin-only).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryEntry {
+    pub id: String,
+    pub username: String,
+    pub public_key: Option<String>,
+}
+
+/// The org user directory (id, username, public key) for the member picker.
+pub async fn list_directory(db: &SqlitePool) -> Result<Vec<DirectoryEntry>> {
+    let rows: Vec<(String, String, Option<String>)> =
+        sqlx::query_as("SELECT id, username, public_key FROM users ORDER BY username")
+            .fetch_all(db)
+            .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, username, public_key)| DirectoryEntry {
+            id,
+            username,
+            public_key,
+        })
+        .collect())
+}
+
 /// Enable/disable an account. Disabling also drops its live sessions. Returns
 /// `true` if a user was affected.
 pub async fn set_user_status(db: &SqlitePool, user_id: &str, status: &str) -> Result<bool> {
