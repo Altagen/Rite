@@ -215,6 +215,64 @@ const routes: Record<string, Route> = {
     return null;
   },
 
+  // Collections — the unified sharing primitive (ADR 0016). Names/items are opaque
+  // blobs; the browser seals/unwraps the collection key and encrypts client-side.
+  directory_list: () => json('/api/directory'),
+  collections_mine: () => json('/api/collections'),
+  collection_create: (a) =>
+    json('/api/collections', post({ nameEnc: a.nameEnc, protectedCollectionKey: a.protectedCollectionKey })),
+  collection_update: async (a) => {
+    await json(`/api/collections/${encodeURIComponent(String(a.id))}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ nameEnc: a.nameEnc }),
+    });
+    return null;
+  },
+  collection_delete: async (a) => {
+    await json(`/api/collections/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
+    return null;
+  },
+  collection_members: (a) => json(`/api/collections/${encodeURIComponent(String(a.id))}/members`),
+  collection_add_member: async (a) => {
+    await json(
+      `/api/collections/${encodeURIComponent(String(a.id))}/members`,
+      post({ userId: a.userId, role: a.role, protectedCollectionKey: a.protectedCollectionKey }),
+    );
+    return null;
+  },
+  collection_set_role: async (a) => {
+    await json(
+      `/api/collections/${encodeURIComponent(String(a.id))}/members/${encodeURIComponent(String(a.userId))}`,
+      { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: a.role }) },
+    );
+    return null;
+  },
+  collection_remove_member: async (a) => {
+    await json(
+      `/api/collections/${encodeURIComponent(String(a.id))}/members/${encodeURIComponent(String(a.userId))}`,
+      { method: 'DELETE' },
+    );
+    return null;
+  },
+  collection_items: (a) => json(`/api/collections/${encodeURIComponent(String(a.id))}/items`),
+  collection_item_create: (a) =>
+    json(`/api/collections/${encodeURIComponent(String(a.id))}/items`, post({ blob: a.blob })),
+  collection_item_update: async (a) => {
+    await json(
+      `/api/collections/${encodeURIComponent(String(a.id))}/items/${encodeURIComponent(String(a.itemId))}`,
+      { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ blob: a.blob }) },
+    );
+    return null;
+  },
+  collection_item_delete: async (a) => {
+    await json(
+      `/api/collections/${encodeURIComponent(String(a.id))}/items/${encodeURIComponent(String(a.itemId))}`,
+      { method: 'DELETE' },
+    );
+    return null;
+  },
+
   accept_host_key: async (a) => {
     await json('/api/ssh/host-key/accept', post({ host: a.host, port: a.port }));
     return null;

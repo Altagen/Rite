@@ -233,6 +233,25 @@ export async function mockInvoke(
     case 'team_conn_delete':
       return null;
 
+    // --- Collections (ADR 0016; dev mock: empty) ---
+    case 'directory_list':
+    case 'collections_mine':
+    case 'collection_members':
+    case 'collection_items':
+      return [];
+    case 'collection_create':
+      return { id: `col-${Math.random().toString(36).slice(2, 8)}` };
+    case 'collection_item_create':
+      return { id: `ci-${Math.random().toString(36).slice(2, 8)}`, blob: String(args?.blob ?? ''), createdAt: now(), updatedAt: now() };
+    case 'collection_update':
+    case 'collection_delete':
+    case 'collection_add_member':
+    case 'collection_set_role':
+    case 'collection_remove_member':
+    case 'collection_item_update':
+    case 'collection_item_delete':
+      return null;
+
     // --- Context multiplexer (dev mock: local only, empty roster) ---
     case 'context_get':
       return { active: 'local', roster: [] };

@@ -527,6 +527,71 @@ export const BackendVault = {
   deleteConnection: (id: string) => invokeWithValidation('vault_conn_delete', z.null(), { id }),
 } as const;
 
+// Collections — the unified sharing primitive (ADR 0016). A collection carries a
+// symmetric key sealed to each member; the browser unwraps it and de/encrypts the
+// name+items. Roles gate writes (editor) and management (owner); ≥1 owner enforced.
+const CollectionRoleSchema = z.enum(['owner', 'editor', 'viewer']);
+// The org people directory that feeds the member picker (member-visible; ADR 0016).
+const DirectoryEntrySchema = z.object({
+  id: z.string(),
+  username: z.string(),
+  publicKey: z.string().nullable().optional(),
+});
+// A collection I belong to, with my sealed copy of its key (nameEnc is opaque).
+const UserCollectionSchema = z.object({
+  id: z.string(),
+  nameEnc: z.string(),
+  role: CollectionRoleSchema,
+  protectedCollectionKey: z.string().nullable().optional(),
+  createdAt: z.number(),
+});
+const CollectionMemberSchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+  role: CollectionRoleSchema,
+  publicKey: z.string().nullable().optional(),
+});
+const CollectionItemSchema = z.object({
+  id: z.string(),
+  blob: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+const CreatedIdSchema = z.object({ id: z.string() });
+export type CollectionRole = z.infer<typeof CollectionRoleSchema>;
+export type DirectoryEntry = z.infer<typeof DirectoryEntrySchema>;
+export type UserCollection = z.infer<typeof UserCollectionSchema>;
+export type CollectionMember = z.infer<typeof CollectionMemberSchema>;
+export type CollectionItem = z.infer<typeof CollectionItemSchema>;
+
+export const BackendCollections = {
+  /** The org people directory (id + username + public key) for the member picker. */
+  directory: () => invokeWithValidation('directory_list', z.array(DirectoryEntrySchema)),
+  /** Collections I belong to, each with my sealed collection key. */
+  mine: () => invokeWithValidation('collections_mine', z.array(UserCollectionSchema)),
+  create: (nameEnc: string, protectedCollectionKey: string) =>
+    invokeWithValidation('collection_create', CreatedIdSchema, { nameEnc, protectedCollectionKey }),
+  update: (id: string, nameEnc: string) =>
+    invokeWithValidation('collection_update', z.null(), { id, nameEnc }),
+  remove: (id: string) => invokeWithValidation('collection_delete', z.null(), { id }),
+  members: (id: string) =>
+    invokeWithValidation('collection_members', z.array(CollectionMemberSchema), { id }),
+  addMember: (id: string, userId: string, role: CollectionRole, protectedCollectionKey: string) =>
+    invokeWithValidation('collection_add_member', z.null(), { id, userId, role, protectedCollectionKey }),
+  setRole: (id: string, userId: string, role: CollectionRole) =>
+    invokeWithValidation('collection_set_role', z.null(), { id, userId, role }),
+  removeMember: (id: string, userId: string) =>
+    invokeWithValidation('collection_remove_member', z.null(), { id, userId }),
+  /** A collection's item blobs (opaque; the caller decrypts with the collection key). */
+  items: (id: string) => invokeWithValidation('collection_items', z.array(CollectionItemSchema), { id }),
+  createItem: (id: string, blob: string) =>
+    invokeWithValidation('collection_item_create', CollectionItemSchema, { id, blob }),
+  updateItem: (id: string, itemId: string, blob: string) =>
+    invokeWithValidation('collection_item_update', z.null(), { id, itemId, blob }),
+  deleteItem: (id: string, itemId: string) =>
+    invokeWithValidation('collection_item_delete', z.null(), { id, itemId }),
+} as const;
+
 export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
@@ -538,6 +603,7 @@ export const Backend = {
   Context: BackendContext,
   Teams: BackendTeams,
   Vault: BackendVault,
+  Collections: BackendCollections,
 } as const;
 
 // Export types for external use

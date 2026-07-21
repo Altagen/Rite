@@ -25,6 +25,8 @@ import {
 } from './connectionsStore';
 import { encryptString, decryptString } from '../utils/vaultCrypto';
 import { unwrapTeamKey } from '../utils/teamCrypto';
+import { unwrapCollectionKey, decryptCollectionField, encryptCollectionField } from '../utils/collectionCrypto';
+import type { CollectionRole } from '../utils/backend';
 
 /** The connection fields sealed into a per-user or team blob (browser-crypto). */
 interface StoredRecord {
@@ -44,10 +46,27 @@ interface StoredRecord {
   sshKeepAliveInterval: number | null;
 }
 
-/** A decrypted connection kept in RAM: its record plus, if shared, its team. */
+/** A decrypted connection kept in RAM: its record plus, if shared, its scope. */
 interface Entry {
   record: StoredRecord;
-  teamId?: string; // present ⇒ team-shared (team key); absent ⇒ personal (userKey)
+  teamId?: string; // present ⇒ team-shared (team key)
+  collectionId?: string; // present ⇒ collection-shared (collection key, ADR 0016)
+}
+
+/** The unwrapped key + my role for a collection I can read (kept in RAM). */
+interface CollectionCtx {
+  key: Uint8Array;
+  role: CollectionRole;
+}
+
+/** The header a collection's `nameEnc` decrypts to (ADR 0016). */
+interface CollectionHeader {
+  name: string;
+  color: string | null;
+}
+
+function canWrite(role: CollectionRole): boolean {
+  return role === 'owner' || role === 'editor';
 }
 
 function encryptRecord(key: Uint8Array, record: StoredRecord): Promise<string> {
@@ -130,6 +149,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
   const [connections, setConnections] = useState<ConnectionInfo[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const entries = useRef<Map<string, Entry>>(new Map());
+  const collections = useRef<Map<string, CollectionCtx>>(new Map());
 
   const refresh = useCallback(async () => {
     if (!userKey) return;
@@ -175,6 +195,38 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       }
     }
 
+    // Collection-shared connections (ADR 0016): only collections I hold a sealed
+    // key for are readable. The collection's name/colour and its items are all
+    // browser-decrypted; the server only ever saw opaque blobs.
+    if (publicKey && privateKey) {
+      const cols = await Backend.Collections.mine()
+        .then((all) => all.filter((c) => c.protectedCollectionKey))
+        .catch(() => []);
+      const ctx = new Map<string, CollectionCtx>();
+      for (const col of cols) {
+        if (!col.protectedCollectionKey) continue;
+        try {
+          const key = await unwrapCollectionKey(publicKey, privateKey, col.protectedCollectionKey);
+          const header = await decryptCollectionField<CollectionHeader>(key, col.nameEnc).catch(
+            () => ({ name: 'Collection', color: null }) as CollectionHeader,
+          );
+          ctx.set(col.id, { key, role: col.role });
+          for (const it of await Backend.Collections.items(col.id)) {
+            try {
+              const record = await decryptCollectionField<StoredRecord>(key, it.blob);
+              map.set(it.id, { record, collectionId: col.id });
+              infos.push(toInfo(it.id, record, it.createdAt, it.updatedAt, header.name));
+            } catch {
+              // Undecryptable item — skip.
+            }
+          }
+        } catch {
+          // Collection key or items unavailable — skip this collection.
+        }
+      }
+      collections.current = ctx;
+    }
+
     entries.current = map;
     setConnections(infos);
   }, [userKey, publicKey, privateKey]);
@@ -199,7 +251,11 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     async (id: string) => {
       const entry = entries.current.get(id);
       if (!entry) return;
-      if (entry.teamId) {
+      if (entry.collectionId) {
+        const ctx = collections.current.get(entry.collectionId);
+        if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
+        await Backend.Collections.deleteItem(entry.collectionId, id);
+      } else if (entry.teamId) {
         await Backend.Teams.deleteConnection(entry.teamId, id);
       } else {
         await Backend.Vault.deleteConnection(id);
@@ -224,6 +280,14 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       if (!userKey) throw new Error('vault is locked');
       const entry = entries.current.get(input.id);
       if (!entry) throw new Error('connection is not available');
+      if (entry.collectionId) {
+        const ctx = collections.current.get(entry.collectionId);
+        if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
+        const blob = await encryptCollectionField(ctx.key, applyUpdate(entry.record, input));
+        await Backend.Collections.updateItem(entry.collectionId, input.id, blob);
+        await refresh();
+        return;
+      }
       if (entry.teamId) throw new Error('editing a team connection is not supported here yet');
       const blob = await encryptRecord(userKey, applyUpdate(entry.record, input));
       await Backend.Vault.updateConnection(input.id, blob);
