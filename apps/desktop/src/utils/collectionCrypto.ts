@@ -15,6 +15,11 @@ export function generateCollectionKey(): Uint8Array {
   return generateUserKey();
 }
 
+/** Seal the collection key to a raw X25519 public key (e.g. my own, on create). */
+export function sealCollectionKey(recipientPublic: Uint8Array, key: Uint8Array): Promise<string> {
+  return seal(recipientPublic, key);
+}
+
 /** Seal the collection key to a member whose public key is hex-encoded (directory). */
 export function sealCollectionKeyToHex(recipientPublicHex: string, key: Uint8Array): Promise<string> {
   return seal(hexToBytes(recipientPublicHex), key);

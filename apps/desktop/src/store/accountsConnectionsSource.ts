@@ -28,8 +28,8 @@ import { unwrapTeamKey } from '../utils/teamCrypto';
 import { unwrapCollectionKey, decryptCollectionField, encryptCollectionField } from '../utils/collectionCrypto';
 import type { CollectionRole } from '../utils/backend';
 
-/** The connection fields sealed into a per-user or team blob (browser-crypto). */
-interface StoredRecord {
+/** The connection fields sealed into a per-user, team or collection blob (browser-crypto). */
+export interface StoredRecord {
   name: string;
   protocol: string;
   hostname: string;
