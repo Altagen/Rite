@@ -7,10 +7,15 @@
 
 import { useState } from 'react';
 import { Backend } from '../utils/backend';
+import { type CreateConnectionInput } from '../store/connectionsStore';
 
 interface QuickSSHModalProps {
   onClose: () => void;
   onConnected: (sessionId: string, connectionInfo: QuickSSHConnectionInfo) => void;
+  // ADR 0016: shared collections the caller may save into. When present, the
+  // modal offers "save to collection" so a one-off connect can be kept.
+  collectionTargets?: { id: string; name: string }[];
+  onSaveToCollection?: (input: CreateConnectionInput) => Promise<void>;
 }
 
 type AuthType = 'password' | 'publicKey';
@@ -25,7 +30,7 @@ export interface QuickSSHConnectionInfo {
   passphrase?: string;
 }
 
-export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
+export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveToCollection }: QuickSSHModalProps) {
   const [host, setHost] = useState('');
   const [port, setPort] = useState(22);
   const [username, setUsername] = useState('');
@@ -33,6 +38,7 @@ export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
   const [password, setPassword] = useState('');
   const [keyPath, setKeyPath] = useState('');
   const [passphrase, setPassphrase] = useState('');
+  const [saveCollectionId, setSaveCollectionId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -67,6 +73,24 @@ export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
         keyPath: authType === 'publicKey' ? keyPath : undefined,
         passphrase: authType === 'publicKey' && passphrase ? passphrase : undefined,
       };
+
+      // Optionally persist this one-off into a shared collection (ADR 0016). Saving
+      // is best-effort — the session is already up; a save failure doesn't unwind it.
+      if (saveCollectionId && onSaveToCollection) {
+        try {
+          await onSaveToCollection({
+            name: `${username}@${host}`,
+            protocol: 'SSH',
+            hostname: host,
+            port,
+            username,
+            authMethod,
+            collectionId: saveCollectionId,
+          });
+        } catch (saveErr) {
+          console.error('[QuickSSH] Saved connection failed (session still open):', saveErr);
+        }
+      }
 
       onConnected(sessionId, connectionInfo);
       onClose();
@@ -241,6 +265,26 @@ export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
                 />
               </div>
             </>
+          )}
+
+          {/* Save to collection (ADR 0016) — optional */}
+          {collectionTargets && collectionTargets.length > 0 && (
+            <div>
+              <label className="mb-1 block text-sm font-medium">Save to collection (optional)</label>
+              <select
+                value={saveCollectionId}
+                onChange={(e) => setSaveCollectionId(e.target.value)}
+                className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                disabled={loading}
+              >
+                <option value="">Don't save — connect once</option>
+                {collectionTargets.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
           {/* Actions */}

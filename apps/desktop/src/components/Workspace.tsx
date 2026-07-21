@@ -878,13 +878,13 @@ export function Workspace({
     <div className="flex h-screen flex-col bg-background text-foreground">
       {/* Header */}
       <header className="border-b border-border bg-card">
-        <div className="flex items-center justify-between pl-2 pr-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-y-2 pl-2 pr-6 py-4">
           <div className="flex items-center gap-3">
             <img src={riteLandscape} alt="RITE" className="h-10 rounded-md" />
             <ContextPill />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {/* New Local Terminal - always visible */}
             <button
               onClick={() => handleNewLocalTerminal()}
@@ -894,7 +894,7 @@ export function Workspace({
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              <span>Local Terminal</span>
+              <span className="hidden md:inline">Local Terminal</span>
             </button>
 
             {/* Default Shell Selector */}
@@ -924,7 +924,7 @@ export function Workspace({
               title="Quick SSH Connect"
             >
               <span className="text-base">⚡</span>
-              <span>Quick SSH</span>
+              <span className="hidden md:inline">Quick SSH</span>
             </button>
 
             {/* Shell-provided actions (e.g. the org-admin surface entry). */}
@@ -940,7 +940,7 @@ export function Workspace({
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                 </svg>
-                <span>Unlock</span>
+                <span className="hidden md:inline">Unlock</span>
               </button>
             ) : (
               <>
@@ -962,7 +962,7 @@ export function Workspace({
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                   </svg>
-                  <span>{lockLabel}</span>
+                  <span className="hidden md:inline">{lockLabel}</span>
                 </button>
               </>
             )}
@@ -1313,6 +1313,8 @@ export function Workspace({
         <QuickSSHModal
           onClose={() => setShowQuickSSH(false)}
           onConnected={handleQuickSSHConnected}
+          collectionTargets={conns.writableCollections}
+          onSaveToCollection={conns.create}
         />
       )}
 
