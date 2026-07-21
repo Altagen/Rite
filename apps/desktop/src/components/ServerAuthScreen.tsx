@@ -38,6 +38,9 @@ export function ServerAuthScreen() {
       <div className="w-full max-w-md space-y-8 p-8">
         <div className="text-center">
           <h1 className="text-4xl font-bold">Rite</h1>
+          {mode?.instanceName && (
+            <p className="mt-1 text-lg font-medium text-primary">{mode.instanceName}</p>
+          )}
           <p className="mt-2 text-muted-foreground">
             {isBootstrap ? 'Create the server administrator' : 'Sign in to the server'}
           </p>

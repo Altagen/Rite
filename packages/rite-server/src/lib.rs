@@ -371,6 +371,7 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/users/{id}", delete(admin_delete_user))
         .route("/api/admin/users/{id}/status", patch(admin_set_status))
+        .route("/api/admin/instance", patch(set_instance_name))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
         // guard-gated to admin); team management is per-team authorized in-handler.
         .route(
@@ -405,7 +406,10 @@ pub fn build_router(state: ServerState) -> Router {
         // collection key; roles (owner/editor/viewer) gate manage vs write. The
         // server stores only opaque blobs (names + items encrypted).
         .route("/api/directory", get(directory_ep))
-        .route("/api/collections", get(my_collections).post(create_collection_ep))
+        .route(
+            "/api/collections",
+            get(my_collections).post(create_collection_ep),
+        )
         .route(
             "/api/collections/{id}",
             patch(update_collection_ep).delete(delete_collection_ep),
@@ -892,9 +896,31 @@ use rite_core::server_auth::{self, KdfParams, PreloginInfo, Role, User};
 /// first admin (bootstrap).
 async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
     let needs_bootstrap = state.accounts && !server_auth::has_any_user(state.db.pool()).await?;
-    Ok(Json(
-        json!({ "accounts": state.accounts, "needsBootstrap": needs_bootstrap }),
-    ))
+    // A global, admin-set instance name (e.g. the company/team) so users can tell
+    // which server they're on. Public so the login screen can show it too.
+    let instance_name = state.db.get_setting("instance_name").await?;
+    Ok(Json(json!({
+        "accounts": state.accounts,
+        "needsBootstrap": needs_bootstrap,
+        "instanceName": instance_name,
+    })))
+}
+
+#[derive(Deserialize)]
+struct InstanceNameReq {
+    name: String,
+}
+
+/// Set the global instance name (org-admin only; guard-gated by `/api/admin`).
+async fn set_instance_name(
+    State(state): State<ServerState>,
+    Json(req): Json<InstanceNameReq>,
+) -> Result<StatusCode, AppError> {
+    state
+        .db
+        .set_setting("instance_name", req.name.trim())
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize)]
@@ -1464,11 +1490,13 @@ async fn update_collection_ep(
         Some(r) if r.can_write() => {}
         _ => return Ok((StatusCode::FORBIDDEN, "need write access").into_response()),
     }
-    Ok(if coll::set_name_enc(state.db.pool(), &id, &req.name_enc).await? {
-        StatusCode::NO_CONTENT.into_response()
-    } else {
-        StatusCode::NOT_FOUND.into_response()
-    })
+    Ok(
+        if coll::set_name_enc(state.db.pool(), &id, &req.name_enc).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        },
+    )
 }
 
 async fn delete_collection_ep(
@@ -1552,13 +1580,19 @@ async fn set_collection_role_ep(
             == Some(coll::CollectionRole::Owner)
         && coll::count_owners(state.db.pool(), &id).await? <= 1
     {
-        return Ok((StatusCode::CONFLICT, "a collection needs at least one owner").into_response());
+        return Ok((
+            StatusCode::CONFLICT,
+            "a collection needs at least one owner",
+        )
+            .into_response());
     }
-    Ok(if coll::set_role(state.db.pool(), &id, &target, req.role).await? {
-        StatusCode::NO_CONTENT.into_response()
-    } else {
-        (StatusCode::NOT_FOUND, "not a member").into_response()
-    })
+    Ok(
+        if coll::set_role(state.db.pool(), &id, &target, req.role).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            (StatusCode::NOT_FOUND, "not a member").into_response()
+        },
+    )
 }
 
 async fn remove_collection_member_ep(
@@ -1570,7 +1604,7 @@ async fn remove_collection_member_ep(
     match coll_role(&state, &user, &id).await? {
         Some(r) if r.can_manage() || self_leave => {}
         Some(_) => {
-            return Ok((StatusCode::FORBIDDEN, "only an owner can remove members").into_response())
+            return Ok((StatusCode::FORBIDDEN, "only an owner can remove members").into_response());
         }
         None => return Ok((StatusCode::FORBIDDEN, "not a member").into_response()),
     }
@@ -1579,13 +1613,19 @@ async fn remove_collection_member_ep(
         == Some(coll::CollectionRole::Owner)
         && coll::count_owners(state.db.pool(), &id).await? <= 1
     {
-        return Ok((StatusCode::CONFLICT, "a collection needs at least one owner").into_response());
+        return Ok((
+            StatusCode::CONFLICT,
+            "a collection needs at least one owner",
+        )
+            .into_response());
     }
-    Ok(if coll::remove_member(state.db.pool(), &id, &target).await? {
-        StatusCode::NO_CONTENT.into_response()
-    } else {
-        StatusCode::NOT_FOUND.into_response()
-    })
+    Ok(
+        if coll::remove_member(state.db.pool(), &id, &target).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        },
+    )
 }
 
 async fn collection_items_ep(

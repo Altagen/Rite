@@ -9,9 +9,10 @@ import { useState } from 'react';
 import { AdminUsersPanel } from './AdminUsersPanel';
 import { TeamsPanel } from './TeamsPanel';
 import { TeamConnectionsPanel } from './TeamConnectionsPanel';
+import { InstanceSettingsPanel } from './InstanceSettingsPanel';
 
 export function AdminSurface({ onClose }: { onClose: () => void }) {
-  const [tab, setTab] = useState<'users' | 'teams' | 'connections'>('users');
+  const [tab, setTab] = useState<'users' | 'teams' | 'connections' | 'instance'>('users');
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
@@ -29,7 +30,7 @@ export function AdminSurface({ onClose }: { onClose: () => void }) {
       </header>
 
       <nav className="flex gap-1 border-b border-border bg-card px-6">
-        {(['users', 'teams', 'connections'] as const).map((t) => (
+        {(['users', 'teams', 'connections', 'instance'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -49,8 +50,10 @@ export function AdminSurface({ onClose }: { onClose: () => void }) {
           <AdminUsersPanel />
         ) : tab === 'teams' ? (
           <TeamsPanel />
-        ) : (
+        ) : tab === 'connections' ? (
           <TeamConnectionsPanel />
+        ) : (
+          <InstanceSettingsPanel />
         )}
       </main>
     </div>

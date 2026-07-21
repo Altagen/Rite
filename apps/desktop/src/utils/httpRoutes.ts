@@ -155,6 +155,14 @@ const routes: Record<string, Route> = {
     await json(`/api/admin/users/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
     return null;
   },
+  admin_set_instance: async (a) => {
+    await json('/api/admin/instance', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: a.name }),
+    });
+    return null;
+  },
 
   // Teams / RBAC (product-model) + team key sharing (ADR 0013).
   admin_list_teams: () => json('/api/admin/teams'),

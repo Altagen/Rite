@@ -23,6 +23,7 @@ import { CollectionEditDialog } from './CollectionEditDialog';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
 import { ImportSSHConfigModal } from './ImportSSHConfigModal';
+import { ImportSSHPasteModal } from './ImportSSHPasteModal';
 import { HostKeyModal, type HostKeyPrompt } from './HostKeyModal';
 import { ContextPill } from './ContextPill';
 import { transport } from '../utils/transport';
@@ -61,12 +62,16 @@ export function Workspace({
   auth,
   conns,
   headerExtra,
+  instanceName,
 }: {
   auth: WorkspaceAuth;
   conns: ConnectionsSource;
   // A shell-provided slot in the header's action cluster (e.g. the admin surface
   // entry for an org-admin). Context-agnostic: local shells pass nothing.
   headerExtra?: ReactNode;
+  // A global instance name (accounts context) shown by the brand so users can
+  // tell which server they're on. The browser has no context pill.
+  instanceName?: string | null;
 }) {
   const { isLocked, lock } = auth;
   const { t } = useTranslation();
@@ -83,6 +88,7 @@ export function Workspace({
   const [connectionToDelete, setConnectionToDelete] = useState<ConnectionInfo | null>(null);
   const [showCollectionsManager, setShowCollectionsManager] = useState(false);
   const [showImportSSH, setShowImportSSH] = useState(false);
+  const [importCollectionId, setImportCollectionId] = useState<string | null>(null);
   const [showNewMenu, setShowNewMenu] = useState(false);
 
   // Tab groups state - each tab has its own pane tree
@@ -881,6 +887,11 @@ export function Workspace({
         <div className="flex flex-wrap items-center justify-between gap-y-2 pl-2 pr-6 py-4">
           <div className="flex items-center gap-3">
             <img src={riteLandscape} alt="RITE" className="h-10 rounded-md" />
+            {instanceName && (
+              <span className="rounded-md border border-border bg-background px-2.5 py-1 text-sm font-semibold" title="Server instance">
+                {instanceName}
+              </span>
+            )}
             <ContextPill />
           </div>
 
@@ -1168,6 +1179,10 @@ export function Workspace({
                     setConnectionFormPrefill(null);
                     setShowForm(true);
                   }}
+                  onImport={() => {
+                    setImportCollectionId(openCollectionId);
+                    setShowImportSSH(true);
+                  }}
                   onOpenMembers={() => setMembersCollectionId(openCollectionId)}
                 />
               </div>
@@ -1329,16 +1344,34 @@ export function Workspace({
       )}
 
       {/* Import SSH Config Modal */}
-      {showImportSSH && (
-        <ImportSSHConfigModal
-          onClose={() => setShowImportSSH(false)}
-          onImported={(count) => {
-            fetchConnections();
-            setToastType('success');
-            setToastMessage(`Successfully imported ${count} connection${count !== 1 ? 's' : ''}`);
-          }}
-        />
-      )}
+      {showImportSSH &&
+        (isAccountsContext ? (
+          // Server context: no server-side file paths — paste the config, parse it
+          // in the browser, and import the chosen hosts into a collection (ADR 0016).
+          <ImportSSHPasteModal
+            collectionTargets={conns.writableCollections ?? []}
+            defaultCollectionId={importCollectionId}
+            create={conns.create}
+            onClose={() => {
+              setShowImportSSH(false);
+              setImportCollectionId(null);
+            }}
+            onImported={(count) => {
+              fetchConnections();
+              setToastType('success');
+              setToastMessage(`Imported ${count} machine${count !== 1 ? 's' : ''}`);
+            }}
+          />
+        ) : (
+          <ImportSSHConfigModal
+            onClose={() => setShowImportSSH(false)}
+            onImported={(count) => {
+              fetchConnections();
+              setToastType('success');
+              setToastMessage(`Successfully imported ${count} connection${count !== 1 ? 's' : ''}`);
+            }}
+          />
+        ))}
 
       {/* Unlock Modal (context-specific, provided by the shell) */}
       {showUnlockModal && (

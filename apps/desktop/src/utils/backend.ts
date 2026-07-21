@@ -331,7 +331,11 @@ export const BackendTerminal = {
  */
 // Server accounts (ADR 0010) — shared-server login/bootstrap/session.
 const KdfParamsSchema = z.object({ mem: z.number(), iter: z.number(), par: z.number() });
-const ServerModeSchema = z.object({ accounts: z.boolean(), needsBootstrap: z.boolean() });
+const ServerModeSchema = z.object({
+  accounts: z.boolean(),
+  needsBootstrap: z.boolean(),
+  instanceName: z.string().nullable().optional(),
+});
 const PreloginSchema = z.object({ salt: z.string(), params: KdfParamsSchema });
 const ServerUserSchema = z.object({
   id: z.string(),
@@ -419,6 +423,8 @@ export const BackendAdmin = {
   setStatus: (id: string, status: 'active' | 'disabled') =>
     invokeWithValidation('admin_set_status', z.null(), { id, status }),
   deleteUser: (id: string) => invokeWithValidation('admin_delete_user', z.null(), { id }),
+  /** Set the global instance name shown to every user (org-admin only). */
+  setInstanceName: (name: string) => invokeWithValidation('admin_set_instance', z.null(), { name }),
 } as const;
 
 // Context multiplexer (ADR 0012) — the native client's roster of contexts.

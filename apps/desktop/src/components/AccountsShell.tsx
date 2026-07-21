@@ -61,7 +61,7 @@ function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
 }
 
 export function AccountsShell() {
-  const { user, userKey, logout } = useServerSession();
+  const { user, userKey, logout, mode } = useServerSession();
   const conns = useAccountsConnectionsSource();
   const [showAdmin, setShowAdmin] = useState(false);
   const [showCollections, setShowCollections] = useState(false);
@@ -84,6 +84,7 @@ export function AccountsShell() {
           lockLabel: 'Sign out',
         }}
         conns={conns}
+        instanceName={mode?.instanceName}
         headerExtra={
           <>
             <button
