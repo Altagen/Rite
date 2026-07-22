@@ -63,11 +63,16 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
   own **nested sub-folders** (path names like `Web servers/EU`, part of its encrypted
   payload — recipients see the curated structure). Personal **organiser folders**
   (never shared, view-only) can group collections above them.
-- **Personal = a real 1-member collection** (auto-provisioned, sorted first) — not a
-  special case: it holds sub-folders, can be shared, renamed, etc. like any collection.
+- **Personal = a real 1-member collection** (auto-provisioned, sorted first). It holds
+  machines and nested folders like any collection, but it **can't be shared or deleted**
+  — its ⋯ menu is *Rename* only. To share, you create a **new** collection and add members.
 - **No loose machines**: a machine always lives in a collection. You can't nest a
   collection in a collection — inside a collection you create **folders**. Import
   `~/.ssh/config` targets a collection.
+- **Folder actions** depend on where the folder lives. ⋯ always = *Rename / Delete*. The
+  `+` on a folder **inside a collection** offers *New sub-folder / New connection*; on a
+  **root folder** (not in a collection) it offers *New sub-folder / New collection here*
+  — a root folder isn't owned by a collection, so it can hold one.
 - Folders/collections have **custom colours**; context icons can be **custom images
   (client-side only)**. Distinct icons: folder / collection (layers) / machine
   (server rack) — the ▶ play icon is the *connect* action, not an identity.
