@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rite · web UI mock</title>
+<link rel="stylesheet" href="rite.css">
+<style>
+  /* Shared tree / cards / menu bits (kept in sync with desktop mock) */
+  .side-hdr{display:flex;align-items:center;gap:4px;padding:4px 8px 6px 14px}
+  .tnode{display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+  .tnode:hover{background:var(--card2)} .tnode.sel{background:rgba(124,156,245,.13);border-color:rgba(124,156,245,.3)}
+  .tnode .ca{width:15px;opacity:.55;display:grid;place-items:center;flex:none}
+  .tnode .nm{flex:1;font-weight:550;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tnode.leaf .nm{font-weight:500}
+  .tnode .acts{display:flex;gap:0;opacity:0}.tnode:hover .acts{opacity:1}.tnode .acts .btn{padding:3px}
+  .mc{font-size:10px;font-weight:700;color:var(--purple);display:flex;align-items:center;gap:2px}
+  .avs{display:flex}.av{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:700;color:#0a0e1a;margin-left:-6px;border:2px solid var(--bg)}.av:first-child{margin-left:0}
+  .menu{position:fixed;background:var(--card);border:1px solid var(--border2);border-radius:11px;box-shadow:var(--shadow);padding:6px;z-index:60;min-width:200px}.menu .row{padding:8px 10px}
+  .chk{width:17px;height:17px;border:1.5px solid var(--border2);border-radius:5px;display:grid;place-items:center;flex:none}.chk.on{background:var(--accent);border-color:var(--accent);color:#0a0e1a}
+  .mrow{display:flex;align-items:center;gap:11px;padding:8px 6px;border-radius:8px;cursor:pointer}.mrow:hover{background:var(--card2)}
+  .settings-row{display:flex;align-items:center;justify-content:space-between;padding:12px 2px;border-bottom:1px solid var(--border)}
+  .toggle{width:40px;height:22px;border-radius:999px;background:var(--card2);border:1px solid var(--border2);position:relative;cursor:pointer}.toggle.on{background:var(--accent);border-color:var(--accent)}.toggle i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}.toggle.on i{left:20px}
+  .navtab{padding:8px 4px;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-weight:600;font-size:13px}.navtab.on{color:var(--fg);border-color:var(--accent)}
+  .mtab{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:9px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:550}
+  .mtab.on{background:var(--card);color:var(--fg);border:1px solid var(--border)}
+  .toolbar{display:flex;align-items:center;gap:10px;padding:4px 2px 12px;flex-wrap:wrap}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
+  .cards.list{grid-template-columns:1fr;gap:8px}
+  .ccard{border:1px solid var(--border);background:var(--card);border-radius:12px;padding:14px;cursor:pointer;transition:.13s;position:relative;min-width:0}
+  .ccard:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .cards.list .ccard{display:flex;align-items:center;gap:12px;padding:11px 14px;transform:none}
+  .ccard .h{display:flex;align-items:center;gap:9px;margin-bottom:8px}.cards.list .ccard .h{margin:0}
+  .ccard .nm{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ccard .tgt{font-size:12px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ccard .meta{font-size:11px;color:var(--muted);margin-top:8px;display:flex;gap:10px}.cards.list .ccard .meta{margin:0}
+  .sel-input{display:flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;color:var(--fg-dim);font-size:13px}
+  .sel-input select{background:none;border:none;color:var(--fg);outline:none;font-size:13px}
+  .swatches{display:flex;gap:9px;flex-wrap:wrap}
+  .sw{width:28px;height:28px;border-radius:9px;border:none;cursor:pointer;position:relative;transition:.1s}
+  .sw:hover{transform:scale(1.08)} .sw.sel{outline:2px solid var(--fg);outline-offset:2px}
+  .sw.sel::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;color:#0a0e1a;font-weight:800;font-size:13px}
+  .backdrop{z-index:120}.modal .body{max-height:72vh;overflow:auto}
+  textarea.inp{width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:9px;padding:10px 12px;color:var(--fg);font-family:var(--mono);font-size:13px;resize:vertical}
+  textarea.inp:focus{outline:none;border-color:var(--accent)}
+  .inst{display:flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--border2);border-radius:10px;background:var(--card);font-weight:650}
+  .inst .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+  .appbar{flex-wrap:wrap;row-gap:8px}#acts{flex-wrap:wrap;justify-content:flex-end}
+  @media (max-width:760px){ .lbl{display:none} .side{width:240px} }
+  @media (max-width:560px){ .side{position:absolute;z-index:20;height:100%;box-shadow:var(--shadow)} }
+</style>
+</head>
+<body>
+<div style="display:flex;flex-direction:column;height:100vh">
+  <div class="appbar">
+    <div class="brand"><span class="glyph">R</span></div>
+    <!-- Web UI identifies the server by its admin-set INSTANCE NAME (no context pill). -->
+    <div class="inst"><span class="dot"></span><span id="instName">Acme Corp</span> <span class="muted" style="font-weight:400;font-size:12px">· rite.acme.io</span></div>
+    <div class="spacer"></div>
+    <span id="acts" style="display:flex;gap:10px;align-items:center"></span>
+  </div>
+  <div style="flex:1;display:flex;min-height:0">
+    <div class="side" id="side" style="width:290px"></div>
+    <main style="flex:1;display:flex;flex-direction:column;min-width:0;padding:12px">
+      <div id="mtabs" style="display:flex;gap:8px;padding-bottom:10px"></div>
+      <div style="flex:1;min-height:0" id="mbody"></div>
+    </main>
+  </div>
+</div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>web UI</b> · one server (instance name, no pill) · admin console · machines live in collections</div>
+
+<script src="rite.js"></script>
+<script src="full-data.js"></script>
+<script>
+/* ================= web-UI mock =================
+   The browser talks to ONE Rite server. No context pill, no local vault, no
+   multi-window — the server is identified by its admin-set instance name. Admins
+   get a Users/Teams/Instance console. Machines always live in a collection
+   (no loose machines); import is paste-only (the server never sees a file path). */
+
+const M={
+  folder:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>',
+  coll:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"/></svg>',
+  machine:'<svg class="icon" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="6" rx="1.5"/><rect x="3" y="13" width="18" height="6" rx="1.5"/><path d="M6.5 8h.01M6.5 16h.01M17 8h1.5M17 16h1.5"/></svg>',
+  grid:'<svg class="icon" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
+  list:'<svg class="icon" viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>',
+  sort:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 6h12M3 12h9M3 18h6M17 8l3-3 3 3M20 5v14"/></svg>',
+  import:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"/></svg>',
+  signout:'<svg class="icon" viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 3H6a2 2 0 00-2 2v14a2 2 0 002 2h6"/></svg>',
+  edit:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>',
+};
+const SSH_HOSTS=[
+  {name:'gitlab',host:'gitlab.com',user:'git',port:22},
+  {name:'prod-bastion',host:'bastion.acme.io',user:'alex',port:22},
+  {name:'db1',host:'10.0.0.20',user:'dba',port:2222},
+];
+const avColor=u=>({alex:'#7c9cf5',carol:'#9ece6a',dan:'#e5b567',erin:'#bb9af7',frank:'#56c7c0'}[u]||'#888');
+const av=u=>`<span class="av" title="${u}" style="background:${avColor(u)}">${u[0].toUpperCase()}</span>`;
+
+/* Library: personal FOLDERS (never shared) hold COLLECTIONS (shareable) hold MACHINES.
+   A machine ALWAYS lives in a collection (personal = a 1-member collection). */
+const LIB=[
+ {id:'f-perso',type:'folder',color:'#7c9cf5',name:'Personal',open:true,children:[
+   {id:'c-home',type:'coll',color:'#9ece6a',name:'Home lab',shared:false,members:['alex'],roles:{alex:'owner'},open:false,conns:[
+      {name:'Homelab',host:'192.168.1.10',user:'alex',port:22,last:'2h ago'},
+      {name:'NAS',host:'nas.local',user:'admin',port:22,last:'1w ago'}]} ]},
+ {id:'f-acme',type:'folder',color:'#e5b567',name:'Acme',open:true,children:[
+   {id:'c-prod',type:'coll',color:'#f7768e',name:'Production',shared:true,members:['alex','carol','erin'],roles:{alex:'owner',carol:'editor',erin:'viewer'},open:true,conns:[
+      {name:'lb-01',host:'10.0.0.4',user:'deploy',port:22,last:'1h ago'}],children:[
+      {id:'cf-web',type:'folder',color:'#7c9cf5',name:'Web servers',open:true,conns:[
+         {name:'web-01',host:'10.0.0.5',user:'deploy',port:22,last:'5m ago'},
+         {name:'web-02',host:'10.0.0.6',user:'deploy',port:22,last:'12m ago'}]}]},
+   {id:'c-db',type:'coll',color:'#f0a35e',name:'Databases',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
+      {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,last:'1h ago'}]} ]},
+];
+function walk(list,fn){list.forEach(n=>{fn(n);if(n.children)walk(n.children,fn);});}
+function find(id){let r=null;walk(LIB,n=>{if(n.id===id)r=n;});return r;}
+function allColls(){const a=[];walk(LIB,n=>{if(n.type==='coll')a.push(n);});return a;}
+function collectMachines(node){let out=[...(node.conns||[])];(node.children||[]).forEach(c=>out=out.concat(collectMachines(c)));return out;}
+function underColl(id){let res=false;(function rec(list,inColl){for(const n of list){if(n.id===id){res=inColl;return;}if(n.children)rec(n.children,inColl||n.type==='coll');}})(LIB,false);return res;}
+
+const IS_ADMIN=true;
+let STATE={sideCollapsed:false,mainTab:'term',selColl:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',sessionPersistence:true,instanceName:'Acme Corp'};
+const SHELLS=[{name:'fish',icon:'🐠',installed:true},{name:'bash',icon:'🐚',installed:true},{name:'zsh',icon:'⚡',installed:true},{name:'sh',icon:'📜',installed:false}];
+
+/* ================= header actions (web) ================= */
+function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHELLS[0];
+  document.getElementById('instName').textContent=STATE.instanceName;
+  document.getElementById('acts').innerHTML=`
+    <button class="btn btn-primary btn-sm" title="New terminal on the server" onclick="toast('New terminal · ${sh.name}')">${ICON.plus} <span class="lbl">Terminal</span></button>
+    <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
+    <button class="btn btn-sm" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>
+    ${IS_ADMIN?`<button class="btn btn-ghost btn-sm" title="Administration" onclick="openAdmin()">${EXICON.shield}</button>`:''}
+    <button class="btn btn-ghost btn-sm" title="Settings" onclick="openSettings()">${EXICON.gear}</button>
+    <button class="btn btn-ghost btn-sm" title="Sign out" onclick="toast('Signed out')">${M.signout}</button>`;}
+function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on the server`);return;}STATE.defaultShell=s.name;renderActs();toast(`${s.name} set as default shell`);}})));}
+
+/* ================= sidebar library ================= */
+function renderSide(){const s=document.getElementById('side');
+  if(STATE.sideCollapsed){s.style.width='46px';s.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;padding-top:10px"><button class="btn btn-ghost btn-sm" title="Show library" onclick="STATE.sideCollapsed=false;renderAll()">${EXICON.panel}</button></div>`;return;}
+  s.style.width='290px';
+  s.innerHTML=`<div class="search">${EXICON.search}<input placeholder="Search connections…"></div>
+    <div class="side-hdr"><span class="eyebrow">Library</span>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto;padding:4px" title="New…" onclick="newMenu(event)">${ICON.plus}</button>
+      <button class="btn btn-ghost btn-sm" style="padding:4px" title="Hide panel" onclick="STATE.sideCollapsed=true;renderAll()">${EXICON.chevL}</button></div>
+    <div class="scroll" style="flex:1;padding:0 8px 12px">${tree(LIB,0)}</div>`;}
+function tree(list,depth){let h='';list.forEach(n=>{
+  const exp=n.open; h+=nodeRow(n,depth,exp);
+  if(exp){ if(n.children)h+=tree(n.children,depth+1); (n.conns||[]).forEach(cn=>h+=connRow(cn,depth+1)); }
+});return h;}
+function nodeRow(n,depth,exp){const isColl=n.type==='coll';
+  return `<div class="tnode ${STATE.selColl===n.id?'sel':''}" style="padding-left:${6+depth*15}px" onclick="${isColl?`openColl('${n.id}')`:`n_toggle('${n.id}')`}">
+    <span class="ca" onclick="event.stopPropagation();n_toggle('${n.id}')">${exp?EXICON.chevD:EXICON.chevR}</span>
+    <span style="color:${n.color||'var(--muted)'};display:grid;place-items:center">${isColl?M.coll:M.folder}</span>
+    <span class="nm">${n.name}</span>
+    ${isColl&&n.shared?`<span class="mc" title="${n.members.length} members">${EXICON.users}${STATE.showMemberCount?n.members.length:''}</span>`:''}
+    <span class="acts">${isColl
+      ?`<button class="btn btn-ghost" title="Add" onclick="event.stopPropagation();collAdd('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();collMore('${n.id}',event)">${EXICON.more}</button>`
+      :`<button class="btn btn-ghost" title="New here" onclick="event.stopPropagation();folderMenu('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();toast('Rename / delete “${n.name}”…')">${EXICON.more}</button>`}</span></div>`;}
+function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click to open')">
+    <span class="ca"></span><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
+    <span class="nm">${cn.name}</span>
+    <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();toast('▶ ${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="Edit" onclick="event.stopPropagation();dlgNewConn('',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button></span></div>`;}
+function n_toggle(id){const n=find(id);n.open=!n.open;renderSide();}
+function openColl(id){STATE.selColl=id;STATE.mainTab='coll';renderSide();renderMain();}
+
+/* ================= main: terminal + collection cards ================= */
+function renderMain(){
+  const mt=document.getElementById('mtabs'); const coll=STATE.selColl?find(STATE.selColl):null;
+  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term} Terminal</div>
+    ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
+    <div style="flex:1"></div>`;
+  const b=document.getElementById('mbody');
+  if(STATE.mainTab==='term'||!coll){ b.innerHTML=`<div style="height:100%">${termHTML(null)}</div>`; return; }
+  b.innerHTML=cardsView(coll);
+}
+function cardsView(coll){
+  const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
+  const card=cn=>`<div class="ccard" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click')">
+    <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span><span style="flex:1"></span>
+      <button class="btn btn-ghost btn-sm" title="Edit machine" style="padding:3px" onclick="event.stopPropagation();dlgNewConn('${coll.name}',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button>
+      <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();toast('▶ Connecting…')">${ICON.play}</button></div>
+    <div class="tgt">${cn.user}@${cn.host}:${cn.port}</div>
+    <div class="meta"><span>⏱ ${cn.last||'—'}</span><span>ssh</span></div></div>`;
+  const grid=list=>`<div class="cards ${STATE.layout}">${sortF(list).map(card).join('')}</div>`;
+  const secHead=(color,name,n)=>`<div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px"><span style="color:${color||'var(--muted)'};display:grid;place-items:center">${M.folder}</span><span class="eyebrow" style="color:var(--fg-dim)">${name}</span><span class="cnt">${n}</span></div>`;
+  const folders=coll.children||[];
+  const groups=folders.length
+    ? folders.map(f=>secHead(f.color,f.name,collectMachines(f).length)+grid(collectMachines(f))).join('')
+      + ((coll.conns||[]).length?secHead('var(--muted)','(root)',coll.conns.length)+grid(coll.conns):'')
+    : grid(coll.conns||[]);
+  return `<div style="height:100%;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:12px;padding-bottom:6px;flex-wrap:wrap">
+      <span style="color:${coll.color||'var(--purple)'}">${M.coll}</span><h2 style="font-size:18px">${coll.name}</h2>
+      ${coll.shared?`<div class="avs">${coll.members.slice(0,4).map(av).join('')}</div>${STATE.showMemberCount?`<span class="muted" style="font-size:12px">${coll.members.length} members</span>`:''}`:'<span class="tag" style="background:var(--card2);color:var(--muted);border:1px solid var(--border)">Personal</span>'}
+      <div style="flex:1"></div>
+      <button class="btn btn-sm" onclick="openMemberPicker('${coll.id}')">${EXICON.users} ${coll.shared?'Members':'Share'}</button></div>
+    <div class="toolbar">
+      <div class="search" style="margin:0;flex:1;max-width:240px">${EXICON.search}<input placeholder="Filter…"></div>
+      <div class="sel-input">${M.sort}<select onchange="STATE.sort=this.value;renderMain()"><option value="name" ${STATE.sort==='name'?'selected':''}>Name</option><option value="host" ${STATE.sort==='host'?'selected':''}>Host</option></select></div>
+      <button class="btn btn-ghost btn-sm" title="Grid" onclick="STATE.layout='grid';renderMain()" style="${STATE.layout==='grid'?'color:var(--accent)':''}">${M.grid}</button>
+      <button class="btn btn-ghost btn-sm" title="List" onclick="STATE.layout='list';renderMain()" style="${STATE.layout==='list'?'color:var(--accent)':''}">${M.list}</button>
+      <button class="btn btn-sm" title="Import from SSH config" onclick="dlgImportPaste('${coll.name}')">${M.import} Import</button>
+      <button class="btn btn-sm" title="New shared folder" onclick="dlgNewFolder('${coll.id}')">${M.folder} Folder</button>
+      <button class="btn btn-primary btn-sm" onclick="dlgNewConn('${coll.name}')">${ICON.plus} Machine</button></div>
+    <div class="scroll" style="flex:1">${groups}</div></div>`;}
+
+/* ================= create menus ================= */
+function floatMenu(e,items){document.querySelectorAll('.menu').forEach(m=>m.remove());const m=document.createElement('div');m.className='menu';
+  m.innerHTML=items.map((it,i)=>`<div class="row" data-i="${i}">${it.icon||''}<div class="grow"><div class="title" style="font-size:13px;font-weight:550">${it.label}</div></div></div>`).join('');
+  document.body.appendChild(m);m.style.left=Math.min(e.clientX,innerWidth-220)+'px';m.style.top=Math.min(e.clientY,innerHeight-14-items.length*38)+'px';
+  m.querySelectorAll('.row').forEach((r,i)=>r.onclick=()=>{m.remove();items[i].onclick();});
+  setTimeout(()=>document.addEventListener('click',function h(){m.remove();document.removeEventListener('click',h);}),0);}
+// Library + = New folder / New collection (machines are created INSIDE a collection).
+function newMenu(e){e.stopPropagation();floatMenu(e,[
+  {icon:M.folder,label:'New folder',onclick:()=>dlgNewFolder(null)},
+  {icon:M.coll,label:'New collection',onclick:()=>openMemberPicker(null,true)}]);}
+function collAdd(id,e){const c=find(id);floatMenu(e,[
+  {icon:ICON.play,label:`New machine in “${c.name}”`,onclick:()=>dlgNewConn(c.name)},
+  {icon:M.folder,label:'New folder (shared with the collection)',onclick:()=>dlgNewFolder(id)},
+  {icon:M.import,label:'Import from ~/.ssh/config…',onclick:()=>dlgImportPaste(c.name)}]);}
+function folderMenu(id,e){const f=find(id);floatMenu(e,[
+  {icon:M.folder,label:`New sub-folder in “${f.name}”`,onclick:()=>dlgNewFolder(id)},
+  {icon:M.coll,label:'New collection',onclick:()=>openMemberPicker(null,true)}]);}
+function collMore(id,e){const c=find(id);floatMenu(e,[
+  {icon:EXICON.users,label:'Members & sharing…',onclick:()=>openMemberPicker(id)},
+  {icon:M.coll,label:'Rename…',onclick:()=>toast(`Rename “${c.name}”…`)},
+  {icon:EXICON.trash,label:'Delete collection',onclick:()=>toast(`Delete “${c.name}”…`)}]);}
+
+/* ================= colour + dialogs ================= */
+const COLORS=['#7c9cf5','#9ece6a','#e5b567','#f0a35e','#f7768e','#bb9af7','#56c7c0','#8b93a7'];
+let __pickColor=COLORS[0];
+function swatchRow(initial){__pickColor=initial||COLORS[0];
+  return `<label class="field"><span>Colour</span><div class="swatches">${COLORS.map(c=>`<button type="button" class="sw ${c===__pickColor?'sel':''}" style="background:${c}" onclick="pickColor(this,'${c}')"></button>`).join('')}</div></label>`;}
+function pickColor(el,c){__pickColor=c;el.parentNode.querySelectorAll('.sw').forEach(s=>s.classList.remove('sel'));el.classList.add('sel');}
+function dlgNewFolder(parentId){const parent=parentId?find(parentId):null;
+  const shared=!!parent&&(parent.type==='coll'||underColl(parentId));
+  showModal({title:shared?'New folder in collection':'New folder',
+    subtitle:parent?`inside “${parent.name}”${shared?' · shared with the collection':''}`:'Your personal organiser — colour it to spot it fast.',confirm:'Create',
+    body:`<label class="field"><span>Name</span><input class="inp" id="fname" placeholder="${shared?'e.g. Web servers':'e.g. Client Beta'}"></label>${swatchRow(COLORS[0])}
+      ${shared?`<p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.users} Part of the collection — everyone who has it sees this folder.</p>`:''}`,
+    onConfirm:(m)=>{const name=(m.querySelector('#fname').value||'').trim()||'New folder';
+      const node={id:'f-'+Math.random().toString(36).slice(2,7),type:'folder',color:__pickColor,name,open:true,children:[],conns:[]};
+      if(parent){if(!parent.children)parent.children=[];parent.open=true;parent.children.unshift(node);}else LIB.unshift(node);
+      renderSide();renderMain();toast(`Folder <span class="accent">${name}</span> created`);}});}
+function ncAuth(v){const pw=document.getElementById('nc-pw'),k=document.getElementById('nc-key');if(pw&&k){pw.style.display=v==='publicKey'?'none':'';k.style.display=v==='publicKey'?'':'none';}}
+function dlgNewConn(collName,existing){const e=existing||{};const auth=e.authType||'password';
+  showModal({title:existing?'Edit machine':'New machine',subtitle:collName?('in “'+collName+'”'):'',wide:true,confirm:'Save',
+  body:`<label class="field"><span>Name</span><input class="inp" id="nc-name" value="${e.name||''}" placeholder="Prod web"></label>
+    <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>Protocol</span><select class="inp"><option>SSH</option><option ${e.protocol==='SFTP'?'selected':''}>SFTP</option></select></label>
+      <label class="field" style="flex:2"><span>Host</span><input class="inp" value="${e.host||''}" placeholder="10.0.0.5"></label>
+      <label class="field" style="flex:1"><span>Port</span><input class="inp" value="${e.port||22}"></label></div>
+    <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>User</span><input class="inp" value="${e.user||''}" placeholder="deploy"></label>
+      <label class="field" style="flex:1"><span>Authentication</span><select class="inp" id="nc-auth" onchange="ncAuth(this.value)"><option value="password" ${auth!=='publicKey'?'selected':''}>Password</option><option value="publicKey" ${auth==='publicKey'?'selected':''}>Public key</option></select></label></div>
+    <div id="nc-pw" style="${auth==='publicKey'?'display:none':''}"><label class="field"><span>Password</span><input class="inp" type="password" placeholder="${existing?'••••••••':'password'}"></label></div>
+    <div id="nc-key" style="${auth==='publicKey'?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519"></label></div>
+    ${swatchRow(e.color||'#56c7c0')}
+    <div style="display:flex;gap:10px;align-items:flex-end"><label class="field" style="flex:1"><span>Keep-alive</span><select class="inp" onchange="this.closest('.body').querySelector('#nc-kai').style.display=this.value==='on'?'':'none'"><option value="off">Disabled</option><option value="on">Enabled</option></select></label>
+      <label class="field" id="nc-kai" style="flex:1;display:none"><span>Interval (s)</span><input class="inp" value="30"></label></div>
+    <label class="field"><span>Notes</span><textarea class="inp" rows="2" placeholder="Optional notes…">${e.notes||''}</textarea></label>
+    <label class="field"><span>Collection</span><select class="inp" id="nc-coll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
+    ${(()=>{const c=allColls().find(x=>x.name===collName);return c&&c.shared?`<p class="muted" style="font-size:12px;margin:6px 0 0">${EXICON.users} Shared collection — saving re-encrypts for all ${c.members.length} members (needs write access · RBAC).</p>`:'';})()}`,
+  onConfirm:(m)=>{const nm=(m.querySelector('#nc-name').value||'').trim()||'machine';
+    if(existing){existing.name=nm;renderAll();toast('Machine updated');}
+    else{const cn=allColls().find(c=>c.name===m.querySelector('#nc-coll').value);if(cn){if(!cn.conns)cn.conns=[];cn.conns.push({name:nm,host:'0.0.0.0',user:'user',port:22,color:__pickColor,last:'just now'});}renderAll();toast(`Machine saved to ${m.querySelector('#nc-coll').value}`);}}});}
+function dlgQuickSSHWeb(){showModal({title:'⚡ Quick SSH',subtitle:'Connect once — save it to a collection to keep it.',wide:true,confirm:'Connect',
+  body:`<label class="field"><span>Host</span><input class="inp" placeholder="user@host  or  host"></label>
+    <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>Port</span><input class="inp" value="22"></label><label class="field" style="flex:2"><span>Password</span><input class="inp" type="password" placeholder="••••••"></label></div>
+    <label class="field"><span>Save to collection (optional)</span><select class="inp"><option value="">Don't save — connect once</option>${allColls().map(c=>`<option>${c.name}</option>`).join('')}</select></label>`,
+  onConfirm:(m)=>{const into=m.querySelector('select').value;toast(into?`Connected · saved to <span class="accent">${into}</span>`:'Opening SSH session…');}});}
+
+/* Import is PASTE-only in the web UI — the server never sees a file path. */
+function dlgImportPaste(collName){
+  showModal({title:'Import from SSH config',subtitle:'Paste your config — parsed in your browser, never uploaded.',wide:true,confirm:'Import',
+    body:`<label class="field"><span>Paste ~/.ssh/config</span><textarea class="inp" id="imp-text" rows="6" placeholder="Host prod&#10;  HostName 10.0.0.5&#10;  User deploy&#10;  Port 22"></textarea></label>
+      <div class="eyebrow" style="margin:4px 0 6px">Detected hosts (example)</div>
+      <div class="scroll" style="max-height:170px;overflow:auto">${SSH_HOSTS.map(h=>`<label class="mrow" style="cursor:pointer" onclick="const c=this.querySelector('.chk');c.classList.toggle('on');c.textContent=c.classList.contains('on')?'✓':''"><span class="chk on">✓</span><span style="color:var(--teal);display:grid;place-items:center">${M.machine}</span><div class="grow"><div class="title">${h.name}</div><div class="sub">${h.user}@${h.host}:${h.port}</div></div></label>`).join('')}</div>
+      <label class="field" style="margin-top:8px"><span>Into collection</span><select class="inp" id="imp-coll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
+      <p class="muted" style="font-size:12px;margin:9px 0 0">${EXICON.key} Selected hosts become machines in the collection, encrypted with the collection key. No file is sent to the server.</p>`,
+    onConfirm:(m)=>{const n=m.querySelectorAll('.chk.on').length,into=m.querySelector('#imp-coll').value;toast(`Imported <span class="accent">${n}</span> machine${n>1?'s':''} into ${into}`);}});}
+
+/* ================= member picker ================= */
+function roleSel(u,role,locked){return `<select class="inp" style="width:auto;padding:4px 7px;font-size:12px" ${locked?'disabled title="the collection needs at least one owner"':''} onclick="event.stopPropagation()" onchange="event.stopPropagation();mpRole('${u}',this.value)">
+  ${['owner','editor','viewer'].map(r=>`<option value="${r}" ${r===role?'selected':''}>${r[0].toUpperCase()+r.slice(1)}</option>`).join('')}</select>`;}
+function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',members:[ORG.me]};const chosen=new Set(coll.members);
+  const roles=Object.assign({},coll.roles||{});chosen.forEach(u=>{if(!roles[u])roles[u]=u===ORG.me?'owner':'viewer';});if(!roles[ORG.me])roles[ORG.me]='owner';
+  const body=`${isNew?`<label class="field"><span>Name</span><input class="inp" placeholder="e.g. Production DBs"></label>${swatchRow(COLORS[4])}`:''}
+    <div style="display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap"><span class="muted" style="font-size:12px">Add from team:</span>
+      ${ORG.teams.map(t=>`<span class="chip" style="cursor:pointer" onclick="mpTeam('${t.name}')">${EXICON.users} ${t.name} <span class="muted">${t.members.length}</span></span>`).join('')}</div>
+    <div class="search" style="margin:0 0 8px">${EXICON.search}<input id="mpsearch" placeholder="Search people…" oninput="mpRender()"></div>
+    <div id="mplist" class="scroll" style="max-height:230px;overflow:auto"></div>
+    <p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.key} <b style="color:var(--fg-dim)">Owner</b> manages sharing · <b style="color:var(--fg-dim)">Editor</b> adds/edits machines · <b style="color:var(--fg-dim)">Viewer</b> can only connect.</p>`;
+  const bd=showModal({title:isNew?'New collection':`Share · ${coll.name}`,subtitle:`${chosen.size} member${chosen.size>1?'s':''}`,wide:true,body,confirm:isNew?'Create':'Save',
+    onConfirm:()=>{if(isNew){const name=(bd.querySelector('input')?.value||'').trim()||'New collection';
+        LIB.unshift({id:'c-'+Math.random().toString(36).slice(2,7),type:'coll',color:__pickColor,name,shared:chosen.size>1,members:[...chosen],roles:{...roles},open:false,conns:[]});
+        renderSide();toast(`Collection <span class="accent">${name}</span> created · ${chosen.size} member${chosen.size>1?'s':''}`);}
+      else{coll.members=[...chosen];coll.roles={...roles};renderSide();renderMain();toast('Sharing updated');}}});
+  window.__mp={bd,chosen,roles};mpRender();}
+function mpTeam(name){const t=ORG.teams.find(x=>x.name===name);t.members.forEach(u=>{window.__mp.chosen.add(u);if(!window.__mp.roles[u])window.__mp.roles[u]='viewer';});toast(`Added ${t.members.length} from <span class="accent">${name}</span>`);mpRender();}
+function mpRender(){const {bd,chosen,roles}=window.__mp,q=(bd.querySelector('#mpsearch')?.value||'').toLowerCase();
+  const owners=[...chosen].filter(u=>roles[u]==='owner');
+  bd.querySelector('#mplist').innerHTML=ORG.users.filter(u=>u.label.toLowerCase().includes(q)).map(u=>{const on=chosen.has(u.u),me=u.u===ORG.me;const lockOwner=roles[u.u]==='owner'&&owners.length<2;
+    return `<div class="mrow" onclick="${me?'':`mpToggle('${u.u}')`}"><span class="chk ${on?'on':''}">${on?'✓':''}</span>${av(u.u)}<div class="grow"><div class="title">${u.label}${roles[u.u]==='owner'?' <span title="owner">👑</span>':''}</div><div class="sub">${u.role}${me?' · you':''}</div></div>${on?roleSel(u.u,roles[u.u]||'viewer',lockOwner):''}</div>`;}).join('');
+  const p=bd.querySelector('header p');if(p)p.textContent=`${chosen.size} member${chosen.size>1?'s':''} · ${owners.length} owner${owners.length>1?'s':''}`;}
+function mpToggle(u){const s=window.__mp.chosen,r=window.__mp.roles;if(s.has(u)){s.delete(u);delete r[u];}else{s.add(u);r[u]='viewer';}mpRender();}
+function mpRole(u,role){window.__mp.roles[u]=role;mpRender();}
+
+/* ================= settings + admin (web) ================= */
+function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',body:`
+  <div class="settings-row"><div><b>Interface language</b><div class="muted" style="font-size:12px">English / Français</div></div><select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select></div>
+  <div class="settings-row"><div><b>Theme</b><div class="muted" style="font-size:12px">Dark / light</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
+  <div class="settings-row"><div><b>Auto-clear clipboard</b><div class="muted" style="font-size:12px">Clear 30s after a copy (security)</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
+  <div class="settings-row"><div><b>Default shell</b><div class="muted" style="font-size:12px">New server terminals (also in the toolbar)</div></div><select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name}${s.installed?'':' (not installed)'}</option>`).join('')}</select></div>
+  <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
+  <div class="settings-row" style="border:none"><div><b>Show member count on collections</b><div class="muted" style="font-size:12px">The number next to shared collections</div></div><div class="toggle ${STATE.showMemberCount?'on':''}" onclick="this.classList.toggle('on');STATE.showMemberCount=this.classList.contains('on');renderAll()"><i></i></div></div>`});}
+function openAdmin(){const bd=showModal({title:'Administration',wide:true,confirm:'Close',body:`<div style="display:flex;gap:16px;border-bottom:1px solid var(--border);margin-bottom:12px"><div class="navtab on" onclick="adminTab(this,'users')">Users</div><div class="navtab" onclick="adminTab(this,'teams')">Teams</div><div class="navtab" onclick="adminTab(this,'instance')">Instance</div></div><div id="admbody"></div>`});window.__adm=bd;adminRender('users');}
+function adminTab(el,t){el.parentNode.querySelectorAll('.navtab').forEach(x=>x.classList.remove('on'));el.classList.add('on');adminRender(t);}
+function adminRender(t){const b=window.__adm.querySelector('#admbody');
+  if(t==='users')b.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><input class="inp" placeholder="New username"><input class="inp" type="password" placeholder="Temp password" style="max-width:150px"><button class="btn btn-primary btn-sm">Add user</button></div>${ORG.users.map(u=>`<div class="mrow">${av(u.u)}<div class="grow"><div class="title">${u.label}</div></div><span class="tag ${u.role==='admin'?'server':'unlocked'}">${u.role}</span></div>`).join('')}`;
+  else if(t==='teams')b.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><input class="inp" placeholder="New team name"><button class="btn btn-primary btn-sm">Create team</button></div>${ORG.teams.map(tm=>`<div class="mrow"><span style="color:var(--accent)">${EXICON.users}</span><div class="grow"><div class="title">${tm.name}</div><div class="sub">${tm.members.join(', ')}</div></div><div class="avs">${tm.members.map(av).join('')}</div><button class="btn btn-ghost btn-sm" onclick="toast('Team key granted')">${EXICON.key} Grant</button></div>`).join('')}`;
+  else b.innerHTML=`
+    <div class="field"><span>Instance name</span><div style="display:flex;gap:8px"><input class="inp" id="adm-inst" value="${STATE.instanceName}"><button class="btn btn-primary btn-sm" onclick="STATE.instanceName=(document.getElementById('adm-inst').value||'').trim()||STATE.instanceName;renderActs();toast('Instance name saved')">Save</button></div>
+      <p class="muted" style="font-size:12px;margin:6px 0 0">Shown on the sign-in screen and in the header so users can tell instances apart.</p></div>
+    <div class="settings-row" style="margin-top:12px"><div><b>Keep users signed in across reloads</b><div class="muted" style="font-size:12px">Stores each user's vault key in their browser session (still zero-knowledge — cleared when the tab closes). Off = re-login on every reload.</div></div><div class="toggle ${STATE.sessionPersistence?'on':''}" onclick="this.classList.toggle('on');STATE.sessionPersistence=this.classList.contains('on');toast('Session persistence '+(STATE.sessionPersistence?'on':'off'))"><i></i></div></div>`;}
+
+/* ================= wire ================= */
+function renderAll(){renderActs();renderSide();renderMain();}
+renderAll();
+</script>
+</body>
+</html>
