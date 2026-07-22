@@ -200,8 +200,9 @@ export function CollectionView({
 
   return (
     <div className="flex h-full flex-col p-3">
-      {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 pb-2">
+      {/* Header — fixed min-height so the toolbar sits at the same place whether or
+          not the right-hand Members button is present (e.g. the Personal view). */}
+      <div className="flex min-h-[38px] flex-wrap items-center gap-3 pb-2">
         <CollectionIcon color={color} />
         <h2 className="text-lg font-semibold">{name}</h2>
         {isPersonal ? (
@@ -315,18 +316,26 @@ export function CollectionView({
         )}
       </div>
 
-      {/* Machines */}
+      {/* Machines. Declared (possibly empty) folders always show as sections so a
+          just-created folder is visible and navigable — except while filtering,
+          where an empty result shows the "no match" note instead. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {shown.length === 0 ? (
+        {shown.length === 0 && (filter.trim() !== '' || groups.folders.length === 0) ? (
           <div className="py-10 text-center text-sm text-muted-foreground">
-            {machines.length === 0 ? 'No machines in this collection yet.' : 'No machines match your filter.'}
+            {filter.trim() === '' ? 'No machines in this collection yet.' : 'No machines match your filter.'}
           </div>
         ) : groups.folders.length > 0 ? (
           <>
             {groups.folders.map((f) => (
-              <div key={f}>
+              <div key={f} className="mb-1">
                 {sectionHead(f, groups.map.get(f)!.length, f)}
-                {grid(groups.map.get(f)!)}
+                {groups.map.get(f)!.length > 0 ? (
+                  grid(groups.map.get(f)!)
+                ) : (
+                  <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
+                    Empty folder
+                  </div>
+                )}
               </div>
             ))}
             {groups.root.length > 0 && (
