@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Rite · mock</title>
+<title>Rite · desktop mock</title>
 <link rel="stylesheet" href="rite.css">
 <style>
   #ctxmenu{position:absolute;left:0;top:calc(100% + 8px);width:320px;background:var(--card);border:1px solid var(--border2);border-radius:14px;box-shadow:var(--shadow);padding:8px;display:none;z-index:40}#ctxmenu.show{display:block}
@@ -88,7 +88,7 @@
     </main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · mock unique · pastille en haut · dossiers perso + collections (partage) · <a href="#" onclick="openHostKey();return false">host-key</a></div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a></div>
 
 <script src="rite.js"></script>
 <script src="full-data.js"></script>
@@ -476,7 +476,7 @@ function dlgQuickSSH(){showModal({title:'⚡ Quick SSH',subtitle:'Connect once �
 function roleSel(u,role,locked){return `<select class="inp" style="width:auto;padding:4px 7px;font-size:12px" ${locked?'disabled title="the collection needs at least one owner"':''} onclick="event.stopPropagation()" onchange="event.stopPropagation();mpRole('${u}',this.value)">
   ${['owner','editor','viewer'].map(r=>`<option value="${r}" ${r===role?'selected':''}>${r[0].toUpperCase()+r.slice(1)}</option>`).join('')}</select>`;}
 function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',members:[ORG.me]};const chosen=new Set(coll.members);
-  const roles=Object.assign({},coll.roles||{});chosen.forEach(u=>{if(!roles[u])roles[u]=u===ORG.me?'owner':'editor';});if(!roles[ORG.me])roles[ORG.me]='owner';
+  const roles=Object.assign({},coll.roles||{});chosen.forEach(u=>{if(!roles[u])roles[u]=u===ORG.me?'owner':'viewer';});if(!roles[ORG.me])roles[ORG.me]='owner';
   const folders=[];walk(LIB,n=>{if(n.type==='folder')folders.push(n.name);});
   const body=`${isNew?`<label class="field"><span>Name</span><input class="inp" placeholder="e.g. Production DBs"></label>${swatchRow(COLORS[4])}`:''}
     <div style="display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap"><span class="muted" style="font-size:12px">Add from team:</span>
@@ -491,13 +491,13 @@ function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',
         renderSide();toast(`Collection <span class="accent">${name}</span> created · ${chosen.size} member${chosen.size>1?'s':''}`);}
       else{coll.members=[...chosen];coll.roles={...roles};renderSide();renderMain();toast('Sharing updated');}}});
   window.__mp={bd,chosen,roles};mpRender();}
-function mpTeam(name){const t=ORG.teams.find(x=>x.name===name);t.members.forEach(u=>{window.__mp.chosen.add(u);if(!window.__mp.roles[u])window.__mp.roles[u]='editor';});toast(`Added ${t.members.length} from <span class="accent">${name}</span>`);mpRender();}
+function mpTeam(name){const t=ORG.teams.find(x=>x.name===name);t.members.forEach(u=>{window.__mp.chosen.add(u);if(!window.__mp.roles[u])window.__mp.roles[u]='viewer';});toast(`Added ${t.members.length} from <span class="accent">${name}</span>`);mpRender();}
 function mpRender(){const {bd,chosen,roles}=window.__mp,q=(bd.querySelector('#mpsearch')?.value||'').toLowerCase();
   const owners=[...chosen].filter(u=>roles[u]==='owner');
   bd.querySelector('#mplist').innerHTML=ORG.users.filter(u=>u.label.toLowerCase().includes(q)).map(u=>{const on=chosen.has(u.u),me=u.u===ORG.me;const lockOwner=roles[u.u]==='owner'&&owners.length<2;
-    return `<div class="mrow" onclick="${me?'':`mpToggle('${u.u}')`}"><span class="chk ${on?'on':''}">${on?'✓':''}</span>${av(u.u)}<div class="grow"><div class="title">${u.label}${roles[u.u]==='owner'?' <span title="owner">👑</span>':''}</div><div class="sub">${u.role}${me?' · you':''}</div></div>${on?roleSel(u.u,roles[u.u]||'editor',lockOwner):''}</div>`;}).join('');
+    return `<div class="mrow" onclick="${me?'':`mpToggle('${u.u}')`}"><span class="chk ${on?'on':''}">${on?'✓':''}</span>${av(u.u)}<div class="grow"><div class="title">${u.label}${roles[u.u]==='owner'?' <span title="owner">👑</span>':''}</div><div class="sub">${u.role}${me?' · you':''}</div></div>${on?roleSel(u.u,roles[u.u]||'viewer',lockOwner):''}</div>`;}).join('');
   const p=bd.querySelector('header p');if(p)p.textContent=`${chosen.size} member${chosen.size>1?'s':''} · ${owners.length} owner${owners.length>1?'s':''}`;}
-function mpToggle(u){const s=window.__mp.chosen,r=window.__mp.roles;if(s.has(u)){s.delete(u);delete r[u];}else{s.add(u);r[u]='editor';}mpRender();}
+function mpToggle(u){const s=window.__mp.chosen,r=window.__mp.roles;if(s.has(u)){s.delete(u);delete r[u];}else{s.add(u);r[u]='viewer';}mpRender();}
 function mpRole(u,role){window.__mp.roles[u]=role;mpRender();}
 
 /* ================= admin / settings / host-key ================= */

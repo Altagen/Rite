@@ -13,10 +13,10 @@ prototype is split per shell (shared CSS/JS/data, one HTML entry each):
   server is identified by its admin-set **instance name**. Adds the **admin console**
   (Users / Teams / Instance) and the session-persistence setting. No local vault,
   no multi-window. Import is **paste-only** (the server never sees a file path).
-- **`mock.html`** — the **desktop/binary** vision (will be renamed `desktop.html`).
-  Multi-context: a **context pill** switches between local **vault(s)** and
-  **server(s)**; master-password/lock, multi-window, native local terminals. When
-  it opens a server context it shows the same server UX as the web.
+- **`desktop.html`** — the **desktop/binary** shell. Multi-context: a **context
+  pill** switches between local **vault(s)** and **server(s)**; master-password/lock,
+  multi-window, native local terminals. When it opens a server context it shows the
+  same server UX as the web.
 
 Both share the core model: personal **folders** → **collections** (the shareable
 unit) → **machines**, and **no loose machines** (a machine always lives in a
@@ -28,7 +28,7 @@ Open either directly in a browser (no build, no server):
 
 ```
 xdg-open design/mock/web.html       # the web UI
-xdg-open design/mock/mock.html      # the desktop vision
+xdg-open design/mock/desktop.html   # the desktop shell
 ```
 
 Everything is mock (no real backend) — clicks toast, dialogs are illustrative,
@@ -47,7 +47,7 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
 
 ## Files
 - `web.html` — the web-UI prototype (markup + inline logic).
-- `mock.html` — the desktop prototype (→ `desktop.html`).
+- `desktop.html` — the desktop-shell prototype.
 - `rite.css` — shared design tokens + components (dark, terminal-forward).
 - `rite.js` — shared helpers (toast, modal, mini-terminal) + generic dialogs.
 - `full-data.js` — mock data (org directory, teams, collections) + extra icons.
