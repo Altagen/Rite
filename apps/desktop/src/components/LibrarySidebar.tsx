@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { PERSONAL_COLLECTION_ID } from '../store/accountsConnectionsSource';
-import { IconPlay, IconMore, IconEdit, IconUsers } from './icons';
+import { IconPlay, IconEdit, IconUsers, IconTrash, IconFolder, IconImport } from './icons';
 
 interface LibrarySidebarProps {
   connections: ConnectionInfo[];
@@ -41,6 +41,8 @@ interface LibrarySidebarProps {
   // Collection node actions (accounts context). Rename/Delete are owner-only,
   // gated by the caller; the sidebar shows them only when a handler is provided.
   onNewMachineInCollection?: (collectionId: string) => void;
+  onNewFolderInCollection?: (collectionId: string) => void;
+  onImportToCollection?: (collectionId: string) => void;
   onOpenMembers?: (collectionId: string) => void;
   onRenameCollection?: (collectionId: string, name: string, color: string | null) => void;
   onDeleteCollection?: (collectionId: string, name: string) => void;
@@ -138,6 +140,8 @@ function CollectionNode({
   onOpen,
   onToggle,
   onNewMachine,
+  onNewFolder,
+  onImport,
   onOpenMembers,
   onRename,
   onDelete,
@@ -157,6 +161,8 @@ function CollectionNode({
   onOpen: () => void;
   onToggle: () => void;
   onNewMachine?: (id: string) => void;
+  onNewFolder?: (id: string) => void;
+  onImport?: (id: string) => void;
   onOpenMembers?: (id: string) => void;
   onRename?: (id: string) => void;
   onDelete?: (id: string) => void;
@@ -164,6 +170,7 @@ function CollectionNode({
   isPersonal?: boolean; // the synthetic vault-backed "Personal" — not shareable
   children: React.ReactNode;
 }) {
+  const [showAdd, setShowAdd] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const canWrite = role === 'owner' || role === 'editor';
   const canManage = role === 'owner';
@@ -191,18 +198,43 @@ function CollectionNode({
             {memberCount}
           </span>
         )}
-        <div className="m-acts" style={showMenu ? { opacity: 1 } : undefined}>
+        <div className="m-acts" style={showMenu || showAdd ? { opacity: 1 } : undefined}>
           {canWrite && onNewMachine && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onNewMachine(cid);
-              }}
-              title="New machine here"
-              aria-label="New machine in collection"
-            >
-              <PlusIcon />
-            </button>
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAdd((v) => !v);
+                }}
+                title="Add to collection"
+                aria-label="Add to collection"
+              >
+                <PlusIcon />
+              </button>
+              {showAdd && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowAdd(false); }} />
+                  <div className="m-menu absolute right-0 top-full z-20 mt-1">
+                    <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewMachine(cid); }}>
+                      <IconPlay className="h-4 w-4 flex-none" />
+                      New machine here
+                    </button>
+                    {onNewFolder && (
+                      <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewFolder(cid); }}>
+                        <IconFolder className="h-4 w-4 flex-none" />
+                        New folder
+                      </button>
+                    )}
+                    {onImport && (
+                      <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onImport(cid); }}>
+                        <IconImport className="h-4 w-4 flex-none" />
+                        Import from ~/.ssh/config…
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           )}
           {!isPersonal && (
           <div className="relative">
@@ -326,7 +358,6 @@ function MachineRow({
   onConnect: () => void;
 }) {
   const { t } = useTranslation();
-  const [showMenu, setShowMenu] = useState(false);
 
   return (
     <div
@@ -346,7 +377,7 @@ function MachineRow({
         </div>
       </div>
 
-      <div className="m-acts relative" style={showMenu ? { opacity: 1 } : undefined}>
+      <div className="m-acts relative">
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -370,49 +401,13 @@ function MachineRow({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            setShowMenu((v) => !v);
+            onDelete();
           }}
-          aria-label="Connection menu"
+          aria-label="Delete"
+          title={t('connections.delete')}
         >
-          <IconMore className="h-3.5 w-3.5" />
+          <IconTrash className="h-3.5 w-3.5" />
         </button>
-        {showMenu && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-            <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded border border-border bg-background shadow-lg">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(false);
-                  onConnect();
-                }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-muted"
-              >
-                {t('connections.connect')}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(false);
-                  onEdit();
-                }}
-                className="w-full px-4 py-2 text-left text-sm hover:bg-muted"
-              >
-                {t('connections.edit')}
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(false);
-                  onDelete();
-                }}
-                className="w-full px-4 py-2 text-left text-sm text-red-500 hover:bg-muted"
-              >
-                {t('connections.delete')}
-              </button>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );
@@ -430,6 +425,8 @@ export function LibrarySidebar({
   query = '',
   collections,
   onNewMachineInCollection,
+  onNewFolderInCollection,
+  onImportToCollection,
   onOpenMembers,
   onRenameCollection,
   onDeleteCollection,
@@ -569,6 +566,8 @@ export function LibrarySidebar({
         onOpen={() => onOpenCollection?.(cid)}
         onToggle={() => toggle(key)}
         onNewMachine={onNewMachineInCollection}
+        onNewFolder={isPersonal ? undefined : onNewFolderInCollection}
+        onImport={onImportToCollection}
         onOpenMembers={isPersonal ? undefined : onOpenMembers}
         onRename={!isPersonal && onRenameCollection ? () => onRenameCollection(cid, node.name, node.color) : undefined}
         onDelete={!isPersonal && onDeleteCollection ? () => onDeleteCollection(cid, node.name) : undefined}

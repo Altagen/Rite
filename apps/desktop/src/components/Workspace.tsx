@@ -1066,6 +1066,15 @@ export function Workspace({
               openCollectionId={mainView === 'collection' ? openCollectionId : null}
               collections={conns.collections}
               onNewMachineInCollection={isAccountsContext ? handleNewMachineInCollection : undefined}
+              onNewFolderInCollection={isAccountsContext ? (id) => setFolderCollectionId(id) : undefined}
+              onImportToCollection={
+                isAccountsContext
+                  ? (id) => {
+                      setImportCollectionId(id);
+                      setShowImportSSH(true);
+                    }
+                  : undefined
+              }
               onOpenMembers={isAccountsContext ? (id) => setMembersCollectionId(id) : undefined}
               onRenameCollection={
                 isAccountsContext ? (id, name, color) => setCollectionEdit({ id, name, color }) : undefined
@@ -1243,7 +1252,7 @@ export function Workspace({
       {folderCollectionId && (
         <CollectionFolderDialog
           collectionId={folderCollectionId}
-          collectionName={openCollectionName}
+          collectionName={conns.collections?.find((c) => c.id === folderCollectionId)?.name ?? openCollectionName}
           onClose={() => setFolderCollectionId(null)}
           onSaved={fetchConnections}
         />
