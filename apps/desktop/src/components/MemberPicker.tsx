@@ -137,7 +137,7 @@ export function MemberPicker({
     if (!iManage || entry.id === me?.id) return;
     const has = chosen.has(entry.id);
     if (isCreate) {
-      setLocal(entry.id, has ? null : 'editor');
+      setLocal(entry.id, has ? null : 'viewer');
       return;
     }
     if (!collKey || !collectionId) return;
@@ -148,8 +148,8 @@ export function MemberPicker({
       } else {
         if (!entry.publicKey) throw new Error('that user has no published key yet');
         const sealed = await sealCollectionKeyToHex(entry.publicKey, collKey);
-        await Backend.Collections.addMember(collectionId, entry.id, 'editor', sealed);
-        setLocal(entry.id, 'editor');
+        await Backend.Collections.addMember(collectionId, entry.id, 'viewer', sealed);
+        setLocal(entry.id, 'viewer');
       }
       onSaved();
     });
@@ -174,14 +174,14 @@ export function MemberPicker({
       for (const tm of members) {
         if (chosen.has(tm.userId)) continue;
         if (isCreate) {
-          setLocal(tm.userId, 'editor');
+          setLocal(tm.userId, 'viewer');
           continue;
         }
         if (!collKey || !collectionId) continue;
         const pub = tm.publicKey ?? directory.find((d) => d.id === tm.userId)?.publicKey;
         if (!pub) continue;
-        await Backend.Collections.addMember(collectionId, tm.userId, 'editor', await sealCollectionKeyToHex(pub, collKey));
-        setLocal(tm.userId, 'editor');
+        await Backend.Collections.addMember(collectionId, tm.userId, 'viewer', await sealCollectionKeyToHex(pub, collKey));
+        setLocal(tm.userId, 'viewer');
       }
       if (!isCreate) onSaved();
     });
