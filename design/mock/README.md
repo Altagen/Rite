@@ -58,12 +58,16 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
 - **Context** = a **local vault** (a named `.db` file, multi-vault) or a **server**,
   chosen from the top-left pill (or the "Card view" manager). A context is what you
   enter to reach your **saved connections**.
-- **Library** = personal **folders** (your organisation, never shared) → **collections**
-  (the shareable unit: members + per-member roles owner/editor/viewer, ADR 0016) →
-  **machines** (SSH hosts). A collection can carry its own **shared sub-folders**
-  (part of its encrypted payload — recipients see the curated structure).
-- **No loose machines**: a machine always lives in a collection (personal = a
-  1-member collection). Import `~/.ssh/config` targets a collection.
+- **Library** = **collections** (the shareable unit: members + per-member roles
+  owner/editor/viewer, ADR 0016) → **machines** (SSH hosts). A collection carries its
+  own **nested sub-folders** (path names like `Web servers/EU`, part of its encrypted
+  payload — recipients see the curated structure). Personal **organiser folders**
+  (never shared, view-only) can group collections above them.
+- **Personal = a real 1-member collection** (auto-provisioned, sorted first) — not a
+  special case: it holds sub-folders, can be shared, renamed, etc. like any collection.
+- **No loose machines**: a machine always lives in a collection. You can't nest a
+  collection in a collection — inside a collection you create **folders**. Import
+  `~/.ssh/config` targets a collection.
 - Folders/collections have **custom colours**; context icons can be **custom images
   (client-side only)**. Distinct icons: folder / collection (layers) / machine
   (server rack) — the ▶ play icon is the *connect* action, not an identity.

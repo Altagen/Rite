@@ -61,6 +61,8 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--card2);border:1px so
 .appbar{display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#141824,#11141e)}
 .brand{display:flex;align-items:center;gap:9px;font-weight:700;letter-spacing:.02em}
 .brand .glyph{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#4d6fd0);display:grid;place-items:center;color:#0a0e1a;font-weight:800}
+.brand-logo{height:26px;border-radius:7px;display:block}
+.inst-logo{height:16px;border-radius:4px;display:block}
 .spacer{flex:1}
 
 /* terminal mock */
