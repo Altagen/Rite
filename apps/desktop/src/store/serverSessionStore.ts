@@ -24,6 +24,53 @@ import { bytesToHex, hexToBytes } from '../utils/vaultCrypto';
  * user's connections (ADR 0011). In a plain server/browser session the context
  * is 'local' and nothing is sent — the key never leaves the client.
  */
+// Optional vault-key persistence (admin-controlled, default on). The unwrapped
+// keys are kept in sessionStorage so a page reload doesn't force re-login. This is
+// still zero-knowledge — the key never leaves the browser and is cleared when the
+// tab closes — but it does put the key at rest in the browser store, so an admin
+// who wants stricter security can turn it off (RAM-only, re-login on every reload).
+const VAULT_KEYS_STORAGE = 'rite.vaultKeys';
+
+interface StoredKeys {
+  userKey: Uint8Array;
+  privateKey: Uint8Array;
+  publicKey: Uint8Array;
+}
+
+function persistKeys(keys: StoredKeys): void {
+  try {
+    sessionStorage.setItem(
+      VAULT_KEYS_STORAGE,
+      JSON.stringify({
+        u: bytesToHex(keys.userKey),
+        p: bytesToHex(keys.privateKey),
+        k: bytesToHex(keys.publicKey),
+      }),
+    );
+  } catch {
+    // sessionStorage unavailable (private mode / disabled) — stay RAM-only.
+  }
+}
+
+function restoreKeys(): StoredKeys | null {
+  try {
+    const raw = sessionStorage.getItem(VAULT_KEYS_STORAGE);
+    if (!raw) return null;
+    const { u, p, k } = JSON.parse(raw) as { u: string; p: string; k: string };
+    return { userKey: hexToBytes(u), privateKey: hexToBytes(p), publicKey: hexToBytes(k) };
+  } catch {
+    return null;
+  }
+}
+
+function clearKeys(): void {
+  try {
+    sessionStorage.removeItem(VAULT_KEYS_STORAGE);
+  } catch {
+    // ignore
+  }
+}
+
 async function syncLocalVault(userKey: Uint8Array | null): Promise<void> {
   if (!userKey) return;
   try {
@@ -71,8 +118,20 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       try {
         const { user } = await Backend.Server.me();
         set({ user });
+        // If key persistence is enabled (default) and we stashed the keys this tab,
+        // restore them so a reload skips the re-login prompt. Otherwise drop them.
+        if (mode.sessionPersistence !== false) {
+          const keys = restoreKeys();
+          if (keys) {
+            await syncLocalVault(keys.userKey);
+            set({ userKey: keys.userKey, privateKey: keys.privateKey, publicKey: keys.publicKey });
+          }
+        } else {
+          clearKeys();
+        }
       } catch {
         clearSessionToken();
+        clearKeys();
         set({ user: null, userKey: null, privateKey: null, publicKey: null });
       }
     }
@@ -95,11 +154,18 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
           )
         : null;
       await syncLocalVault(keys?.userKey ?? null);
+      const publicKey = vault ? hexToBytes(vault.publicKey) : null;
+      // Persist the unwrapped keys for this tab if the server allows it (default on).
+      if (keys && publicKey && get().mode?.sessionPersistence !== false) {
+        persistKeys({ userKey: keys.userKey, privateKey: keys.privateKey, publicKey });
+      } else {
+        clearKeys();
+      }
       set({
         user,
         userKey: keys?.userKey ?? null,
         privateKey: keys?.privateKey ?? null,
-        publicKey: vault ? hexToBytes(vault.publicKey) : null,
+        publicKey,
         loading: false,
       });
     } catch (e) {
@@ -127,11 +193,17 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       setSessionToken(token);
       await syncLocalVault(vaultKey.userKey);
       const mode = get().mode;
+      const publicKey = hexToBytes(vaultKey.publicKeyHex);
+      if (mode?.sessionPersistence !== false) {
+        persistKeys({ userKey: vaultKey.userKey, privateKey: vaultKey.privateKey, publicKey });
+      } else {
+        clearKeys();
+      }
       set({
         user,
         userKey: vaultKey.userKey,
         privateKey: vaultKey.privateKey,
-        publicKey: hexToBytes(vaultKey.publicKeyHex),
+        publicKey,
         loading: false,
         mode: mode ? { ...mode, needsBootstrap: false } : mode,
       });
@@ -148,6 +220,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       // best-effort
     }
     clearSessionToken();
+    clearKeys();
     set({ user: null, userKey: null, privateKey: null, publicKey: null });
   },
 

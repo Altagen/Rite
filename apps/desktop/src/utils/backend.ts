@@ -335,6 +335,9 @@ const ServerModeSchema = z.object({
   accounts: z.boolean(),
   needsBootstrap: z.boolean(),
   instanceName: z.string().nullable().optional(),
+  // Whether the client may persist the vault key in sessionStorage (default true
+  // when absent). Admin-controlled; still zero-knowledge (key stays in the browser).
+  sessionPersistence: z.boolean().optional(),
 });
 const PreloginSchema = z.object({ salt: z.string(), params: KdfParamsSchema });
 const ServerUserSchema = z.object({
@@ -425,6 +428,9 @@ export const BackendAdmin = {
   deleteUser: (id: string) => invokeWithValidation('admin_delete_user', z.null(), { id }),
   /** Set the global instance name shown to every user (org-admin only). */
   setInstanceName: (name: string) => invokeWithValidation('admin_set_instance', z.null(), { name }),
+  /** Toggle client vault-key session persistence for the whole server (org-admin). */
+  setSessionPersistence: (enabled: boolean) =>
+    invokeWithValidation('admin_set_session_persistence', z.null(), { enabled }),
 } as const;
 
 // Context multiplexer (ADR 0012) — the native client's roster of contexts.

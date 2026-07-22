@@ -163,6 +163,14 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_set_session_persistence: async (a) => {
+    await json('/api/admin/session-persistence', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: a.enabled }),
+    });
+    return null;
+  },
 
   // Teams / RBAC (product-model) + team key sharing (ADR 0013).
   admin_list_teams: () => json('/api/admin/teams'),

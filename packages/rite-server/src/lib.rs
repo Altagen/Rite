@@ -372,6 +372,10 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/admin/users/{id}", delete(admin_delete_user))
         .route("/api/admin/users/{id}/status", patch(admin_set_status))
         .route("/api/admin/instance", patch(set_instance_name))
+        .route(
+            "/api/admin/session-persistence",
+            patch(set_session_persistence),
+        )
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
         // guard-gated to admin); team management is per-team authorized in-handler.
         .route(
@@ -899,10 +903,16 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
     // A global, admin-set instance name (e.g. the company/team) so users can tell
     // which server they're on. Public so the login screen can show it too.
     let instance_name = state.db.get_setting("instance_name").await?;
+    // Whether the client may keep the (RAM-derived) vault key in sessionStorage so a
+    // page reload doesn't force re-login. Still zero-knowledge (the key never leaves
+    // the browser); admins who enforce stricter security can turn it off. Default on.
+    let session_persistence =
+        state.db.get_setting("session_persistence").await? != Some("0".to_string());
     Ok(Json(json!({
         "accounts": state.accounts,
         "needsBootstrap": needs_bootstrap,
         "instanceName": instance_name,
+        "sessionPersistence": session_persistence,
     })))
 }
 
@@ -919,6 +929,23 @@ async fn set_instance_name(
     state
         .db
         .set_setting("instance_name", req.name.trim())
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct EnabledReq {
+    enabled: bool,
+}
+
+/// Toggle client vault-key session persistence (org-admin only).
+async fn set_session_persistence(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<StatusCode, AppError> {
+    state
+        .db
+        .set_setting("session_persistence", if req.enabled { "1" } else { "0" })
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

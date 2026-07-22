@@ -10,6 +10,7 @@ import { Backend } from '../utils/backend';
 export function InstanceSettingsPanel() {
   const [name, setName] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
+  const [persistence, setPersistence] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -19,10 +20,22 @@ export function InstanceSettingsPanel() {
       const current = mode.instanceName ?? '';
       setName(current);
       setSaved(current);
+      setPersistence(mode.sessionPersistence !== false);
     } catch {
       setError('Failed to load instance settings');
     }
   }, []);
+
+  const togglePersistence = async () => {
+    const next = !persistence;
+    setPersistence(next);
+    try {
+      await Backend.Admin.setSessionPersistence(next);
+    } catch (err) {
+      setPersistence(!next); // revert on failure
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async initial load
@@ -85,6 +98,34 @@ export function InstanceSettingsPanel() {
           Saved. It appears for everyone after their next page load.
         </p>
       )}
+
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-medium">Keep users signed in across reloads</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Stores each user's vault key in their browser's session storage so a page reload doesn't force a
+              re-login. Still zero-knowledge — the key never leaves the browser and is cleared when the tab closes.
+              Turn this off to enforce a RAM-only key (re-login on every reload).
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={persistence}
+            onClick={togglePersistence}
+            className={`relative h-6 w-11 flex-none rounded-full transition-colors ${
+              persistence ? 'bg-primary' : 'bg-muted'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                persistence ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
