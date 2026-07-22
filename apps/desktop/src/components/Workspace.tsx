@@ -18,7 +18,7 @@ import { ConnectionForm } from './ConnectionForm';
 import { CollectionsManager } from './CollectionsManager';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
-import { CollectionShareDialog } from './CollectionShareDialog';
+import { MemberPicker } from './MemberPicker';
 import { CollectionEditDialog } from './CollectionEditDialog';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
@@ -112,6 +112,7 @@ export function Workspace({
   const [membersCollectionId, setMembersCollectionId] = useState<string | null>(null);
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
   const [collectionEdit, setCollectionEdit] = useState<{ id?: string; name?: string; color?: string | null } | null>(null);
+  const [showNewCollection, setShowNewCollection] = useState(false);
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{ id: string; name: string } | null>(null);
 
   // Host-key confirmation (strict mode): the pending prompt + the connection that
@@ -1035,7 +1036,7 @@ export function Workspace({
                           <button
                             onClick={() => {
                               setShowNewMenu(false);
-                              setCollectionEdit({});
+                              setShowNewCollection(true);
                             }}
                             className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
                           >
@@ -1235,14 +1236,22 @@ export function Workspace({
         />
       )}
 
-      {/* Collection members / sharing dialog (ADR 0016) */}
+      {/* Collection sharing — the member picker (edit) / new collection (create) */}
       {membersCollectionId && (
-        <CollectionShareDialog
+        <MemberPicker
+          mode="edit"
           collectionId={membersCollectionId}
-          title={`Members · ${openCollectionName}`}
+          initialName={
+            conns.connections.find((c) => c.collectionId === membersCollectionId)?.collectionName ??
+            conns.writableCollections?.find((c) => c.id === membersCollectionId)?.name ??
+            ''
+          }
           onClose={() => setMembersCollectionId(null)}
-          onChanged={fetchConnections}
+          onSaved={fetchConnections}
         />
+      )}
+      {showNewCollection && (
+        <MemberPicker mode="create" onClose={() => setShowNewCollection(false)} onSaved={fetchConnections} />
       )}
 
       {/* Create / rename collection dialog (ADR 0016) */}
