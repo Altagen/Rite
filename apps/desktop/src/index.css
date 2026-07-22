@@ -212,6 +212,70 @@
     padding: 1px 7px;
   }
 
+  /* sidebar tree rows (the mock's .tnode) */
+  .m-side {
+    background: hsl(var(--input)); /* the mock's --bg2, a touch off the ground */
+  }
+  .m-tnode {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .m-tnode:hover {
+    background: hsl(var(--secondary));
+  }
+  .m-tnode.sel {
+    background: color-mix(in srgb, hsl(var(--primary)) 15%, transparent);
+    border-color: color-mix(in srgb, hsl(var(--primary)) 30%, transparent);
+  }
+  .m-ca {
+    width: 15px;
+    opacity: 0.55;
+    display: grid;
+    place-items: center;
+    flex: none;
+  }
+  .m-nm {
+    flex: 1;
+    font-weight: 550;
+    font-size: 13.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .m-tnode.leaf .m-nm {
+    font-weight: 500;
+  }
+  .m-acts {
+    display: flex;
+    gap: 0;
+    opacity: 0;
+    transition: 0.1s;
+  }
+  .m-tnode:hover .m-acts {
+    opacity: 1;
+  }
+  .m-acts button {
+    padding: 3px;
+    border-radius: 6px;
+    color: hsl(var(--muted-foreground));
+  }
+  .m-acts button:hover {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+  .m-lsub {
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   /* floating menu (the + / ⋯ menus) */
   .m-menu {
     background: hsl(var(--card));

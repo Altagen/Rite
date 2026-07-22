@@ -519,7 +519,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
   return (
     <div
-      className="flex flex-1 flex-col bg-[#1e1e1e] overflow-hidden w-full"
+      className="flex flex-1 flex-col bg-background overflow-hidden w-full rounded-xl border border-border"
       onClick={handleTerminalClick}
       onDragOver={onDragOver}
       onDrop={onDrop}

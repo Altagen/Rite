@@ -963,7 +963,7 @@ export function Workspace({
       <main className="flex flex-1 overflow-hidden relative">
         {/* Sidebar: saved connections when a vault is open; otherwise a prompt to
             open one (the local terminal + Quick SSH in the header work without it). */}
-        <aside className={`border-r border-border bg-card flex flex-col transition-all duration-300 overflow-hidden ${
+        <aside className={`m-side border-r border-border flex flex-col transition-all duration-300 overflow-hidden ${
           isSidebarOpen ? 'w-80' : 'w-0'
         }`}>
           {isLocked ? (

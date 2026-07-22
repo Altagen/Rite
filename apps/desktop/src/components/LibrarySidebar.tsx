@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { PERSONAL_COLLECTION_ID } from '../store/accountsConnectionsSource';
+import { IconPlay, IconMore } from './icons';
 
 interface LibrarySidebarProps {
   connections: ConnectionInfo[];
@@ -75,16 +76,16 @@ function LibraryFolderNode({
   const [showMenu, setShowMenu] = useState(false);
   return (
     <div>
-      <div className="group flex w-full items-center gap-1.5 rounded px-2 py-1.5 hover:bg-muted">
-        <button onClick={onToggle} className="flex-none rounded p-0.5 hover:bg-muted" aria-label={open ? 'Collapse' : 'Expand'}>
+      <div className="m-tnode">
+        <button onClick={onToggle} className="m-ca" aria-label={open ? 'Collapse' : 'Expand'}>
           <Chevron open={open} />
         </button>
         <FolderIcon color={color} />
-        <button onClick={onToggle} className="min-w-0 flex-1 truncate text-left text-sm font-medium" title={name}>
+        <button onClick={onToggle} className="m-nm text-left" title={name}>
           {name}
         </button>
-        <div className="relative flex items-center opacity-0 group-hover:opacity-100">
-          <button onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }} className="rounded p-1 hover:bg-muted" aria-label="Folder menu">
+        <div className="m-acts relative" style={showMenu ? { opacity: 1 } : undefined}>
+          <button onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }} aria-label="Folder menu">
             <MoreIcon />
           </button>
           {showMenu && (
@@ -101,7 +102,7 @@ function LibraryFolderNode({
             </>
           )}
         </div>
-        <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground group-hover:hidden">{count}</span>
+        <span className="m-cnt">{count}</span>
       </div>
       {open && <div className="ml-3">{children}</div>}
     </div>
@@ -166,35 +167,29 @@ function CollectionNode({
 
   return (
     <div>
-      <div
-        onClick={onOpen}
-        className={`group flex w-full cursor-pointer items-center gap-1.5 rounded px-2 py-1.5 text-left ${
-          active ? 'bg-primary/20' : 'hover:bg-muted'
-        }`}
-      >
+      <div onClick={onOpen} className={`m-tnode ${active ? 'sel' : ''}`}>
         <button
           onClick={(e) => {
             e.stopPropagation();
             onToggle();
           }}
-          className="flex-none rounded p-0.5 hover:bg-muted"
+          className="m-ca"
           aria-label={open ? 'Collapse' : 'Expand'}
         >
           <Chevron open={open} />
         </button>
         <CollectionIcon color={color} />
-        <span className="flex-1 truncate text-sm font-medium" title={name}>
+        <span className="m-nm" title={name}>
           {name}
         </span>
         {!isPersonal && <RoleBadge role={role} />}
-        <div className="flex items-center opacity-0 group-hover:opacity-100">
+        <div className="m-acts" style={showMenu ? { opacity: 1 } : undefined}>
           {canWrite && onNewMachine && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 onNewMachine(cid);
               }}
-              className="rounded p-1 hover:bg-muted"
               title="New machine here"
               aria-label="New machine in collection"
             >
@@ -208,7 +203,6 @@ function CollectionNode({
                 e.stopPropagation();
                 setShowMenu((v) => !v);
               }}
-              className="rounded p-1 hover:bg-muted"
               aria-label="Collection menu"
             >
               <MoreIcon />
@@ -253,9 +247,7 @@ function CollectionNode({
           </div>
           )}
         </div>
-        <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground group-hover:hidden">
-          {count}
-        </span>
+        <span className="m-cnt">{count}</span>
       </div>
       {open && <div>{children}</div>}
     </div>
@@ -339,35 +331,41 @@ function MachineRow({
 
   return (
     <div
-      className={`group relative flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 transition-colors select-none ${
-        isSelected ? 'bg-primary/20' : 'hover:bg-muted'
-      }`}
+      className={`m-tnode leaf select-none ${isSelected ? 'sel' : ''}`}
       style={{ paddingLeft: `${8 + depth * 16}px` }}
       onClick={onSelect}
       onDoubleClick={onConnect}
     >
+      <span className="m-ca" />
       <MachineIcon color={connection.color} />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium" title={connection.name}>
+        <div className="m-nm" title={connection.name}>
           {connection.name}
         </div>
-        <div className="truncate text-xs text-muted-foreground">
+        <div className="m-lsub">
           {connection.username}@{connection.hostname}:{connection.port}
         </div>
       </div>
 
-      <div className="relative">
+      <div className="m-acts relative" style={showMenu ? { opacity: 1 } : undefined}>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onConnect();
+          }}
+          aria-label="Connect"
+          title={t('connections.connect')}
+        >
+          <IconPlay className="h-3.5 w-3.5" />
+        </button>
         <button
           onClick={(e) => {
             e.stopPropagation();
             setShowMenu((v) => !v);
           }}
-          className="rounded p-1 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
           aria-label="Connection menu"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-          </svg>
+          <IconMore className="h-3.5 w-3.5" />
         </button>
         {showMenu && (
           <>
@@ -481,15 +479,15 @@ export function LibrarySidebar({
             <div key={key}>
               <button
                 onClick={() => toggle(key)}
-                className="flex w-full items-center gap-1.5 rounded py-1.5 pr-2 text-left hover:bg-muted"
+                className="m-tnode w-full text-left"
                 style={{ paddingLeft: `${8 + baseDepth * 16}px` }}
               >
-                <Chevron open={open} />
-                <FolderIcon />
-                <span className="flex-1 truncate text-sm font-medium">{folder}</span>
-                <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">
-                  {groups.get(folder)!.length}
+                <span className="m-ca">
+                  <Chevron open={open} />
                 </span>
+                <FolderIcon />
+                <span className="m-nm">{folder}</span>
+                <span className="m-cnt">{groups.get(folder)!.length}</span>
               </button>
               {open && <div>{groups.get(folder)!.map((c) => machineRow(c, baseDepth + 1))}</div>}
             </div>

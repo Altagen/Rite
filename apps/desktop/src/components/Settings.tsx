@@ -7,6 +7,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTranslation } from '../i18n/i18n';
+import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
 
 interface SettingsProps {
   onClose: () => void;
@@ -23,6 +24,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [showTimeoutDropdown, setShowTimeoutDropdown] = useState(false);
   const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
   const [showHostKeyDropdown, setShowHostKeyDropdown] = useState(false);
+  const [terminalTheme, setTerminalTheme] = useState<TerminalThemeName>(getTerminalThemeName());
   const timeoutDropdownRef = useRef<HTMLDivElement>(null);
   const languageDropdownRef = useRef<HTMLDivElement>(null);
   const hostKeyDropdownRef = useRef<HTMLDivElement>(null);
@@ -145,6 +147,30 @@ export function Settings({ onClose }: SettingsProps) {
         </div>
 
         <div className="space-y-6">
+          {/* Appearance */}
+          <section className="border-b border-border pb-6">
+            <h3 className="mb-4 text-lg font-semibold">Appearance</h3>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Terminal theme</label>
+              <select
+                value={terminalTheme}
+                onChange={(e) => {
+                  const name = e.target.value as TerminalThemeName;
+                  setTerminalTheme(name);
+                  terminalPool.setTheme(name);
+                }}
+                className="w-full rounded border border-border bg-input px-3 py-2 text-sm"
+              >
+                <option value="dark">Dark (default)</option>
+                <option value="grey">Grey</option>
+                <option value="translucent">Translucent</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Applies live; translucency shows on terminals opened afterwards.
+              </p>
+            </div>
+          </section>
+
           {/* Auto-lock settings */}
           <section className="border-b border-border pb-6">
             <h3 className="text-lg font-semibold mb-4">{t('settings.security')}</h3>
