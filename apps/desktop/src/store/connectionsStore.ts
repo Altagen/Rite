@@ -117,6 +117,7 @@ export interface ConnectionsSource {
     color: string | null;
     role: string;
     folders: { name: string; color: string | null }[];
+    memberCount: number;
   }[];
 }
 

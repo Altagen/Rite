@@ -155,7 +155,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [writableCollections, setWritableCollections] = useState<{ id: string; name: string }[]>([]);
   const [collectionList, setCollectionList] = useState<
-    { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[] }[]
+    { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number }[]
   >([]);
   const entries = useRef<Map<string, Entry>>(new Map());
   const collections = useRef<Map<string, CollectionCtx>>(new Map());
@@ -223,8 +223,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       const writable: { id: string; name: string }[] = [];
       // Every readable collection (including empty ones), so the tree can show a
       // node before it has any machine. "Personal" (the vault) is always present.
-      const list: { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[] }[] = [
-        { id: PERSONAL_COLLECTION_ID, name: PERSONAL_COLLECTION_NAME, color: PERSONAL_COLLECTION_COLOR, role: 'owner', folders: [] },
+      const list: { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number }[] = [
+        { id: PERSONAL_COLLECTION_ID, name: PERSONAL_COLLECTION_NAME, color: PERSONAL_COLLECTION_COLOR, role: 'owner', folders: [], memberCount: 1 },
       ];
       for (const col of cols) {
         if (!col.protectedCollectionKey) continue;
@@ -234,7 +234,15 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
             () => ({ name: 'Collection', color: null }) as CollectionHeader,
           );
           ctx.set(col.id, { key, role: col.role });
-          list.push({ id: col.id, name: header.name, color: header.color, role: col.role, folders: header.folders ?? [] });
+          const memberCount = (await Backend.Collections.members(col.id).catch(() => [])).length;
+          list.push({
+            id: col.id,
+            name: header.name,
+            color: header.color,
+            role: col.role,
+            folders: header.folders ?? [],
+            memberCount,
+          });
           if (canWrite(col.role)) writable.push({ id: col.id, name: header.name });
           for (const it of await Backend.Collections.items(col.id)) {
             try {

@@ -26,6 +26,8 @@ interface ConnectionFormProps {
   defaultCollectionId?: string | null;
 }
 
+const MACHINE_COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#8b93a7'];
+
 export function ConnectionForm({
   connection,
   prefillData,
@@ -54,7 +56,7 @@ export function ConnectionForm({
   const [collectionTargetId, setCollectionTargetId] = useState<string>(
     connection?.collectionId ?? defaultCollectionId ?? collectionTargets?.[0]?.id ?? '',
   );
-  const color = connection?.color || ''; // TODO: Implement color picker UI
+  const [color, setColor] = useState(connection?.color || '');
   const icon = connection?.icon || ''; // TODO: Implement icon picker UI
   const [notes, setNotes] = useState(connection?.notes || '');
   const [sshKeepAliveOverride, setSshKeepAliveOverride] = useState<string | null>(
@@ -258,19 +260,26 @@ export function ConnectionForm({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 w-full max-w-2xl rounded-lg bg-background p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+    <div className="m-backdrop" onClick={onClose}>
+      <div className="m-modal max-w-2xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-2xl font-bold">
-            {connection ? t('connections.titleEdit') : t('connections.titleNew')}
-          </h2>
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">
+              {connection ? t('connections.titleEdit') : t('connections.titleNew')}
+            </h2>
+            {defaultCollectionId && collectionTargets?.find((c) => c.id === (connection?.collectionId ?? defaultCollectionId)) && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                in “{collectionTargets.find((c) => c.id === (connection?.collectionId ?? defaultCollectionId))?.name}”
+              </p>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground"
             aria-label={t('connections.cancel')}
           >
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -495,6 +504,23 @@ export function ConnectionForm({
               </div>
             </div>
           )}
+
+          {/* Colour */}
+          <div>
+            <label className="mb-1 block text-sm font-medium">{t('connections.color')}</label>
+            <div className="m-swatches">
+              {MACHINE_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  className={`m-sw ${color === c ? 'sel' : ''}`}
+                  style={{ backgroundColor: c }}
+                  aria-label={`colour ${c}`}
+                />
+              ))}
+            </div>
+          </div>
 
           {/* Save-to-collection target (ADR 0016) — accounts context only */}
           {collectionTargets && collectionTargets.length > 0 && (

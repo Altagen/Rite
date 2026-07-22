@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { PERSONAL_COLLECTION_ID } from '../store/accountsConnectionsSource';
-import { IconPlay, IconMore } from './icons';
+import { IconPlay, IconMore, IconEdit, IconUsers } from './icons';
 
 interface LibrarySidebarProps {
   connections: ConnectionInfo[];
@@ -36,6 +36,7 @@ interface LibrarySidebarProps {
     color: string | null;
     role: string;
     folders: { name: string; color: string | null }[];
+    memberCount: number;
   }[];
   // Collection node actions (accounts context). Rename/Delete are owner-only,
   // gated by the caller; the sidebar shows them only when a handler is provided.
@@ -142,6 +143,7 @@ function CollectionNode({
   onDelete,
   onMove,
   isPersonal,
+  memberCount = 1,
   children,
 }: {
   cid: string;
@@ -151,6 +153,7 @@ function CollectionNode({
   count: number;
   open: boolean;
   active: boolean;
+  memberCount?: number;
   onOpen: () => void;
   onToggle: () => void;
   onNewMachine?: (id: string) => void;
@@ -182,7 +185,12 @@ function CollectionNode({
         <span className="m-nm" title={name}>
           {name}
         </span>
-        {!isPersonal && <RoleBadge role={role} />}
+        {!isPersonal && memberCount > 1 && (
+          <span className="m-mc" title={`${memberCount} members`}>
+            <IconUsers className="h-3 w-3" />
+            {memberCount}
+          </span>
+        )}
         <div className="m-acts" style={showMenu ? { opacity: 1 } : undefined}>
           {canWrite && onNewMachine && (
             <button
@@ -282,15 +290,6 @@ function CollectionIcon({ color }: { color?: string | null }) {
 }
 
 /** A collection member's role, as a small pill. */
-function RoleBadge({ role }: { role?: string | null }) {
-  if (!role) return null;
-  return (
-    <span className="rounded-full bg-muted px-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-      {role}
-    </span>
-  );
-}
-
 function MachineIcon({ color }: { color?: string | null }) {
   return (
     <svg className="h-4 w-4 flex-none" style={{ color: color || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -357,6 +356,16 @@ function MachineRow({
           title={t('connections.connect')}
         >
           <IconPlay className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          aria-label="Edit"
+          title={t('connections.edit')}
+        >
+          <IconEdit className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={(e) => {
@@ -527,6 +536,7 @@ export function LibrarySidebar({
         color: m.collectionColor ?? null,
         role: m.collectionRole ?? 'owner',
         folders: [] as { name: string; color: string | null }[],
+        memberCount: 1,
       };
     });
   const collectionNodes = (collections ?? derived())
@@ -538,7 +548,7 @@ export function LibrarySidebar({
       return a.name.localeCompare(b.name);
     });
 
-  const renderCollectionNode = (node: { id: string; name: string; color: string | null; role: string; folders: { name: string; color: string | null }[] }) => {
+  const renderCollectionNode = (node: { id: string; name: string; color: string | null; role: string; folders: { name: string; color: string | null }[]; memberCount: number }) => {
     const cid = node.id;
     const machines = byCollection.get(cid) ?? [];
     const key = `col/${cid}`;
@@ -555,6 +565,7 @@ export function LibrarySidebar({
         open={isOpen(key)}
         active={openCollectionId === cid}
         isPersonal={isPersonal}
+        memberCount={node.memberCount}
         onOpen={() => onOpenCollection?.(cid)}
         onToggle={() => toggle(key)}
         onNewMachine={onNewMachineInCollection}

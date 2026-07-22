@@ -211,6 +211,14 @@
     border-radius: 999px;
     padding: 1px 7px;
   }
+  .m-mc {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #bb9af7;
+  }
 
   /* sidebar tree rows (the mock's .tnode) */
   .m-side {
@@ -274,6 +282,66 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* modal ("shadow box") — the mock's .backdrop + .modal */
+  .m-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 8, 14, 0.66);
+    backdrop-filter: blur(3px);
+    display: grid;
+    place-items: center;
+    z-index: 50;
+    padding: 20px;
+  }
+  .m-modal {
+    width: 100%;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 16px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    animation: m-pop 0.16s ease;
+  }
+  @keyframes m-pop {
+    from {
+      transform: translateY(6px) scale(0.98);
+      opacity: 0;
+    }
+  }
+
+  /* colour swatches */
+  .m-swatches {
+    display: flex;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+  .m-sw {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    transition: 0.1s;
+  }
+  .m-sw:hover {
+    transform: scale(1.08);
+  }
+  .m-sw.sel {
+    outline: 2px solid hsl(var(--foreground));
+    outline-offset: 2px;
+  }
+  .m-sw.sel::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #0a0e1a;
+    font-weight: 800;
+    font-size: 13px;
   }
 
   /* floating menu (the + / ⋯ menus) */
