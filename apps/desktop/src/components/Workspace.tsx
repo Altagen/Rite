@@ -20,6 +20,7 @@ import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
 import { MemberPicker } from './MemberPicker';
 import { CollectionEditDialog } from './CollectionEditDialog';
+import { CollectionFolderDialog } from './CollectionFolderDialog';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
 import { ImportSSHConfigModal } from './ImportSSHConfigModal';
@@ -112,6 +113,7 @@ export function Workspace({
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
   const [collectionEdit, setCollectionEdit] = useState<{ id?: string; name?: string; color?: string | null } | null>(null);
   const [showNewCollection, setShowNewCollection] = useState(false);
+  const [folderCollectionId, setFolderCollectionId] = useState<string | null>(null);
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{ id: string; name: string } | null>(null);
 
   // Host-key confirmation (strict mode): the pending prompt + the connection that
@@ -1166,6 +1168,7 @@ export function Workspace({
                   color={openCollectionColor}
                   role={openCollectionRole}
                   machines={openCollectionMachines}
+                  folders={openCol?.folders}
                   canWrite={openCollectionWritable}
                   onConnect={handleConnect}
                   onEdit={handleEditConnection}
@@ -1175,6 +1178,7 @@ export function Workspace({
                     setConnectionFormPrefill(null);
                     setShowForm(true);
                   }}
+                  onNewFolder={() => setFolderCollectionId(openCollectionId)}
                   onImport={() => {
                     setImportCollectionId(openCollectionId);
                     setShowImportSSH(true);
@@ -1249,6 +1253,14 @@ export function Workspace({
       )}
       {showNewCollection && (
         <MemberPicker mode="create" onClose={() => setShowNewCollection(false)} onSaved={fetchConnections} />
+      )}
+      {folderCollectionId && (
+        <CollectionFolderDialog
+          collectionId={folderCollectionId}
+          collectionName={openCollectionName}
+          onClose={() => setFolderCollectionId(null)}
+          onSaved={fetchConnections}
+        />
       )}
 
       {/* Create / rename collection dialog (ADR 0016) */}

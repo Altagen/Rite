@@ -44,10 +44,12 @@ export function CollectionView({
   color,
   role,
   machines,
+  folders,
   canWrite,
   onConnect,
   onEdit,
   onNewMachine,
+  onNewFolder,
   onImport,
   onOpenMembers,
 }: {
@@ -55,10 +57,12 @@ export function CollectionView({
   color?: string | null;
   role?: string | null;
   machines: ConnectionInfo[];
+  folders?: { name: string; color: string | null }[]; // declared sub-folders (show empty)
   canWrite: boolean;
   onConnect: (c: ConnectionInfo) => void;
   onEdit: (c: ConnectionInfo) => void;
   onNewMachine: () => void;
+  onNewFolder: () => void;
   onImport: () => void;
   onOpenMembers?: () => void; // absent for the synthetic "Personal" (not shareable)
 }) {
@@ -83,15 +87,17 @@ export function CollectionView({
   }, [machines, filter, sort]);
 
   // Group the shown machines by their shared sub-folder; loose ones at the root.
+  // Declared folders are included even when empty (so a just-created one shows).
   const groups = useMemo(() => {
     const map = new Map<string, ConnectionInfo[]>();
+    for (const f of folders ?? []) if (!map.has(f.name)) map.set(f.name, []);
     for (const m of shown) {
       const key = m.folder || ROOT;
       (map.get(key) ?? map.set(key, []).get(key)!).push(m);
     }
-    const folders = [...map.keys()].filter((k) => k !== ROOT).sort((a, b) => a.localeCompare(b));
-    return { folders, map, root: map.get(ROOT) ?? [] };
-  }, [shown]);
+    const folderKeys = [...map.keys()].filter((k) => k !== ROOT).sort((a, b) => a.localeCompare(b));
+    return { folders: folderKeys, map, root: map.get(ROOT) ?? [] };
+  }, [shown, folders]);
 
   const card = (c: ConnectionInfo) => (
     <div
@@ -243,6 +249,18 @@ export function CollectionView({
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12M8 11l4 4 4-4M5 21h14" />
             </svg>
             Import
+          </button>
+        )}
+        {canWrite && (
+          <button
+            onClick={onNewFolder}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+            title="New shared folder"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            </svg>
+            Folder
           </button>
         )}
         {canWrite && (

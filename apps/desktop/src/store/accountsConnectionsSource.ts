@@ -27,6 +27,7 @@ import { encryptString, decryptString } from '../utils/vaultCrypto';
 import { unwrapTeamKey } from '../utils/teamCrypto';
 import { unwrapCollectionKey, decryptCollectionField, encryptCollectionField } from '../utils/collectionCrypto';
 import type { CollectionRole } from '../utils/backend';
+import type { CollectionHeader, CollectionFolder } from '../utils/collectionHeader';
 
 /**
  * Synthetic id for the personal vault surfaced as a "Personal" collection (ADR 0016
@@ -67,12 +68,6 @@ interface Entry {
 interface CollectionCtx {
   key: Uint8Array;
   role: CollectionRole;
-}
-
-/** The header a collection's `nameEnc` decrypts to (ADR 0016). */
-interface CollectionHeader {
-  name: string;
-  color: string | null;
 }
 
 function canWrite(role: CollectionRole): boolean {
@@ -160,7 +155,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [writableCollections, setWritableCollections] = useState<{ id: string; name: string }[]>([]);
   const [collectionList, setCollectionList] = useState<
-    { id: string; name: string; color: string | null; role: string }[]
+    { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[] }[]
   >([]);
   const entries = useRef<Map<string, Entry>>(new Map());
   const collections = useRef<Map<string, CollectionCtx>>(new Map());
@@ -228,8 +223,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       const writable: { id: string; name: string }[] = [];
       // Every readable collection (including empty ones), so the tree can show a
       // node before it has any machine. "Personal" (the vault) is always present.
-      const list: { id: string; name: string; color: string | null; role: string }[] = [
-        { id: PERSONAL_COLLECTION_ID, name: PERSONAL_COLLECTION_NAME, color: PERSONAL_COLLECTION_COLOR, role: 'owner' },
+      const list: { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[] }[] = [
+        { id: PERSONAL_COLLECTION_ID, name: PERSONAL_COLLECTION_NAME, color: PERSONAL_COLLECTION_COLOR, role: 'owner', folders: [] },
       ];
       for (const col of cols) {
         if (!col.protectedCollectionKey) continue;
@@ -239,7 +234,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
             () => ({ name: 'Collection', color: null }) as CollectionHeader,
           );
           ctx.set(col.id, { key, role: col.role });
-          list.push({ id: col.id, name: header.name, color: header.color, role: col.role });
+          list.push({ id: col.id, name: header.name, color: header.color, role: col.role, folders: header.folders ?? [] });
           if (canWrite(col.role)) writable.push({ id: col.id, name: header.name });
           for (const it of await Backend.Collections.items(col.id)) {
             try {

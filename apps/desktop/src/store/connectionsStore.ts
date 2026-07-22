@@ -109,8 +109,15 @@ export interface ConnectionsSource {
   // context (no collections there); populated by the accounts source.
   writableCollections?: { id: string; name: string }[];
   // Every readable collection (incl. empty ones + the synthetic "Personal"), so the
-  // sidebar can show a collection node before it has any machine. Accounts only.
-  collections?: { id: string; name: string; color: string | null; role: string }[];
+  // sidebar can show a collection node before it has any machine, plus its declared
+  // sub-folders (so empty folders show). Accounts only.
+  collections?: {
+    id: string;
+    name: string;
+    color: string | null;
+    role: string;
+    folders: { name: string; color: string | null }[];
+  }[];
 }
 
 interface ConnectionsState {

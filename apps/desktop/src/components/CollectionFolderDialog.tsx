@@ -1,38 +1,32 @@
 /**
- * Create or rename a collection (ADR 0016). Self-contained crypto: creating
- * generates a collection key sealed to myself (I become the first owner) and
- * encrypts the {name, colour} header; renaming re-encrypts the header with the
- * collection's existing key (fetched from `mine()` and unwrapped). Only rendered
- * in the accounts context, where the session keys are in memory.
+ * Create a shared sub-folder inside a collection (ADR 0016). The folder is stored
+ * in the collection's encrypted header, so every member sees it (owners/editors can
+ * add it — it re-encrypts the header) and it survives while empty. Machines join a
+ * folder by setting their `folder` field to its name.
  */
 
 import { useState } from 'react';
-import { Backend } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
-import { generateCollectionKey, sealCollectionKey, encryptCollectionField } from '../utils/collectionCrypto';
-import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
+import { addCollectionFolder } from '../utils/collectionHeader';
 
-const COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#94a3b8'];
+const COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#94a3b8'];
 
-export function CollectionEditDialog({
+export function CollectionFolderDialog({
   collectionId,
-  initialName,
-  initialColor,
+  collectionName,
   onClose,
   onSaved,
 }: {
-  collectionId?: string; // present ⇒ rename; absent ⇒ create
-  initialName?: string;
-  initialColor?: string | null;
+  collectionId: string;
+  collectionName?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { publicKey, privateKey } = useServerSession();
-  const [name, setName] = useState(initialName ?? '');
-  const [color, setColor] = useState(initialColor ?? COLORS[0]);
-  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [color, setColor] = useState(COLORS[0]);
   const [busy, setBusy] = useState(false);
-  const editing = !!collectionId;
+  const [error, setError] = useState<string | null>(null);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,23 +34,12 @@ export function CollectionEditDialog({
     setBusy(true);
     setError(null);
     try {
-      if (editing) {
-        // Rename: re-encrypt the header, preserving the collection's folders.
-        if (!publicKey || !privateKey) throw new Error('session keys unavailable');
-        const { key, header } = await readCollectionHeader(collectionId!, publicKey, privateKey);
-        await writeCollectionHeader(collectionId!, key, { ...header, name: name.trim(), color });
-      } else {
-        // Create: fresh key sealed to myself (first owner) + encrypted header.
-        if (!publicKey) throw new Error('session keys unavailable');
-        const key = generateCollectionKey();
-        const nameEnc = await encryptCollectionField(key, { name: name.trim(), color });
-        const protectedCollectionKey = await sealCollectionKey(publicKey, key);
-        await Backend.Collections.create(nameEnc, protectedCollectionKey);
-      }
+      if (!publicKey || !privateKey) throw new Error('session keys unavailable');
+      await addCollectionFolder(collectionId, publicKey, privateKey, { name: name.trim(), color });
       onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
+      setError(err instanceof Error ? err.message : 'Failed to create folder');
     } finally {
       setBusy(false);
     }
@@ -69,7 +52,8 @@ export function CollectionEditDialog({
         className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-3 text-lg font-semibold">{editing ? 'Rename collection' : 'New collection'}</h3>
+        <h3 className="mb-1 text-lg font-semibold">New folder</h3>
+        {collectionName && <p className="mb-3 text-xs text-muted-foreground">Shared in “{collectionName}”</p>}
 
         {error && (
           <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">{error}</div>
@@ -80,7 +64,7 @@ export function CollectionEditDialog({
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoFocus
-          placeholder="e.g. Production DBs"
+          placeholder="e.g. Web servers"
           className="mb-4 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           disabled={busy}
         />
@@ -108,7 +92,7 @@ export function CollectionEditDialog({
             disabled={busy || !name.trim()}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {editing ? 'Save' : 'Create'}
+            Create
           </button>
         </div>
       </form>
