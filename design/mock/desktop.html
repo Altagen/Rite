@@ -517,14 +517,9 @@ function dlgResetVault(){showModal({title:'Reset this vault?',confirm:'Reset eve
   body:`<div class="card" style="padding:12px;border-color:rgba(247,118,142,.35);background:rgba(247,118,142,.06)"><p style="margin:0;font-size:13px;color:var(--fg)">This <b>permanently erases</b> the master password and every connection in this vault. It cannot be undone.</p></div>
     <label class="field" style="margin-top:12px"><span>Type <b class="mono">RESET</b> to confirm</span><input class="inp" id="reset-confirm" placeholder="RESET"></label>`,
   onConfirm:(m)=>{if((m.querySelector('#reset-confirm').value||'').trim()!=='RESET')return false;toast('Vault reset');}});}
-function openAdmin(){const bd=showModal({title:'Administration',wide:true,confirm:'Close',body:`<div style="display:flex;gap:16px;border-bottom:1px solid var(--border);margin-bottom:12px"><div class="navtab on" onclick="adminTab(this,'users')">Users</div><div class="navtab" onclick="adminTab(this,'teams')">Teams</div></div><div id="admbody"></div>`});window.__adm=bd;adminRender('users');}
-function adminTab(el,t){el.parentNode.querySelectorAll('.navtab').forEach(x=>x.classList.remove('on'));el.classList.add('on');adminRender(t);}
-function adminRender(t){const b=window.__adm.querySelector('#admbody');
-  if(t==='users')b.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><input class="inp" placeholder="New username"><input class="inp" type="password" placeholder="Temp password" style="max-width:150px"><button class="btn btn-primary btn-sm">Add user</button></div>${ORG.users.map(u=>`<div class="mrow">${av(u.u)}<div class="grow"><div class="title">${u.label}</div></div><span class="tag ${u.role==='admin'?'server':'unlocked'}">${u.role}</span></div>`).join('')}`;
-  else b.innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px"><input class="inp" placeholder="New team name"><button class="btn btn-primary btn-sm">Create team</button></div>${ORG.teams.map(tm=>`<div class="mrow"><span style="color:var(--accent)">${EXICON.users}</span><div class="grow"><div class="title">${tm.name}</div><div class="sub">${tm.members.join(', ')}</div></div><div class="avs">${tm.members.map(av).join('')}</div><button class="btn btn-ghost btn-sm" title="Rename team" onclick="dlgRenameTeam('${tm.name}')">${M.edit}</button><button class="btn btn-ghost btn-sm" onclick="toast('Team key granted')">${EXICON.key} Grant</button></div>`).join('')}`;}
-function dlgRenameTeam(name){const t=ORG.teams.find(x=>x.name===name);if(!t)return;
-  showModal({title:'Rename team',confirm:'Save',body:`<label class="field"><span>Team name</span><input class="inp" id="rt-name" value="${t.name}"></label>`,
-    onConfirm:(m)=>{t.name=(m.querySelector('#rt-name').value||'').trim()||t.name;if(window.__adm)adminRender('teams');toast('Team renamed');}});}
+/* Administration is deliberately NOT available from the desktop client — it lives
+   in the server's own web console (open the server URL in a browser). The desktop
+   is a client (use vaults + connect to servers), not a server-management surface. */
 
 /* ================= wire ================= */
 function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on this system`);return;}STATE.defaultShell=s.name;renderActs();toast(`${s.name} set as default shell`);}})));}
@@ -532,7 +527,6 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
   document.getElementById('acts').innerHTML=`<button class="btn btn-primary btn-sm" title="New local terminal (${sh.name})" onclick="toast('New local terminal · ${sh.name}')">${ICON.plus} <span class="lbl">Terminal</span></button>
   <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
   <button class="btn btn-sm" onclick="dlgQuickSSH()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>
-  ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Admin" onclick="openAdmin()">${EXICON.shield}</button>`:''}
   ${STATE.ctx.type==='vault'&&!STATE.ctx.locked?`<button class="btn btn-ghost btn-sm" title="Lock vault" onclick="lockVault('${STATE.ctx.id}')">${ICON.lock}</button>`:''}
   ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Sign out of ${STATE.ctx.name}" onclick="signOutServer('${STATE.ctx.id}')">${M.signout}</button>`:''}
   <button class="btn btn-ghost btn-sm" title="Settings" onclick="openSettings()">${EXICON.gear}</button>

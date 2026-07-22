@@ -15,8 +15,9 @@ prototype is split per shell (shared CSS/JS/data, one HTML entry each):
   no multi-window. Import is **paste-only** (the server never sees a file path).
 - **`desktop.html`** — the **desktop/binary** shell. Multi-context: a **context
   pill** switches between local **vault(s)** and **server(s)**; master-password/lock,
-  multi-window, native local terminals. When it opens a server context it shows the
-  same server UX as the web.
+  multi-window, native local terminals. On a server context it shows the same
+  *usage* UX as the web (connections, collections, terminals) but **not** the admin
+  console — server management is web-only (open the server URL in a browser).
 
 Both share the core model: personal **folders** → **collections** (the shareable
 unit) → **machines**, and **no loose machines** (a machine always lives in a
@@ -41,7 +42,7 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
 | Context identity | context **pill** (vaults / servers) | **instance name** in the header |
 | Local vault | yes (master pw, lock, reset) | no |
 | Multi-window | yes | no |
-| Admin console | when on a server context | yes (if admin) |
+| Admin console | **no** — server management lives in the web console | yes (if admin) |
 | Session persistence | — | admin setting |
 | SSH import | file path or paste | **paste only** |
 
