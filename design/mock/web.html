@@ -65,7 +65,7 @@
     </main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>web UI</b> · one server (instance name, no pill) · admin console · machines live in collections</div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>web UI</b> · one server (instance name, no pill) · <a href="#" onclick="openHostKey();return false">host-key</a></div>
 
 <script src="rite.js"></script>
 <script src="full-data.js"></script>
@@ -167,7 +167,7 @@ function renderMain(){
   const mt=document.getElementById('mtabs'); const coll=STATE.selColl?find(STATE.selColl):null;
   mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term} Terminal</div>
     ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
-    <div style="flex:1"></div>`;
+    <div style="flex:1"></div>${STATE.mainTab==='term'?`<button class="btn btn-ghost btn-sm" onclick="toast('Split terminal')">${EXICON.split} Split</button>`:''}`;
   const b=document.getElementById('mbody');
   if(STATE.mainTab==='term'||!coll){ b.innerHTML=`<div style="height:100%">${termHTML(null)}</div>`; return; }
   b.innerHTML=cardsView(coll);
@@ -303,10 +303,16 @@ function mpRender(){const {bd,chosen,roles}=window.__mp,q=(bd.querySelector('#mp
 function mpToggle(u){const s=window.__mp.chosen,r=window.__mp.roles;if(s.has(u)){s.delete(u);delete r[u];}else{s.add(u);r[u]='viewer';}mpRender();}
 function mpRole(u,role){window.__mp.roles[u]=role;mpRender();}
 
+/* Unknown host key (TOFU) — shown on first connect in strict mode. */
+function openHostKey(){showModal({title:'Unknown host key',subtitle:'First connection to this host (TOFU).',
+  body:`<div class="card" style="padding:12px;border-color:rgba(229,181,103,.4);background:rgba(229,181,103,.07)"><div style="display:flex;gap:10px;align-items:center"><span style="color:var(--amber)">${ICON.lock}</span><b>web-01.acme.io:22</b></div><div class="mono" style="margin-top:8px;font-size:12px;color:var(--fg-dim);word-break:break-all">SHA256:aX9k2Lm…7pQr4tZ ed25519</div></div><p class="muted" style="font-size:13px;margin:12px 0 0">Verify out-of-band before trusting. Rite pins it for next time.</p>`,
+  confirm:'Trust & connect',onConfirm:()=>toast('Host key pinned')});}
+
 /* ================= settings + admin (web) ================= */
 function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',body:`
   <div class="settings-row"><div><b>Interface language</b><div class="muted" style="font-size:12px">English / Français</div></div><select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select></div>
   <div class="settings-row"><div><b>Theme</b><div class="muted" style="font-size:12px">Dark / light</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
+  <div class="settings-row"><div><b>Auto-lock session</b><div class="muted" style="font-size:12px">Clear the in-memory vault key after inactivity (re-login to resume)</div></div><select class="inp" style="width:auto"><option>Disabled</option><option>1 min</option><option>3 min</option><option selected>5 min</option><option>Custom…</option></select></div>
   <div class="settings-row"><div><b>Auto-clear clipboard</b><div class="muted" style="font-size:12px">Clear 30s after a copy (security)</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
   <div class="settings-row"><div><b>Default shell</b><div class="muted" style="font-size:12px">New server terminals (also in the toolbar)</div></div><select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name}${s.installed?'':' (not installed)'}</option>`).join('')}</select></div>
   <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
