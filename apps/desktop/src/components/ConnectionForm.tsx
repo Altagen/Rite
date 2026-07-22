@@ -49,9 +49,10 @@ export function ConnectionForm({
   const [keyPath, setKeyPath] = useState(prefillData?.keyPath || '');
   const [keyPassphrase, setKeyPassphrase] = useState(prefillData?.passphrase || '');
   const [folder, setFolder] = useState(connection?.folder || '');
-  // ADR 0016 save target (accounts context): '' = personal vault, else a collection id.
+  // ADR 0016 save target (accounts context): a collection id. "Personal" (the
+  // vault-backed collection) is always the first target, the default.
   const [collectionTargetId, setCollectionTargetId] = useState<string>(
-    connection?.collectionId ?? defaultCollectionId ?? '',
+    connection?.collectionId ?? defaultCollectionId ?? collectionTargets?.[0]?.id ?? '',
   );
   const color = connection?.color || ''; // TODO: Implement color picker UI
   const icon = connection?.icon || ''; // TODO: Implement icon picker UI
@@ -505,7 +506,6 @@ export function ConnectionForm({
                 disabled={!!connection}
                 className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none disabled:opacity-60"
               >
-                <option value="">{t('connections.personalVault')}</option>
                 {collectionTargets.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}

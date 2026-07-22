@@ -11,6 +11,7 @@ import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
+import { PERSONAL_COLLECTION_ID } from '../store/accountsConnectionsSource';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTranslation } from '../i18n/i18n';
 import { LibrarySidebar } from './LibrarySidebar';
@@ -871,13 +872,12 @@ export function Workspace({
     ? conns.connections.filter((c) => c.collectionId === openCollectionId)
     : [];
   const openCollectionMeta = openCollectionMachines[0];
-  const openCollectionName =
-    openCollectionMeta?.collectionName ??
-    conns.writableCollections?.find((c) => c.id === openCollectionId)?.name ??
-    'Collection';
-  const openCollectionRole = openCollectionMeta?.collectionRole ?? null;
-  const openCollectionWritable =
-    !!conns.writableCollections?.some((c) => c.id === openCollectionId);
+  const openCol = conns.collections?.find((c) => c.id === openCollectionId);
+  const openCollectionName = openCol?.name ?? openCollectionMeta?.collectionName ?? 'Collection';
+  const openCollectionColor = openCol?.color ?? openCollectionMeta?.collectionColor ?? null;
+  const openCollectionRole = openCol?.role ?? openCollectionMeta?.collectionRole ?? null;
+  const openCollectionWritable = openCollectionRole === 'owner' || openCollectionRole === 'editor';
+  const openCollectionIsPersonal = openCollectionId === PERSONAL_COLLECTION_ID;
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -1021,16 +1021,9 @@ export function Workspace({
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
                       <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-background p-1 shadow-lg">
-                        <button
-                          onClick={() => {
-                            setShowNewMenu(false);
-                            handleNewConnection();
-                          }}
-                          className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                        >
-                          New machine…
-                        </button>
-                        {isAccountsContext && (
+                        {isAccountsContext ? (
+                          // No loose machines (ADR 0016): machines & import are
+                          // collection-scoped — the library + only creates collections.
                           <button
                             onClick={() => {
                               setShowNewMenu(false);
@@ -1040,16 +1033,28 @@ export function Workspace({
                           >
                             New collection…
                           </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => {
+                                setShowNewMenu(false);
+                                handleNewConnection();
+                              }}
+                              className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                            >
+                              New machine…
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowNewMenu(false);
+                                setShowImportSSH(true);
+                              }}
+                              className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                            >
+                              Import from SSH config…
+                            </button>
+                          </>
                         )}
-                        <button
-                          onClick={() => {
-                            setShowNewMenu(false);
-                            setShowImportSSH(true);
-                          }}
-                          className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                        >
-                          Import from SSH config…
-                        </button>
                       </div>
                     </>
                   )}
@@ -1078,6 +1083,7 @@ export function Workspace({
               onConnect={handleConnect}
               onOpenCollection={handleOpenCollection}
               openCollectionId={mainView === 'collection' ? openCollectionId : null}
+              collections={conns.collections}
               onNewMachineInCollection={isAccountsContext ? handleNewMachineInCollection : undefined}
               onOpenMembers={isAccountsContext ? (id) => setMembersCollectionId(id) : undefined}
               onRenameCollection={
@@ -1157,7 +1163,7 @@ export function Workspace({
               <div className="absolute inset-0 z-10 overflow-hidden bg-background">
                 <CollectionView
                   name={openCollectionName}
-                  color={openCollectionMeta?.collectionColor}
+                  color={openCollectionColor}
                   role={openCollectionRole}
                   machines={openCollectionMachines}
                   canWrite={openCollectionWritable}
@@ -1173,7 +1179,9 @@ export function Workspace({
                     setImportCollectionId(openCollectionId);
                     setShowImportSSH(true);
                   }}
-                  onOpenMembers={() => setMembersCollectionId(openCollectionId)}
+                  onOpenMembers={
+                    openCollectionIsPersonal ? undefined : () => setMembersCollectionId(openCollectionId)
+                  }
                 />
               </div>
             )}

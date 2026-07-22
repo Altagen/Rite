@@ -433,10 +433,10 @@ test('web member workspace: personal + team connections, zero-knowledge, server-
   // A member lands in the shared workspace (ADR 0014), not the admin panels.
   await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
 
-  // Create a personal connection through the form: the browser seals it with the
-  // user key (ADR 0011) and the server only ever sees ciphertext.
-  await page.getByRole('button', { name: 'Add to library' }).click();
-  await page.getByRole('button', { name: 'New machine…' }).click();
+  // Create a personal connection: no loose machines (ADR 0016), so add it into the
+  // synthetic "Personal" collection (backed by the per-user vault). The browser
+  // seals it with the user key (ADR 0011) and the server only ever sees ciphertext.
+  await page.getByRole('button', { name: 'New machine in collection' }).first().click();
   await expect(page.getByRole('heading', { name: 'New Connection' })).toBeVisible();
   await page.getByPlaceholder('My Server').fill('my-web-box');
   await page.getByPlaceholder('example.com or 192.168.1.1').fill('web-secret-host');

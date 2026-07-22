@@ -28,6 +28,16 @@ import { unwrapTeamKey } from '../utils/teamCrypto';
 import { unwrapCollectionKey, decryptCollectionField, encryptCollectionField } from '../utils/collectionCrypto';
 import type { CollectionRole } from '../utils/backend';
 
+/**
+ * Synthetic id for the personal vault surfaced as a "Personal" collection (ADR 0016
+ * "no loose machines": every machine lives in a collection; personal = your own).
+ * It is NOT a real ADR 0016 collection — storage stays the per-user vault, so it
+ * can't be shared. The UI treats it as a 1-member, owner-only collection node.
+ */
+export const PERSONAL_COLLECTION_ID = '__personal__';
+const PERSONAL_COLLECTION_NAME = 'Personal';
+const PERSONAL_COLLECTION_COLOR = '#7c9cf5';
+
 /** The connection fields sealed into a per-user, team or collection blob (browser-crypto). */
 export interface StoredRecord {
   name: string;
@@ -149,6 +159,9 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
   const [connections, setConnections] = useState<ConnectionInfo[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [writableCollections, setWritableCollections] = useState<{ id: string; name: string }[]>([]);
+  const [collectionList, setCollectionList] = useState<
+    { id: string; name: string; color: string | null; role: string }[]
+  >([]);
   const entries = useRef<Map<string, Entry>>(new Map());
   const collections = useRef<Map<string, CollectionCtx>>(new Map());
 
@@ -157,13 +170,21 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     const map = new Map<string, Entry>();
     const infos: ConnectionInfo[] = [];
 
-    // Personal connections (per-user vault, userKey).
+    // Personal connections (per-user vault, userKey) — surfaced as the synthetic
+    // "Personal" collection so there are no loose machines in the tree. The Entry
+    // has no teamId/collectionId, so writes still route to the vault.
     try {
       for (const b of await Backend.Vault.connections()) {
         try {
           const record = await decryptRecord(userKey, b.blob);
           map.set(b.id, { record });
-          infos.push(toInfo(b.id, record, b.createdAt, b.updatedAt, null));
+          infos.push({
+            ...toInfo(b.id, record, b.createdAt, b.updatedAt, record.folder),
+            collectionId: PERSONAL_COLLECTION_ID,
+            collectionName: PERSONAL_COLLECTION_NAME,
+            collectionColor: PERSONAL_COLLECTION_COLOR,
+            collectionRole: 'owner',
+          });
         } catch {
           // A blob we cannot decrypt (key mismatch) — skip it rather than fail.
         }
@@ -205,6 +226,11 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
         .catch(() => []);
       const ctx = new Map<string, CollectionCtx>();
       const writable: { id: string; name: string }[] = [];
+      // Every readable collection (including empty ones), so the tree can show a
+      // node before it has any machine. "Personal" (the vault) is always present.
+      const list: { id: string; name: string; color: string | null; role: string }[] = [
+        { id: PERSONAL_COLLECTION_ID, name: PERSONAL_COLLECTION_NAME, color: PERSONAL_COLLECTION_COLOR, role: 'owner' },
+      ];
       for (const col of cols) {
         if (!col.protectedCollectionKey) continue;
         try {
@@ -213,6 +239,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
             () => ({ name: 'Collection', color: null }) as CollectionHeader,
           );
           ctx.set(col.id, { key, role: col.role });
+          list.push({ id: col.id, name: header.name, color: header.color, role: col.role });
           if (canWrite(col.role)) writable.push({ id: col.id, name: header.name });
           for (const it of await Backend.Collections.items(col.id)) {
             try {
@@ -236,7 +263,12 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
         }
       }
       collections.current = ctx;
-      setWritableCollections(writable.sort((a, b) => a.name.localeCompare(b.name)));
+      setCollectionList(list);
+      // "Personal" (the vault) is always a writable target, listed first.
+      setWritableCollections([
+        { id: PERSONAL_COLLECTION_ID, name: PERSONAL_COLLECTION_NAME },
+        ...writable.sort((a, b) => a.name.localeCompare(b.name)),
+      ]);
     }
 
     entries.current = map;
@@ -280,9 +312,10 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
   const create = useCallback(
     async (input: CreateConnectionInput) => {
       const record = recordFromCreate(input);
-      // Save into a shared collection (ADR 0016) when a target is given, else the
-      // personal vault. Collection writes are gated on owner/editor.
-      if (input.collectionId) {
+      // Save into a shared collection (ADR 0016) when a real target is given, else
+      // the personal vault ("Personal" is the synthetic vault-backed collection).
+      // Collection writes are gated on owner/editor.
+      if (input.collectionId && input.collectionId !== PERSONAL_COLLECTION_ID) {
         const ctx = collections.current.get(input.collectionId);
         if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
         const blob = await encryptCollectionField(ctx.key, record);
@@ -329,5 +362,6 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     create,
     update,
     writableCollections,
+    collections: collectionList,
   };
 }

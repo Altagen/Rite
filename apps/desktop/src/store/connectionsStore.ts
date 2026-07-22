@@ -108,6 +108,9 @@ export interface ConnectionsSource {
   // machine form's "save to collection" target. Undefined in the local vault
   // context (no collections there); populated by the accounts source.
   writableCollections?: { id: string; name: string }[];
+  // Every readable collection (incl. empty ones + the synthetic "Personal"), so the
+  // sidebar can show a collection node before it has any machine. Accounts only.
+  collections?: { id: string; name: string; color: string | null; role: string }[];
 }
 
 interface ConnectionsState {

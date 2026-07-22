@@ -60,7 +60,7 @@ export function CollectionView({
   onEdit: (c: ConnectionInfo) => void;
   onNewMachine: () => void;
   onImport: () => void;
-  onOpenMembers: () => void;
+  onOpenMembers?: () => void; // absent for the synthetic "Personal" (not shareable)
 }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState('');
@@ -175,15 +175,17 @@ export function CollectionView({
           {machines.length} {machines.length === 1 ? 'machine' : 'machines'}
         </span>
         <span className="flex-1" />
-        <button
-          onClick={onOpenMembers}
-          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 00-1-7.75" />
-          </svg>
-          Members
-        </button>
+        {onOpenMembers && (
+          <button
+            onClick={onOpenMembers}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 00-1-7.75" />
+            </svg>
+            Members
+          </button>
+        )}
       </div>
 
       {/* Toolbar */}
