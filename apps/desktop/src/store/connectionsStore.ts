@@ -118,6 +118,7 @@ export interface ConnectionsSource {
     role: string;
     folders: { name: string; color: string | null }[];
     memberCount: number;
+    isPersonal: boolean;
   }[];
 }
 

@@ -11,7 +11,6 @@ import { useEffect, useState, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
-import { PERSONAL_COLLECTION_ID } from '../store/accountsConnectionsSource';
 import { useSettingsStore } from '../store/settingsStore';
 import { useTranslation } from '../i18n/i18n';
 import { LibrarySidebar } from './LibrarySidebar';
@@ -25,6 +24,8 @@ import { IconTerminal, IconBolt, IconGear, IconLock, IconChevronDown } from './i
 import { LibraryFolderDialog } from './LibraryFolderDialog';
 import { MoveToFolderDialog } from './MoveToFolderDialog';
 import { useLibraryTree } from '../store/libraryTree';
+import { useServerSession } from '../store/serverSessionStore';
+import { deleteCollectionFolder } from '../utils/collectionHeader';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
 import { ImportSSHConfigModal } from './ImportSSHConfigModal';
@@ -118,7 +119,17 @@ export function Workspace({
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
   const [collectionEdit, setCollectionEdit] = useState<{ id?: string; name?: string; color?: string | null } | null>(null);
   const [showNewCollection, setShowNewCollection] = useState(false);
-  const [folderCollectionId, setFolderCollectionId] = useState<string | null>(null);
+  // Collection sub-folder dialog (create top-level / sub-folder / rename) + delete.
+  const [folderDialog, setFolderDialog] = useState<{
+    collectionId: string;
+    parentPath?: string | null;
+    renamePath?: string;
+    initialName?: string;
+    initialColor?: string | null;
+  } | null>(null);
+  const [deleteSubfolder, setDeleteSubfolder] = useState<{ collectionId: string; path: string } | null>(null);
+  // Server session keys (accounts context) for the folder-delete re-tag; null in local.
+  const serverKeys = useServerSession();
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{ id: string; name: string } | null>(null);
   // Top-level library folders (ADR 0016 view hierarchy) — the encrypted per-user tree.
   const tree = useLibraryTree();
@@ -889,7 +900,6 @@ export function Workspace({
   const openCollectionColor = openCol?.color ?? openCollectionMeta?.collectionColor ?? null;
   const openCollectionRole = openCol?.role ?? openCollectionMeta?.collectionRole ?? null;
   const openCollectionWritable = openCollectionRole === 'owner' || openCollectionRole === 'editor';
-  const openCollectionIsPersonal = openCollectionId === PERSONAL_COLLECTION_ID;
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -1066,7 +1076,24 @@ export function Workspace({
               openCollectionId={mainView === 'collection' ? openCollectionId : null}
               collections={conns.collections}
               onNewMachineInCollection={isAccountsContext ? handleNewMachineInCollection : undefined}
-              onNewFolderInCollection={isAccountsContext ? (id) => setFolderCollectionId(id) : undefined}
+              onNewFolderInCollection={isAccountsContext ? (id) => setFolderDialog({ collectionId: id }) : undefined}
+              onNewSubfolder={
+                isAccountsContext
+                  ? (id, parentPath) => setFolderDialog({ collectionId: id, parentPath })
+                  : undefined
+              }
+              onRenameFolder={
+                isAccountsContext
+                  ? (id, path, color) =>
+                      setFolderDialog({
+                        collectionId: id,
+                        renamePath: path,
+                        initialName: path.split('/').pop() ?? path,
+                        initialColor: color,
+                      })
+                  : undefined
+              }
+              onDeleteFolder={isAccountsContext ? (id, path) => setDeleteSubfolder({ collectionId: id, path }) : undefined}
               onImportToCollection={
                 isAccountsContext
                   ? (id) => {
@@ -1173,16 +1200,12 @@ export function Workspace({
                     setConnectionFormPrefill(null);
                     setShowForm(true);
                   }}
-                  onNewFolder={
-                    openCollectionIsPersonal ? undefined : () => setFolderCollectionId(openCollectionId)
-                  }
+                  onNewFolder={() => openCollectionId && setFolderDialog({ collectionId: openCollectionId })}
                   onImport={() => {
                     setImportCollectionId(openCollectionId);
                     setShowImportSSH(true);
                   }}
-                  onOpenMembers={
-                    openCollectionIsPersonal ? undefined : () => setMembersCollectionId(openCollectionId)
-                  }
+                  onOpenMembers={() => setMembersCollectionId(openCollectionId)}
                 />
               </div>
             )}
@@ -1251,13 +1274,49 @@ export function Workspace({
       {showNewCollection && (
         <MemberPicker mode="create" onClose={() => setShowNewCollection(false)} onSaved={fetchConnections} />
       )}
-      {folderCollectionId && (
+      {folderDialog && (
         <CollectionFolderDialog
-          collectionId={folderCollectionId}
-          collectionName={conns.collections?.find((c) => c.id === folderCollectionId)?.name ?? openCollectionName}
-          onClose={() => setFolderCollectionId(null)}
+          collectionId={folderDialog.collectionId}
+          collectionName={conns.collections?.find((c) => c.id === folderDialog.collectionId)?.name ?? openCollectionName}
+          parentPath={folderDialog.parentPath}
+          renamePath={folderDialog.renamePath}
+          initialName={folderDialog.initialName}
+          initialColor={folderDialog.initialColor}
+          onClose={() => setFolderDialog(null)}
           onSaved={fetchConnections}
         />
+      )}
+      {deleteSubfolder && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteSubfolder(null)}>
+          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-2 text-lg font-semibold">Delete folder “{deleteSubfolder.path.split('/').pop()}”?</h3>
+            <p className="mb-4 text-sm text-muted-foreground">
+              The folder and its sub-folders are removed for everyone in the collection. Machines inside move up to the
+              parent folder — nothing is deleted.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteSubfolder(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const target = deleteSubfolder;
+                  setDeleteSubfolder(null);
+                  if (!serverKeys.publicKey || !serverKeys.privateKey) return;
+                  try {
+                    await deleteCollectionFolder(target.collectionId, serverKeys.publicKey, serverKeys.privateKey, target.path);
+                    await fetchConnections();
+                  } catch (err) {
+                    console.error('Failed to delete folder:', err);
+                  }
+                }}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Top-level personal folders (ADR 0016 view hierarchy) */}

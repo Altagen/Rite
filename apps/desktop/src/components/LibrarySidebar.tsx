@@ -13,7 +13,6 @@
 import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
-import { PERSONAL_COLLECTION_ID } from '../store/accountsConnectionsSource';
 import { IconPlay, IconEdit, IconUsers, IconTrash, IconFolder, IconImport } from './icons';
 
 interface LibrarySidebarProps {
@@ -37,12 +36,17 @@ interface LibrarySidebarProps {
     role: string;
     folders: { name: string; color: string | null }[];
     memberCount: number;
+    isPersonal: boolean;
   }[];
   // Collection node actions (accounts context). Rename/Delete are owner-only,
   // gated by the caller; the sidebar shows them only when a handler is provided.
   onNewMachineInCollection?: (collectionId: string) => void;
   onNewFolderInCollection?: (collectionId: string) => void;
   onImportToCollection?: (collectionId: string) => void;
+  // Sub-folder actions inside a collection (path-based nesting).
+  onNewSubfolder?: (collectionId: string, parentPath: string) => void;
+  onRenameFolder?: (collectionId: string, path: string, color: string | null) => void;
+  onDeleteFolder?: (collectionId: string, path: string) => void;
   onOpenMembers?: (collectionId: string) => void;
   onRenameCollection?: (collectionId: string, name: string, color: string | null) => void;
   onDeleteCollection?: (collectionId: string, name: string) => void;
@@ -146,7 +150,6 @@ function CollectionNode({
   onRename,
   onDelete,
   onMove,
-  isPersonal,
   memberCount = 1,
   children,
 }: {
@@ -167,7 +170,6 @@ function CollectionNode({
   onRename?: (id: string) => void;
   onDelete?: (id: string) => void;
   onMove?: (id: string) => void;
-  isPersonal?: boolean; // the synthetic vault-backed "Personal" — not shareable
   children: React.ReactNode;
 }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -192,7 +194,7 @@ function CollectionNode({
         <span className="m-nm" title={name}>
           {name}
         </span>
-        {!isPersonal && memberCount > 1 && (
+        {memberCount > 1 && (
           <span className="m-mc" title={`${memberCount} members`}>
             <IconUsers className="h-3 w-3" />
             {memberCount}
@@ -236,7 +238,6 @@ function CollectionNode({
               )}
             </div>
           )}
-          {!isPersonal && (
           <div className="relative">
             <button
               onClick={(e) => {
@@ -285,7 +286,6 @@ function CollectionNode({
               </>
             )}
           </div>
-          )}
         </div>
         <span className="m-cnt">{count}</span>
       </div>
@@ -294,7 +294,6 @@ function CollectionNode({
   );
 }
 
-const ROOT = ' root'; // sentinel key for ungrouped machines
 
 function FolderIcon({ color }: { color?: string | null }) {
   return (
@@ -413,6 +412,94 @@ function MachineRow({
   );
 }
 
+/** A folder row inside a collection (path-based nesting) with hover ＋/⋯ actions. */
+function FolderNode({
+  path,
+  name,
+  color,
+  count,
+  open,
+  depth,
+  canWrite,
+  onToggle,
+  onNewSubfolder,
+  onRename,
+  onDelete,
+  children,
+}: {
+  path: string;
+  name: string;
+  color: string | null;
+  count: number;
+  open: boolean;
+  depth: number;
+  canWrite: boolean;
+  onToggle: () => void;
+  onNewSubfolder?: (path: string) => void;
+  onRename?: (path: string) => void;
+  onDelete?: (path: string) => void;
+  children: React.ReactNode;
+}) {
+  const [showMenu, setShowMenu] = useState(false);
+  const hasMenu = !!(onRename || onDelete);
+  return (
+    <div>
+      <div className="m-tnode" style={{ paddingLeft: `${8 + depth * 16}px` }} onClick={onToggle}>
+        <span className="m-ca">
+          <Chevron open={open} />
+        </span>
+        <FolderIcon color={color} />
+        <span className="m-nm">{name}</span>
+        {canWrite && (onNewSubfolder || hasMenu) && (
+          <div className="m-acts" style={showMenu ? { opacity: 1 } : undefined}>
+            {onNewSubfolder && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNewSubfolder(path);
+                }}
+                title="New sub-folder"
+                aria-label="New sub-folder"
+              >
+                <PlusIcon />
+              </button>
+            )}
+            {hasMenu && (
+              <div className="relative">
+                <button onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }} aria-label="Folder menu">
+                  <MoreIcon />
+                </button>
+                {showMenu && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }} />
+                    <div className="m-menu absolute right-0 top-full z-20 mt-1">
+                      {onRename && (
+                        <button onClick={(e) => { e.stopPropagation(); setShowMenu(false); onRename(path); }}>
+                          Rename…
+                        </button>
+                      )}
+                      {onDelete && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setShowMenu(false); onDelete(path); }}
+                          style={{ color: '#f7768e' }}
+                        >
+                          Delete folder
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        <span className="m-cnt">{count}</span>
+      </div>
+      {open && <div>{children}</div>}
+    </div>
+  );
+}
+
 export function LibrarySidebar({
   connections,
   selectedId,
@@ -427,6 +514,9 @@ export function LibrarySidebar({
   onNewMachineInCollection,
   onNewFolderInCollection,
   onImportToCollection,
+  onNewSubfolder,
+  onRenameFolder,
+  onDeleteFolder,
   onOpenMembers,
   onRenameCollection,
   onDeleteCollection,
@@ -461,45 +551,83 @@ export function LibrarySidebar({
   );
 
   /** Render a set of machines grouped by their `folder`; ungrouped ones at baseDepth. */
+  // Render a collection's machines as a nested folder tree. Folder names are paths
+  // ("Web/Prod"); declared (possibly empty) folders come from the collection header.
   const renderFolderGroups = (
     machines: ConnectionInfo[],
     keyPrefix: string,
     baseDepth: number,
-    declaredFolders?: { name: string }[],
+    declaredFolders?: { name: string; color: string | null }[],
+    opts?: { collectionId?: string; canWrite?: boolean },
   ) => {
-    const groups = new Map<string, ConnectionInfo[]>();
-    // Seed declared (possibly empty) folders so a just-created one shows.
-    for (const f of declaredFolders ?? []) if (!groups.has(f.name)) groups.set(f.name, []);
-    for (const c of machines) {
-      const key = c.folder || ROOT;
-      (groups.get(key) ?? groups.set(key, []).get(key)!).push(c);
+    interface Node {
+      name: string;
+      path: string;
+      color: string | null;
+      children: Map<string, Node>;
+      machines: ConnectionInfo[];
     }
-    const folders = [...groups.keys()].filter((k) => k !== ROOT).sort((a, b) => a.localeCompare(b));
-    const root = groups.get(ROOT) ?? [];
+    const colorOf = new Map<string, string | null>();
+    for (const f of declaredFolders ?? []) colorOf.set(f.name, f.color);
+    const roots = new Map<string, Node>();
+    const rootMachines: ConnectionInfo[] = [];
+    const ensure = (path: string): Node => {
+      let level = roots;
+      let node: Node | null = null;
+      let cur = '';
+      for (const seg of path.split('/')) {
+        cur = cur ? `${cur}/${seg}` : seg;
+        let n = level.get(seg);
+        if (!n) {
+          n = { name: seg, path: cur, color: colorOf.get(cur) ?? null, children: new Map(), machines: [] };
+          level.set(seg, n);
+        }
+        node = n;
+        level = n.children;
+      }
+      return node!;
+    };
+    for (const f of declaredFolders ?? []) if (f.name) ensure(f.name);
+    for (const c of machines) {
+      if (c.folder) ensure(c.folder).machines.push(c);
+      else rootMachines.push(c);
+    }
+    const countMachines = (n: Node): number =>
+      n.machines.length + [...n.children.values()].reduce((s, c) => s + countMachines(c), 0);
+
+    const renderLevel = (level: Map<string, Node>, depth: number): React.ReactNode => {
+      const collectionId = opts?.collectionId;
+      const canWrite = opts?.canWrite ?? false;
+      return [...level.values()]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((n) => {
+          const key = `${keyPrefix}/folder/${n.path}`;
+          return (
+            <FolderNode
+              key={key}
+              path={n.path}
+              name={n.name}
+              color={n.color}
+              count={countMachines(n)}
+              open={isOpen(key)}
+              depth={depth}
+              canWrite={canWrite}
+              onToggle={() => toggle(key)}
+              onNewSubfolder={collectionId && onNewSubfolder ? (p) => onNewSubfolder(collectionId, p) : undefined}
+              onRename={collectionId && onRenameFolder ? (p) => onRenameFolder(collectionId, p, n.color) : undefined}
+              onDelete={collectionId && onDeleteFolder ? (p) => onDeleteFolder(collectionId, p) : undefined}
+            >
+              {renderLevel(n.children, depth + 1)}
+              {n.machines.map((c) => machineRow(c, depth + 1))}
+            </FolderNode>
+          );
+        });
+    };
+
     return (
       <>
-        {folders.map((folder) => {
-          const key = `${keyPrefix}/folder/${folder}`;
-          const open = isOpen(key);
-          return (
-            <div key={key}>
-              <button
-                onClick={() => toggle(key)}
-                className="m-tnode w-full text-left"
-                style={{ paddingLeft: `${8 + baseDepth * 16}px` }}
-              >
-                <span className="m-ca">
-                  <Chevron open={open} />
-                </span>
-                <FolderIcon />
-                <span className="m-nm">{folder}</span>
-                <span className="m-cnt">{groups.get(folder)!.length}</span>
-              </button>
-              {open && <div>{groups.get(folder)!.map((c) => machineRow(c, baseDepth + 1))}</div>}
-            </div>
-          );
-        })}
-        {root.map((c) => machineRow(c, baseDepth))}
+        {renderLevel(roots, baseDepth)}
+        {rootMachines.map((c) => machineRow(c, baseDepth))}
       </>
     );
   };
@@ -534,23 +662,20 @@ export function LibrarySidebar({
         role: m.collectionRole ?? 'owner',
         folders: [] as { name: string; color: string | null }[],
         memberCount: 1,
+        isPersonal: false,
       };
     });
   const collectionNodes = (collections ?? derived())
     // When searching, hide collections with no matching machine.
     .filter((c) => !q || byCollection.has(c.id))
-    .sort((a, b) => {
-      if (a.id === PERSONAL_COLLECTION_ID) return -1;
-      if (b.id === PERSONAL_COLLECTION_ID) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    // Personal first, then by name.
+    .sort((a, b) => (a.isPersonal ? -1 : b.isPersonal ? 1 : a.name.localeCompare(b.name)));
 
-  const renderCollectionNode = (node: { id: string; name: string; color: string | null; role: string; folders: { name: string; color: string | null }[]; memberCount: number }) => {
+  const renderCollectionNode = (node: { id: string; name: string; color: string | null; role: string; folders: { name: string; color: string | null }[]; memberCount: number; isPersonal: boolean }) => {
     const cid = node.id;
     const machines = byCollection.get(cid) ?? [];
     const key = `col/${cid}`;
-    const isPersonal = cid === PERSONAL_COLLECTION_ID;
-    const canMove = !isPersonal && onMoveCollection && (libraryFolders?.length ?? 0) > 0;
+    const canMove = onMoveCollection && (libraryFolders?.length ?? 0) > 0;
     return (
       <CollectionNode
         key={key}
@@ -561,19 +686,21 @@ export function LibrarySidebar({
         count={machines.length}
         open={isOpen(key)}
         active={openCollectionId === cid}
-        isPersonal={isPersonal}
         memberCount={node.memberCount}
         onOpen={() => onOpenCollection?.(cid)}
         onToggle={() => toggle(key)}
         onNewMachine={onNewMachineInCollection}
-        onNewFolder={isPersonal ? undefined : onNewFolderInCollection}
+        onNewFolder={onNewFolderInCollection}
         onImport={onImportToCollection}
-        onOpenMembers={isPersonal ? undefined : onOpenMembers}
-        onRename={!isPersonal && onRenameCollection ? () => onRenameCollection(cid, node.name, node.color) : undefined}
-        onDelete={!isPersonal && onDeleteCollection ? () => onDeleteCollection(cid, node.name) : undefined}
+        onOpenMembers={onOpenMembers}
+        onRename={onRenameCollection ? () => onRenameCollection(cid, node.name, node.color) : undefined}
+        onDelete={onDeleteCollection ? () => onDeleteCollection(cid, node.name) : undefined}
         onMove={canMove ? () => onMoveCollection!(cid, node.name) : undefined}
       >
-        {renderFolderGroups(machines, key, 1, node.folders)}
+        {renderFolderGroups(machines, key, 1, node.folders, {
+          collectionId: cid,
+          canWrite: node.role === 'owner' || node.role === 'editor',
+        })}
       </CollectionNode>
     );
   };
