@@ -289,6 +289,17 @@ const routes: Record<string, Route> = {
     return null;
   },
 
+  // Per-user library tree (ADR 0016): opaque client-encrypted blob.
+  library_get: () => json('/api/user/library'),
+  library_set: async (a) => {
+    await json('/api/user/library', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ blob: a.blob }),
+    });
+    return null;
+  },
+
   accept_host_key: async (a) => {
     await json('/api/ssh/host-key/accept', post({ host: a.host, port: a.port }));
     return null;

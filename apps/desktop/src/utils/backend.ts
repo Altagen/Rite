@@ -604,6 +604,13 @@ export const BackendCollections = {
     invokeWithValidation('collection_item_delete', z.null(), { id, itemId }),
 } as const;
 
+// Per-user library tree (ADR 0016 view hierarchy): an opaque, client-encrypted
+// blob (folders + collection placement). The server stores/returns it verbatim.
+export const BackendLibrary = {
+  get: () => invokeWithValidation('library_get', z.object({ blob: z.string().nullable() })),
+  set: (blob: string) => invokeWithValidation('library_set', z.null(), { blob }),
+} as const;
+
 export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
@@ -616,6 +623,7 @@ export const Backend = {
   Teams: BackendTeams,
   Vault: BackendVault,
   Collections: BackendCollections,
+  Library: BackendLibrary,
 } as const;
 
 // Export types for external use

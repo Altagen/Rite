@@ -21,6 +21,9 @@ import { CollectionView } from './CollectionView';
 import { MemberPicker } from './MemberPicker';
 import { CollectionEditDialog } from './CollectionEditDialog';
 import { CollectionFolderDialog } from './CollectionFolderDialog';
+import { LibraryFolderDialog } from './LibraryFolderDialog';
+import { MoveToFolderDialog } from './MoveToFolderDialog';
+import { useLibraryTree } from '../store/libraryTree';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
 import { ImportSSHConfigModal } from './ImportSSHConfigModal';
@@ -115,6 +118,11 @@ export function Workspace({
   const [showNewCollection, setShowNewCollection] = useState(false);
   const [folderCollectionId, setFolderCollectionId] = useState<string | null>(null);
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{ id: string; name: string } | null>(null);
+  // Top-level library folders (ADR 0016 view hierarchy) — the encrypted per-user tree.
+  const tree = useLibraryTree();
+  const [libraryFolderEdit, setLibraryFolderEdit] = useState<{ id?: string; name?: string; color?: string | null } | null>(null);
+  const [moveCollectionTarget, setMoveCollectionTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<{ id: string; name: string } | null>(null);
 
   // Host-key confirmation (strict mode): the pending prompt + the connection that
   // triggered it, so accepting can retry that exact connection.
@@ -1025,16 +1033,27 @@ export function Workspace({
                       <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-background p-1 shadow-lg">
                         {isAccountsContext ? (
                           // No loose machines (ADR 0016): machines & import are
-                          // collection-scoped — the library + only creates collections.
-                          <button
-                            onClick={() => {
-                              setShowNewMenu(false);
-                              setShowNewCollection(true);
-                            }}
-                            className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                          >
-                            New collection…
-                          </button>
+                          // collection-scoped — the library + creates folders & collections.
+                          <>
+                            <button
+                              onClick={() => {
+                                setShowNewMenu(false);
+                                setLibraryFolderEdit({});
+                              }}
+                              className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                            >
+                              New folder…
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowNewMenu(false);
+                                setShowNewCollection(true);
+                              }}
+                              className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
+                            >
+                              New collection…
+                            </button>
+                          </>
                         ) : (
                           <>
                             <button
@@ -1092,6 +1111,13 @@ export function Workspace({
                 isAccountsContext ? (id, name, color) => setCollectionEdit({ id, name, color }) : undefined
               }
               onDeleteCollection={isAccountsContext ? (id, name) => setDeleteCollectionTarget({ id, name }) : undefined}
+              libraryFolders={isAccountsContext ? tree.folders : undefined}
+              collectionPlacement={isAccountsContext ? tree.placement : undefined}
+              onRenameLibraryFolder={
+                isAccountsContext ? (id, name, color) => setLibraryFolderEdit({ id, name, color }) : undefined
+              }
+              onDeleteLibraryFolder={isAccountsContext ? (id, name) => setDeleteFolderTarget({ id, name }) : undefined}
+              onMoveCollection={isAccountsContext ? (id, name) => setMoveCollectionTarget({ id, name }) : undefined}
             />
           </div>
           </>
@@ -1261,6 +1287,54 @@ export function Workspace({
           onClose={() => setFolderCollectionId(null)}
           onSaved={fetchConnections}
         />
+      )}
+
+      {/* Top-level personal folders (ADR 0016 view hierarchy) */}
+      {libraryFolderEdit && (
+        <LibraryFolderDialog
+          initialName={libraryFolderEdit.id ? libraryFolderEdit.name : undefined}
+          initialColor={libraryFolderEdit.color}
+          onClose={() => setLibraryFolderEdit(null)}
+          onSave={(name, color) =>
+            libraryFolderEdit.id
+              ? tree.renameFolder(libraryFolderEdit.id, name, color)
+              : tree.createFolder(name, color)
+          }
+        />
+      )}
+      {moveCollectionTarget && (
+        <MoveToFolderDialog
+          collectionName={moveCollectionTarget.name}
+          folders={tree.folders}
+          current={tree.placement[moveCollectionTarget.id] ?? null}
+          onClose={() => setMoveCollectionTarget(null)}
+          onPick={(folderId) => tree.moveCollection(moveCollectionTarget.id, folderId)}
+        />
+      )}
+      {deleteFolderTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteFolderTarget(null)}>
+          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-2 text-lg font-semibold">Delete folder “{deleteFolderTarget.name}”?</h3>
+            <p className="mb-4 text-sm text-muted-foreground">
+              This only removes the folder from your view — the collections in it move back to the root. Nothing is
+              deleted or unshared.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setDeleteFolderTarget(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  tree.deleteFolder(deleteFolderTarget.id);
+                  setDeleteFolderTarget(null);
+                }}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Create / rename collection dialog (ADR 0016) */}

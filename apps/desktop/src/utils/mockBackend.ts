@@ -255,6 +255,12 @@ export async function mockInvoke(
     case 'collection_item_delete':
       return null;
 
+    // --- Library tree (ADR 0016; dev mock: empty) ---
+    case 'library_get':
+      return { blob: null };
+    case 'library_set':
+      return null;
+
     // --- Context multiplexer (dev mock: local only, empty roster) ---
     case 'context_get':
       return { active: 'local', roster: [] };

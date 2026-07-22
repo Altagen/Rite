@@ -472,6 +472,7 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/vault/connections/{id}",
             put(vault_update_connection).delete(vault_delete_connection),
         )
+        .route("/api/user/library", get(get_library).put(set_library))
         .route("/api/ssh-config/default-path", get(default_ssh_config_path))
         .route("/api/ssh-config/parse", post(parse_ssh_config))
         .route("/api/ssh-config/import", post(import_ssh_config))
@@ -1069,6 +1070,27 @@ async fn server_me(
 ) -> Result<Json<Value>, AppError> {
     let vault = server_auth::get_user_vault(state.db.pool(), &user.id).await?;
     Ok(Json(json!({ "user": (*user).clone(), "vault": vault })))
+}
+
+// --- per-user library tree (ADR 0016 view hierarchy) ------------------------
+// An opaque, client-encrypted blob (folders + collection placement). The server
+// stores/returns it verbatim and never reads it (zero-knowledge).
+
+async fn get_library(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Value>, AppError> {
+    let blob = rite_core::library_store::get(state.db.pool(), &user.id).await?;
+    Ok(Json(json!({ "blob": blob })))
+}
+
+async fn set_library(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<StatusCode, AppError> {
+    rite_core::library_store::set(state.db.pool(), &user.id, &req.blob).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- admin (role-gated by the guard: /api/admin/* requires role=admin) ------

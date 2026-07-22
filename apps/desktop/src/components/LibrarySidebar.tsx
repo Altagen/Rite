@@ -41,6 +41,70 @@ interface LibrarySidebarProps {
   onOpenMembers?: (collectionId: string) => void;
   onRenameCollection?: (collectionId: string, name: string, color: string | null) => void;
   onDeleteCollection?: (collectionId: string, name: string) => void;
+  // Top-level personal folders that organise collections (ADR 0016 view hierarchy).
+  libraryFolders?: { id: string; name: string; color: string | null }[];
+  collectionPlacement?: Record<string, string>; // collectionId → folderId
+  onRenameLibraryFolder?: (id: string, name: string, color: string | null) => void;
+  onDeleteLibraryFolder?: (id: string, name: string) => void;
+  onMoveCollection?: (collectionId: string, name: string) => void;
+}
+
+/** A top-level personal folder node that wraps the collections placed in it. */
+function LibraryFolderNode({
+  id,
+  name,
+  color,
+  count,
+  open,
+  onToggle,
+  onRename,
+  onDelete,
+  children,
+}: {
+  id: string;
+  name: string;
+  color: string | null;
+  count: number;
+  open: boolean;
+  onToggle: () => void;
+  onRename?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  children: React.ReactNode;
+}) {
+  const [showMenu, setShowMenu] = useState(false);
+  return (
+    <div>
+      <div className="group flex w-full items-center gap-1.5 rounded px-2 py-1.5 hover:bg-muted">
+        <button onClick={onToggle} className="flex-none rounded p-0.5 hover:bg-muted" aria-label={open ? 'Collapse' : 'Expand'}>
+          <Chevron open={open} />
+        </button>
+        <FolderIcon color={color} />
+        <button onClick={onToggle} className="min-w-0 flex-1 truncate text-left text-sm font-medium" title={name}>
+          {name}
+        </button>
+        <div className="relative flex items-center opacity-0 group-hover:opacity-100">
+          <button onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }} className="rounded p-1 hover:bg-muted" aria-label="Folder menu">
+            <MoreIcon />
+          </button>
+          {showMenu && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
+              <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded border border-border bg-background shadow-lg">
+                <button onClick={() => { setShowMenu(false); onRename?.(id); }} className="w-full px-3 py-2 text-left text-sm hover:bg-muted">
+                  Rename…
+                </button>
+                <button onClick={() => { setShowMenu(false); onDelete?.(id); }} className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-muted">
+                  Delete folder
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+        <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground group-hover:hidden">{count}</span>
+      </div>
+      {open && <div className="ml-3">{children}</div>}
+    </div>
+  );
 }
 
 function MoreIcon() {
@@ -74,6 +138,7 @@ function CollectionNode({
   onOpenMembers,
   onRename,
   onDelete,
+  onMove,
   isPersonal,
   children,
 }: {
@@ -90,6 +155,7 @@ function CollectionNode({
   onOpenMembers?: (id: string) => void;
   onRename?: (id: string) => void;
   onDelete?: (id: string) => void;
+  onMove?: (id: string) => void;
   isPersonal?: boolean; // the synthetic vault-backed "Personal" — not shareable
   children: React.ReactNode;
 }) {
@@ -156,6 +222,14 @@ function CollectionNode({
                   >
                     Members &amp; sharing…
                   </button>
+                  {onMove && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onMove(cid); }}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                    >
+                      Move to folder…
+                    </button>
+                  )}
                   {canManage && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setShowMenu(false); onRename?.(cid); }}
@@ -189,9 +263,16 @@ function CollectionNode({
 
 const ROOT = ' root'; // sentinel key for ungrouped machines
 
-function FolderIcon() {
+function FolderIcon({ color }: { color?: string | null }) {
   return (
-    <svg className="h-4 w-4 flex-none text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className={`h-4 w-4 flex-none ${color ? '' : 'text-muted-foreground'}`}
+      style={color ? { color } : undefined}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
       <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
     </svg>
   );
@@ -343,6 +424,11 @@ export function LibrarySidebar({
   onOpenMembers,
   onRenameCollection,
   onDeleteCollection,
+  libraryFolders,
+  collectionPlacement,
+  onRenameLibraryFolder,
+  onDeleteLibraryFolder,
+  onMoveCollection,
 }: LibrarySidebarProps) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -453,6 +539,42 @@ export function LibrarySidebar({
       return a.name.localeCompare(b.name);
     });
 
+  const renderCollectionNode = (node: { id: string; name: string; color: string | null; role: string; folders: { name: string; color: string | null }[] }) => {
+    const cid = node.id;
+    const machines = byCollection.get(cid) ?? [];
+    const key = `col/${cid}`;
+    const isPersonal = cid === PERSONAL_COLLECTION_ID;
+    const canMove = !isPersonal && onMoveCollection && (libraryFolders?.length ?? 0) > 0;
+    return (
+      <CollectionNode
+        key={key}
+        cid={cid}
+        name={node.name}
+        color={node.color}
+        role={node.role}
+        count={machines.length}
+        open={isOpen(key)}
+        active={openCollectionId === cid}
+        isPersonal={isPersonal}
+        onOpen={() => onOpenCollection?.(cid)}
+        onToggle={() => toggle(key)}
+        onNewMachine={onNewMachineInCollection}
+        onOpenMembers={isPersonal ? undefined : onOpenMembers}
+        onRename={!isPersonal && onRenameCollection ? () => onRenameCollection(cid, node.name, node.color) : undefined}
+        onDelete={!isPersonal && onDeleteCollection ? () => onDeleteCollection(cid, node.name) : undefined}
+        onMove={canMove ? () => onMoveCollection!(cid, node.name) : undefined}
+      >
+        {renderFolderGroups(machines, key, 1, node.folders)}
+      </CollectionNode>
+    );
+  };
+
+  // Group collections by their library-folder placement (ADR 0016 view hierarchy).
+  const placement = collectionPlacement ?? {};
+  const libFolders = libraryFolders ?? [];
+  const folderIds = new Set(libFolders.map((f) => f.id));
+  const rootNodes = collectionNodes.filter((n) => !placement[n.id] || !folderIds.has(placement[n.id]));
+
   return (
     <div className="flex h-full flex-col">
       {/* Search */}
@@ -480,39 +602,33 @@ export function LibrarySidebar({
           </div>
         ) : (
           <>
-            {/* Personal folders + loose machines */}
+            {/* Loose personal machines (local context only) */}
             {renderFolderGroups(personal, 'personal', 0)}
 
-            {/* Collections — first-class shared nodes (incl. empty ones) */}
-            {collectionNodes.map((node) => {
-              const cid = node.id;
-              const machines = byCollection.get(cid) ?? [];
-              const key = `col/${cid}`;
-              const name = node.name;
-              const color = node.color;
-              const isPersonal = cid === PERSONAL_COLLECTION_ID;
+            {/* Top-level personal folders → the collections placed in them */}
+            {libFolders.map((f) => {
+              const fkey = `lf/${f.id}`;
+              const placed = collectionNodes.filter((n) => placement[n.id] === f.id);
+              if (q && placed.length === 0) return null; // hide empty folders while searching
               return (
-                <CollectionNode
-                  key={key}
-                  cid={cid}
-                  name={name}
-                  color={color}
-                  role={node.role}
-                  count={machines.length}
-                  open={isOpen(key)}
-                  active={openCollectionId === cid}
-                  isPersonal={isPersonal}
-                  onOpen={() => onOpenCollection?.(cid)}
-                  onToggle={() => toggle(key)}
-                  onNewMachine={onNewMachineInCollection}
-                  onOpenMembers={isPersonal ? undefined : onOpenMembers}
-                  onRename={!isPersonal && onRenameCollection ? () => onRenameCollection(cid, name, color) : undefined}
-                  onDelete={!isPersonal && onDeleteCollection ? () => onDeleteCollection(cid, name) : undefined}
+                <LibraryFolderNode
+                  key={fkey}
+                  id={f.id}
+                  name={f.name}
+                  color={f.color}
+                  count={placed.length}
+                  open={isOpen(fkey)}
+                  onToggle={() => toggle(fkey)}
+                  onRename={onRenameLibraryFolder ? (id) => onRenameLibraryFolder(id, f.name, f.color) : undefined}
+                  onDelete={onDeleteLibraryFolder ? (id) => onDeleteLibraryFolder(id, f.name) : undefined}
                 >
-                  {renderFolderGroups(machines, key, 1, node.folders)}
-                </CollectionNode>
+                  {placed.map(renderCollectionNode)}
+                </LibraryFolderNode>
               );
             })}
+
+            {/* Collections not in any folder — at the root */}
+            {rootNodes.map(renderCollectionNode)}
           </>
         )}
       </div>

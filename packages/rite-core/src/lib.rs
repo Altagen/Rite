@@ -6,15 +6,16 @@
 //! depend on this crate and provide the transport/UI on top.
 
 pub mod auth;
+pub mod collection_store;
 pub mod connection;
 pub mod connections_manager;
 pub mod db;
 pub mod events;
 pub mod known_hosts;
+pub mod library_store;
 pub mod local_terminal;
 pub mod server_auth;
 pub mod ssh_config;
-pub mod collection_store;
 pub mod team_store;
 pub mod teams;
 pub mod terminal;

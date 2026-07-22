@@ -103,7 +103,14 @@ pub async fn create_collection(
         .bind(now())
         .execute(db)
         .await?;
-    add_member(db, &id, owner_user_id, CollectionRole::Owner, owner_protected_key).await?;
+    add_member(
+        db,
+        &id,
+        owner_user_id,
+        CollectionRole::Owner,
+        owner_protected_key,
+    )
+    .await?;
     Ok(id)
 }
 
@@ -168,13 +175,15 @@ pub async fn set_role(
     user_id: &str,
     role: CollectionRole,
 ) -> Result<bool> {
-    let n = sqlx::query("UPDATE collection_members SET role = ? WHERE collection_id = ? AND user_id = ?")
-        .bind(role.as_str())
-        .bind(collection_id)
-        .bind(user_id)
-        .execute(db)
-        .await?
-        .rows_affected();
+    let n = sqlx::query(
+        "UPDATE collection_members SET role = ? WHERE collection_id = ? AND user_id = ?",
+    )
+    .bind(role.as_str())
+    .bind(collection_id)
+    .bind(user_id)
+    .execute(db)
+    .await?
+    .rows_affected();
     Ok(n > 0)
 }
 
@@ -194,12 +203,13 @@ pub async fn collection_role(
     collection_id: &str,
     user_id: &str,
 ) -> Result<Option<CollectionRole>> {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT role FROM collection_members WHERE collection_id = ? AND user_id = ?")
-            .bind(collection_id)
-            .bind(user_id)
-            .fetch_optional(db)
-            .await?;
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT role FROM collection_members WHERE collection_id = ? AND user_id = ?",
+    )
+    .bind(collection_id)
+    .bind(user_id)
+    .fetch_optional(db)
+    .await?;
     Ok(row.map(|(role,)| CollectionRole::parse(&role)))
 }
 
@@ -250,13 +260,15 @@ pub async fn list_collections_for_user(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, name_enc, role, protected_collection_key, created_at)| UserCollection {
-            id,
-            name_enc,
-            role: CollectionRole::parse(&role),
-            protected_collection_key,
-            created_at,
-        })
+        .map(
+            |(id, name_enc, role, protected_collection_key, created_at)| UserCollection {
+                id,
+                name_enc,
+                role: CollectionRole::parse(&role),
+                protected_collection_key,
+                created_at,
+            },
+        )
         .collect())
 }
 
@@ -281,7 +293,11 @@ pub async fn list_items(db: &SqlitePool, collection_id: &str) -> Result<Vec<Coll
         .collect())
 }
 
-pub async fn create_item(db: &SqlitePool, collection_id: &str, blob: &str) -> Result<CollectionItem> {
+pub async fn create_item(
+    db: &SqlitePool,
+    collection_id: &str,
+    blob: &str,
+) -> Result<CollectionItem> {
     let id = Uuid::new_v4().to_string();
     let ts = now();
     sqlx::query(
@@ -346,10 +362,18 @@ mod tests {
             public_key: "abcd".to_string(),
             protected_private_key: "v1.p.q".to_string(),
         };
-        create_user(db, name, b"s", KdfParams::recommended(), "h", Role::User, &vault)
-            .await
-            .unwrap()
-            .id
+        create_user(
+            db,
+            name,
+            b"s",
+            KdfParams::recommended(),
+            "h",
+            Role::User,
+            &vault,
+        )
+        .await
+        .unwrap()
+        .id
     }
 
     #[tokio::test]
@@ -364,10 +388,16 @@ mod tests {
         let cid = create_collection(pool, "v1.enc.name", &alice, "sealed-to-alice")
             .await
             .unwrap();
-        assert_eq!(collection_role(pool, &cid, &alice).await.unwrap(), Some(CollectionRole::Owner));
+        assert_eq!(
+            collection_role(pool, &cid, &alice).await.unwrap(),
+            Some(CollectionRole::Owner)
+        );
         assert_eq!(collection_role(pool, &cid, &bob).await.unwrap(), None);
         assert_eq!(count_owners(pool, &cid).await.unwrap(), 1);
-        assert_eq!(list_collections_for_user(pool, &alice).await.unwrap().len(), 1);
+        assert_eq!(
+            list_collections_for_user(pool, &alice).await.unwrap().len(),
+            1
+        );
 
         // She shares it with Bob as an editor (sealing the key to his public key).
         add_member(pool, &cid, &bob, CollectionRole::Editor, "sealed-to-bob")
@@ -383,20 +413,31 @@ mod tests {
         // Items round-trip (opaque blobs).
         let item = create_item(pool, &cid, "v1.iv.ct").await.unwrap();
         assert_eq!(list_items(pool, &cid).await.unwrap().len(), 1);
-        assert!(update_item(pool, &cid, &item.id, "v1.iv.ct2").await.unwrap());
+        assert!(
+            update_item(pool, &cid, &item.id, "v1.iv.ct2")
+                .await
+                .unwrap()
+        );
         // Wrong-collection scoping: can't touch an item via another collection id.
         assert!(!update_item(pool, "other", &item.id, "x").await.unwrap());
         assert!(delete_item(pool, &cid, &item.id).await.unwrap());
         assert_eq!(list_items(pool, &cid).await.unwrap().len(), 0);
 
         // Role change (promote Bob to owner) → two owners; demote Alice is then safe.
-        assert!(set_role(pool, &cid, &bob, CollectionRole::Owner).await.unwrap());
+        assert!(
+            set_role(pool, &cid, &bob, CollectionRole::Owner)
+                .await
+                .unwrap()
+        );
         assert_eq!(count_owners(pool, &cid).await.unwrap(), 2);
 
         // Remove Bob; deleting the collection cascades members + items.
         assert!(remove_member(pool, &cid, &bob).await.unwrap());
         assert_eq!(collection_role(pool, &cid, &bob).await.unwrap(), None);
         assert!(delete_collection(pool, &cid).await.unwrap());
-        assert_eq!(list_collections_for_user(pool, &alice).await.unwrap().len(), 0);
+        assert_eq!(
+            list_collections_for_user(pool, &alice).await.unwrap().len(),
+            0
+        );
     }
 }
