@@ -21,6 +21,7 @@ import { CollectionView } from './CollectionView';
 import { MemberPicker } from './MemberPicker';
 import { CollectionEditDialog } from './CollectionEditDialog';
 import { CollectionFolderDialog } from './CollectionFolderDialog';
+import { IconTerminal, IconBolt, IconGear, IconLock, IconChevronDown } from './icons';
 import { LibraryFolderDialog } from './LibraryFolderDialog';
 import { MoveToFolderDialog } from './MoveToFolderDialog';
 import { useLibraryTree } from '../store/libraryTree';
@@ -912,9 +913,7 @@ export function Workspace({
           className="m-btn m-btn-primary m-btn-sm"
           title={`New Local Terminal (${settings.defaultShell.split('/').pop()})`}
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
+          <IconTerminal className="h-4 w-4" />
           <span className="hidden md:inline">Terminal</span>
         </button>
 
@@ -930,14 +929,12 @@ export function Workspace({
         >
           <span className="text-base">{shells.find((s) => s.path === settings.defaultShell)?.icon || '🐚'}</span>
           <span className="hidden text-muted-foreground md:inline">{settings.defaultShell.split('/').pop()}</span>
-          <svg className="h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+          <IconChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
 
         {/* Quick SSH */}
         <button onClick={() => setShowQuickSSH(true)} className="m-btn m-btn-sm" title="Quick SSH Connect">
-          <span className="text-base">⚡</span>
+          <IconBolt className="h-4 w-4" />
           <span className="hidden md:inline">Quick SSH</span>
         </button>
 
@@ -946,23 +943,16 @@ export function Workspace({
 
         {isLocked ? (
           <button onClick={() => setShowUnlockModal(true)} className="m-btn m-btn-primary m-btn-sm" title="Unlock Vault">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-            </svg>
+            <IconLock className="h-4 w-4" />
             <span className="hidden md:inline">Unlock</span>
           </button>
         ) : (
           <>
             <button onClick={() => setShowSettings(true)} className="m-btn m-btn-ghost m-btn-sm" title={t('settings.title')}>
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
+              <IconGear className="h-4 w-4" />
             </button>
             <button onClick={() => lock()} className="m-btn m-btn-ghost m-btn-sm" title={lockLabel}>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-              </svg>
+              <IconLock className="h-4 w-4" />
               <span className="hidden md:inline">{lockLabel}</span>
             </button>
           </>
