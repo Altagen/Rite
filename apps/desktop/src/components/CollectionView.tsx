@@ -12,6 +12,20 @@ import { type ConnectionInfo } from '../store/connectionsStore';
 
 const ROOT = ' root';
 
+/** Compact relative time for a machine's last use ("2h ago"), or "—" when never used. */
+function relTime(ts: number | null | undefined): string {
+  if (!ts) return '—';
+  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d ago`;
+  return `${Math.floor(d / 7)}w ago`;
+}
+
 function CollectionIcon({ color }: { color?: string | null }) {
   return (
     <svg className="h-5 w-5 flex-none" style={{ color: color || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -62,14 +76,19 @@ export function CollectionView({
   onConnect: (c: ConnectionInfo) => void;
   onEdit: (c: ConnectionInfo) => void;
   onNewMachine: () => void;
-  onNewFolder?: () => void; // absent for "Personal" (vault-backed, no folder header)
+  onNewFolder?: () => void; // absent when the viewer can't write the collection header
   onImport: () => void;
-  onOpenMembers?: () => void; // absent for the synthetic "Personal" (not shareable)
+  onOpenMembers?: () => void; // absent when membership isn't editable from here
 }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState('');
-  const [sort, setSort] = useState<'name' | 'host'>('name');
+  const [sort, setSort] = useState<'name' | 'host' | 'lastUsed'>('name');
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
+  const folderColor = useMemo(() => {
+    const m = new Map<string, string | null>();
+    for (const f of folders ?? []) m.set(f.name, f.color);
+    return m;
+  }, [folders]);
 
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -81,9 +100,11 @@ export function CollectionView({
             m.username.toLowerCase().includes(q),
         )
       : machines;
-    return [...filtered].sort((a, b) =>
-      sort === 'host' ? a.hostname.localeCompare(b.hostname) : a.name.localeCompare(b.name),
-    );
+    return [...filtered].sort((a, b) => {
+      if (sort === 'host') return a.hostname.localeCompare(b.hostname);
+      if (sort === 'lastUsed') return (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0);
+      return a.name.localeCompare(b.name);
+    });
   }, [machines, filter, sort]);
 
   // Group the shown machines by their shared sub-folder; loose ones at the root.
@@ -138,8 +159,14 @@ export function CollectionView({
           <PlayIcon />
         </button>
       </div>
-      <div className={`truncate font-mono text-xs text-muted-foreground ${layout === 'list' ? '' : ''}`}>
+      <div className="truncate font-mono text-xs text-muted-foreground">
         {c.username}@{c.hostname}:{c.port}
+      </div>
+      <div className={`flex items-center gap-1 text-[11px] text-muted-foreground ${layout === 'list' ? '' : 'mt-1'}`}>
+        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>{relTime(c.lastUsedAt)} · ssh</span>
       </div>
     </div>
   );
@@ -156,15 +183,18 @@ export function CollectionView({
     </div>
   );
 
-  const sectionHead = (label: string, n: number) => (
-    <div className="mb-2 mt-3 flex items-center gap-2">
-      <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-      </svg>
-      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{n}</span>
-    </div>
-  );
+  const sectionHead = (label: string, n: number, key?: string) => {
+    const c = key ? folderColor.get(key) : null;
+    return (
+      <div className="mb-2 mt-3 flex items-center gap-2">
+        <svg className="h-4 w-4 text-muted-foreground" style={{ color: c || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+        </svg>
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
+        <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{n}</span>
+      </div>
+    );
+  };
 
   return (
     <div className="flex h-full flex-col p-3">
@@ -209,11 +239,12 @@ export function CollectionView({
         </div>
         <select
           value={sort}
-          onChange={(e) => setSort(e.target.value as 'name' | 'host')}
+          onChange={(e) => setSort(e.target.value as 'name' | 'host' | 'lastUsed')}
           className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
         >
           <option value="name">Name</option>
           <option value="host">Host</option>
+          <option value="lastUsed">Last used</option>
         </select>
         <button
           onClick={() => setLayout('grid')}
@@ -286,7 +317,7 @@ export function CollectionView({
           <>
             {groups.folders.map((f) => (
               <div key={f}>
-                {sectionHead(f, groups.map.get(f)!.length)}
+                {sectionHead(f, groups.map.get(f)!.length, f)}
                 {grid(groups.map.get(f)!)}
               </div>
             ))}
