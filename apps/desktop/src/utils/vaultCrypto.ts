@@ -96,14 +96,6 @@ function importKey(raw: Uint8Array): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', raw as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']);
 }
 
-export function utf8(s: string): Uint8Array {
-  return new TextEncoder().encode(s);
-}
-
-export function fromUtf8(bytes: Uint8Array): string {
-  return new TextDecoder().decode(bytes);
-}
-
 export function hexToBytes(hex: string): Uint8Array {
   const out = new Uint8Array(hex.length / 2);
   for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);

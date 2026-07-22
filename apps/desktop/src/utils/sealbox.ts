@@ -8,11 +8,6 @@
 
 import sodium from 'libsodium-wrappers';
 
-/** Resolve once libsodium's WASM is initialised (call before any op). */
-export async function sealboxReady(): Promise<void> {
-  await sodium.ready;
-}
-
 /** A fresh X25519 keypair (raw bytes). */
 export async function generateKeypair(): Promise<{
   publicKey: Uint8Array;
