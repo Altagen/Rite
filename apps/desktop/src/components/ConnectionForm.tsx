@@ -7,7 +7,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type CreateConnectionInput, type UpdateConnectionInput, type ConnectionInfo, type Protocol } from '../store/connectionsStore';
-import { useCollectionsStore } from '../store/collectionsStore';
 import type { QuickSSHConnectionInfo } from './QuickSSHModal';
 
 interface ConnectionFormProps {
@@ -38,12 +37,6 @@ export function ConnectionForm({
   defaultCollectionId,
 }: ConnectionFormProps) {
   const { t } = useTranslation();
-  const { collections, fetchCollections, createCollection } = useCollectionsStore();
-
-  // Load collections on mount
-  useEffect(() => {
-    fetchCollections();
-  }, [fetchCollections]);
 
   // Form state - use prefillData if provided, otherwise use connection data
   const [name, setName] = useState(connection?.name || (prefillData ? `${prefillData.username}@${prefillData.host}` : ''));
@@ -55,7 +48,7 @@ export function ConnectionForm({
   const [password, setPassword] = useState(prefillData?.password || '');
   const [keyPath, setKeyPath] = useState(prefillData?.keyPath || '');
   const [keyPassphrase, setKeyPassphrase] = useState(prefillData?.passphrase || '');
-  const [collection, setCollection] = useState(connection?.folder || '');
+  const [folder, setFolder] = useState(connection?.folder || '');
   // ADR 0016 save target (accounts context): '' = personal vault, else a collection id.
   const [collectionTargetId, setCollectionTargetId] = useState<string>(
     connection?.collectionId ?? defaultCollectionId ?? '',
@@ -80,11 +73,7 @@ export function ConnectionForm({
   const [showPassword, setShowPassword] = useState(false);
   const [showKeyPassphrase, setShowKeyPassphrase] = useState(false);
   const [showProtocolDropdown, setShowProtocolDropdown] = useState(false);
-  const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
-  const [showNewCollectionInput, setShowNewCollectionInput] = useState(false);
-  const [newCollectionName, setNewCollectionName] = useState('');
   const protocolDropdownRef = useRef<HTMLDivElement>(null);
-  const collectionDropdownRef = useRef<HTMLDivElement>(null);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -117,10 +106,6 @@ export function ConnectionForm({
     const handleClickOutside = (event: MouseEvent) => {
       if (protocolDropdownRef.current && !protocolDropdownRef.current.contains(event.target as Node)) {
         setShowProtocolDropdown(false);
-      }
-      if (collectionDropdownRef.current && !collectionDropdownRef.current.contains(event.target as Node)) {
-        setShowCollectionDropdown(false);
-        setShowNewCollectionInput(false);
       }
       if (keepAliveDropdownRef.current && !keepAliveDropdownRef.current.contains(event.target as Node)) {
         setShowKeepAliveDropdown(false);
@@ -161,21 +146,6 @@ export function ConnectionForm({
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
-
-  // Handle new collection creation
-  const handleCreateCollection = async () => {
-    if (!newCollectionName.trim()) return;
-
-    try {
-      const newColl = await createCollection(newCollectionName.trim());
-      setCollection(newColl.name);
-      setNewCollectionName('');
-      setShowNewCollectionInput(false);
-      setShowCollectionDropdown(false);
-    } catch (error) {
-      console.error('Failed to create collection:', error);
-    }
   };
 
   // Keep-alive dropdown helpers
@@ -229,7 +199,7 @@ export function ConnectionForm({
           hostname,
           port,
           username,
-          ...(collection && { folder: collection }),
+          ...(folder && { folder }),
           ...(color && { color }),
           ...(icon && { icon }),
           ...(notes && { notes }),
@@ -265,7 +235,7 @@ export function ConnectionForm({
                   keyPath,
                   ...(keyPassphrase && { passphrase: keyPassphrase }),
                 },
-          ...(collection && { folder: collection }),
+          ...(folder && { folder }),
           ...(collectionTargetId && { collectionId: collectionTargetId }),
           ...(color && { color }),
           ...(icon && { icon }),
@@ -552,100 +522,16 @@ export function ConnectionForm({
           <details className="rounded border border-border p-4">
             <summary className="cursor-pointer font-medium">{t('common.advancedOptions')}</summary>
             <div className="mt-4 space-y-4">
-              {/* Collection Selector */}
-              <div ref={collectionDropdownRef}>
-                <label className="mb-1 block text-sm font-medium">{t('connections.collection')}</label>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowCollectionDropdown(!showCollectionDropdown)}
-                    className="w-full rounded border border-border bg-input px-3 py-2 text-left text-foreground focus:border-primary focus:outline-none flex justify-between items-center"
-                  >
-                    <span>{collection || t('connections.collectionNone')}</span>
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  {/* Dropdown Menu */}
-                  {showCollectionDropdown && (
-                    <div className="absolute z-10 mt-1 w-full rounded border border-border bg-background shadow-lg max-h-60 overflow-y-auto divide-y divide-border">
-                      {/* No collection option */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCollection('');
-                          setShowCollectionDropdown(false);
-                        }}
-                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                      >
-                        {t('connections.collectionNone')}
-                      </button>
-
-                      {/* Existing collections */}
-                      {collections.map((coll) => (
-                        <button
-                          key={coll.id}
-                          type="button"
-                          onClick={() => {
-                            setCollection(coll.name);
-                            setShowCollectionDropdown(false);
-                          }}
-                          className="w-full px-3 py-2 text-left hover:bg-muted flex items-center gap-2 transition-colors"
-                        >
-                          {coll.color && (
-                            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: coll.color }} />
-                          )}
-                          {coll.name}
-                        </button>
-                      ))}
-
-                      {/* Create new collection */}
-                      <div className="border-t border-border">
-                        {showNewCollectionInput ? (
-                          <div className="p-2">
-                            <input
-                              type="text"
-                              value={newCollectionName}
-                              onChange={(e) => setNewCollectionName(e.target.value)}
-                              onKeyPress={(e) => e.key === 'Enter' && handleCreateCollection()}
-                              placeholder={t('connections.collectionNamePlaceholder')}
-                              className="w-full rounded border border-border bg-input px-2 py-1 text-sm"
-                              autoFocus
-                            />
-                            <div className="mt-2 flex gap-2">
-                              <button
-                                type="button"
-                                onClick={handleCreateCollection}
-                                className="flex-1 rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
-                              >
-                                {t('connections.collectionCreate')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowNewCollectionInput(false);
-                                  setNewCollectionName('');
-                                }}
-                                className="flex-1 rounded bg-secondary px-2 py-1 text-xs hover:bg-secondary/80"
-                              >
-                                {t('connections.cancel')}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setShowNewCollectionInput(true)}
-                            className="w-full px-3 py-2 text-left text-primary hover:bg-muted"
-                          >
-                            {t('connections.collectionNew')}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+              {/* Folder — a personal organiser label (not sharing; that's a collection) */}
+              <div>
+                <label className="mb-1 block text-sm font-medium">{t('connections.folder')}</label>
+                <input
+                  type="text"
+                  value={folder}
+                  onChange={(e) => setFolder(e.target.value)}
+                  placeholder={t('connections.folderPlaceholder')}
+                  className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
+                />
               </div>
 
               {/* Notes */}

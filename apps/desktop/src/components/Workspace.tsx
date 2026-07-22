@@ -15,7 +15,6 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useTranslation } from '../i18n/i18n';
 import { LibrarySidebar } from './LibrarySidebar';
 import { ConnectionForm } from './ConnectionForm';
-import { CollectionsManager } from './CollectionsManager';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
 import { MemberPicker } from './MemberPicker';
@@ -86,7 +85,6 @@ export function Workspace({
   const [editingConnection, setEditingConnection] = useState<ConnectionInfo | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [connectionToDelete, setConnectionToDelete] = useState<ConnectionInfo | null>(null);
-  const [showCollectionsManager, setShowCollectionsManager] = useState(false);
   const [showImportSSH, setShowImportSSH] = useState(false);
   const [importCollectionId, setImportCollectionId] = useState<string | null>(null);
   const [showNewMenu, setShowNewMenu] = useState(false);
@@ -1052,15 +1050,6 @@ export function Workspace({
                         >
                           Import from SSH config…
                         </button>
-                        <button
-                          onClick={() => {
-                            setShowNewMenu(false);
-                            setShowCollectionsManager(true);
-                          }}
-                          className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                        >
-                          {t('connections.collectionManage')}
-                        </button>
                       </div>
                     </>
                   )}
@@ -1320,11 +1309,6 @@ export function Workspace({
             </div>
           </div>
         </div>
-      )}
-
-      {/* Collections Manager Modal */}
-      {showCollectionsManager && (
-        <CollectionsManager onClose={() => setShowCollectionsManager(false)} />
       )}
 
       {/* Settings Modal */}
