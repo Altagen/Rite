@@ -1173,7 +1173,9 @@ export function Workspace({
                     setConnectionFormPrefill(null);
                     setShowForm(true);
                   }}
-                  onNewFolder={() => setFolderCollectionId(openCollectionId)}
+                  onNewFolder={
+                    openCollectionIsPersonal ? undefined : () => setFolderCollectionId(openCollectionId)
+                  }
                   onImport={() => {
                     setImportCollectionId(openCollectionId);
                     setShowImportSSH(true);

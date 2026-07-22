@@ -62,7 +62,7 @@ export function CollectionView({
   onConnect: (c: ConnectionInfo) => void;
   onEdit: (c: ConnectionInfo) => void;
   onNewMachine: () => void;
-  onNewFolder: () => void;
+  onNewFolder?: () => void; // absent for "Personal" (vault-backed, no folder header)
   onImport: () => void;
   onOpenMembers?: () => void; // absent for the synthetic "Personal" (not shareable)
 }) {
@@ -251,7 +251,7 @@ export function CollectionView({
             Import
           </button>
         )}
-        {canWrite && (
+        {canWrite && onNewFolder && (
           <button
             onClick={onNewFolder}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
