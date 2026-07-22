@@ -28,27 +28,29 @@
 }
 
 @layer base {
+  /* Palette aligned with the design mock (design/mock/rite.css): a bluish dark
+     ground, cards a touch lighter for depth, and a periwinkle accent. */
   :root {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    --radius: 0.5rem;
+    --background: 226.7 24.3% 7.3%;
+    --foreground: 223.6 29.7% 92.7%;
+    --card: 224 24.6% 12%;
+    --card-foreground: 223.6 29.7% 92.7%;
+    --popover: 224 24.6% 12%;
+    --popover-foreground: 223.6 29.7% 92.7%;
+    --primary: 224.1 85.8% 72.4%;
+    --primary-foreground: 225 44.4% 7.1%;
+    --secondary: 224.3 29.1% 15.5%;
+    --secondary-foreground: 223.6 29.7% 92.7%;
+    --muted: 224.3 29.1% 15.5%;
+    --muted-foreground: 223.6 15.6% 58.6%;
+    --accent: 224.3 29.1% 15.5%;
+    --accent-foreground: 223.6 29.7% 92.7%;
+    --destructive: 348.8 89% 71.6%;
+    --destructive-foreground: 225 44.4% 7.1%;
+    --border: 221.7 22.8% 19.8%;
+    --input: 225 28.6% 11%;
+    --ring: 224.1 85.8% 72.4%;
+    --radius: 0.75rem;
   }
 }
 
