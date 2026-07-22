@@ -93,6 +93,7 @@ export function Workspace({
   const [showImportSSH, setShowImportSSH] = useState(false);
   const [importCollectionId, setImportCollectionId] = useState<string | null>(null);
   const [showNewMenu, setShowNewMenu] = useState(false);
+  const [sidebarQuery, setSidebarQuery] = useState('');
 
   // Tab groups state - each tab has its own pane tree
   const [tabGroups, setTabGroups] = useState<Tab[]>([]);
@@ -891,103 +892,81 @@ export function Workspace({
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
-      {/* Header */}
-      <header className="border-b border-border bg-card">
-        <div className="flex flex-wrap items-center justify-between gap-y-2 pl-2 pr-6 py-4">
-          <div className="flex items-center gap-3">
-            <img src={riteLandscape} alt="RITE" className="h-10 rounded-md" />
-            {instanceName && (
-              <span className="rounded-md border border-border bg-background px-2.5 py-1 text-sm font-semibold" title="Server instance">
-                {instanceName}
-              </span>
-            )}
-            <ContextPill />
-          </div>
-
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {/* New Local Terminal - always visible */}
-            <button
-              onClick={() => handleNewLocalTerminal()}
-              className="flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-              title={`New Local Terminal (${settings.defaultShell.split('/').pop()})`}
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              <span className="hidden md:inline">Local Terminal</span>
-            </button>
-
-            {/* Default Shell Selector */}
-            <button
-              ref={defaultShellButtonRef}
-              onClick={async () => {
-                if (!showDefaultShellDropdown) {
-                  // Check installed shells before opening dropdown
-                  await checkInstalledShells();
-                }
-                setShowDefaultShellDropdown(!showDefaultShellDropdown);
-              }}
-              className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
-              title="Select default shell"
-            >
-              <span className="text-base">{shells.find(s => s.path === settings.defaultShell)?.icon || '🐚'}</span>
-              <span className="text-xs text-muted-foreground">{settings.defaultShell.split('/').pop()}</span>
-              <svg className="h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-
-            {/* Quick SSH - always visible */}
-            <button
-              onClick={() => setShowQuickSSH(true)}
-              className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
-              title="Quick SSH Connect"
-            >
-              <span className="text-base">⚡</span>
-              <span className="hidden md:inline">Quick SSH</span>
-            </button>
-
-            {/* Shell-provided actions (e.g. the org-admin surface entry). */}
-            {headerExtra}
-
-            {/* Unlock/Lock button */}
-            {isLocked ? (
-              <button
-                onClick={() => setShowUnlockModal(true)}
-                className="flex items-center gap-2 rounded-md border border-primary bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20 transition-colors"
-                title="Unlock Vault"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                </svg>
-                <span className="hidden md:inline">Unlock</span>
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => setShowSettings(true)}
-                  className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
-                  title={t('settings.title')}
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => lock()}
-                  className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
-                  title={lockLabel}
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                  </svg>
-                  <span className="hidden md:inline">{lockLabel}</span>
-                </button>
-              </>
-            )}
-          </div>
+      {/* Header (design mock: brand · context pill · actions) */}
+      <header className="m-appbar">
+        <div className="m-brand">
+          <img src={riteLandscape} alt="Rite" className="h-8 rounded-md" />
         </div>
+        {instanceName && (
+          <span className="m-chip" title="Server instance">
+            <span className="m-dot" />
+            {instanceName}
+          </span>
+        )}
+        <ContextPill />
+        <span className="m-spacer" />
+
+        {/* New Local Terminal */}
+        <button
+          onClick={() => handleNewLocalTerminal()}
+          className="m-btn m-btn-primary m-btn-sm"
+          title={`New Local Terminal (${settings.defaultShell.split('/').pop()})`}
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          <span className="hidden md:inline">Terminal</span>
+        </button>
+
+        {/* Default Shell Selector */}
+        <button
+          ref={defaultShellButtonRef}
+          onClick={async () => {
+            if (!showDefaultShellDropdown) await checkInstalledShells();
+            setShowDefaultShellDropdown(!showDefaultShellDropdown);
+          }}
+          className="m-btn m-btn-sm"
+          title="Select default shell"
+        >
+          <span className="text-base">{shells.find((s) => s.path === settings.defaultShell)?.icon || '🐚'}</span>
+          <span className="hidden text-muted-foreground md:inline">{settings.defaultShell.split('/').pop()}</span>
+          <svg className="h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {/* Quick SSH */}
+        <button onClick={() => setShowQuickSSH(true)} className="m-btn m-btn-sm" title="Quick SSH Connect">
+          <span className="text-base">⚡</span>
+          <span className="hidden md:inline">Quick SSH</span>
+        </button>
+
+        {/* Shell-provided actions (e.g. the org-admin surface entry). */}
+        {headerExtra}
+
+        {isLocked ? (
+          <button onClick={() => setShowUnlockModal(true)} className="m-btn m-btn-primary m-btn-sm" title="Unlock Vault">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+            </svg>
+            <span className="hidden md:inline">Unlock</span>
+          </button>
+        ) : (
+          <>
+            <button onClick={() => setShowSettings(true)} className="m-btn m-btn-ghost m-btn-sm" title={t('settings.title')}>
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+            <button onClick={() => lock()} className="m-btn m-btn-ghost m-btn-sm" title={lockLabel}>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              <span className="hidden md:inline">{lockLabel}</span>
+            </button>
+          </>
+        )}
       </header>
 
       {/* Main Content */}
@@ -1012,90 +991,81 @@ export function Workspace({
             </div>
           ) : (
           <>
-          <div className="p-4 border-b border-border">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-muted-foreground">Library</h2>
-              <div className="flex items-center gap-1">
-                <div className="relative">
-                  <button
-                    onClick={() => setShowNewMenu((v) => !v)}
-                    aria-label="Add to library"
-                    title="Add to library"
-                    className="rounded-md bg-primary p-1.5 text-primary-foreground hover:bg-primary/90 transition-colors"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
-                    </svg>
-                  </button>
-                  {showNewMenu && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
-                      <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-md border border-border bg-background p-1 shadow-lg">
-                        {isAccountsContext ? (
-                          // No loose machines (ADR 0016): machines & import are
-                          // collection-scoped — the library + creates folders & collections.
-                          <>
-                            <button
-                              onClick={() => {
-                                setShowNewMenu(false);
-                                setLibraryFolderEdit({});
-                              }}
-                              className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                            >
-                              New folder…
-                            </button>
-                            <button
-                              onClick={() => {
-                                setShowNewMenu(false);
-                                setShowNewCollection(true);
-                              }}
-                              className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                            >
-                              New collection…
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => {
-                                setShowNewMenu(false);
-                                handleNewConnection();
-                              }}
-                              className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                            >
-                              New machine…
-                            </button>
-                            <button
-                              onClick={() => {
-                                setShowNewMenu(false);
-                                setShowImportSSH(true);
-                              }}
-                              className="w-full rounded px-3 py-2 text-left text-sm hover:bg-muted"
-                            >
-                              Import from SSH config…
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-                <button
-                  onClick={() => setIsSidebarOpen(false)}
-                  className="rounded p-1 text-muted-foreground hover:bg-muted transition-colors"
-                  title="Hide sidebar"
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-                  </svg>
-                </button>
-              </div>
+          {/* Search (design mock: at the top of the sidebar) */}
+          <div className="m-search">
+            <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+            </svg>
+            <input
+              value={sidebarQuery}
+              onChange={(e) => setSidebarQuery(e.target.value)}
+              placeholder="Search connections…"
+            />
+          </div>
+
+          {/* Library header row: eyebrow · + menu · collapse */}
+          <div className="m-side-hdr">
+            <span className="m-eyebrow">Library</span>
+            <div className="relative ml-auto flex items-center gap-0.5">
+              <button
+                onClick={() => setShowNewMenu((v) => !v)}
+                aria-label="Add to library"
+                title="Add to library"
+                className="m-btn m-btn-ghost"
+                style={{ padding: '4px' }}
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
+                </svg>
+              </button>
+              {showNewMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
+                  <div className="m-menu absolute right-0 top-full z-20 mt-1">
+                    {isAccountsContext ? (
+                      // No loose machines (ADR 0016): machines & import are
+                      // collection-scoped — the library + creates folders & collections.
+                      <>
+                        <button onClick={() => { setShowNewMenu(false); setLibraryFolderEdit({}); }}>
+                          <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                          </svg>
+                          New folder…
+                        </button>
+                        <button onClick={() => { setShowNewMenu(false); setShowNewCollection(true); }}>
+                          <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9 5 9-5M3 16.5l9 5 9-5" />
+                          </svg>
+                          New collection…
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => { setShowNewMenu(false); handleNewConnection(); }}>New machine…</button>
+                        <button onClick={() => { setShowNewMenu(false); setShowImportSSH(true); }}>Import from SSH config…</button>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+              <button
+                onClick={() => setIsSidebarOpen(false)}
+                className="m-btn m-btn-ghost"
+                style={{ padding: '4px' }}
+                title="Hide sidebar"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+              </button>
             </div>
           </div>
 
-          {/* Library: folders → machines (ADR 0014 nav skeleton) */}
+          {/* Library tree */}
           <div className="flex-1 overflow-y-auto">
             <LibrarySidebar
+              query={sidebarQuery}
               connections={connections}
               selectedId={selectedConnectionId}
               onSelect={selectConnection}

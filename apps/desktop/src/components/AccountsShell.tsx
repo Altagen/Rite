@@ -89,7 +89,7 @@ export function AccountsShell() {
           <>
             <button
               onClick={() => setShowCollections(true)}
-              className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
+              className="m-btn m-btn-ghost m-btn-sm"
               title="Collections"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -100,7 +100,7 @@ export function AccountsShell() {
             {isAdmin ? (
               <button
                 onClick={() => setShowAdmin(true)}
-                className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted transition-colors"
+                className="m-btn m-btn-ghost m-btn-sm"
                 title="Administration"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

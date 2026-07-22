@@ -65,3 +65,175 @@
     cursor: pointer;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Design-mock component classes (design/mock/rite.css), mapped onto the app's
+   theme tokens so the chrome matches the mock. Used by the workspace header and
+   the library sidebar. Dark, terminal-forward.
+   --------------------------------------------------------------------------- */
+@layer components {
+  /* buttons */
+  .m-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--secondary));
+    color: hsl(var(--foreground));
+    padding: 7px 13px;
+    border-radius: 8px;
+    font-weight: 550;
+    font-size: 13px;
+    white-space: nowrap;
+    transition: 0.14s;
+  }
+  .m-btn:hover {
+    border-color: hsl(var(--primary));
+    background: hsl(var(--muted));
+  }
+  .m-btn-primary {
+    background: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  .m-btn-primary:hover {
+    filter: brightness(1.08);
+    background: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+  }
+  .m-btn-ghost {
+    background: transparent;
+    border-color: transparent;
+  }
+  .m-btn-ghost:hover {
+    background: hsl(var(--secondary));
+    border-color: hsl(var(--border));
+  }
+  .m-btn-sm {
+    padding: 5px 9px;
+    font-size: 12.5px;
+    border-radius: 7px;
+    gap: 6px;
+  }
+
+  /* pill / chip + status dot + tag */
+  .m-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--secondary));
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 13.5px;
+  }
+  .m-chip:hover {
+    border-color: hsl(var(--primary));
+  }
+  .m-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    background: #9ece6a;
+  }
+  .m-tag {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+
+  /* header bar */
+  .m-appbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid hsl(var(--border));
+    background: linear-gradient(180deg, hsl(var(--card)), hsl(var(--background)));
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .m-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .m-spacer {
+    flex: 1;
+  }
+
+  /* sidebar chrome */
+  .m-side-hdr {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px 6px 12px;
+  }
+  .m-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+  .m-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 12px 6px;
+    padding: 8px 11px;
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+    border-radius: 9px;
+    color: hsl(var(--muted-foreground));
+  }
+  .m-search input {
+    background: none;
+    border: none;
+    outline: none;
+    color: hsl(var(--foreground));
+    width: 100%;
+    font-size: 13px;
+  }
+  .m-cnt {
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--secondary));
+    border-radius: 999px;
+    padding: 1px 7px;
+  }
+
+  /* floating menu (the + / ⋯ menus) */
+  .m-menu {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 11px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    padding: 6px;
+    min-width: 200px;
+  }
+  .m-menu button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 550;
+    color: hsl(var(--foreground));
+  }
+  .m-menu button:hover {
+    background: hsl(var(--secondary));
+  }
+}
