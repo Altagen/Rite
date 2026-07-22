@@ -964,7 +964,7 @@ export function Workspace({
         {/* Sidebar: saved connections when a vault is open; otherwise a prompt to
             open one (the local terminal + Quick SSH in the header work without it). */}
         <aside className={`m-side border-r border-border flex flex-col transition-all duration-300 overflow-hidden ${
-          isSidebarOpen ? 'w-80' : 'w-0'
+          isSidebarOpen ? 'w-[290px]' : 'w-0'
         }`}>
           {isLocked ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
