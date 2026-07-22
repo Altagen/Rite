@@ -24,6 +24,8 @@ interface ConnectionFormProps {
   // Preselect this collection as the save target (e.g. opening the form from a
   // collection view). Only applies when creating.
   defaultCollectionId?: string | null;
+  // Preselect this sub-folder path (e.g. opening the form from a folder's ＋).
+  defaultFolder?: string | null;
 }
 
 const MACHINE_COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#8b93a7'];
@@ -37,6 +39,7 @@ export function ConnectionForm({
   update,
   collectionTargets,
   defaultCollectionId,
+  defaultFolder,
 }: ConnectionFormProps) {
   const { t } = useTranslation();
 
@@ -50,7 +53,7 @@ export function ConnectionForm({
   const [password, setPassword] = useState(prefillData?.password || '');
   const [keyPath, setKeyPath] = useState(prefillData?.keyPath || '');
   const [keyPassphrase, setKeyPassphrase] = useState(prefillData?.passphrase || '');
-  const [folder, setFolder] = useState(connection?.folder || '');
+  const [folder, setFolder] = useState(connection?.folder || defaultFolder || '');
   // ADR 0016 save target (accounts context): a collection id. "Personal" (the
   // vault-backed collection) is always the first target, the default.
   const [collectionTargetId, setCollectionTargetId] = useState<string>(

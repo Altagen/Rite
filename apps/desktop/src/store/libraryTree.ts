@@ -4,9 +4,10 @@
  * kept as a blob encrypted with the user key and stored per-user on the server
  * (zero-knowledge: the server never sees folder names or the structure).
  *
- * `folders` are the personal top-level folders; `placement` maps a collection id
- * to the folder it sits in (absent ⇒ at the root). Deleting a folder moves its
- * collections back to the root.
+ * `folders` are the personal organiser folders — each may nest under another via
+ * `parent` (absent ⇒ top level); `placement` maps a collection id to the folder it
+ * sits in (absent ⇒ at the root). Deleting a folder also deletes its descendant
+ * folders and moves every affected collection back to the root.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -18,6 +19,7 @@ export interface LibraryFolder {
   id: string;
   name: string;
   color: string | null;
+  parent?: string | null; // parent folder id; absent/null ⇒ top level
 }
 
 interface LibraryTreeData {
@@ -40,7 +42,7 @@ function encryptTree(key: Uint8Array, tree: LibraryTreeData): Promise<string> {
 export interface LibraryTree {
   folders: LibraryFolder[];
   placement: Record<string, string>;
-  createFolder: (name: string, color: string | null) => Promise<void>;
+  createFolder: (name: string, color: string | null, parent?: string | null) => Promise<void>;
   renameFolder: (id: string, name: string, color: string | null) => Promise<void>;
   deleteFolder: (id: string) => Promise<void>;
   moveCollection: (collectionId: string, folderId: string | null) => Promise<void>;
@@ -75,17 +77,31 @@ export function useLibraryTree(): LibraryTree {
     [userKey],
   );
 
-  const createFolder = (name: string, color: string | null) =>
-    persist({ ...tree, folders: [...tree.folders, { id: rid(), name, color }] });
+  const createFolder = (name: string, color: string | null, parent?: string | null) =>
+    persist({ ...tree, folders: [...tree.folders, { id: rid(), name, color, parent: parent ?? null }] });
 
   const renameFolder = (id: string, name: string, color: string | null) =>
     persist({ ...tree, folders: tree.folders.map((f) => (f.id === id ? { ...f, name, color } : f)) });
 
-  const deleteFolder = (id: string) =>
-    persist({
-      folders: tree.folders.filter((f) => f.id !== id),
-      placement: Object.fromEntries(Object.entries(tree.placement).filter(([, fid]) => fid !== id)),
+  const deleteFolder = (id: string) => {
+    // Cascade to descendant folders; any collection under a removed folder returns
+    // to the root (organiser folders hold no data, so nothing is lost).
+    const doomed = new Set<string>([id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const f of tree.folders) {
+        if (f.parent && doomed.has(f.parent) && !doomed.has(f.id)) {
+          doomed.add(f.id);
+          grew = true;
+        }
+      }
+    }
+    return persist({
+      folders: tree.folders.filter((f) => !doomed.has(f.id)),
+      placement: Object.fromEntries(Object.entries(tree.placement).filter(([, fid]) => !doomed.has(fid))),
     });
+  };
 
   const moveCollection = (collectionId: string, folderId: string | null) => {
     const placement = { ...tree.placement };

@@ -117,8 +117,11 @@ export function Workspace({
   const [mainView, setMainView] = useState<'terminal' | 'collection'>('terminal');
   const [membersCollectionId, setMembersCollectionId] = useState<string | null>(null);
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
+  const [formDefaultFolder, setFormDefaultFolder] = useState<string | null>(null);
   const [collectionEdit, setCollectionEdit] = useState<{ id?: string; name?: string; color?: string | null } | null>(null);
   const [showNewCollection, setShowNewCollection] = useState(false);
+  // When a new collection is created from a root folder's ＋, place it there.
+  const [pendingCollectionFolder, setPendingCollectionFolder] = useState<string | null>(null);
   // Collection sub-folder dialog (create top-level / sub-folder / rename) + delete.
   const [folderDialog, setFolderDialog] = useState<{
     collectionId: string;
@@ -133,7 +136,7 @@ export function Workspace({
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{ id: string; name: string } | null>(null);
   // Top-level library folders (ADR 0016 view hierarchy) — the encrypted per-user tree.
   const tree = useLibraryTree();
-  const [libraryFolderEdit, setLibraryFolderEdit] = useState<{ id?: string; name?: string; color?: string | null } | null>(null);
+  const [libraryFolderEdit, setLibraryFolderEdit] = useState<{ id?: string; name?: string; color?: string | null; parent?: string | null } | null>(null);
   const [moveCollectionTarget, setMoveCollectionTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<{ id: string; name: string } | null>(null);
 
@@ -870,8 +873,9 @@ export function Workspace({
 
   // Sidebar collection actions (accounts context).
   const isAccountsContext = conns.writableCollections !== undefined;
-  const handleNewMachineInCollection = (collectionId: string) => {
+  const handleNewMachineInCollection = (collectionId: string, folder: string | null = null) => {
     setFormDefaultCollectionId(collectionId);
+    setFormDefaultFolder(folder);
     setEditingConnection(null);
     setConnectionFormPrefill(null);
     setShowForm(true);
@@ -1082,6 +1086,9 @@ export function Workspace({
                   ? (id, parentPath) => setFolderDialog({ collectionId: id, parentPath })
                   : undefined
               }
+              onNewMachineInFolder={
+                isAccountsContext ? (id, folderPath) => handleNewMachineInCollection(id, folderPath) : undefined
+              }
               onRenameFolder={
                 isAccountsContext
                   ? (id, path, color) =>
@@ -1109,6 +1116,15 @@ export function Workspace({
               onDeleteCollection={isAccountsContext ? (id, name) => setDeleteCollectionTarget({ id, name }) : undefined}
               libraryFolders={isAccountsContext ? tree.folders : undefined}
               collectionPlacement={isAccountsContext ? tree.placement : undefined}
+              onNewLibrarySubfolder={isAccountsContext ? (parent) => setLibraryFolderEdit({ parent }) : undefined}
+              onNewCollectionInFolder={
+                isAccountsContext
+                  ? (folderId) => {
+                      setPendingCollectionFolder(folderId);
+                      setShowNewCollection(true);
+                    }
+                  : undefined
+              }
               onRenameLibraryFolder={
                 isAccountsContext ? (id, name, color) => setLibraryFolderEdit({ id, name, color }) : undefined
               }
@@ -1205,7 +1221,8 @@ export function Workspace({
                     setImportCollectionId(openCollectionId);
                     setShowImportSSH(true);
                   }}
-                  onOpenMembers={() => setMembersCollectionId(openCollectionId)}
+                  isPersonal={openCol?.isPersonal}
+                  onOpenMembers={openCol?.isPersonal ? undefined : () => setMembersCollectionId(openCollectionId)}
                 />
               </div>
             )}
@@ -1244,11 +1261,13 @@ export function Workspace({
           update={conns.update}
           collectionTargets={conns.writableCollections}
           defaultCollectionId={formDefaultCollectionId}
+          defaultFolder={formDefaultFolder}
           onClose={() => {
             setShowForm(false);
             setEditingConnection(null);
             setConnectionFormPrefill(null);
             setFormDefaultCollectionId(null);
+            setFormDefaultFolder(null);
           }}
           onSuccess={() => {
             fetchConnections();
@@ -1272,7 +1291,17 @@ export function Workspace({
         />
       )}
       {showNewCollection && (
-        <MemberPicker mode="create" onClose={() => setShowNewCollection(false)} onSaved={fetchConnections} />
+        <MemberPicker
+          mode="create"
+          onClose={() => {
+            setShowNewCollection(false);
+            setPendingCollectionFolder(null);
+          }}
+          onSaved={fetchConnections}
+          onCreated={(id) => {
+            if (pendingCollectionFolder) tree.moveCollection(id, pendingCollectionFolder);
+          }}
+        />
       )}
       {folderDialog && (
         <CollectionFolderDialog
@@ -1328,7 +1357,7 @@ export function Workspace({
           onSave={(name, color) =>
             libraryFolderEdit.id
               ? tree.renameFolder(libraryFolderEdit.id, name, color)
-              : tree.createFolder(name, color)
+              : tree.createFolder(name, color, libraryFolderEdit.parent ?? null)
           }
         />
       )}

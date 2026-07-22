@@ -55,6 +55,7 @@ export function MemberPicker({
   initialColor,
   onClose,
   onSaved,
+  onCreated,
 }: {
   mode: 'create' | 'edit';
   collectionId?: string;
@@ -62,6 +63,7 @@ export function MemberPicker({
   initialColor?: string | null;
   onClose: () => void;
   onSaved: () => void;
+  onCreated?: (id: string) => void; // create mode: the new collection's id (for placement)
 }) {
   const { user: me, publicKey, privateKey } = useServerSession();
   const isCreate = mode === 'create';
@@ -198,6 +200,7 @@ export function MemberPicker({
         if (!pub) continue;
         await Backend.Collections.addMember(id, userId, role, await sealCollectionKeyToHex(pub, key));
       }
+      onCreated?.(id);
       onSaved();
       onClose();
     });

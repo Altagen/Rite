@@ -60,6 +60,7 @@ export function CollectionView({
   machines,
   folders,
   canWrite,
+  isPersonal,
   onConnect,
   onEdit,
   onNewMachine,
@@ -73,6 +74,7 @@ export function CollectionView({
   machines: ConnectionInfo[];
   folders?: { name: string; color: string | null }[]; // declared sub-folders (show empty)
   canWrite: boolean;
+  isPersonal?: boolean; // the personal collection can't be shared
   onConnect: (c: ConnectionInfo) => void;
   onEdit: (c: ConnectionInfo) => void;
   onNewMachine: () => void;
@@ -202,10 +204,16 @@ export function CollectionView({
       <div className="flex flex-wrap items-center gap-3 pb-2">
         <CollectionIcon color={color} />
         <h2 className="text-lg font-semibold">{name}</h2>
-        {role && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-            {role}
+        {isPersonal ? (
+          <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+            Personal
           </span>
+        ) : (
+          role && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+              {role}
+            </span>
+          )
         )}
         <span className="text-sm text-muted-foreground">
           {machines.length} {machines.length === 1 ? 'machine' : 'machines'}

@@ -45,14 +45,18 @@ interface LibrarySidebarProps {
   onImportToCollection?: (collectionId: string) => void;
   // Sub-folder actions inside a collection (path-based nesting).
   onNewSubfolder?: (collectionId: string, parentPath: string) => void;
+  onNewMachineInFolder?: (collectionId: string, folderPath: string) => void;
   onRenameFolder?: (collectionId: string, path: string, color: string | null) => void;
   onDeleteFolder?: (collectionId: string, path: string) => void;
   onOpenMembers?: (collectionId: string) => void;
   onRenameCollection?: (collectionId: string, name: string, color: string | null) => void;
   onDeleteCollection?: (collectionId: string, name: string) => void;
   // Top-level personal folders that organise collections (ADR 0016 view hierarchy).
-  libraryFolders?: { id: string; name: string; color: string | null }[];
+  // Folders may nest via `parent`; a root folder can also hold a new collection.
+  libraryFolders?: { id: string; name: string; color: string | null; parent?: string | null }[];
   collectionPlacement?: Record<string, string>; // collectionId → folderId
+  onNewLibrarySubfolder?: (parentId: string) => void;
+  onNewCollectionInFolder?: (folderId: string) => void;
   onRenameLibraryFolder?: (id: string, name: string, color: string | null) => void;
   onDeleteLibraryFolder?: (id: string, name: string) => void;
   onMoveCollection?: (collectionId: string, name: string) => void;
@@ -66,6 +70,8 @@ function LibraryFolderNode({
   count,
   open,
   onToggle,
+  onNewSubfolder,
+  onNewCollection,
   onRename,
   onDelete,
   children,
@@ -76,11 +82,15 @@ function LibraryFolderNode({
   count: number;
   open: boolean;
   onToggle: () => void;
+  onNewSubfolder?: (id: string) => void;
+  onNewCollection?: (id: string) => void;
   onRename?: (id: string) => void;
   onDelete?: (id: string) => void;
   children: React.ReactNode;
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const hasAdd = !!(onNewSubfolder || onNewCollection);
   return (
     <div>
       <div className="m-tnode">
@@ -91,23 +101,53 @@ function LibraryFolderNode({
         <button onClick={onToggle} className="m-nm text-left" title={name}>
           {name}
         </button>
-        <div className="m-acts relative" style={showMenu ? { opacity: 1 } : undefined}>
-          <button onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }} aria-label="Folder menu">
-            <MoreIcon />
-          </button>
-          {showMenu && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-              <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded border border-border bg-background shadow-lg">
-                <button onClick={() => { setShowMenu(false); onRename?.(id); }} className="w-full px-3 py-2 text-left text-sm hover:bg-muted">
-                  Rename…
-                </button>
-                <button onClick={() => { setShowMenu(false); onDelete?.(id); }} className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-muted">
-                  Delete folder
-                </button>
-              </div>
-            </>
+        <div className="m-acts" style={showMenu || showAdd ? { opacity: 1 } : undefined}>
+          {/* A root folder isn't owned by a collection, so its ＋ can create a
+              sub-folder or a brand-new collection placed inside it. */}
+          {hasAdd && (
+            <div className="relative">
+              <button onClick={(e) => { e.stopPropagation(); setShowAdd((v) => !v); }} title="New here" aria-label="New here">
+                <PlusIcon />
+              </button>
+              {showAdd && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowAdd(false); }} />
+                  <div className="m-menu absolute right-0 top-full z-20 mt-1">
+                    {onNewSubfolder && (
+                      <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewSubfolder(id); }}>
+                        <IconFolder className="h-4 w-4 flex-none" />
+                        New sub-folder
+                      </button>
+                    )}
+                    {onNewCollection && (
+                      <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewCollection(id); }}>
+                        <CollectionIcon color={null} />
+                        New collection here…
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           )}
+          <div className="relative">
+            <button onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }} aria-label="Folder menu">
+              <MoreIcon />
+            </button>
+            {showMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
+                <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded border border-border bg-background shadow-lg">
+                  <button onClick={() => { setShowMenu(false); onRename?.(id); }} className="w-full px-3 py-2 text-left text-sm hover:bg-muted">
+                    Rename…
+                  </button>
+                  <button onClick={() => { setShowMenu(false); onDelete?.(id); }} className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-muted">
+                    Delete folder
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
         <span className="m-cnt">{count}</span>
       </div>
@@ -151,6 +191,7 @@ function CollectionNode({
   onDelete,
   onMove,
   memberCount = 1,
+  isPersonal = false,
   children,
 }: {
   cid: string;
@@ -161,6 +202,7 @@ function CollectionNode({
   open: boolean;
   active: boolean;
   memberCount?: number;
+  isPersonal?: boolean;
   onOpen: () => void;
   onToggle: () => void;
   onNewMachine?: (id: string) => void;
@@ -252,13 +294,16 @@ function CollectionNode({
               <>
                 <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }} />
                 <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded border border-border bg-background shadow-lg">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setShowMenu(false); onOpenMembers?.(cid); }}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                  >
-                    Members &amp; sharing…
-                  </button>
-                  {onMove && (
+                  {/* Personal can't be shared, moved or deleted — rename only. */}
+                  {!isPersonal && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onOpenMembers?.(cid); }}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                    >
+                      Members &amp; sharing…
+                    </button>
+                  )}
+                  {!isPersonal && onMove && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setShowMenu(false); onMove(cid); }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
@@ -274,7 +319,7 @@ function CollectionNode({
                       Rename…
                     </button>
                   )}
-                  {canManage && (
+                  {!isPersonal && canManage && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setShowMenu(false); onDelete?.(cid); }}
                       className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-muted"
@@ -423,6 +468,7 @@ function FolderNode({
   canWrite,
   onToggle,
   onNewSubfolder,
+  onNewMachine,
   onRename,
   onDelete,
   children,
@@ -436,12 +482,15 @@ function FolderNode({
   canWrite: boolean;
   onToggle: () => void;
   onNewSubfolder?: (path: string) => void;
+  onNewMachine?: (path: string) => void;
   onRename?: (path: string) => void;
   onDelete?: (path: string) => void;
   children: React.ReactNode;
 }) {
   const [showMenu, setShowMenu] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
   const hasMenu = !!(onRename || onDelete);
+  const hasAdd = !!(onNewSubfolder || onNewMachine);
   return (
     <div>
       <div className="m-tnode" style={{ paddingLeft: `${8 + depth * 16}px` }} onClick={onToggle}>
@@ -450,19 +499,37 @@ function FolderNode({
         </span>
         <FolderIcon color={color} />
         <span className="m-nm">{name}</span>
-        {canWrite && (onNewSubfolder || hasMenu) && (
-          <div className="m-acts" style={showMenu ? { opacity: 1 } : undefined}>
-            {onNewSubfolder && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onNewSubfolder(path);
-                }}
-                title="New sub-folder"
-                aria-label="New sub-folder"
-              >
-                <PlusIcon />
-              </button>
+        {canWrite && (hasAdd || hasMenu) && (
+          <div className="m-acts" style={showMenu || showAdd ? { opacity: 1 } : undefined}>
+            {hasAdd && (
+              <div className="relative">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowAdd((v) => !v); }}
+                  title="New here"
+                  aria-label="New here"
+                >
+                  <PlusIcon />
+                </button>
+                {showAdd && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowAdd(false); }} />
+                    <div className="m-menu absolute right-0 top-full z-20 mt-1">
+                      {onNewSubfolder && (
+                        <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewSubfolder(path); }}>
+                          <IconFolder className="h-4 w-4 flex-none" />
+                          New sub-folder
+                        </button>
+                      )}
+                      {onNewMachine && (
+                        <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewMachine(path); }}>
+                          <IconPlay className="h-4 w-4 flex-none" />
+                          New connection…
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
             {hasMenu && (
               <div className="relative">
@@ -515,6 +582,7 @@ export function LibrarySidebar({
   onNewFolderInCollection,
   onImportToCollection,
   onNewSubfolder,
+  onNewMachineInFolder,
   onRenameFolder,
   onDeleteFolder,
   onOpenMembers,
@@ -522,6 +590,8 @@ export function LibrarySidebar({
   onDeleteCollection,
   libraryFolders,
   collectionPlacement,
+  onNewLibrarySubfolder,
+  onNewCollectionInFolder,
   onRenameLibraryFolder,
   onDeleteLibraryFolder,
   onMoveCollection,
@@ -614,6 +684,7 @@ export function LibrarySidebar({
               canWrite={canWrite}
               onToggle={() => toggle(key)}
               onNewSubfolder={collectionId && onNewSubfolder ? (p) => onNewSubfolder(collectionId, p) : undefined}
+              onNewMachine={collectionId && onNewMachineInFolder ? (p) => onNewMachineInFolder(collectionId, p) : undefined}
               onRename={collectionId && onRenameFolder ? (p) => onRenameFolder(collectionId, p, n.color) : undefined}
               onDelete={collectionId && onDeleteFolder ? (p) => onDeleteFolder(collectionId, p) : undefined}
             >
@@ -687,6 +758,7 @@ export function LibrarySidebar({
         open={isOpen(key)}
         active={openCollectionId === cid}
         memberCount={node.memberCount}
+        isPersonal={node.isPersonal}
         onOpen={() => onOpenCollection?.(cid)}
         onToggle={() => toggle(key)}
         onNewMachine={onNewMachineInCollection}
@@ -711,6 +783,37 @@ export function LibrarySidebar({
   const folderIds = new Set(libFolders.map((f) => f.id));
   const rootNodes = collectionNodes.filter((n) => !placement[n.id] || !folderIds.has(placement[n.id]));
 
+  // Personal organiser folders nest via `parent`; render them as a tree.
+  const childFoldersOf = (parentId: string | null) =>
+    libFolders.filter((f) => (f.parent ?? null) === parentId);
+  const subtreePlaced = (fid: string): number =>
+    collectionNodes.filter((n) => placement[n.id] === fid).length +
+    childFoldersOf(fid).reduce((s, c) => s + subtreePlaced(c.id), 0);
+  const renderLibraryFolder = (f: { id: string; name: string; color: string | null; parent?: string | null }): React.ReactNode => {
+    const fkey = `lf/${f.id}`;
+    const placed = collectionNodes.filter((n) => placement[n.id] === f.id);
+    const subs = childFoldersOf(f.id);
+    if (q && subtreePlaced(f.id) === 0) return null; // hide empty folders while searching
+    return (
+      <LibraryFolderNode
+        key={fkey}
+        id={f.id}
+        name={f.name}
+        color={f.color}
+        count={placed.length + subs.length}
+        open={isOpen(fkey)}
+        onToggle={() => toggle(fkey)}
+        onNewSubfolder={onNewLibrarySubfolder}
+        onNewCollection={onNewCollectionInFolder}
+        onRename={onRenameLibraryFolder ? (id) => onRenameLibraryFolder(id, f.name, f.color) : undefined}
+        onDelete={onDeleteLibraryFolder ? (id) => onDeleteLibraryFolder(id, f.name) : undefined}
+      >
+        {subs.map(renderLibraryFolder)}
+        {placed.map(renderCollectionNode)}
+      </LibraryFolderNode>
+    );
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
@@ -726,27 +829,8 @@ export function LibrarySidebar({
             {/* Loose personal machines (local context only) */}
             {renderFolderGroups(personal, 'personal', 0)}
 
-            {/* Top-level personal folders → the collections placed in them */}
-            {libFolders.map((f) => {
-              const fkey = `lf/${f.id}`;
-              const placed = collectionNodes.filter((n) => placement[n.id] === f.id);
-              if (q && placed.length === 0) return null; // hide empty folders while searching
-              return (
-                <LibraryFolderNode
-                  key={fkey}
-                  id={f.id}
-                  name={f.name}
-                  color={f.color}
-                  count={placed.length}
-                  open={isOpen(fkey)}
-                  onToggle={() => toggle(fkey)}
-                  onRename={onRenameLibraryFolder ? (id) => onRenameLibraryFolder(id, f.name, f.color) : undefined}
-                  onDelete={onDeleteLibraryFolder ? (id) => onDeleteLibraryFolder(id, f.name) : undefined}
-                >
-                  {placed.map(renderCollectionNode)}
-                </LibraryFolderNode>
-              );
-            })}
+            {/* Personal organiser folders (nested) → the collections placed in them */}
+            {childFoldersOf(null).map(renderLibraryFolder)}
 
             {/* Collections not in any folder — at the root */}
             {rootNodes.map(renderCollectionNode)}
