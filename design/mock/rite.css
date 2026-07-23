@@ -120,7 +120,8 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
 .side-rail button{position:absolute;left:0;top:50%;transform:translateY(-50%);opacity:0;transition:.15s;background:var(--card);border:1px solid var(--border);border-left:none;border-radius:0 8px 8px 0;padding:8px;color:var(--fg);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35)}
 .side-rail:hover button{opacity:1}
 .search{display:flex;align-items:center;gap:8px;margin:12px;padding:8px 11px;background:var(--bg);border:1px solid var(--border2);border-radius:9px;color:var(--muted)}
-.search input{background:none;border:none;outline:none;color:var(--fg);width:100%;font-size:13px;font-family:inherit}
+.search input{background:none;border:none;outline:none;padding:0;color:var(--fg);width:100%;font-size:13px;font-family:inherit;line-height:18px}
+.search input::placeholder{color:color-mix(in oklab,var(--fg) 50%,transparent);opacity:1}
 .tree{padding:0 8px}
 .tnode{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
 .tnode:hover{background:var(--card2)} .tnode.sel{background:rgba(124,156,245,.13);border-color:rgba(124,156,245,.3)}
