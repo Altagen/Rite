@@ -907,19 +907,22 @@ export function Workspace({
   const openCollectionRole = openCol?.role ?? openCollectionMeta?.collectionRole ?? null;
   const openCollectionWritable = openCollectionRole === 'owner' || openCollectionRole === 'editor';
 
-  // Every folder path in a collection (declared + inferred from machines + ancestors),
-  // sorted — the destinations offered when moving a machine between folders.
-  const collectionFolderPaths = (collectionId: string | null | undefined): string[] => {
-    if (!collectionId) return [];
-    const declared = conns.collections?.find((c) => c.id === collectionId)?.folders ?? [];
-    const mach = conns.connections.filter((c) => c.collectionId === collectionId);
+  // Folder paths available as move destinations for a machine, sorted. In a
+  // collection: its declared folders + those inferred from its machines. In local
+  // context (no collection): every folder used across the personal machines.
+  const folderPathsForMachine = (m: ConnectionInfo): string[] => {
     const s = new Set<string>();
     const add = (p: string) => {
       const segs = p.split('/');
       for (let i = 1; i <= segs.length; i++) s.add(segs.slice(0, i).join('/'));
     };
-    for (const f of declared) if (f.name) add(f.name);
-    for (const m of mach) if (m.folder) add(m.folder);
+    if (m.collectionId) {
+      const declared = conns.collections?.find((c) => c.id === m.collectionId)?.folders ?? [];
+      for (const f of declared) if (f.name) add(f.name);
+      for (const c of conns.connections) if (c.collectionId === m.collectionId && c.folder) add(c.folder);
+    } else {
+      for (const c of conns.connections) if (!c.collectionId && c.folder) add(c.folder);
+    }
     return [...s].sort((a, b) => a.localeCompare(b));
   };
 
@@ -1094,7 +1097,7 @@ export function Workspace({
               onEdit={handleEditConnection}
               onDelete={handleDeleteConnection}
               onConnect={handleConnect}
-              onMoveMachine={isAccountsContext ? setMoveMachineTarget : undefined}
+              onMoveMachine={setMoveMachineTarget}
               onOpenCollection={handleOpenCollection}
               openCollectionId={mainView === 'collection' ? openCollectionId : null}
               collections={conns.collections}
@@ -1398,7 +1401,8 @@ export function Workspace({
         <MoveMachineDialog
           machineName={moveMachineTarget.name}
           currentFolder={moveMachineTarget.folder ?? ''}
-          folderPaths={collectionFolderPaths(moveMachineTarget.collectionId)}
+          folderPaths={folderPathsForMachine(moveMachineTarget)}
+          rootLabel={moveMachineTarget.collectionId ? 'Collection root' : 'No folder (root)'}
           onClose={() => setMoveMachineTarget(null)}
           onPick={async (folder) => {
             await conns.update({ id: moveMachineTarget.id, folder });

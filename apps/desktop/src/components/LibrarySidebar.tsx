@@ -633,7 +633,7 @@ export function LibrarySidebar({
       depth={depth}
       onSelect={() => onSelect(c.id)}
       onEdit={() => onEdit(c)}
-      onMove={onMoveMachine && c.collectionId ? () => onMoveMachine(c) : undefined}
+      onMove={onMoveMachine ? () => onMoveMachine(c) : undefined}
       onDelete={() => onDelete(c)}
       onConnect={() => onConnect(c)}
     />

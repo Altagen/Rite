@@ -10,12 +10,14 @@ export function MoveMachineDialog({
   machineName,
   currentFolder,
   folderPaths,
+  rootLabel = 'Root (no folder)',
   onClose,
   onPick,
 }: {
   machineName: string;
-  currentFolder: string; // '' ⇒ collection root
-  folderPaths: string[]; // every folder path in the collection, sorted
+  currentFolder: string; // '' ⇒ root (no folder)
+  folderPaths: string[]; // every folder path in scope, sorted
+  rootLabel?: string; // label for the '' destination
   onClose: () => void;
   onPick: (folder: string) => void | Promise<void>;
 }) {
@@ -45,7 +47,7 @@ export function MoveMachineDialog({
       >
         <svg className="h-4 w-4 flex-none text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           {path === '' ? (
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z M3 12l9 5 9-5M3 16.5l9 5 9-5" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9-9 9 9M5 10v10h14V10" />
           ) : (
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
           )}
@@ -60,9 +62,9 @@ export function MoveMachineDialog({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <div className="flex max-h-[80vh] w-full max-w-sm flex-col rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <h3 className="mb-1 text-lg font-semibold">Move “{machineName}”</h3>
-        <p className="mb-3 text-xs text-muted-foreground">Pick a folder in this collection.</p>
+        <p className="mb-3 text-xs text-muted-foreground">Pick a destination folder.</p>
         <div className="-mx-1 space-y-0.5 overflow-y-auto">
-          {row('', 'Collection root', 0)}
+          {row('', rootLabel, 0)}
           {folderPaths.map((p) => row(p, p.split('/').pop() ?? p, p.split('/').length))}
         </div>
         <div className="mt-4 flex justify-end">
