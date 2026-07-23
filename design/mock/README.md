@@ -73,6 +73,10 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
   `+` on a folder **inside a collection** offers *New sub-folder / New connection*; on a
   **root folder** (not in a collection) it offers *New sub-folder / New collection here*
   — a root folder isn't owned by a collection, so it can hold one.
+- **Opening a collection** (main area) is a **drill-in** view: a breadcrumb
+  (collection ▸ folder ▸ …), sub-folder **tiles** you click to enter, and the machines
+  at the current folder — so the nesting is unambiguous. *New folder* / *New machine*
+  target the folder you're browsing; filtering shows a flat result across all folders.
 - Folders/collections have **custom colours**; context icons can be **custom images
   (client-side only)**. Distinct icons: folder / collection (layers) / machine
   (server rack) — the ▶ play icon is the *connect* action, not an identity.

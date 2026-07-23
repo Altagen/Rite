@@ -127,7 +127,7 @@ function collectMachines(node){let out=[...(node.conns||[])];(node.children||[])
 function underColl(id){let res=false;(function rec(list,inColl){for(const n of list){if(n.id===id){res=inColl;return;}if(n.children)rec(n.children,inColl||n.type==='coll');}})(LIB,false);return res;}
 
 const IS_ADMIN=true;
-let STATE={sideCollapsed:false,mainTab:'term',selColl:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',sessionPersistence:true,instanceName:'Acme Corp'};
+let STATE={sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',sessionPersistence:true,instanceName:'Acme Corp'};
 const SHELLS=[{name:'fish',icon:'🐠',installed:true},{name:'bash',icon:'🐚',installed:true},{name:'zsh',icon:'⚡',installed:true},{name:'sh',icon:'📜',installed:false}];
 
 /* ================= header actions (web) ================= */
@@ -169,7 +169,8 @@ function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:$
     <span class="nm">${cn.name}</span>
     <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();toast('▶ ${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="Edit" onclick="event.stopPropagation();dlgNewConn('',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button></span></div>`;}
 function n_toggle(id){const n=find(id);n.open=!n.open;renderSide();}
-function openColl(id){STATE.selColl=id;STATE.mainTab='coll';renderSide();renderMain();}
+function openColl(id){STATE.selColl=id;STATE.collPath=null;STATE.mainTab='coll';renderSide();renderMain();}
+function collGo(fid){STATE.collPath=fid;renderMain();}
 
 /* ================= main: terminal + collection cards ================= */
 function renderMain(){
@@ -190,14 +191,24 @@ function cardsView(coll){
     <div class="tgt">${cn.user}@${cn.host}:${cn.port}</div>
     <div class="meta"><span>⏱ ${cn.last||'—'}</span><span>ssh</span></div></div>`;
   const grid=list=>`<div class="cards ${STATE.layout}">${sortF(list).map(card).join('')}</div>`;
-  const secHead=(color,name,n)=>`<div style="display:flex;align-items:center;gap:8px;margin:2px 0 10px"><span style="color:${color||'var(--muted)'};display:grid;place-items:center">${M.folder}</span><span class="eyebrow" style="color:var(--fg-dim)">${name}</span><span class="cnt">${n}</span></div>`;
-  const folders=coll.children||[];
-  const groups=folders.length
-    ? folders.map(f=>secHead(f.color,f.name,collectMachines(f).length)+grid(collectMachines(f))).join('')
-      + ((coll.conns||[]).length?secHead('var(--muted)','(root)',coll.conns.length)+grid(coll.conns):'')
-    : grid(coll.conns||[]);
+  const eyebrow=t=>`<div class="eyebrow" style="margin:2px 0 8px;color:var(--fg-dim)">${t}</div>`;
+  // Drill-in: the current folder within the collection (null ⇒ the collection root).
+  const cur=(STATE.collPath&&find(STATE.collPath))||coll;
+  const chain=[];{let n=cur;while(n&&n.id!==coll.id){chain.unshift(n);n=parentOf(n.id);}}
+  const crumb=`<div style="display:flex;align-items:center;gap:2px;flex-wrap:wrap;margin-bottom:6px;font-size:13px">
+    <button class="btn btn-ghost btn-sm" style="padding:2px 6px;${cur.id===coll.id?'font-weight:650':'color:var(--muted)'}" onclick="collGo(null)">${EXICON.home} ${coll.name}</button>
+    ${chain.map((f,i)=>{const last=i===chain.length-1;return `<span style="color:var(--muted)">▸</span><button class="btn btn-ghost btn-sm" style="padding:2px 6px;${last?'font-weight:650':'color:var(--muted)'}" ${last?'disabled':''} onclick="collGo('${f.id}')">${f.name}</button>`;}).join('')}</div>`;
+  const tile=f=>`<div class="ccard" style="cursor:pointer" onclick="collGo('${f.id}')" title="Open “${f.name}”">
+    <div class="h"><span style="color:${f.color||'var(--muted)'};display:grid;place-items:center">${M.folder}</span><span class="nm">${f.name}</span><span style="flex:1"></span><span class="cnt">${collectMachines(f).length}</span><span style="color:var(--muted);display:grid;place-items:center">${EXICON.chevR}</span></div></div>`;
+  const subs=cur.children||[], here=cur.conns||[];
+  let body=crumb;
+  if(!subs.length&&!here.length){body+=`<div style="border:1px dashed var(--border);border-radius:10px;padding:22px;text-align:center;color:var(--muted)">${cur.id===coll.id?'No machines in this collection yet.':'This folder is empty.'}</div>`;}
+  else{
+    if(subs.length)body+=eyebrow('Folders')+`<div class="cards grid">${subs.map(tile).join('')}</div>`;
+    if(here.length)body+=(subs.length?eyebrow('Machines'):'')+grid(here);
+  }
   return `<div style="height:100%;display:flex;flex-direction:column">
-    <div style="display:flex;align-items:center;gap:12px;padding-bottom:6px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:12px;padding-bottom:6px;flex-wrap:wrap;min-height:38px">
       <span style="color:${coll.color||'var(--purple)'}">${M.coll}</span><h2 style="font-size:18px">${coll.name}</h2>
       ${coll.shared?`<div class="avs">${coll.members.slice(0,4).map(av).join('')}</div>${STATE.showMemberCount?`<span class="muted" style="font-size:12px">${coll.members.length} members</span>`:''}`:'<span class="tag" style="background:var(--card2);color:var(--muted);border:1px solid var(--border)">Personal</span>'}
       <div style="flex:1"></div>
@@ -208,9 +219,9 @@ function cardsView(coll){
       <button class="btn btn-ghost btn-sm" title="Grid" onclick="STATE.layout='grid';renderMain()" style="${STATE.layout==='grid'?'color:var(--accent)':''}">${M.grid}</button>
       <button class="btn btn-ghost btn-sm" title="List" onclick="STATE.layout='list';renderMain()" style="${STATE.layout==='list'?'color:var(--accent)':''}">${M.list}</button>
       <button class="btn btn-sm" title="Import from SSH config" onclick="dlgImportPaste('${coll.name}')">${M.import} Import</button>
-      <button class="btn btn-sm" title="New shared folder" onclick="dlgNewFolder('${coll.id}')">${M.folder} Folder</button>
+      <button class="btn btn-sm" title="${cur.id===coll.id?'New shared folder':'New sub-folder in “'+cur.name+'”'}" onclick="dlgNewFolder('${cur.id}')">${M.folder} Folder</button>
       <button class="btn btn-primary btn-sm" onclick="dlgNewConn('${coll.name}')">${ICON.plus} Machine</button></div>
-    <div class="scroll" style="flex:1">${groups}</div></div>`;}
+    <div class="scroll" style="flex:1">${body}</div></div>`;}
 
 /* ================= create menus ================= */
 function floatMenu(e,items){document.querySelectorAll('.menu').forEach(m=>m.remove());const m=document.createElement('div');m.className='menu';
