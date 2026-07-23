@@ -22,6 +22,8 @@ export function MoveMachineDialog({
   onPick: (folder: string) => void | Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newPath, setNewPath] = useState('');
   const pick = async (folder: string) => {
     if (busy) return;
     setBusy(true);
@@ -31,6 +33,12 @@ export function MoveMachineDialog({
     } finally {
       setBusy(false);
     }
+  };
+
+  // A new folder is just a path we move into. Accept "A/B" to nest; trim each segment.
+  const cleanNew = newPath.split('/').map((s) => s.trim()).filter(Boolean).join('/');
+  const createAndMove = () => {
+    if (cleanNew) pick(cleanNew);
   };
 
   const row = (path: string, label: string, depth: number) => {
@@ -67,7 +75,49 @@ export function MoveMachineDialog({
           {row('', rootLabel, 0)}
           {folderPaths.map((p) => row(p, p.split('/').pop() ?? p, p.split('/').length))}
         </div>
-        <div className="mt-4 flex justify-end">
+
+        <div className="mt-1 border-t border-border pt-1">
+          {creating ? (
+            <div className="flex items-center gap-2 px-1 py-1">
+              <input
+                autoFocus
+                value={newPath}
+                onChange={(e) => setNewPath(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') createAndMove();
+                  if (e.key === 'Escape') {
+                    setCreating(false);
+                    setNewPath('');
+                  }
+                }}
+                placeholder="New folder — e.g. Web servers or Web/EU"
+                className="min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
+                disabled={busy}
+              />
+              <button
+                onClick={createAndMove}
+                disabled={busy || !cleanNew}
+                className="flex-none rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                Move
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setCreating(true)}
+              disabled={busy}
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
+            >
+              <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v4M10 13h4" />
+              </svg>
+              New folder…
+            </button>
+          )}
+        </div>
+
+        <div className="mt-3 flex justify-end">
           <button onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
             Cancel
           </button>
