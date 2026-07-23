@@ -6,6 +6,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
+import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
 
@@ -16,6 +17,8 @@ interface SettingsProps {
 export function Settings({ onClose }: SettingsProps) {
   const { t, locale, setLocale } = useTranslation();
   const { settings, fetchSettings, updateSettings, isLoading } = useSettingsStore();
+  const showMemberCount = useDisplayPrefs((s) => s.showMemberCount);
+  const setShowMemberCount = useDisplayPrefs((s) => s.setShowMemberCount);
 
   const [selectedTimeout, setSelectedTimeout] = useState<number>(0);
   const [customTimeout, setCustomTimeout] = useState('');
@@ -169,6 +172,18 @@ export function Settings({ onClose }: SettingsProps) {
                 Applies live; translucency shows on terminals opened afterwards.
               </p>
             </div>
+            <label className="mt-4 flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showMemberCount}
+                onChange={(e) => setShowMemberCount(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <span>
+                <span className="text-sm font-medium">Show member count on collections</span>
+                <span className="block text-xs text-muted-foreground">The number next to shared collections (the icon stays)</span>
+              </span>
+            </label>
           </section>
 
           {/* Auto-lock settings */}

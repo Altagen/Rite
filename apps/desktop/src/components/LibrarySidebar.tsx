@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { IconPlay, IconEdit, IconUsers, IconTrash, IconFolder, IconImport } from './icons';
+import { useDisplayPrefs } from '../store/displayPrefs';
 
 interface LibrarySidebarProps {
   connections: ConnectionInfo[];
@@ -217,6 +218,7 @@ function CollectionNode({
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const showMemberCount = useDisplayPrefs((s) => s.showMemberCount);
   const canWrite = role === 'owner' || role === 'editor';
   const canManage = role === 'owner';
 
@@ -239,8 +241,8 @@ function CollectionNode({
         </span>
         {memberCount > 1 && (
           <span className="m-mc" title={`${memberCount} members`}>
-            <IconUsers className="h-3 w-3" />
-            {memberCount}
+            <IconUsers className="h-4 w-4" />
+            {showMemberCount ? memberCount : null}
           </span>
         )}
         <div className="m-acts" style={showMenu || showAdd ? { opacity: 1 } : undefined}>
