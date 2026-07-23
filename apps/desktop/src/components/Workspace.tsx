@@ -299,7 +299,7 @@ export function Workspace({
 
     console.log(`[Auto-lock] Enabled with timeout: ${settings.autoLockTimeout} minute(s)`);
 
-    let timeoutId: NodeJS.Timeout;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
     const resetTimer = () => {
       clearTimeout(timeoutId);
@@ -336,7 +336,7 @@ export function Workspace({
 
     console.log(`[Clipboard] Auto-clear enabled with timeout: ${settings.clipboardClearTimeout} second(s)`);
 
-    let clipboardTimeoutId: NodeJS.Timeout;
+    let clipboardTimeoutId: ReturnType<typeof setTimeout>;
 
     const handleCopy = async () => {
       // Clear any existing timer
