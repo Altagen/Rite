@@ -98,12 +98,27 @@ function openInNewWindow(name){toast(`${ICON.win} <span class="accent">${name}</
 /* mini terminal content */
 function termHTML(host){
   const who=host?`<span class="ok">${host}</span>`:'<span class="ok">local</span>';
-  return `<div class="term scroll">
-    <div class="ln di"># ${host?'ssh '+host:'local shell — /usr/bin/fish'}</div>
-    <div class="ln"><span class="pr">${who} ~ ❯</span> uname -a</div>
-    <div class="ln di">Linux rite 7.1.3 #1 SMP x86_64 GNU/Linux</div>
-    <div class="ln"><span class="pr">${who} ~ ❯</span> ls</div>
-    <div class="ln di">Documents  Downloads  projects  .config</div>
-    <div class="ln"><span class="pr">${who} ~ ❯</span> <span class="cursor"></span></div>
+  const I=(d,r)=>`<svg class="icon" viewBox="0 0 24 24"${r?' style="transform:rotate(90deg)"':''}><path d="${d}"/></svg>`;
+  const grip=`<div class="grip" title="Drag to reorganize pane"><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div></div>`;
+  return `<div class="termpane">
+    <div class="termpane-hdr">
+      <div class="who">${host?'<span class="st"></span>':''}<span class="name">${host?host:'Local terminal'}</span>${host?'<span class="muted" style="font-size:12px">Connected</span>':''}</div>
+      <div class="termpane-acts">
+        ${grip}
+        <button title="Split horizontal (Ctrl+Shift+H)">${I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4')}</button>
+        <button title="Split vertical (Ctrl+Shift+V)">${I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4',1)}</button>
+        <button title="Detach to new tab">${I('M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14')}</button>
+        <button title="Search in terminal (Ctrl+F)">${I('M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z')}</button>
+        <button title="Close terminal">${I('M6 18L18 6M6 6l12 12')}</button>
+      </div>
+    </div>
+    <div class="term-body scroll">
+      <div class="ln di"># ${host?'ssh '+host:'local shell — /usr/bin/fish'}</div>
+      <div class="ln"><span class="pr">${who} ~ ❯</span> uname -a</div>
+      <div class="ln di">Linux rite 7.1.3 #1 SMP x86_64 GNU/Linux</div>
+      <div class="ln"><span class="pr">${who} ~ ❯</span> ls</div>
+      <div class="ln di">Documents  Downloads  projects  .config</div>
+      <div class="ln"><span class="pr">${who} ~ ❯</span> <span class="cursor"></span></div>
+    </div>
   </div>`;
 }
