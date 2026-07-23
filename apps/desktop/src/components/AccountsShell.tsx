@@ -10,36 +10,13 @@
  * asks the user to sign in again rather than showing an empty shell.
  */
 
-import { useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { useAccountsConnectionsSource } from '../store/accountsConnectionsSource';
+import { useRoutePath, navigate } from '../store/route';
 import { Workspace } from './Workspace';
-import { AdminSurface } from './AdminSurface';
-import { CollectionsPanel } from './CollectionsPanel';
+import { AdminDashboard } from './AdminDashboard';
+import { CollectionsDashboard } from './CollectionsDashboard';
 import { IconCollection, IconShield } from './icons';
-
-/** The collections management surface — an overlay open to every org member. */
-function CollectionsSurface({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
-      <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
-        <h1 className="text-lg font-semibold">Collections</h1>
-        <button
-          onClick={onClose}
-          className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-          </svg>
-          Back to workspace
-        </button>
-      </header>
-      <main className="flex-1 overflow-y-auto p-8">
-        <CollectionsPanel />
-      </main>
-    </div>
-  );
-}
 
 /** Reload without the password left no keys in RAM — re-auth to decrypt. */
 function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
@@ -64,14 +41,17 @@ function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
 export function AccountsShell() {
   const { user, userKey, logout, mode } = useServerSession();
   const conns = useAccountsConnectionsSource();
-  const [showAdmin, setShowAdmin] = useState(false);
-  const [showCollections, setShowCollections] = useState(false);
+  const path = useRoutePath();
   if (!user) return null;
 
   // A user without the unwrapped vault key (token-only resume) must re-auth.
   if (!userKey) return <ReauthNotice onSignOut={() => logout()} />;
 
   const isAdmin = user.role === 'admin';
+  // `/admin` and `/collections` are real routes rendered as overlays over the
+  // (kept-mounted) workspace, so live terminals survive a trip to admin. A
+  // non-admin who lands on `/admin` is bounced back to the app.
+  if (path === '/admin' && !isAdmin) navigate('/');
 
   return (
     <>
@@ -88,12 +68,12 @@ export function AccountsShell() {
         instanceName={mode?.instanceName}
         headerExtra={
           <>
-            <button onClick={() => setShowCollections(true)} className="m-btn m-btn-ghost m-btn-sm" title="Collections">
+            <button onClick={() => navigate('/collections')} className="m-btn m-btn-ghost m-btn-sm" title="Collections">
               <IconCollection className="h-4 w-4" />
               <span className="hidden md:inline">Collections</span>
             </button>
             {isAdmin ? (
-              <button onClick={() => setShowAdmin(true)} className="m-btn m-btn-ghost m-btn-sm" title="Administration">
+              <button onClick={() => navigate('/admin')} className="m-btn m-btn-ghost m-btn-sm" title="Administration">
                 <IconShield className="h-4 w-4" />
                 <span className="hidden md:inline">Admin</span>
               </button>
@@ -101,8 +81,8 @@ export function AccountsShell() {
           </>
         }
       />
-      {showCollections && <CollectionsSurface onClose={() => setShowCollections(false)} />}
-      {showAdmin && isAdmin && <AdminSurface onClose={() => setShowAdmin(false)} />}
+      {path === '/collections' && <CollectionsDashboard />}
+      {path === '/admin' && isAdmin && <AdminDashboard />}
     </>
   );
 }
