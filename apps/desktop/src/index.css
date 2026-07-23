@@ -209,9 +209,9 @@
     color: hsl(var(--foreground));
     width: 100%;
     font-size: 13px;
-    /* The mock's input keeps the UA default; Tailwind forces line-height:inherit
-       which makes the field ~1.8px taller and shifts the whole tree down. */
-    line-height: normal;
+    /* Fixed line-height so the field height (and the whole tree below it) is
+       deterministic regardless of the resolved font's metrics — matches the mock. */
+    line-height: 18px;
   }
   .m-cnt {
     font-size: 11px;
