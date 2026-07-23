@@ -94,7 +94,7 @@ function LibraryFolderNode({
   const hasAdd = !!(onNewSubfolder || onNewCollection);
   return (
     <div>
-      <div className="m-tnode">
+      <div className="m-tnode" style={{ paddingLeft: '6px' }}>
         <button onClick={onToggle} className="m-ca" aria-label={open ? 'Collapse' : 'Expand'}>
           <Chevron open={open} />
         </button>
@@ -152,7 +152,7 @@ function LibraryFolderNode({
         </div>
         <span className="m-cnt">{count}</span>
       </div>
-      {open && <div className="ml-3">{children}</div>}
+      {open && <div className="ml-[15px]">{children}</div>}
     </div>
   );
 }
@@ -222,7 +222,7 @@ function CollectionNode({
 
   return (
     <div>
-      <div onClick={onOpen} className={`m-tnode ${active ? 'sel' : ''}`}>
+      <div onClick={onOpen} className={`m-tnode ${active ? 'sel' : ''}`} style={{ paddingLeft: '6px' }}>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -379,7 +379,7 @@ function MachineIcon({ color }: { color?: string | null }) {
 
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg className={`h-3.5 w-3.5 flex-none text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg className={`h-4 w-4 flex-none text-foreground transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
     </svg>
   );
@@ -409,7 +409,7 @@ function MachineRow({
   return (
     <div
       className={`m-tnode leaf select-none ${isSelected ? 'sel' : ''}`}
-      style={{ paddingLeft: `${8 + depth * 16}px` }}
+      style={{ paddingLeft: `${6 + depth * 15}px` }}
       onClick={onSelect}
       onDoubleClick={onConnect}
     >
@@ -510,7 +510,7 @@ function FolderNode({
   const hasAdd = !!(onNewSubfolder || onNewMachine);
   return (
     <div>
-      <div className="m-tnode" style={{ paddingLeft: `${8 + depth * 16}px` }} onClick={onToggle}>
+      <div className="m-tnode" style={{ paddingLeft: `${6 + depth * 15}px` }} onClick={onToggle}>
         <span className="m-ca">
           <Chevron open={open} />
         </span>
