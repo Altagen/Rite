@@ -399,7 +399,18 @@ function dlgMoveConn(name,e){
   const coll=find(STATE.selColl);
   const dests=[{id:null,label:coll.name,depth:0}];
   (function rec(node,depth){(node.children||[]).forEach(f=>{dests.push({id:f.id,label:f.name,depth});rec(f,depth+1);});})(coll,1);
-  floatMenu(e,dests.map(d=>({icon:d.id?M.folder:M.coll,label:'&nbsp;'.repeat(d.depth*2)+d.label,onclick:()=>moveConnByName(name,d.id)})));
+  const items=dests.map(d=>({icon:d.id?M.folder:M.coll,label:'&nbsp;'.repeat(d.depth*2)+d.label,onclick:()=>moveConnByName(name,d.id)}));
+  items.push({icon:M.folder,label:'＋ New folder…',onclick:()=>dlgMoveNewFolder(name)});
+  floatMenu(e,items);
+}
+function dlgMoveNewFolder(name){
+  showModal({title:'New folder',subtitle:'Create it and move the machine in',confirm:'Create & move',
+    body:`<label class="field"><span>Name</span><input class="inp" id="mvfname" placeholder="e.g. Web servers"></label>${swatchRow(COLORS[0])}`,
+    onConfirm:(m)=>{const fname=(m.querySelector('#mvfname').value||'').trim()||'New folder';
+      const coll=find(STATE.selColl);
+      const node={id:'f-'+Math.random().toString(36).slice(2,7),type:'folder',color:__pickColor,name:fname,open:true,children:[],conns:[]};
+      (coll.children=coll.children||[]).unshift(node);
+      moveConnByName(name,node.id);}});
 }
 function moveConnByName(name,targetId){
   const coll=find(STATE.selColl);
