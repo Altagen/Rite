@@ -50,10 +50,17 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
 - `web.html` — the web-UI prototype (markup + inline logic).
 - `desktop.html` — the desktop-shell prototype.
 - `admin.html` — the **admin console** prototype: a dedicated dashboard (Overview /
-  Users / Teams / Instance) served at `/admin`, admins-only — a **separate surface**
-  from the connection manager so it can be deployed on its own (see the
-  `rite-admin-console-split` memory). Includes the planned `Serve web UI` /
-  `Serve admin console` toggles.
+  Users / Teams / **Collections** / Instance) served at `/admin`, admins-only — a
+  **separate surface** from the connection manager so it can be deployed on its own
+  (see the `rite-admin-console-split` memory). Includes the planned `Serve web UI` /
+  `Serve admin console` toggles. Its **Collections** tab is *governance* only
+  (policies, counts, cleanup) — zero-knowledge, so no names/contents.
+- `collections.html` — the **user's** collection manager (opened from the header
+  "Collections" button): the collections *I'm a member of*, with names/members
+  visible because I hold the keys. Master-detail — pick a collection, manage
+  members + per-member roles, sharing, colour, rename/delete; Personal is a real
+  1-member collection that can't be shared or deleted. The counterpart to admin
+  governance: same objects, different need.
 - `rite.css` — shared design tokens + components (dark, terminal-forward).
 - `rite.js` — shared helpers (toast, modal, mini-terminal) + generic dialogs.
 - `full-data.js` — mock data (org directory, teams, collections) + extra icons.

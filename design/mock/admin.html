@@ -57,6 +57,8 @@
   .setrow .lab{font-weight:600} .setrow .hint{font-size:12px;color:var(--muted);margin-top:3px}
   .maxw{max-width:640px}
   .soon{font-size:10px;font-weight:700;color:var(--amber);border:1px solid color-mix(in oklab,var(--amber) 40%,transparent);border-radius:5px;padding:1px 6px;text-transform:uppercase;letter-spacing:.04em}
+  .zk{display:flex;align-items:flex-start;gap:10px;background:color-mix(in oklab,var(--accent) 8%,transparent);border:1px solid color-mix(in oklab,var(--accent) 25%,transparent);border-radius:11px;padding:12px 14px;margin-bottom:20px;font-size:13px;color:var(--fg-dim);max-width:820px}
+  .zk .ic{color:var(--accent);flex-shrink:0;display:grid;place-items:center;margin-top:1px}
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);padding:11px 16px;border-radius:10px;box-shadow:var(--shadow);opacity:0;transition:.2s;z-index:80;font-size:13px}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
 </style>
@@ -91,6 +93,7 @@ const NAV=[
   {id:'overview',label:'Overview',ic:'<svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>'},
   {id:'users',label:'Users',ic:EXICON.users},
   {id:'teams',label:'Teams',ic:'<svg class="icon" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M2.5 20a6.5 6.5 0 0113 0"/><circle cx="17" cy="9" r="2.2"/><path d="M15.5 20a6 6 0 016-1.5"/></svg>'},
+  {id:'collections',label:'Collections',ic:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"/></svg>'},
   {id:'instance',label:'Instance',ic:EXICON.gear},
 ];
 let SEC='overview';
@@ -163,8 +166,32 @@ function instance(){
     </div>`;
 }
 
+let COLLCREATE=true, COLLSHARE=true;
+function collections(){
+  const flat=[];(function rec(l){l.forEach(c=>{flat.push(c);if(c.children)rec(c.children);});})(COLL);
+  const shared=flat.filter(c=>c.shared).length, personal=flat.length-shared;
+  const machines=flat.reduce((n,c)=>n+((c.conns||[]).length),0);
+  return `<div class="page-h"><h1>Collections</h1><span class="sub">Server-wide governance &amp; policy</span></div>
+    <div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Zero-knowledge.</b> Collection names and contents are encrypted on the client — admins govern membership, counts and policy, never the data. (Users manage their own collections from the app.)</div></div>
+    <div class="stat-grid">
+      ${statCard('Collections',flat.length,`${shared} shared · ${personal} personal`)}
+      ${statCard('Machines',machines,'across all collections')}
+      ${statCard('Orphaned',2,'empty &amp; unused &gt; 30d')}
+      ${statCard('Avg members','2.4','per shared collection')}
+    </div>
+    <div class="panel maxw" style="padding:6px 20px 12px;margin-bottom:16px">
+      <div class="setrow"><div><div class="lab">Allow users to create collections</div><div class="hint">When off, only admins provision collections.</div></div><div onclick="COLLCREATE=!COLLCREATE;renderContent();toast('Create '+(COLLCREATE?'allowed':'blocked'))">${tog(COLLCREATE)}</div></div>
+      <div class="setrow"><div><div class="lab">Allow sharing outside teams</div><div class="hint">Members can add anyone in the directory, not just teammates.</div></div><div onclick="COLLSHARE=!COLLSHARE;renderContent();toast('External sharing '+(COLLSHARE?'on':'off'))">${tog(COLLSHARE)}</div></div>
+      <div class="setrow"><div><div class="lab">Max members per collection</div><div class="hint">0 = unlimited.</div></div><input class="inp" style="width:90px" value="0"></div>
+      <div class="setrow"><div><div class="lab">Default role for new members</div><div class="hint">Applied when someone is added to a collection.</div></div><select class="inp" style="width:auto"><option>viewer</option><option>editor</option></select></div>
+    </div>
+    <div class="panel maxw"><div class="panel-h"><span class="t">Cleanup</span></div>
+      <div style="padding:14px 18px;display:flex;align-items:center;gap:12px"><span class="muted" style="flex:1">2 collections are empty and haven't been opened in 30+ days.</span><button class="btn btn-sm" onclick="toast('Review orphaned collections')">Review</button></div>
+    </div>`;
+}
+
 const ICONplus='<svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
-function renderContent(){document.getElementById('content').innerHTML=({overview,users,teams,instance})[SEC]();}
+function renderContent(){document.getElementById('content').innerHTML=({overview,users,teams,collections,instance})[SEC]();}
 function toast(m){let t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);}t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1600);}
 renderNav();renderContent();
 </script>
