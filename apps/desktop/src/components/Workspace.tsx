@@ -931,7 +931,7 @@ export function Workspace({
       {/* Header (design mock: brand · context pill · actions) */}
       <header className="m-appbar">
         <div className="m-brand">
-          <img src={riteLandscape} alt="Rite" className="h-8 rounded-md" />
+          <img src={riteLandscape} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
         {instanceName && (
           <span className="m-chip" title="Server instance">
