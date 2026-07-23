@@ -77,6 +77,9 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
   (collection ▸ folder ▸ …), sub-folder **tiles** you click to enter, and the machines
   at the current folder — so the nesting is unambiguous. *New folder* / *New machine*
   target the folder you're browsing; filtering shows a flat result across all folders.
+- **Moving a machine** between folders (its ↦ action, on the card or the sidebar row)
+  just re-parents it — pick any folder in the collection (or the root) from the picker;
+  no re-creation.
 - Folders/collections have **custom colours**; context icons can be **custom images
   (client-side only)**. Distinct icons: folder / collection (layers) / machine
   (server rack) — the ▶ play icon is the *connect* action, not an identity.

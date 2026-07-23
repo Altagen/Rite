@@ -86,6 +86,7 @@ const M={
   import:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"/></svg>',
   signout:'<svg class="icon" viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 3H6a2 2 0 00-2 2v14a2 2 0 002 2h6"/></svg>',
   edit:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"/></svg>',
+  move:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v2M3 7v11a2 2 0 002 2h6M16 16l3 3m0 0l-3 3m3-3h-8"/></svg>',
 };
 const SSH_HOSTS=[
   {name:'gitlab',host:'gitlab.com',user:'git',port:22},
@@ -171,6 +172,22 @@ function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:$
 function n_toggle(id){const n=find(id);n.open=!n.open;renderSide();}
 function openColl(id){STATE.selColl=id;STATE.collPath=null;STATE.mainTab='coll';renderSide();renderMain();}
 function collGo(fid){STATE.collPath=fid;renderMain();}
+// Move a machine between folders of the open collection — pick a destination folder
+// (or the collection root); it just re-parents the connection, no re-creation.
+function dlgMoveConn(name,e){
+  const coll=find(STATE.selColl);
+  const dests=[{id:null,label:coll.name,depth:0}];
+  (function rec(node,depth){(node.children||[]).forEach(f=>{dests.push({id:f.id,label:f.name,depth});rec(f,depth+1);});})(coll,1);
+  floatMenu(e,dests.map(d=>({icon:d.id?M.folder:M.coll,label:'&nbsp;'.repeat(d.depth*2)+d.label,onclick:()=>moveConnByName(name,d.id)})));
+}
+function moveConnByName(name,targetId){
+  const coll=find(STATE.selColl);
+  const cur=(STATE.collPath&&find(STATE.collPath))||coll;
+  const i=(cur.conns||[]).findIndex(c=>c.name===name);if(i<0)return;
+  const [cn]=cur.conns.splice(i,1);
+  const target=targetId?find(targetId):coll;(target.conns=target.conns||[]).push(cn);
+  toast(`Moved “${cn.name}” → ${target.name}`);renderMain();
+}
 
 /* ================= main: terminal + collection cards ================= */
 function renderMain(){
@@ -186,6 +203,7 @@ function cardsView(coll){
   const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
   const card=cn=>`<div class="ccard" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click')">
     <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span><span style="flex:1"></span>
+      <button class="btn btn-ghost btn-sm" title="Move to folder…" style="padding:3px" onclick="event.stopPropagation();dlgMoveConn('${cn.name}',event)">${M.move}</button>
       <button class="btn btn-ghost btn-sm" title="Edit machine" style="padding:3px" onclick="event.stopPropagation();dlgNewConn('${coll.name}',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button>
       <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();toast('▶ Connecting…')">${ICON.play}</button></div>
     <div class="tgt">${cn.user}@${cn.host}:${cn.port}</div>
