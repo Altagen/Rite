@@ -49,6 +49,11 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
 ## Files
 - `web.html` — the web-UI prototype (markup + inline logic).
 - `desktop.html` — the desktop-shell prototype.
+- `admin.html` — the **admin console** prototype: a dedicated dashboard (Overview /
+  Users / Teams / Instance) served at `/admin`, admins-only — a **separate surface**
+  from the connection manager so it can be deployed on its own (see the
+  `rite-admin-console-split` memory). Includes the planned `Serve web UI` /
+  `Serve admin console` toggles.
 - `rite.css` — shared design tokens + components (dark, terminal-forward).
 - `rite.js` — shared helpers (toast, modal, mini-terminal) + generic dialogs.
 - `full-data.js` — mock data (org directory, teams, collections) + extra icons.
