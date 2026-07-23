@@ -145,8 +145,14 @@ function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<spa
 
 /* ================= sidebar library ================= */
 function renderSide(){const s=document.getElementById('side');
-  if(STATE.sideCollapsed){s.style.width='46px';s.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;padding-top:10px"><button class="btn btn-ghost btn-sm" title="Show library" onclick="STATE.sideCollapsed=false;renderAll()">${EXICON.panel}</button></div>`;return;}
-  s.style.width='290px';
+  if(STATE.sideCollapsed){
+    s.style.width='0';s.style.borderRight='none';s.innerHTML='';
+    if(!document.getElementById('sideRail')){const r=document.createElement('div');r.id='sideRail';r.className='side-rail';
+      r.innerHTML=`<button title="Show library" onclick="STATE.sideCollapsed=false;renderAll()"><svg class="icon" viewBox="0 0 24 24"><path d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg></button>`;
+      document.body.appendChild(r);}
+    return;}
+  const rail=document.getElementById('sideRail');if(rail)rail.remove();
+  s.style.width='290px';s.style.borderRight='';
   s.innerHTML=`<div class="search">${EXICON.search}<input placeholder="Search connections…"></div>
     <div class="side-hdr"><span class="eyebrow">Library</span>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto;padding:4px" title="New…" onclick="newMenu(event)">${ICON.plus}</button>
