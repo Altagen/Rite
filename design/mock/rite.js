@@ -102,7 +102,7 @@ function termHTML(host){
   const grip=`<div class="grip" title="Drag to reorganize pane"><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div></div>`;
   return `<div class="termpane">
     <div class="termpane-hdr">
-      <div class="who">${host?'<span class="st"></span>':''}<span class="name">${host?host:'Local terminal'}</span>${host?'<span class="muted" style="font-size:12px">Connected</span>':''}</div>
+      <div class="who">${host?'<span class="st"></span>':''}<span class="name">${host?host:'Local Terminal ('+(typeof STATE!=='undefined'?STATE.defaultShell:'fish')+')'}</span>${host?'<span class="muted" style="font-size:12px">Connected</span>':''}</div>
       <div class="termpane-acts">
         ${grip}
         <button title="Split horizontal (Ctrl+Shift+H)">${I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4')}</button>

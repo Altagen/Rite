@@ -21,8 +21,12 @@
   .settings-row{display:flex;align-items:center;justify-content:space-between;padding:12px 2px;border-bottom:1px solid var(--border)}
   .toggle{width:40px;height:22px;border-radius:999px;background:var(--card2);border:1px solid var(--border2);position:relative;cursor:pointer}.toggle.on{background:var(--accent);border-color:var(--accent)}.toggle i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}.toggle.on i{left:20px}
   .navtab{padding:8px 4px;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-weight:600;font-size:13px}.navtab.on{color:var(--fg);border-color:var(--accent)}
-  .mtab{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:9px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:550}
-  .mtab.on{background:var(--card);color:var(--fg);border:1px solid var(--border)}
+  #mtabs{display:flex;align-items:center;gap:4px;padding:4px 8px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
+  .mtab{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:6px;cursor:pointer;color:var(--muted);font-size:14px;font-weight:550;flex-shrink:0}
+  .mtab.on{background:color-mix(in oklab,var(--accent) 20%,transparent);color:var(--accent);font-weight:600}
+  .mtab:not(.on):hover{background:var(--card2)}
+  .mtab-new{display:flex;align-items:center;gap:2px;padding:6px 8px;border-radius:6px;color:var(--muted);background:none;border:none;cursor:pointer;flex-shrink:0}
+  .mtab-new:hover{background:var(--card2);color:var(--fg)}
   .toolbar{display:flex;align-items:center;gap:10px;padding:4px 2px 12px;flex-wrap:wrap}
   .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
   .cards.list{grid-template-columns:1fr;gap:8px}
@@ -59,8 +63,8 @@
   </div>
   <div style="flex:1;display:flex;min-height:0">
     <div class="side" id="side" style="width:290px"></div>
-    <main style="flex:1;display:flex;flex-direction:column;min-width:0;padding:12px">
-      <div id="mtabs" style="display:flex;gap:8px;padding-bottom:10px"></div>
+    <main style="flex:1;display:flex;flex-direction:column;min-width:0">
+      <div id="mtabs"></div>
       <div style="flex:1;min-height:0" id="mbody"></div>
     </main>
   </div>
@@ -209,9 +213,9 @@ function moveConnByName(name,targetId){
 /* ================= main: terminal + collection cards ================= */
 function renderMain(){
   const mt=document.getElementById('mtabs'); const coll=STATE.selColl?find(STATE.selColl):null;
-  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term} Terminal</div>
+  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term} Local Terminal (${STATE.defaultShell})</div>
     ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
-    <div style="flex:1"></div>${STATE.mainTab==='term'?`<button class="btn btn-ghost btn-sm" onclick="toast('Split terminal')">${EXICON.split} Split</button>`:''}`;
+    <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
   const b=document.getElementById('mbody');
   if(STATE.mainTab==='term'||!coll){ b.innerHTML=`<div style="height:100%">${termHTML(null)}</div>`; return; }
   b.innerHTML=cardsView(coll);
@@ -242,7 +246,7 @@ function cardsView(coll){
     if(subs.length)body+=eyebrow('Folders')+`<div class="cards grid">${subs.map(tile).join('')}</div>`;
     if(here.length)body+=(subs.length?eyebrow('Machines'):'')+grid(here);
   }
-  return `<div style="height:100%;display:flex;flex-direction:column">
+  return `<div style="height:100%;display:flex;flex-direction:column;padding:12px">
     <div style="display:flex;align-items:center;gap:12px;padding-bottom:6px;flex-wrap:wrap;min-height:38px">
       <span style="color:${coll.color||'var(--purple)'}">${M.coll}</span><h2 style="font-size:18px">${coll.name}</h2>
       ${coll.shared?`<div class="avs">${coll.members.slice(0,4).map(av).join('')}</div>${STATE.showMemberCount?`<span class="muted" style="font-size:12px">${coll.members.length} members</span>`:''}`:'<span class="tag" style="background:var(--card2);color:var(--muted);border:1px solid var(--border)">Personal</span>'}
