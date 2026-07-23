@@ -156,7 +156,7 @@ function renderSide(){const s=document.getElementById('side');
   s.innerHTML=`<div class="search">${EXICON.search}<input placeholder="Search connections…"></div>
     <div class="side-hdr"><span class="eyebrow">Library</span>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto;padding:4px" title="New…" onclick="newMenu(event)">${ICON.plus}</button>
-      <button class="btn btn-ghost btn-sm" style="padding:4px" title="Hide panel" onclick="STATE.sideCollapsed=true;renderAll()">${EXICON.chevL}</button></div>
+      <button class="btn btn-ghost btn-sm" style="padding:4px" title="Hide panel" onclick="STATE.sideCollapsed=true;renderAll()"><svg class="icon" viewBox="0 0 24 24"><path d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg></button></div>
     <div class="scroll" style="flex:1;padding:0 8px 12px">${tree(LIB,0)}</div>`;}
 function tree(list,depth){let h='';list.forEach(n=>{
   const exp=n.open; h+=nodeRow(n,depth,exp);
