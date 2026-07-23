@@ -7,12 +7,14 @@
   --green:#9ece6a; --amber:#e5b567; --purple:#bb9af7; --teal:#56c7c0; --red:#f7768e;
   --radius:12px; --radius-sm:8px;
   --shadow:0 16px 40px rgba(0,0,0,.5);
-  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  /* Exactly the web UI's Tailwind font-sans stack, so text metrics (and widths)
+     match the served app on every system — no divergent fallback (Roboto/Segoe). */
+  --font:ui-sans-serif,system-ui,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
   --mono:ui-monospace,"JetBrains Mono","SFMono-Regular",Menlo,monospace;
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
-body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;-webkit-font-smoothing:antialiased;line-height:1.45}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.45}
 h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.01em}
 a{color:var(--accent);text-decoration:none}
 button{font-family:inherit;font-size:inherit;cursor:pointer;color:inherit}
