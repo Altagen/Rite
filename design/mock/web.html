@@ -144,12 +144,13 @@ const SHELLS=[{name:'fish',icon:'🐠',installed:true},{name:'bash',icon:'🐚',
 function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHELLS[0];
   document.getElementById('instName').textContent=STATE.instanceName;
   document.getElementById('acts').innerHTML=`
-    <button class="btn btn-primary btn-sm" title="New terminal on the server" onclick="toast('New terminal · ${sh.name}')">${ICON.plus} <span class="lbl">Terminal</span></button>
+    <button class="btn btn-primary btn-sm" title="New terminal on the server" onclick="toast('New terminal · ${sh.name}')">${ICON.term} <span class="lbl">Terminal</span></button>
     <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
     <button class="btn btn-sm" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>
-    ${IS_ADMIN?`<button class="btn btn-ghost btn-sm" title="Administration" onclick="openAdmin()">${EXICON.shield}</button>`:''}
+    <button class="btn btn-ghost btn-sm" title="Collections" onclick="toast('Collections')">${M.coll} <span class="lbl">Collections</span></button>
+    ${IS_ADMIN?`<button class="btn btn-ghost btn-sm" title="Administration" onclick="openAdmin()">${EXICON.shield} <span class="lbl">Admin</span></button>`:''}
     <button class="btn btn-ghost btn-sm" title="Settings" onclick="openSettings()">${EXICON.gear}</button>
-    <button class="btn btn-ghost btn-sm" title="Sign out" onclick="toast('Signed out')">${M.signout}</button>`;}
+    <button class="btn btn-ghost btn-sm" title="Sign out" onclick="toast('Signed out')"><svg class="icon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> <span class="lbl">Sign out</span></button>`;}
 function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on the server`);return;}STATE.defaultShell=s.name;renderActs();toast(`${s.name} set as default shell`);}})));}
 
 /* ================= sidebar library ================= */
