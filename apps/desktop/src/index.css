@@ -48,6 +48,9 @@
     --destructive: 348.8 89% 71.6%;
     --destructive-foreground: 225 44.4% 7.1%;
     --border: 221.7 22.8% 19.8%;
+    /* The mock's lighter --border2 (#333c50): a brighter 1px edge that gives the
+       interactive chrome (search, buttons, pill) a subtle raised look. */
+    --border2: 221.7 22.8% 25.7%;
     --input: 225 28.6% 11%;
     --ring: 224.1 85.8% 72.4%;
     --radius: 0.75rem;
@@ -81,7 +84,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    border: 1px solid hsl(var(--border));
+    border: 1px solid hsl(var(--border2));
     background: hsl(var(--secondary));
     color: hsl(var(--foreground));
     padding: 8px 13px;
@@ -124,7 +127,7 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
-    border: 1px solid hsl(var(--border));
+    border: 1px solid hsl(var(--border2));
     background: hsl(var(--secondary));
     padding: 5px 12px;
     border-radius: 10px;
@@ -195,7 +198,7 @@
     margin: 12px;
     padding: 8px 11px;
     background: hsl(var(--background));
-    border: 1px solid hsl(var(--border));
+    border: 1px solid hsl(var(--border2));
     border-radius: 9px;
     color: hsl(var(--muted-foreground));
   }
