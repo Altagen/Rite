@@ -28,7 +28,7 @@ function CollectionIcon({ color }: { color?: string | null }) {
   return (
     <svg className="h-5 w-5 flex-none" style={{ color: color || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9 5 9-5M3 16.5l9 5 9-5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
     </svg>
   );
 }

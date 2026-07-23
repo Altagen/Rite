@@ -1031,7 +1031,7 @@ export function Workspace({
           {/* Library header row: eyebrow · + menu · collapse */}
           <div className="m-side-hdr">
             <span className="m-eyebrow">Library</span>
-            <div className="relative ml-auto flex items-center gap-0.5">
+            <div className="relative ml-auto flex items-center gap-1">
               <button
                 onClick={() => setShowNewMenu((v) => !v)}
                 aria-label="Add to library"
@@ -1060,7 +1060,7 @@ export function Workspace({
                         <button onClick={() => { setShowNewMenu(false); setShowNewCollection(true); }}>
                           <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9 5 9-5M3 16.5l9 5 9-5" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
                           </svg>
                           New collection…
                         </button>
@@ -1202,7 +1202,7 @@ export function Workspace({
                 <button onClick={() => setMainView('collection')} className="flex items-center gap-1.5">
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9 5 9-5M3 16.5l9 5 9-5" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
                   </svg>
                   <span className="max-w-[160px] truncate">{openCollectionName}</span>
                 </button>
