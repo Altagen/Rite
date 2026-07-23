@@ -1190,7 +1190,7 @@ export function Workspace({
                 }`}
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16v14H4zM8 9l3 3-3 3M13 15h3" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 17l6-5-6-5M12 19h8" />
                 </svg>
                 {t('main.terminal') !== 'main.terminal' ? t('main.terminal') : 'Terminal'}
               </button>
