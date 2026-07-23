@@ -22,6 +22,7 @@ interface LibrarySidebarProps {
   onEdit: (connection: ConnectionInfo) => void;
   onDelete: (connection: ConnectionInfo) => void;
   onConnect: (connection: ConnectionInfo) => void;
+  onMoveMachine?: (connection: ConnectionInfo) => void; // move to another folder (collection ctx)
   // ADR 0016: open a collection in the main area (accounts context only).
   onOpenCollection?: (collectionId: string) => void;
   openCollectionId?: string | null;
@@ -390,6 +391,7 @@ function MachineRow({
   depth,
   onSelect,
   onEdit,
+  onMove,
   onDelete,
   onConnect,
 }: {
@@ -398,6 +400,7 @@ function MachineRow({
   depth: number;
   onSelect: () => void;
   onEdit: () => void;
+  onMove?: () => void;
   onDelete: () => void;
   onConnect: () => void;
 }) {
@@ -442,6 +445,20 @@ function MachineRow({
         >
           <IconEdit className="h-3.5 w-3.5" />
         </button>
+        {onMove && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onMove();
+            }}
+            aria-label="Move to folder"
+            title="Move to folder…"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v2M3 7v11a2 2 0 002 2h6M16 16l3 3m0 0l-3 3m3-3h-8" />
+            </svg>
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -574,6 +591,7 @@ export function LibrarySidebar({
   onEdit,
   onDelete,
   onConnect,
+  onMoveMachine,
   onOpenCollection,
   openCollectionId,
   query = '',
@@ -615,6 +633,7 @@ export function LibrarySidebar({
       depth={depth}
       onSelect={() => onSelect(c.id)}
       onEdit={() => onEdit(c)}
+      onMove={onMoveMachine && c.collectionId ? () => onMoveMachine(c) : undefined}
       onDelete={() => onDelete(c)}
       onConnect={() => onConnect(c)}
     />

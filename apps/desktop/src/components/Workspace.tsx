@@ -23,6 +23,7 @@ import { CollectionFolderDialog } from './CollectionFolderDialog';
 import { IconTerminal, IconBolt, IconGear, IconLock, IconChevronDown } from './icons';
 import { LibraryFolderDialog } from './LibraryFolderDialog';
 import { MoveToFolderDialog } from './MoveToFolderDialog';
+import { MoveMachineDialog } from './MoveMachineDialog';
 import { useLibraryTree } from '../store/libraryTree';
 import { useServerSession } from '../store/serverSessionStore';
 import { deleteCollectionFolder } from '../utils/collectionHeader';
@@ -138,6 +139,7 @@ export function Workspace({
   const tree = useLibraryTree();
   const [libraryFolderEdit, setLibraryFolderEdit] = useState<{ id?: string; name?: string; color?: string | null; parent?: string | null } | null>(null);
   const [moveCollectionTarget, setMoveCollectionTarget] = useState<{ id: string; name: string } | null>(null);
+  const [moveMachineTarget, setMoveMachineTarget] = useState<ConnectionInfo | null>(null);
   const [deleteFolderTarget, setDeleteFolderTarget] = useState<{ id: string; name: string } | null>(null);
 
   // Host-key confirmation (strict mode): the pending prompt + the connection that
@@ -905,6 +907,22 @@ export function Workspace({
   const openCollectionRole = openCol?.role ?? openCollectionMeta?.collectionRole ?? null;
   const openCollectionWritable = openCollectionRole === 'owner' || openCollectionRole === 'editor';
 
+  // Every folder path in a collection (declared + inferred from machines + ancestors),
+  // sorted — the destinations offered when moving a machine between folders.
+  const collectionFolderPaths = (collectionId: string | null | undefined): string[] => {
+    if (!collectionId) return [];
+    const declared = conns.collections?.find((c) => c.id === collectionId)?.folders ?? [];
+    const mach = conns.connections.filter((c) => c.collectionId === collectionId);
+    const s = new Set<string>();
+    const add = (p: string) => {
+      const segs = p.split('/');
+      for (let i = 1; i <= segs.length; i++) s.add(segs.slice(0, i).join('/'));
+    };
+    for (const f of declared) if (f.name) add(f.name);
+    for (const m of mach) if (m.folder) add(m.folder);
+    return [...s].sort((a, b) => a.localeCompare(b));
+  };
+
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       {/* Header (design mock: brand · context pill · actions) */}
@@ -1076,6 +1094,7 @@ export function Workspace({
               onEdit={handleEditConnection}
               onDelete={handleDeleteConnection}
               onConnect={handleConnect}
+              onMoveMachine={isAccountsContext ? setMoveMachineTarget : undefined}
               onOpenCollection={handleOpenCollection}
               openCollectionId={mainView === 'collection' ? openCollectionId : null}
               collections={conns.collections}
@@ -1211,6 +1230,7 @@ export function Workspace({
                   canWrite={openCollectionWritable}
                   onConnect={handleConnect}
                   onEdit={handleEditConnection}
+                  onMove={openCollectionWritable ? setMoveMachineTarget : undefined}
                   onNewMachine={(folderPath) => {
                     setFormDefaultCollectionId(openCollectionId);
                     setFormDefaultFolder(folderPath ?? null);
@@ -1372,6 +1392,18 @@ export function Workspace({
           current={tree.placement[moveCollectionTarget.id] ?? null}
           onClose={() => setMoveCollectionTarget(null)}
           onPick={(folderId) => tree.moveCollection(moveCollectionTarget.id, folderId)}
+        />
+      )}
+      {moveMachineTarget && (
+        <MoveMachineDialog
+          machineName={moveMachineTarget.name}
+          currentFolder={moveMachineTarget.folder ?? ''}
+          folderPaths={collectionFolderPaths(moveMachineTarget.collectionId)}
+          onClose={() => setMoveMachineTarget(null)}
+          onPick={async (folder) => {
+            await conns.update({ id: moveMachineTarget.id, folder });
+            await fetchConnections();
+          }}
         />
       )}
       {deleteFolderTarget && (

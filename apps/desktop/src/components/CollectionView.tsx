@@ -61,6 +61,7 @@ export function CollectionView({
   isPersonal,
   onConnect,
   onEdit,
+  onMove,
   onNewMachine,
   onNewFolder,
   onImport,
@@ -75,6 +76,7 @@ export function CollectionView({
   isPersonal?: boolean; // the personal collection can't be shared
   onConnect: (c: ConnectionInfo) => void;
   onEdit: (c: ConnectionInfo) => void;
+  onMove?: (c: ConnectionInfo) => void; // move the machine to another folder
   onNewMachine: (folderPath?: string) => void; // creates in the folder you're browsing
   onNewFolder?: (parentPath?: string) => void; // creates a sub-folder of the current path
   onImport: () => void;
@@ -150,6 +152,21 @@ export function CollectionView({
           {c.name}
         </span>
         <span className="flex-1" />
+        {onMove && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onMove(c);
+            }}
+            className="rounded p-1 opacity-0 hover:bg-muted group-hover:opacity-100"
+            title="Move to folder…"
+            aria-label="Move to folder"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v2M3 7v11a2 2 0 002 2h6M16 16l3 3m0 0l-3 3m3-3h-8" />
+            </svg>
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();
