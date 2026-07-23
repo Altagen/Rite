@@ -962,7 +962,7 @@ export function Workspace({
           className="m-btn m-btn-sm"
           title="Select default shell"
         >
-          <span className="text-base">{shells.find((s) => s.path === settings.defaultShell)?.icon || '🐚'}</span>
+          <span>{shells.find((s) => s.path === settings.defaultShell)?.icon || '🐚'}</span>
           <span className="hidden text-muted-foreground md:inline">{settings.defaultShell.split('/').pop()}</span>
           <IconChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
