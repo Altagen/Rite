@@ -25,6 +25,10 @@
   .mtab{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:6px;cursor:pointer;color:var(--muted);font-size:14px;line-height:20px;font-weight:400;flex-shrink:0}
   .mtab svg{width:14px;height:14px}
   .mtab.on{background:color-mix(in oklab,var(--accent) 20%,transparent);color:var(--accent);font-weight:500}
+  .mtab-act{display:grid;place-items:center;padding:2px;border-radius:4px;color:inherit;background:none;border:none;cursor:pointer;opacity:0;transition:opacity .1s;flex-shrink:0}
+  .mtab:hover .mtab-act{opacity:1}
+  .mtab-act:hover{background:rgba(255,255,255,.08)}
+  .mtab-close:hover{background:rgba(247,118,142,.2);color:#f7768e}
   .mtab:not(.on):hover{background:var(--card2)}
   .mtab-new{display:flex;align-items:center;gap:2px;padding:6px 8px;border-radius:6px;color:var(--muted);background:none;border:none;cursor:pointer;flex-shrink:0}
   .mtab-new:hover{background:var(--card2);color:var(--fg)}
@@ -214,7 +218,8 @@ function moveConnByName(name,targetId){
 /* ================= main: terminal + collection cards ================= */
 function renderMain(){
   const mt=document.getElementById('mtabs'); const coll=STATE.selColl?find(STATE.selColl):null;
-  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term} Local Terminal (${STATE.defaultShell})</div>
+  const tabActs=`<button class="mtab-act" title="Rename tab" onclick="event.stopPropagation();toast('Rename tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button><button class="mtab-act mtab-close" title="Close tab" onclick="event.stopPropagation();toast('Close tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>`;
+  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Local Terminal (${STATE.defaultShell})</span>${tabActs}</div>
     ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
     <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
   const b=document.getElementById('mbody');

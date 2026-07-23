@@ -72,7 +72,7 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--card2);border:1px so
 .termpane-hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0}
 .termpane-hdr .who{display:flex;align-items:center;gap:8px;min-width:0}
 .termpane-hdr .st{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none}
-.termpane-hdr .name{font-size:14px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.termpane-hdr .name{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .termpane-acts{display:flex;align-items:center;gap:8px;color:var(--muted);flex:none}
 .termpane-acts button{padding:4px;border-radius:6px;color:var(--muted);display:grid;place-items:center;background:none;border:none;cursor:pointer}
 .termpane-acts button:hover{background:var(--card2);color:var(--fg)}
