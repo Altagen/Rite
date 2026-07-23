@@ -217,7 +217,7 @@ function renderMain(){
     ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
     <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
   const b=document.getElementById('mbody');
-  if(STATE.mainTab==='term'||!coll){ b.innerHTML=`<div style="height:100%">${termHTML(null)}</div>`; return; }
+  if(STATE.mainTab==='term'||!coll){ b.innerHTML=`<div class="pane-wrap focused">${termHTML(null)}</div>`; return; }
   b.innerHTML=cardsView(coll);
 }
 function cardsView(coll){

@@ -354,12 +354,12 @@ function renderMain(){
   if(STATE.ctx.type==='home'||STATE.mainTab==='term'||!coll){ b.innerHTML=paneGrid(); return; }
   b.innerHTML=cardsView(coll);
 }
-function paneGrid(){if(STATE.ctx.type==='home')return `<div style="height:100%">${termHTML(null)}</div>`;
+function paneGrid(){if(STATE.ctx.type==='home')return `<div class="pane-wrap focused">${termHTML(null)}</div>`;
   // A split = two termpanes side by side (each carries its own header, ISO with
-  // the web UI's Terminal.tsx pane). Not resizable here — visual only.
+  // the web UI's Terminal.tsx pane). Only the focused pane gets the blue ring.
   return `<div style="height:100%;display:flex;gap:10px">
-    <div style="flex:1;min-width:0">${termHTML('deploy@10.0.0.5')}</div>
-    <div style="flex:1;min-width:0">${termHTML('deploy@10.0.0.4')}</div></div>`;}
+    <div class="pane-wrap focused" style="flex:1">${termHTML('deploy@10.0.0.5')}</div>
+    <div class="pane-wrap" style="flex:1">${termHTML('deploy@10.0.0.4')}</div></div>`;}
 function cardsView(coll){
   const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
   const card=cn=>`<div class="ccard" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click')">
