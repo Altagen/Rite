@@ -1202,6 +1202,7 @@ export function Workspace({
             {openCollectionId && mainView === 'collection' && (
               <div className="absolute inset-0 z-10 overflow-hidden bg-background">
                 <CollectionView
+                  key={openCollectionId}
                   name={openCollectionName}
                   color={openCollectionColor}
                   role={openCollectionRole}
@@ -1210,13 +1211,16 @@ export function Workspace({
                   canWrite={openCollectionWritable}
                   onConnect={handleConnect}
                   onEdit={handleEditConnection}
-                  onNewMachine={() => {
+                  onNewMachine={(folderPath) => {
                     setFormDefaultCollectionId(openCollectionId);
+                    setFormDefaultFolder(folderPath ?? null);
                     setEditingConnection(null);
                     setConnectionFormPrefill(null);
                     setShowForm(true);
                   }}
-                  onNewFolder={() => openCollectionId && setFolderDialog({ collectionId: openCollectionId })}
+                  onNewFolder={(parentPath) =>
+                    openCollectionId && setFolderDialog({ collectionId: openCollectionId, parentPath })
+                  }
                   onImport={() => {
                     setImportCollectionId(openCollectionId);
                     setShowImportSSH(true);

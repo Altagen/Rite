@@ -10,8 +10,6 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
 
-const ROOT = ' root';
-
 /** Compact relative time for a machine's last use ("2h ago"), or "—" when never used. */
 function relTime(ts: number | null | undefined): string {
   if (!ts) return '—';
@@ -77,8 +75,8 @@ export function CollectionView({
   isPersonal?: boolean; // the personal collection can't be shared
   onConnect: (c: ConnectionInfo) => void;
   onEdit: (c: ConnectionInfo) => void;
-  onNewMachine: () => void;
-  onNewFolder?: () => void; // absent when the viewer can't write the collection header
+  onNewMachine: (folderPath?: string) => void; // creates in the folder you're browsing
+  onNewFolder?: (parentPath?: string) => void; // creates a sub-folder of the current path
   onImport: () => void;
   onOpenMembers?: () => void; // absent when membership isn't editable from here
 }) {
@@ -86,6 +84,7 @@ export function CollectionView({
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'name' | 'host' | 'lastUsed'>('name');
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
+  const [path, setPath] = useState(''); // the folder currently being browsed ('' = root)
   const folderColor = useMemo(() => {
     const m = new Map<string, string | null>();
     for (const f of folders ?? []) m.set(f.name, f.color);
@@ -109,18 +108,33 @@ export function CollectionView({
     });
   }, [machines, filter, sort]);
 
-  // Group the shown machines by their shared sub-folder; loose ones at the root.
-  // Declared folders are included even when empty (so a just-created one shows).
-  const groups = useMemo(() => {
-    const map = new Map<string, ConnectionInfo[]>();
-    for (const f of folders ?? []) if (!map.has(f.name)) map.set(f.name, []);
-    for (const m of shown) {
-      const key = m.folder || ROOT;
-      (map.get(key) ?? map.set(key, []).get(key)!).push(m);
-    }
-    const folderKeys = [...map.keys()].filter((k) => k !== ROOT).sort((a, b) => a.localeCompare(b));
-    return { folders: folderKeys, map, root: map.get(ROOT) ?? [] };
-  }, [shown, folders]);
+  const filtering = filter.trim() !== '';
+
+  // Every folder path in the collection (declared + inferred from machines + every
+  // ancestor), so we can walk the tree one level at a time.
+  const allPaths = useMemo(() => {
+    const s = new Set<string>();
+    const add = (p: string) => {
+      const segs = p.split('/');
+      for (let i = 1; i <= segs.length; i++) s.add(segs.slice(0, i).join('/'));
+    };
+    for (const f of folders ?? []) if (f.name) add(f.name);
+    for (const m of machines) if (m.folder) add(m.folder);
+    return s;
+  }, [folders, machines]);
+
+  const parentOf = (p: string) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
+  // Guard against a stale path (e.g. the folder was deleted) — fall back to root.
+  const cur = path && allPaths.has(path) ? path : '';
+
+  // Drill-in: the direct sub-folders and the machines that live at `cur`.
+  const subfolders = useMemo(
+    () => [...allPaths].filter((p) => parentOf(p) === cur).sort((a, b) => a.localeCompare(b)),
+    [allPaths, cur],
+  );
+  const here = useMemo(() => shown.filter((m) => (m.folder || '') === cur), [shown, cur]);
+  const countUnder = (p: string) =>
+    machines.filter((m) => m.folder === p || (m.folder || '').startsWith(`${p}/`)).length;
 
   const card = (c: ConnectionInfo) => (
     <div
@@ -185,15 +199,68 @@ export function CollectionView({
     </div>
   );
 
-  const sectionHead = (label: string, n: number, key?: string) => {
-    const c = key ? folderColor.get(key) : null;
+  const eyebrow = (label: string) => (
+    <div className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{label}</div>
+  );
+
+  const emptyNote = (msg: string) => (
+    <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">{msg}</div>
+  );
+
+  // A clickable folder tile — enters the folder on click.
+  const folderTile = (p: string) => {
+    const nm = p.split('/').pop() ?? p;
+    const c = folderColor.get(p) ?? null;
     return (
-      <div className="mb-2 mt-3 flex items-center gap-2">
-        <svg className="h-4 w-4 text-muted-foreground" style={{ color: c || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <button
+        key={p}
+        onClick={() => setPath(p)}
+        className="group flex items-center gap-2 rounded-xl border border-border bg-card p-3.5 text-left transition hover:-translate-y-0.5 hover:border-primary"
+        title={`Open “${nm}”`}
+      >
+        <svg className={`h-4 w-4 flex-none ${c ? '' : 'text-muted-foreground'}`} style={c ? { color: c } : undefined} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
         </svg>
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
-        <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{n}</span>
+        <span className="truncate font-semibold" title={nm}>{nm}</span>
+        <span className="flex-1" />
+        <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{countUnder(p)}</span>
+        <svg className="h-4 w-4 flex-none text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
+        </svg>
+      </button>
+    );
+  };
+
+  // Breadcrumb: collection root ▸ each ancestor of the current folder.
+  const breadcrumb = () => {
+    const segs = cur ? cur.split('/') : [];
+    return (
+      <div className="mb-1 flex flex-wrap items-center gap-0.5 text-sm">
+        <button
+          onClick={() => setPath('')}
+          className={`flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted ${cur ? 'text-muted-foreground' : 'font-semibold'}`}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9-9 9 9M5 10v10h14V10" />
+          </svg>
+          {name}
+        </button>
+        {segs.map((s, i) => {
+          const prefix = segs.slice(0, i + 1).join('/');
+          const last = i === segs.length - 1;
+          return (
+            <span key={prefix} className="flex items-center gap-0.5">
+              <span className="text-muted-foreground">▸</span>
+              <button
+                onClick={() => setPath(prefix)}
+                disabled={last}
+                className={`rounded px-1.5 py-0.5 ${last ? 'font-semibold' : 'text-muted-foreground hover:bg-muted'}`}
+              >
+                {s}
+              </button>
+            </span>
+          );
+        })}
       </div>
     );
   };
@@ -293,9 +360,9 @@ export function CollectionView({
         )}
         {canWrite && onNewFolder && (
           <button
-            onClick={onNewFolder}
+            onClick={() => onNewFolder(cur || undefined)}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-            title="New shared folder"
+            title={cur ? `New sub-folder in “${cur.split('/').pop()}”` : 'New shared folder'}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
@@ -305,8 +372,9 @@ export function CollectionView({
         )}
         {canWrite && (
           <button
-            onClick={onNewMachine}
+            onClick={() => onNewMachine(cur || undefined)}
             className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            title={cur ? `New machine in “${cur.split('/').pop()}”` : 'New machine'}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
@@ -316,37 +384,42 @@ export function CollectionView({
         )}
       </div>
 
-      {/* Machines. Declared (possibly empty) folders always show as sections so a
-          just-created folder is visible and navigable — except while filtering,
-          where an empty result shows the "no match" note instead. */}
+      {/* Machines. While filtering, results are flat across every folder. Otherwise
+          we drill in one folder at a time: sub-folder tiles + the machines here. */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {shown.length === 0 && (filter.trim() !== '' || groups.folders.length === 0) ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">
-            {filter.trim() === '' ? 'No machines in this collection yet.' : 'No machines match your filter.'}
-          </div>
-        ) : groups.folders.length > 0 ? (
+        {filtering ? (
+          shown.length > 0 ? (
+            <>
+              {eyebrow(`Results · ${shown.length}`)}
+              {grid(shown)}
+            </>
+          ) : (
+            emptyNote('No machines match your filter.')
+          )
+        ) : (
           <>
-            {groups.folders.map((f) => (
-              <div key={f} className="mb-1">
-                {sectionHead(f, groups.map.get(f)!.length, f)}
-                {groups.map.get(f)!.length > 0 ? (
-                  grid(groups.map.get(f)!)
-                ) : (
-                  <div className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-muted-foreground">
-                    Empty folder
-                  </div>
-                )}
-              </div>
-            ))}
-            {groups.root.length > 0 && (
+            {breadcrumb()}
+            {subfolders.length === 0 && here.length === 0 ? (
+              emptyNote(cur ? 'This folder is empty.' : 'No machines in this collection yet.')
+            ) : (
               <>
-                {sectionHead('(root)', groups.root.length)}
-                {grid(groups.root)}
+                {subfolders.length > 0 && (
+                  <>
+                    {eyebrow('Folders')}
+                    <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(215px,1fr))]">
+                      {subfolders.map(folderTile)}
+                    </div>
+                  </>
+                )}
+                {here.length > 0 && (
+                  <>
+                    {subfolders.length > 0 && eyebrow('Machines')}
+                    {grid(here)}
+                  </>
+                )}
               </>
             )}
           </>
-        ) : (
-          grid(shown)
         )}
       </div>
     </div>
