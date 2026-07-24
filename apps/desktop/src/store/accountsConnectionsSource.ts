@@ -32,7 +32,6 @@ import {
   generateCollectionKeys,
   sealCollectionKey,
 } from '../utils/collectionCrypto';
-import { escrowForCreate } from '../utils/adminGroup';
 import type { CollectionRole } from '../utils/backend';
 import type { CollectionHeader, CollectionFolder } from '../utils/collectionHeader';
 
@@ -126,11 +125,12 @@ async function ensurePersonalCollection(
       personal: true,
       folders: [],
     });
+    // Personal is a single-user private space — never escrow it to the Admin group.
+    // Admins have no roster to govern there, and the name is the user's business.
     const created = await Backend.Collections.create(
       nameEnc,
       await sealCollectionKey(publicKey, metaKey),
       await sealCollectionKey(publicKey, itemsKey),
-      await escrowForCreate(metaKey),
     );
     personalId = created.id;
     personalItemsKey = itemsKey;
