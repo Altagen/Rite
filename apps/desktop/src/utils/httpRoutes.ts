@@ -211,6 +211,10 @@ const routes: Record<string, Route> = {
     await json('/api/admin/group-key', post({ epoch: a.epoch, publicKey: a.publicKey, grants: a.grants }));
     return null;
   },
+  admin_grant_admin: async (a) => {
+    await json('/api/admin/group-grant', post({ userId: a.userId, protectedPrivateKey: a.protectedPrivateKey }));
+    return null;
+  },
   admin_set_escrow: async (a) => {
     await json(`/api/admin/collections/${encodeURIComponent(String(a.id))}/escrow`, {
       method: 'PATCH',

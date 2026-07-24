@@ -9,8 +9,21 @@
 import { useEffect, useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { navigate } from '../store/route';
-import { Backend, type ServerUser, type CollectionSummary, type CollectionMember } from '../utils/backend';
-import { ensureGroupKey, myGroupPrivateKey, unsealMetaKey, decryptName } from '../utils/adminGroup';
+import {
+  Backend,
+  type ServerUser,
+  type CollectionSummary,
+  type CollectionMember,
+  type DirectoryEntry,
+} from '../utils/backend';
+import {
+  ensureGroupKey,
+  myGroupPrivateKey,
+  unsealMetaKey,
+  decryptName,
+  type GroupKey,
+} from '../utils/adminGroup';
+import { sealCollectionKeyToHex } from '../utils/collectionCrypto';
 import { AdminUsersPanel } from './AdminUsersPanel';
 import { TeamsPanel } from './TeamsPanel';
 import { InstanceSettingsPanel } from './InstanceSettingsPanel';
@@ -168,6 +181,12 @@ function CollectionsGovernance() {
   const [names, setNames] = useState<Map<string, CollName>>(new Map());
   const [sel, setSel] = useState<string | null>(null);
   const [members, setMembers] = useState<CollectionMember[] | null>(null);
+  // The Admin-group keypair held for this session, used to unseal metaKeys (names) and
+  // to re-seal them when roster-adding a member. Never touches item keys.
+  const [group, setGroup] = useState<GroupKey | null>(null);
+  const [secret, setSecret] = useState<Uint8Array | null>(null);
+  const [directory, setDirectory] = useState<DirectoryEntry[]>([]);
+  const [addTarget, setAddTarget] = useState('');
 
   // Load the collections and, via the Admin-group escrow, decrypt the names admins
   // are allowed to see. Machine credentials stay sealed to members — never decrypted
@@ -176,15 +195,18 @@ function CollectionsGovernance() {
     const all = await Backend.Admin.listCollections().catch(() => [] as CollectionSummary[]);
     setColls(all);
     if (!publicKey || !privateKey) return;
-    const group = await ensureGroupKey().catch(() => null);
-    if (!group) return;
-    const secret = await myGroupPrivateKey(publicKey, privateKey).catch(() => null);
-    if (!secret) return;
+    const g = await ensureGroupKey().catch(() => null);
+    if (!g) return;
+    const sec = await myGroupPrivateKey(publicKey, privateKey).catch(() => null);
+    if (!sec) return;
+    setGroup(g);
+    setSecret(sec);
+    Backend.Collections.directory().then(setDirectory).catch(() => setDirectory([]));
     const map = new Map<string, CollName>();
     for (const c of all) {
       if (!c.metaKeyGroupEnc) continue;
       try {
-        const metaKey = await unsealMetaKey(group, secret, c.metaKeyGroupEnc);
+        const metaKey = await unsealMetaKey(g, sec, c.metaKeyGroupEnc);
         map.set(c.id, await decryptName<CollName>(metaKey, c.nameEnc));
       } catch {
         // wrong epoch / undecryptable — leave the id fallback
@@ -201,12 +223,30 @@ function CollectionsGovernance() {
   const open = (id: string) => {
     setSel(id);
     setMembers(null);
+    setAddTarget('');
     Backend.Admin.collectionMembers(id).then(setMembers).catch(() => setMembers([]));
   };
   const removeMember = async (id: string, userId: string) => {
     await Backend.Admin.removeCollectionMember(id, userId).catch(() => {});
     open(id);
     load();
+  };
+
+  // Roster meta-add: grant a user name/roster access to an escrowed collection by
+  // re-sealing its metaKey to them. Machine access still needs a member to seal the
+  // itemsKey — the admin never holds it.
+  const addMemberMeta = async (id: string, userId: string) => {
+    const coll = colls?.find((c) => c.id === id);
+    const entry = directory.find((d) => d.id === userId);
+    if (!coll?.metaKeyGroupEnc || !group || !secret || !entry?.publicKey) return;
+    try {
+      const metaKey = await unsealMetaKey(group, secret, coll.metaKeyGroupEnc);
+      await Backend.Admin.addCollectionMemberMeta(id, userId, await sealCollectionKeyToHex(entry.publicKey, metaKey));
+      setAddTarget('');
+      open(id);
+    } catch {
+      // sealing failed (bad key / not escrowed) — leave the roster unchanged
+    }
   };
   const del = async (id: string) => {
     if (!window.confirm('Force-delete this collection for every member? Its encrypted machines are lost.')) return;
@@ -249,6 +289,46 @@ function CollectionsGovernance() {
             ))
           )}
         </div>
+        {(() => {
+          const selColl = colls?.find((c) => c.id === sel);
+          const canAdd = !!selColl?.metaKeyGroupEnc && !!group && !!secret;
+          const taken = new Set((members ?? []).map((m) => m.userId));
+          const candidates = directory.filter((d) => !taken.has(d.id) && d.publicKey);
+          return (
+            <div className="mb-4 rounded-2xl border border-border bg-card p-4">
+              <div className="text-sm font-semibold">Grant name / roster access</div>
+              <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
+                {canAdd
+                  ? 'Adds the user to the roster and lets them see the collection name. Machine access still needs a member to seal the item key.'
+                  : 'Available once the collection is escrowed to the Admin group (created after the escrow, or re-keyed).'}
+              </p>
+              <div className="flex items-center gap-2">
+                <select
+                  value={addTarget}
+                  onChange={(e) => setAddTarget(e.target.value)}
+                  disabled={!canAdd || candidates.length === 0}
+                  className="min-w-0 flex-1 rounded-md border border-border bg-input px-2.5 py-1.5 text-sm disabled:opacity-50"
+                >
+                  <option value="">
+                    {candidates.length === 0 ? 'No users to add' : 'Select a user…'}
+                  </option>
+                  {candidates.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.username}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => addTarget && addMemberMeta(sel, addTarget)}
+                  disabled={!canAdd || !addTarget}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          );
+        })()}
         <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5">
           <div>
             <div className="font-semibold text-red-500">Delete collection</div>

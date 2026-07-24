@@ -475,6 +475,9 @@ export const BackendAdmin = {
     publicKey: string,
     grants: { userId: string; protectedPrivateKey: string }[],
   ) => invokeWithValidation('admin_set_group_key', z.null(), { epoch, publicKey, grants }),
+  /** Grant a newly-added admin the current group private key (O(1), no rotation). */
+  grantAdmin: (userId: string, protectedPrivateKey: string) =>
+    invokeWithValidation('admin_grant_admin', z.null(), { userId, protectedPrivateKey }),
   /** Re-seal a collection's metaKey escrow to a group epoch (rotation step). */
   setEscrow: (id: string, metaKeyGroupEnc: string, groupEpoch: number) =>
     invokeWithValidation('admin_set_escrow', z.null(), { id, metaKeyGroupEnc, groupEpoch }),

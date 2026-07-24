@@ -11,9 +11,23 @@ import { useCallback, useEffect, useState } from 'react';
 import { Backend, type ServerUser } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import { deriveAuthHash, randomSaltHex, DEFAULT_KDF_PARAMS, createVaultKey } from '../utils/serverAuth';
+import { ensureGroupKey, myGroupPrivateKey, rotateGroup, grantToAdmin } from '../utils/adminGroup';
 
 export function AdminUsersPanel() {
-  const { user: me } = useServerSession();
+  const { user: me, publicKey, privateKey } = useServerSession();
+
+  // Removing an admin must cut their FUTURE access to escrowed collection names:
+  // rotate the Admin group (fresh epoch, re-seal every escrow, re-grant the remaining
+  // admins). Done here by the acting admin who still holds the current group key. Can't
+  // un-share the past — rotation only limits what the removed admin can decrypt next.
+  const rotateAfterAdminRemoval = async () => {
+    if (!publicKey || !privateKey) return;
+    const g = await ensureGroupKey().catch(() => null);
+    if (!g) return;
+    const sec = await myGroupPrivateKey(publicKey, privateKey).catch(() => null);
+    if (!sec) return;
+    await rotateGroup(g, sec).catch(() => {});
+  };
   const [users, setUsers] = useState<ServerUser[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -48,12 +62,24 @@ export function AdminUsersPanel() {
         deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS),
         createVaultKey(password),
       ]);
-      await Backend.Admin.createUser(username.trim(), salt, DEFAULT_KDF_PARAMS, authHash, role, {
-        masterSalt: vaultKey.masterSaltHex,
-        protectedUserKey: vaultKey.protectedUserKey,
-        publicKey: vaultKey.publicKeyHex,
-        protectedPrivateKey: vaultKey.protectedPrivateKey,
-      });
+      const created = await Backend.Admin.createUser(
+        username.trim(),
+        salt,
+        DEFAULT_KDF_PARAMS,
+        authHash,
+        role,
+        {
+          masterSalt: vaultKey.masterSaltHex,
+          protectedUserKey: vaultKey.protectedUserKey,
+          publicKey: vaultKey.publicKeyHex,
+          protectedPrivateKey: vaultKey.protectedPrivateKey,
+        },
+      );
+      // A new admin needs the Admin-group key to read collection names — grant it now
+      // (O(1); if no group exists yet they'll bootstrap + self-grant on first visit).
+      if (role === 'admin' && publicKey && privateKey) {
+        await grantToAdmin(publicKey, privateKey, created.id, vaultKey.publicKeyHex).catch(() => {});
+      }
       setUsername('');
       setPassword('');
       setRole('user');
@@ -135,7 +161,13 @@ export function AdminUsersPanel() {
                           {u.status === 'active' ? 'Disable' : 'Enable'}
                         </button>
                         <button
-                          onClick={() => act(() => Backend.Admin.deleteUser(u.id))}
+                          onClick={() =>
+                            act(async () => {
+                              await Backend.Admin.deleteUser(u.id);
+                              // Removing an admin rotates the group so they lose future access.
+                              if (u.role === 'admin') await rotateAfterAdminRemoval();
+                            })
+                          }
                           disabled={busy}
                           className="rounded border border-red-500/30 px-2 py-1 text-xs text-red-600 hover:bg-red-500/10 disabled:opacity-50"
                         >

@@ -68,6 +68,23 @@ export async function ensureGroupKey(): Promise<GroupKey | null> {
 }
 
 /**
+ * Grant a newly-added/promoted admin the CURRENT group private key, sealed to their
+ * public key — the O(1) "add an admin" path (no rotation, no per-collection work). The
+ * acting admin unwraps the group key with their own keypair to re-seal it. No-op if the
+ * group isn't established yet (the new admin will bootstrap + self-grant on first visit).
+ */
+export async function grantToAdmin(
+  myPublicKey: Uint8Array,
+  myPrivateKey: Uint8Array,
+  targetUserId: string,
+  targetPublicKeyHex: string,
+): Promise<void> {
+  const secret = await myGroupPrivateKey(myPublicKey, myPrivateKey).catch(() => null);
+  if (!secret) return;
+  await Backend.Admin.grantAdmin(targetUserId, await seal(hexToBytes(targetPublicKeyHex), secret));
+}
+
+/**
  * This admin's group private key (unwrapped with their own keypair), or null if they
  * hold no grant for the current epoch yet (promoted after the last rotation).
  */

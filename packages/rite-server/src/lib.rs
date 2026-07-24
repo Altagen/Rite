@@ -406,7 +406,10 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/admin/group-key",
             get(admin_group_key_ep).post(set_admin_group_ep),
         )
-        .route("/api/admin/group-grant", get(admin_group_grant_ep))
+        .route(
+            "/api/admin/group-grant",
+            get(admin_group_grant_ep).post(add_admin_group_grant_ep),
+        )
         .route("/api/admin/admins", get(admin_list_admins_ep))
         .route(
             "/api/admin/collections/{id}/escrow",
@@ -1407,6 +1410,26 @@ async fn admin_group_grant_ep(
             None => StatusCode::NOT_FOUND.into_response(),
         },
     )
+}
+
+/// Grant a (newly-added/promoted) admin the CURRENT group private key sealed to them —
+/// the O(1) "add an admin" path: no rotation, no per-collection work. The acting admin
+/// did the sealing; the server just records the grant for the current epoch.
+async fn add_admin_group_grant_ep(
+    State(state): State<ServerState>,
+    Json(req): Json<AdminGroupGrantReq>,
+) -> Result<Response, AppError> {
+    let Some(group) = coll::current_admin_group(state.db.pool()).await? else {
+        return Ok((StatusCode::CONFLICT, "no admin group yet").into_response());
+    };
+    coll::add_admin_group_grant(
+        state.db.pool(),
+        group.epoch,
+        &req.user_id,
+        &req.protected_private_key,
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// The admins (with published public keys) a group grant can be sealed to.
