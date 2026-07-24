@@ -19,10 +19,10 @@ import {
 } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import {
-  generateCollectionKey,
+  generateCollectionKeys,
   sealCollectionKey,
   sealCollectionKeyToHex,
-  unwrapCollectionKey,
+  unwrapCollectionKeys,
   encryptCollectionField,
 } from '../utils/collectionCrypto';
 
@@ -73,7 +73,9 @@ export function MemberPicker({
   const [directory, setDirectory] = useState<DirectoryEntry[]>([]);
   const [teams, setTeams] = useState<UserTeam[]>([]);
   const [chosen, setChosen] = useState<Map<string, CollectionRole>>(new Map());
-  const [collKey, setCollKey] = useState<Uint8Array | null>(null);
+  const [collKeys, setCollKeys] = useState<{ metaKey: Uint8Array; itemsKey: Uint8Array } | null>(
+    null,
+  );
   const [myRole, setMyRole] = useState<CollectionRole>('owner');
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
@@ -100,8 +102,8 @@ export function MemberPicker({
         setChosen(new Map(members.map((m) => [m.userId, m.role])));
         setMyRole(members.find((m) => m.userId === me?.id)?.role ?? 'viewer');
         const self = mine.find((c) => c.id === collectionId);
-        if (self?.protectedCollectionKey && publicKey && privateKey) {
-          setCollKey(await unwrapCollectionKey(publicKey, privateKey, self.protectedCollectionKey));
+        if (self && publicKey && privateKey) {
+          setCollKeys(await unwrapCollectionKeys(publicKey, privateKey, self));
         }
       }
     } catch {
@@ -142,15 +144,20 @@ export function MemberPicker({
       setLocal(entry.id, has ? null : 'viewer');
       return;
     }
-    if (!collKey || !collectionId) return;
+    if (!collKeys || !collectionId) return;
     void run(async () => {
       if (has) {
         await Backend.Collections.removeMember(collectionId, entry.id);
         setLocal(entry.id, null);
       } else {
         if (!entry.publicKey) throw new Error('that user has no published key yet');
-        const sealed = await sealCollectionKeyToHex(entry.publicKey, collKey);
-        await Backend.Collections.addMember(collectionId, entry.id, 'viewer', sealed);
+        await Backend.Collections.addMember(
+          collectionId,
+          entry.id,
+          'viewer',
+          await sealCollectionKeyToHex(entry.publicKey, collKeys.metaKey),
+          await sealCollectionKeyToHex(entry.publicKey, collKeys.itemsKey),
+        );
         setLocal(entry.id, 'viewer');
       }
       onSaved();
@@ -179,10 +186,16 @@ export function MemberPicker({
           setLocal(tm.userId, 'viewer');
           continue;
         }
-        if (!collKey || !collectionId) continue;
+        if (!collKeys || !collectionId) continue;
         const pub = tm.publicKey ?? directory.find((d) => d.id === tm.userId)?.publicKey;
         if (!pub) continue;
-        await Backend.Collections.addMember(collectionId, tm.userId, 'viewer', await sealCollectionKeyToHex(pub, collKey));
+        await Backend.Collections.addMember(
+          collectionId,
+          tm.userId,
+          'viewer',
+          await sealCollectionKeyToHex(pub, collKeys.metaKey),
+          await sealCollectionKeyToHex(pub, collKeys.itemsKey),
+        );
         setLocal(tm.userId, 'viewer');
       }
       if (!isCreate) onSaved();
@@ -191,14 +204,24 @@ export function MemberPicker({
   const confirmCreate = () =>
     run(async () => {
       if (!name.trim() || !publicKey) throw new Error('a name is required');
-      const key = generateCollectionKey();
-      const nameEnc = await encryptCollectionField(key, { name: name.trim(), color });
-      const { id } = await Backend.Collections.create(nameEnc, await sealCollectionKey(publicKey, key));
+      const { metaKey, itemsKey } = generateCollectionKeys();
+      const nameEnc = await encryptCollectionField(metaKey, { name: name.trim(), color });
+      const { id } = await Backend.Collections.create(
+        nameEnc,
+        await sealCollectionKey(publicKey, metaKey),
+        await sealCollectionKey(publicKey, itemsKey),
+      );
       for (const [userId, role] of chosen) {
         if (userId === me?.id) continue;
         const pub = directory.find((d) => d.id === userId)?.publicKey;
         if (!pub) continue;
-        await Backend.Collections.addMember(id, userId, role, await sealCollectionKeyToHex(pub, key));
+        await Backend.Collections.addMember(
+          id,
+          userId,
+          role,
+          await sealCollectionKeyToHex(pub, metaKey),
+          await sealCollectionKeyToHex(pub, itemsKey),
+        );
       }
       onCreated?.(id);
       onSaved();

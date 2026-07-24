@@ -8,7 +8,7 @@
 
 import { Backend } from './backend';
 import {
-  unwrapCollectionKey,
+  unwrapCollectionKeys,
   encryptCollectionField,
   decryptCollectionField,
 } from './collectionCrypto';
@@ -28,27 +28,31 @@ export interface CollectionHeader {
   personal?: boolean;
 }
 
-/** Unwrap a collection's key and decrypt its header (name/colour/folders). */
+/**
+ * Unwrap a collection's two keys and decrypt its header (name/colour/folders).
+ * The header is encrypted with `metaKey`; `itemsKey` is returned for callers that
+ * also need to re-tag the collection's machines (ADR 0016 split-key model).
+ */
 export async function readCollectionHeader(
   collectionId: string,
   publicKey: Uint8Array,
   privateKey: Uint8Array,
-): Promise<{ key: Uint8Array; header: CollectionHeader }> {
+): Promise<{ metaKey: Uint8Array; itemsKey: Uint8Array; header: CollectionHeader }> {
   const mine = await Backend.Collections.mine();
   const self = mine.find((c) => c.id === collectionId);
-  if (!self?.protectedCollectionKey) throw new Error('you do not hold this collection key');
-  const key = await unwrapCollectionKey(publicKey, privateKey, self.protectedCollectionKey);
-  const header = await decryptCollectionField<CollectionHeader>(key, self.nameEnc);
-  return { key, header };
+  if (!self) throw new Error('you do not hold this collection key');
+  const { metaKey, itemsKey } = await unwrapCollectionKeys(publicKey, privateKey, self);
+  const header = await decryptCollectionField<CollectionHeader>(metaKey, self.nameEnc);
+  return { metaKey, itemsKey, header };
 }
 
-/** Re-encrypt and store a collection's header with the collection key. */
+/** Re-encrypt and store a collection's header with its metaKey. */
 export async function writeCollectionHeader(
   collectionId: string,
-  key: Uint8Array,
+  metaKey: Uint8Array,
   header: CollectionHeader,
 ): Promise<void> {
-  await Backend.Collections.update(collectionId, await encryptCollectionField(key, header));
+  await Backend.Collections.update(collectionId, await encryptCollectionField(metaKey, header));
 }
 
 /** Add a folder to a collection's header (no-op if the name already exists). */
@@ -58,10 +62,10 @@ export async function addCollectionFolder(
   privateKey: Uint8Array,
   folder: CollectionFolder,
 ): Promise<void> {
-  const { key, header } = await readCollectionHeader(collectionId, publicKey, privateKey);
+  const { metaKey, header } = await readCollectionHeader(collectionId, publicKey, privateKey);
   const folders = header.folders ?? [];
   if (folders.some((f) => f.name === folder.name)) return;
-  await writeCollectionHeader(collectionId, key, { ...header, folders: [...folders, folder] });
+  await writeCollectionHeader(collectionId, metaKey, { ...header, folders: [...folders, folder] });
 }
 
 /** Whether a machine's folder path is at, or nested under, a target folder path. */
@@ -114,15 +118,15 @@ export async function renameCollectionFolder(
   if (!newPath.trim() || newPath === oldPath) {
     if (newColor === undefined) return;
   }
-  const { key, header } = await readCollectionHeader(collectionId, publicKey, privateKey);
+  const { metaKey, itemsKey, header } = await readCollectionHeader(collectionId, publicKey, privateKey);
   const rewrite = (name: string) =>
     name === oldPath ? newPath : name.startsWith(oldPath + '/') ? newPath + name.slice(oldPath.length) : name;
   const folders = (header.folders ?? []).map((f) => ({
     name: rewrite(f.name),
     color: f.name === oldPath && newColor !== undefined ? newColor : f.color,
   }));
-  await writeCollectionHeader(collectionId, key, { ...header, folders });
-  await retagCollectionItems(collectionId, key, (folder) =>
+  await writeCollectionHeader(collectionId, metaKey, { ...header, folders });
+  await retagCollectionItems(collectionId, itemsKey, (folder) =>
     folder !== null && underPath(folder, oldPath) ? rewrite(folder) : undefined,
   );
 }
@@ -137,11 +141,11 @@ export async function deleteCollectionFolder(
   privateKey: Uint8Array,
   path: string,
 ): Promise<void> {
-  const { key, header } = await readCollectionHeader(collectionId, publicKey, privateKey);
+  const { metaKey, itemsKey, header } = await readCollectionHeader(collectionId, publicKey, privateKey);
   const parent = parentPath(path);
   const folders = (header.folders ?? []).filter((f) => !underPath(f.name, path));
-  await writeCollectionHeader(collectionId, key, { ...header, folders });
-  await retagCollectionItems(collectionId, key, (folder) => {
+  await writeCollectionHeader(collectionId, metaKey, { ...header, folders });
+  await retagCollectionItems(collectionId, itemsKey, (folder) => {
     if (folder === null || !underPath(folder, path)) return undefined;
     if (folder === path) return parent; // the folder itself → its parent (or root)
     const rest = folder.slice(path.length + 1); // strip "path/"

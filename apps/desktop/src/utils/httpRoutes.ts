@@ -253,7 +253,14 @@ const routes: Record<string, Route> = {
   directory_list: () => json('/api/directory'),
   collections_mine: () => json('/api/collections'),
   collection_create: (a) =>
-    json('/api/collections', post({ nameEnc: a.nameEnc, protectedCollectionKey: a.protectedCollectionKey })),
+    json(
+      '/api/collections',
+      post({
+        nameEnc: a.nameEnc,
+        protectedMetaKey: a.protectedMetaKey,
+        protectedItemsKey: a.protectedItemsKey,
+      }),
+    ),
   collection_update: async (a) => {
     await json(`/api/collections/${encodeURIComponent(String(a.id))}`, {
       method: 'PATCH',
@@ -270,7 +277,12 @@ const routes: Record<string, Route> = {
   collection_add_member: async (a) => {
     await json(
       `/api/collections/${encodeURIComponent(String(a.id))}/members`,
-      post({ userId: a.userId, role: a.role, protectedCollectionKey: a.protectedCollectionKey }),
+      post({
+        userId: a.userId,
+        role: a.role,
+        protectedMetaKey: a.protectedMetaKey,
+        protectedItemsKey: a.protectedItemsKey,
+      }),
     );
     return null;
   },

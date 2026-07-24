@@ -26,10 +26,10 @@ import {
 import { encryptString, decryptString } from '../utils/vaultCrypto';
 import { unwrapTeamKey } from '../utils/teamCrypto';
 import {
-  unwrapCollectionKey,
+  unwrapCollectionKeys,
   decryptCollectionField,
   encryptCollectionField,
-  generateCollectionKey,
+  generateCollectionKeys,
   sealCollectionKey,
 } from '../utils/collectionCrypto';
 import type { CollectionRole } from '../utils/backend';
@@ -102,33 +102,36 @@ async function ensurePersonalCollection(
   userKey: Uint8Array,
 ): Promise<string | null> {
   let personalId: string | null = null;
-  let personalKey: Uint8Array | null = null;
+  let personalItemsKey: Uint8Array | null = null;
   const mine = await Backend.Collections.mine().catch(() => []);
   for (const col of mine) {
-    if (!col.protectedCollectionKey) continue;
     try {
-      const key = await unwrapCollectionKey(publicKey, privateKey, col.protectedCollectionKey);
-      const header = await decryptCollectionField<CollectionHeader>(key, col.nameEnc);
+      const { metaKey, itemsKey } = await unwrapCollectionKeys(publicKey, privateKey, col);
+      const header = await decryptCollectionField<CollectionHeader>(metaKey, col.nameEnc);
       if (header.personal) {
         personalId = col.id;
-        personalKey = key;
+        personalItemsKey = itemsKey;
         break;
       }
     } catch {
       // undecryptable header — skip
     }
   }
-  if (!personalId || !personalKey) {
-    const key = generateCollectionKey();
-    const nameEnc = await encryptCollectionField(key, {
+  if (!personalId || !personalItemsKey) {
+    const { metaKey, itemsKey } = generateCollectionKeys();
+    const nameEnc = await encryptCollectionField(metaKey, {
       name: PERSONAL_COLLECTION_NAME,
       color: PERSONAL_COLLECTION_COLOR,
       personal: true,
       folders: [],
     });
-    const created = await Backend.Collections.create(nameEnc, await sealCollectionKey(publicKey, key));
+    const created = await Backend.Collections.create(
+      nameEnc,
+      await sealCollectionKey(publicKey, metaKey),
+      await sealCollectionKey(publicKey, itemsKey),
+    );
     personalId = created.id;
-    personalKey = key;
+    personalItemsKey = itemsKey;
   }
   // Migrate any legacy vault connections into Personal (re-encrypt with its key,
   // then delete from the vault). Delete only after a successful create → no loss.
@@ -136,7 +139,7 @@ async function ensurePersonalCollection(
     for (const b of await Backend.Vault.connections()) {
       try {
         const record = await decryptRecord(userKey, b.blob);
-        await Backend.Collections.createItem(personalId, await encryptCollectionField(personalKey, record));
+        await Backend.Collections.createItem(personalId, await encryptCollectionField(personalItemsKey, record));
         await Backend.Vault.deleteConnection(b.id);
       } catch {
         // leave undecryptable/failed items in the vault rather than lose them
@@ -264,7 +267,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     // browser-decrypted; the server only ever saw opaque blobs.
     if (publicKey && privateKey) {
       const cols = await Backend.Collections.mine()
-        .then((all) => all.filter((c) => c.protectedCollectionKey))
+        .then((all) => all.filter((c) => c.protectedMetaKey ?? c.protectedCollectionKey))
         .catch(() => []);
       const ctx = new Map<string, CollectionCtx>();
       const writable: { id: string; name: string; isPersonal: boolean }[] = [];
@@ -272,14 +275,15 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       // node before it has any machine. Personal is one of them (marked).
       const list: { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean }[] = [];
       for (const col of cols) {
-        if (!col.protectedCollectionKey) continue;
+        if (!col.protectedMetaKey && !col.protectedCollectionKey) continue;
         try {
-          const key = await unwrapCollectionKey(publicKey, privateKey, col.protectedCollectionKey);
-          const header = await decryptCollectionField<CollectionHeader>(key, col.nameEnc).catch(
+          const { metaKey, itemsKey } = await unwrapCollectionKeys(publicKey, privateKey, col);
+          const header = await decryptCollectionField<CollectionHeader>(metaKey, col.nameEnc).catch(
             () => ({ name: 'Collection', color: null }) as CollectionHeader,
           );
           const isPersonal = col.id === personalId;
-          ctx.set(col.id, { key, role: col.role });
+          // The context holds the itemsKey — item reads/writes use it (ADR 0016 split).
+          ctx.set(col.id, { key: itemsKey, role: col.role });
           const memberCount = (await Backend.Collections.members(col.id).catch(() => [])).length;
           list.push({
             id: col.id,
@@ -293,7 +297,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
           if (canWrite(col.role)) writable.push({ id: col.id, name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name, isPersonal });
           for (const it of await Backend.Collections.items(col.id)) {
             try {
-              const record = await decryptCollectionField<StoredRecord>(key, it.blob);
+              const record = await decryptCollectionField<StoredRecord>(itemsKey, it.blob);
               map.set(it.id, { record, collectionId: col.id });
               // folder stays the record's own (a shared folder inside the collection);
               // the collection itself is carried as first-class metadata for the tree.

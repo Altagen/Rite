@@ -565,12 +565,16 @@ const DirectoryEntrySchema = z.object({
   username: z.string(),
   publicKey: z.string().nullable().optional(),
 });
-// A collection I belong to, with my sealed copy of its key (nameEnc is opaque).
+// A collection I belong to, with my sealed copies of its keys (nameEnc is opaque).
+// Split-key model (ADR 0016): protectedMetaKey unwraps the name/colour, protectedItemsKey
+// the machines. protectedCollectionKey is the legacy single key (== meta post-migration).
 const UserCollectionSchema = z.object({
   id: z.string(),
   nameEnc: z.string(),
   role: CollectionRoleSchema,
   protectedCollectionKey: z.string().nullable().optional(),
+  protectedMetaKey: z.string().nullable().optional(),
+  protectedItemsKey: z.string().nullable().optional(),
   createdAt: z.number(),
 });
 const CollectionMemberSchema = z.object({
@@ -597,15 +601,31 @@ export const BackendCollections = {
   directory: () => invokeWithValidation('directory_list', z.array(DirectoryEntrySchema)),
   /** Collections I belong to, each with my sealed collection key. */
   mine: () => invokeWithValidation('collections_mine', z.array(UserCollectionSchema)),
-  create: (nameEnc: string, protectedCollectionKey: string) =>
-    invokeWithValidation('collection_create', CreatedIdSchema, { nameEnc, protectedCollectionKey }),
+  create: (nameEnc: string, protectedMetaKey: string, protectedItemsKey: string) =>
+    invokeWithValidation('collection_create', CreatedIdSchema, {
+      nameEnc,
+      protectedMetaKey,
+      protectedItemsKey,
+    }),
   update: (id: string, nameEnc: string) =>
     invokeWithValidation('collection_update', z.null(), { id, nameEnc }),
   remove: (id: string) => invokeWithValidation('collection_delete', z.null(), { id }),
   members: (id: string) =>
     invokeWithValidation('collection_members', z.array(CollectionMemberSchema), { id }),
-  addMember: (id: string, userId: string, role: CollectionRole, protectedCollectionKey: string) =>
-    invokeWithValidation('collection_add_member', z.null(), { id, userId, role, protectedCollectionKey }),
+  addMember: (
+    id: string,
+    userId: string,
+    role: CollectionRole,
+    protectedMetaKey: string,
+    protectedItemsKey: string,
+  ) =>
+    invokeWithValidation('collection_add_member', z.null(), {
+      id,
+      userId,
+      role,
+      protectedMetaKey,
+      protectedItemsKey,
+    }),
   setRole: (id: string, userId: string, role: CollectionRole) =>
     invokeWithValidation('collection_set_role', z.null(), { id, userId, role }),
   removeMember: (id: string, userId: string) =>

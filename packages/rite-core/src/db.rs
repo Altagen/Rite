@@ -78,8 +78,12 @@ impl Database {
             (9, include_str!("../migrations/009_team_connections.sql")),
             (10, include_str!("../migrations/010_collections.sql")),
             (11, include_str!("../migrations/011_user_library.sql")),
+            (
+                12,
+                include_str!("../migrations/012_collection_split_keys.sql"),
+            ),
             // Future migrations go here:
-            // (11, include_str!("../migrations/011_another_feature.sql")),
+            // (13, include_str!("../migrations/013_another_feature.sql")),
         ];
 
         // Expected latest version

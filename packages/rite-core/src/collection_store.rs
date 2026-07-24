@@ -59,7 +59,13 @@ pub struct UserCollection {
     pub id: String,
     pub name_enc: String,
     pub role: CollectionRole,
+    /// Legacy single sealed key (== the meta key after the split-key migration).
+    /// Kept for back-compat; new clients use the two keys below.
     pub protected_collection_key: String,
+    /// The collection's metaKey (name/colour) sealed to this member (ADR 0016 split).
+    pub protected_meta_key: String,
+    /// The collection's itemsKey (machines/credentials) sealed to this member.
+    pub protected_items_key: String,
     pub created_at: i64,
 }
 
@@ -106,7 +112,8 @@ pub async fn create_collection(
     db: &SqlitePool,
     name_enc: &str,
     owner_user_id: &str,
-    owner_protected_key: &str,
+    owner_protected_meta_key: &str,
+    owner_protected_items_key: &str,
 ) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     sqlx::query("INSERT INTO collections (id, name_enc, created_at) VALUES (?, ?, ?)")
@@ -120,7 +127,8 @@ pub async fn create_collection(
         &id,
         owner_user_id,
         CollectionRole::Owner,
-        owner_protected_key,
+        owner_protected_meta_key,
+        owner_protected_items_key,
     )
     .await?;
     Ok(id)
@@ -154,26 +162,35 @@ pub async fn collection_exists(db: &SqlitePool, id: &str) -> Result<bool> {
     Ok(row.is_some())
 }
 
-/// Add or update a member: their role + the collection key sealed to their key
-/// (idempotent upsert). The caller (a key-holder) does the sealing.
+/// Add or update a member: their role + the collection's two keys (metaKey +
+/// itemsKey) each sealed to their public key (idempotent upsert). The caller (a
+/// key-holder) does the sealing. The legacy `protected_collection_key` column is
+/// kept in sync with the meta key for back-compat.
 pub async fn add_member(
     db: &SqlitePool,
     collection_id: &str,
     user_id: &str,
     role: CollectionRole,
-    protected_collection_key: &str,
+    protected_meta_key: &str,
+    protected_items_key: &str,
 ) -> Result<()> {
     sqlx::query(
-        "INSERT INTO collection_members (collection_id, user_id, role, protected_collection_key, created_at)
-         VALUES (?, ?, ?, ?, ?)
+        "INSERT INTO collection_members
+             (collection_id, user_id, role, protected_collection_key,
+              protected_meta_key, protected_items_key, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(collection_id, user_id) DO UPDATE SET
              role = excluded.role,
-             protected_collection_key = excluded.protected_collection_key",
+             protected_collection_key = excluded.protected_collection_key,
+             protected_meta_key = excluded.protected_meta_key,
+             protected_items_key = excluded.protected_items_key",
     )
     .bind(collection_id)
     .bind(user_id)
     .bind(role.as_str())
-    .bind(protected_collection_key)
+    .bind(protected_meta_key) // legacy column mirrors the meta key
+    .bind(protected_meta_key)
+    .bind(protected_items_key)
     .bind(now())
     .execute(db)
     .await?;
@@ -262,8 +279,12 @@ pub async fn list_collections_for_user(
     db: &SqlitePool,
     user_id: &str,
 ) -> Result<Vec<UserCollection>> {
-    let rows: Vec<(String, String, String, String, i64)> = sqlx::query_as(
-        "SELECT c.id, c.name_enc, cm.role, cm.protected_collection_key, c.created_at
+    let rows: Vec<(String, String, String, String, String, String, i64)> = sqlx::query_as(
+        "SELECT c.id, c.name_enc, cm.role,
+                cm.protected_collection_key,
+                COALESCE(cm.protected_meta_key, cm.protected_collection_key),
+                COALESCE(cm.protected_items_key, cm.protected_collection_key),
+                c.created_at
          FROM collection_members cm JOIN collections c ON c.id = cm.collection_id
          WHERE cm.user_id = ? ORDER BY c.created_at",
     )
@@ -273,11 +294,21 @@ pub async fn list_collections_for_user(
     Ok(rows
         .into_iter()
         .map(
-            |(id, name_enc, role, protected_collection_key, created_at)| UserCollection {
+            |(
+                id,
+                name_enc,
+                role,
+                protected_collection_key,
+                protected_meta_key,
+                protected_items_key,
+                created_at,
+            )| UserCollection {
                 id,
                 name_enc,
                 role: CollectionRole::parse(&role),
                 protected_collection_key,
+                protected_meta_key,
+                protected_items_key,
                 created_at,
             },
         )
@@ -297,12 +328,14 @@ pub async fn list_all_collections(db: &SqlitePool) -> Result<Vec<CollectionSumma
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, created_at, member_count, item_count)| CollectionSummary {
-            id,
-            created_at,
-            member_count,
-            item_count,
-        })
+        .map(
+            |(id, created_at, member_count, item_count)| CollectionSummary {
+                id,
+                created_at,
+                member_count,
+                item_count,
+            },
+        )
         .collect())
 }
 
@@ -419,9 +452,15 @@ mod tests {
         let bob = user(pool, "bob").await;
 
         // Alice creates a collection → she is its sole owner, holding the sealed key.
-        let cid = create_collection(pool, "v1.enc.name", &alice, "sealed-to-alice")
-            .await
-            .unwrap();
+        let cid = create_collection(
+            pool,
+            "v1.enc.name",
+            &alice,
+            "meta-to-alice",
+            "items-to-alice",
+        )
+        .await
+        .unwrap();
         assert_eq!(
             collection_role(pool, &cid, &alice).await.unwrap(),
             Some(CollectionRole::Owner)
@@ -433,12 +472,21 @@ mod tests {
             1
         );
 
-        // She shares it with Bob as an editor (sealing the key to his public key).
-        add_member(pool, &cid, &bob, CollectionRole::Editor, "sealed-to-bob")
-            .await
-            .unwrap();
+        // She shares it with Bob as an editor (sealing both keys to his public key).
+        add_member(
+            pool,
+            &cid,
+            &bob,
+            CollectionRole::Editor,
+            "meta-to-bob",
+            "items-to-bob",
+        )
+        .await
+        .unwrap();
         let bob_view = &list_collections_for_user(pool, &bob).await.unwrap()[0];
-        assert_eq!(bob_view.protected_collection_key, "sealed-to-bob");
+        assert_eq!(bob_view.protected_meta_key, "meta-to-bob");
+        assert_eq!(bob_view.protected_items_key, "items-to-bob");
+        assert_eq!(bob_view.protected_collection_key, "meta-to-bob");
         assert_eq!(bob_view.role, CollectionRole::Editor);
         assert!(bob_view.role.can_write());
         assert!(!bob_view.role.can_manage());

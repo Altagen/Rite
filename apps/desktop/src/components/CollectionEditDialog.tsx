@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { Backend } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
-import { generateCollectionKey, sealCollectionKey, encryptCollectionField } from '../utils/collectionCrypto';
+import { generateCollectionKeys, sealCollectionKey, encryptCollectionField } from '../utils/collectionCrypto';
 import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
 
 const COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#94a3b8'];
@@ -41,17 +41,21 @@ export function CollectionEditDialog({
     setError(null);
     try {
       if (editing) {
-        // Rename: re-encrypt the header, preserving the collection's folders.
+        // Rename: re-encrypt the header (metaKey), preserving the collection's folders.
         if (!publicKey || !privateKey) throw new Error('session keys unavailable');
-        const { key, header } = await readCollectionHeader(collectionId!, publicKey, privateKey);
-        await writeCollectionHeader(collectionId!, key, { ...header, name: name.trim(), color });
+        const { metaKey, header } = await readCollectionHeader(collectionId!, publicKey, privateKey);
+        await writeCollectionHeader(collectionId!, metaKey, { ...header, name: name.trim(), color });
       } else {
-        // Create: fresh key sealed to myself (first owner) + encrypted header.
+        // Create: fresh split keys sealed to myself (first owner). The name/colour is
+        // encrypted with metaKey; items will use the separate itemsKey (ADR 0016).
         if (!publicKey) throw new Error('session keys unavailable');
-        const key = generateCollectionKey();
-        const nameEnc = await encryptCollectionField(key, { name: name.trim(), color });
-        const protectedCollectionKey = await sealCollectionKey(publicKey, key);
-        await Backend.Collections.create(nameEnc, protectedCollectionKey);
+        const { metaKey, itemsKey } = generateCollectionKeys();
+        const nameEnc = await encryptCollectionField(metaKey, { name: name.trim(), color });
+        await Backend.Collections.create(
+          nameEnc,
+          await sealCollectionKey(publicKey, metaKey),
+          await sealCollectionKey(publicKey, itemsKey),
+        );
       }
       onSaved();
       onClose();

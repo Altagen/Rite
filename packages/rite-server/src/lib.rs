@@ -387,7 +387,10 @@ pub fn build_router(state: ServerState) -> Router {
         // members. No key needed (names stay encrypted); adding a member needs the
         // collection key, so it stays a member action.
         .route("/api/admin/collections", get(admin_list_collections))
-        .route("/api/admin/collections/{id}", delete(admin_delete_collection))
+        .route(
+            "/api/admin/collections/{id}",
+            delete(admin_delete_collection),
+        )
         .route(
             "/api/admin/collections/{id}/members",
             get(admin_collection_members),
@@ -1320,13 +1323,11 @@ async fn admin_delete_collection(
     State(state): State<ServerState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, AppError> {
-    Ok(
-        if coll::delete_collection(state.db.pool(), &id).await? {
-            StatusCode::NO_CONTENT
-        } else {
-            StatusCode::NOT_FOUND
-        },
-    )
+    Ok(if coll::delete_collection(state.db.pool(), &id).await? {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    })
 }
 
 /// Teams the caller belongs to (any authenticated user).
@@ -1563,7 +1564,12 @@ async fn my_collections(
 #[serde(rename_all = "camelCase")]
 struct CreateCollectionReq {
     name_enc: String,
-    protected_collection_key: String,
+    // Split-key model (ADR 0016): metaKey (name/colour) + itemsKey (machines), each
+    // sealed to the creator. `protected_collection_key` is the legacy single-key
+    // field, accepted as a fallback for both.
+    protected_collection_key: Option<String>,
+    protected_meta_key: Option<String>,
+    protected_items_key: Option<String>,
 }
 
 async fn create_collection_ep(
@@ -1571,13 +1577,17 @@ async fn create_collection_ep(
     Extension(user): Extension<Arc<User>>,
     Json(req): Json<CreateCollectionReq>,
 ) -> Result<Response, AppError> {
-    let id = coll::create_collection(
-        state.db.pool(),
-        &req.name_enc,
-        &user.id,
-        &req.protected_collection_key,
-    )
-    .await?;
+    let (Some(meta), Some(items)) = (
+        req.protected_meta_key
+            .as_ref()
+            .or(req.protected_collection_key.as_ref()),
+        req.protected_items_key
+            .as_ref()
+            .or(req.protected_collection_key.as_ref()),
+    ) else {
+        return Ok((StatusCode::BAD_REQUEST, "missing sealed collection keys").into_response());
+    };
+    let id = coll::create_collection(state.db.pool(), &req.name_enc, &user.id, meta, items).await?;
     Ok((StatusCode::CREATED, Json(json!({ "id": id }))).into_response())
 }
 
@@ -1638,7 +1648,10 @@ async fn collection_members_ep(
 struct AddCollectionMemberReq {
     user_id: String,
     role: coll::CollectionRole,
-    protected_collection_key: String,
+    // metaKey + itemsKey sealed to the new member; legacy single key as fallback.
+    protected_collection_key: Option<String>,
+    protected_meta_key: Option<String>,
+    protected_items_key: Option<String>,
 }
 
 async fn add_collection_member_ep(
@@ -1651,15 +1664,17 @@ async fn add_collection_member_ep(
         Some(r) if r.can_manage() => {}
         _ => return Ok((StatusCode::FORBIDDEN, "only an owner can add members").into_response()),
     }
-    match coll::add_member(
-        state.db.pool(),
-        &id,
-        &req.user_id,
-        req.role,
-        &req.protected_collection_key,
-    )
-    .await
-    {
+    let (Some(meta), Some(items)) = (
+        req.protected_meta_key
+            .as_ref()
+            .or(req.protected_collection_key.as_ref()),
+        req.protected_items_key
+            .as_ref()
+            .or(req.protected_collection_key.as_ref()),
+    ) else {
+        return Ok((StatusCode::BAD_REQUEST, "missing sealed collection keys").into_response());
+    };
+    match coll::add_member(state.db.pool(), &id, &req.user_id, req.role, meta, items).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(_) => Ok((StatusCode::BAD_REQUEST, "unknown user").into_response()),
     }

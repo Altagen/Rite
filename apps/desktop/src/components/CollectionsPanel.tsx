@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Backend, type UserCollection } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
-import { unwrapCollectionKey, decryptCollectionField } from '../utils/collectionCrypto';
+import { unwrapCollectionKeys, decryptCollectionField } from '../utils/collectionCrypto';
 import { MemberPicker } from './MemberPicker';
 import { CollectionEditDialog } from './CollectionEditDialog';
 
@@ -37,13 +37,13 @@ export function CollectionsPanel() {
       setCollections(cols);
       const hdrs: Record<string, Header> = {};
       for (const c of cols) {
-        if (!c.protectedCollectionKey || !publicKey || !privateKey) {
+        if ((!c.protectedMetaKey && !c.protectedCollectionKey) || !publicKey || !privateKey) {
           hdrs[c.id] = { name: 'Collection', color: null };
           continue;
         }
         try {
-          const key = await unwrapCollectionKey(publicKey, privateKey, c.protectedCollectionKey);
-          hdrs[c.id] = await decryptCollectionField<Header>(key, c.nameEnc);
+          const { metaKey } = await unwrapCollectionKeys(publicKey, privateKey, c);
+          hdrs[c.id] = await decryptCollectionField<Header>(metaKey, c.nameEnc);
         } catch {
           hdrs[c.id] = { name: 'Collection', color: null };
         }
