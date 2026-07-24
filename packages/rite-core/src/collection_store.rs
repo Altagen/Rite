@@ -59,13 +59,12 @@ pub struct UserCollection {
     pub id: String,
     pub name_enc: String,
     pub role: CollectionRole,
-    /// Legacy single sealed key (== the meta key after the split-key migration).
-    /// Kept for back-compat; new clients use the two keys below.
-    pub protected_collection_key: String,
     /// The collection's metaKey (name/colour) sealed to this member (ADR 0016 split).
     pub protected_meta_key: String,
-    /// The collection's itemsKey (machines/credentials) sealed to this member.
-    pub protected_items_key: String,
+    /// The collection's itemsKey (machines/credentials) sealed to this member, or
+    /// `None` for a roster-only member (admin meta-add) until a member seals machine
+    /// access.
+    pub protected_items_key: Option<String>,
     pub created_at: i64,
 }
 
@@ -173,8 +172,7 @@ pub async fn collection_exists(db: &SqlitePool, id: &str) -> Result<bool> {
 
 /// Add or update a member: their role + the collection's two keys (metaKey +
 /// itemsKey) each sealed to their public key (idempotent upsert). The caller (a
-/// key-holder) does the sealing. The legacy `protected_collection_key` column is
-/// kept in sync with the meta key for back-compat.
+/// key-holder) does the sealing.
 pub async fn add_member(
     db: &SqlitePool,
     collection_id: &str,
@@ -185,19 +183,16 @@ pub async fn add_member(
 ) -> Result<()> {
     sqlx::query(
         "INSERT INTO collection_members
-             (collection_id, user_id, role, protected_collection_key,
-              protected_meta_key, protected_items_key, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+             (collection_id, user_id, role, protected_meta_key, protected_items_key, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(collection_id, user_id) DO UPDATE SET
              role = excluded.role,
-             protected_collection_key = excluded.protected_collection_key,
              protected_meta_key = excluded.protected_meta_key,
              protected_items_key = excluded.protected_items_key",
     )
     .bind(collection_id)
     .bind(user_id)
     .bind(role.as_str())
-    .bind(protected_meta_key) // legacy column mirrors the meta key
     .bind(protected_meta_key)
     .bind(protected_items_key)
     .bind(now())
@@ -219,18 +214,15 @@ pub async fn add_member_meta_only(
 ) -> Result<()> {
     sqlx::query(
         "INSERT INTO collection_members
-             (collection_id, user_id, role, protected_collection_key,
-              protected_meta_key, protected_items_key, created_at)
-         VALUES (?, ?, ?, ?, ?, NULL, ?)
+             (collection_id, user_id, role, protected_meta_key, protected_items_key, created_at)
+         VALUES (?, ?, ?, ?, NULL, ?)
          ON CONFLICT(collection_id, user_id) DO UPDATE SET
              role = excluded.role,
-             protected_collection_key = excluded.protected_collection_key,
              protected_meta_key = excluded.protected_meta_key",
     )
     .bind(collection_id)
     .bind(user_id)
     .bind(role.as_str())
-    .bind(protected_meta_key) // legacy column mirrors the meta key
     .bind(protected_meta_key)
     .bind(now())
     .execute(db)
@@ -320,12 +312,9 @@ pub async fn list_collections_for_user(
     db: &SqlitePool,
     user_id: &str,
 ) -> Result<Vec<UserCollection>> {
-    let rows: Vec<(String, String, String, String, String, String, i64)> = sqlx::query_as(
+    let rows: Vec<(String, String, String, String, Option<String>, i64)> = sqlx::query_as(
         "SELECT c.id, c.name_enc, cm.role,
-                cm.protected_collection_key,
-                COALESCE(cm.protected_meta_key, cm.protected_collection_key),
-                COALESCE(cm.protected_items_key, cm.protected_collection_key),
-                c.created_at
+                cm.protected_meta_key, cm.protected_items_key, c.created_at
          FROM collection_members cm JOIN collections c ON c.id = cm.collection_id
          WHERE cm.user_id = ? ORDER BY c.created_at",
     )
@@ -335,22 +324,15 @@ pub async fn list_collections_for_user(
     Ok(rows
         .into_iter()
         .map(
-            |(
-                id,
-                name_enc,
-                role,
-                protected_collection_key,
-                protected_meta_key,
-                protected_items_key,
-                created_at,
-            )| UserCollection {
-                id,
-                name_enc,
-                role: CollectionRole::parse(&role),
-                protected_collection_key,
-                protected_meta_key,
-                protected_items_key,
-                created_at,
+            |(id, name_enc, role, protected_meta_key, protected_items_key, created_at)| {
+                UserCollection {
+                    id,
+                    name_enc,
+                    role: CollectionRole::parse(&role),
+                    protected_meta_key,
+                    protected_items_key,
+                    created_at,
+                }
             },
         )
         .collect())
@@ -371,7 +353,15 @@ pub async fn list_all_collections(db: &SqlitePool) -> Result<Vec<CollectionSumma
     Ok(rows
         .into_iter()
         .map(
-            |(id, created_at, member_count, item_count, name_enc, meta_key_group_enc, group_epoch)| {
+            |(
+                id,
+                created_at,
+                member_count,
+                item_count,
+                name_enc,
+                meta_key_group_enc,
+                group_epoch,
+            )| {
                 CollectionSummary {
                     id,
                     created_at,
@@ -701,8 +691,10 @@ mod tests {
         .unwrap();
         let bob_view = &list_collections_for_user(pool, &bob).await.unwrap()[0];
         assert_eq!(bob_view.protected_meta_key, "meta-to-bob");
-        assert_eq!(bob_view.protected_items_key, "items-to-bob");
-        assert_eq!(bob_view.protected_collection_key, "meta-to-bob");
+        assert_eq!(
+            bob_view.protected_items_key.as_deref(),
+            Some("items-to-bob")
+        );
         assert_eq!(bob_view.role, CollectionRole::Editor);
         assert!(bob_view.role.can_write());
         assert!(!bob_view.role.can_manage());

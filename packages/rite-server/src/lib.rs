@@ -1733,11 +1733,9 @@ async fn my_collections(
 struct CreateCollectionReq {
     name_enc: String,
     // Split-key model (ADR 0016): metaKey (name/colour) + itemsKey (machines), each
-    // sealed to the creator. `protected_collection_key` is the legacy single-key
-    // field, accepted as a fallback for both.
-    protected_collection_key: Option<String>,
-    protected_meta_key: Option<String>,
-    protected_items_key: Option<String>,
+    // sealed to the creator.
+    protected_meta_key: String,
+    protected_items_key: String,
     // Optional Admin-group escrow: metaKey sealed to the group public key so admins
     // can read the name. Absent when no admin group exists yet (name stays private).
     meta_key_group_enc: Option<String>,
@@ -1749,17 +1747,14 @@ async fn create_collection_ep(
     Extension(user): Extension<Arc<User>>,
     Json(req): Json<CreateCollectionReq>,
 ) -> Result<Response, AppError> {
-    let (Some(meta), Some(items)) = (
-        req.protected_meta_key
-            .as_ref()
-            .or(req.protected_collection_key.as_ref()),
-        req.protected_items_key
-            .as_ref()
-            .or(req.protected_collection_key.as_ref()),
-    ) else {
-        return Ok((StatusCode::BAD_REQUEST, "missing sealed collection keys").into_response());
-    };
-    let id = coll::create_collection(state.db.pool(), &req.name_enc, &user.id, meta, items).await?;
+    let id = coll::create_collection(
+        state.db.pool(),
+        &req.name_enc,
+        &user.id,
+        &req.protected_meta_key,
+        &req.protected_items_key,
+    )
+    .await?;
     if let (Some(enc), Some(epoch)) = (req.meta_key_group_enc.as_ref(), req.group_epoch) {
         coll::set_collection_group_escrow(state.db.pool(), &id, enc, epoch).await?;
     }
@@ -1823,10 +1818,9 @@ async fn collection_members_ep(
 struct AddCollectionMemberReq {
     user_id: String,
     role: coll::CollectionRole,
-    // metaKey + itemsKey sealed to the new member; legacy single key as fallback.
-    protected_collection_key: Option<String>,
-    protected_meta_key: Option<String>,
-    protected_items_key: Option<String>,
+    // metaKey + itemsKey sealed to the new member.
+    protected_meta_key: String,
+    protected_items_key: String,
 }
 
 async fn add_collection_member_ep(
@@ -1839,17 +1833,16 @@ async fn add_collection_member_ep(
         Some(r) if r.can_manage() => {}
         _ => return Ok((StatusCode::FORBIDDEN, "only an owner can add members").into_response()),
     }
-    let (Some(meta), Some(items)) = (
-        req.protected_meta_key
-            .as_ref()
-            .or(req.protected_collection_key.as_ref()),
-        req.protected_items_key
-            .as_ref()
-            .or(req.protected_collection_key.as_ref()),
-    ) else {
-        return Ok((StatusCode::BAD_REQUEST, "missing sealed collection keys").into_response());
-    };
-    match coll::add_member(state.db.pool(), &id, &req.user_id, req.role, meta, items).await {
+    match coll::add_member(
+        state.db.pool(),
+        &id,
+        &req.user_id,
+        req.role,
+        &req.protected_meta_key,
+        &req.protected_items_key,
+    )
+    .await
+    {
         Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
         Err(_) => Ok((StatusCode::BAD_REQUEST, "unknown user").into_response()),
     }

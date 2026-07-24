@@ -10,11 +10,6 @@
 import { generateUserKey, hexToBytes, encryptString, decryptString } from './vaultCrypto';
 import { seal, open } from './sealbox';
 
-/** A fresh random 32-byte collection key. */
-export function generateCollectionKey(): Uint8Array {
-  return generateUserKey();
-}
-
 /**
  * A fresh pair of collection keys (ADR 0016 split-key model): `metaKey` encrypts the
  * name/colour header, `itemsKey` the machines/credentials. They are independent so an
@@ -24,29 +19,27 @@ export function generateCollectionKeys(): { metaKey: Uint8Array; itemsKey: Uint8
   return { metaKey: generateUserKey(), itemsKey: generateUserKey() };
 }
 
-/** My sealed copies of a collection's two keys (from `Collections.mine()`). */
+/** My sealed copies of a collection's keys (from `Collections.mine()`). */
 export interface ProtectedCollectionKeys {
   protectedMetaKey?: string | null;
   protectedItemsKey?: string | null;
-  protectedCollectionKey?: string | null;
 }
 
 /**
- * Unwrap a collection's metaKey + itemsKey with my own keypair. Falls back to the
- * legacy single key for collections created before the split (there metaKey == itemsKey).
+ * Unwrap a collection's metaKey (name/colour) and itemsKey (machines) with my own
+ * keypair. `itemsKey` is null for a roster-only member (admin meta-add) — they hold
+ * the metaKey (see the name) but not the itemsKey until a member seals machine access.
  */
 export async function unwrapCollectionKeys(
   publicKey: Uint8Array,
   privateKey: Uint8Array,
   keys: ProtectedCollectionKeys,
-): Promise<{ metaKey: Uint8Array; itemsKey: Uint8Array }> {
-  const metaSealed = keys.protectedMetaKey ?? keys.protectedCollectionKey;
-  const itemsSealed = keys.protectedItemsKey ?? keys.protectedCollectionKey;
-  if (!metaSealed || !itemsSealed) throw new Error('you do not hold this collection key');
-  const [metaKey, itemsKey] = await Promise.all([
-    open(publicKey, privateKey, metaSealed),
-    open(publicKey, privateKey, itemsSealed),
-  ]);
+): Promise<{ metaKey: Uint8Array; itemsKey: Uint8Array | null }> {
+  if (!keys.protectedMetaKey) throw new Error('you do not hold this collection key');
+  const metaKey = await open(publicKey, privateKey, keys.protectedMetaKey);
+  const itemsKey = keys.protectedItemsKey
+    ? await open(publicKey, privateKey, keys.protectedItemsKey)
+    : null;
   return { metaKey, itemsKey };
 }
 
@@ -58,15 +51,6 @@ export function sealCollectionKey(recipientPublic: Uint8Array, key: Uint8Array):
 /** Seal the collection key to a member whose public key is hex-encoded (directory). */
 export function sealCollectionKeyToHex(recipientPublicHex: string, key: Uint8Array): Promise<string> {
   return seal(hexToBytes(recipientPublicHex), key);
-}
-
-/** Unwrap my sealed collection key with my own keypair. */
-export function unwrapCollectionKey(
-  publicKey: Uint8Array,
-  privateKey: Uint8Array,
-  protectedCollectionKey: string,
-): Promise<Uint8Array> {
-  return open(publicKey, privateKey, protectedCollectionKey);
 }
 
 /** Encrypt a field (the {name,color} header, or an item record) → an opaque blob. */

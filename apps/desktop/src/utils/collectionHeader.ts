@@ -37,7 +37,7 @@ export async function readCollectionHeader(
   collectionId: string,
   publicKey: Uint8Array,
   privateKey: Uint8Array,
-): Promise<{ metaKey: Uint8Array; itemsKey: Uint8Array; header: CollectionHeader }> {
+): Promise<{ metaKey: Uint8Array; itemsKey: Uint8Array | null; header: CollectionHeader }> {
   const mine = await Backend.Collections.mine();
   const self = mine.find((c) => c.id === collectionId);
   if (!self) throw new Error('you do not hold this collection key');
@@ -126,9 +126,10 @@ export async function renameCollectionFolder(
     color: f.name === oldPath && newColor !== undefined ? newColor : f.color,
   }));
   await writeCollectionHeader(collectionId, metaKey, { ...header, folders });
-  await retagCollectionItems(collectionId, itemsKey, (folder) =>
-    folder !== null && underPath(folder, oldPath) ? rewrite(folder) : undefined,
-  );
+  if (itemsKey)
+    await retagCollectionItems(collectionId, itemsKey, (folder) =>
+      folder !== null && underPath(folder, oldPath) ? rewrite(folder) : undefined,
+    );
 }
 
 /**
@@ -145,6 +146,7 @@ export async function deleteCollectionFolder(
   const parent = parentPath(path);
   const folders = (header.folders ?? []).filter((f) => !underPath(f.name, path));
   await writeCollectionHeader(collectionId, metaKey, { ...header, folders });
+  if (!itemsKey) return;
   await retagCollectionItems(collectionId, itemsKey, (folder) => {
     if (folder === null || !underPath(folder, path)) return undefined;
     if (folder === path) return parent; // the folder itself → its parent (or root)

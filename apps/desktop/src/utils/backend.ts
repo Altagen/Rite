@@ -604,14 +604,14 @@ const DirectoryEntrySchema = z.object({
 });
 // A collection I belong to, with my sealed copies of its keys (nameEnc is opaque).
 // Split-key model (ADR 0016): protectedMetaKey unwraps the name/colour, protectedItemsKey
-// the machines. protectedCollectionKey is the legacy single key (== meta post-migration).
+// the machines. protectedItemsKey is null for a roster-only member (admin meta-add) until
+// a member seals machine access.
 const UserCollectionSchema = z.object({
   id: z.string(),
   nameEnc: z.string(),
   role: CollectionRoleSchema,
-  protectedCollectionKey: z.string().nullable().optional(),
-  protectedMetaKey: z.string().nullable().optional(),
-  protectedItemsKey: z.string().nullable().optional(),
+  protectedMetaKey: z.string(),
+  protectedItemsKey: z.string().nullable(),
   createdAt: z.number(),
 });
 const CollectionMemberSchema = z.object({

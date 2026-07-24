@@ -74,9 +74,10 @@ export function MemberPicker({
   const [directory, setDirectory] = useState<DirectoryEntry[]>([]);
   const [teams, setTeams] = useState<UserTeam[]>([]);
   const [chosen, setChosen] = useState<Map<string, CollectionRole>>(new Map());
-  const [collKeys, setCollKeys] = useState<{ metaKey: Uint8Array; itemsKey: Uint8Array } | null>(
-    null,
-  );
+  const [collKeys, setCollKeys] = useState<{
+    metaKey: Uint8Array;
+    itemsKey: Uint8Array | null;
+  } | null>(null);
   const [myRole, setMyRole] = useState<CollectionRole>('owner');
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
@@ -146,18 +147,20 @@ export function MemberPicker({
       return;
     }
     if (!collKeys || !collectionId) return;
+    const { metaKey, itemsKey } = collKeys;
     void run(async () => {
       if (has) {
         await Backend.Collections.removeMember(collectionId, entry.id);
         setLocal(entry.id, null);
       } else {
         if (!entry.publicKey) throw new Error('that user has no published key yet');
+        if (!itemsKey) throw new Error('you do not hold this collection’s machine key');
         await Backend.Collections.addMember(
           collectionId,
           entry.id,
           'viewer',
-          await sealCollectionKeyToHex(entry.publicKey, collKeys.metaKey),
-          await sealCollectionKeyToHex(entry.publicKey, collKeys.itemsKey),
+          await sealCollectionKeyToHex(entry.publicKey, metaKey),
+          await sealCollectionKeyToHex(entry.publicKey, itemsKey),
         );
         setLocal(entry.id, 'viewer');
       }
@@ -187,7 +190,7 @@ export function MemberPicker({
           setLocal(tm.userId, 'viewer');
           continue;
         }
-        if (!collKeys || !collectionId) continue;
+        if (!collKeys?.itemsKey || !collectionId) continue;
         const pub = tm.publicKey ?? directory.find((d) => d.id === tm.userId)?.publicKey;
         if (!pub) continue;
         await Backend.Collections.addMember(

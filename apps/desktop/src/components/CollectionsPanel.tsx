@@ -37,7 +37,7 @@ export function CollectionsPanel() {
       setCollections(cols);
       const hdrs: Record<string, Header> = {};
       for (const c of cols) {
-        if ((!c.protectedMetaKey && !c.protectedCollectionKey) || !publicKey || !privateKey) {
+        if (!c.protectedMetaKey || !publicKey || !privateKey) {
           hdrs[c.id] = { name: 'Collection', color: null };
           continue;
         }

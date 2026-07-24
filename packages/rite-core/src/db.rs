@@ -82,8 +82,12 @@ impl Database {
                 12,
                 include_str!("../migrations/012_collection_split_keys.sql"),
             ),
+            (
+                13,
+                include_str!("../migrations/013_drop_legacy_collection_key.sql"),
+            ),
             // Future migrations go here:
-            // (13, include_str!("../migrations/013_another_feature.sql")),
+            // (14, include_str!("../migrations/014_another_feature.sql")),
         ];
 
         // Expected latest version
