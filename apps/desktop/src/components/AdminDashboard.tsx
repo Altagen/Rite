@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { navigate } from '../store/route';
 import { Backend, type ServerUser, type CollectionSummary, type CollectionMember } from '../utils/backend';
+import { ensureGroupKey, myGroupPrivateKey, unsealMetaKey, decryptName } from '../utils/adminGroup';
 import { AdminUsersPanel } from './AdminUsersPanel';
 import { TeamsPanel } from './TeamsPanel';
 import { InstanceSettingsPanel } from './InstanceSettingsPanel';
@@ -147,24 +148,54 @@ function ZkBanner() {
     <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3.5 text-[13px] text-foreground/80">
       <IconShield className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
       <div>
-        <b>Zero-knowledge.</b> Collection names &amp; machine credentials are encrypted with a key only members hold —
-        the server (and this list) can&rsquo;t read them, so collections show by id for now. Admins govern membership
-        and lifecycle: you can remove a member or delete a collection, but <b>adding</b> a member needs the collection
-        key and stays a member action (from <code>/collections</code>). Reading names / adding members lands with the
-        split-key escrow.
+        <b>Zero-knowledge.</b> The server never sees a key. Collection <b>names</b> are readable here only through the
+        Admin-group escrow — machine credentials stay sealed to members and are never shown. Collections created before
+        the escrow existed appear by id until re-keyed. You can decrypt names, remove a member, delete a collection, and
+        grant a member <b>name/roster</b> access; full <b>machine</b> access still needs a member to seal the item key.
       </div>
     </div>
   );
 }
 
+interface CollName {
+  name: string;
+  color: string | null;
+}
+
 function CollectionsGovernance() {
+  const { publicKey, privateKey } = useServerSession();
   const [colls, setColls] = useState<CollectionSummary[] | null>(null);
+  const [names, setNames] = useState<Map<string, CollName>>(new Map());
   const [sel, setSel] = useState<string | null>(null);
   const [members, setMembers] = useState<CollectionMember[] | null>(null);
 
-  const load = () => Backend.Admin.listCollections().then(setColls).catch(() => setColls([]));
+  // Load the collections and, via the Admin-group escrow, decrypt the names admins
+  // are allowed to see. Machine credentials stay sealed to members — never decrypted
+  // here. Un-escrowed collections keep the "Collection <id>" fallback.
+  const load = async () => {
+    const all = await Backend.Admin.listCollections().catch(() => [] as CollectionSummary[]);
+    setColls(all);
+    if (!publicKey || !privateKey) return;
+    const group = await ensureGroupKey().catch(() => null);
+    if (!group) return;
+    const secret = await myGroupPrivateKey(publicKey, privateKey).catch(() => null);
+    if (!secret) return;
+    const map = new Map<string, CollName>();
+    for (const c of all) {
+      if (!c.metaKeyGroupEnc) continue;
+      try {
+        const metaKey = await unsealMetaKey(group, secret, c.metaKeyGroupEnc);
+        map.set(c.id, await decryptName<CollName>(metaKey, c.nameEnc));
+      } catch {
+        // wrong epoch / undecryptable — leave the id fallback
+      }
+    }
+    setNames(map);
+  };
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- async initial load
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keys are stable per session
   }, []);
 
   const open = (id: string) => {
@@ -184,7 +215,7 @@ function CollectionsGovernance() {
     load();
   };
 
-  const label = (id: string) => `Collection ${id.slice(0, 8)}`;
+  const label = (id: string) => names.get(id)?.name ?? `Collection ${id.slice(0, 8)}`;
 
   if (sel) {
     return (

@@ -196,6 +196,38 @@ const routes: Record<string, Route> = {
     return null;
   },
 
+  // Admin-group escrow (ADR 0016 split-key).
+  admin_group_key: () => json('/api/admin/group-key'),
+  admin_group_grant: async () => {
+    // 404 = this admin holds no grant yet → surface as null, not an error.
+    try {
+      return await json('/api/admin/group-grant');
+    } catch {
+      return null;
+    }
+  },
+  admin_list_admins: () => json('/api/admin/admins'),
+  admin_set_group_key: async (a) => {
+    await json('/api/admin/group-key', post({ epoch: a.epoch, publicKey: a.publicKey, grants: a.grants }));
+    return null;
+  },
+  admin_set_escrow: async (a) => {
+    await json(`/api/admin/collections/${encodeURIComponent(String(a.id))}/escrow`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ metaKeyGroupEnc: a.metaKeyGroupEnc, groupEpoch: a.groupEpoch }),
+    });
+    return null;
+  },
+  admin_add_collection_member: async (a) => {
+    await json(`/api/admin/collections/${encodeURIComponent(String(a.id))}/members`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: a.userId, protectedMetaKey: a.protectedMetaKey }),
+    });
+    return null;
+  },
+
   teams_mine: () => json('/api/teams'),
   team_members: (a) => json(`/api/teams/${encodeURIComponent(String(a.id))}/members`),
   team_add_member: async (a) => {
@@ -252,6 +284,7 @@ const routes: Record<string, Route> = {
   // blobs; the browser seals/unwraps the collection key and encrypts client-side.
   directory_list: () => json('/api/directory'),
   collections_mine: () => json('/api/collections'),
+  collections_group_key: () => json('/api/collections/group-key'),
   collection_create: (a) =>
     json(
       '/api/collections',
@@ -259,6 +292,8 @@ const routes: Record<string, Route> = {
         nameEnc: a.nameEnc,
         protectedMetaKey: a.protectedMetaKey,
         protectedItemsKey: a.protectedItemsKey,
+        metaKeyGroupEnc: a.metaKeyGroupEnc ?? null,
+        groupEpoch: a.groupEpoch ?? null,
       }),
     ),
   collection_update: async (a) => {

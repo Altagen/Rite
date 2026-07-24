@@ -100,6 +100,9 @@ pub struct CollectionSummary {
     pub created_at: i64,
     pub member_count: i64,
     pub item_count: i64,
+    /// The encrypted name/colour blob — opaque to the server, but an admin holding the
+    /// group escrow can decrypt it (via `meta_key_group_enc`).
+    pub name_enc: String,
     /// The collection's metaKey sealed to the Admin-group public key (escrow), or
     /// `None` for collections not escrowed (pre-split, or created before any admin
     /// bootstrapped the group key). An admin unseals this → metaKey → the name.
@@ -356,11 +359,11 @@ pub async fn list_collections_for_user(
 /// Every collection with member + item counts (admin governance). No key needed;
 /// names remain encrypted.
 pub async fn list_all_collections(db: &SqlitePool) -> Result<Vec<CollectionSummary>> {
-    let rows: Vec<(String, i64, i64, i64, Option<String>, Option<i64>)> = sqlx::query_as(
+    let rows: Vec<(String, i64, i64, i64, String, Option<String>, Option<i64>)> = sqlx::query_as(
         "SELECT c.id, c.created_at,
             (SELECT COUNT(*) FROM collection_members m WHERE m.collection_id = c.id) AS member_count,
             (SELECT COUNT(*) FROM collection_items i WHERE i.collection_id = c.id) AS item_count,
-            c.meta_key_group_enc, c.group_epoch
+            c.name_enc, c.meta_key_group_enc, c.group_epoch
          FROM collections c ORDER BY c.created_at DESC",
     )
     .fetch_all(db)
@@ -368,12 +371,13 @@ pub async fn list_all_collections(db: &SqlitePool) -> Result<Vec<CollectionSumma
     Ok(rows
         .into_iter()
         .map(
-            |(id, created_at, member_count, item_count, meta_key_group_enc, group_epoch)| {
+            |(id, created_at, member_count, item_count, name_enc, meta_key_group_enc, group_epoch)| {
                 CollectionSummary {
                     id,
                     created_at,
                     member_count,
                     item_count,
+                    name_enc,
                     meta_key_group_enc,
                     group_epoch,
                 }

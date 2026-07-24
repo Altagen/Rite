@@ -32,6 +32,7 @@ import {
   generateCollectionKeys,
   sealCollectionKey,
 } from '../utils/collectionCrypto';
+import { escrowForCreate } from '../utils/adminGroup';
 import type { CollectionRole } from '../utils/backend';
 import type { CollectionHeader, CollectionFolder } from '../utils/collectionHeader';
 
@@ -129,6 +130,7 @@ async function ensurePersonalCollection(
       nameEnc,
       await sealCollectionKey(publicKey, metaKey),
       await sealCollectionKey(publicKey, itemsKey),
+      await escrowForCreate(metaKey),
     );
     personalId = created.id;
     personalItemsKey = itemsKey;

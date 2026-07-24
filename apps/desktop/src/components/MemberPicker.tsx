@@ -25,6 +25,7 @@ import {
   unwrapCollectionKeys,
   encryptCollectionField,
 } from '../utils/collectionCrypto';
+import { escrowForCreate } from '../utils/adminGroup';
 
 const ROLES: CollectionRole[] = ['owner', 'editor', 'viewer'];
 const COLLECTION_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#f472b6'];
@@ -210,6 +211,7 @@ export function MemberPicker({
         nameEnc,
         await sealCollectionKey(publicKey, metaKey),
         await sealCollectionKey(publicKey, itemsKey),
+        await escrowForCreate(metaKey),
       );
       for (const [userId, role] of chosen) {
         if (userId === me?.id) continue;

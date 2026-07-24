@@ -405,8 +405,21 @@ const CollectionSummarySchema = z.object({
   createdAt: z.number(),
   memberCount: z.number(),
   itemCount: z.number(),
+  // Opaque name/colour blob; an admin holding the group escrow can decrypt it.
+  nameEnc: z.string(),
+  // Admin-group escrow (ADR 0016): metaKey sealed to the group pubkey → admins can
+  // decrypt the name. Null for un-escrowed collections (pre-split / no group yet).
+  metaKeyGroupEnc: z.string().nullable().optional(),
+  groupEpoch: z.number().nullable().optional(),
 });
 export type CollectionSummary = z.infer<typeof CollectionSummarySchema>;
+
+// Admin-group escrow schemas (ADR 0016 split-key model).
+const AdminGroupKeySchema = z.object({ epoch: z.number(), publicKey: z.string() });
+const AdminGroupGrantSchema = z.object({ epoch: z.number(), protectedPrivateKey: z.string() });
+const AdminKeySchema = z.object({ userId: z.string(), username: z.string(), publicKey: z.string() });
+export type AdminGroupKey = z.infer<typeof AdminGroupKeySchema>;
+export type AdminKey = z.infer<typeof AdminKeySchema>;
 
 export const BackendAdmin = {
   listUsers: () => invokeWithValidation('admin_list_users', z.array(ServerUserSchema)),
@@ -447,6 +460,27 @@ export const BackendAdmin = {
   removeCollectionMember: (id: string, userId: string) =>
     invokeWithValidation('admin_remove_collection_member', z.null(), { id, userId }),
   deleteCollection: (id: string) => invokeWithValidation('admin_delete_collection', z.null(), { id }),
+
+  // Admin-group escrow (ADR 0016 split-key). Lets admins read collection names +
+  // roster-add without ever holding item keys. The server stores only sealed blobs.
+  /** The current Admin-group public key + epoch (null if never bootstrapped). */
+  groupKey: () => invokeWithValidation('admin_group_key', AdminGroupKeySchema.nullable()),
+  /** This admin's sealed group private key for the current epoch (null if no grant yet). */
+  groupGrant: () => invokeWithValidation('admin_group_grant', AdminGroupGrantSchema.nullable()),
+  /** Admins with published public keys — recipients for group grants. */
+  listAdmins: () => invokeWithValidation('admin_list_admins', z.array(AdminKeySchema)),
+  /** Bootstrap or rotate the group: new epoch pubkey + the priv sealed to each admin. */
+  setGroupKey: (
+    epoch: number,
+    publicKey: string,
+    grants: { userId: string; protectedPrivateKey: string }[],
+  ) => invokeWithValidation('admin_set_group_key', z.null(), { epoch, publicKey, grants }),
+  /** Re-seal a collection's metaKey escrow to a group epoch (rotation step). */
+  setEscrow: (id: string, metaKeyGroupEnc: string, groupEpoch: number) =>
+    invokeWithValidation('admin_set_escrow', z.null(), { id, metaKeyGroupEnc, groupEpoch }),
+  /** Roster meta-add: grant name/roster access by sealing only the metaKey. */
+  addCollectionMemberMeta: (id: string, userId: string, protectedMetaKey: string) =>
+    invokeWithValidation('admin_add_collection_member', z.null(), { id, userId, protectedMetaKey }),
 } as const;
 
 // Context multiplexer (ADR 0012) — the native client's roster of contexts.
@@ -601,11 +635,21 @@ export const BackendCollections = {
   directory: () => invokeWithValidation('directory_list', z.array(DirectoryEntrySchema)),
   /** Collections I belong to, each with my sealed collection key. */
   mine: () => invokeWithValidation('collections_mine', z.array(UserCollectionSchema)),
-  create: (nameEnc: string, protectedMetaKey: string, protectedItemsKey: string) =>
+  /** The Admin-group public key (member-readable) to escrow a new collection's metaKey to. */
+  groupKey: () =>
+    invokeWithValidation('collections_group_key', AdminGroupKeySchema.nullable()),
+  create: (
+    nameEnc: string,
+    protectedMetaKey: string,
+    protectedItemsKey: string,
+    escrow?: { metaKeyGroupEnc: string; groupEpoch: number } | null,
+  ) =>
     invokeWithValidation('collection_create', CreatedIdSchema, {
       nameEnc,
       protectedMetaKey,
       protectedItemsKey,
+      metaKeyGroupEnc: escrow?.metaKeyGroupEnc ?? null,
+      groupEpoch: escrow?.groupEpoch ?? null,
     }),
   update: (id: string, nameEnc: string) =>
     invokeWithValidation('collection_update', z.null(), { id, nameEnc }),

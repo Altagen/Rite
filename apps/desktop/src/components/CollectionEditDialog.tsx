@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Backend } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import { generateCollectionKeys, sealCollectionKey, encryptCollectionField } from '../utils/collectionCrypto';
+import { escrowForCreate } from '../utils/adminGroup';
 import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
 
 const COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#94a3b8'];
@@ -55,6 +56,7 @@ export function CollectionEditDialog({
           nameEnc,
           await sealCollectionKey(publicKey, metaKey),
           await sealCollectionKey(publicKey, itemsKey),
+          await escrowForCreate(metaKey),
         );
       }
       onSaved();
