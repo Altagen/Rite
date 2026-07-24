@@ -84,6 +84,18 @@ pub struct CollectionItem {
     pub updated_at: i64,
 }
 
+/// Governance summary of a collection for the admin console — counts only, no key
+/// needed. The name stays encrypted (the server never learns it); admins govern
+/// membership and lifecycle. Ordered newest first.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollectionSummary {
+    pub id: String,
+    pub created_at: i64,
+    pub member_count: i64,
+    pub item_count: i64,
+}
+
 fn now() -> i64 {
     chrono::Utc::now().timestamp()
 }
@@ -269,6 +281,28 @@ pub async fn list_collections_for_user(
                 created_at,
             },
         )
+        .collect())
+}
+
+/// Every collection with member + item counts (admin governance). No key needed;
+/// names remain encrypted.
+pub async fn list_all_collections(db: &SqlitePool) -> Result<Vec<CollectionSummary>> {
+    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+        "SELECT c.id, c.created_at,
+            (SELECT COUNT(*) FROM collection_members m WHERE m.collection_id = c.id) AS member_count,
+            (SELECT COUNT(*) FROM collection_items i WHERE i.collection_id = c.id) AS item_count
+         FROM collections c ORDER BY c.created_at DESC",
+    )
+    .fetch_all(db)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, created_at, member_count, item_count)| CollectionSummary {
+            id,
+            created_at,
+            member_count,
+            item_count,
+        })
         .collect())
 }
 

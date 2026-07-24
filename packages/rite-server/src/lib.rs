@@ -383,6 +383,19 @@ pub fn build_router(state: ServerState) -> Router {
             get(admin_list_teams).post(admin_create_team),
         )
         .route("/api/admin/teams/{id}", delete(admin_delete_team))
+        // Collections governance (admin): list all, force-delete, inspect + remove
+        // members. No key needed (names stay encrypted); adding a member needs the
+        // collection key, so it stays a member action.
+        .route("/api/admin/collections", get(admin_list_collections))
+        .route("/api/admin/collections/{id}", delete(admin_delete_collection))
+        .route(
+            "/api/admin/collections/{id}/members",
+            get(admin_collection_members),
+        )
+        .route(
+            "/api/admin/collections/{id}/members/{userId}",
+            delete(admin_remove_collection_member),
+        )
         .route("/api/teams", get(my_teams))
         .route(
             "/api/teams/{id}/members",
@@ -1264,6 +1277,51 @@ async fn admin_delete_team(
 ) -> Result<StatusCode, AppError> {
     Ok(
         if rite_core::teams::delete_team(state.db.pool(), &id).await? {
+            StatusCode::NO_CONTENT
+        } else {
+            StatusCode::NOT_FOUND
+        },
+    )
+}
+
+// --- collections governance (admin; guard-gated to admin role) ---------------
+
+/// Every collection with member + item counts (no key needed; names stay encrypted).
+async fn admin_list_collections(
+    State(state): State<ServerState>,
+) -> Result<Json<Vec<coll::CollectionSummary>>, AppError> {
+    Ok(Json(coll::list_all_collections(state.db.pool()).await?))
+}
+
+/// The members of any collection (admin can inspect membership without the key).
+async fn admin_collection_members(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<coll::CollectionMember>>, AppError> {
+    Ok(Json(coll::list_members(state.db.pool(), &id).await?))
+}
+
+/// Revoke a member's access (deletes their sealed key row — no key needed).
+async fn admin_remove_collection_member(
+    State(state): State<ServerState>,
+    Path((id, target)): Path<(String, String)>,
+) -> Result<StatusCode, AppError> {
+    Ok(
+        if coll::remove_member(state.db.pool(), &id, &target).await? {
+            StatusCode::NO_CONTENT
+        } else {
+            StatusCode::NOT_FOUND
+        },
+    )
+}
+
+/// Force-delete a collection for everyone (governance/cleanup).
+async fn admin_delete_collection(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    Ok(
+        if coll::delete_collection(state.db.pool(), &id).await? {
             StatusCode::NO_CONTENT
         } else {
             StatusCode::NOT_FOUND

@@ -179,6 +179,23 @@ const routes: Record<string, Route> = {
     await json(`/api/admin/teams/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
     return null;
   },
+
+  // Collections governance (admin).
+  admin_list_collections: () => json('/api/admin/collections'),
+  admin_collection_members: (a) =>
+    json(`/api/admin/collections/${encodeURIComponent(String(a.id))}/members`),
+  admin_remove_collection_member: async (a) => {
+    await json(
+      `/api/admin/collections/${encodeURIComponent(String(a.id))}/members/${encodeURIComponent(String(a.userId))}`,
+      { method: 'DELETE' },
+    );
+    return null;
+  },
+  admin_delete_collection: async (a) => {
+    await json(`/api/admin/collections/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
+    return null;
+  },
+
   teams_mine: () => json('/api/teams'),
   team_members: (a) => json(`/api/teams/${encodeURIComponent(String(a.id))}/members`),
   team_add_member: async (a) => {

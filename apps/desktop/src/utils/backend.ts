@@ -400,6 +400,14 @@ export const BackendServer = {
 } as const;
 
 // Admin (server mode, role=admin) — account management.
+const CollectionSummarySchema = z.object({
+  id: z.string(),
+  createdAt: z.number(),
+  memberCount: z.number(),
+  itemCount: z.number(),
+});
+export type CollectionSummary = z.infer<typeof CollectionSummarySchema>;
+
 export const BackendAdmin = {
   listUsers: () => invokeWithValidation('admin_list_users', z.array(ServerUserSchema)),
   createUser: (
@@ -431,6 +439,14 @@ export const BackendAdmin = {
   /** Toggle client vault-key session persistence for the whole server (org-admin). */
   setSessionPersistence: (enabled: boolean) =>
     invokeWithValidation('admin_set_session_persistence', z.null(), { enabled }),
+
+  // Collections governance (admin). Names stay encrypted — counts/membership only.
+  listCollections: () => invokeWithValidation('admin_list_collections', z.array(CollectionSummarySchema)),
+  collectionMembers: (id: string) =>
+    invokeWithValidation('admin_collection_members', z.array(CollectionMemberSchema), { id }),
+  removeCollectionMember: (id: string, userId: string) =>
+    invokeWithValidation('admin_remove_collection_member', z.null(), { id, userId }),
+  deleteCollection: (id: string) => invokeWithValidation('admin_delete_collection', z.null(), { id }),
 } as const;
 
 // Context multiplexer (ADR 0012) — the native client's roster of contexts.

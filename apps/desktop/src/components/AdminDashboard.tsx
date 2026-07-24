@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { navigate } from '../store/route';
-import { Backend, type ServerUser } from '../utils/backend';
+import { Backend, type ServerUser, type CollectionSummary, type CollectionMember } from '../utils/backend';
 import { AdminUsersPanel } from './AdminUsersPanel';
 import { TeamsPanel } from './TeamsPanel';
 import { InstanceSettingsPanel } from './InstanceSettingsPanel';
@@ -142,25 +142,133 @@ function Overview({ onGo }: { onGo: (s: Sec) => void }) {
   );
 }
 
+function ZkBanner() {
+  return (
+    <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3.5 text-[13px] text-foreground/80">
+      <IconShield className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
+      <div>
+        <b>Zero-knowledge.</b> Collection names &amp; machine credentials are encrypted with a key only members hold —
+        the server (and this list) can&rsquo;t read them, so collections show by id for now. Admins govern membership
+        and lifecycle: you can remove a member or delete a collection, but <b>adding</b> a member needs the collection
+        key and stays a member action (from <code>/collections</code>). Reading names / adding members lands with the
+        split-key escrow.
+      </div>
+    </div>
+  );
+}
+
 function CollectionsGovernance() {
+  const [colls, setColls] = useState<CollectionSummary[] | null>(null);
+  const [sel, setSel] = useState<string | null>(null);
+  const [members, setMembers] = useState<CollectionMember[] | null>(null);
+
+  const load = () => Backend.Admin.listCollections().then(setColls).catch(() => setColls([]));
+  useEffect(() => {
+    load();
+  }, []);
+
+  const open = (id: string) => {
+    setSel(id);
+    setMembers(null);
+    Backend.Admin.collectionMembers(id).then(setMembers).catch(() => setMembers([]));
+  };
+  const removeMember = async (id: string, userId: string) => {
+    await Backend.Admin.removeCollectionMember(id, userId).catch(() => {});
+    open(id);
+    load();
+  };
+  const del = async (id: string) => {
+    if (!window.confirm('Force-delete this collection for every member? Its encrypted machines are lost.')) return;
+    await Backend.Admin.deleteCollection(id).catch(() => {});
+    setSel(null);
+    load();
+  };
+
+  const label = (id: string) => `Collection ${id.slice(0, 8)}`;
+
+  if (sel) {
+    return (
+      <>
+        <button onClick={() => setSel(null)} className="mb-4 flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground">
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
+          </svg>
+          Collections
+        </button>
+        <h1 className="mb-4 text-[22px] font-bold">{label(sel)}</h1>
+        <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
+          <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+            Members {members ? `· ${members.length}` : ''}
+          </div>
+          {members === null ? (
+            <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
+          ) : members.length === 0 ? (
+            <div className="px-4 py-4 text-sm text-muted-foreground">No members.</div>
+          ) : (
+            members.map((m) => (
+              <div key={m.userId} className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
+                <span className="flex-1 font-medium">{m.username}</span>
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">{m.role}</span>
+                <button onClick={() => removeMember(sel, m.userId)} className="rounded p-1 text-red-500 hover:bg-red-500/10" title="Remove member">
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
+                  </svg>
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5">
+          <div>
+            <div className="font-semibold text-red-500">Delete collection</div>
+            <div className="text-xs text-muted-foreground">Force-remove it for every member. The encrypted machines are lost.</div>
+          </div>
+          <button onClick={() => del(sel)} className="rounded-md border border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-500/10">
+            Delete
+          </button>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="mb-5">
         <h1 className="text-[22px] font-bold">Collections</h1>
         <span className="text-[13px] text-muted-foreground">Server-wide governance</span>
       </div>
-      <div className="mb-5 flex max-w-[820px] items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3.5 text-[13px] text-foreground/80">
-        <IconShield className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
-        <div>
-          <b>Zero-knowledge.</b> Machine hosts &amp; credentials are encrypted end-to-end — even admins can&rsquo;t
-          read them. Governance (listing collections, membership and policy) needs a dedicated server endpoint —
-          designed in the mock (<code>design/mock/admin.html</code>), not yet wired here.
+      <ZkBanner />
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b border-border px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span>Collection</span>
+          <span className="text-right">Members</span>
+          <span className="text-right">Machines</span>
+          <span className="w-6" />
         </div>
+        {colls === null ? (
+          <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
+        ) : colls.length === 0 ? (
+          <div className="px-4 py-4 text-sm text-muted-foreground">No collections.</div>
+        ) : (
+          colls.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => open(c.id)}
+              className="grid w-full grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b border-border px-4 py-3 text-left last:border-b-0 hover:bg-secondary"
+            >
+              <span className="flex items-center gap-2.5">
+                <IconCollection className="h-4 w-4 text-primary" />
+                <b>{label(c.id)}</b>
+              </span>
+              <span className="text-right text-sm">{c.memberCount}</span>
+              <span className="text-right text-sm">{c.itemCount}</span>
+              <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
+              </svg>
+            </button>
+          ))
+        )}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Coming next: the collections list (name / owner / members / machines), drill-in membership management, and
-        policy toggles. Tracked in the <code>rite-admin-console-split</code> plan.
-      </p>
     </>
   );
 }
