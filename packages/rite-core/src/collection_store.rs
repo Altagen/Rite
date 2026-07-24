@@ -100,6 +100,12 @@ pub struct CollectionSummary {
     pub created_at: i64,
     pub member_count: i64,
     pub item_count: i64,
+    /// The collection's metaKey sealed to the Admin-group public key (escrow), or
+    /// `None` for collections not escrowed (pre-split, or created before any admin
+    /// bootstrapped the group key). An admin unseals this → metaKey → the name.
+    pub meta_key_group_enc: Option<String>,
+    /// The Admin-group epoch the escrow was sealed to (matches `admin_group_key`).
+    pub group_epoch: Option<i64>,
 }
 
 fn now() -> i64 {
@@ -191,6 +197,38 @@ pub async fn add_member(
     .bind(protected_meta_key) // legacy column mirrors the meta key
     .bind(protected_meta_key)
     .bind(protected_items_key)
+    .bind(now())
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Add a member with ONLY the metaKey sealed (name/roster access, no machines) — an
+/// admin roster action via the group escrow. `protected_items_key` stays NULL until a
+/// real member seals the itemsKey to complete their access. Idempotent, but never
+/// downgrades: if the user is already a full member it leaves their itemsKey intact.
+pub async fn add_member_meta_only(
+    db: &SqlitePool,
+    collection_id: &str,
+    user_id: &str,
+    role: CollectionRole,
+    protected_meta_key: &str,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO collection_members
+             (collection_id, user_id, role, protected_collection_key,
+              protected_meta_key, protected_items_key, created_at)
+         VALUES (?, ?, ?, ?, ?, NULL, ?)
+         ON CONFLICT(collection_id, user_id) DO UPDATE SET
+             role = excluded.role,
+             protected_collection_key = excluded.protected_collection_key,
+             protected_meta_key = excluded.protected_meta_key",
+    )
+    .bind(collection_id)
+    .bind(user_id)
+    .bind(role.as_str())
+    .bind(protected_meta_key) // legacy column mirrors the meta key
+    .bind(protected_meta_key)
     .bind(now())
     .execute(db)
     .await?;
@@ -318,10 +356,11 @@ pub async fn list_collections_for_user(
 /// Every collection with member + item counts (admin governance). No key needed;
 /// names remain encrypted.
 pub async fn list_all_collections(db: &SqlitePool) -> Result<Vec<CollectionSummary>> {
-    let rows: Vec<(String, i64, i64, i64)> = sqlx::query_as(
+    let rows: Vec<(String, i64, i64, i64, Option<String>, Option<i64>)> = sqlx::query_as(
         "SELECT c.id, c.created_at,
             (SELECT COUNT(*) FROM collection_members m WHERE m.collection_id = c.id) AS member_count,
-            (SELECT COUNT(*) FROM collection_items i WHERE i.collection_id = c.id) AS item_count
+            (SELECT COUNT(*) FROM collection_items i WHERE i.collection_id = c.id) AS item_count,
+            c.meta_key_group_enc, c.group_epoch
          FROM collections c ORDER BY c.created_at DESC",
     )
     .fetch_all(db)
@@ -329,11 +368,15 @@ pub async fn list_all_collections(db: &SqlitePool) -> Result<Vec<CollectionSumma
     Ok(rows
         .into_iter()
         .map(
-            |(id, created_at, member_count, item_count)| CollectionSummary {
-                id,
-                created_at,
-                member_count,
-                item_count,
+            |(id, created_at, member_count, item_count, meta_key_group_enc, group_epoch)| {
+                CollectionSummary {
+                    id,
+                    created_at,
+                    member_count,
+                    item_count,
+                    meta_key_group_enc,
+                    group_epoch,
+                }
             },
         )
         .collect())
@@ -414,6 +457,175 @@ pub async fn delete_item(db: &SqlitePool, collection_id: &str, item_id: &str) ->
         .await?
         .rows_affected();
     Ok(n > 0)
+}
+
+// ---------------------------------------------------------------------------
+// Admin-group escrow (ADR 0016 split-key model).
+//
+// The Admin group has a versioned X25519 keypair (`admin_group_key`, one row per
+// epoch). A collection's metaKey is sealed once to the current group PUBLIC key
+// (`collections.meta_key_group_enc`); the group PRIVATE key is sealed to each admin
+// (`admin_group_grants`). So an admin unwraps the group key with their own key, then
+// unwraps a collection's metaKey → the name — never the itemsKey (machines). The
+// server only ever stores sealed blobs; it holds no key. Adding an admin = one new
+// grant; removing one = a fresh epoch (rotation), re-sealing every escrow client-side.
+// ---------------------------------------------------------------------------
+
+/// The current (highest-epoch) Admin-group public key, or `None` if never bootstrapped.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminGroupKey {
+    pub epoch: i64,
+    pub public_key: String,
+}
+
+/// An admin's sealed copy of the group private key for a given epoch.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminGroupGrant {
+    pub epoch: i64,
+    pub protected_private_key: String,
+}
+
+/// An admin who can hold a group grant (has a published X25519 public key).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdminKey {
+    pub user_id: String,
+    pub username: String,
+    pub public_key: String,
+}
+
+/// Set (or clear) a collection's metaKey escrow to the Admin group's current epoch.
+pub async fn set_collection_group_escrow(
+    db: &SqlitePool,
+    collection_id: &str,
+    meta_key_group_enc: &str,
+    group_epoch: i64,
+) -> Result<bool> {
+    let n =
+        sqlx::query("UPDATE collections SET meta_key_group_enc = ?, group_epoch = ? WHERE id = ?")
+            .bind(meta_key_group_enc)
+            .bind(group_epoch)
+            .bind(collection_id)
+            .execute(db)
+            .await?
+            .rows_affected();
+    Ok(n > 0)
+}
+
+/// The current Admin-group public key (highest epoch), or `None`.
+pub async fn current_admin_group(db: &SqlitePool) -> Result<Option<AdminGroupKey>> {
+    let row: Option<(i64, String)> =
+        sqlx::query_as("SELECT epoch, public_key FROM admin_group_key ORDER BY epoch DESC LIMIT 1")
+            .fetch_optional(db)
+            .await?;
+    Ok(row.map(|(epoch, public_key)| AdminGroupKey { epoch, public_key }))
+}
+
+/// An admin's sealed group private key for the current epoch, or `None` if they
+/// have no grant yet (e.g. promoted after the last rotation — needs a re-grant).
+pub async fn admin_group_grant(db: &SqlitePool, user_id: &str) -> Result<Option<AdminGroupGrant>> {
+    let row: Option<(i64, String)> = sqlx::query_as(
+        "SELECT g.epoch, g.protected_private_key
+         FROM admin_group_grants g
+         WHERE g.user_id = ? AND g.epoch = (SELECT MAX(epoch) FROM admin_group_key)",
+    )
+    .bind(user_id)
+    .fetch_optional(db)
+    .await?;
+    Ok(row.map(|(epoch, protected_private_key)| AdminGroupGrant {
+        epoch,
+        protected_private_key,
+    }))
+}
+
+/// Bootstrap or rotate the Admin group: insert a new epoch public key and the group
+/// private key sealed to each admin. One transaction so the epoch and its grants land
+/// together (a half-written epoch would lock everyone out of the new key).
+pub async fn set_admin_group(
+    db: &SqlitePool,
+    epoch: i64,
+    public_key: &str,
+    grants: &[(String, String)], // (user_id, protected_private_key)
+) -> Result<()> {
+    let mut tx = db.begin().await?;
+    let ts = now();
+    sqlx::query("INSERT INTO admin_group_key (epoch, public_key, created_at) VALUES (?, ?, ?)")
+        .bind(epoch)
+        .bind(public_key)
+        .bind(ts)
+        .execute(&mut *tx)
+        .await?;
+    for (user_id, protected_private_key) in grants {
+        sqlx::query(
+            "INSERT INTO admin_group_grants (epoch, user_id, protected_private_key, created_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(epoch, user_id) DO UPDATE SET
+                 protected_private_key = excluded.protected_private_key",
+        )
+        .bind(epoch)
+        .bind(user_id)
+        .bind(protected_private_key)
+        .bind(ts)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Add a single admin grant for the current epoch (promoting/adding an admin — no
+/// rotation needed, just seal the existing group private key to them).
+pub async fn add_admin_group_grant(
+    db: &SqlitePool,
+    epoch: i64,
+    user_id: &str,
+    protected_private_key: &str,
+) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO admin_group_grants (epoch, user_id, protected_private_key, created_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(epoch, user_id) DO UPDATE SET
+             protected_private_key = excluded.protected_private_key",
+    )
+    .bind(epoch)
+    .bind(user_id)
+    .bind(protected_private_key)
+    .bind(now())
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Admins (role = 'admin') that have a published X25519 public key — the recipients
+/// a group grant can be sealed to.
+pub async fn list_admins_with_keys(db: &SqlitePool) -> Result<Vec<AdminKey>> {
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT id, username, public_key FROM users
+         WHERE role = 'admin' AND public_key IS NOT NULL AND public_key <> ''
+         ORDER BY username",
+    )
+    .fetch_all(db)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(user_id, username, public_key)| AdminKey {
+            user_id,
+            username,
+            public_key,
+        })
+        .collect())
+}
+
+/// Every collection's id + its current metaKey escrow (for a rotation pass: an admin
+/// re-seals each to a new group epoch). Names stay encrypted.
+pub async fn list_collection_escrows(db: &SqlitePool) -> Result<Vec<(String, Option<String>)>> {
+    let rows: Vec<(String, Option<String>)> =
+        sqlx::query_as("SELECT id, meta_key_group_enc FROM collections ORDER BY created_at")
+            .fetch_all(db)
+            .await?;
+    Ok(rows)
 }
 
 #[cfg(test)]

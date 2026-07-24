@@ -393,11 +393,24 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route(
             "/api/admin/collections/{id}/members",
-            get(admin_collection_members),
+            get(admin_collection_members).patch(admin_add_collection_member),
         )
         .route(
             "/api/admin/collections/{id}/members/{userId}",
             delete(admin_remove_collection_member),
+        )
+        // Admin-group escrow (ADR 0016 split-key): the group X25519 keypair (versioned
+        // by epoch) whose private key is sealed to each admin, so admins can read
+        // collection names + govern rosters without ever holding item keys.
+        .route(
+            "/api/admin/group-key",
+            get(admin_group_key_ep).post(set_admin_group_ep),
+        )
+        .route("/api/admin/group-grant", get(admin_group_grant_ep))
+        .route("/api/admin/admins", get(admin_list_admins_ep))
+        .route(
+            "/api/admin/collections/{id}/escrow",
+            patch(admin_set_escrow_ep),
         )
         .route("/api/teams", get(my_teams))
         .route(
@@ -426,6 +439,9 @@ pub fn build_router(state: ServerState) -> Router {
         // collection key; roles (owner/editor/viewer) gate manage vs write. The
         // server stores only opaque blobs (names + items encrypted).
         .route("/api/directory", get(directory_ep))
+        // The Admin-group PUBLIC key (member-readable — it is public): a creator seals
+        // a new collection's metaKey to it so admins can later read the name.
+        .route("/api/collections/group-key", get(collections_group_key_ep))
         .route(
             "/api/collections",
             get(my_collections).post(create_collection_ep),
@@ -1330,6 +1346,135 @@ async fn admin_delete_collection(
     })
 }
 
+// --- Admin-group escrow endpoints (ADR 0016 split-key) ----------------------
+
+/// The current Admin-group public key (member-readable — it is public). A collection
+/// creator seals its metaKey to this so admins can later read the name. Null if no
+/// admin has bootstrapped the group yet (the name simply stays admin-invisible).
+async fn collections_group_key_ep(
+    State(state): State<ServerState>,
+) -> Result<Json<Option<coll::AdminGroupKey>>, AppError> {
+    Ok(Json(coll::current_admin_group(state.db.pool()).await?))
+}
+
+/// Same, on the admin surface (used during rotation to read the prior epoch pubkey).
+async fn admin_group_key_ep(
+    State(state): State<ServerState>,
+) -> Result<Json<Option<coll::AdminGroupKey>>, AppError> {
+    Ok(Json(coll::current_admin_group(state.db.pool()).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdminGroupGrantReq {
+    user_id: String,
+    protected_private_key: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetAdminGroupReq {
+    epoch: i64,
+    public_key: String,
+    grants: Vec<AdminGroupGrantReq>,
+}
+
+/// Bootstrap or rotate the Admin group: a client-admin generated a fresh keypair,
+/// sealed the private key to each admin, and (on rotation) re-sealed every collection
+/// escrow. The server just records the new epoch + grants — it never sees a key.
+async fn set_admin_group_ep(
+    State(state): State<ServerState>,
+    Json(req): Json<SetAdminGroupReq>,
+) -> Result<StatusCode, AppError> {
+    let grants: Vec<(String, String)> = req
+        .grants
+        .into_iter()
+        .map(|g| (g.user_id, g.protected_private_key))
+        .collect();
+    coll::set_admin_group(state.db.pool(), req.epoch, &req.public_key, &grants).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// This admin's sealed group private key for the current epoch (404 if they hold no
+/// grant yet — e.g. promoted after the last rotation, awaiting a re-grant).
+async fn admin_group_grant_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Response, AppError> {
+    Ok(
+        match coll::admin_group_grant(state.db.pool(), &user.id).await? {
+            Some(g) => Json(g).into_response(),
+            None => StatusCode::NOT_FOUND.into_response(),
+        },
+    )
+}
+
+/// The admins (with published public keys) a group grant can be sealed to.
+async fn admin_list_admins_ep(
+    State(state): State<ServerState>,
+) -> Result<Json<Vec<coll::AdminKey>>, AppError> {
+    Ok(Json(coll::list_admins_with_keys(state.db.pool()).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetEscrowReq {
+    meta_key_group_enc: String,
+    group_epoch: i64,
+}
+
+/// Re-seal a collection's metaKey escrow to a (new) group epoch — the per-collection
+/// step of a rotation, driven by a client-admin who re-sealed with the prior key.
+async fn admin_set_escrow_ep(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Json(req): Json<SetEscrowReq>,
+) -> Result<StatusCode, AppError> {
+    Ok(
+        if coll::set_collection_group_escrow(
+            state.db.pool(),
+            &id,
+            &req.meta_key_group_enc,
+            req.group_epoch,
+        )
+        .await?
+        {
+            StatusCode::NO_CONTENT
+        } else {
+            StatusCode::NOT_FOUND
+        },
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdminAddMemberReq {
+    user_id: String,
+    protected_meta_key: String,
+}
+
+/// Admin roster meta-add: grant a user name/roster access to a collection by sealing
+/// only its metaKey (the admin holds it via the group escrow). The itemsKey stays
+/// unset — machine access requires a real member to seal it. Added as a viewer.
+async fn admin_add_collection_member(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Json(req): Json<AdminAddMemberReq>,
+) -> Result<Response, AppError> {
+    match coll::add_member_meta_only(
+        state.db.pool(),
+        &id,
+        &req.user_id,
+        coll::CollectionRole::Viewer,
+        &req.protected_meta_key,
+    )
+    .await
+    {
+        Ok(()) => Ok(StatusCode::NO_CONTENT.into_response()),
+        Err(_) => Ok((StatusCode::BAD_REQUEST, "unknown user").into_response()),
+    }
+}
+
 /// Teams the caller belongs to (any authenticated user).
 async fn my_teams(
     State(state): State<ServerState>,
@@ -1570,6 +1715,10 @@ struct CreateCollectionReq {
     protected_collection_key: Option<String>,
     protected_meta_key: Option<String>,
     protected_items_key: Option<String>,
+    // Optional Admin-group escrow: metaKey sealed to the group public key so admins
+    // can read the name. Absent when no admin group exists yet (name stays private).
+    meta_key_group_enc: Option<String>,
+    group_epoch: Option<i64>,
 }
 
 async fn create_collection_ep(
@@ -1588,6 +1737,9 @@ async fn create_collection_ep(
         return Ok((StatusCode::BAD_REQUEST, "missing sealed collection keys").into_response());
     };
     let id = coll::create_collection(state.db.pool(), &req.name_enc, &user.id, meta, items).await?;
+    if let (Some(enc), Some(epoch)) = (req.meta_key_group_enc.as_ref(), req.group_epoch) {
+        coll::set_collection_group_escrow(state.db.pool(), &id, enc, epoch).await?;
+    }
     Ok((StatusCode::CREATED, Json(json!({ "id": id }))).into_response())
 }
 
