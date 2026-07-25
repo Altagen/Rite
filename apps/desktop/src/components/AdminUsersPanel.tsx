@@ -28,6 +28,15 @@ export function AdminUsersPanel() {
     if (!sec) return;
     await rotateGroup(g, sec).catch(() => {});
   };
+
+  // Re-enabling an admin restores their name access: seal the current group key to
+  // them (they lost it when disabling rotated the group). O(1), no rotation.
+  const grantReenabledAdmin = async (userId: string) => {
+    if (!publicKey || !privateKey) return;
+    const admins = await Backend.Admin.listAdmins().catch(() => []);
+    const a = admins.find((x) => x.userId === userId);
+    if (a) await grantToAdmin(publicKey, privateKey, a.userId, a.publicKey).catch(() => {});
+  };
   const [users, setUsers] = useState<ServerUser[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -148,12 +157,17 @@ export function AdminUsersPanel() {
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() =>
-                            act(() =>
-                              Backend.Admin.setStatus(
-                                u.id,
-                                u.status === 'active' ? 'disabled' : 'active',
-                              ),
-                            )
+                            act(async () => {
+                              const next = u.status === 'active' ? 'disabled' : 'active';
+                              await Backend.Admin.setStatus(u.id, next);
+                              // Disabling an admin rotates the group (cuts their future
+                              // name access — their group key is already client-side, so
+                              // only rotation revokes it); re-enabling re-grants them.
+                              if (u.role === 'admin') {
+                                if (next === 'disabled') await rotateAfterAdminRemoval();
+                                else await grantReenabledAdmin(u.id);
+                              }
+                            })
                           }
                           disabled={busy}
                           className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"

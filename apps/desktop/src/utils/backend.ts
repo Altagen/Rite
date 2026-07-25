@@ -623,6 +623,8 @@ const CollectionMemberSchema = z.object({
   username: z.string(),
   role: CollectionRoleSchema,
   publicKey: z.string().nullable().optional(),
+  // False for a roster-only member (admin meta-add) awaiting machine access.
+  hasItemsKey: z.boolean().optional(),
 });
 const CollectionItemSchema = z.object({
   id: z.string(),

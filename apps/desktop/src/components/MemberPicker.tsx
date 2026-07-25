@@ -79,6 +79,9 @@ export function MemberPicker({
     itemsKey: Uint8Array | null;
   } | null>(null);
   const [myRole, setMyRole] = useState<CollectionRole>('owner');
+  // Members added roster-only by an admin (metaKey but no itemsKey) — a key-holding
+  // owner can complete their machine access from here.
+  const [pending, setPending] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,6 +105,7 @@ export function MemberPicker({
           Backend.Collections.members(collectionId),
         ]);
         setChosen(new Map(members.map((m) => [m.userId, m.role])));
+        setPending(new Set(members.filter((m) => m.hasItemsKey === false).map((m) => m.userId)));
         setMyRole(members.find((m) => m.userId === me?.id)?.role ?? 'viewer');
         const self = mine.find((c) => c.id === collectionId);
         if (self && publicKey && privateKey) {
@@ -177,6 +181,29 @@ export function MemberPicker({
     void run(async () => {
       await Backend.Collections.setRole(collectionId, userId, role);
       setLocal(userId, role);
+      onSaved();
+    });
+  };
+
+  // Complete a roster-only member's access: seal both keys to them (an owner holds
+  // the itemsKey the admin meta-add couldn't). Upserts → sets their itemsKey.
+  const grantMachineAccess = (entry: DirectoryEntry) => {
+    if (!collKeys?.itemsKey || !collectionId || !entry.publicKey) return;
+    const { metaKey, itemsKey } = collKeys;
+    const role = chosen.get(entry.id) ?? 'viewer';
+    void run(async () => {
+      await Backend.Collections.addMember(
+        collectionId,
+        entry.id,
+        role,
+        await sealCollectionKeyToHex(entry.publicKey!, metaKey),
+        await sealCollectionKeyToHex(entry.publicKey!, itemsKey),
+      );
+      setPending((prev) => {
+        const next = new Set(prev);
+        next.delete(entry.id);
+        return next;
+      });
       onSaved();
     });
   };
@@ -352,6 +379,28 @@ export function MemberPicker({
                         {isMe && <span className="text-xs text-muted-foreground"> · you</span>}
                       </div>
                     </div>
+                    {on &&
+                      pending.has(d.id) &&
+                      (iManage && collKeys?.itemsKey && !isMe ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            grantMachineAccess(d);
+                          }}
+                          disabled={busy}
+                          title="Roster-only: sees the name but no machines. Seal machine access to them."
+                          className="rounded border border-primary/40 px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
+                        >
+                          Grant machine access
+                        </button>
+                      ) : (
+                        <span
+                          title="Awaiting machine access from a member"
+                          className="rounded-full bg-secondary px-2 py-0.5 text-[10px] uppercase text-muted-foreground"
+                        >
+                          no machines
+                        </span>
+                      ))}
                     {on &&
                       (iManage && !isMe ? (
                         <select

@@ -77,6 +77,9 @@ pub struct CollectionMember {
     pub username: String,
     pub role: CollectionRole,
     pub public_key: Option<String>,
+    /// Whether this member holds the itemsKey (machine access). `false` for a
+    /// roster-only member (admin meta-add) awaiting a member to seal it.
+    pub has_items_key: bool,
 }
 
 /// An encrypted item (a machine/connection) in a collection.
@@ -288,8 +291,9 @@ pub async fn count_owners(db: &SqlitePool, collection_id: &str) -> Result<i64> {
 
 /// The member list joined with usernames + public keys (for the manage UI / picker).
 pub async fn list_members(db: &SqlitePool, collection_id: &str) -> Result<Vec<CollectionMember>> {
-    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT cm.user_id, u.username, cm.role, u.public_key
+    let rows: Vec<(String, String, String, Option<String>, bool)> = sqlx::query_as(
+        "SELECT cm.user_id, u.username, cm.role, u.public_key,
+                cm.protected_items_key IS NOT NULL AS has_items_key
          FROM collection_members cm JOIN users u ON u.id = cm.user_id
          WHERE cm.collection_id = ? ORDER BY u.username",
     )
@@ -298,12 +302,15 @@ pub async fn list_members(db: &SqlitePool, collection_id: &str) -> Result<Vec<Co
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(user_id, username, role, public_key)| CollectionMember {
-            user_id,
-            username,
-            role: CollectionRole::parse(&role),
-            public_key,
-        })
+        .map(
+            |(user_id, username, role, public_key, has_items_key)| CollectionMember {
+                user_id,
+                username,
+                role: CollectionRole::parse(&role),
+                public_key,
+                has_items_key,
+            },
+        )
         .collect())
 }
 
@@ -592,12 +599,15 @@ pub async fn add_admin_group_grant(
     Ok(())
 }
 
-/// Admins (role = 'admin') that have a published X25519 public key — the recipients
-/// a group grant can be sealed to.
+/// Active admins (role = 'admin', status = 'active') that have a published X25519
+/// public key — the recipients a group grant can be sealed to. Disabled admins are
+/// excluded so disabling one (then rotating) actually cuts their future name access
+/// instead of re-granting them.
 pub async fn list_admins_with_keys(db: &SqlitePool) -> Result<Vec<AdminKey>> {
     let rows: Vec<(String, String, String)> = sqlx::query_as(
         "SELECT id, username, public_key FROM users
-         WHERE role = 'admin' AND public_key IS NOT NULL AND public_key <> ''
+         WHERE role = 'admin' AND status = 'active'
+           AND public_key IS NOT NULL AND public_key <> ''
          ORDER BY username",
     )
     .fetch_all(db)
