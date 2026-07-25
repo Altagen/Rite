@@ -338,6 +338,10 @@ const ServerModeSchema = z.object({
   // Whether the client may persist the vault key in sessionStorage (default true
   // when absent). Admin-controlled; still zero-knowledge (key stays in the browser).
   sessionPersistence: z.boolean().optional(),
+  // Which surfaces this deployment serves (default true when absent). serveAdmin
+  // gates the admin console; serveWebui gates the client workspace.
+  serveAdmin: z.boolean().optional(),
+  serveWebui: z.boolean().optional(),
 });
 const PreloginSchema = z.object({ salt: z.string(), params: KdfParamsSchema });
 const ServerUserSchema = z.object({

@@ -54,6 +54,12 @@ pub struct ServerState {
     /// bearer token) instead of the loopback launch token. Mutually exclusive
     /// with `token` in practice (local shell vs shared server).
     pub accounts: bool,
+    /// Which served surfaces this deployment exposes (rite-admin-console-split
+    /// runtime gating). Both default on; a deployment can serve the client
+    /// workspace, the admin console, both, or neither. The API `/api/admin/*`
+    /// guard stays the hard boundary — these gate the UI surface only.
+    pub serve_admin: bool,
+    pub serve_webui: bool,
     /// Per-account login rate limiter (brute-force protection, server mode).
     login_limiter: Arc<LoginLimiter>,
     /// True when rite-server terminates TLS itself (adds HSTS). Behind a reverse
@@ -205,6 +211,18 @@ impl LoginLimiter {
     }
 }
 
+/// A boolean env flag: returns `default` when unset, else off for `0/false/off/no`
+/// (case-insensitive) and on for anything else. Used by the serve-surface flags.
+fn env_flag(name: &str, default: bool) -> bool {
+    match std::env::var(name) {
+        Ok(v) => !matches!(
+            v.trim().to_ascii_lowercase().as_str(),
+            "0" | "false" | "off" | "no"
+        ),
+        Err(_) => default,
+    }
+}
+
 impl ServerState {
     /// Open the vault at `db_path` and build the rite-core managers.
     pub async fn new(db_path: &std::path::Path) -> Result<Self> {
@@ -229,6 +247,8 @@ impl ServerState {
             events_tx,
             token: None,
             accounts: false,
+            serve_admin: env_flag("RITE_SERVE_ADMIN", true),
+            serve_webui: env_flag("RITE_SERVE_WEBUI", true),
             login_limiter: Arc::new(LoginLimiter::default()),
             tls: false,
             context: Arc::new(std::sync::Mutex::new(ActiveContext::Local)),
@@ -949,6 +969,8 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "needsBootstrap": needs_bootstrap,
         "instanceName": instance_name,
         "sessionPersistence": session_persistence,
+        "serveAdmin": state.serve_admin,
+        "serveWebui": state.serve_webui,
     })))
 }
 

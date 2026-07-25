@@ -15,6 +15,7 @@ import { useAccountsConnectionsSource } from '../store/accountsConnectionsSource
 import { useRoutePath, navigate } from '../store/route';
 import { Workspace } from './Workspace';
 import { AdminDashboard } from './AdminDashboard';
+import { AdminOnlyNotice } from './AdminOnlyNotice';
 import { CollectionsDashboard } from './CollectionsDashboard';
 import { IconCollection, IconShield } from './icons';
 
@@ -48,10 +49,26 @@ export function AccountsShell() {
   if (!userKey) return <ReauthNotice onSignOut={() => logout()} />;
 
   const isAdmin = user.role === 'admin';
+  // Runtime serve-surface gating (rite-admin-console-split): a deployment can turn
+  // the admin console and/or the client workspace off. Both default on when absent.
+  const serveAdmin = mode?.serveAdmin !== false;
+  const serveWebui = mode?.serveWebui !== false;
+  const canAdmin = isAdmin && serveAdmin;
+
+  // Admin-only server (client workspace off): no Workspace at all — an admin gets the
+  // console as the whole surface; anyone else is told they have no access here.
+  if (!serveWebui) {
+    return canAdmin ? (
+      <AdminDashboard hideBack />
+    ) : (
+      <AdminOnlyNotice onSignOut={() => logout()} />
+    );
+  }
+
   // `/admin` and `/collections` are real routes rendered as overlays over the
-  // (kept-mounted) workspace, so live terminals survive a trip to admin. A
-  // non-admin who lands on `/admin` is bounced back to the app.
-  if (path === '/admin' && !isAdmin) navigate('/');
+  // (kept-mounted) workspace, so live terminals survive a trip to admin. A non-admin
+  // (or an admin on a server with the console gated off) is bounced back to the app.
+  if (path === '/admin' && !canAdmin) navigate('/');
 
   return (
     <>
@@ -72,7 +89,7 @@ export function AccountsShell() {
               <IconCollection className="h-4 w-4" />
               <span className="hidden md:inline">Collections</span>
             </button>
-            {isAdmin ? (
+            {canAdmin ? (
               <button onClick={() => navigate('/admin')} className="m-btn m-btn-ghost m-btn-sm" title="Administration">
                 <IconShield className="h-4 w-4" />
                 <span className="hidden md:inline">Admin</span>
@@ -82,7 +99,7 @@ export function AccountsShell() {
         }
       />
       {path === '/collections' && <CollectionsDashboard />}
-      {path === '/admin' && isAdmin && <AdminDashboard />}
+      {path === '/admin' && canAdmin && <AdminDashboard />}
     </>
   );
 }

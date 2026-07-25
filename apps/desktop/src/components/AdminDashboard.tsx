@@ -51,7 +51,7 @@ function IconGrid() {
   );
 }
 
-export function AdminDashboard() {
+export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}) {
   const { mode, logout } = useServerSession();
   const [sec, setSec] = useState<Sec>('overview');
 
@@ -72,12 +72,14 @@ export function AdminDashboard() {
           </span>
         )}
         <span className="m-spacer" />
-        <button onClick={() => navigate('/')} className="m-btn m-btn-sm" title="Back to the connection manager">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
-          </svg>
-          <span className="hidden md:inline">Back to app</span>
-        </button>
+        {!hideBack && (
+          <button onClick={() => navigate('/')} className="m-btn m-btn-sm" title="Back to the connection manager">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
+            </svg>
+            <span className="hidden md:inline">Back to app</span>
+          </button>
+        )}
         <button onClick={() => logout()} className="m-btn m-btn-ghost m-btn-sm" title="Sign out">
           <IconLock className="h-4 w-4" />
           <span className="hidden md:inline">Sign out</span>
