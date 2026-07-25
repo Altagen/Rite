@@ -114,8 +114,11 @@ export function AdminUsersPanel() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
-      <h2 className="text-xl font-semibold">Users</h2>
+    <div className="mx-auto w-full max-w-4xl space-y-5">
+      <div className="flex items-center gap-3.5">
+        <h1 className="text-[22px] font-bold">Users</h1>
+        <span className="text-[13px] text-muted-foreground">Accounts on this instance</span>
+      </div>
 
       {error && (
         <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">
@@ -123,14 +126,14 @@ export function AdminUsersPanel() {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="overflow-x-auto rounded-2xl border border-border bg-card">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-muted-foreground">
+          <thead className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-4 py-2 font-medium">Username</th>
-              <th className="px-4 py-2 font-medium">Role</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium text-right">Actions</th>
+              <th className="px-4 py-3 font-semibold">Username</th>
+              <th className="px-4 py-3 font-semibold">Role</th>
+              <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -138,21 +141,31 @@ export function AdminUsersPanel() {
               const isSelf = u.id === me?.id;
               return (
                 <tr key={u.id} className="border-t border-border">
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2.5 font-medium">
                     {u.username}
-                    {isSelf && <span className="ml-2 text-xs text-muted-foreground">(you)</span>}
+                    {isSelf && <span className="ml-2 text-xs font-normal text-muted-foreground">(you)</span>}
                   </td>
-                  <td className="px-4 py-2 uppercase">{u.role}</td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2.5">
                     <span
-                      className={
-                        u.status === 'active' ? 'text-green-600' : 'text-muted-foreground'
-                      }
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                        u.role === 'admin' ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
+                      }`}
+                    >
+                      {u.role}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                        u.status === 'active'
+                          ? 'bg-green-500/15 text-green-500'
+                          : 'bg-secondary text-muted-foreground'
+                      }`}
                     >
                       {u.status}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="px-4 py-2.5 text-right">
                     {!isSelf && (
                       <div className="flex justify-end gap-2">
                         <button
@@ -199,8 +212,10 @@ export function AdminUsersPanel() {
 
       <form
         onSubmit={handleCreate}
-        className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-4"
+        className="space-y-3 rounded-2xl border border-border bg-card p-4"
       >
+        <div className="text-sm font-semibold">Add a user</div>
+        <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1 space-y-1">
           <label htmlFor="new-username" className="text-xs font-medium text-muted-foreground">
             Username
@@ -248,6 +263,7 @@ export function AdminUsersPanel() {
         >
           Add user
         </button>
+        </div>
       </form>
     </div>
   );
