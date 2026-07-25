@@ -1,8 +1,8 @@
 /**
  * The user's collection manager at the `/collections` route (ADR 0016) — the
- * collections I'm a member of, opened from the header. A dedicated page rather than
- * a cramped modal. For now it hosts the existing CollectionsPanel; the master-detail
- * design (members + roles + sharing) from design/mock/collections.html lands next.
+ * collections I'm a member of, opened from the header. A dedicated page (top bar +
+ * the master-detail CollectionsPanel: rail on the left, editor on the right),
+ * matching design/mock/collections.html.
  */
 
 import { useServerSession } from '../store/serverSessionStore';
@@ -37,11 +37,7 @@ export function CollectionsDashboard() {
           <span className="hidden md:inline">Sign out</span>
         </button>
       </header>
-      <main className="min-w-0 flex-1 overflow-y-auto px-8 py-7">
-        <div className="mx-auto max-w-[1400px]">
-          <CollectionsPanel />
-        </div>
-      </main>
+      <CollectionsPanel />
     </div>
   );
 }
