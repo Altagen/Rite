@@ -27,10 +27,13 @@ const ORG = {
     {u:'erin', role:'user', label:'erin'},
     {u:'frank', role:'user', label:'frank'},
   ],
+  // Teams are keyless rosters: a group of people + a per-member role ('admin' =
+  // Manager, in the UI | member). Nothing is encrypted with a team key — sharing is
+  // always a collection. A manager just manages who's in the team.
   teams:[
-    {name:'Eng', members:['alex','carol','dan']},
-    {name:'Ops', members:['erin','frank']},
-    {name:'Design', members:['carol','erin']},
+    {name:'Eng',    members:['alex','carol','dan'],  roles:{alex:'admin', carol:'admin', dan:'member'}},
+    {name:'Ops',    members:['alex','erin','frank'], roles:{alex:'member', erin:'admin', frank:'member'}},
+    {name:'Design', members:['alex','carol','erin'], roles:{alex:'admin', carol:'member', erin:'member'}},
   ],
 };
 
@@ -44,6 +47,7 @@ const COLL = [
     conns:[ {name:'Bastion', host:'bastion.acme.io', user:'alex', port:22} ],
     children:[
       { id:'c-prod', name:'Production', shared:true, members:['alex','carol','erin'],
+        offer:{team:'Eng', label:'Production servers'},
         conns:[ {name:'web-01', host:'10.0.0.5', user:'deploy', port:22},
                 {name:'web-02', host:'10.0.0.6', user:'deploy', port:22},
                 {name:'lb-01', host:'10.0.0.4', user:'deploy', port:22} ] },
@@ -53,4 +57,8 @@ const COLL = [
   { id:'c-db', name:'Databases', shared:true, members:['alex','dan'],
     conns:[ {name:'pg-prod', host:'db.acme.io', user:'dba', port:2222},
             {name:'redis', host:'cache.acme.io', user:'ops', port:22} ] },
+  // Offered to Eng but I'm not a member yet → I can discover it + request access.
+  { id:'c-analytics', name:'Analytics', shared:true, members:['carol','dan'],
+    offer:{team:'Eng', label:'Analytics dashboards'},
+    conns:[ {name:'grafana', host:'10.2.0.9', user:'viewer', port:22} ] },
 ];

@@ -69,6 +69,7 @@
    A user-facing page (opened from the "Collections" header button) to manage the
    collections you belong to: members, roles, sharing, colour, rename, delete. */
 const ME='alex';
+const ALLTEAMS=(typeof ORG!=='undefined'&&ORG.teams?ORG.teams.map(t=>t.name):['Eng','Ops','Design']);
 const AV_COLORS=['#7c9cf5','#9ece6a','#e5b567','#f0a35e','#f7768e','#bb9af7','#56c7c0'];
 const CCOLORS=['#7c9cf5','#9ece6a','#e5b567','#f0a35e','#f7768e','#bb9af7','#56c7c0','#94a3b8'];
 const avColor=n=>AV_COLORS[[...n].reduce((a,c)=>a+c.charCodeAt(0),0)%AV_COLORS.length];
@@ -140,8 +141,22 @@ function detail(){
     return head+`<div class="cmain-sub">Your private space — only you. It can't be shared or deleted; it always exists.</div>`+swatches+rename('Label your personal space.');
 
   // Shared: members always; colour/rename only for writers; delete (owner) / leave (member).
+  // Offer to a team (discovery) — owner only. Lists the collection to a team so its
+  // members can find it and request access. The label is NOT encrypted (visible to the
+  // team + server); the real name and the machines stay end-to-end encrypted.
+  const off=c.offer||null;
+  const offer=`<div class="panel" style="padding:16px 18px">
+    <div style="font-weight:600;margin-bottom:2px">Offer to a team</div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">List this collection to a team so its members can discover it and request access. They still can't open it until you grant them.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select class="inp" style="width:auto" onchange="toast('Offer '+(this.value==='— none —'?'removed':'set to '+this.value))"><option ${!off?'selected':''}>— none —</option>${ALLTEAMS.map(tn=>`<option ${off&&off.team===tn?'selected':''}>${tn}</option>`).join('')}</select>
+      <input class="inp" style="flex:1;min-width:200px" placeholder="Discovery label (shown to the team)" value="${off?off.label:''}">
+      <button class="btn btn-sm" onclick="toast('Offer saved')">Save</button></div>
+    <div style="margin-top:10px;font-size:12px;color:#f59e0b;display:flex;gap:7px;align-items:flex-start"><span>⚠</span><span>This label is <b>not encrypted</b> — visible to the team and the server so people can find it. Keep it non-sensitive; the collection's real name and its machines stay end-to-end encrypted.</span></div>
+  </div>`;
+
   return head+`<div class="cmain-sub">Shared with ${c.members.length} people · you are ${myRole(c)}.</div>`
-    +members+(write?swatches+rename('A name only members can read.'):'')+danger;
+    +members+(write?swatches+rename('A name only members can read.'):'')+(owner?offer:'')+danger;
 }
 
 function render(){renderList();document.getElementById('detail').innerHTML=detail();}

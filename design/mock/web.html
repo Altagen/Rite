@@ -53,6 +53,7 @@
   .inst{display:flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--border2);border-radius:10px;background:var(--card);font-weight:650}
   .inst .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
   .appbar{flex-wrap:wrap;row-gap:8px}#acts{flex-wrap:wrap;justify-content:flex-end}
+  .notif{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 2px var(--bg)}
   @media (max-width:760px){ .lbl{display:none} .side{width:240px} }
   @media (max-width:560px){ .side{position:absolute;z-index:20;height:100%;box-shadow:var(--shadow)} }
 </style>
@@ -147,6 +148,7 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
     <button class="btn btn-primary btn-sm" title="New terminal on the server" onclick="toast('New terminal · ${sh.name}')">${ICON.term} <span class="lbl">Terminal</span></button>
     <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
     <button class="btn btn-sm" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>
+    <button class="btn btn-ghost btn-sm" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
     <button class="btn btn-ghost btn-sm" title="Collections" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>
     ${IS_ADMIN?`<button class="btn btn-ghost btn-sm" title="Administration" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Admin</span></button>`:''}
     <button class="btn btn-ghost btn-sm" title="Settings" onclick="openSettings()">${EXICON.gear}</button>
