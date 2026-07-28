@@ -70,6 +70,10 @@
   .zk .ic{color:var(--accent);flex-shrink:0;display:grid;place-items:center;margin-top:1px}
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);padding:11px 16px;border-radius:10px;box-shadow:var(--shadow);opacity:0;transition:.2s;z-index:80;font-size:13px}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  .appbar{flex-wrap:wrap;row-gap:8px}
+  /* Responsive: narrow the nav, then turn it into a horizontal tab bar on top. */
+  @media (max-width:900px){ .admin-nav{width:180px} .admin-main{padding:20px 18px} }
+  @media (max-width:640px){ .admin-body{flex-direction:column} .admin-nav{width:100%;flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border);padding:8px} .navitem{white-space:nowrap} .admin-main{padding:18px 14px} .admin-main .panel{overflow-x:auto} }
 </style>
 </head>
 <body>
@@ -167,7 +171,7 @@ function teams(){
     <div class="panel"><div class="panel-h"><span class="t">Members</span></div>
       ${t.members.map(m=>memberRow(m,m!==t.members[0])).join('')}${addPicker(t.members,t.name)}</div>
     <div class="panel"><div class="panel-h"><span class="t">Danger zone</span></div>
-      <div style="padding:14px 18px;display:flex;align-items:center;gap:12px"><span style="flex:1"><b>Delete team</b><div class="muted" style="font-size:12px">Removes the team and its key sharing. Collections shared to it lose that grant.</div></span><button class="btn btn-sm" style="color:var(--red)" onclick="toast('Delete “${t.name}”…')">Delete</button></div></div>`;}
+      <div style="padding:14px 18px;display:flex;align-items:center;gap:12px"><span style="flex:1"><b>Delete team</b><div class="muted" style="font-size:12px">Removes the team (a roster). Collections offered to it are no longer offered; membership in those collections is unaffected.</div></span><button class="btn btn-sm" style="color:var(--red)" onclick="toast('Delete “${t.name}”…')">Delete</button></div></div>`;}
   return `<div class="page-h"><h1>Teams</h1><span class="sub">${ORG.teams.length} groups · RBAC</span><div style="flex:1"></div>
       <button class="btn btn-primary btn-sm" onclick="toast('New team…')">${ICONplus} New team</button></div>
     <div class="panel"><table class="tbl">

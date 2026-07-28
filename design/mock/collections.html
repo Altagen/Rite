@@ -32,7 +32,7 @@
   .role-viewer{background:var(--card2);color:var(--muted);border:1px solid var(--border)}
   .role-personal{background:var(--card2);color:var(--muted);border:1px solid var(--border)}
   .avs{display:flex}.av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;color:#0a0e1a;margin-left:-8px;border:2px solid var(--bg2)}.av:first-child{margin-left:0}
-  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;max-width:720px}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;max-width:1160px}
   .panel-h{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
   .panel-h .t{font-weight:650;font-size:15px;flex:1}
   .mrow{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--border)}
@@ -43,6 +43,10 @@
   .danger{border-color:color-mix(in oklab,var(--red) 35%,transparent)}
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);padding:11px 16px;border-radius:10px;box-shadow:var(--shadow);opacity:0;transition:.2s;z-index:80;font-size:13px}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+  .appbar{flex-wrap:wrap;row-gap:8px}
+  /* Responsive master-detail: narrow the rail, then stack it above the detail. */
+  @media (max-width:900px){ .clist{width:250px} .cmain{padding:20px 18px} }
+  @media (max-width:640px){ .cbody{flex-direction:column} .clist{width:100%;max-height:190px;border-right:none;border-bottom:1px solid var(--border)} .cmain{padding:18px 14px} }
 </style>
 </head>
 <body>
