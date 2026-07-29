@@ -54,6 +54,14 @@
   .inst .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
   .appbar{flex-wrap:wrap;row-gap:8px}#acts{flex-wrap:wrap;justify-content:flex-end}
   .notif{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 2px var(--bg)}
+  /* Health-check pastille (ADR 0017). Down is muted, not red — an unreachable machine is a
+     normal state, not an error. Passive = a dim "last seen" light; no probing. */
+  .pst{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block;box-sizing:border-box}
+  .pst.up{background:var(--green);box-shadow:0 0 5px color-mix(in oklab,var(--green) 60%,transparent)}
+  .pst.down{background:transparent;border:1.5px solid var(--muted)}
+  .pst.seen{background:color-mix(in oklab,var(--muted) 55%,transparent)}
+  .pst.check{background:var(--amber);animation:pstPulse 1s ease-in-out infinite}
+  @keyframes pstPulse{0%,100%{opacity:.35}50%{opacity:1}}
   @media (max-width:760px){ .lbl{display:none} .side{width:240px} }
   @media (max-width:560px){ .side{position:absolute;z-index:20;height:100%;box-shadow:var(--shadow)} }
 </style>
@@ -108,6 +116,17 @@ const SSH_HOSTS=[
 const avColor=u=>({alex:'#7c9cf5',carol:'#9ece6a',dan:'#e5b567',erin:'#bb9af7',frank:'#56c7c0'}[u]||'#888');
 const av=u=>`<span class="av" title="${u}" style="background:${avColor(u)}">${u[0].toUpperCase()}</span>`;
 
+/* Health-check pastille. STATE.hcMode reflects what the server allows (governed, ADR 0017):
+   off = no status · passive = "last seen" from real connections (no probing) · on-demand /
+   full = active up/down. Machines can opt out (cn.hc===false). Down is shown calmly. */
+const hcUp=name=>([...name].reduce((a,c)=>a+c.charCodeAt(0),0)%4)!==0; // demo: ~75% reachable
+function pastille(cn){
+  if(STATE.hcMode==='off'||cn.hc===false)return '';
+  if(STATE.hcMode==='passive')return `<span class="pst seen" title="Last connected ${cn.last||'—'} · passive (no probe)"></span>`;
+  const up=hcUp(cn.name);
+  return `<span class="pst ${up?'up':'down'}" title="${up?'Reachable':'No response'} · ${STATE.hcMethod.toUpperCase()} · ${cn.last||'—'}"></span>`;
+}
+
 /* Library: personal FOLDERS (never shared) hold COLLECTIONS (shareable) hold MACHINES.
    A machine ALWAYS lives in a collection (personal = a 1-member collection). */
 const LIB=[
@@ -140,7 +159,7 @@ function collectMachines(node){let out=[...(node.conns||[])];(node.children||[])
 function underColl(id){let res=false;(function rec(list,inColl){for(const n of list){if(n.id===id){res=inColl;return;}if(n.children)rec(n.children,inColl||n.type==='coll');}})(LIB,false);return res;}
 
 const IS_ADMIN=true;
-let STATE={sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',sessionPersistence:true,instanceName:'Acme Corp'};
+let STATE={sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp'};
 const SHELLS=[{name:'fish',icon:'🐠',installed:true},{name:'bash',icon:'🐚',installed:true},{name:'zsh',icon:'⚡',installed:true},{name:'sh',icon:'📜',installed:false}];
 
 /* ================= header actions (web) ================= */
@@ -189,7 +208,7 @@ function nodeRow(n,depth,exp){const isColl=n.type==='coll';
       :`<button class="btn btn-ghost" title="New here" onclick="event.stopPropagation();folderMenu('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();folderMore('${n.id}',event)">${EXICON.more}</button>`}</span></div>`;}
 function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click to open')">
     <span class="ca"></span><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
-    <span class="nm">${cn.name}</span>
+    <span class="nm">${cn.name}</span>${pastille(cn)}
     <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();toast('▶ ${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="Edit" onclick="event.stopPropagation();dlgNewConn('',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button></span></div>`;}
 function n_toggle(id){const n=find(id);n.open=!n.open;renderSide();}
 function openColl(id){STATE.selColl=id;STATE.collPath=null;STATE.mainTab='coll';renderSide();renderMain();}
@@ -236,7 +255,7 @@ function renderMain(){
 function cardsView(coll){
   const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
   const card=cn=>`<div class="ccard" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click')">
-    <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span><span style="flex:1"></span>
+    <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span>${pastille(cn)}<span style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" title="Move to folder…" style="padding:3px" onclick="event.stopPropagation();dlgMoveConn('${cn.name}',event)">${M.move}</button>
       <button class="btn btn-ghost btn-sm" title="Edit machine" style="padding:3px" onclick="event.stopPropagation();dlgNewConn('${coll.name}',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button>
       <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();toast('▶ Connecting…')">${ICON.play}</button></div>
@@ -340,6 +359,8 @@ function dlgNewConn(collName,existing){const e=existing||{};const auth=e.authTyp
     ${swatchRow(e.color||'#56c7c0')}
     <div style="display:flex;gap:10px;align-items:flex-end"><label class="field" style="flex:1"><span>Keep-alive</span><select class="inp" onchange="this.closest('.body').querySelector('#nc-kai').style.display=this.value==='on'?'':'none'"><option value="off">Disabled</option><option value="on">Enabled</option></select></label>
       <label class="field" id="nc-kai" style="flex:1;display:none"><span>Interval (s)</span><input class="inp" value="30"></label></div>
+    <label class="field"><span>Health-check</span><select class="inp"><option value="inherit" ${e.hc===false?'':'selected'}>Follow the collection / server policy</option><option value="off" ${e.hc===false?'selected':''}>Never probe this machine</option></select>
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">A machine can opt out of active probing; it can't opt into more than the server allows.</span></label>
     <label class="field"><span>Notes</span><textarea class="inp" rows="2" placeholder="Optional notes…">${e.notes||''}</textarea></label>
     <label class="field"><span>Collection</span><select class="inp" id="nc-coll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
     ${(()=>{const c=allColls().find(x=>x.name===collName);return c&&c.shared?`<p class="muted" style="font-size:12px;margin:6px 0 0">${EXICON.users} Shared collection — saving re-encrypts for all ${c.members.length} members (needs write access · RBAC).</p>`:'';})()}`,
@@ -411,6 +432,7 @@ function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',bod
   <div class="settings-row"><div><b>Auto-clear clipboard</b><div class="muted" style="font-size:12px">Clear 30s after a copy (security)</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
   <div class="settings-row"><div><b>Default shell</b><div class="muted" style="font-size:12px">New server terminals (also in the toolbar)</div></div><select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name}${s.installed?'':' (not installed)'}</option>`).join('')}</select></div>
   <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
+  <div class="settings-row"><div><b>Machine status</b><div class="muted" style="font-size:12px"><span style="color:var(--amber)">Governed by your server</span> — you can only narrow it. Passive “last seen” costs no network traffic; active probing does.</div></div><select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select></div>
   <div class="settings-row" style="border:none"><div><b>Show member count on collections</b><div class="muted" style="font-size:12px">The number next to shared collections</div></div><div class="toggle ${STATE.showMemberCount?'on':''}" onclick="this.classList.toggle('on');STATE.showMemberCount=this.classList.contains('on');renderAll()"><i></i></div></div>`});}
 // Administration is its own surface at /admin — the header button navigates to
 // admin.html (see the real app's route split, RITE_SERVE_ADMIN). No inline modal.

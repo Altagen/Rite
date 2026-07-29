@@ -44,6 +44,9 @@
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);padding:11px 16px;border-radius:10px;box-shadow:var(--shadow);opacity:0;transition:.2s;z-index:80;font-size:13px}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
   .appbar{flex-wrap:wrap;row-gap:8px}
+  .toggle{width:40px;height:22px;border-radius:999px;background:var(--card2);border:1px solid var(--border2);position:relative;cursor:pointer;flex-shrink:0}
+  .toggle.on{background:var(--accent);border-color:var(--accent)}
+  .toggle i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}.toggle.on i{left:20px}
   /* Responsive master-detail: narrow the rail, then stack it above the detail. */
   @media (max-width:900px){ .clist{width:250px} .cmain{padding:20px 18px} }
   @media (max-width:640px){ .cbody{flex-direction:column} .clist{width:100%;max-height:190px;border-right:none;border-bottom:1px solid var(--border)} .cmain{padding:18px 14px} }
@@ -159,8 +162,17 @@ function detail(){
     <div style="margin-top:10px;font-size:12px;color:#f59e0b;display:flex;gap:7px;align-items:flex-start"><span>⚠</span><span>This label is <b>not encrypted</b> — visible to the team and the server so people can find it. Keep it non-sensitive; the collection's real name and its machines stay end-to-end encrypted.</span></div>
   </div>`;
 
+  // Health-check override — writers may keep this collection's machines out of active
+  // probing (further-restrict only; ADR 0017). Passive "last seen" is unaffected.
+  const hc=`<div class="panel" style="padding:16px 18px">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
+      <div><div style="font-weight:600;margin-bottom:2px">Active health-check for these machines</div>
+        <div class="muted" style="font-size:12px">Off keeps this collection out of any active probing, even where the server allows it — you can only restrict, never exceed the server policy. Passive “last seen” is unaffected.</div></div>
+      <div class="toggle on" onclick="this.classList.toggle('on');toast(this.classList.contains('on')?'Follows the server policy':'Active probing off for this collection')"><i></i></div></div>
+  </div>`;
+
   return head+`<div class="cmain-sub">Shared with ${c.members.length} people · you are ${myRole(c)}.</div>`
-    +members+(write?swatches+rename('A name only members can read.'):'')+(owner?offer:'')+danger;
+    +members+(write?swatches+rename('A name only members can read.'):'')+(write?hc:'')+(owner?offer:'')+danger;
 }
 
 function render(){renderList();document.getElementById('detail').innerHTML=detail();}

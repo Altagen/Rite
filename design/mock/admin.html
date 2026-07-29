@@ -87,6 +87,18 @@
   .btn-danger:hover{background:#f98da2;border-color:#f98da2}
   .btn:disabled{opacity:.4;cursor:not-allowed}
   .btn:disabled:hover{background:var(--red);border-color:var(--red)}
+  /* Segmented control for the health-check policy mode. */
+  .seg{display:inline-flex;border:1px solid var(--border2);border-radius:9px;overflow:hidden;flex-wrap:wrap}
+  .seg-b{padding:6px 12px;background:var(--card2);border:none;border-right:1px solid var(--border2);color:var(--muted);cursor:pointer;font-size:13px;font-family:inherit}
+  .seg-b:last-child{border-right:none}
+  .seg-b.on{background:color-mix(in oklab,var(--accent) 22%,transparent);color:var(--accent);font-weight:600}
+  .seg-b:hover:not(.on){background:#20283a}
+  .mchk{display:flex;align-items:center;gap:7px;cursor:pointer;font-size:13px;user-select:none}
+  .mbox{width:17px;height:17px;border:1.5px solid var(--border2);border-radius:5px;display:grid;place-items:center;font-size:11px;font-weight:800;color:#0a0e1a}
+  .mbox.on{background:var(--accent);border-color:var(--accent)}
+  .hc-live{color:var(--accent);font-weight:600}
+  .gate{transition:opacity .15s}
+  .gate.off{opacity:.42;pointer-events:none}
   /* Responsive: narrow the nav, then turn it into a horizontal tab bar on top. */
   @media (max-width:900px){ .admin-nav{width:180px} .admin-main{padding:20px 18px} }
   @media (max-width:640px){ .admin-body{flex-direction:column} .admin-nav{width:100%;flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border);padding:8px} .navitem{white-space:nowrap} .admin-main{padding:18px 14px} .admin-main .panel{overflow-x:auto} }
@@ -214,6 +226,27 @@ function teams(){
 
 let PERSIST=true, WEBUI=true, ADMINUI=true;
 function tog(v){return `<div class="toggle ${v?'on':''}"><i></i></div>`;}
+// Health-check server policy (ADR 0017). Governs what CONNECTED clients may do; applied
+// live over the existing WS (no reconnect). Passive "last seen" is free; active is gated.
+let HC={passive:true, mode:'off', tcp:true, icmp:false, ssh:false, restrict:false, allow:['erin'], interval:60};
+function mchk(key,label){return `<label class="mchk" onclick="event.preventDefault();HC.${key}=!HC.${key};renderContent();toast('${label}: '+(HC.${key}?'allowed':'blocked'))"><span class="mbox ${HC[key]?'on':''}">${HC[key]?'✓':''}</span>${label}</label>`;}
+function hcPanel(){const off=HC.mode==='off';
+  return `<div class="panel maxw" style="padding:6px 20px 14px;margin-top:16px">
+    <div class="setrow"><div><div class="lab">Machine health-check</div><div class="hint"><b>Passive “last seen”</b> (from users' own connections) costs no traffic. <b>Active probing</b> makes network requests from every client — a scan-like footprint at scale — so it's governed here. <span class="hc-live">Changes apply to connected clients live, no reconnect.</span></div></div></div>
+    <div class="setrow"><div><div class="lab">Show status</div><div class="hint">The passive “last seen” pastille. No probing — derived from real connections.</div></div>
+      <div onclick="HC.passive=!HC.passive;renderContent();toast('Status display '+(HC.passive?'on':'off'))">${tog(HC.passive)}</div></div>
+    <div class="setrow"><div><div class="lab">Active probing</div><div class="hint"><b>Off</b> passive only · <b>On-demand</b> only when a user asks, current view only · <b>Full</b> background polling allowed · <b>Client's choice</b> each client picks its cadence.</div></div>
+      <div class="seg">${['off','on-demand','full','client-choice'].map(m=>`<button class="seg-b ${HC.mode===m?'on':''}" onclick="HC.mode='${m}';renderContent();toast('Active probing: ${m}')">${m}</button>`).join('')}</div></div>
+    <div class="setrow gate ${off?'off':''}"><div><div class="lab">Allowed methods</div><div class="hint">ICMP is blocked on some networks and required on others — allow what your infra permits. Clients may use only a method enabled here.</div></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">${mchk('tcp','TCP-connect')}${mchk('icmp','ICMP')}${mchk('ssh','SSH handshake')}</div></div>
+    <div class="setrow gate ${off?'off':''}"><div><div class="lab">Restrict to specific users</div><div class="hint">When on, only the users below may actively probe (e.g. an ops group) — everyone else stays passive-only.</div></div>
+      <div onclick="HC.restrict=!HC.restrict;renderContent();toast('Restrict to allowlist '+(HC.restrict?'on':'off'))">${tog(HC.restrict)}</div></div>
+    ${(!off&&HC.restrict)?`<div class="setrow gate" style="flex-direction:column;align-items:stretch;gap:10px">
+      <div class="ta" style="max-width:440px"><input class="inp" placeholder="Add a user — type a username…" data-ex="${HC.allow.join(',')}" data-label="the probe allowlist" oninput="taSearch(this)"><div class="ta-menu" hidden></div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${HC.allow.map(u=>`<span class="chip">${av(u)} <span style="margin:0 2px">${u}</span> <span onclick="toast('Removed ${u} from allowlist')" style="cursor:pointer;color:var(--red)">✕</span></span>`).join('')}</div></div>`:''}
+    <div class="setrow gate ${off||HC.mode==='on-demand'?'off':''}" style="border:none"><div><div class="lab">Minimum interval</div><div class="hint">Floor for background polling, so status never saturates the network.</div></div>
+      <div style="display:flex;gap:8px;align-items:center"><input class="inp" style="width:80px" value="${HC.interval}"><span class="muted">seconds</span></div></div>
+  </div>`;}
 function instance(){
   return `<div class="page-h"><h1>Instance</h1><span class="sub">Server-wide settings</span></div>
     <div class="panel maxw" style="padding:6px 20px 12px">
@@ -227,7 +260,8 @@ function instance(){
         <div onclick="ADMINUI=!ADMINUI;renderContent();toast('Serve admin console '+(ADMINUI?'on':'off'))">${tog(ADMINUI)}</div></div>
       <div class="setrow"><div><div class="lab">Host key</div><div class="hint">SHA256:qF3g…8dKz — pin this on first connect.</div></div>
         <button class="btn btn-sm" onclick="toast('Host key copied')">Copy</button></div>
-    </div>`;
+    </div>
+    ${hcPanel()}`;
 }
 
 let COLLCREATE=true, COLLSHARE=true;
