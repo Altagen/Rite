@@ -71,6 +71,13 @@
   .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);padding:11px 16px;border-radius:10px;box-shadow:var(--shadow);opacity:0;transition:.2s;z-index:80;font-size:13px}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
   .appbar{flex-wrap:wrap;row-gap:8px}
+  /* Typeahead: search users by prefix instead of a dropdown of everyone. */
+  .ta{position:relative;max-width:440px}
+  .ta .inp{width:100%}
+  .ta-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--card);border:1px solid var(--border2);border-radius:10px;box-shadow:var(--shadow);z-index:30;max-height:240px;overflow:auto;padding:4px}
+  .ta-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+  .ta-item:hover{background:var(--card2)}
+  .ta-empty{padding:10px 12px;color:var(--muted);font-size:13px}
   /* Responsive: narrow the nav, then turn it into a horizontal tab bar on top. */
   @media (max-width:900px){ .admin-nav{width:180px} .admin-main{padding:20px 18px} }
   @media (max-width:640px){ .admin-body{flex-direction:column} .admin-nav{width:100%;flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border);padding:8px} .navitem{white-space:nowrap} .admin-main{padding:18px 14px} .admin-main .panel{overflow-x:auto} }
@@ -124,7 +131,18 @@ function renderNav(){document.getElementById('nav').innerHTML=NAV.map(n=>`<div c
 function go(id){SEC=id;SUB=null;renderNav();renderContent();}
 function drill(i){SUB=i;renderContent();}
 function memberRow(m,removable,pending){return `<div class="mrow">${av(m)}<span class="nm">${m}</span>${pending?'<span class="role-badge role-user" title="Roster access only — awaiting machine access from a member">roster only</span>':''}${removable?`<button class="btn btn-ghost btn-sm" title="Remove" onclick="toast('Remove ${m}')" style="color:var(--red)">${EXICON.trash}</button>`:'<span class="muted" style="font-size:12px">owner</span>'}</div>`;}
-function addPicker(existing,label){const avail=ORG.users.map(u=>u.u).filter(u=>!existing.includes(u));return `<div class="add-pick"><select class="inp">${avail.map(u=>`<option>${u}</option>`).join('')}</select><button class="btn btn-primary btn-sm" onclick="toast('Added to ${label}')">${ICONplus} Add</button></div>`;}
+// Typeahead over the directory (prefix search) instead of a dropdown of everyone —
+// in the real app this hits a search endpoint, so we never ship the whole list.
+function addPicker(existing,label){return `<div class="add-pick"><div class="ta"><input class="inp" placeholder="Type a username to add…" data-ex="${existing.join(',')}" data-label="${label}" oninput="taSearch(this)"><div class="ta-menu" hidden></div></div></div>`;}
+function taSearch(inp){const q=inp.value.trim().toLowerCase();const menu=inp.nextElementSibling;
+  const ex=(inp.dataset.ex||'').split(',').filter(Boolean);
+  if(!q){menu.hidden=true;menu.innerHTML='';return;}
+  const hits=ORG.users.map(u=>u.u).filter(u=>!ex.includes(u)&&u.toLowerCase().startsWith(q)).slice(0,8);
+  menu.innerHTML=hits.length?hits.map(u=>`<div class="ta-item" data-u="${u}" data-label="${inp.dataset.label||''}" onclick="taPick(this)">${av(u)}<span>${u}</span></div>`).join('')
+    :`<div class="ta-empty">No user starts with “${inp.value.trim()}”.</div>`;
+  menu.hidden=false;}
+function taPick(el){toast('Added '+el.dataset.u+' to '+el.dataset.label);const menu=el.parentElement;menu.hidden=true;const inp=menu.previousElementSibling;if(inp)inp.value='';}
+document.addEventListener('click',e=>{if(!e.target.closest('.ta'))document.querySelectorAll('.ta-menu').forEach(m=>m.hidden=true);});
 
 function statCard(k,v,d){return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${d?`<div class="d">${d}</div>`:''}</div>`;}
 
@@ -168,7 +186,7 @@ function users(){
 function teams(){
   if(SUB!==null){const t=ORG.teams[SUB];return `<div class="page-h">${backBtn('Teams')}</div>
     <div class="page-h" style="margin-bottom:16px"><span style="color:var(--accent)">${EXICON.users}</span><h1>${t.name}</h1><span class="sub">${t.members.length} members</span></div>
-    <div class="panel"><div class="panel-h"><span class="t">Members</span></div>
+    <div class="panel" style="overflow:visible"><div class="panel-h"><span class="t">Members</span></div>
       ${t.members.map(m=>memberRow(m,m!==t.members[0])).join('')}${addPicker(t.members,t.name)}</div>
     <div class="panel"><div class="panel-h"><span class="t">Danger zone</span></div>
       <div style="padding:14px 18px;display:flex;align-items:center;gap:12px"><span style="flex:1"><b>Delete team</b><div class="muted" style="font-size:12px">Removes the team (a roster). Collections offered to it are no longer offered; membership in those collections is unaffected.</div></span><button class="btn btn-sm" style="color:var(--red)" onclick="toast('Delete “${t.name}”…')">Delete</button></div></div>`;}
@@ -205,7 +223,7 @@ let COLLCREATE=true, COLLSHARE=true;
 function collections(){
   if(SUB!==null){const c=FLATCOLL[SUB];return `<div class="page-h">${backBtn('Collections')}</div>
     <div class="page-h" style="margin-bottom:16px"><span style="color:var(--accent)">${layers}</span><h1>${c.shared?c.name:'Collection '+c.id}</h1>${c.shared?'':'<span class="role-badge role-user" style="background:var(--card2);color:var(--muted);border:1px solid var(--border);padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase">Personal · name private</span>'}<span class="sub">· owner ${c.owner} · ${c.machines} machine${c.machines===1?'':'s'}</span></div>
-    <div class="panel"><div class="panel-h"><span class="t">Members · ${c.members.length}</span></div>
+    <div class="panel" style="overflow:visible"><div class="panel-h"><span class="t">Members · ${c.members.length}</span></div>
       ${c.members.map(m=>memberRow(m,m!==c.owner,c.pending.includes(m))).join('')}
       ${c.shared?`<div style="padding:12px 18px;border-top:1px solid var(--border)"><div style="font-weight:600;font-size:13px;margin-bottom:2px">Grant name / roster access</div><div class="muted" style="font-size:12px;margin-bottom:8px">Adds them to the roster and lets them see the name (via the group escrow). Machine access is completed by a member.</div>${addPicker(c.members,c.name)}</div>`:''}</div>
     <div class="panel"><div class="panel-h"><span class="t">Danger zone</span></div>

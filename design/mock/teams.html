@@ -44,6 +44,12 @@
   .nudge{display:flex;gap:11px;align-items:flex-start;background:color-mix(in oklab,#f59e0b 12%,transparent);border:1px solid color-mix(in oklab,#f59e0b 32%,transparent);border-radius:12px;padding:13px 15px;margin-bottom:18px;max-width:1160px;font-size:13px;color:color-mix(in oklab,var(--fg) 82%,transparent)}
   .nudge .ic{color:#f59e0b;flex-shrink:0;margin-top:1px}
   .add-pick{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--border)}
+  /* Typeahead: search users by prefix instead of a dropdown of everyone. */
+  .ta{position:relative;flex:1}
+  .ta-menu{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--card);border:1px solid var(--border2);border-radius:10px;box-shadow:var(--shadow);z-index:30;max-height:240px;overflow:auto;padding:4px}
+  .ta-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+  .ta-item:hover{background:var(--card2)}
+  .ta-empty{padding:10px 12px;color:var(--muted);font-size:13px}
   .danger{border-color:color-mix(in oklab,var(--red) 35%,transparent)}
   .zk{display:flex;gap:11px;align-items:flex-start;background:color-mix(in oklab,var(--accent) 8%,transparent);border:1px solid color-mix(in oklab,var(--accent) 25%,transparent);border-radius:12px;padding:13px 15px;margin-bottom:18px;max-width:1160px;font-size:13px;color:color-mix(in oklab,var(--fg) 80%,transparent)}
   .zk .ic{color:var(--accent);flex-shrink:0;margin-top:1px}
@@ -113,19 +119,18 @@ function renderList(){
 
 function detail(){
   const t=TEAMS.find(x=>x.id===SEL); const admin=myRole(t)==='admin';
-  const avail=ORG.users.map(u=>u.u).filter(u=>!t.members.includes(u));
   const head=`<div class="cmain-h"><span style="color:var(--accent);display:grid;place-items:center">${usersIcon}</span><h1>${t.name}</h1>${roleBadge(myRole(t))}
       <span class="muted" style="font-size:13px">· ${t.members.length} member${t.members.length===1?'':'s'}</span></div>`;
   const sub=admin
     ? `You're a <b>manager</b> of this team — add, remove, and set who's a manager. Sharing machines happens in collections.`
     : `You're a member of this team. A manager handles who's in it.`;
 
-  const members=`<div class="panel"><div class="panel-h"><span class="t">Members · ${t.members.length}</span></div>
+  const members=`<div class="panel" style="overflow:visible"><div class="panel-h"><span class="t">Members · ${t.members.length}</span></div>
     ${t.members.map(m=>{const r=t.roles[m];const isMe=m===ME;
       const you=isMe?' <span class="muted" style="font-size:12px">(you)</span>':'';
       const ctl=admin&&!isMe?`${roleSelect(t,m)}<button class="btn btn-ghost btn-sm" title="Remove from team" onclick="toast('Remove ${m}')" style="color:var(--red)">${EXICON.trash}</button>`:roleBadge(r);
       return `<div class="mrow">${av(m)}<span class="nm">${m}${you}</span>${ctl}</div>`;}).join('')}
-    ${admin?`<div class="add-pick"><select class="inp">${avail.map(u=>`<option>${u}</option>`).join('')}</select><button class="btn btn-primary btn-sm" onclick="toast('Added to ${t.name}')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Add member</button></div>`:''}</div>`;
+    ${admin?`<div class="add-pick"><div class="ta"><input class="inp" placeholder="Add someone — type a username…" data-ex="${t.members.join(',')}" data-label="${t.name}" oninput="taSearch(this)"><div class="ta-menu" hidden></div></div></div>`:''}</div>`;
 
   // Collections offered to this team — discovery labels (not the real encrypted names),
   // visible to team members only. A non-member can request access; a member opens it.
@@ -152,6 +157,18 @@ function detail(){
 
   return head+`<div class="cmain-sub">${sub}</div>`+members+discover+zk+leave;
 }
+
+// Typeahead: filter users by username prefix (in the real app this hits a directory
+// search endpoint, so we never ship the whole user list). Excludes already-added.
+function taSearch(inp){const q=inp.value.trim().toLowerCase();const menu=inp.nextElementSibling;
+  const ex=(inp.dataset.ex||'').split(',').filter(Boolean);
+  if(!q){menu.hidden=true;menu.innerHTML='';return;}
+  const hits=ORG.users.map(u=>u.u).filter(u=>!ex.includes(u)&&u.toLowerCase().startsWith(q)).slice(0,8);
+  menu.innerHTML=hits.length?hits.map(u=>`<div class="ta-item" data-u="${u}" data-label="${inp.dataset.label||''}" onclick="taPick(this)">${av(u)}<span>${u}</span></div>`).join('')
+    :`<div class="ta-empty">No user starts with “${inp.value.trim()}”.</div>`;
+  menu.hidden=false;}
+function taPick(el){toast('Added '+el.dataset.u+' to '+el.dataset.label);const menu=el.parentElement;menu.hidden=true;const inp=menu.previousElementSibling;if(inp)inp.value='';}
+document.addEventListener('click',e=>{if(!e.target.closest('.ta'))document.querySelectorAll('.ta-menu').forEach(m=>m.hidden=true);});
 
 function render(){renderList();document.getElementById('detail').innerHTML=detail();}
 function toast(m){let t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);}t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1600);}
