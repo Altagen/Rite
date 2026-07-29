@@ -78,6 +78,15 @@
   .ta-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
   .ta-item:hover{background:var(--card2)}
   .ta-empty{padding:10px 12px;color:var(--muted);font-size:13px}
+  /* Account-reset confirm dialog (lost-password recovery, keeps identity). */
+  .rk{font-size:13px;border-radius:9px;padding:10px 12px;margin-bottom:8px;border:1px solid var(--border);line-height:1.5}
+  .rk.keep{background:color-mix(in oklab,var(--green) 10%,transparent);border-color:color-mix(in oklab,var(--green) 30%,transparent)}
+  .rk.lose{background:color-mix(in oklab,var(--red) 10%,transparent);border-color:color-mix(in oklab,var(--red) 30%,transparent)}
+  .rk.next{background:var(--bg2)}
+  .btn-danger{background:var(--red);border-color:var(--red);color:#0a0e1a}
+  .btn-danger:hover{background:#f98da2;border-color:#f98da2}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn:disabled:hover{background:var(--red);border-color:var(--red)}
   /* Responsive: narrow the nav, then turn it into a horizontal tab bar on top. */
   @media (max-width:900px){ .admin-nav{width:180px} .admin-main{padding:20px 18px} }
   @media (max-width:640px){ .admin-body{flex-direction:column} .admin-nav{width:100%;flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border);padding:8px} .navitem{white-space:nowrap} .admin-main{padding:18px 14px} .admin-main .panel{overflow-x:auto} }
@@ -98,6 +107,7 @@
   </div>
 </div>
 <div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>admin console</b> · served at <code>/admin</code>, admins only · separate surface</div>
+<div class="backdrop" id="bd" onclick="closeBd()"></div>
 <script src="full-data.js"></script>
 <script>
 /* ================= Rite admin console (mock) =================
@@ -176,6 +186,7 @@ function users(){
           <td><span class="st ${st}"><span class="dot"></span>${st}</span></td>
           <td><div class="rowacts">
             <button class="btn btn-ghost" title="Change role" onclick="toast('Change role of ${u.u}')">${EXICON.shield}</button>
+            ${u.u===ORG.me?'':`<button class="btn btn-ghost" title="Reset access (lost password)" onclick="askReset('${u.u}')" style="color:var(--amber)"><svg class="icon" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3.4M16.5 6.7l2.2 2.2M13.6 9.6l2.2 2.2"/></svg></button>`}
             <button class="btn btn-ghost" title="${st==='active'?'Disable':'Enable'}" onclick="toast('${st==='active'?'Disable':'Enable'} ${u.u}')"><svg class="icon" viewBox="0 0 24 24">${st==='active'?'<path d="M18.36 6.64A9 9 0 015.64 18.36M12 3v9"/>':'<path d="M5 12l5 5L20 7"/>'}</svg></button>
             <button class="btn btn-ghost" title="Delete" onclick="toast('Delete ${u.u}')" style="color:var(--red)">${EXICON.trash}</button>
           </div></td></tr>`;}).join('')}</tbody>
@@ -258,6 +269,28 @@ function collections(){
 }
 
 const ICONplus='<svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>';
+
+// Account reset (a user lost their password). No email → no self-service reset; an
+// admin authorises it after an out-of-band identity check. It is NOT a key rotation:
+// the admin never learns the new password. The old crypto is purged; the user keeps
+// their username + team memberships and sets a new password at next sign-in, then
+// re-requests access to their collections. See setup.html for that screen.
+function closeBd(){document.getElementById('bd').classList.remove('show');}
+function askReset(u){
+  const b=document.getElementById('bd');
+  b.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
+    <header><h3>Reset access for ${u}?</h3><p>Use this when <b>${u}</b> has lost their password. There's no email recovery — a reset lets them keep their identity and set a new password. Verify it's really them first (in person, phone…).</p></header>
+    <div class="body">
+      <div class="rk keep"><b>Kept:</b> the username <b>${u}</b>, their role, and every team they're in — so they can find their way back to their collections.</div>
+      <div class="rk lose"><b>Lost for good:</b> everything encrypted under the old password — their personal connections and any solo collection. It's end-to-end encrypted, so no one (not even you) can recover it.</div>
+      <div class="rk next"><b>Next:</b> ${u} chooses a new password at their next sign-in, then re-requests access to the collections offered to their teams — a member grants them back in. You never see the new password.</div>
+      <label class="field"><span>Type <b>${u}</b> to confirm</span><input class="inp" id="rkc" autocomplete="off" oninput="document.getElementById('rkgo').disabled=this.value.trim()!=='${u}'" placeholder="${u}"></label>
+    </div>
+    <div class="foot"><button class="btn btn-sm" onclick="closeBd()">Cancel</button><button class="btn btn-sm btn-danger" id="rkgo" disabled onclick="closeBd();toast('Access reset — ${u} can set a new password at next sign-in')">Reset access</button></div>
+  </div>`;
+  b.classList.add('show');
+  setTimeout(()=>{const i=document.getElementById('rkc');if(i)i.focus();},30);
+}
 function renderContent(){document.getElementById('content').innerHTML='<div class="wrap">'+({overview,users,teams,collections,instance})[SEC]()+'</div>';}
 function toast(m){let t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);}t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1600);}
 renderNav();renderContent();
