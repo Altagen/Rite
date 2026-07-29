@@ -62,3 +62,15 @@ const COLL = [
     offer:{team:'Eng', label:'Analytics dashboards'},
     conns:[ {name:'grafana', host:'10.2.0.9', user:'viewer', port:22} ] },
 ];
+
+/* Request → grant loop. A user discovers a collection offered to a team they're in
+   and requests access; a key-holder (owner/editor) grants by sealing the itemsKey to
+   their public key. The server sees only the metadata (who asked for which collection)
+   — never a key. Kept here so every user mock shares one source of truth. */
+// Incoming — requests the current user (ORG.me) can grant (collections I hold a key to).
+ORG.accessRequests = [
+  { user:'dan',   coll:'Production', team:'Eng', when:'2h ago' },
+  { user:'frank', coll:'Databases',  team:null,  when:'yesterday' },
+];
+// Outgoing — discovery labels I've already requested and am waiting on.
+ORG.myRequests = ['Analytics dashboards'];

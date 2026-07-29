@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rite · Sign in (mock)</title>
+<link rel="stylesheet" href="rite.css">
+<style>
+  /* Daily entry point. Username + password unlock the client-side vault key — the
+     server only ever verifies an auth hash, never the password. Counterpart to
+     setup.html (first-login / after-reset). See rite-account-reset memory. */
+  .signin-body{min-height:100vh;display:grid;place-items:center;padding:24px;
+    background:radial-gradient(1100px 700px at 50% -10%,color-mix(in oklab,var(--accent) 12%,transparent),transparent 60%),var(--bg)}
+  .card{width:100%;max-width:410px;background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);padding:28px 30px 24px}
+  .brand-row{display:flex;align-items:center;gap:11px;margin-bottom:22px}
+  .glyph{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#4d6fd0);display:grid;place-items:center;flex-shrink:0}
+  .glyph svg{width:20px;height:20px;stroke:#0a0e1a;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  .brand-row .nm{font-weight:750;font-size:15px;line-height:1.2}
+  .brand-row .sub{color:var(--muted);font-size:12px}
+  h1{font-size:20px;font-weight:750;letter-spacing:-.01em;margin-bottom:4px}
+  .lead{color:var(--fg-dim);font-size:13px;margin-bottom:20px}
+  label.field{display:block;margin:0 0 14px}
+  label.field span{display:block;font-size:12px;font-weight:600;color:var(--fg-dim);margin-bottom:6px}
+  .pw-wrap{position:relative}
+  .pw-wrap .inp{padding-right:44px}
+  .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;padding:6px;display:grid;place-items:center}
+  .eye:hover{color:var(--fg)}
+  .rowbtw{display:flex;align-items:center;justify-content:space-between;margin:-4px 0 16px}
+  .rowbtw label{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--fg-dim);cursor:pointer;user-select:none}
+  .rowbtw a{font-size:12.5px;cursor:pointer}
+  .cbox{width:16px;height:16px;border:1.5px solid var(--border2);border-radius:5px;display:grid;place-items:center;flex:none}
+  .cbox.on{background:var(--accent);border-color:var(--accent);color:#0a0e1a;font-size:11px;font-weight:800}
+  .go{width:100%;justify-content:center;padding:11px;font-size:14px;font-weight:650}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn-primary:disabled:hover{background:var(--accent);border-color:var(--accent)}
+  .zk{display:flex;align-items:flex-start;gap:9px;margin-top:18px;font-size:12px;color:var(--muted);line-height:1.5}
+  .zk svg{width:16px;height:16px;stroke:var(--accent);fill:none;stroke-width:1.8;flex-shrink:0;margin-top:1px}
+  .err{background:color-mix(in oklab,var(--red) 12%,transparent);border:1px solid color-mix(in oklab,var(--red) 35%,transparent);color:var(--fg);font-size:12.5px;border-radius:10px;padding:9px 12px;margin-bottom:14px;display:none}
+  .err.show{display:block}
+  .demo{margin-top:18px;text-align:center;font-size:12px;color:var(--muted)}
+  .demo a{cursor:pointer}
+</style>
+</head>
+<body class="signin-body">
+  <div class="card">
+    <div class="brand-row">
+      <div class="glyph"><svg viewBox="0 0 24 24"><path d="M4 6l6 6-6 6"/><path d="M13 18h7"/></svg></div>
+      <div><div class="nm">Acme Corp</div><div class="sub">rite.acme.io</div></div>
+    </div>
+    <h1>Sign in</h1>
+    <p class="lead">Unlock your connections on this device.</p>
+
+    <div class="err" id="err">Wrong username or password. <span class="muted">Try again, or ask an admin to reset your access.</span></div>
+
+    <label class="field"><span>Username</span>
+      <input class="inp" id="user" autocomplete="username" placeholder="e.g. alex" oninput="upd()" value="alex"></label>
+    <label class="field"><span>Password</span>
+      <div class="pw-wrap"><input class="inp" id="pw" type="password" autocomplete="current-password" placeholder="Your password" oninput="upd()">
+        <button class="eye" id="eye" title="Show password" onclick="toggleEye()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+    </label>
+
+    <div class="rowbtw">
+      <label onclick="toggleStay()"><span class="cbox on" id="stayBox">✓</span> Stay signed in</label>
+      <a onclick="forgot()">Forgot your password?</a>
+    </div>
+
+    <button class="btn btn-primary go" id="go" onclick="submit()">Sign in</button>
+
+    <div class="zk"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>
+      <div>Your password is checked without ever leaving this device — the server only sees an unreplayable hash, never the password itself.</div></div>
+
+    <div class="demo">First time here? <a onclick="location.href='setup.html?mode=first&u=alex'">Set your password</a></div>
+  </div>
+
+<script>
+const $=id=>document.getElementById(id);
+let STAY=true;
+function upd(){$('go').disabled=!($('user').value.trim() && $('pw').value);$('err').classList.remove('show');}
+function toggleEye(){const pw=$('pw');const show=pw.type==='password';pw.type=show?'text':'password';$('eye').style.color=show?'var(--accent)':'';}
+function toggleStay(){STAY=!STAY;$('stayBox').classList.toggle('on',STAY);$('stayBox').textContent=STAY?'✓':'';}
+function forgot(){
+  const bd=document.createElement('div');bd.className='backdrop show';
+  bd.innerHTML=`<div class="modal" style="max-width:440px">
+    <header><h3>Forgot your password?</h3><p>There's no email reset — your password is what encrypts your data, so no one can recover it for you.</p></header>
+    <div class="body"><p style="font-size:13.5px;color:var(--fg-dim);line-height:1.6;margin:0">Ask an admin to <b>reset your access</b>. They'll verify it's you, then you set a brand-new password here. You <b>keep your username and your teams</b> — you'll just re-request access to your collections and a member grants you back in. Anything encrypted under the old password can't be recovered.</p></div>
+    <div class="foot"><button class="btn btn-ghost" onclick="this.closest('.backdrop').remove()">Close</button></div></div>`;
+  bd.addEventListener('click',e=>{if(e.target===bd)bd.remove();});
+  document.body.appendChild(bd);
+}
+function submit(){
+  if($('go').disabled)return;
+  // Mock: pretend anything but the demo password fails, to show the error state.
+  if($('pw').value!=='demo' && $('pw').value.length<3){$('err').classList.add('show');return;}
+  const t=document.createElement('div');t.className='toast show';
+  t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);padding:11px 16px;border-radius:10px;box-shadow:var(--shadow);font-size:13px;z-index:80';
+  t.textContent='Unlocking…';document.body.appendChild(t);
+  setTimeout(()=>location.href='web.html',700);
+}
+$('pw').addEventListener('keydown',e=>{if(e.key==='Enter')submit();});
+upd();
+</script>
+</body>
+</html>
