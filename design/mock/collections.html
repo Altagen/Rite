@@ -151,7 +151,7 @@ function renderList(){
 }
 
 function detail(){
-  const c=MINE.find(x=>x.id===SEL); const owner=myRole(c)==='owner'; const write=canWrite(c);
+  const c=MINE.find(x=>x.id===SEL); const owner=myRole(c)==='owner';
   const machines=(c.conns||[]).length;
   const members=`<div class="panel"><div class="panel-h"><span class="t">Members · ${c.members.length}</span>
       ${owner?`<button class="btn btn-primary btn-sm" onclick="toast('Add member…')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Add member</button>`:''}</div>
@@ -162,7 +162,10 @@ function detail(){
       const ctl=owner&&m!==ME?`${roleSelect(c,m)}<button class="btn btn-ghost btn-sm" title="Remove" onclick="toast('Remove ${m}')" style="color:var(--red)">${EXICON.trash}</button>`:roleBadge(r);
       return `<div class="mrow">${av(m)}<span class="nm">${m}${you}</span>${grant}${ctl}</div>`;}).join('')}</div>`;
 
-  const swatches=`<div class="panel" style="padding:16px 18px"><div style="font-weight:600;margin-bottom:10px">Colour</div>
+  // Colour is a PERSONAL view tint (owner decision 2026-07-30): only you see it, it's not
+  // shared and not part of the metaKey — so every member (viewers included) can set it.
+  const swatches=`<div class="panel" style="padding:16px 18px"><div style="font-weight:600;margin-bottom:2px">Colour <span class="muted" style="font-weight:400;font-size:12px">· your view</span></div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">A personal tint to spot this collection fast — only you see it, it isn't shared.</div>
     <div style="display:flex;gap:9px;flex-wrap:wrap">${CCOLORS.map(col=>`<button class="sw ${col===c.color?'sel':''}" style="background:${col}" onclick="MINE.find(x=>x.id==='${c.id}').color='${col}';render()"></button>`).join('')}</div></div>`;
 
   const rename=hint=>`<div class="panel" style="padding:6px 18px 10px"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0">
@@ -180,7 +183,9 @@ function detail(){
   if(!c.shared)
     return head+`<div class="cmain-sub">Your private space — only you. It can't be shared or deleted; it always exists.</div>`+swatches+rename('Label your personal space.');
 
-  // Shared: members always; colour/rename only for writers; delete (owner) / leave (member).
+  // Shared: members always; colour = personal (every member); rename + settings (health-check,
+  // offer) = OWNER only; delete (owner) / leave (member). Editors write machines/folders, not
+  // the collection's identity/settings — matches the desktop member-picker legend.
   // Offer to a team (discovery) — owner only. Lists the collection to a team so its
   // members can find it and request access. The label is NOT encrypted (visible to the
   // team + server); the real name and the machines stay end-to-end encrypted.
@@ -195,8 +200,8 @@ function detail(){
     <div style="margin-top:10px;font-size:12px;color:#f59e0b;display:flex;gap:7px;align-items:flex-start"><span>⚠</span><span>This label is <b>not encrypted</b> — visible to the team and the server so people can find it. Keep it non-sensitive; the collection's real name and its machines stay end-to-end encrypted.</span></div>
   </div>`;
 
-  // Health-check override — writers may keep this collection's machines out of active
-  // probing (further-restrict only; ADR 0017). Passive "last seen" is unaffected.
+  // Health-check override — the OWNER may keep this collection's machines out of active
+  // probing (a collection setting, further-restrict only; ADR 0017). Passive is unaffected.
   const hc=`<div class="panel" style="padding:16px 18px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
       <div><div style="font-weight:600;margin-bottom:2px">Active health-check for these machines</div>
@@ -205,7 +210,7 @@ function detail(){
   </div>`;
 
   return head+`<div class="cmain-sub">Shared with ${c.members.length} people · you are ${myRole(c)}.</div>`
-    +members+(write?swatches+rename('A name only members can read.'):'')+(write?hc:'')+(owner?offer:'')+danger;
+    +members+swatches+(owner?rename('Shared — every member sees this name.'):'')+(owner?hc:'')+(owner?offer:'')+danger;
 }
 
 // Discover view = collections offered to the teams I'm in (aggregated). The per-team

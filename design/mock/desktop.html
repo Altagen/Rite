@@ -535,11 +535,15 @@ function folderMenu(id,e){const f=find(id),shared=underColl(id);floatMenu(e,[
 function folderMore(id,e){const f=find(id);floatMenu(e,[
   {icon:M.folder,label:'Rename…',onclick:()=>toast(`Rename “${f.name}”…`)},
   {icon:EXICON.trash,label:'Delete folder (keeps collections)',onclick:()=>toast(`Delete “${f.name}”…`)}]);}
-function collMore(id,e){const c=find(id);floatMenu(e,[
-  {icon:EXICON.users,label:'Members & sharing…',onclick:()=>openMemberPicker(id)},
-  {icon:M.refresh,label:c.hc===false?'Active health-check: off ✓ (turn on)':'Active health-check: on (turn off)',onclick:()=>{c.hc=c.hc===false?undefined:false;renderMain();toast(`Health-check for “${c.name}” ${c.hc===false?'off (opted out)':'follows the policy'}`);}},
-  {icon:M.coll,label:'Rename…',onclick:()=>toast(`Rename “${c.name}”…`)},
-  {icon:EXICON.trash,label:'Delete collection',onclick:()=>toast(`Delete “${c.name}”…`)}]);}
+// Rename / delete / health-check are OWNER-only settings (a rename hits every member's
+// shared name); non-owners just get the members view. Colour is a personal tint elsewhere.
+function collMore(id,e){const c=find(id);const owner=(c.roles&&c.roles[ORG.me])==='owner';
+  const items=[{icon:EXICON.users,label:owner?'Members & sharing…':'Members…',onclick:()=>openMemberPicker(id)}];
+  if(owner)items.push(
+    {icon:M.refresh,label:c.hc===false?'Active health-check: off ✓ (turn on)':'Active health-check: on (turn off)',onclick:()=>{c.hc=c.hc===false?undefined:false;renderMain();toast(`Health-check for “${c.name}” ${c.hc===false?'off (opted out)':'follows the policy'}`);}},
+    {icon:M.coll,label:'Rename… (all members)',onclick:()=>toast(`Rename “${c.name}” — every member sees the new name`)},
+    {icon:EXICON.trash,label:'Delete collection',onclick:()=>toast(`Delete “${c.name}”…`)});
+  floatMenu(e,items);}
 function ncAuth(v){const pw=document.getElementById('nc-pw'),k=document.getElementById('nc-key');if(pw&&k){pw.style.display=v==='publicKey'?'none':'';k.style.display=v==='publicKey'?'':'none';}}
 function dlgNewConn(collName,existing){const e=existing||{};const auth=e.authType||'password';
   showModal({title:existing?'Edit machine':'New machine',subtitle:collName?('in “'+collName+'”'):'',wide:true,confirm:'Save',
