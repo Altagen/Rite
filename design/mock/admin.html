@@ -224,7 +224,7 @@ function teams(){
     </table></div>`;
 }
 
-let PERSIST=true, WEBUI=true, ADMINUI=true, SRVSHELL='bash';
+let PERSIST=true, WEBUI=true, ADMINUI=true, SRVSHELL='bash', QUICKSSH=false;
 function tog(v){return `<div class="toggle ${v?'on':''}"><i></i></div>`;}
 // Health-check server policy (ADR 0017). Governs what CONNECTED clients may do; applied
 // live over the existing WS (no reconnect). Passive "last seen" is free; active is gated.
@@ -254,6 +254,8 @@ function instance(){
         <div style="display:flex;gap:8px"><input class="inp" style="width:200px" value="Acme Corp"><button class="btn btn-primary btn-sm" onclick="toast('Instance name saved')">Save</button></div></div>
       <div class="setrow"><div><div class="lab">Default shell</div><div class="hint">The shell for terminals opened on this server. Web-UI users don't pick their own — this is it. (Desktop users choose their own <b>local</b> shell.) Pick from what's installed on the server.</div></div>
         <select class="inp" style="width:auto" onchange="SRVSHELL=this.value;renderContent();toast('Default shell: '+this.value)">${['bash','sh','zsh','fish'].map(s=>`<option ${SRVSHELL===s?'selected':''}>${s}</option>`).join('')}</select></div>
+      <div class="setrow"><div><div class="lab">Allow Quick SSH</div><div class="hint">Ad-hoc one-off SSH from the toolbar. <b>Off by default</b> — connections on a server should live in <b>collections</b> (saved, shared, auditable). Turn on for teams that need quick throwaway sessions (e.g. testing).</div></div>
+        <div onclick="QUICKSSH=!QUICKSSH;renderContent();toast('Quick SSH '+(QUICKSSH?'enabled':'disabled'))">${tog(QUICKSSH)}</div></div>
       <div class="setrow"><div><div class="lab">Session persistence</div><div class="hint">Let users stay signed in across reloads (vault key in sessionStorage, cleared on tab close). Still zero-knowledge.</div></div>
         <div onclick="PERSIST=!PERSIST;renderContent();toast('Session persistence '+(PERSIST?'on':'off'))">${tog(PERSIST)}</div></div>
       <div class="setrow"><div><div class="lab">Serve the web UI <span class="soon">planned</span></div><div class="hint">The base connection-manager UI at <code>/</code>. Disable to force clients to use the desktop app.</div></div>

@@ -204,6 +204,9 @@ function allColls(){const a=[];walk(LIB,n=>{if(n.type==='coll')a.push(n);});retu
 
 let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp'};
 const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
+// Quick SSH in a SERVER context follows the server policy (off by default — server
+// connections belong in collections). A local vault is self-governed → always available.
+let SERVER_ALLOW_QUICK=false;
 
 /* ================= context pill (top) ================= */
 function renderPill(){const c=STATE.ctx,p=document.getElementById('pill');
@@ -679,7 +682,7 @@ function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<spa
 function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHELLS[0];
   document.getElementById('acts').innerHTML=`<button class="btn btn-primary btn-sm" title="New local terminal (${sh.name})" onclick="toast('New local terminal · ${sh.name}')">${ICON.plus} <span class="lbl">Terminal</span></button>
   <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
-  <button class="btn btn-sm" onclick="dlgQuickSSH()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>
+  ${STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK?'':`<button class="btn btn-sm" onclick="dlgQuickSSH()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`}
   ${STATE.ctx.type==='vault'&&!STATE.ctx.locked?`<button class="btn btn-ghost btn-sm" title="Lock vault" onclick="lockVault('${STATE.ctx.id}')">${ICON.lock}</button>`:''}
   ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Discover collections offered to your teams" onclick="openDiscover()">${M.compass} <span class="lbl">Discover</span></button>
   <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>

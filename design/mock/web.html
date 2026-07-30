@@ -169,13 +169,16 @@ let STATE={sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'n
 // admin in Instance settings), not a per-user pick. Choosing between local shells (fish/zsh/…)
 // is a DESKTOP feature (local terminals). Comes from the server mode in the real app.
 const SERVER_SHELL='bash';
+// Quick SSH (ad-hoc one-off) is a server policy, OFF by default: connections on a server
+// should live in collections (saved/auditable). The admin flips it in Instance settings.
+const ALLOW_QUICK_SSH=false;
 
 /* ================= header actions (web) ================= */
 function renderActs(){
   document.getElementById('instName').textContent=STATE.instanceName;
   document.getElementById('acts').innerHTML=`
     <button class="btn btn-primary btn-sm" title="New terminal on the server (${SERVER_SHELL})" onclick="toast('New terminal · ${SERVER_SHELL}')">${ICON.term} <span class="lbl">Terminal</span></button>
-    <button class="btn btn-sm" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>
+    ${ALLOW_QUICK_SSH?`<button class="btn btn-sm" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`:''}
     <button class="btn btn-ghost btn-sm" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
     <button class="btn btn-ghost btn-sm" title="Collections — yours + Discover (offered to your teams)" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>
     ${IS_ADMIN?`<button class="btn btn-ghost btn-sm" title="Administration" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Admin</span></button>`:''}
