@@ -30,6 +30,21 @@
   .pst.check{background:var(--amber);animation:pstPulse 1s ease-in-out infinite}
   @keyframes pstPulse{0%,100%{opacity:.35}50%{opacity:1}}
   .notif{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 2px var(--bg)}
+  /* Discover overlay: boxed ZK note + collapsible team panels + clean cards (iso web). */
+  .zk{display:flex;gap:11px;align-items:flex-start;background:color-mix(in oklab,var(--accent) 8%,transparent);border:1px solid color-mix(in oklab,var(--accent) 25%,transparent);border-radius:12px;padding:12px 14px;margin-bottom:16px;font-size:12.5px;line-height:1.5;color:color-mix(in oklab,var(--fg) 82%,transparent)}
+  .zk .ic{color:var(--accent);flex-shrink:0;display:grid;place-items:center;margin-top:1px}.zk .ic .icon{width:18px;height:18px}
+  .disc-panel{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:10px}
+  .disc-h{width:100%;display:flex;align-items:center;gap:10px;padding:11px 14px;background:none;border:none;font-family:inherit;cursor:pointer;text-align:left;border-bottom:1px solid var(--border)}
+  .disc-panel.collapsed .disc-h{border-bottom:none}
+  .disc-h:hover{background:var(--card2)}
+  .disc-h .tname{display:flex;align-items:center;gap:8px;flex:1;font-weight:650;font-size:14px}
+  .disc-count{font-size:12px;color:var(--muted);font-weight:600;background:var(--card2);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
+  .disc-chev{color:var(--muted);display:grid;place-items:center;transition:transform .15s}.disc-chev.open{transform:rotate(180deg)}
+  .oc{display:flex;align-items:center;gap:13px;padding:12px 14px;border-bottom:1px solid var(--border)}.oc:last-child{border-bottom:none}
+  .oc-ic{color:var(--accent);display:grid;place-items:center;flex-shrink:0}
+  .oc-txt{flex:1;min-width:0}.oc-label{font-weight:600;font-size:14px;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.oc-sub{font-size:12px;color:var(--muted)}
+  .oc-act{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .disc-empty{padding:14px;color:var(--muted);font-size:13px}
   /* main tabs + cards */
   #mtabs{display:flex;align-items:center;gap:4px;padding:4px 8px 12px;background:var(--card);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
   .mtab{display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:6px;cursor:pointer;color:var(--muted);font-size:14px;line-height:20px;font-weight:400;flex-shrink:0}
@@ -633,17 +648,27 @@ function refreshInbox(){const b=document.getElementById('inboxBody');if(b)b.inne
 function grantReq(i){const r=ORG.accessRequests[i];toast(`Sealed machine access to <span class="accent">${r.user}</span> · ${r.coll}`);ORG.accessRequests.splice(i,1);refreshInbox();}
 function dismissReq(i){const r=ORG.accessRequests[i];toast(`Dismissed ${r.user}'s request`);ORG.accessRequests.splice(i,1);refreshInbox();}
 const DREQ=new Set(ORG.myRequests);
-function openDiscover(){const ME=ORG.me;
+let DCOLL=new Set(),DCOLL_INIT=false; // team panels collapsed in Discover
+function discBody(){const ME=ORG.me;
   const myteams=ORG.teams.filter(t=>t.members.includes(ME));
   const flat=[];(function rec(l){l.forEach(c=>{flat.push(c);if(c.children)rec(c.children);});})(COLL);
   const offeredTo=name=>flat.filter(c=>c.offer&&c.offer.team===name);
-  const card=c=>{const mine=c.members.includes(ME),pending=DREQ.has(c.offer.label);
-    const act=mine?`<span style="font-size:11px;font-weight:700;color:var(--green)">MEMBER</span>`:pending?`<span style="font-size:11px;font-weight:700;color:var(--amber)">REQUESTED</span>`:`<button class="btn btn-primary btn-sm" onclick="discReq('${c.offer.label}')">Request access</button>`;
-    return `<div class="mrow" style="cursor:default"><span style="color:var(--accent);display:grid;place-items:center">${M.coll}</span><div class="grow"><div class="title">${c.offer.label}</div><div class="sub">${mine?'you can open it':'machines stay encrypted until granted'}</div></div>${act}</div>`;};
-  const body=`<p class="muted" style="font-size:13px;margin:0 0 6px">Collections offered to the teams you're in — request access and a member grants you the key. <b>Labels are for discovery, not secrets.</b></p>
-    ${myteams.map(t=>{const o=offeredTo(t.name);return `<div class="eyebrow" style="margin:14px 0 4px">${EXICON.users} ${t.name} · ${o.length} offered</div>${o.length?o.map(card).join(''):'<div class="muted" style="font-size:13px;padding:6px 4px">No collections offered to this team yet.</div>'}`;}).join('')}`;
-  showModal({title:'Discover',body,confirm:'Done'});}
-function discReq(label){DREQ.add(label);toast('Requested access to <span class="accent">'+label+'</span> — a member will grant you the key');document.querySelectorAll('.backdrop').forEach(b=>b.remove());openDiscover();}
+  if(!DCOLL_INIT){DCOLL_INIT=true;myteams.forEach(t=>{if(offeredTo(t.name).length===0)DCOLL.add(t.name);});}
+  const row=c=>{const mine=c.members.includes(ME),pending=DREQ.has(c.offer.label);
+    const badge=mine?`<span style="font-size:11px;font-weight:700;color:var(--green)">MEMBER</span>`:pending?`<span style="font-size:11px;font-weight:700;color:var(--amber)">REQUESTED</span>`:'';
+    const btn=mine?`<button class="btn btn-sm" onclick="toast('Opening…')">Open</button>`:pending?`<button class="btn btn-sm" disabled style="opacity:.55;cursor:default">Awaiting a grant</button>`:`<button class="btn btn-primary btn-sm" onclick="discReq('${c.offer.label}')">Request access</button>`;
+    const sub=mine?"You're a member — open it any time":"Machines stay encrypted until a member grants you";
+    return `<div class="oc"><span class="oc-ic">${M.coll}</span><div class="oc-txt"><div class="oc-label">${c.offer.label}</div><div class="oc-sub">${sub}</div></div><div class="oc-act">${badge}${btn}</div></div>`;};
+  const allCol=myteams.every(t=>DCOLL.has(t.name));
+  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px"><p class="muted" style="font-size:13px;margin:0">Collections offered to the teams you're in — request access and a member grants you the key.</p><button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="discToggleAll()">${allCol?'Expand all':'Collapse all'}</button></div>
+    <div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Labels are for discovery, not secrets.</b> Visible to your team (and the server) so you can find and request access; machines and private names stay end-to-end encrypted until a member grants you.</div></div>
+    ${myteams.map(t=>{const o=offeredTo(t.name),col=DCOLL.has(t.name);
+      return `<div class="disc-panel ${col?'collapsed':''}"><button class="disc-h" onclick="toggleTeam('${t.name}')" title="${col?'Expand':'Collapse'}"><span class="tname">${EXICON.users} ${t.name}</span><span class="disc-count">${o.length} offered</span><span class="disc-chev ${col?'':'open'}">${EXICON.chevD}</span></button>${col?'':(o.length?o.map(row).join(''):'<div class="disc-empty">No collections offered to this team yet.</div>')}</div>`;}).join('')}`;}
+function openDiscover(){document.querySelectorAll('.backdrop').forEach(b=>b.remove());showModal({title:'Discover',wide:true,body:`<div id="discBody">${discBody()}</div>`,confirm:'Done'});}
+function discRefresh(){const el=document.getElementById('discBody');if(el)el.innerHTML=discBody();}
+function toggleTeam(name){DCOLL.has(name)?DCOLL.delete(name):DCOLL.add(name);discRefresh();}
+function discToggleAll(){const my=ORG.teams.filter(t=>t.members.includes(ORG.me));if(my.every(t=>DCOLL.has(t.name)))DCOLL.clear();else my.forEach(t=>DCOLL.add(t.name));discRefresh();}
+function discReq(label){DREQ.add(label);toast('Requested access to <span class="accent">'+label+'</span> — a member will grant you the key');discRefresh();}
 
 /* ================= wire ================= */
 function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on this system`);return;}STATE.defaultShell=s.name;renderActs();toast(`${s.name} set as default shell`);}})));}
