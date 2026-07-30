@@ -41,9 +41,9 @@ pub struct Team {
     pub created_at: i64,
 }
 
-/// A team membership joined with the user's name, plus their team role. Carries
-/// the member's X25519 public key (so a key-holder can seal the team key to it)
-/// and whether they've been granted the team key yet (ADR 0013).
+/// A team membership joined with the user's name, plus their team role. Carries the
+/// member's X25519 public key so a collection key-holder can seal collection keys to it
+/// (teams are keyless rosters — ADR 0016).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamMember {
@@ -51,18 +51,15 @@ pub struct TeamMember {
     pub username: String,
     pub role: TeamRole,
     pub public_key: Option<String>,
-    pub has_key: bool,
 }
 
-/// A team the current user belongs to, with their role and (if granted) the team
-/// key sealed to their public key — which they unwrap with their private key.
+/// A team the current user belongs to, with their role (keyless roster — ADR 0016).
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserTeam {
     pub id: String,
     pub name: String,
     pub role: TeamRole,
-    pub protected_team_key: Option<String>,
 }
 
 fn now() -> i64 {
@@ -150,8 +147,8 @@ pub async fn remove_member(db: &SqlitePool, team_id: &str, user_id: &str) -> Res
 
 /// Members of a team (joined with usernames + public keys + key-grant status).
 pub async fn list_members(db: &SqlitePool, team_id: &str) -> Result<Vec<TeamMember>> {
-    let rows: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT tm.user_id, u.username, tm.role, u.public_key, tm.protected_team_key
+    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT tm.user_id, u.username, tm.role, u.public_key
          FROM team_members tm JOIN users u ON u.id = tm.user_id
          WHERE tm.team_id = ? ORDER BY u.username",
     )
@@ -160,20 +157,19 @@ pub async fn list_members(db: &SqlitePool, team_id: &str) -> Result<Vec<TeamMemb
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(user_id, username, role, public_key, ptk)| TeamMember {
+        .map(|(user_id, username, role, public_key)| TeamMember {
             user_id,
             username,
             role: TeamRole::parse(&role),
             public_key,
-            has_key: ptk.is_some(),
         })
         .collect())
 }
 
 /// Teams the given user is a member of, with their role + their sealed team key.
 pub async fn list_teams_for_user(db: &SqlitePool, user_id: &str) -> Result<Vec<UserTeam>> {
-    let rows: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT t.id, t.name, tm.role, tm.protected_team_key
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT t.id, t.name, tm.role
          FROM team_members tm JOIN teams t ON t.id = tm.team_id
          WHERE tm.user_id = ? ORDER BY t.name",
     )
@@ -182,69 +178,12 @@ pub async fn list_teams_for_user(db: &SqlitePool, user_id: &str) -> Result<Vec<U
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, name, role, protected_team_key)| UserTeam {
+        .map(|(id, name, role)| UserTeam {
             id,
             name,
             role: TeamRole::parse(&role),
-            protected_team_key,
         })
         .collect())
-}
-
-/// Set (grant) a member's sealed team key. Returns false if not a member.
-pub async fn set_member_key(
-    db: &SqlitePool,
-    team_id: &str,
-    user_id: &str,
-    protected_team_key: &str,
-) -> Result<bool> {
-    let n = sqlx::query(
-        "UPDATE team_members SET protected_team_key = ? WHERE team_id = ? AND user_id = ?",
-    )
-    .bind(protected_team_key)
-    .bind(team_id)
-    .bind(user_id)
-    .execute(db)
-    .await?
-    .rows_affected();
-    Ok(n > 0)
-}
-
-/// Revoke a member's key grant (clears the sealed key). Key rotation is a
-/// separate, deferred concern (a revoked member may have cached the key).
-pub async fn clear_member_key(db: &SqlitePool, team_id: &str, user_id: &str) -> Result<bool> {
-    let n = sqlx::query(
-        "UPDATE team_members SET protected_team_key = NULL WHERE team_id = ? AND user_id = ? AND protected_team_key IS NOT NULL",
-    )
-    .bind(team_id)
-    .bind(user_id)
-    .execute(db)
-    .await?
-    .rows_affected();
-    Ok(n > 0)
-}
-
-/// Whether the team already has at least one key-holder (gates first-key init).
-pub async fn team_has_any_key(db: &SqlitePool, team_id: &str) -> Result<bool> {
-    let row: Option<(String,)> = sqlx::query_as(
-        "SELECT user_id FROM team_members WHERE team_id = ? AND protected_team_key IS NOT NULL LIMIT 1",
-    )
-    .bind(team_id)
-    .fetch_optional(db)
-    .await?;
-    Ok(row.is_some())
-}
-
-/// Whether a user is a key-holder of a team (holds the sealed team key).
-pub async fn member_has_key(db: &SqlitePool, team_id: &str, user_id: &str) -> Result<bool> {
-    let row: Option<(Option<String>,)> = sqlx::query_as(
-        "SELECT protected_team_key FROM team_members WHERE team_id = ? AND user_id = ?",
-    )
-    .bind(team_id)
-    .bind(user_id)
-    .fetch_optional(db)
-    .await?;
-    Ok(matches!(row, Some((Some(_),))))
 }
 
 /// The user's role in a team, or `None` if they are not a member. The core authz
