@@ -107,6 +107,7 @@ const M={
   move:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v2M3 7v11a2 2 0 002 2h6M16 16l3 3m0 0l-3 3m3-3h-8"/></svg>',
   compass:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>',
   bell:'<svg class="icon" viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>',
+  refresh:'<svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5"/></svg>',
 };
 const SSH_HOSTS=[
   {name:'gitlab',host:'gitlab.com',user:'git',port:22},
@@ -119,13 +120,17 @@ const av=u=>`<span class="av" title="${u}" style="background:${avColor(u)}">${u[
 /* Health-check pastille. STATE.hcMode reflects what the server allows (governed, ADR 0017):
    off = no status · passive = "last seen" from real connections (no probing) · on-demand /
    full = active up/down. Machines can opt out (cn.hc===false). Down is shown calmly. */
+let CHECKING=false;
 const hcUp=name=>([...name].reduce((a,c)=>a+c.charCodeAt(0),0)%4)!==0; // demo: ~75% reachable
 function pastille(cn){
   if(STATE.hcMode==='off'||cn.hc===false)return '';
+  if(CHECKING&&STATE.hcMode!=='passive')return `<span class="pst check" title="Checking…"></span>`;
   if(STATE.hcMode==='passive')return `<span class="pst seen" title="Last connected ${cn.last||'—'} · passive (no probe)"></span>`;
   const up=hcUp(cn.name);
   return `<span class="pst ${up?'up':'down'}" title="${up?'Reachable':'No response'} · ${STATE.hcMethod.toUpperCase()} · ${cn.last||'—'}"></span>`;
 }
+// On-demand trigger: flash "checking", then resolve to up/down.
+function hcCheckNow(){CHECKING=true;renderSide();renderMain();setTimeout(()=>{CHECKING=false;renderSide();renderMain();toast('Status checked');},850);}
 
 /* Library: personal FOLDERS (never shared) hold COLLECTIONS (shareable) hold MACHINES.
    A machine ALWAYS lives in a collection (personal = a 1-member collection). */
@@ -289,6 +294,7 @@ function cardsView(coll){
       <div class="sel-input">${M.sort}<select onchange="STATE.sort=this.value;renderMain()"><option value="name" ${STATE.sort==='name'?'selected':''}>Name</option><option value="host" ${STATE.sort==='host'?'selected':''}>Host</option></select></div>
       <button class="btn btn-ghost btn-sm" title="Grid" onclick="STATE.layout='grid';renderMain()" style="${STATE.layout==='grid'?'color:var(--accent)':''}">${M.grid}</button>
       <button class="btn btn-ghost btn-sm" title="List" onclick="STATE.layout='list';renderMain()" style="${STATE.layout==='list'?'color:var(--accent)':''}">${M.list}</button>
+      ${(STATE.hcMode==='on-demand'||STATE.hcMode==='full')?`<button class="btn btn-sm" title="Check machine status now" onclick="hcCheckNow()">${M.refresh} Check</button>`:''}
       <button class="btn btn-sm" title="Import from SSH config" onclick="dlgImportPaste('${coll.name}')">${M.import} Import</button>
       <button class="btn btn-sm" title="${cur.id===coll.id?'New shared folder':'New sub-folder in “'+cur.name+'”'}" onclick="dlgNewFolder('${cur.id}')">${M.folder} Folder</button>
       <button class="btn btn-primary btn-sm" onclick="dlgNewConn('${coll.name}')">${ICON.plus} Machine</button></div>
