@@ -332,6 +332,20 @@ const routes: Record<string, Route> = {
     );
     return null;
   },
+  // Offer-to-team discovery (ADR 0016).
+  collections_offered: () => json('/api/collections/offered'),
+  collection_set_offer: async (a) => {
+    await json(`/api/collections/${encodeURIComponent(String(a.id))}/offer`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ teamId: a.teamId, discoveryLabel: a.discoveryLabel }),
+    });
+    return null;
+  },
+  collection_clear_offer: async (a) => {
+    await json(`/api/collections/${encodeURIComponent(String(a.id))}/offer`, { method: 'DELETE' });
+    return null;
+  },
 
   // Per-user library tree (ADR 0016): opaque client-encrypted blob.
   library_get: () => json('/api/user/library'),

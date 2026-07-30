@@ -601,6 +601,17 @@ const UserCollectionSchema = z.object({
   protectedMetaKey: z.string(),
   protectedItemsKey: z.string().nullable(),
   createdAt: z.number(),
+  // Offer-to-team discovery (ADR 0016): the team it's offered to + a plaintext label, or null.
+  teamId: z.string().nullable().optional(),
+  discoveryLabel: z.string().nullable().optional(),
+});
+// A collection offered to a team I belong to (discovery). Only the plaintext label is exposed.
+const OfferedCollectionSchema = z.object({
+  id: z.string(),
+  teamId: z.string(),
+  teamName: z.string(),
+  discoveryLabel: z.string(),
+  memberRole: CollectionRoleSchema.nullable(),
 });
 const CollectionMemberSchema = z.object({
   userId: z.string(),
@@ -620,6 +631,7 @@ const CreatedIdSchema = z.object({ id: z.string() });
 export type CollectionRole = z.infer<typeof CollectionRoleSchema>;
 export type DirectoryEntry = z.infer<typeof DirectoryEntrySchema>;
 export type UserCollection = z.infer<typeof UserCollectionSchema>;
+export type OfferedCollection = z.infer<typeof OfferedCollectionSchema>;
 export type CollectionMember = z.infer<typeof CollectionMemberSchema>;
 export type CollectionItem = z.infer<typeof CollectionItemSchema>;
 
@@ -675,6 +687,13 @@ export const BackendCollections = {
     invokeWithValidation('collection_item_update', z.null(), { id, itemId, blob }),
   deleteItem: (id: string, itemId: string) =>
     invokeWithValidation('collection_item_delete', z.null(), { id, itemId }),
+  /** Collections offered to teams I'm in (opt-in discovery). */
+  offered: () => invokeWithValidation('collections_offered', z.array(OfferedCollectionSchema)),
+  /** Offer a collection to a team for discovery (owner). */
+  setOffer: (id: string, teamId: string, discoveryLabel: string) =>
+    invokeWithValidation('collection_set_offer', z.null(), { id, teamId, discoveryLabel }),
+  /** Stop offering a collection (owner). */
+  clearOffer: (id: string) => invokeWithValidation('collection_clear_offer', z.null(), { id }),
 } as const;
 
 // Per-user library tree (ADR 0016 view hierarchy): an opaque, client-encrypted

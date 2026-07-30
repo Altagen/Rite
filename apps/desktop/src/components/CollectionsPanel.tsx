@@ -26,6 +26,9 @@ export function CollectionsPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [machineCount, setMachineCount] = useState<number | null>(null);
   const [renameVal, setRenameVal] = useState('');
+  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
+  const [offerTeam, setOfferTeam] = useState('');
+  const [offerLabel, setOfferLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -35,7 +38,11 @@ export function CollectionsPanel() {
 
   const refresh = useCallback(async () => {
     try {
-      const cols = await Backend.Collections.mine();
+      const [cols, myTeams] = await Promise.all([
+        Backend.Collections.mine(),
+        Backend.Teams.mine().catch(() => []),
+      ]);
+      setTeams(myTeams);
       const hdrs: Record<string, CollectionHeader> = {};
       for (const c of cols) {
         if (!c.protectedMetaKey || !publicKey || !privateKey) {
@@ -89,6 +96,8 @@ export function CollectionsPanel() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync UI to selection
     setRenameVal(header?.name ?? '');
+    setOfferTeam(selected?.teamId ?? '');
+    setOfferLabel(selected?.discoveryLabel ?? '');
     setMachineCount(null);
     if (!selectedId) return;
     Backend.Collections.items(selectedId)
@@ -116,6 +125,14 @@ export function CollectionsPanel() {
       if (!publicKey || !privateKey) throw new Error('session keys unavailable');
       const { metaKey, header: h } = await readCollectionHeader(id, publicKey, privateKey);
       await writeCollectionHeader(id, metaKey, { ...h, ...patch });
+      await refresh();
+    });
+
+  const saveOffer = () =>
+    run(async () => {
+      if (!selected) return;
+      if (offerTeam) await Backend.Collections.setOffer(selected.id, offerTeam, offerLabel.trim());
+      else await Backend.Collections.clearOffer(selected.id);
       await refresh();
     });
 
@@ -276,6 +293,54 @@ export function CollectionsPanel() {
                   >
                     {canManage ? 'Manage members' : 'View members'}
                   </button>
+                </div>
+              )}
+
+              {/* Offer to a team (discovery) — owner only. The label is NOT encrypted. */}
+              {canManage && (
+                <div className="mb-4 rounded-2xl border border-border bg-card p-4">
+                  <div className="text-sm font-semibold">Offer to a team</div>
+                  <div className="mb-3 text-xs text-muted-foreground">
+                    List this collection to a team so its members can discover it and request access. They still
+                    can&apos;t open it until you grant them.
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={offerTeam}
+                      onChange={(e) => setOfferTeam(e.target.value)}
+                      disabled={busy}
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">— none —</option>
+                      {teams.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={offerLabel}
+                      onChange={(e) => setOfferLabel(e.target.value)}
+                      placeholder="Discovery label (shown to the team)"
+                      disabled={busy || !offerTeam}
+                      className="min-w-[200px] flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    />
+                    <button
+                      onClick={saveOffer}
+                      disabled={busy || (!!offerTeam && !offerLabel.trim())}
+                      className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  <div className="mt-2 flex items-start gap-2 text-xs text-amber-600">
+                    <span>⚠</span>
+                    <span>
+                      This label is <b>not encrypted</b> — visible to the team and the server so people can find
+                      it. Keep it non-sensitive; the collection&apos;s real name and its machines stay end-to-end
+                      encrypted.
+                    </span>
+                  </div>
                 </div>
               )}
 
