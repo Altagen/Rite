@@ -175,8 +175,7 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
     <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
     <button class="btn btn-sm" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>
     <button class="btn btn-ghost btn-sm" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
-    <button class="btn btn-ghost btn-sm" title="Collections" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>
-    <button class="btn btn-ghost btn-sm" title="Discover collections offered to your teams" onclick="location.href='discover.html'">${M.compass} <span class="lbl">Discover</span></button>
+    <button class="btn btn-ghost btn-sm" title="Collections — yours + Discover (offered to your teams)" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>
     ${IS_ADMIN?`<button class="btn btn-ghost btn-sm" title="Administration" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Admin</span></button>`:''}
     <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
     <button class="btn btn-ghost btn-sm" title="Settings" onclick="openSettings()">${EXICON.gear}</button>
