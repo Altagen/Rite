@@ -24,7 +24,6 @@ import {
   type UpdateConnectionInput,
 } from './connectionsStore';
 import { encryptString, decryptString } from '../utils/vaultCrypto';
-import { unwrapTeamKey } from '../utils/teamCrypto';
 import {
   unwrapCollectionKeys,
   decryptCollectionField,
@@ -68,7 +67,6 @@ export interface StoredRecord {
 /** A decrypted connection kept in RAM: its record plus, if shared, its scope. */
 interface Entry {
   record: StoredRecord;
-  teamId?: string; // present ⇒ team-shared (team key)
   collectionId?: string; // present ⇒ collection-shared (collection key, ADR 0016)
 }
 
@@ -240,30 +238,6 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     // any legacy vault connections into it. It's then loaded like any collection.
     const personalId = await ensurePersonalCollection(publicKey, privateKey, userKey);
 
-    // Team-shared connections: only teams the user holds a key for are readable.
-    if (publicKey && privateKey) {
-      const teams = await Backend.Teams.mine()
-        .then((all) => all.filter((t) => t.protectedTeamKey))
-        .catch(() => []);
-      for (const team of teams) {
-        if (!team.protectedTeamKey) continue;
-        try {
-          const teamKey = await unwrapTeamKey(publicKey, privateKey, team.protectedTeamKey);
-          for (const b of await Backend.Teams.connections(team.id)) {
-            try {
-              const record = await decryptRecord(teamKey, b.blob);
-              map.set(b.id, { record, teamId: team.id });
-              infos.push(toInfo(b.id, record, b.createdAt, b.updatedAt, team.name));
-            } catch {
-              // Undecryptable shared blob — skip.
-            }
-          }
-        } catch {
-          // Team key or connections unavailable — skip this team.
-        }
-      }
-    }
-
     // Collection-shared connections (ADR 0016): only collections I hold a sealed
     // key for are readable. The collection's name/colour and its items are all
     // browser-decrypted; the server only ever saw opaque blobs.
@@ -357,8 +331,6 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
         const ctx = collections.current.get(entry.collectionId);
         if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
         await Backend.Collections.deleteItem(entry.collectionId, id);
-      } else if (entry.teamId) {
-        await Backend.Teams.deleteConnection(entry.teamId, id);
       } else {
         await Backend.Vault.deleteConnection(id);
       }
@@ -402,7 +374,6 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
         await refresh();
         return;
       }
-      if (entry.teamId) throw new Error('editing a team connection is not supported here yet');
       const blob = await encryptRecord(userKey, applyUpdate(entry.record, input));
       await Backend.Vault.updateConnection(input.id, blob);
       await refresh();

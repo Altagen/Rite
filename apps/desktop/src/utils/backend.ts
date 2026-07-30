@@ -530,7 +530,7 @@ export const BackendContext = {
   vaultLock: () => invokeWithValidation('context_vault_lock', z.null()),
 } as const;
 
-// Teams / RBAC (product-model.md) + team key sharing (ADR 0013).
+// Teams / RBAC (product-model.md). Keyless rosters — sharing lives in collections (ADR 0016).
 const TeamRoleSchema = z.enum(['admin', 'member']);
 const TeamSchema = z.object({ id: z.string(), name: z.string(), createdAt: z.number() });
 const TeamMemberSchema = z.object({
@@ -538,59 +538,43 @@ const TeamMemberSchema = z.object({
   username: z.string(),
   role: TeamRoleSchema,
   publicKey: z.string().nullable().optional(),
-  hasKey: z.boolean(),
 });
 const UserTeamSchema = z.object({
   id: z.string(),
   name: z.string(),
   role: TeamRoleSchema,
-  protectedTeamKey: z.string().nullable().optional(),
-});
-// A team's stored connection blob (opaque ciphertext; decrypted client-side).
-const TeamConnBlobSchema = z.object({
-  id: z.string(),
-  blob: z.string(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
 });
 export type Team = z.infer<typeof TeamSchema>;
 export type TeamMember = z.infer<typeof TeamMemberSchema>;
 export type UserTeam = z.infer<typeof UserTeamSchema>;
 export type TeamRole = z.infer<typeof TeamRoleSchema>;
-export type TeamConnBlob = z.infer<typeof TeamConnBlobSchema>;
 
 export const BackendTeams = {
   /** All teams (org-admin). */
   listAll: () => invokeWithValidation('admin_list_teams', z.array(TeamSchema)),
   create: (name: string) => invokeWithValidation('admin_create_team', TeamSchema, { name }),
   remove: (id: string) => invokeWithValidation('admin_delete_team', z.null(), { id }),
-  /** Teams the caller belongs to, with their sealed team key (if granted). */
+  /** Teams the caller belongs to (keyless roster). */
   mine: () => invokeWithValidation('teams_mine', z.array(UserTeamSchema)),
   members: (id: string) => invokeWithValidation('team_members', z.array(TeamMemberSchema), { id }),
   addMember: (id: string, userId: string, role: TeamRole) =>
     invokeWithValidation('team_add_member', z.null(), { id, userId, role }),
   removeMember: (id: string, userId: string) =>
     invokeWithValidation('team_remove_member', z.null(), { id, userId }),
-  /** Grant a member their sealed team key (ADR 0013). */
-  grantKey: (id: string, userId: string, protectedTeamKey: string) =>
-    invokeWithValidation('team_grant_key', z.null(), { id, userId, protectedTeamKey }),
-  revokeKey: (id: string, userId: string) =>
-    invokeWithValidation('team_revoke_key', z.null(), { id, userId }),
-  /** A team's connection blobs (opaque; the caller decrypts with the team key). */
-  connections: (id: string) =>
-    invokeWithValidation('team_conn_list', z.array(TeamConnBlobSchema), { id }),
-  createConnection: (id: string, blob: string) =>
-    invokeWithValidation('team_conn_create', TeamConnBlobSchema, { id, blob }),
-  deleteConnection: (id: string, cid: string) =>
-    invokeWithValidation('team_conn_delete', z.null(), { id, cid }),
 } as const;
 
 // Per-user zero-knowledge connection blobs (ADR 0011). The browser encrypts/
 // decrypts with its userKey; the server stores opaque v1.* blobs.
+const ConnBlobSchema = z.object({
+  id: z.string(),
+  blob: z.string(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
 export const BackendVault = {
-  connections: () => invokeWithValidation('vault_conn_list', z.array(TeamConnBlobSchema)),
+  connections: () => invokeWithValidation('vault_conn_list', z.array(ConnBlobSchema)),
   createConnection: (blob: string) =>
-    invokeWithValidation('vault_conn_create', TeamConnBlobSchema, { blob }),
+    invokeWithValidation('vault_conn_create', ConnBlobSchema, { blob }),
   updateConnection: (id: string, blob: string) =>
     invokeWithValidation('vault_conn_update', z.null(), { id, blob }),
   deleteConnection: (id: string) => invokeWithValidation('vault_conn_delete', z.null(), { id }),

@@ -172,7 +172,7 @@ const routes: Record<string, Route> = {
     return null;
   },
 
-  // Teams / RBAC (product-model) + team key sharing (ADR 0013).
+  // Teams / RBAC (product-model) — keyless rosters (ADR 0016).
   admin_list_teams: () => json('/api/admin/teams'),
   admin_create_team: (a) => json('/api/admin/teams', post({ name: a.name })),
   admin_delete_team: async (a) => {
@@ -245,20 +245,6 @@ const routes: Record<string, Route> = {
     );
     return null;
   },
-  team_grant_key: async (a) => {
-    await json(
-      `/api/teams/${encodeURIComponent(String(a.id))}/members/${encodeURIComponent(String(a.userId))}/key`,
-      post({ protectedTeamKey: a.protectedTeamKey }),
-    );
-    return null;
-  },
-  team_revoke_key: async (a) => {
-    await json(
-      `/api/teams/${encodeURIComponent(String(a.id))}/members/${encodeURIComponent(String(a.userId))}/key`,
-      { method: 'DELETE' },
-    );
-    return null;
-  },
   vault_conn_list: () => json('/api/vault/connections'),
   vault_conn_create: (a) => json('/api/vault/connections', post({ blob: a.blob })),
   vault_conn_update: async (a) => {
@@ -271,16 +257,6 @@ const routes: Record<string, Route> = {
   },
   vault_conn_delete: async (a) => {
     await json(`/api/vault/connections/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
-    return null;
-  },
-  team_conn_list: (a) => json(`/api/teams/${encodeURIComponent(String(a.id))}/connections`),
-  team_conn_create: (a) =>
-    json(`/api/teams/${encodeURIComponent(String(a.id))}/connections`, post({ blob: a.blob })),
-  team_conn_delete: async (a) => {
-    await json(
-      `/api/teams/${encodeURIComponent(String(a.id))}/connections/${encodeURIComponent(String(a.cid))}`,
-      { method: 'DELETE' },
-    );
     return null;
   },
 

@@ -1,22 +1,19 @@
 /**
- * Team management (product-model.md RBAC + ADR 0013 team key sharing).
- *
- * Org-admins create teams and manage membership; a team's crypto is set up
- * client-side: creating a team generates a team key sealed to the creator (they
- * become the first key-holder), and granting a member seals the team key to their
- * public key. The server only ever stores sealed blobs it can't open.
+ * Team management (product-model.md RBAC). Org-admins create teams and manage
+ * membership. Teams are keyless rosters (ADR 0016) — sharing lives in collections,
+ * so there's no team key here; a member's role is 'admin' (Manager) or 'member'.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { Backend, type Team, type TeamMember, type ServerUser } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
-import { generateTeamKey, sealTeamKey, sealTeamKeyToHex, unwrapTeamKey } from '../utils/teamCrypto';
+
+const roleLabel = (r: TeamMember['role']) => (r === 'admin' ? 'Manager' : 'Member');
 
 export function TeamsPanel() {
-  const { user: me, publicKey, privateKey } = useServerSession();
+  const { user: me } = useServerSession();
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<ServerUser[]>([]);
-  const [myKeys, setMyKeys] = useState<Record<string, string | null>>({}); // teamId → my sealed key
   const [selected, setSelected] = useState<Team | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [newName, setNewName] = useState('');
@@ -26,14 +23,9 @@ export function TeamsPanel() {
 
   const refresh = useCallback(async () => {
     try {
-      const [teamList, userList, mine] = await Promise.all([
-        Backend.Teams.listAll(),
-        Backend.Admin.listUsers(),
-        Backend.Teams.mine(),
-      ]);
+      const [teamList, userList] = await Promise.all([Backend.Teams.listAll(), Backend.Admin.listUsers()]);
       setTeams(teamList);
       setUsers(userList);
-      setMyKeys(Object.fromEntries(mine.map((t) => [t.id, t.protectedTeamKey ?? null])));
     } catch {
       setError('Failed to load teams');
     }
@@ -67,31 +59,16 @@ export function TeamsPanel() {
 
   const createTeam = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName.trim() || busy || !me || !publicKey) return;
+    if (!newName.trim() || busy || !me) return;
     await act(async () => {
       const team = await Backend.Teams.create(newName.trim());
-      // Initialize the team key: generate it and seal it to myself (first key-holder).
-      const teamKey = generateTeamKey();
+      // The creator joins as the first Manager (team role 'admin').
       await Backend.Teams.addMember(team.id, me.id, 'admin');
-      await Backend.Teams.grantKey(team.id, me.id, await sealTeamKey(publicKey, teamKey));
       setNewName('');
       await refresh();
     });
   };
 
-  const grantKey = async (member: TeamMember) => {
-    if (!selected || !publicKey || !privateKey) return;
-    const sealed = myKeys[selected.id];
-    if (!sealed || !member.publicKey) return;
-    await act(async () => {
-      const teamKey = await unwrapTeamKey(publicKey, privateKey, sealed);
-      const forMember = await sealTeamKeyToHex(member.publicKey!, teamKey);
-      await Backend.Teams.grantKey(selected.id, member.userId, forMember);
-      await loadMembers(selected);
-    });
-  };
-
-  const iHoldKey = selected ? !!myKeys[selected.id] : false;
   const nonMembers = users.filter((u) => !members.some((m) => m.userId === u.id));
 
   return (
@@ -99,9 +76,7 @@ export function TeamsPanel() {
       <h2 className="text-xl font-semibold">Teams</h2>
 
       {error && (
-        <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">
-          {error}
-        </div>
+        <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">{error}</div>
       )}
 
       <div className="flex flex-wrap gap-2">
@@ -144,12 +119,7 @@ export function TeamsPanel() {
       {selected && (
         <div className="space-y-4 rounded-lg border border-border p-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-medium">
-              {selected.name}
-              {!iHoldKey && (
-                <span className="ml-2 text-xs text-amber-600">you don't hold this team's key</span>
-              )}
-            </h3>
+            <h3 className="font-medium">{selected.name}</h3>
             <button
               onClick={() =>
                 act(async () => {
@@ -171,7 +141,6 @@ export function TeamsPanel() {
               <tr>
                 <th className="py-1 font-medium">Member</th>
                 <th className="py-1 font-medium">Role</th>
-                <th className="py-1 font-medium">Key</th>
                 <th className="py-1 font-medium text-right">Actions</th>
               </tr>
             </thead>
@@ -179,44 +148,17 @@ export function TeamsPanel() {
               {members.map((m) => (
                 <tr key={m.userId} className="border-t border-border">
                   <td className="py-1.5">{m.username}</td>
-                  <td className="py-1.5 uppercase">{m.role}</td>
-                  <td className="py-1.5">
-                    {m.hasKey ? (
-                      <span className="text-green-600">granted</span>
-                    ) : (
-                      <span className="text-muted-foreground">no access</span>
-                    )}
-                  </td>
+                  <td className="py-1.5">{roleLabel(m.role)}</td>
                   <td className="py-1.5">
                     <div className="flex justify-end gap-2">
-                      {!m.hasKey && (
-                        <button
-                          onClick={() => grantKey(m)}
-                          disabled={busy || !iHoldKey || !m.publicKey}
-                          title={iHoldKey ? 'Seal the team key to this member' : 'You are not a key-holder'}
-                          className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-50"
-                        >
-                          Grant key
-                        </button>
-                      )}
-                      {m.hasKey && m.userId !== me?.id && (
-                        <button
-                          onClick={() => act(async () => {
-                            await Backend.Teams.revokeKey(selected.id, m.userId);
-                            await loadMembers(selected);
-                          })}
-                          disabled={busy}
-                          className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-50"
-                        >
-                          Revoke
-                        </button>
-                      )}
                       {m.userId !== me?.id && (
                         <button
-                          onClick={() => act(async () => {
-                            await Backend.Teams.removeMember(selected.id, m.userId);
-                            await loadMembers(selected);
-                          })}
+                          onClick={() =>
+                            act(async () => {
+                              await Backend.Teams.removeMember(selected.id, m.userId);
+                              await loadMembers(selected);
+                            })
+                          }
                           disabled={busy}
                           className="rounded border border-red-500/30 px-2 py-0.5 text-xs text-red-600 hover:bg-red-500/10 disabled:opacity-50"
                         >
