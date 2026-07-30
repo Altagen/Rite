@@ -475,6 +475,13 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/collections/{id}/items/{itemId}",
             put(update_collection_item_ep).delete(delete_collection_item_ep),
         )
+        // Offer-to-team discovery (ADR 0016): owner offers a collection to a team; members
+        // of that team see the plaintext label and can request access.
+        .route("/api/collections/offered", get(offered_collections_ep))
+        .route(
+            "/api/collections/{id}/offer",
+            put(set_collection_offer_ep).delete(clear_collection_offer_ep),
+        )
         .route("/api/context", get(get_context))
         .route("/api/context/servers", post(add_server))
         .route("/api/context/servers/{id}", delete(remove_server))
@@ -1674,6 +1681,75 @@ async fn delete_collection_ep(
     } else {
         StatusCode::NOT_FOUND.into_response()
     })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetOfferReq {
+    team_id: String,
+    discovery_label: String,
+}
+
+/// Offer this collection to a team for discovery (owner only): an org link + a plaintext
+/// label. The real name and machines stay encrypted; the label is RBAC-gated to the team.
+async fn set_collection_offer_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<SetOfferReq>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_manage() => {}
+        _ => {
+            return Ok((StatusCode::FORBIDDEN, "only an owner can offer a collection").into_response())
+        }
+    }
+    if !rite_core::teams::team_exists(state.db.pool(), &req.team_id).await? {
+        return Ok((StatusCode::BAD_REQUEST, "unknown team").into_response());
+    }
+    let label = req.discovery_label.trim();
+    if label.is_empty() {
+        return Ok((StatusCode::BAD_REQUEST, "a discovery label is required").into_response());
+    }
+    Ok(
+        if coll::set_collection_offer(state.db.pool(), &id, Some(&req.team_id), Some(label)).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        },
+    )
+}
+
+/// Stop offering this collection for discovery (owner only).
+async fn clear_collection_offer_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_manage() => {}
+        _ => {
+            return Ok((StatusCode::FORBIDDEN, "only an owner can change the offer").into_response())
+        }
+    }
+    Ok(
+        if coll::set_collection_offer(state.db.pool(), &id, None, None).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        },
+    )
+}
+
+/// Collections offered to the teams the caller belongs to (discovery). Team-member RBAC is
+/// enforced in the query; only the plaintext labels are returned.
+async fn offered_collections_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Vec<coll::OfferedCollection>>, AppError> {
+    Ok(Json(
+        coll::list_offered_to_user(state.db.pool(), &user.id).await?,
+    ))
 }
 
 async fn collection_members_ep(

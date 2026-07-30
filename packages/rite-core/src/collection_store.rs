@@ -66,6 +66,10 @@ pub struct UserCollection {
     /// access.
     pub protected_items_key: Option<String>,
     pub created_at: i64,
+    /// If offered to a team for discovery (ADR 0016): the team it's offered to and the
+    /// plaintext discovery label (both `None` when not offered). Neither is cryptographic.
+    pub team_id: Option<String>,
+    pub discovery_label: Option<String>,
 }
 
 /// A member of a collection (for the member list / manage UI). Carries the user's
@@ -319,9 +323,18 @@ pub async fn list_collections_for_user(
     db: &SqlitePool,
     user_id: &str,
 ) -> Result<Vec<UserCollection>> {
-    let rows: Vec<(String, String, String, String, Option<String>, i64)> = sqlx::query_as(
-        "SELECT c.id, c.name_enc, cm.role,
-                cm.protected_meta_key, cm.protected_items_key, c.created_at
+    let rows: Vec<(
+        String,
+        String,
+        String,
+        String,
+        Option<String>,
+        i64,
+        Option<String>,
+        Option<String>,
+    )> = sqlx::query_as(
+        "SELECT c.id, c.name_enc, cm.role, cm.protected_meta_key, cm.protected_items_key,
+                c.created_at, c.team_id, c.discovery_label
          FROM collection_members cm JOIN collections c ON c.id = cm.collection_id
          WHERE cm.user_id = ? ORDER BY c.created_at",
     )
@@ -331,7 +344,7 @@ pub async fn list_collections_for_user(
     Ok(rows
         .into_iter()
         .map(
-            |(id, name_enc, role, protected_meta_key, protected_items_key, created_at)| {
+            |(id, name_enc, role, protected_meta_key, protected_items_key, created_at, team_id, discovery_label)| {
                 UserCollection {
                     id,
                     name_enc,
@@ -339,9 +352,75 @@ pub async fn list_collections_for_user(
                     protected_meta_key,
                     protected_items_key,
                     created_at,
+                    team_id,
+                    discovery_label,
                 }
             },
         )
+        .collect())
+}
+
+/// A collection offered to a team the caller belongs to (opt-in discovery, ADR 0016).
+/// Only the plaintext `discovery_label` is exposed (RBAC-gated to the team's members); the
+/// real name and machines stay end-to-end encrypted. `member_role` is set when the caller
+/// already belongs, so the UI can offer "Open" vs "Request access".
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OfferedCollection {
+    pub id: String,
+    pub team_id: String,
+    pub team_name: String,
+    pub discovery_label: String,
+    pub member_role: Option<CollectionRole>,
+}
+
+/// Set or clear a collection's team offer (owner action, enforced at the endpoint). Passing
+/// `None` for both clears the offer. team_id is an org link, discovery_label a plaintext,
+/// RBAC-gated label — neither is cryptographic.
+pub async fn set_collection_offer(
+    db: &SqlitePool,
+    id: &str,
+    team_id: Option<&str>,
+    discovery_label: Option<&str>,
+) -> Result<bool> {
+    let n = sqlx::query("UPDATE collections SET team_id = ?, discovery_label = ? WHERE id = ?")
+        .bind(team_id)
+        .bind(discovery_label)
+        .bind(id)
+        .execute(db)
+        .await?
+        .rows_affected();
+    Ok(n > 0)
+}
+
+/// Collections offered to the teams the user belongs to (discovery). RBAC: only teams the
+/// user is a member of, and only collections that carry a discovery label.
+pub async fn list_offered_to_user(
+    db: &SqlitePool,
+    user_id: &str,
+) -> Result<Vec<OfferedCollection>> {
+    let rows: Vec<(String, String, String, String, Option<String>)> = sqlx::query_as(
+        "SELECT c.id, c.team_id, t.name, c.discovery_label,
+                (SELECT role FROM collection_members WHERE collection_id = c.id AND user_id = ?)
+         FROM collections c
+         JOIN team_members tm ON tm.team_id = c.team_id AND tm.user_id = ?
+         JOIN teams t ON t.id = c.team_id
+         WHERE c.team_id IS NOT NULL AND c.discovery_label IS NOT NULL
+         ORDER BY t.name, c.discovery_label",
+    )
+    .bind(user_id)
+    .bind(user_id)
+    .fetch_all(db)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, team_id, team_name, discovery_label, my_role)| OfferedCollection {
+            id,
+            team_id,
+            team_name,
+            discovery_label,
+            member_role: my_role.map(|r| CollectionRole::parse(&r)),
+        })
         .collect())
 }
 
@@ -739,5 +818,55 @@ mod tests {
             list_collections_for_user(pool, &alice).await.unwrap().len(),
             0
         );
+    }
+
+    #[tokio::test]
+    async fn offer_to_team_discovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(&dir.path().join("o.db")).await.unwrap();
+        let pool = db.pool();
+        let alice = user(pool, "alice").await; // collection owner + team member
+        let bob = user(pool, "bob").await; // team member, not a collection member
+        let carol = user(pool, "carol").await; // NOT in the team
+
+        // A team with alice + bob (carol excluded).
+        let team = crate::teams::create_team(pool, "Eng").await.unwrap();
+        crate::teams::set_member(pool, &team.id, &alice, crate::teams::TeamRole::Admin)
+            .await
+            .unwrap();
+        crate::teams::set_member(pool, &team.id, &bob, crate::teams::TeamRole::Member)
+            .await
+            .unwrap();
+
+        // Alice's collection, offered to the team.
+        let cid = create_collection(pool, "v1.enc", &alice, "m", "i")
+            .await
+            .unwrap();
+        assert!(
+            set_collection_offer(pool, &cid, Some(&team.id), Some("Prod servers"))
+                .await
+                .unwrap()
+        );
+
+        // Bob (team member, not a collection member) discovers it — no membership.
+        let bob_offered = list_offered_to_user(pool, &bob).await.unwrap();
+        assert_eq!(bob_offered.len(), 1);
+        assert_eq!(bob_offered[0].discovery_label, "Prod servers");
+        assert_eq!(bob_offered[0].member_role, None);
+
+        // Alice sees it too, already a member (owner).
+        let alice_offered = list_offered_to_user(pool, &alice).await.unwrap();
+        assert_eq!(alice_offered.len(), 1);
+        assert_eq!(alice_offered[0].member_role, Some(CollectionRole::Owner));
+
+        // Carol is NOT in the team → RBAC: sees nothing (no discovery leak).
+        assert!(list_offered_to_user(pool, &carol).await.unwrap().is_empty());
+
+        // Clearing the offer hides it again and blanks the collection's offer fields.
+        assert!(set_collection_offer(pool, &cid, None, None).await.unwrap());
+        assert!(list_offered_to_user(pool, &bob).await.unwrap().is_empty());
+        let alice_coll = &list_collections_for_user(pool, &alice).await.unwrap()[0];
+        assert_eq!(alice_coll.team_id, None);
+        assert_eq!(alice_coll.discovery_label, None);
     }
 }
