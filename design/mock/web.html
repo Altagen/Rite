@@ -164,15 +164,17 @@ function collectMachines(node){let out=[...(node.conns||[])];(node.children||[])
 function underColl(id){let res=false;(function rec(list,inColl){for(const n of list){if(n.id===id){res=inColl;return;}if(n.children)rec(n.children,inColl||n.type==='coll');}})(LIB,false);return res;}
 
 const IS_ADMIN=true;
-let STATE={sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp'};
-const SHELLS=[{name:'fish',icon:'🐠',installed:true},{name:'bash',icon:'🐚',installed:true},{name:'zsh',icon:'⚡',installed:true},{name:'sh',icon:'📜',installed:false}];
+let STATE={sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp'};
+// The web UI opens terminals ON THE SERVER, so the shell is the server's default (set by the
+// admin in Instance settings), not a per-user pick. Choosing between local shells (fish/zsh/…)
+// is a DESKTOP feature (local terminals). Comes from the server mode in the real app.
+const SERVER_SHELL='bash';
 
 /* ================= header actions (web) ================= */
-function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHELLS[0];
+function renderActs(){
   document.getElementById('instName').textContent=STATE.instanceName;
   document.getElementById('acts').innerHTML=`
-    <button class="btn btn-primary btn-sm" title="New terminal on the server" onclick="toast('New terminal · ${sh.name}')">${ICON.term} <span class="lbl">Terminal</span></button>
-    <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
+    <button class="btn btn-primary btn-sm" title="New terminal on the server (${SERVER_SHELL})" onclick="toast('New terminal · ${SERVER_SHELL}')">${ICON.term} <span class="lbl">Terminal</span></button>
     <button class="btn btn-sm" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>
     <button class="btn btn-ghost btn-sm" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
     <button class="btn btn-ghost btn-sm" title="Collections — yours + Discover (offered to your teams)" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>
@@ -180,7 +182,6 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
     <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
     <button class="btn btn-ghost btn-sm" title="Settings" onclick="openSettings()">${EXICON.gear}</button>
     <button class="btn btn-ghost btn-sm" title="Sign out" onclick="toast('Signed out')"><svg class="icon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> <span class="lbl">Sign out</span></button>`;}
-function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on the server`);return;}STATE.defaultShell=s.name;renderActs();toast(`${s.name} set as default shell`);}})));}
 
 /* ================= sidebar library ================= */
 function renderSide(){const s=document.getElementById('side');
@@ -249,7 +250,7 @@ function moveConnByName(name,targetId){
 function renderMain(){
   const mt=document.getElementById('mtabs'); const coll=STATE.selColl?find(STATE.selColl):null;
   const tabActs=`<button class="mtab-act" title="Rename tab" onclick="event.stopPropagation();toast('Rename tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button><button class="mtab-act mtab-close" title="Close tab" onclick="event.stopPropagation();toast('Close tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>`;
-  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Local Terminal (${STATE.defaultShell})</span>${tabActs}</div>
+  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Server terminal (${SERVER_SHELL})</span>${tabActs}</div>
     ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
     <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
   const b=document.getElementById('mbody');
@@ -435,7 +436,7 @@ function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',bod
   <div class="settings-row"><div><b>Theme</b><div class="muted" style="font-size:12px">Dark / light</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
   <div class="settings-row"><div><b>Auto-lock session</b><div class="muted" style="font-size:12px">Clear the in-memory vault key after inactivity (re-login to resume)</div></div><select class="inp" style="width:auto"><option>Disabled</option><option>1 min</option><option>3 min</option><option selected>5 min</option><option>Custom…</option></select></div>
   <div class="settings-row"><div><b>Auto-clear clipboard</b><div class="muted" style="font-size:12px">Clear 30s after a copy (security)</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
-  <div class="settings-row"><div><b>Default shell</b><div class="muted" style="font-size:12px">New server terminals (also in the toolbar)</div></div><select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name}${s.installed?'':' (not installed)'}</option>`).join('')}</select></div>
+  <div class="settings-row"><div><b>Server shell</b><div class="muted" style="font-size:12px">Terminals run on the server, so the shell is set by your admin — not per user. (Local-shell choice is a desktop-app feature.)</div></div><span class="muted" style="font-size:13px"><code>${SERVER_SHELL}</code> · set by the server</span></div>
   <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
   <div class="settings-row"><div><b>Machine status</b><div class="muted" style="font-size:12px"><span style="color:var(--amber)">Governed by your server</span> — you can only narrow it. Passive “last seen” costs no network traffic; active probing does.</div></div><select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select></div>
   <div class="settings-row" style="border:none"><div><b>Show member count on collections</b><div class="muted" style="font-size:12px">The number next to shared collections</div></div><div class="toggle ${STATE.showMemberCount?'on':''}" onclick="this.classList.toggle('on');STATE.showMemberCount=this.classList.contains('on');renderAll()"><i></i></div></div>`});}
