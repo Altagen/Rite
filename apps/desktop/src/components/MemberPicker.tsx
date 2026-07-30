@@ -260,10 +260,31 @@ export function MemberPicker({
       onClose();
     });
 
-  const filtered = useMemo(() => {
+  const entryFor = useCallback(
+    (id: string): DirectoryEntry =>
+      directory.find((d) => d.id === id) ?? {
+        id,
+        username: id === me?.id ? me?.username ?? 'you' : id,
+        publicKey: null,
+      },
+    [directory, me],
+  );
+  // Chosen members are always shown (me first, then alphabetical).
+  const memberEntries = useMemo(
+    () =>
+      [...chosen.keys()]
+        .map(entryFor)
+        .sort((a, b) => (a.id === me?.id ? -1 : b.id === me?.id ? 1 : a.username.localeCompare(b.username))),
+    [chosen, entryFor, me],
+  );
+  // Typeahead: only surface matches once you type a prefix — never the whole directory.
+  const results = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return directory.filter((d) => !q || d.username.toLowerCase().includes(q));
-  }, [directory, search]);
+    if (!q) return [] as DirectoryEntry[];
+    return directory
+      .filter((d) => !chosen.has(d.id) && d.username.toLowerCase().startsWith(q))
+      .slice(0, 8);
+  }, [directory, chosen, search]);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -338,39 +359,16 @@ export function MemberPicker({
             </div>
           )}
 
-          <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5">
-            <svg className="h-4 w-4 flex-none text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
-            </svg>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search people…"
-              className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-            />
-          </div>
-
-          <ul className="space-y-1">
-            {filtered.map((d) => {
-              const role = chosen.get(d.id);
-              const on = role !== undefined;
-              const isMe = d.id === me?.id;
-              const lockOwner = role === 'owner' && owners < 2;
-              return (
-                <li key={d.id}>
-                  <div
-                    className={`flex items-center gap-2.5 rounded-md px-2 py-1.5 ${
-                      iManage && !isMe ? 'cursor-pointer hover:bg-muted' : ''
-                    }`}
-                    onClick={() => toggle(d)}
-                  >
-                    <span
-                      className={`grid h-[17px] w-[17px] flex-none place-items-center rounded border ${
-                        on ? 'border-primary bg-primary text-[11px] text-primary-foreground' : 'border-border'
-                      }`}
-                    >
-                      {on ? '✓' : ''}
-                    </span>
+          {/* Members — always shown, with role + remove; grant for roster-only members. */}
+          <div>
+            <div className="mb-1 text-xs font-medium text-muted-foreground">Members · {chosen.size}</div>
+            <ul className="space-y-1">
+              {memberEntries.map((d) => {
+                const role = chosen.get(d.id);
+                const isMe = d.id === me?.id;
+                const lockOwner = role === 'owner' && owners < 2;
+                return (
+                  <li key={d.id} className="flex items-center gap-2.5 rounded-md px-2 py-1.5">
                     <Avatar name={d.username} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">
@@ -379,14 +377,10 @@ export function MemberPicker({
                         {isMe && <span className="text-xs text-muted-foreground"> · you</span>}
                       </div>
                     </div>
-                    {on &&
-                      pending.has(d.id) &&
+                    {pending.has(d.id) &&
                       (iManage && collKeys?.itemsKey && !isMe ? (
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            grantMachineAccess(d);
-                          }}
+                          onClick={() => grantMachineAccess(d)}
                           disabled={busy}
                           title="Roster-only: sees the name but no machines. Seal machine access to them."
                           className="rounded border border-primary/40 px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
@@ -401,13 +395,12 @@ export function MemberPicker({
                           no machines
                         </span>
                       ))}
-                    {on &&
-                      (iManage && !isMe ? (
+                    {iManage && !isMe ? (
+                      <>
                         <select
                           value={role}
                           disabled={busy || lockOwner}
                           title={lockOwner ? 'the collection needs at least one owner' : undefined}
-                          onClick={(e) => e.stopPropagation()}
                           onChange={(e) => changeRole(d.id, e.target.value as CollectionRole)}
                           className="rounded border border-input bg-background px-2 py-1 text-xs"
                         >
@@ -417,15 +410,68 @@ export function MemberPicker({
                             </option>
                           ))}
                         </select>
-                      ) : (
-                        <span className="text-xs uppercase text-muted-foreground">{role}</span>
-                      ))}
-                  </div>
-                </li>
-              );
-            })}
-            {filtered.length === 0 && <li className="px-2 py-3 text-center text-sm text-muted-foreground">No one found.</li>}
-          </ul>
+                        <button
+                          onClick={() => toggle(d)}
+                          disabled={busy}
+                          title="Remove"
+                          className="rounded p-1 text-red-500 hover:bg-muted disabled:opacity-50"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.87 12.14A2 2 0 0116.14 21H7.86a2 2 0 01-1.99-1.86L5 7m5 4v6m4-6v6M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+                          </svg>
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs uppercase text-muted-foreground">{role}</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          {/* Add via prefix search (typeahead) — results only appear once you type. */}
+          {iManage && (
+            <div>
+              <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5">
+                <svg className="h-4 w-4 flex-none text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                </svg>
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Add someone — type a username…"
+                  autoComplete="off"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                />
+              </div>
+              {search.trim() && (
+                <ul className="mt-1 space-y-1 rounded-md border border-border p-1">
+                  {results.map((d) => (
+                    <li key={d.id}>
+                      <button
+                        onClick={() => {
+                          toggle(d);
+                          setSearch('');
+                        }}
+                        disabled={busy}
+                        className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-muted disabled:opacity-50"
+                      >
+                        <Avatar name={d.username} />
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{d.username}</span>
+                        <span className="text-xs text-muted-foreground">Add</span>
+                      </button>
+                    </li>
+                  ))}
+                  {results.length === 0 && (
+                    <li className="px-2 py-2 text-center text-sm text-muted-foreground">
+                      No user starts with “{search.trim()}”.
+                    </li>
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
 
           <p className="text-xs text-muted-foreground">
             Members hold the collection key. <b className="text-foreground">Owner</b> manages sharing &amp; settings ·{' '}
