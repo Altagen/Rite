@@ -80,6 +80,10 @@ export function CollectionsPanel() {
   const isPersonal = !!header?.personal;
   const canWrite = selected?.role === 'owner' || selected?.role === 'editor';
   const canManage = selected?.role === 'owner' && !isPersonal;
+  // Rename is an OWNER-only setting (the name is shared — every member reads it). Personal
+  // collections are yours (you're the owner), so this covers them too. Editors write
+  // machines/folders, not the collection's identity.
+  const canRename = selected?.role === 'owner';
 
   // Keep the rename field + machine count in sync with the selection.
   useEffect(() => {
@@ -228,14 +232,15 @@ export function CollectionsPanel() {
               </div>
               )}
 
-              {/* Rename (writers only) */}
-              {canWrite && (
+              {/* Rename (owner only — settings action; the name is shared with all members) */}
+              {canRename && (
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-border bg-card p-4">
                 <div>
                   <div className="text-sm font-semibold">Rename</div>
                   <div className="text-xs text-muted-foreground">
-                    {isPersonal ? 'Label your personal space.' : 'A name only members can read.'}
+                    {isPersonal ? 'Label your personal space.' : 'Shared — every member sees this name.'}
                   </div>
+
                 </div>
                 <div className="flex items-center gap-2">
                   <input
