@@ -53,6 +53,25 @@
   .ctab .icon{width:16px;height:16px}
   .ctab:hover{color:var(--fg)}
   .ctab.on{color:var(--fg);border-color:var(--accent)}
+  /* Discover: ZK banner (was undefined → the shield floated), collapsible team panels, clean cards. */
+  .zk{display:flex;gap:11px;align-items:flex-start;background:color-mix(in oklab,var(--accent) 8%,transparent);border:1px solid color-mix(in oklab,var(--accent) 25%,transparent);border-radius:12px;padding:12px 15px;margin-bottom:22px;max-width:1160px;font-size:13px;line-height:1.5;color:color-mix(in oklab,var(--fg) 82%,transparent)}
+  .zk .ic{color:var(--accent);flex-shrink:0;display:grid;place-items:center;margin-top:1px}
+  .zk .ic .icon{width:18px;height:18px}
+  .disc-h{width:100%;background:none;border:none;font-family:inherit;cursor:pointer;text-align:left}
+  .disc-h:hover{background:var(--card2)}
+  .disc-h .t{display:flex;align-items:center;gap:8px}
+  .disc-count{font-size:12px;color:var(--muted);font-weight:600;background:var(--card2);border:1px solid var(--border);border-radius:999px;padding:2px 9px}
+  .disc-chev{color:var(--muted);display:grid;place-items:center;transition:transform .15s}
+  .disc-chev.open{transform:rotate(180deg)}
+  .disc-panel.collapsed .panel-h{border-bottom:none}
+  .oc{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .oc:last-child{border-bottom:none}
+  .oc-ic{color:var(--accent);display:grid;place-items:center;flex-shrink:0}
+  .oc-txt{flex:1;min-width:0}
+  .oc-label{font-weight:600;font-size:14.5px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .oc-sub{font-size:12px;color:var(--muted)}
+  .oc-act{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  .disc-empty{padding:16px 18px;color:var(--muted);font-size:13px}
   /* Responsive master-detail: narrow the rail, then stack it above the detail. */
   @media (max-width:900px){ .clist{width:250px} .cmain{padding:20px 18px} }
   @media (max-width:640px){ .cbody{flex-direction:column} .clist{width:100%;max-height:190px;border-right:none;border-bottom:1px solid var(--border)} .cmain{padding:18px 14px} }
@@ -95,6 +114,7 @@ const layers='<svg class="icon" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9
 const compass='<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>';
 let VIEW='mine'; // 'mine' (master-detail) | 'discover' (offered to my teams)
 const DREQ=new Set(typeof ORG!=='undefined'&&ORG.myRequests?ORG.myRequests:[]);
+const DCOLL=new Set(); let DCOLL_INIT=false; // team panels collapsed in Discover
 
 // Flatten COLL (nesting is view-only) → the collections I'm in. Assign per-member
 // roles + a colour for the mock (owner = me, then editor/viewer).
@@ -194,17 +214,32 @@ function discoverView(){
   const myteams=ORG.teams.filter(t=>t.members.includes(ME));
   const flat=[];(function rec(l){l.forEach(c=>{flat.push(c);if(c.children)rec(c.children);});})(COLL);
   const offeredTo=name=>flat.filter(c=>c.offer&&c.offer.team===name);
+  // First time in: collapse teams that have nothing offered, so a long roster stays tidy.
+  if(!DCOLL_INIT){DCOLL_INIT=true;myteams.forEach(t=>{if(offeredTo(t.name).length===0)DCOLL.add(t.name);});}
   const row=c=>{const mine=c.members.includes(ME),pending=DREQ.has(c.offer.label);
-    const act=mine
-      ?`<span class="role-badge" style="background:color-mix(in oklab,var(--green) 16%,transparent);color:var(--green)">member</span><button class="btn btn-sm" onclick="openMine('${c.id}')">Open</button>`
-      :pending?`<span class="role-badge" style="background:color-mix(in oklab,var(--amber) 18%,transparent);color:var(--amber)">requested</span><button class="btn btn-sm" disabled style="opacity:.55;cursor:default">Awaiting a grant</button>`
+    const badge=mine?`<span class="role-badge" style="background:color-mix(in oklab,var(--green) 16%,transparent);color:var(--green)">member</span>`
+      :pending?`<span class="role-badge" style="background:color-mix(in oklab,var(--amber) 18%,transparent);color:var(--amber)">requested</span>`:'';
+    const btn=mine?`<button class="btn btn-sm" onclick="openMine('${c.id}')">Open</button>`
+      :pending?`<button class="btn btn-sm" disabled style="opacity:.55;cursor:default">Awaiting a grant</button>`
       :`<button class="btn btn-primary btn-sm" onclick="discReq('${c.offer.label}')">Request access</button>`;
-    return `<div class="mrow"><span style="color:var(--accent);display:grid;place-items:center">${layers}</span><span class="nm" style="flex:1;font-weight:550">${c.offer.label}</span>${act}</div>`;};
-  return `<div class="cmain-h"><span style="color:var(--accent);display:grid;place-items:center">${compass}</span><h1>Discover</h1></div>
+    const sub=mine?"You're a member — open it any time":"Machines stay end-to-end encrypted until a member grants you";
+    return `<div class="oc"><span class="oc-ic">${layers}</span><div class="oc-txt"><div class="oc-label">${c.offer.label}</div><div class="oc-sub">${sub}</div></div><div class="oc-act">${badge}${btn}</div></div>`;};
+  const allCollapsed=myteams.every(t=>DCOLL.has(t.name));
+  return `<div class="cmain-h"><span style="color:var(--accent);display:grid;place-items:center">${compass}</span><h1>Discover</h1><div style="flex:1"></div>
+      <button class="btn btn-ghost btn-sm" onclick="discToggleAll()">${allCollapsed?'Expand all':'Collapse all'}</button></div>
     <div class="cmain-sub">Collections offered to the teams you're in — request access and a member grants you the key.</div>
     <div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Labels here are for discovery, not secrets.</b> They're visible to your team (and the server) so you can find and request access. Machines and private names stay end-to-end encrypted until a member grants you.</div></div>
-    ${myteams.map(t=>{const o=offeredTo(t.name);return `<div class="panel"><div class="panel-h"><span class="t">${EXICON.users} ${t.name} · ${o.length} offered</span></div>${o.length?o.map(row).join(''):'<div class="mrow"><span class="muted" style="font-size:13px">No collections offered to this team yet.</span></div>'}</div>`;}).join('')}`;
+    ${myteams.map(t=>{const o=offeredTo(t.name),collapsed=DCOLL.has(t.name);
+      return `<div class="panel disc-panel ${collapsed?'collapsed':''}">
+        <button class="panel-h disc-h" onclick="toggleTeam('${t.name}')" title="${collapsed?'Expand':'Collapse'}">
+          <span class="t">${EXICON.users} ${t.name}</span>
+          <span class="disc-count">${o.length} offered</span>
+          <span class="disc-chev ${collapsed?'':'open'}">${EXICON.chevD}</span></button>
+        ${collapsed?'':(o.length?o.map(row).join(''):'<div class="disc-empty">No collections offered to this team yet.</div>')}
+      </div>`;}).join('')}`;
 }
+function toggleTeam(name){DCOLL.has(name)?DCOLL.delete(name):DCOLL.add(name);render();}
+function discToggleAll(){const my=ORG.teams.filter(t=>t.members.includes(ME));if(my.every(t=>DCOLL.has(t.name)))DCOLL.clear();else my.forEach(t=>DCOLL.add(t.name));render();}
 function openMine(id){SEL=id;VIEW='mine';render();}
 function discReq(label){DREQ.add(label);toast('Requested access to '+label+' — a member will grant you the key');render();}
 function setView(v){VIEW=v;render();}
