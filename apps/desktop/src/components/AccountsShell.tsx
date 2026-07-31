@@ -18,6 +18,7 @@ import { AdminDashboard } from './AdminDashboard';
 import { AdminOnlyNotice } from './AdminOnlyNotice';
 import { CollectionsDashboard } from './CollectionsDashboard';
 import { TeamsDashboard } from './TeamsDashboard';
+import { ForcePasswordChange } from './ForcePasswordChange';
 import { IconCollection, IconShield, IconUsers } from './icons';
 
 /** Reload without the password left no keys in RAM — re-auth to decrypt. */
@@ -48,6 +49,10 @@ export function AccountsShell() {
 
   // A user without the unwrapped vault key (token-only resume) must re-auth.
   if (!userKey) return <ReauthNotice onSignOut={() => logout()} />;
+
+  // Admin-provisioned account still on its initial password → force a change (re-keys the
+  // vault) before anything else, so the account becomes zero-knowledge from the admin.
+  if (user.mustChangePassword) return <ForcePasswordChange />;
 
   const isAdmin = user.role === 'admin';
   // Runtime serve-surface gating (rite-admin-console-split): a deployment can turn

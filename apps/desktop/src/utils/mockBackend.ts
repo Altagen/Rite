@@ -185,6 +185,7 @@ export async function mockInvoke(
         },
         vault: null,
       };
+    case 'server_change_password':
     case 'server_logout':
       return null;
     case 'server_me':

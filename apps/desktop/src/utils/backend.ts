@@ -349,6 +349,9 @@ const ServerModeSchema = z.object({
 });
 const PreloginSchema = z.object({ salt: z.string(), params: KdfParamsSchema });
 const ServerUserSchema = z.object({
+  // True while the account still uses an admin-set password (first login / after reset):
+  // the client must force a password change before proceeding.
+  mustChangePassword: z.boolean().optional(),
   id: z.string(),
   username: z.string(),
   role: z.enum(['admin', 'user']),
@@ -405,6 +408,25 @@ export const BackendServer = {
     }),
   logout: () => invokeWithValidation('server_logout', z.null()),
   me: () => invokeWithValidation('server_me', MeSchema),
+  /** Replace my own password + vault (first login / after reset). New keypair; server never
+   *  sees the password. Authenticated. */
+  changePassword: (
+    salt: string,
+    params: unknown,
+    authHash: string,
+    vault: {
+      masterSalt: string;
+      protectedUserKey: string;
+      publicKey: string;
+      protectedPrivateKey: string;
+    },
+  ) =>
+    invokeWithValidation('server_change_password', z.null(), {
+      salt,
+      params,
+      authHash,
+      ...vault,
+    }),
 } as const;
 
 // Admin (server mode, role=admin) — account management.

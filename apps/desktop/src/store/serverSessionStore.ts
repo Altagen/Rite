@@ -97,6 +97,8 @@ interface ServerSessionState {
   loadMode: () => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   bootstrap: (username: string, password: string) => Promise<void>;
+  /** Set my own password (first login / after reset): fresh vault + keypair, clears the flag. */
+  changePassword: (password: string) => Promise<void>;
   logout: () => Promise<void>;
   clearError: () => void;
 }
@@ -209,6 +211,41 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to create the admin', loading: false });
+      throw e;
+    }
+  },
+
+  changePassword: async (password) => {
+    set({ loading: true, error: null });
+    try {
+      const salt = randomSaltHex();
+      const [authHash, vaultKey] = await Promise.all([
+        deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS),
+        createVaultKey(password), // fresh keypair → the old (admin-set) password becomes useless
+      ]);
+      await Backend.Server.changePassword(salt, DEFAULT_KDF_PARAMS, authHash, {
+        masterSalt: vaultKey.masterSaltHex,
+        protectedUserKey: vaultKey.protectedUserKey,
+        publicKey: vaultKey.publicKeyHex,
+        protectedPrivateKey: vaultKey.protectedPrivateKey,
+      });
+      await syncLocalVault(vaultKey.userKey);
+      const publicKey = hexToBytes(vaultKey.publicKeyHex);
+      if (get().mode?.sessionPersistence !== false) {
+        persistKeys({ userKey: vaultKey.userKey, privateKey: vaultKey.privateKey, publicKey });
+      } else {
+        clearKeys();
+      }
+      const current = get().user;
+      set({
+        user: current ? { ...current, mustChangePassword: false } : current,
+        userKey: vaultKey.userKey,
+        privateKey: vaultKey.privateKey,
+        publicKey,
+        loading: false,
+      });
+    } catch (e) {
+      set({ error: e instanceof Error ? e.message : 'Failed to set the password', loading: false });
       throw e;
     }
   },

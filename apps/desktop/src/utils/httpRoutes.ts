@@ -101,6 +101,22 @@ const routes: Record<string, Route> = {
     return null;
   },
   server_me: () => json('/api/server/me'),
+  server_change_password: async (a) => {
+    await json('/api/server/change-password', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        salt: a.salt,
+        params: a.params,
+        authHash: a.authHash,
+        masterSalt: a.masterSalt,
+        protectedUserKey: a.protectedUserKey,
+        publicKey: a.publicKey,
+        protectedPrivateKey: a.protectedPrivateKey,
+      }),
+    });
+    return null;
+  },
 
   context_get: () => json('/api/context'),
   context_add_server: (a) => json('/api/context/servers', post({ url: a.url, label: a.label })),
