@@ -451,6 +451,21 @@ pub async fn list_incoming_requests(
         .collect())
 }
 
+/// Wipe a user's sharing crypto on an admin reset (ADR 0010 addendum): their sealed
+/// collection keys (they lose access → must re-request) and any admin-group grant (a reset
+/// admin loses group access → re-grant). Identity + team memberships are kept elsewhere.
+pub async fn wipe_user_sharing(db: &SqlitePool, user_id: &str) -> Result<()> {
+    sqlx::query("DELETE FROM collection_members WHERE user_id = ?")
+        .bind(user_id)
+        .execute(db)
+        .await?;
+    sqlx::query("DELETE FROM admin_group_grants WHERE user_id = ?")
+        .bind(user_id)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
 /// Set or clear a collection's team offer (owner action, enforced at the endpoint). Passing
 /// `None` for both clears the offer. team_id is an org link, discovery_label a plaintext,
 /// RBAC-gated label — neither is cryptographic.

@@ -392,6 +392,7 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/users/{id}", delete(admin_delete_user))
         .route("/api/admin/users/{id}/status", patch(admin_set_status))
+        .route("/api/admin/users/{id}/reset", post(admin_reset_user))
         .route("/api/admin/instance", patch(set_instance_name))
         .route(
             "/api/admin/session-persistence",
@@ -1206,7 +1207,7 @@ async fn change_password(
         protected_private_key: req.protected_private_key,
     };
     Ok(
-        if server_auth::set_credentials(state.db.pool(), &user.id, &salt, req.params, &req.auth_hash, &vault)
+        if server_auth::set_credentials(state.db.pool(), &user.id, &salt, req.params, &req.auth_hash, &vault, false)
             .await?
         {
             StatusCode::NO_CONTENT.into_response()
@@ -1319,6 +1320,48 @@ async fn admin_set_status(
     } else {
         StatusCode::NOT_FOUND.into_response()
     })
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ResetUserReq {
+    salt: String, // hex
+    params: server_auth::KdfParams,
+    auth_hash: String,
+    master_salt: String, // hex
+    protected_user_key: String,
+    public_key: String, // hex (X25519)
+    protected_private_key: String,
+}
+
+/// Admin-authorised account reset (ADR 0010 addendum): the admin re-provisions a temp vault
+/// (they relay the temp password out-of-band) + must-change so the user sets their own next
+/// login; the user's sharing crypto is WIPED (they re-request access). Identity + team
+/// memberships are KEPT. The admin can't reset themselves.
+async fn admin_reset_user(
+    State(state): State<ServerState>,
+    Extension(current): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<ResetUserReq>,
+) -> Result<Response, AppError> {
+    if id == current.id {
+        return Ok((StatusCode::BAD_REQUEST, "you can't reset your own account").into_response());
+    }
+    let salt = server_auth::parse_hex_salt(&req.salt)?;
+    let vault = server_auth::VaultKey {
+        master_salt: server_auth::parse_hex_salt(&req.master_salt)?,
+        protected_user_key: req.protected_user_key,
+        public_key: req.public_key,
+        protected_private_key: req.protected_private_key,
+    };
+    // must_change = true: the temp password is admin-known, so the user re-keys on next login.
+    if !server_auth::set_credentials(state.db.pool(), &id, &salt, req.params, &req.auth_hash, &vault, true)
+        .await?
+    {
+        return Ok((StatusCode::NOT_FOUND, "unknown user").into_response());
+    }
+    coll::wipe_user_sharing(state.db.pool(), &id).await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 async fn admin_delete_user(

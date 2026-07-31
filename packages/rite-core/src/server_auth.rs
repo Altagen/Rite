@@ -190,9 +190,10 @@ pub async fn create_user(
     })
 }
 
-/// Replace a user's credentials + vault (the client-derived "set your own password" flow):
-/// new auth salt/params/verifier and a freshly-generated vault (new keypair), clearing the
-/// must-change flag. The server never sees the password — only the derived material.
+/// Replace a user's credentials + vault: new auth salt/params/verifier and a freshly-generated
+/// vault (new keypair). `must_change` = false for the user's own "set your password" flow
+/// (clears the flag); true for an admin reset (the user must still set their own after). The
+/// server never sees the password — only the derived material.
 pub async fn set_credentials(
     db: &SqlitePool,
     user_id: &str,
@@ -200,12 +201,13 @@ pub async fn set_credentials(
     params: KdfParams,
     auth_hash: &str,
     vault: &VaultKey,
+    must_change: bool,
 ) -> Result<bool> {
     let verifier = hash_auth(auth_hash)?;
     let n = sqlx::query(
         "UPDATE users SET kdf_salt = ?, kdf_mem = ?, kdf_iter = ?, kdf_par = ?, auth_verifier = ?,
                 kdf_master_salt = ?, protected_user_key = ?, public_key = ?, protected_private_key = ?,
-                must_change_password = 0, updated_at = ? WHERE id = ?",
+                must_change_password = ?, updated_at = ? WHERE id = ?",
     )
     .bind(salt)
     .bind(params.mem as i64)
@@ -216,6 +218,7 @@ pub async fn set_credentials(
     .bind(&vault.protected_user_key)
     .bind(&vault.public_key)
     .bind(&vault.protected_private_key)
+    .bind(must_change as i64)
     .bind(now())
     .bind(user_id)
     .execute(db)
