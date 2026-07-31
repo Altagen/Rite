@@ -135,6 +135,17 @@ pub async fn set_member(
     Ok(())
 }
 
+/// Number of team-admins (Managers) on a team — gates the "last manager can't leave"
+/// invariant (a team should never be left with no manager).
+pub async fn count_admins(db: &SqlitePool, team_id: &str) -> Result<i64> {
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM team_members WHERE team_id = ? AND role = 'admin'")
+            .bind(team_id)
+            .fetch_one(db)
+            .await?;
+    Ok(n)
+}
+
 pub async fn remove_member(db: &SqlitePool, team_id: &str, user_id: &str) -> Result<bool> {
     let n = sqlx::query("DELETE FROM team_members WHERE team_id = ? AND user_id = ?")
         .bind(team_id)
@@ -254,7 +265,10 @@ mod tests {
         assert_eq!(list_members(pool, &team.id).await.unwrap().len(), 2);
         assert_eq!(list_teams_for_user(pool, &alice).await.unwrap().len(), 1);
 
-        // Upsert changes the role, doesn't duplicate.
+        // One manager (alice) so far — gates the "last manager can't leave" invariant.
+        assert_eq!(count_admins(pool, &team.id).await.unwrap(), 1);
+
+        // Upsert changes the role, doesn't duplicate → now two managers.
         set_member(pool, &team.id, &bob, TeamRole::Admin)
             .await
             .unwrap();
@@ -263,8 +277,10 @@ mod tests {
             Some(TeamRole::Admin)
         );
         assert_eq!(list_members(pool, &team.id).await.unwrap().len(), 2);
+        assert_eq!(count_admins(pool, &team.id).await.unwrap(), 2);
 
         assert!(remove_member(pool, &team.id, &bob).await.unwrap());
+        assert_eq!(count_admins(pool, &team.id).await.unwrap(), 1);
         assert_eq!(team_role(pool, &team.id, &bob).await.unwrap(), None);
 
         // Deleting the team cascades memberships.

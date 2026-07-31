@@ -1572,16 +1572,28 @@ async fn remove_team_member(
     Extension(user): Extension<Arc<User>>,
     Path((id, user_id)): Path<(String, String)>,
 ) -> Result<Response, AppError> {
-    if !can_admin_team(&state, &user, &id).await? {
+    let db = state.db.pool();
+    // A team-admin removes anyone; a member may self-leave (remove only themselves).
+    let self_leave = user_id == user.id;
+    if !can_admin_team(&state, &user, &id).await? && !self_leave {
         return Ok((StatusCode::FORBIDDEN, "not a team admin").into_response());
     }
-    Ok(
-        if rite_core::teams::remove_member(state.db.pool(), &id, &user_id).await? {
-            StatusCode::NO_CONTENT.into_response()
-        } else {
-            StatusCode::NOT_FOUND.into_response()
-        },
-    )
+    // Keep the team managed: the last Manager can't leave/be removed (promote someone first).
+    let leaver_role = rite_core::teams::team_role(db, &id, &user_id).await?;
+    if leaver_role == Some(rite_core::teams::TeamRole::Admin)
+        && rite_core::teams::count_admins(db, &id).await? <= 1
+    {
+        return Ok((
+            StatusCode::CONFLICT,
+            "the team needs at least one manager — promote someone first",
+        )
+            .into_response());
+    }
+    Ok(if rite_core::teams::remove_member(db, &id, &user_id).await? {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    })
 }
 
 // --- collections (ADR 0016) --------------------------------------------------
