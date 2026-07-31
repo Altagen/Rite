@@ -17,7 +17,8 @@ import { Workspace } from './Workspace';
 import { AdminDashboard } from './AdminDashboard';
 import { AdminOnlyNotice } from './AdminOnlyNotice';
 import { CollectionsDashboard } from './CollectionsDashboard';
-import { IconCollection, IconShield } from './icons';
+import { TeamsDashboard } from './TeamsDashboard';
+import { IconCollection, IconShield, IconUsers } from './icons';
 
 /** Reload without the password left no keys in RAM — re-auth to decrypt. */
 function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
@@ -85,6 +86,10 @@ export function AccountsShell() {
         instanceName={mode?.instanceName}
         headerExtra={
           <>
+            <button onClick={() => navigate('/teams')} className="m-btn m-btn-ghost m-btn-sm" title="Teams">
+              <IconUsers className="h-4 w-4" />
+              <span className="hidden md:inline">Teams</span>
+            </button>
             <button onClick={() => navigate('/collections')} className="m-btn m-btn-ghost m-btn-sm" title="Collections">
               <IconCollection className="h-4 w-4" />
               <span className="hidden md:inline">Collections</span>
@@ -98,6 +103,7 @@ export function AccountsShell() {
           </>
         }
       />
+      {path === '/teams' && <TeamsDashboard />}
       {path === '/collections' && <CollectionsDashboard />}
       {path === '/admin' && canAdmin && <AdminDashboard />}
     </>
