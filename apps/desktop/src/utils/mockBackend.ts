@@ -212,6 +212,7 @@ export async function mockInvoke(
         createdAt: now(),
       };
     case 'admin_set_status':
+    case 'admin_reset_user':
     case 'admin_delete_user':
       return null;
 

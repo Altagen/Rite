@@ -476,6 +476,20 @@ export const BackendAdmin = {
     }),
   setStatus: (id: string, status: 'active' | 'disabled') =>
     invokeWithValidation('admin_set_status', z.null(), { id, status }),
+  /** Reset a user's access (admin): re-provision a temp vault + wipe their sharing crypto.
+   *  Keeps username/role/teams; the user sets their own password at next login. */
+  resetUser: (
+    id: string,
+    salt: string,
+    params: unknown,
+    authHash: string,
+    vault: {
+      masterSalt: string;
+      protectedUserKey: string;
+      publicKey: string;
+      protectedPrivateKey: string;
+    },
+  ) => invokeWithValidation('admin_reset_user', z.null(), { id, salt, params, authHash, ...vault }),
   deleteUser: (id: string) => invokeWithValidation('admin_delete_user', z.null(), { id }),
   /** Set the global instance name shown to every user (org-admin only). */
   setInstanceName: (name: string) => invokeWithValidation('admin_set_instance', z.null(), { name }),

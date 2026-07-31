@@ -167,6 +167,22 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_reset_user: async (a) => {
+    await json(`/api/admin/users/${encodeURIComponent(String(a.id))}/reset`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        salt: a.salt,
+        params: a.params,
+        authHash: a.authHash,
+        masterSalt: a.masterSalt,
+        protectedUserKey: a.protectedUserKey,
+        publicKey: a.publicKey,
+        protectedPrivateKey: a.protectedPrivateKey,
+      }),
+    });
+    return null;
+  },
   admin_delete_user: async (a) => {
     await json(`/api/admin/users/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
     return null;

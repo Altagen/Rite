@@ -44,6 +44,11 @@ export function AdminUsersPanel() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'user' | 'admin'>('user');
+  // Reset-access dialog: the admin sets a temp password to relay out-of-band; the user
+  // re-keys on next login. Their sharing crypto is wiped server-side (re-request access).
+  const [resetTarget, setResetTarget] = useState<ServerUser | null>(null);
+  const [resetPw, setResetPw] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
 
   const refresh = useCallback(async () => {
     try {
@@ -111,6 +116,27 @@ export function AdminUsersPanel() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const doReset = () => {
+    const target = resetTarget;
+    if (!target) return;
+    act(async () => {
+      const salt = randomSaltHex();
+      const [authHash, vaultKey] = await Promise.all([
+        deriveAuthHash(resetPw, salt, DEFAULT_KDF_PARAMS),
+        createVaultKey(resetPw),
+      ]);
+      await Backend.Admin.resetUser(target.id, salt, DEFAULT_KDF_PARAMS, authHash, {
+        masterSalt: vaultKey.masterSaltHex,
+        protectedUserKey: vaultKey.protectedUserKey,
+        publicKey: vaultKey.publicKeyHex,
+        protectedPrivateKey: vaultKey.protectedPrivateKey,
+      });
+      // A reset admin loses group access → rotate so they can't decrypt names next.
+      if (target.role === 'admin') await rotateAfterAdminRemoval();
+      setResetTarget(null);
+    });
   };
 
   return (
@@ -186,6 +212,18 @@ export function AdminUsersPanel() {
                           className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
                         >
                           {u.status === 'active' ? 'Disable' : 'Enable'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setResetTarget(u);
+                            setResetPw('');
+                            setResetConfirm('');
+                          }}
+                          disabled={busy}
+                          title="Reset access (lost password)"
+                          className="rounded border border-amber-500/40 px-2 py-1 text-xs text-amber-600 hover:bg-amber-500/10 disabled:opacity-50"
+                        >
+                          Reset
                         </button>
                         <button
                           onClick={() =>
@@ -265,6 +303,57 @@ export function AdminUsersPanel() {
         </button>
         </div>
       </form>
+
+      {resetTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setResetTarget(null)}>
+          <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold">Reset access for {resetTarget.username}?</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Use this when <b className="text-foreground">{resetTarget.username}</b> has lost their password. Verify
+              it&apos;s really them first (in person, phone…). Set a temporary password to relay to them — they&apos;ll
+              set their own at next login.
+            </p>
+            <div className="my-3 space-y-2 text-sm">
+              <div className="rounded-md border border-green-500/30 bg-green-500/[0.08] p-2">
+                <b>Kept:</b> their username, role, and every team they&apos;re in.
+              </div>
+              <div className="rounded-md border border-red-500/30 bg-red-500/[0.08] p-2">
+                <b>Lost for good:</b> everything encrypted under the old password — personal connections and solo
+                collections. They&apos;ll re-request access to shared collections.
+              </div>
+            </div>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Temporary password</label>
+            <input
+              type="text"
+              value={resetPw}
+              onChange={(e) => setResetPw(e.target.value)}
+              autoFocus
+              placeholder="A temp password to relay to them"
+              className="mb-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">Confirm</label>
+            <input
+              type="text"
+              value={resetConfirm}
+              onChange={(e) => setResetConfirm(e.target.value)}
+              placeholder="Type it again"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setResetTarget(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+                Cancel
+              </button>
+              <button
+                onClick={doReset}
+                disabled={busy || resetPw.length < 4 || resetPw !== resetConfirm}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                Reset access
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
