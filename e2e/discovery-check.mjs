@@ -187,7 +187,15 @@ try {
   assert.ok(!JSON.stringify(items).includes('coll-secret-host'), 'server stored only ciphertext');
   ok('bob decrypts the real name + machine (grant works, zero-knowledge holds)');
 
-  console.log('\nDISCOVERY LOOP OK — offer → discover → request → grant, RBAC + zero-knowledge verified');
+  // 10. Leave-team: a member self-leaves; the last manager can't (≥1-manager invariant).
+  step = 'leave-team';
+  assert.equal((await req('DELETE', `/api/teams/${eng.id}/members/${uid('bob')}`, bobL.token)).status, 204, 'bob self-leaves');
+  assert.equal((await getJson('/api/teams', bobL.token)).find((t) => t.id === eng.id), undefined, 'bob no longer in eng');
+  // Alice is now the only manager → she can't leave.
+  assert.equal((await req('DELETE', `/api/teams/${eng.id}/members/${uid('alice')}`, aliceTok)).status, 409, 'last manager blocked');
+  ok('bob left the team; the last manager is blocked from leaving');
+
+  console.log('\nDISCOVERY LOOP OK — offer → discover → request → grant → leave, RBAC + zero-knowledge verified');
 } catch (e) {
   console.error(`\n✗ FAILED at step "${step}":`, e.message);
   process.exit(1);
