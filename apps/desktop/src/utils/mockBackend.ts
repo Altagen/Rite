@@ -236,6 +236,7 @@ export async function mockInvoke(
     case 'collection_members':
     case 'collection_items':
     case 'collections_offered':
+    case 'collections_requests':
       return [];
     case 'collection_create':
       return { id: `col-${Math.random().toString(36).slice(2, 8)}` };
@@ -250,6 +251,8 @@ export async function mockInvoke(
     case 'collection_item_delete':
     case 'collection_set_offer':
     case 'collection_clear_offer':
+    case 'collection_request_access':
+    case 'collection_resolve_request':
       return null;
 
     // --- Library tree (ADR 0016; dev mock: empty) ---

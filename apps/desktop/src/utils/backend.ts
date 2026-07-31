@@ -621,6 +621,15 @@ const CollectionMemberSchema = z.object({
   // False for a roster-only member (admin meta-add) awaiting machine access.
   hasItemsKey: z.boolean().optional(),
 });
+// A pending access request I can grant (I own/edit the collection). Inbox item.
+const IncomingRequestSchema = z.object({
+  collectionId: z.string(),
+  userId: z.string(),
+  username: z.string(),
+  publicKey: z.string().nullable().optional(),
+  teamName: z.string().nullable().optional(),
+  createdAt: z.number(),
+});
 const CollectionItemSchema = z.object({
   id: z.string(),
   blob: z.string(),
@@ -632,6 +641,7 @@ export type CollectionRole = z.infer<typeof CollectionRoleSchema>;
 export type DirectoryEntry = z.infer<typeof DirectoryEntrySchema>;
 export type UserCollection = z.infer<typeof UserCollectionSchema>;
 export type OfferedCollection = z.infer<typeof OfferedCollectionSchema>;
+export type IncomingRequest = z.infer<typeof IncomingRequestSchema>;
 export type CollectionMember = z.infer<typeof CollectionMemberSchema>;
 export type CollectionItem = z.infer<typeof CollectionItemSchema>;
 
@@ -694,6 +704,14 @@ export const BackendCollections = {
     invokeWithValidation('collection_set_offer', z.null(), { id, teamId, discoveryLabel }),
   /** Stop offering a collection (owner). */
   clearOffer: (id: string) => invokeWithValidation('collection_clear_offer', z.null(), { id }),
+  /** Request access to a collection offered to one of my teams. */
+  requestAccess: (id: string) => invokeWithValidation('collection_request_access', z.null(), { id }),
+  /** Access requests I can grant (I own/edit the collection) — the inbox. */
+  incomingRequests: () =>
+    invokeWithValidation('collections_requests', z.array(IncomingRequestSchema)),
+  /** Clear a pending request (after granting, or to dismiss). */
+  resolveRequest: (id: string, userId: string) =>
+    invokeWithValidation('collection_resolve_request', z.null(), { id, userId }),
 } as const;
 
 // Per-user library tree (ADR 0016 view hierarchy): an opaque, client-encrypted

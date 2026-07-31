@@ -346,6 +346,19 @@ const routes: Record<string, Route> = {
     await json(`/api/collections/${encodeURIComponent(String(a.id))}/offer`, { method: 'DELETE' });
     return null;
   },
+  collection_request_access: async (a) => {
+    await json(`/api/collections/${encodeURIComponent(String(a.id))}/request`, { method: 'POST' });
+    return null;
+  },
+  collections_requests: () => json('/api/collections/requests'),
+  collection_resolve_request: async (a) => {
+    await json(`/api/collections/${encodeURIComponent(String(a.id))}/request`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId: a.userId }),
+    });
+    return null;
+  },
 
   // Per-user library tree (ADR 0016): opaque client-encrypted blob.
   library_get: () => json('/api/user/library'),
