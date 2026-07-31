@@ -134,6 +134,13 @@ export function Workspace({
   const [deleteSubfolder, setDeleteSubfolder] = useState<{ collectionId: string; path: string } | null>(null);
   // Server session keys (accounts context) for the folder-delete re-tag; null in local.
   const serverKeys = useServerSession();
+  // Quick SSH is a server-governed capability: forbidden when a server says so (off by
+  // default). In a local vault (not accounts) the user is their own authority → allowed.
+  const allowQuickSsh = !serverKeys.mode?.accounts || serverKeys.mode?.allowQuickSsh === true;
+  // In a server context terminals run on the server, so the shell is the server's default
+  // (no local-shell picker); locally, the user picks their own shell.
+  const isServerCtx = !!serverKeys.mode?.accounts;
+  const serverShell = serverKeys.mode?.defaultShell ?? 'bash';
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{ id: string; name: string } | null>(null);
   // Top-level library folders (ADR 0016 view hierarchy) — the encrypted per-user tree.
   const tree = useLibraryTree();
@@ -942,17 +949,22 @@ export function Workspace({
         <ContextPill />
         <span className="m-spacer" />
 
-        {/* New Local Terminal */}
+        {/* New Terminal — server shell in a server context, the local pick otherwise */}
         <button
-          onClick={() => handleNewLocalTerminal()}
+          onClick={() => handleNewLocalTerminal(isServerCtx ? serverShell : undefined)}
           className="m-btn m-btn-primary m-btn-sm"
-          title={`New Local Terminal (${settings.defaultShell.split('/').pop()})`}
+          title={
+            isServerCtx
+              ? `New server terminal (${serverShell})`
+              : `New Local Terminal (${settings.defaultShell.split('/').pop()})`
+          }
         >
           <IconTerminal className="h-4 w-4" />
           <span className="hidden md:inline">Terminal</span>
         </button>
 
-        {/* Default Shell Selector */}
+        {/* Local-shell selector — hidden in a server context (the server sets the shell) */}
+        {!isServerCtx && (
         <button
           ref={defaultShellButtonRef}
           onClick={async () => {
@@ -966,12 +978,15 @@ export function Workspace({
           <span className="hidden text-muted-foreground md:inline">{settings.defaultShell.split('/').pop()}</span>
           <IconChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
+        )}
 
-        {/* Quick SSH */}
-        <button onClick={() => setShowQuickSSH(true)} className="m-btn m-btn-sm" title="Quick SSH Connect">
-          <IconBolt className="h-4 w-4" />
-          <span className="hidden md:inline">Quick SSH</span>
-        </button>
+        {/* Quick SSH — hidden when the server forbids it (server-governed capability) */}
+        {allowQuickSsh && (
+          <button onClick={() => setShowQuickSSH(true)} className="m-btn m-btn-sm" title="Quick SSH Connect">
+            <IconBolt className="h-4 w-4" />
+            <span className="hidden md:inline">Quick SSH</span>
+          </button>
+        )}
 
         {/* Shell-provided actions (e.g. the org-admin surface entry). */}
         {headerExtra}

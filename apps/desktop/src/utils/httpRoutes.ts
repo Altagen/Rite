@@ -171,6 +171,22 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_set_default_shell: async (a) => {
+    await json('/api/admin/default-shell', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ shell: a.shell }),
+    });
+    return null;
+  },
+  admin_set_quick_ssh: async (a) => {
+    await json('/api/admin/quick-ssh', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: a.enabled }),
+    });
+    return null;
+  },
 
   // Teams / RBAC (product-model) — keyless rosters (ADR 0016).
   admin_list_teams: () => json('/api/admin/teams'),

@@ -164,9 +164,11 @@ export async function mockInvoke(
 
     // --- Server accounts (dev mock behaves as local: no accounts) ---
     case 'server_mode':
-      return { accounts: false, needsBootstrap: false, instanceName: null, sessionPersistence: true };
+      return { accounts: false, needsBootstrap: false, instanceName: null, sessionPersistence: true, defaultShell: 'bash', allowQuickSsh: false };
     case 'admin_set_instance':
     case 'admin_set_session_persistence':
+    case 'admin_set_default_shell':
+    case 'admin_set_quick_ssh':
       return null;
     case 'server_prelogin':
       return { salt: '00112233445566778899aabbccddeeff', params: { mem: 19456, iter: 2, par: 1 } };

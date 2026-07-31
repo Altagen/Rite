@@ -342,6 +342,10 @@ const ServerModeSchema = z.object({
   // gates the admin console; serveWebui gates the client workspace.
   serveAdmin: z.boolean().optional(),
   serveWebui: z.boolean().optional(),
+  // Server-governed client capabilities (mock "Client capabilities"): the shell used for
+  // terminals on this server, and whether ad-hoc Quick SSH is allowed (off by default).
+  defaultShell: z.string().optional(),
+  allowQuickSsh: z.boolean().optional(),
 });
 const PreloginSchema = z.object({ salt: z.string(), params: KdfParamsSchema });
 const ServerUserSchema = z.object({
@@ -456,6 +460,12 @@ export const BackendAdmin = {
   /** Toggle client vault-key session persistence for the whole server (org-admin). */
   setSessionPersistence: (enabled: boolean) =>
     invokeWithValidation('admin_set_session_persistence', z.null(), { enabled }),
+  /** Set the server's default shell for terminals (org-admin). */
+  setDefaultShell: (shell: string) =>
+    invokeWithValidation('admin_set_default_shell', z.null(), { shell }),
+  /** Allow/forbid ad-hoc Quick SSH from the toolbar (org-admin). */
+  setQuickSsh: (enabled: boolean) =>
+    invokeWithValidation('admin_set_quick_ssh', z.null(), { enabled }),
 
   // Collections governance (admin). Names stay encrypted — counts/membership only.
   listCollections: () => invokeWithValidation('admin_list_collections', z.array(CollectionSummarySchema)),
