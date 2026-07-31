@@ -482,6 +482,13 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/collections/{id}/offer",
             put(set_collection_offer_ep).delete(clear_collection_offer_ep),
         )
+        // Access requests: a discovering member requests; an owner/editor grants (re-seal,
+        // via the member endpoint) or dismisses. The inbox lists what the caller can grant.
+        .route("/api/collections/requests", get(incoming_requests_ep))
+        .route(
+            "/api/collections/{id}/request",
+            post(request_access_ep).delete(resolve_access_request_ep),
+        )
         .route("/api/context", get(get_context))
         .route("/api/context/servers", post(add_server))
         .route("/api/context/servers/{id}", delete(remove_server))
@@ -1749,6 +1756,65 @@ async fn offered_collections_ep(
 ) -> Result<Json<Vec<coll::OfferedCollection>>, AppError> {
     Ok(Json(
         coll::list_offered_to_user(state.db.pool(), &user.id).await?,
+    ))
+}
+
+/// Request access to a collection offered to one of the caller's teams. RBAC: the collection
+/// must be discoverable by the caller (offered to a team they belong to); already-members and
+/// non-discoverers are rejected. Idempotent.
+async fn request_access_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    if coll_role(&state, &user, &id).await?.is_some() {
+        return Ok((StatusCode::CONFLICT, "you already have access").into_response());
+    }
+    let can_discover = coll::list_offered_to_user(state.db.pool(), &user.id)
+        .await?
+        .iter()
+        .any(|o| o.id == id);
+    if !can_discover {
+        return Ok((StatusCode::FORBIDDEN, "not discoverable by you").into_response());
+    }
+    coll::add_access_request(state.db.pool(), &id, &user.id).await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ResolveRequestReq {
+    user_id: String,
+}
+
+/// Dismiss a pending access request (owner/editor). Granting is a re-seal via the member
+/// endpoint, which the client follows with this to clear the request.
+async fn resolve_access_request_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<ResolveRequestReq>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_write() => {}
+        _ => return Ok((StatusCode::FORBIDDEN, "only a key-holder can resolve").into_response()),
+    }
+    Ok(
+        if coll::remove_access_request(state.db.pool(), &id, &req.user_id).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        },
+    )
+}
+
+/// Access requests the caller can grant (they own/edit the collection). The inbox.
+async fn incoming_requests_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Vec<coll::IncomingRequest>>, AppError> {
+    Ok(Json(
+        coll::list_incoming_requests(state.db.pool(), &user.id).await?,
     ))
 }
 

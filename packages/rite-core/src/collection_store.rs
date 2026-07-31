@@ -96,6 +96,19 @@ pub struct CollectionItem {
     pub updated_at: i64,
 }
 
+/// A pending access request on a collection the caller can grant (owner/editor inbox). Carries
+/// the requester + which team offer they discovered it through (for context in the UI).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IncomingRequest {
+    pub collection_id: String,
+    pub user_id: String,
+    pub username: String,
+    pub public_key: Option<String>,
+    pub team_name: Option<String>,
+    pub created_at: i64,
+}
+
 /// Governance summary of a collection for the admin console — counts only, no key
 /// needed. The name stays encrypted (the server never learns it); admins govern
 /// membership and lifecycle. Ordered newest first.
@@ -372,6 +385,70 @@ pub struct OfferedCollection {
     pub team_name: String,
     pub discovery_label: String,
     pub member_role: Option<CollectionRole>,
+}
+
+/// Record a pending access request (idempotent — one row per collection+user). Called after
+/// the endpoint has checked the caller may discover the collection via a team offer.
+pub async fn add_access_request(db: &SqlitePool, collection_id: &str, user_id: &str) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO access_requests (collection_id, user_id, created_at) VALUES (?, ?, ?)
+         ON CONFLICT(collection_id, user_id) DO NOTHING",
+    )
+    .bind(collection_id)
+    .bind(user_id)
+    .bind(now())
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Remove a pending request (on grant or dismiss). Returns false if there was none.
+pub async fn remove_access_request(
+    db: &SqlitePool,
+    collection_id: &str,
+    user_id: &str,
+) -> Result<bool> {
+    let n = sqlx::query("DELETE FROM access_requests WHERE collection_id = ? AND user_id = ?")
+        .bind(collection_id)
+        .bind(user_id)
+        .execute(db)
+        .await?
+        .rows_affected();
+    Ok(n > 0)
+}
+
+/// Access requests on collections the caller can grant (they are an owner/editor). Joins the
+/// requester's name/public key + the team the collection is offered to (for context).
+pub async fn list_incoming_requests(
+    db: &SqlitePool,
+    grantee_id: &str,
+) -> Result<Vec<IncomingRequest>> {
+    let rows: Vec<(String, String, String, Option<String>, Option<String>, i64)> = sqlx::query_as(
+        "SELECT ar.collection_id, ar.user_id, u.username, u.public_key, t.name, ar.created_at
+         FROM access_requests ar
+         JOIN collection_members me
+              ON me.collection_id = ar.collection_id AND me.user_id = ?
+                 AND me.role IN ('owner', 'editor')
+         JOIN users u ON u.id = ar.user_id
+         LEFT JOIN teams t ON t.id = (SELECT team_id FROM collections WHERE id = ar.collection_id)
+         ORDER BY ar.created_at",
+    )
+    .bind(grantee_id)
+    .fetch_all(db)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(collection_id, user_id, username, public_key, team_name, created_at)| IncomingRequest {
+                collection_id,
+                user_id,
+                username,
+                public_key,
+                team_name,
+                created_at,
+            },
+        )
+        .collect())
 }
 
 /// Set or clear a collection's team offer (owner action, enforced at the endpoint). Passing
@@ -868,5 +945,38 @@ mod tests {
         let alice_coll = &list_collections_for_user(pool, &alice).await.unwrap()[0];
         assert_eq!(alice_coll.team_id, None);
         assert_eq!(alice_coll.discovery_label, None);
+    }
+
+    #[tokio::test]
+    async fn access_requests_flow() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::new(&dir.path().join("r.db")).await.unwrap();
+        let pool = db.pool();
+        let alice = user(pool, "alice").await; // owner
+        let bob = user(pool, "bob").await; // editor (a key-holder → can grant)
+        let dan = user(pool, "dan").await; // requester
+
+        let cid = create_collection(pool, "v1.enc", &alice, "m", "i")
+            .await
+            .unwrap();
+        add_member(pool, &cid, &bob, CollectionRole::Editor, "m2", "i2")
+            .await
+            .unwrap();
+
+        // Dan requests access (idempotent — a second call is a no-op).
+        add_access_request(pool, &cid, &dan).await.unwrap();
+        add_access_request(pool, &cid, &dan).await.unwrap();
+
+        // Owner and editor both see it in their inbox; the requester (dan) does not.
+        assert_eq!(list_incoming_requests(pool, &alice).await.unwrap().len(), 1);
+        let bob_inbox = list_incoming_requests(pool, &bob).await.unwrap();
+        assert_eq!(bob_inbox.len(), 1);
+        assert_eq!(bob_inbox[0].username, "dan");
+        assert!(list_incoming_requests(pool, &dan).await.unwrap().is_empty());
+
+        // Resolving (grant or dismiss) removes it; a second resolve is a no-op.
+        assert!(remove_access_request(pool, &cid, &dan).await.unwrap());
+        assert!(!remove_access_request(pool, &cid, &dan).await.unwrap());
+        assert!(list_incoming_requests(pool, &alice).await.unwrap().is_empty());
     }
 }
