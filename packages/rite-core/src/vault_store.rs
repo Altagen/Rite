@@ -117,6 +117,7 @@ mod tests {
             "hash",
             Role::User,
             &vault,
+            false,
         )
         .await
         .unwrap()

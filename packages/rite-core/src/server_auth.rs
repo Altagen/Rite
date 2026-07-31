@@ -49,6 +49,9 @@ pub struct User {
     pub role: Role,
     pub status: String,
     pub created_at: i64,
+    /// True while the account still uses an admin-set password (first login / after reset):
+    /// the client must force a password change (re-keying the vault) before proceeding.
+    pub must_change_password: bool,
 }
 
 /// Argon2id parameters the client uses to derive its auth hash.
@@ -150,13 +153,14 @@ pub async fn create_user(
     auth_hash: &str,
     role: Role,
     vault: &VaultKey,
+    must_change: bool,
 ) -> Result<User> {
     let id = Uuid::new_v4().to_string();
     let verifier = hash_auth(auth_hash)?;
     let ts = now();
     sqlx::query(
-        "INSERT INTO users (id, username, kdf_salt, kdf_mem, kdf_iter, kdf_par, auth_verifier, role, status, created_at, updated_at, kdf_master_salt, protected_user_key, public_key, protected_private_key)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO users (id, username, kdf_salt, kdf_mem, kdf_iter, kdf_par, auth_verifier, role, status, created_at, updated_at, kdf_master_salt, protected_user_key, public_key, protected_private_key, must_change_password)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(username)
@@ -172,6 +176,7 @@ pub async fn create_user(
     .bind(&vault.protected_user_key)
     .bind(&vault.public_key)
     .bind(&vault.protected_private_key)
+    .bind(must_change as i64)
     .execute(db)
     .await?;
 
@@ -181,7 +186,42 @@ pub async fn create_user(
         role,
         status: "active".to_string(),
         created_at: ts,
+        must_change_password: must_change,
     })
+}
+
+/// Replace a user's credentials + vault (the client-derived "set your own password" flow):
+/// new auth salt/params/verifier and a freshly-generated vault (new keypair), clearing the
+/// must-change flag. The server never sees the password — only the derived material.
+pub async fn set_credentials(
+    db: &SqlitePool,
+    user_id: &str,
+    salt: &[u8],
+    params: KdfParams,
+    auth_hash: &str,
+    vault: &VaultKey,
+) -> Result<bool> {
+    let verifier = hash_auth(auth_hash)?;
+    let n = sqlx::query(
+        "UPDATE users SET kdf_salt = ?, kdf_mem = ?, kdf_iter = ?, kdf_par = ?, auth_verifier = ?,
+                kdf_master_salt = ?, protected_user_key = ?, public_key = ?, protected_private_key = ?,
+                must_change_password = 0, updated_at = ? WHERE id = ?",
+    )
+    .bind(salt)
+    .bind(params.mem as i64)
+    .bind(params.iter as i64)
+    .bind(params.par as i64)
+    .bind(&verifier)
+    .bind(&vault.master_salt)
+    .bind(&vault.protected_user_key)
+    .bind(&vault.public_key)
+    .bind(&vault.protected_private_key)
+    .bind(now())
+    .bind(user_id)
+    .execute(db)
+    .await?
+    .rows_affected();
+    Ok(n > 0)
 }
 
 /// Derive the client-equivalent Argon2id auth hash (hex) from a plaintext
@@ -222,7 +262,7 @@ pub async fn bootstrap_admin(db: &SqlitePool, username: &str, password: &str) ->
         public_key: to_hex(&public_key),
         protected_private_key,
     };
-    create_user(db, username, &salt, params, &auth_hash, Role::Admin, &vault).await?;
+    create_user(db, username, &salt, params, &auth_hash, Role::Admin, &vault, false).await?;
     Ok(())
 }
 
@@ -305,14 +345,14 @@ pub async fn verify_login(
     username: &str,
     auth_hash: &str,
 ) -> Result<Option<User>> {
-    let row: Option<(String, String, String, String, i64)> = sqlx::query_as(
-        "SELECT id, auth_verifier, role, status, created_at FROM users WHERE username = ?",
+    let row: Option<(String, String, String, String, i64, i64)> = sqlx::query_as(
+        "SELECT id, auth_verifier, role, status, created_at, must_change_password FROM users WHERE username = ?",
     )
     .bind(username)
     .fetch_optional(db)
     .await?;
 
-    let Some((id, verifier, role, status, created_at)) = row else {
+    let Some((id, verifier, role, status, created_at, must_change)) = row else {
         // Unknown user: still spend a verify against a dummy, then fail.
         verify_auth(auth_hash, timing_equaliser());
         return Ok(None);
@@ -329,6 +369,7 @@ pub async fn verify_login(
         role: Role::parse(&role),
         status,
         created_at,
+        must_change_password: must_change != 0,
     }))
 }
 
@@ -372,12 +413,13 @@ pub async fn validate_session(db: &SqlitePool, token: &str) -> Result<Option<Use
         return Ok(None);
     }
 
-    let user: Option<(String, String, String, String, i64)> =
-        sqlx::query_as("SELECT id, username, role, status, created_at FROM users WHERE id = ?")
-            .bind(&user_id)
-            .fetch_optional(db)
-            .await?;
-    let Some((id, username, role, status, created_at)) = user else {
+    let user: Option<(String, String, String, String, i64, i64)> = sqlx::query_as(
+        "SELECT id, username, role, status, created_at, must_change_password FROM users WHERE id = ?",
+    )
+    .bind(&user_id)
+    .fetch_optional(db)
+    .await?;
+    let Some((id, username, role, status, created_at, must_change)) = user else {
         return Ok(None);
     };
     if status != "active" {
@@ -396,6 +438,7 @@ pub async fn validate_session(db: &SqlitePool, token: &str) -> Result<Option<Use
         role: Role::parse(&role),
         status,
         created_at,
+        must_change_password: must_change != 0,
     }))
 }
 
@@ -410,19 +453,20 @@ pub async fn revoke_session(db: &SqlitePool, token: &str) -> Result<()> {
 
 /// All accounts (admin surface, phase 3).
 pub async fn list_users(db: &SqlitePool) -> Result<Vec<User>> {
-    let rows: Vec<(String, String, String, String, i64)> = sqlx::query_as(
-        "SELECT id, username, role, status, created_at FROM users ORDER BY created_at",
+    let rows: Vec<(String, String, String, String, i64, i64)> = sqlx::query_as(
+        "SELECT id, username, role, status, created_at, must_change_password FROM users ORDER BY created_at",
     )
     .fetch_all(db)
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, username, role, status, created_at)| User {
+        .map(|(id, username, role, status, created_at, must_change)| User {
             id,
             username,
             role: Role::parse(&role),
             status,
             created_at,
+            must_change_password: must_change != 0,
         })
         .collect())
 }

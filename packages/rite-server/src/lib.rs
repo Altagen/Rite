@@ -385,6 +385,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/server/logout", post(server_logout))
         .route("/api/server/bootstrap", post(server_bootstrap))
         .route("/api/server/me", get(server_me))
+        .route("/api/server/change-password", post(change_password))
         .route(
             "/api/admin/users",
             get(admin_list_users).post(admin_create_user),
@@ -1157,6 +1158,7 @@ async fn server_bootstrap(
         &req.auth_hash,
         Role::Admin,
         &vault,
+        false, // bootstrap admin sets their own password → no forced change
     )
     .await?;
     let token = server_auth::create_session(state.db.pool(), &user.id).await?;
@@ -1172,6 +1174,46 @@ async fn server_me(
 ) -> Result<Json<Value>, AppError> {
     let vault = server_auth::get_user_vault(state.db.pool(), &user.id).await?;
     Ok(Json(json!({ "user": (*user).clone(), "vault": vault })))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ChangePasswordReq {
+    salt: String, // hex
+    params: server_auth::KdfParams,
+    auth_hash: String,
+    master_salt: String, // hex
+    protected_user_key: String,
+    public_key: String, // hex (X25519)
+    protected_private_key: String,
+}
+
+/// Replace the caller's own password + vault with client-derived material (the "set your
+/// own password" flow — used at first login and after an admin reset). The client generates
+/// a brand-new keypair, so the server (and the admin who set the initial password) can no
+/// longer derive the vault key; the must-change flag is cleared. The server never sees the
+/// password. The current session stays valid.
+async fn change_password(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Json(req): Json<ChangePasswordReq>,
+) -> Result<Response, AppError> {
+    let salt = server_auth::parse_hex_salt(&req.salt)?;
+    let vault = server_auth::VaultKey {
+        master_salt: server_auth::parse_hex_salt(&req.master_salt)?,
+        protected_user_key: req.protected_user_key,
+        public_key: req.public_key,
+        protected_private_key: req.protected_private_key,
+    };
+    Ok(
+        if server_auth::set_credentials(state.db.pool(), &user.id, &salt, req.params, &req.auth_hash, &vault)
+            .await?
+        {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        },
+    )
 }
 
 // --- per-user library tree (ADR 0016 view hierarchy) ------------------------
@@ -1236,6 +1278,7 @@ async fn admin_create_user(
         &req.auth_hash,
         req.role,
         &vault,
+        true, // admin-provisioned → force a password change on first login (re-keys the vault)
     )
     .await
     {
@@ -2979,6 +3022,7 @@ mod tests {
             role: rite_core::server_auth::Role::User,
             status: "active".to_string(),
             created_at: 0,
+            must_change_password: false,
         }
     }
 

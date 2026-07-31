@@ -809,6 +809,7 @@ mod tests {
             "h",
             Role::User,
             &vault,
+            false,
         )
         .await
         .unwrap()
