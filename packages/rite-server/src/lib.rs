@@ -396,6 +396,8 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/admin/session-persistence",
             patch(set_session_persistence),
         )
+        .route("/api/admin/default-shell", patch(set_default_shell))
+        .route("/api/admin/quick-ssh", patch(set_quick_ssh))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
         // guard-gated to admin); team management is per-team authorized in-handler.
         .route(
@@ -964,6 +966,15 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
     // the browser); admins who enforce stricter security can turn it off. Default on.
     let session_persistence =
         state.db.get_setting("session_persistence").await? != Some("0".to_string());
+    // Server-governed client capabilities (ADR: mock "Client capabilities"). The shell used
+    // for terminals opened on this server (web users don't pick their own); and whether ad-hoc
+    // Quick SSH is allowed (off by default — connections should live in collections).
+    let default_shell = state
+        .db
+        .get_setting("default_shell")
+        .await?
+        .unwrap_or_else(|| "bash".to_string());
+    let allow_quick_ssh = state.db.get_setting("allow_quick_ssh").await? == Some("1".to_string());
     Ok(Json(json!({
         "accounts": state.accounts,
         "needsBootstrap": needs_bootstrap,
@@ -971,6 +982,8 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "sessionPersistence": session_persistence,
         "serveAdmin": state.serve_admin,
         "serveWebui": state.serve_webui,
+        "defaultShell": default_shell,
+        "allowQuickSsh": allow_quick_ssh,
     })))
 }
 
@@ -1004,6 +1017,38 @@ async fn set_session_persistence(
     state
         .db
         .set_setting("session_persistence", if req.enabled { "1" } else { "0" })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct ShellReq {
+    shell: String,
+}
+
+/// Set the server's default shell for terminals (org-admin only). Restricted to a small set
+/// of common shells so a bad value can't be injected.
+async fn set_default_shell(
+    State(state): State<ServerState>,
+    Json(req): Json<ShellReq>,
+) -> Result<Response, AppError> {
+    let shell = req.shell.trim();
+    if !["bash", "sh", "zsh", "fish"].contains(&shell) {
+        return Ok((StatusCode::BAD_REQUEST, "unsupported shell").into_response());
+    }
+    state.db.set_setting("default_shell", shell).await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Allow or forbid ad-hoc Quick SSH from the toolbar (org-admin only). Off by default —
+/// connections on a server should live in collections (saved, shared, auditable).
+async fn set_quick_ssh(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<StatusCode, AppError> {
+    state
+        .db
+        .set_setting("allow_quick_ssh", if req.enabled { "1" } else { "0" })
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
