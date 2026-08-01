@@ -9,6 +9,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
+import { StatusPastille } from './StatusPastille';
 
 /** Compact relative time for a machine's last use ("2h ago"), or "—" when never used. */
 function relTime(ts: number | null | undefined): string {
@@ -151,6 +152,7 @@ export function CollectionView({
         <span className="truncate font-semibold" title={c.name}>
           {c.name}
         </span>
+        <StatusPastille lastUsedAt={c.lastUsedAt} />
         <span className="flex-1" />
         {onMove && (
           <button

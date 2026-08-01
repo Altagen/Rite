@@ -13,6 +13,7 @@
 import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
+import { StatusPastille } from './StatusPastille';
 import { IconPlay, IconEdit, IconUsers, IconTrash, IconFolder, IconImport } from './icons';
 import { useDisplayPrefs } from '../store/displayPrefs';
 
@@ -418,8 +419,9 @@ function MachineRow({
       <span className="m-ca" />
       <MachineIcon color={connection.color} />
       <div className="min-w-0 flex-1">
-        <div className="m-nm" title={connection.name}>
-          {connection.name}
+        <div className="m-nm flex items-center gap-1.5" title={connection.name}>
+          <span className="truncate">{connection.name}</span>
+          <StatusPastille lastUsedAt={connection.lastUsedAt} />
         </div>
         <div className="m-lsub">
           {connection.username}@{connection.hostname}:{connection.port}

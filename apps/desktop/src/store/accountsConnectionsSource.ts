@@ -24,6 +24,7 @@ import {
   type UpdateConnectionInput,
 } from './connectionsStore';
 import { encryptString, decryptString } from '../utils/vaultCrypto';
+import { getLastUsed, recordLastUsed } from '../utils/lastUsed';
 import {
   unwrapCollectionKeys,
   decryptCollectionField,
@@ -174,7 +175,8 @@ function toInfo(
     sshKeepAliveInterval: r.sshKeepAliveInterval,
     createdAt,
     updatedAt,
-    lastUsedAt: null,
+    // Passive "last seen" is this user's own local record (ADR 0017) — never server-side.
+    lastUsedAt: getLastUsed(id),
   };
 }
 
@@ -315,12 +317,15 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     const { record } = entry;
     // Server-execute: the decrypted target is handed to the server to run SSH; it
     // is never persisted server-side (ADR 0011 / 0012 client-execute).
-    return Backend.Terminal.quickSshConnect(
+    const sessionId = await Backend.Terminal.quickSshConnect(
       record.hostname,
       record.username,
       record.port,
       record.authMethod,
     );
+    // Record this user's own "last connected" locally (passive status, ADR 0017).
+    recordLastUsed(conn.id);
+    return sessionId;
   }, []);
 
   const remove = useCallback(
