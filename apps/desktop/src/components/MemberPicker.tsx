@@ -66,7 +66,9 @@ export function MemberPicker({
   onSaved: () => void;
   onCreated?: (id: string) => void; // create mode: the new collection's id (for placement)
 }) {
-  const { user: me, publicKey, privateKey } = useServerSession();
+  const { user: me, publicKey, privateKey, mode: serverMode } = useServerSession();
+  // Server-governed default role for newly added members (admin → Collections policy).
+  const defaultRole: CollectionRole = serverMode?.collectionPolicy?.defaultRole ?? 'viewer';
   const isCreate = mode === 'create';
 
   const [name, setName] = useState(initialName ?? '');
@@ -147,7 +149,7 @@ export function MemberPicker({
     if (!iManage || entry.id === me?.id) return;
     const has = chosen.has(entry.id);
     if (isCreate) {
-      setLocal(entry.id, has ? null : 'viewer');
+      setLocal(entry.id, has ? null : defaultRole);
       return;
     }
     if (!collKeys || !collectionId) return;
@@ -162,11 +164,11 @@ export function MemberPicker({
         await Backend.Collections.addMember(
           collectionId,
           entry.id,
-          'viewer',
+          defaultRole,
           await sealCollectionKeyToHex(entry.publicKey, metaKey),
           await sealCollectionKeyToHex(entry.publicKey, itemsKey),
         );
-        setLocal(entry.id, 'viewer');
+        setLocal(entry.id, defaultRole);
       }
       onSaved();
     });
@@ -214,7 +216,7 @@ export function MemberPicker({
       for (const tm of members) {
         if (chosen.has(tm.userId)) continue;
         if (isCreate) {
-          setLocal(tm.userId, 'viewer');
+          setLocal(tm.userId, defaultRole);
           continue;
         }
         if (!collKeys?.itemsKey || !collectionId) continue;
@@ -223,11 +225,11 @@ export function MemberPicker({
         await Backend.Collections.addMember(
           collectionId,
           tm.userId,
-          'viewer',
+          defaultRole,
           await sealCollectionKeyToHex(pub, collKeys.metaKey),
           await sealCollectionKeyToHex(pub, collKeys.itemsKey),
         );
-        setLocal(tm.userId, 'viewer');
+        setLocal(tm.userId, defaultRole);
       }
       if (!isCreate) onSaved();
     });
