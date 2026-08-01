@@ -164,12 +164,13 @@ export async function mockInvoke(
 
     // --- Server accounts (dev mock behaves as local: no accounts) ---
     case 'server_mode':
-      return { accounts: false, needsBootstrap: false, instanceName: null, sessionPersistence: true, defaultShell: 'bash', allowQuickSsh: false, healthcheck: { passiveStatus: true, active: 'off', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 } };
+      return { accounts: false, needsBootstrap: false, instanceName: null, sessionPersistence: true, defaultShell: 'bash', allowQuickSsh: false, healthcheck: { passiveStatus: true, active: 'off', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 }, collectionPolicy: { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 0, defaultRole: 'viewer' } };
     case 'admin_set_instance':
     case 'admin_set_session_persistence':
     case 'admin_set_default_shell':
     case 'admin_set_quick_ssh':
     case 'admin_set_healthcheck':
+    case 'admin_set_collection_policy':
       return null;
     case 'server_prelogin':
       return { salt: '00112233445566778899aabbccddeeff', params: { mem: 19456, iter: 2, par: 1 } };

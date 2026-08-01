@@ -356,8 +356,18 @@ const ServerModeSchema = z.object({
       minInterval: z.number(),
     })
     .optional(),
+  // Collection governance policy (admin → Collections). Absent ⇒ permissive defaults.
+  collectionPolicy: z
+    .object({
+      allowCreate: z.boolean(),
+      allowSharingOutsideTeams: z.boolean(),
+      maxMembers: z.number(),
+      defaultRole: z.enum(['viewer', 'editor']),
+    })
+    .optional(),
 });
 export type HealthcheckPolicy = NonNullable<z.infer<typeof ServerModeSchema>['healthcheck']>;
+export type CollectionPolicy = NonNullable<z.infer<typeof ServerModeSchema>['collectionPolicy']>;
 // Active health-check probe (ADR 0017). The client sends host:port (decrypted from its own
 // blob) per target; the server returns a reachability verdict. `unsupported` ≠ `down` — it
 // means the method can't run (e.g. icmp without privileges), so the UI won't paint it offline.
@@ -537,6 +547,9 @@ export const BackendAdmin = {
   /** Set the machine health-check policy (org-admin). Sends the whole policy object. */
   setHealthcheck: (policy: HealthcheckPolicy) =>
     invokeWithValidation('admin_set_healthcheck', z.null(), policy as unknown as Record<string, unknown>),
+  /** Set the collection governance policy (org-admin). Sends the whole policy object. */
+  setCollectionPolicy: (policy: CollectionPolicy) =>
+    invokeWithValidation('admin_set_collection_policy', z.null(), policy as unknown as Record<string, unknown>),
 
   // Collections governance (admin). Names stay encrypted — counts/membership only.
   listCollections: () => invokeWithValidation('admin_list_collections', z.array(CollectionSummarySchema)),

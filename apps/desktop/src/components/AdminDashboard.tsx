@@ -14,6 +14,7 @@ import {
   type ServerUser,
   type CollectionSummary,
   type CollectionMember,
+  type CollectionPolicy,
   type DirectoryEntry,
 } from '../utils/backend';
 import {
@@ -175,6 +176,100 @@ function ZkBanner() {
 interface CollName {
   name: string;
   color: string | null;
+}
+
+const DEFAULT_COLL_POLICY: CollectionPolicy = {
+  allowCreate: true,
+  allowSharingOutsideTeams: true,
+  maxMembers: 0,
+  defaultRole: 'viewer',
+};
+
+function PolicyToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={on}
+      onClick={onClick}
+      className={`relative h-6 w-11 flex-none rounded-full transition-colors ${on ? 'bg-primary' : 'bg-muted'}`}
+    >
+      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${on ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    </button>
+  );
+}
+
+/** Server-wide collection governance (mock admin → Collections): who may create, share, how
+ *  many members, and the default role. Optimistic saves; reverts on failure. */
+function CollectionPolicyPanel() {
+  const [p, setP] = useState<CollectionPolicy>(DEFAULT_COLL_POLICY);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    Backend.Server.mode()
+      .then((m) => setP(m.collectionPolicy ?? DEFAULT_COLL_POLICY))
+      .catch(() => {});
+  }, []);
+  const save = async (next: CollectionPolicy) => {
+    const prev = p;
+    setP(next);
+    setErr(null);
+    try {
+      await Backend.Admin.setCollectionPolicy(next);
+    } catch (e) {
+      setP(prev);
+      setErr(e instanceof Error ? e.message : 'Failed to save');
+    }
+  };
+  const row = 'flex flex-wrap items-center justify-between gap-4 border-t border-border p-4 first:border-t-0';
+  return (
+    <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
+      {err && <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-600">{err}</div>}
+      <div className={row}>
+        <div>
+          <div className="font-medium">Allow users to create collections</div>
+          <p className="mt-1 text-sm text-muted-foreground">When off, only admins provision collections.</p>
+        </div>
+        <PolicyToggle on={p.allowCreate} onClick={() => save({ ...p, allowCreate: !p.allowCreate })} />
+      </div>
+      <div className={row}>
+        <div>
+          <div className="font-medium">Allow sharing outside teams</div>
+          <p className="mt-1 text-sm text-muted-foreground">Members can add anyone in the directory, not just teammates.</p>
+        </div>
+        <PolicyToggle
+          on={p.allowSharingOutsideTeams}
+          onClick={() => save({ ...p, allowSharingOutsideTeams: !p.allowSharingOutsideTeams })}
+        />
+      </div>
+      <div className={row}>
+        <div>
+          <div className="font-medium">Max members per collection</div>
+          <p className="mt-1 text-sm text-muted-foreground">0 = unlimited.</p>
+        </div>
+        <input
+          type="number"
+          min={0}
+          value={p.maxMembers}
+          onChange={(e) => setP({ ...p, maxMembers: Math.max(0, Number(e.target.value) || 0) })}
+          onBlur={() => save(p)}
+          className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        />
+      </div>
+      <div className={row}>
+        <div>
+          <div className="font-medium">Default role for new members</div>
+          <p className="mt-1 text-sm text-muted-foreground">Applied when someone is added to a collection.</p>
+        </div>
+        <select
+          value={p.defaultRole}
+          onChange={(e) => save({ ...p, defaultRole: e.target.value as CollectionPolicy['defaultRole'] })}
+          className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        >
+          <option value="viewer">viewer</option>
+          <option value="editor">editor</option>
+        </select>
+      </div>
+    </div>
+  );
 }
 
 function CollectionsGovernance() {
@@ -351,6 +446,7 @@ function CollectionsGovernance() {
         <span className="text-[13px] text-muted-foreground">Server-wide governance</span>
       </div>
       <ZkBanner />
+      <CollectionPolicyPanel />
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
         <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b border-border px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           <span>Collection</span>

@@ -197,6 +197,20 @@ pub async fn list_teams_for_user(db: &SqlitePool, user_id: &str) -> Result<Vec<U
         .collect())
 }
 
+/// Whether two users share at least one team. Used to enforce the "no sharing outside teams"
+/// collection policy: a member may only add someone they already share a team with.
+pub async fn users_share_team(db: &SqlitePool, a: &str, b: &str) -> Result<bool> {
+    let row: Option<(i64,)> = sqlx::query_as(
+        "SELECT 1 FROM team_members ta JOIN team_members tb ON ta.team_id = tb.team_id \
+         WHERE ta.user_id = ? AND tb.user_id = ? LIMIT 1",
+    )
+    .bind(a)
+    .bind(b)
+    .fetch_optional(db)
+    .await?;
+    Ok(row.is_some())
+}
+
 /// The user's role in a team, or `None` if they are not a member. The core authz
 /// primitive: team-admin = `Some(Admin)`, member = `Some(Member)`.
 pub async fn team_role(db: &SqlitePool, team_id: &str, user_id: &str) -> Result<Option<TeamRole>> {

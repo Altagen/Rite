@@ -406,6 +406,7 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/default-shell", patch(set_default_shell))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
+        .route("/api/admin/collection-policy", patch(set_collection_policy))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
         .route("/api/healthcheck/probe", post(healthcheck_probe))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
@@ -996,6 +997,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "defaultShell": default_shell,
         "allowQuickSsh": allow_quick_ssh,
         "healthcheck": healthcheck,
+        "collectionPolicy": collection_policy(&state).await?,
     })))
 }
 
@@ -1015,6 +1017,25 @@ async fn healthcheck_policy(state: &ServerState) -> Result<Value, AppError> {
             "methods": ["tcp-connect"],   // subset of tcp-connect | icmp | ssh-handshake
             "restrictUsers": [],          // usernames allowed to actively probe (empty = all)
             "minInterval": 60,
+        })
+    }))
+}
+
+/// Collection governance policy (mock admin → Collections). Stored as one JSON setting with
+/// permissive defaults: anyone may create collections, share with anyone in the directory, no
+/// member cap, and new members default to viewer. Admins bypass these limits.
+async fn collection_policy(state: &ServerState) -> Result<Value, AppError> {
+    let stored = state
+        .db
+        .get_setting("collection_policy")
+        .await?
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok());
+    Ok(stored.unwrap_or_else(|| {
+        json!({
+            "allowCreate": true,               // when false, only org-admins provision collections
+            "allowSharingOutsideTeams": true,  // when false, members may only add teammates
+            "maxMembers": 0,                   // 0 = unlimited
+            "defaultRole": "viewer",           // viewer | editor — default when adding a member
         })
     }))
 }
@@ -1083,6 +1104,29 @@ async fn set_quick_ssh(
         .set_setting("allow_quick_ssh", if req.enabled { "1" } else { "0" })
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Set the collection governance policy (org-admin only; guard-gated by `/api/admin`). Stored as
+/// one JSON blob and surfaced in server_mode; enforced on create/add-member. Lightly validated.
+async fn set_collection_policy(
+    State(state): State<ServerState>,
+    Json(policy): Json<Value>,
+) -> Result<Response, AppError> {
+    let role = policy
+        .get("defaultRole")
+        .and_then(|v| v.as_str())
+        .unwrap_or("viewer");
+    if !["viewer", "editor"].contains(&role) {
+        return Ok((StatusCode::BAD_REQUEST, "invalid default role").into_response());
+    }
+    if policy.get("maxMembers").and_then(|v| v.as_i64()).unwrap_or(0) < 0 {
+        return Ok((StatusCode::BAD_REQUEST, "maxMembers must be ≥ 0").into_response());
+    }
+    state
+        .db
+        .set_setting("collection_policy", &policy.to_string())
+        .await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// Set the machine health-check policy (org-admin only). The whole policy is stored as one
@@ -1955,6 +1999,14 @@ async fn create_collection_ep(
     Extension(user): Extension<Arc<User>>,
     Json(req): Json<CreateCollectionReq>,
 ) -> Result<Response, AppError> {
+    // Governance: an admin may forbid non-admins from provisioning collections.
+    let policy = collection_policy(&state).await?;
+    let allow_create = policy.get("allowCreate").and_then(|v| v.as_bool()).unwrap_or(true);
+    if !allow_create && user.role != Role::Admin {
+        return Ok(
+            (StatusCode::FORBIDDEN, "collection creation is restricted to admins").into_response(),
+        );
+    }
     let id = coll::create_collection(
         state.db.pool(),
         &req.name_enc,
@@ -2168,6 +2220,32 @@ async fn add_collection_member_ep(
     match coll_role(&state, &user, &id).await? {
         Some(r) if r.can_manage() => {}
         _ => return Ok((StatusCode::FORBIDDEN, "only an owner can add members").into_response()),
+    }
+    // Governance (org-admins bypass both limits).
+    if user.role != Role::Admin {
+        let policy = collection_policy(&state).await?;
+        // Member cap (0 = unlimited).
+        let max = policy.get("maxMembers").and_then(|v| v.as_i64()).unwrap_or(0);
+        if max > 0 {
+            let count = coll::list_members(state.db.pool(), &id).await?.len() as i64;
+            if count >= max {
+                return Ok((StatusCode::CONFLICT, "collection is at its member limit").into_response());
+            }
+        }
+        // No sharing outside teams: the target must share a team with the person adding them.
+        let allow_outside = policy
+            .get("allowSharingOutsideTeams")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        if !allow_outside
+            && !rite_core::teams::users_share_team(state.db.pool(), &user.id, &req.user_id).await?
+        {
+            return Ok((
+                StatusCode::FORBIDDEN,
+                "you can only add members you share a team with",
+            )
+                .into_response());
+        }
     }
     match coll::add_member(
         state.db.pool(),
