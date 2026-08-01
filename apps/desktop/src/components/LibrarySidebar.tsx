@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { StatusPastille } from './StatusPastille';
+import { useHealth } from '../store/healthStore';
 import { IconPlay, IconEdit, IconUsers, IconTrash, IconFolder, IconImport } from './icons';
 import { useDisplayPrefs } from '../store/displayPrefs';
 
@@ -408,6 +409,9 @@ function MachineRow({
   onConnect: () => void;
 }) {
   const { t } = useTranslation();
+  const active = useHealth((s) =>
+    s.checking[connection.id] ? ('checking' as const) : s.results[connection.id]?.status,
+  );
 
   return (
     <div
@@ -421,7 +425,7 @@ function MachineRow({
       <div className="min-w-0 flex-1">
         <div className="m-nm flex items-center gap-1.5" title={connection.name}>
           <span className="truncate">{connection.name}</span>
-          <StatusPastille lastUsedAt={connection.lastUsedAt} />
+          <StatusPastille lastUsedAt={connection.lastUsedAt} active={active} />
         </div>
         <div className="m-lsub">
           {connection.username}@{connection.hostname}:{connection.port}

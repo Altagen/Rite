@@ -9,6 +9,8 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
+import { useServerSession } from '../store/serverSessionStore';
+import { useHealth } from '../store/healthStore';
 import { StatusPastille } from './StatusPastille';
 
 /** Compact relative time for a machine's last use ("2h ago"), or "—" when never used. */
@@ -84,6 +86,14 @@ export function CollectionView({
   onOpenMembers?: () => void; // absent when membership isn't editable from here
 }) {
   const { t } = useTranslation();
+  const { mode } = useServerSession();
+  const health = useHealth();
+  // Active probing is governed (ADR 0017): the Check button appears only when the server
+  // allows on-demand/full/client-choice active checks.
+  const activeMode = mode?.healthcheck?.active ?? 'off';
+  const canProbe = activeMode === 'on-demand' || activeMode === 'full' || activeMode === 'client-choice';
+  const activeFor = (id: string) =>
+    health.checking[id] ? ('checking' as const) : health.results[id]?.status;
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'name' | 'host' | 'lastUsed'>('name');
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
@@ -136,6 +146,7 @@ export function CollectionView({
     [allPaths, cur],
   );
   const here = useMemo(() => shown.filter((m) => (m.folder || '') === cur), [shown, cur]);
+  const checkingHere = here.some((m) => health.checking[m.id]);
   const countUnder = (p: string) =>
     machines.filter((m) => m.folder === p || (m.folder || '').startsWith(`${p}/`)).length;
 
@@ -152,7 +163,7 @@ export function CollectionView({
         <span className="truncate font-semibold" title={c.name}>
           {c.name}
         </span>
-        <StatusPastille lastUsedAt={c.lastUsedAt} />
+        <StatusPastille lastUsedAt={c.lastUsedAt} active={activeFor(c.id)} />
         <span className="flex-1" />
         {onMove && (
           <button
@@ -306,6 +317,30 @@ export function CollectionView({
           {machines.length} {machines.length === 1 ? 'machine' : 'machines'}
         </span>
         <span className="flex-1" />
+        {canProbe && here.length > 0 && (
+          <button
+            onClick={() =>
+              void health.checkNow(
+                here.slice(0, 64).map((m) => ({ id: m.id, host: m.hostname, port: m.port })),
+              )
+            }
+            disabled={checkingHere}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-60"
+            title="Check machine status now"
+          >
+            <svg
+              className={`h-4 w-4 ${checkingHere ? 'animate-spin' : ''}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M20 9a8 8 0 00-14.3-3.3L4 9m0 6a8 8 0 0014.3 3.3L20 15" />
+            </svg>
+            {checkingHere ? 'Checking…' : 'Check'}
+          </button>
+        )}
         {onOpenMembers && (
           <button
             onClick={onOpenMembers}
@@ -318,6 +353,16 @@ export function CollectionView({
           </button>
         )}
       </div>
+
+      {/* Governed-probing notice (probing disabled / rate-limited) — calm, dismissable. */}
+      {health.notice && (
+        <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
+          <span className="flex-1">{health.notice}</span>
+          <button onClick={health.clearNotice} className="font-medium hover:underline" aria-label="Dismiss">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 pb-3">

@@ -1,12 +1,17 @@
 /**
- * Passive "last seen" pastille (ADR 0017). A calm dot derived from THIS user's own last
- * connection (client-local, no probing, no network traffic): a soft filled dot if connected
- * recently, a hollow ring if it's been a while / never. Active up/down probing is a later
- * phase; this is the always-free passive signal. Shown only when the server's health-check
- * policy keeps status on (always on in a local vault — the user is their own authority).
+ * Machine status pastille (ADR 0017). Two layers, matching design/mock:
+ *  - Active (governed probing): a warm glowing dot when reachable, a calm hollow ring
+ *    when there's no response (down is a normal state, NOT an error — never red), an
+ *    amber pulse while a check is in flight. Driven by an on-demand "Check".
+ *  - Passive ("last seen"): derived from THIS user's own last connection (client-local,
+ *    no network traffic) — a soft dot if recent, a hollow ring if it's been a while.
+ *
+ * An active verdict takes precedence over the passive dot. Passive is shown only when
+ * the server keeps it on (always on in a local vault — the user is their own authority).
  */
 
 import { useServerSession } from '../store/serverSessionStore';
+import type { HealthStatus } from '../store/healthStore';
 
 // Recent = within a day → a warmer dot; older → dim; never → hollow.
 const RECENT_SECS = 24 * 60 * 60;
@@ -27,16 +32,54 @@ function dotClass(lastUsedAt: number | null | undefined): string {
   return recent ? 'bg-emerald-500/80' : 'bg-muted-foreground/50';
 }
 
-export function StatusPastille({ lastUsedAt, className = '' }: { lastUsedAt: number | null | undefined; className?: string }) {
-  const { mode } = useServerSession();
-  // Server may hide the status UI entirely (passiveStatus=false). Absent ⇒ on. Local vault ⇒ on.
-  const show = !mode?.accounts || mode?.healthcheck?.passiveStatus !== false;
-  if (!show) return null;
+// The active layer: a reachability verdict (or an in-flight check) beats the passive dot.
+export type ActiveState = HealthStatus | 'checking';
 
-  const cls = dotClass(lastUsedAt);
+export function StatusPastille({
+  lastUsedAt,
+  active,
+  className = '',
+}: {
+  lastUsedAt: number | null | undefined;
+  active?: ActiveState;
+  className?: string;
+}) {
+  const { mode } = useServerSession();
+
+  // Active verdict wins when present (an on-demand check has run / is running).
+  if (active === 'checking') {
+    return (
+      <span
+        className={`inline-block h-2 w-2 flex-none animate-pulse rounded-full bg-amber-500 ${className}`}
+        title="Checking status…"
+      />
+    );
+  }
+  if (active === 'up') {
+    return (
+      <span
+        className={`inline-block h-2 w-2 flex-none rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.7)] ${className}`}
+        title="Reachable · active check"
+      />
+    );
+  }
+  if (active === 'down') {
+    return (
+      <span
+        className={`inline-block h-2 w-2 flex-none rounded-full border border-muted-foreground/50 ${className}`}
+        title="No response · active check"
+      />
+    );
+  }
+  // 'unsupported' (or no active result) → fall through to the passive layer.
+
+  // Server may hide the status UI entirely (passiveStatus=false). Absent ⇒ on. Local vault ⇒ on.
+  const passiveOn = !mode?.accounts || mode?.healthcheck?.passiveStatus !== false;
+  if (!passiveOn) return null;
+
   return (
     <span
-      className={`inline-block h-2 w-2 flex-none rounded-full ${cls} ${className}`}
+      className={`inline-block h-2 w-2 flex-none rounded-full ${dotClass(lastUsedAt)} ${className}`}
       title={`${relLabel(lastUsedAt)} · passive (no probe)`}
     />
   );
