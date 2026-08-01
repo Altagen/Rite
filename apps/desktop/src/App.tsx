@@ -10,6 +10,7 @@ import { applyNativeContext, isNativeShell } from './utils/nativeShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ConnectionError } from './components/ConnectionError';
 import { OfflineBanner } from './components/OfflineBanner';
+import { transport } from './utils/transport';
 
 function Loading({ label }: { label: string }) {
   return (
@@ -40,6 +41,22 @@ function App() {
     const t = setInterval(() => void loadMode(), 4000);
     return () => clearInterval(t);
   }, [connError, loadMode]);
+
+  // Live policy distribution (ADR 0017): the server nudges connected clients when an admin
+  // changes a governed policy (health-check, shell, Quick SSH…); re-pull the mode so client
+  // capabilities update at once instead of waiting for the next poll. The WS needs a session
+  // token in accounts mode, so wait for login there.
+  const wsReady = !!mode && (!mode.accounts || !!user);
+  useEffect(() => {
+    if (!wsReady) return;
+    let unlisten: (() => void) | undefined;
+    void transport()
+      .listen('policy-updated', () => void loadMode())
+      .then((u) => {
+        unlisten = u;
+      });
+    return () => unlisten?.();
+  }, [wsReady, loadMode]);
 
   // Local vault only: check first-run for the master-password flow.
   useEffect(() => {
