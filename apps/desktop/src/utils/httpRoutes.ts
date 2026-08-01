@@ -126,6 +126,9 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  // On-demand active health-check. Governance responses (403 off/restricted, 429 rate-limited)
+  // surface as typed RiteHttpErrors for the caller to degrade on; success returns the verdicts.
+  server_probe_health: (a) => json('/api/healthcheck/probe', post({ targets: a.targets })),
 
   context_get: () => json('/api/context'),
   context_add_server: (a) => json('/api/context/servers', post({ url: a.url, label: a.label })),

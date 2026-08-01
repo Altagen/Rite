@@ -189,6 +189,18 @@ export async function mockInvoke(
     case 'server_change_password':
     case 'server_logout':
       return null;
+    case 'server_probe_health': {
+      // No real sockets in the mock: report each target reachable (icmp reads unsupported)
+      // with a plausible latency so the active-probe UI can be exercised.
+      const targets = (args?.targets as { id: string; method?: string }[] | undefined) ?? [];
+      return {
+        results: targets.map((t) => ({
+          id: t.id,
+          status: t.method === 'icmp' ? 'unsupported' : 'up',
+          latencyMs: t.method === 'icmp' ? null : 8 + Math.floor(Math.random() * 40),
+        })),
+      };
+    }
     case 'server_me':
       return {
         user: {

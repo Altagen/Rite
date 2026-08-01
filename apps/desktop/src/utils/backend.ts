@@ -358,6 +358,21 @@ const ServerModeSchema = z.object({
     .optional(),
 });
 export type HealthcheckPolicy = NonNullable<z.infer<typeof ServerModeSchema>['healthcheck']>;
+// Active health-check probe (ADR 0017). The client sends host:port (decrypted from its own
+// blob) per target; the server returns a reachability verdict. `unsupported` ≠ `down` — it
+// means the method can't run (e.g. icmp without privileges), so the UI won't paint it offline.
+export type ProbeMethod = 'tcp-connect' | 'icmp' | 'ssh-handshake';
+export type ProbeTarget = { id: string; host: string; port: number; method?: ProbeMethod };
+const HealthProbeSchema = z.object({
+  results: z.array(
+    z.object({
+      id: z.string(),
+      status: z.enum(['up', 'down', 'unsupported']),
+      latencyMs: z.number().nullable(),
+    }),
+  ),
+});
+export type HealthProbeResult = z.infer<typeof HealthProbeSchema>['results'][number];
 const PreloginSchema = z.object({ salt: z.string(), params: KdfParamsSchema });
 const ServerUserSchema = z.object({
   // True while the account still uses an admin-set password (first login / after reset):
@@ -437,6 +452,12 @@ export const BackendServer = {
       params,
       authHash,
       ...vault,
+    }),
+  /** On-demand active health-check (ADR 0017). Governed by the server policy — may be refused
+   *  (probing off / not permitted) or rate-limited; callers should degrade gracefully. */
+  probeHealth: (targets: ProbeTarget[]) =>
+    invokeWithValidation('server_probe_health', HealthProbeSchema, {
+      targets: targets as unknown as Record<string, unknown>[],
     }),
 } as const;
 
