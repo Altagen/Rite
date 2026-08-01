@@ -152,21 +152,23 @@ export function CollectionView({
     [allPaths, cur],
   );
   const here = useMemo(() => shown.filter((m) => (m.folder || '') === cur), [shown, cur]);
-  const checkingHere = here.some((m) => checking[m.id]);
+  // Machines that opt out of active probing (ADR 0017, hc===false) are never probed.
+  const probeHere = useMemo(() => here.filter((m) => m.hc !== false), [here]);
+  const checkingHere = probeHere.some((m) => checking[m.id]);
 
-  // Background polling (ADR 0017 "full"): auto-check the machines in view on a floor-bounded
-  // cadence. On-demand/off don't poll — only an explicit Check probes. The server also
-  // enforces its own cooldown, so this stays within the min-interval guardrail.
-  const hereKey = here.map((m) => m.id).join(',');
+  // Background polling (ADR 0017 "full"): auto-check the (probeable) machines in view on a
+  // floor-bounded cadence. On-demand/off don't poll — only an explicit Check probes. The
+  // server also enforces its own cooldown, so this stays within the min-interval guardrail.
+  const probeKey = probeHere.map((m) => m.id).join(',');
   useEffect(() => {
-    if (activeMode !== 'full' || here.length === 0) return;
-    const targets = here.slice(0, 64).map((m) => ({ id: m.id, host: m.hostname, port: m.port }));
+    if (activeMode !== 'full' || probeHere.length === 0) return;
+    const targets = probeHere.slice(0, 64).map((m) => ({ id: m.id, host: m.hostname, port: m.port }));
     void checkNow(targets);
     const id = setInterval(() => void checkNow(targets), Math.max(15, minInterval) * 1000);
     return () => clearInterval(id);
-    // hereKey captures the visible set; checkNow is a stable store action.
+    // probeKey captures the visible probeable set; checkNow is a stable store action.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMode, minInterval, hereKey, checkNow]);
+  }, [activeMode, minInterval, probeKey, checkNow]);
   const countUnder = (p: string) =>
     machines.filter((m) => m.folder === p || (m.folder || '').startsWith(`${p}/`)).length;
 
@@ -337,11 +339,11 @@ export function CollectionView({
           {machines.length} {machines.length === 1 ? 'machine' : 'machines'}
         </span>
         <span className="flex-1" />
-        {canProbe && here.length > 0 && (
+        {canProbe && probeHere.length > 0 && (
           <button
             onClick={() =>
               void checkNow(
-                here.slice(0, 64).map((m) => ({ id: m.id, host: m.hostname, port: m.port })),
+                probeHere.slice(0, 64).map((m) => ({ id: m.id, host: m.hostname, port: m.port })),
               )
             }
             disabled={checkingHere}

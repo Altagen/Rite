@@ -61,6 +61,8 @@ export function ConnectionForm({
   );
   const [color, setColor] = useState(connection?.color || '');
   const icon = connection?.icon || ''; // TODO: Implement icon picker UI
+  // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
+  const [hcOptOut, setHcOptOut] = useState(connection?.hc === false);
   const [notes, setNotes] = useState(connection?.notes || '');
   const [sshKeepAliveOverride, setSshKeepAliveOverride] = useState<string | null>(
     connection?.sshKeepAliveOverride ?? null
@@ -211,6 +213,7 @@ export function ConnectionForm({
           ...(notes && { notes }),
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
+          hc: hcOptOut ? false : null, // always send so turning it back off clears the opt-out
         };
 
         // Only include auth method if password or key path is provided
@@ -248,6 +251,7 @@ export function ConnectionForm({
           ...(notes && { notes }),
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
+          ...(hcOptOut && { hc: false }),
         };
 
         await create(input);
@@ -523,6 +527,22 @@ export function ConnectionForm({
                 />
               ))}
             </div>
+          </div>
+
+          {/* Health-check (ADR 0017): a machine can opt out of active probing. */}
+          <div>
+            <label className="mb-1 block text-sm font-medium">Health-check</label>
+            <select
+              value={hcOptOut ? 'off' : 'inherit'}
+              onChange={(e) => setHcOptOut(e.target.value === 'off')}
+              className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
+            >
+              <option value="inherit">Follow the collection / server policy</option>
+              <option value="off">Never probe this machine</option>
+            </select>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              A machine can opt out of active probing; it can&apos;t opt into more than the server allows.
+            </p>
           </div>
 
           {/* Save-to-collection target (ADR 0016) — accounts context only */}

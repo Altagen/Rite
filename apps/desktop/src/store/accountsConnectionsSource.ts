@@ -63,6 +63,9 @@ export interface StoredRecord {
   notes: string | null;
   sshKeepAliveOverride: string | null;
   sshKeepAliveInterval: number | null;
+  // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
+  // Sealed inside the blob, so the opt-out is zero-knowledge like everything else.
+  hc?: boolean | null;
 }
 
 /** A decrypted connection kept in RAM: its record plus, if shared, its scope. */
@@ -173,6 +176,7 @@ function toInfo(
     notes: r.notes,
     sshKeepAliveOverride: r.sshKeepAliveOverride,
     sshKeepAliveInterval: r.sshKeepAliveInterval,
+    hc: r.hc ?? null,
     createdAt,
     updatedAt,
     // Passive "last seen" is this user's own local record (ADR 0017) — never server-side.
@@ -194,6 +198,7 @@ function recordFromCreate(input: CreateConnectionInput): StoredRecord {
     notes: input.notes ?? null,
     sshKeepAliveOverride: input.sshKeepAliveOverride ?? null,
     sshKeepAliveInterval: input.sshKeepAliveInterval ?? null,
+    hc: input.hc ?? null,
   };
 }
 
@@ -212,6 +217,7 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   if (input.notes !== undefined) merged.notes = input.notes;
   if (input.sshKeepAliveOverride !== undefined) merged.sshKeepAliveOverride = input.sshKeepAliveOverride;
   if (input.sshKeepAliveInterval !== undefined) merged.sshKeepAliveInterval = input.sshKeepAliveInterval;
+  if (input.hc !== undefined) merged.hc = input.hc;
   return merged;
 }
 

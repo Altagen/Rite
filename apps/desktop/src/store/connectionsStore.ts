@@ -28,6 +28,10 @@ export interface ConnectionInfo {
   notes?: string | null;
   sshKeepAliveOverride?: string | null;
   sshKeepAliveInterval?: number | null;
+  // Health-check opt-out (ADR 0017): false ⇒ this machine is never actively probed,
+  // even where the server policy allows it. Absent/true ⇒ follow the policy. A machine
+  // can opt out of probing but can't opt into more than the server permits.
+  hc?: boolean | null;
   createdAt: number;
   updatedAt: number;
   lastUsedAt?: number | null;
@@ -61,6 +65,7 @@ export interface CreateConnectionInput {
   notes?: string;
   sshKeepAliveOverride?: string | null;
   sshKeepAliveInterval?: number | null;
+  hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
   // ADR 0016: save this machine into a shared collection (encrypted with the
   // collection key) instead of the personal vault. Absent ⇒ personal vault.
   collectionId?: string | null;
@@ -87,6 +92,7 @@ export interface UpdateConnectionInput {
   notes?: string;
   sshKeepAliveOverride?: string | null;
   sshKeepAliveInterval?: number | null;
+  hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
 }
 
 /**
