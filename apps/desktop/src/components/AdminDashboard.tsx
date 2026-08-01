@@ -131,6 +131,15 @@ function StatCard({ k, v, d }: { k: string; v: React.ReactNode; d?: string }) {
   );
 }
 
+function activityAgo(seconds: number): string {
+  const d = Math.floor(Date.now() / 1000) - seconds;
+  if (d < 60) return 'just now';
+  if (d < 3600) return `${Math.floor(d / 60)}m ago`;
+  if (d < 86400) return `${Math.floor(d / 3600)}h ago`;
+  if (d < 604800) return `${Math.floor(d / 86400)}d ago`;
+  return new Date(seconds * 1000).toLocaleDateString();
+}
+
 function Overview({ onGo }: { onGo: (s: Sec) => void }) {
   const [users, setUsers] = useState<ServerUser[] | null>(null);
   useEffect(() => {
@@ -138,6 +147,9 @@ function Overview({ onGo }: { onGo: (s: Sec) => void }) {
   }, []);
   const admins = users?.filter((u) => u.role === 'admin').length ?? 0;
   const active = users?.filter((u) => u.status === 'active').length ?? 0;
+  // Recent activity, derived from real data we already hold (account creations). A fuller
+  // audit trail (sign-ins, grants, leaves) would need server-side event logging — future work.
+  const recent = [...(users ?? [])].sort((a, b) => b.createdAt - a.createdAt).slice(0, 6);
 
   return (
     <>
@@ -154,6 +166,27 @@ function Overview({ onGo }: { onGo: (s: Sec) => void }) {
           <StatCard k="Teams" v="—" d="open Teams to manage" />
         </button>
         <StatCard k="Live sessions" v="—" d="terminals open now" />
+      </div>
+
+      <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="border-b border-border px-4 py-3 text-sm font-semibold">Recent activity</div>
+        {users === null ? (
+          <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
+        ) : recent.length === 0 ? (
+          <div className="px-4 py-4 text-sm text-muted-foreground">No activity yet.</div>
+        ) : (
+          recent.map((u) => (
+            <div key={u.id} className="flex items-center gap-3 border-b border-border px-4 py-2.5 text-sm last:border-b-0">
+              <span className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/15 text-xs font-semibold uppercase text-primary">
+                {u.username.slice(0, 2)}
+              </span>
+              <span className="min-w-0 flex-1">
+                <b>{u.username}</b> <span className="text-muted-foreground">joined</span>
+              </span>
+              <span className="flex-none text-muted-foreground">{activityAgo(u.createdAt)}</span>
+            </div>
+          ))
+        )}
       </div>
     </>
   );
