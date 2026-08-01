@@ -1,16 +1,38 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
-import { argon2id } from 'hash-wasm';
 import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
+
+// hash-wasm + libsodium live in the desktop package (pnpm doesn't hoist them to the repo
+// root), so resolve them from there — the same bridge the e2e/*.mjs smoke checks use.
+const requireFromApp = createRequire(resolve(__dirname, '../../apps/desktop/index.html'));
+type Argon2id = (opts: {
+  password: string;
+  salt: Uint8Array;
+  parallelism: number;
+  iterations: number;
+  memorySize: number;
+  hashLength: number;
+  outputType: 'hex' | 'binary';
+}) => Promise<string & Uint8Array>;
+const argon2id: Argon2id = requireFromApp('hash-wasm').argon2id;
 
 /** After an accounts login, everyone lands in the shared workspace (ADR 0014). */
 async function expectWorkspace(page: Page): Promise<void> {
-  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 /** Open the org-admin management surface (users/teams/connections) from the header. */
 async function openAdmin(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Admin', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Administration' })).toBeVisible({ timeout: 15_000 });
+  // The admin console (rite-admin-console-split) opens on the Overview page with a left nav.
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible({ timeout: 15_000 });
+}
+
+/** Open the admin console and switch to the Users panel (left-nav). */
+async function openAdminUsers(page: Page): Promise<void> {
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Users', exact: true }).click();
+  await expect(page.getByText('Add a user')).toBeVisible({ timeout: 15_000 });
 }
 
 const hexToBytes = (h: string) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
@@ -89,6 +111,10 @@ const auth = (token: string) => ({ authorization: `Bearer ${token}` });
  */
 
 const ADMIN = { username: 'admin', password: 'AdminPass123!' };
+// Carol is admin-provisioned, so she starts on a temp password (must_change_password)
+// and sets her own on first UI login (ADR 0010 addendum) — after which CAROL_NEW is hers.
+const CAROL_TEMP = 'CarolPass123!';
+const CAROL_NEW = 'CarolNew123!';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -103,8 +129,7 @@ test('first run bootstraps the admin and lands authenticated', async ({ page }) 
   // Argon2id WASM derivation + bootstrap → the admin lands in the workspace, and
   // the management panels are one click away (ADR 0014 phase 3).
   await expectWorkspace(page);
-  await openAdmin(page);
-  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+  await openAdminUsers(page);
 });
 
 test('sign out then sign back in with the same credentials', async ({ page }) => {
@@ -147,12 +172,11 @@ test('admin creates a user from the admin panel', async ({ page }) => {
 
   // Admin lands in the workspace → open the admin surface → the users panel.
   await expectWorkspace(page);
-  await openAdmin(page);
-  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 30_000 });
+  await openAdminUsers(page);
 
   // Create a user (its password is Argon2id-hashed in the browser).
   await page.locator('#new-username').fill('carol');
-  await page.locator('#new-password').fill('CarolPass123!');
+  await page.locator('#new-password').fill(CAROL_TEMP);
   await page.getByRole('button', { name: /add user/i }).click();
 
   await expect(page.getByText('carol')).toBeVisible({ timeout: 30_000 });
@@ -160,7 +184,7 @@ test('admin creates a user from the admin panel', async ({ page }) => {
 
 test('a terminal session is sealed to its owner (multi-user)', async ({ request }) => {
   const admin = await login(request, 'admin', ADMIN.password);
-  const carol = await login(request, 'carol', 'CarolPass123!');
+  const carol = await login(request, 'carol', CAROL_TEMP);
 
   // Admin opens a local terminal → admin owns the session.
   const created = await request.post(`${BASE}/api/terminal/local`, {
@@ -196,7 +220,7 @@ test('teams RBAC: org-admin, team-admin, member, non-member (product-model)', as
   request,
 }) => {
   const admin = await login(request, 'admin', ADMIN.password);
-  const carol = await login(request, 'carol', 'CarolPass123!');
+  const carol = await login(request, 'carol', CAROL_TEMP);
 
   // Carol's user id (org-admin lists users).
   const users = await (await request.get(`${BASE}/api/admin/users`, { headers: auth(admin) })).json();
@@ -259,16 +283,25 @@ test('web member workspace: personal connections, zero-knowledge, server-execute
   await page.goto('/');
   await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
   await page.locator('#username').fill('carol');
-  await page.locator('#password').fill('CarolPass123!');
+  await page.locator('#password').fill(CAROL_TEMP);
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
-  // A member lands in the shared workspace (ADR 0014), not the admin panels.
-  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
+  // First login for an admin-provisioned account (must_change_password): the app forces a
+  // self-chosen password before anything else — this mints carol a FRESH keypair (ADR 0010
+  // addendum), so the admin-known temp password can no longer derive her vault key.
+  await expect(page.getByRole('heading', { name: 'Set your password' })).toBeVisible({ timeout: 15_000 });
+  await page.getByPlaceholder('A password only you know').fill(CAROL_NEW);
+  await page.getByPlaceholder('Type it again').fill(CAROL_NEW);
+  await page.getByRole('button', { name: /set password & continue/i }).click();
+
+  // Now a member lands in the shared workspace (ADR 0014), not the admin panels.
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
 
   // Create a personal connection: no loose machines (ADR 0016), so add it into the
   // synthetic "Personal" collection (backed by the per-user vault). The browser
   // seals it with the user key (ADR 0011) and the server only ever sees ciphertext.
-  await page.getByRole('button', { name: 'New machine in collection' }).first().click();
+  await page.getByRole('button', { name: 'Add to collection' }).first().click();
+  await page.getByRole('button', { name: 'New machine here' }).click();
   await expect(page.getByRole('heading', { name: 'New Connection' })).toBeVisible();
   await page.getByPlaceholder('My Server').fill('my-web-box');
   await page.getByPlaceholder('example.com or 192.168.1.1').fill('web-secret-host');
@@ -280,10 +313,14 @@ test('web member workspace: personal connections, zero-knowledge, server-execute
   await expect(page.getByText('my-web-box')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('deployer@web-secret-host:22')).toBeVisible();
 
-  // The server stored only ciphertext for the personal connection.
-  const token = await login(request, 'carol', 'CarolPass123!');
+  // Personal is now a real 1-member collection (ADR 0016 "no loose machines"): the machine
+  // is a collection item, and the server stored only ciphertext. Carol has just Personal here
+  // (the shared 'Prod' collection is created by a later test), so it's her only collection.
+  const token = await login(request, 'carol', CAROL_NEW);
+  const cols = await (await request.get(`${BASE}/api/collections`, { headers: auth(token) })).json();
+  expect(cols.length).toBeGreaterThan(0);
   const stored = await (
-    await request.get(`${BASE}/api/vault/connections`, { headers: auth(token) })
+    await request.get(`${BASE}/api/collections/${cols[0].id}/items`, { headers: auth(token) })
   ).json();
   expect(stored.length).toBeGreaterThan(0);
   expect(stored[0].blob).toMatch(/^v1\./);
@@ -302,7 +339,7 @@ test('web member workspace: personal connections, zero-knowledge, server-execute
 });
 
 test('collections: shared zero-knowledge with roles + RBAC (ADR 0016)', async ({ request }) => {
-  const sodium = createRequire(__filename)('libsodium-wrappers');
+  const sodium = requireFromApp('libsodium-wrappers');
   await sodium.ready;
   const b64 = (b: Uint8Array) => Buffer.from(b).toString('base64');
   const unb64 = (s: string) => new Uint8Array(Buffer.from(s, 'base64'));
@@ -310,9 +347,9 @@ test('collections: shared zero-knowledge with roles + RBAC (ADR 0016)', async ({
   const dec = (b: Uint8Array) => JSON.parse(new TextDecoder().decode(b));
 
   const adminL = await loginFull(request, 'admin', ADMIN.password);
-  const carolL = await loginFull(request, 'carol', 'CarolPass123!');
+  const carolL = await loginFull(request, 'carol', CAROL_NEW);
   const adminK = await unlockKeys(ADMIN.password, adminL.vault);
-  const carolK = await unlockKeys('CarolPass123!', carolL.vault);
+  const carolK = await unlockKeys(CAROL_NEW, carolL.vault);
 
   // The org directory feeds the member picker (id + username + public key).
   const dir = await (await request.get(`${BASE}/api/directory`, { headers: auth(adminL.token) })).json();
@@ -320,18 +357,27 @@ test('collections: shared zero-knowledge with roles + RBAC (ADR 0016)', async ({
   const adminId = dir.find((u: { username: string }) => u.username === 'admin').id;
   expect(carol.publicKey).toMatch(/^[0-9a-f]{64}$/);
 
-  // Admin creates a collection: a random collection key; the name + an item are
-  // encrypted with it; the key is sealed to admin's own public key.
-  const collKey = sodium.randombytes_buf(32) as Uint8Array;
-  const nameEnc = await aesGcmEncrypt(collKey, enc({ name: 'Prod', color: '#f7768e' }));
+  // Split-key model (ADR 0016): a metaKey (name/colour) + an itemsKey (machines), each sealed
+  // to the creator. The name is encrypted with metaKey, items with itemsKey — so name access
+  // and machine access can be granted independently.
+  const metaKey = sodium.randombytes_buf(32) as Uint8Array;
+  const itemsKey = sodium.randombytes_buf(32) as Uint8Array;
+  const seal = (key: Uint8Array, pub: Uint8Array) => b64(sodium.crypto_box_seal(key, pub));
+  const nameEnc = await aesGcmEncrypt(metaKey, enc({ name: 'Prod', color: '#f7768e' }));
   const created = await request.post(`${BASE}/api/collections`, {
     headers: auth(adminL.token),
-    data: { nameEnc, protectedCollectionKey: b64(sodium.crypto_box_seal(collKey, adminK.publicKey)) },
+    data: {
+      nameEnc,
+      protectedMetaKey: seal(metaKey, adminK.publicKey),
+      protectedItemsKey: seal(itemsKey, adminK.publicKey),
+      metaKeyGroupEnc: null,
+      groupEpoch: null,
+    },
   });
   expect(created.status()).toBe(201);
   const { id } = await created.json();
 
-  const itemBlob = await aesGcmEncrypt(collKey, enc({ name: 'web-01', host: 'coll-secret-host', user: 'deploy', port: 22 }));
+  const itemBlob = await aesGcmEncrypt(itemsKey, enc({ name: 'web-01', host: 'coll-secret-host', user: 'deploy', port: 22 }));
   expect(
     (await request.post(`${BASE}/api/collections/${id}/items`, { headers: auth(adminL.token), data: { blob: itemBlob } })).status(),
   ).toBe(201);
@@ -339,24 +385,31 @@ test('collections: shared zero-knowledge with roles + RBAC (ADR 0016)', async ({
   // A non-member (carol, not added yet) cannot read.
   expect((await request.get(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token) })).status()).toBe(403);
 
-  // Admin shares with carol as a VIEWER, sealing the key to her directory public key.
+  // Admin shares with carol as a VIEWER, sealing BOTH keys to her directory public key.
   expect(
     (await request.post(`${BASE}/api/collections/${id}/members`, {
       headers: auth(adminL.token),
-      data: { userId: carol.id, role: 'viewer', protectedCollectionKey: b64(sodium.crypto_box_seal(collKey, hexToBytes(carol.publicKey))) },
+      data: {
+        userId: carol.id,
+        role: 'viewer',
+        protectedMetaKey: seal(metaKey, hexToBytes(carol.publicKey)),
+        protectedItemsKey: seal(itemsKey, hexToBytes(carol.publicKey)),
+      },
     })).status(),
   ).toBe(204);
 
-  // Carol lists her collections, unwraps HER sealed key → byte-identical, decrypts.
+  // Carol lists her collections, unwraps HER sealed keys → byte-identical, decrypts name + items.
   const mine = (await (await request.get(`${BASE}/api/collections`, { headers: auth(carolL.token) })).json()).find(
     (c: { id: string }) => c.id === id,
   );
-  const carolCollKey = sodium.crypto_box_seal_open(unb64(mine.protectedCollectionKey), carolK.publicKey, carolK.privateKey);
-  expect(Buffer.from(carolCollKey).equals(Buffer.from(collKey))).toBe(true);
+  const carolMetaKey = sodium.crypto_box_seal_open(unb64(mine.protectedMetaKey), carolK.publicKey, carolK.privateKey);
+  const carolItemsKey = sodium.crypto_box_seal_open(unb64(mine.protectedItemsKey), carolK.publicKey, carolK.privateKey);
+  expect(Buffer.from(carolMetaKey).equals(Buffer.from(metaKey))).toBe(true);
+  expect(Buffer.from(carolItemsKey).equals(Buffer.from(itemsKey))).toBe(true);
   expect(mine.role).toBe('viewer');
-  expect(dec(await aesGcmDecrypt(carolCollKey, mine.nameEnc)).name).toBe('Prod');
+  expect(dec(await aesGcmDecrypt(carolMetaKey, mine.nameEnc)).name).toBe('Prod');
   const items = await (await request.get(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token) })).json();
-  expect(dec(await aesGcmDecrypt(carolCollKey, items[0].blob)).host).toBe('coll-secret-host');
+  expect(dec(await aesGcmDecrypt(carolItemsKey, items[0].blob)).host).toBe('coll-secret-host');
 
   // Zero-knowledge: the server stored only ciphertext (name + items).
   expect(mine.nameEnc).toMatch(/^v1\./);
@@ -370,7 +423,7 @@ test('collections: shared zero-knowledge with roles + RBAC (ADR 0016)', async ({
   expect(
     (await request.post(`${BASE}/api/collections/${id}/members`, {
       headers: auth(carolL.token),
-      data: { userId: carol.id, role: 'owner', protectedCollectionKey: 'x' },
+      data: { userId: carol.id, role: 'owner', protectedMetaKey: 'x', protectedItemsKey: 'x' },
     })).status(),
   ).toBe(403);
 
