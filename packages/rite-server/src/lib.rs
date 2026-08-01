@@ -32,6 +32,7 @@ use serde_json::{Value, json};
 use tokio::sync::broadcast;
 
 mod assets;
+mod probe;
 mod tls_pin;
 mod vault_conn;
 mod ws_events;
@@ -86,6 +87,10 @@ pub struct ServerState {
     /// session to its creator: only the owner may drive it or receive its events.
     /// Empty in local/desktop mode (single implicit user — no scoping needed).
     session_owners: Arc<std::sync::Mutex<HashMap<String, String>>>,
+    /// Per-user last active-probe timestamp (ADR 0017). A short cooldown between
+    /// probe *requests* keeps the governed endpoint from being turned into a
+    /// scanner; keyed by user id (or `"local"` off accounts mode).
+    probe_throttle: Arc<std::sync::Mutex<HashMap<String, std::time::Instant>>>,
 }
 
 /// A saved remote server in the roster (ADR 0012). No token here — the remote
@@ -258,6 +263,7 @@ impl ServerState {
             tls_config,
             vault: Arc::new(std::sync::Mutex::new(VaultKeyHolder::new())),
             session_owners: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            probe_throttle: Arc::new(std::sync::Mutex::new(HashMap::new())),
         })
     }
 
@@ -401,6 +407,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/admin/default-shell", patch(set_default_shell))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
+        .route("/api/healthcheck/probe", post(healthcheck_probe))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
         // guard-gated to admin); team management is per-team authorized in-handler.
         .route(
@@ -1102,7 +1109,127 @@ async fn set_healthcheck(
         .db
         .set_setting("healthcheck_policy", &policy.to_string())
         .await?;
+    // Live distribution (ADR 0017): nudge every connected client to re-pull the
+    // policy now instead of waiting for its next throttled poll. A payload-less,
+    // session-less event broadcasts to all sockets (see `event_visible_to`).
+    let _ = state
+        .events_tx
+        .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Anti-flood knobs for on-demand probing (ADR 0017): one request per user per
+/// cooldown, a hard cap on batch size, and a per-target connection timeout.
+const PROBE_COOLDOWN: std::time::Duration = std::time::Duration::from_secs(3);
+const PROBE_MAX_TARGETS: usize = 64;
+const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+#[derive(Deserialize)]
+struct ProbeTarget {
+    id: String,
+    host: String,
+    port: u16,
+    #[serde(default)]
+    method: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct HealthProbeReq {
+    targets: Vec<ProbeTarget>,
+}
+
+/// On-demand active health-check (ADR 0017 active phase). Governed by the server's
+/// health-check policy: rejected when active probing is off, when the caller isn't in
+/// a non-empty restrict-users allowlist, and rate-limited per user. The client hands
+/// over host:port (decrypted from its own blob — the server stays zero-knowledge about
+/// *which* machines these are) and gets back an up/down verdict per target.
+async fn healthcheck_probe(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<HealthProbeReq>,
+) -> Result<Response, AppError> {
+    let policy = healthcheck_policy(&state).await?;
+    let active = policy
+        .get("active")
+        .and_then(|v| v.as_str())
+        .unwrap_or("off");
+    if active == "off" {
+        return Ok(
+            (StatusCode::FORBIDDEN, "active probing is disabled by the server").into_response(),
+        );
+    }
+    // restrict-users: a non-empty list is an allowlist of usernames permitted to probe.
+    if let Some(list) = policy.get("restrictUsers").and_then(|v| v.as_array()) {
+        if !list.is_empty() {
+            let uname = as_user(&user).map(|u| u.username.as_str());
+            let ok = uname.is_some_and(|u| list.iter().any(|v| v.as_str() == Some(u)));
+            if !ok {
+                return Ok((
+                    StatusCode::FORBIDDEN,
+                    "not permitted to probe on this server",
+                )
+                    .into_response());
+            }
+        }
+    }
+    if req.targets.len() > PROBE_MAX_TARGETS {
+        return Ok((StatusCode::BAD_REQUEST, "too many targets in one request").into_response());
+    }
+    // Anti-flood: one probe request per user per cooldown window.
+    let key = as_user(&user)
+        .map(|u| u.id.clone())
+        .unwrap_or_else(|| "local".to_string());
+    {
+        let mut throttle = state.probe_throttle.lock().unwrap();
+        let now = std::time::Instant::now();
+        if throttle
+            .get(&key)
+            .is_some_and(|prev| now.duration_since(*prev) < PROBE_COOLDOWN)
+        {
+            return Ok(
+                (StatusCode::TOO_MANY_REQUESTS, "probing too fast — slow down").into_response(),
+            );
+        }
+        throttle.insert(key, now);
+    }
+    // Which methods this policy permits (default tcp-connect). A target may ask for a
+    // specific method; anything outside the allowlist comes back "unsupported".
+    let allowed: Vec<String> = policy
+        .get("methods")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|m| m.as_str().map(String::from)).collect())
+        .filter(|v: &Vec<String>| !v.is_empty())
+        .unwrap_or_else(|| vec!["tcp-connect".to_string()]);
+    let default_method = allowed[0].clone();
+
+    // Probe every target concurrently — a batch of 64 done sequentially would be far
+    // too slow (up to targets × timeout).
+    let mut set = tokio::task::JoinSet::new();
+    for t in req.targets {
+        let allowed = allowed.clone();
+        let default_method = default_method.clone();
+        set.spawn(async move {
+            let requested = t.method.unwrap_or(default_method);
+            let method = allowed
+                .contains(&requested)
+                .then(|| probe::ProbeMethod::parse(&requested))
+                .flatten();
+            match method {
+                Some(method) => {
+                    let r = probe::probe(&t.host, t.port, method, PROBE_TIMEOUT).await;
+                    json!({ "id": t.id, "status": r.status.as_str(), "latencyMs": r.latency_ms })
+                }
+                None => json!({ "id": t.id, "status": "unsupported", "latencyMs": null }),
+            }
+        });
+    }
+    let mut results = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        if let Ok(v) = joined {
+            results.push(v);
+        }
+    }
+    Ok(Json(json!({ "results": results })).into_response())
 }
 
 #[derive(Deserialize)]
