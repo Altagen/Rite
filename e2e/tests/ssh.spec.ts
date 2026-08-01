@@ -58,7 +58,7 @@ test('saved SSH connection: strict host-key prompt, trust, then run a command', 
   const screen = page.locator('.xterm-screen').first();
   await expect(screen).toBeVisible({ timeout: 20_000 });
   await screen.click();
-  await page.keyboard.type('echo RITE_SSH_$((6*7))_OK');
+  await page.keyboard.type('echo RITE_SSH_$((6*7))_OK', { delay: 25 });
   await page.keyboard.press('Enter');
 
   await expect(page.locator('.xterm-rows')).toContainText('RITE_SSH_42_OK', { timeout: 20_000 });
@@ -80,7 +80,7 @@ test('quick SSH connect runs a command over a real session', async ({ page }) =>
   const screen = page.locator('.xterm-screen').first();
   await expect(screen).toBeVisible({ timeout: 20_000 });
   await screen.click();
-  await page.keyboard.type('echo RITE_QUICK_$((7*8))_OK');
+  await page.keyboard.type('echo RITE_QUICK_$((7*8))_OK', { delay: 25 });
   await page.keyboard.press('Enter');
 
   await expect(page.locator('.xterm-rows')).toContainText('RITE_QUICK_56_OK', { timeout: 20_000 });
