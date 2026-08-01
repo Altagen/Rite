@@ -8,6 +8,8 @@ import { AccountsShell } from './components/AccountsShell';
 import { useTranslation } from './i18n/i18n';
 import { applyNativeContext, isNativeShell } from './utils/nativeShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { ConnectionError } from './components/ConnectionError';
+import { OfflineBanner } from './components/OfflineBanner';
 
 function Loading({ label }: { label: string }) {
   return (
@@ -22,7 +24,7 @@ function Loading({ label }: { label: string }) {
 
 function App() {
   const { isFirstRun, checkFirstRun } = useAuthStore();
-  const { mode, user, loadMode } = useServerSession();
+  const { mode, user, loadMode, connError } = useServerSession();
   const { t } = useTranslation();
 
   // On a native server-context window, activate its target server first (may
@@ -32,12 +34,30 @@ function App() {
     void applyNativeContext().then(loadMode);
   }, [loadMode]);
 
+  // Boot failed to reach the server → keep retrying on our own until it comes up.
+  useEffect(() => {
+    if (!connError) return;
+    const t = setInterval(() => void loadMode(), 4000);
+    return () => clearInterval(t);
+  }, [connError, loadMode]);
+
   // Local vault only: check first-run for the master-password flow.
   useEffect(() => {
     if (mode && !mode.accounts) {
       checkFirstRun();
     }
   }, [mode, checkFirstRun]);
+
+  // Couldn't reach the server at boot (unreachable / still starting) → a clear full-page
+  // state with auto-retry, not an endless spinner.
+  if (connError && mode === null) {
+    return (
+      <>
+        <OfflineBanner />
+        <ConnectionError kind={connError} retrying onRetry={() => void loadMode()} />
+      </>
+    );
+  }
 
   // Waiting to learn the endpoint mode.
   if (mode === null) {
@@ -55,6 +75,7 @@ function App() {
     }
     return (
       <ErrorBoundary level="feature" name="AccountsShell">
+        <OfflineBanner />
         <AccountsShell />
       </ErrorBoundary>
     );
@@ -76,6 +97,7 @@ function App() {
   }
   return (
     <ErrorBoundary level="feature" name="MainScreen">
+      <OfflineBanner />
       <MainScreen />
     </ErrorBoundary>
   );

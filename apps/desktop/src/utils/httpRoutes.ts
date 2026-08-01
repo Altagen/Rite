@@ -8,6 +8,7 @@
  */
 
 import { bearerToken } from './session';
+import { RiteHttpError, kindFor, notifyUnauthorized } from './httpError';
 
 type Args = Record<string, unknown>;
 type Route = (args: Args) => Promise<unknown>;
@@ -19,7 +20,13 @@ async function json<T = unknown>(path: string, init: RequestInit = {}): Promise<
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  const res = await fetch(path, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(path, { ...init, headers });
+  } catch {
+    // Network failure — the server couldn't be reached at all.
+    throw new RiteHttpError(`can't reach the server (${path})`, 0, 'unreachable');
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -27,7 +34,9 @@ async function json<T = unknown>(path: string, init: RequestInit = {}): Promise<
     } catch {
       // response had no JSON body
     }
-    throw new Error(`rite-server ${path} failed: ${detail}`);
+    // A mid-session 401 means the token was revoked/expired → global sign-out + notice.
+    if (res.status === 401) notifyUnauthorized();
+    throw new RiteHttpError(`rite-server ${path} failed: ${detail}`, res.status, kindFor(res.status));
   }
   if (res.status === 204) return null as T;
   return res.json() as Promise<T>;

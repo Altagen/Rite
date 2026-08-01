@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 
 export function ServerAuthScreen() {
-  const { mode, login, bootstrap, loading, error, clearError } = useServerSession();
+  const { mode, login, bootstrap, loading, error, clearError, sessionExpired } = useServerSession();
   const isBootstrap = mode?.needsBootstrap === true;
 
   const [username, setUsername] = useState('');
@@ -45,6 +45,13 @@ export function ServerAuthScreen() {
             {isBootstrap ? 'Create the server administrator' : 'Sign in to the server'}
           </p>
         </div>
+
+        {sessionExpired && !isBootstrap && (
+          <div className="rounded-md border border-primary/25 bg-primary/[0.08] p-3 text-sm text-foreground/80">
+            <b>Your session expired.</b> For your security you were signed out — sign in again to carry on. Your saved
+            connections stay safe and encrypted.
+          </div>
+        )}
 
         <form
           onSubmit={handleSubmit}

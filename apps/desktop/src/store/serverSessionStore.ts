@@ -17,6 +17,7 @@ import {
 } from '../utils/serverAuth';
 import { setSessionToken, clearSessionToken, getSessionToken } from '../utils/session';
 import { bytesToHex, hexToBytes } from '../utils/vaultCrypto';
+import { setUnauthorizedHandler, RiteHttpError, type HttpErrorKind } from '../utils/httpError';
 
 /**
  * When a remote context is active (native multiplexer), hand the unwrapped vault
@@ -94,6 +95,11 @@ interface ServerSessionState {
   publicKey: Uint8Array | null; // the user's own X25519 public key (from the vault)
   loading: boolean;
   error: string | null;
+  // Boot-time connection failure (server unreachable / starting) → a full-page state with
+  // auto-retry, instead of an endless "Loading…". Null once the mode loads.
+  connError: HttpErrorKind | null;
+  // A mid-session 401 signed us out — show the "session expired" notice on the sign-in screen.
+  sessionExpired: boolean;
   loadMode: () => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   bootstrap: (username: string, password: string) => Promise<void>;
@@ -111,10 +117,20 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
   publicKey: null,
   loading: false,
   error: null,
+  connError: null,
+  sessionExpired: false,
 
   loadMode: async () => {
-    const mode = await Backend.Server.mode();
-    set({ mode });
+    let mode: ServerMode;
+    try {
+      mode = await Backend.Server.mode();
+    } catch (e) {
+      // Couldn't learn the mode → the app can't boot. Surface a clear state (unreachable /
+      // starting) with auto-retry instead of an endless spinner.
+      set({ connError: e instanceof RiteHttpError ? e.kind : 'unreachable' });
+      return;
+    }
+    set({ mode, connError: null });
     // Resume an existing session if we still hold a token.
     if (mode.accounts && getSessionToken()) {
       try {
@@ -169,6 +185,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         privateKey: keys?.privateKey ?? null,
         publicKey,
         loading: false,
+        sessionExpired: false,
       });
     } catch (e) {
       set({ error: 'Invalid username or password', loading: false });
@@ -263,3 +280,21 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 }));
+
+// A mid-session 401 (token revoked/expired) → sign out and flag the session-expired notice.
+setUnauthorizedHandler(() => {
+  const s = useServerSession.getState();
+  if (!s.user) return; // already signed out
+  clearSessionToken();
+  clearKeys();
+  set_session_expired();
+});
+function set_session_expired() {
+  useServerSession.setState({
+    user: null,
+    userKey: null,
+    privateKey: null,
+    publicKey: null,
+    sessionExpired: true,
+  });
+}
