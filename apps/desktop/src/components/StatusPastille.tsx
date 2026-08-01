@@ -12,6 +12,7 @@
 
 import { useServerSession } from '../store/serverSessionStore';
 import type { HealthStatus } from '../store/healthStore';
+import { useHealthPref, effectiveHealth } from '../store/healthPrefStore';
 
 // Recent = within a day → a warmer dot; older → dim; never → hollow.
 const RECENT_SECS = 24 * 60 * 60;
@@ -45,6 +46,7 @@ export function StatusPastille({
   className?: string;
 }) {
   const { mode } = useServerSession();
+  const healthPref = useHealthPref((s) => s.pref);
 
   // Active verdict wins when present (an on-demand check has run / is running).
   if (active === 'checking') {
@@ -73,9 +75,10 @@ export function StatusPastille({
   }
   // 'unsupported' (or no active result) → fall through to the passive layer.
 
-  // Server may hide the status UI entirely (passiveStatus=false). Absent ⇒ on. Local vault ⇒ on.
-  const passiveOn = !mode?.accounts || mode?.healthcheck?.passiveStatus !== false;
-  if (!passiveOn) return null;
+  // Effective passive visibility: the more restrictive of the server policy and the client's
+  // own narrowing (ADR 0017). Absent policy / local vault ⇒ on unless the user narrows it.
+  const { passive } = effectiveHealth(mode?.healthcheck, healthPref);
+  if (!passive) return null;
 
   return (
     <span

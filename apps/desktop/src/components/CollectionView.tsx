@@ -11,6 +11,7 @@ import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { useServerSession } from '../store/serverSessionStore';
 import { useHealth } from '../store/healthStore';
+import { useHealthPref, effectiveHealth } from '../store/healthPrefStore';
 import { StatusPastille } from './StatusPastille';
 
 /** Compact relative time for a machine's last use ("2h ago"), or "—" when never used. */
@@ -93,11 +94,11 @@ export function CollectionView({
   const results = useHealth((s) => s.results);
   const notice = useHealth((s) => s.notice);
   const clearNotice = useHealth((s) => s.clearNotice);
-  // Active probing is governed (ADR 0017): the Check button appears only when the server
-  // allows on-demand/full/client-choice active checks.
-  const activeMode = mode?.healthcheck?.active ?? 'off';
+  // Active probing is governed (ADR 0017); the client may narrow it further (never widen).
+  const healthPref = useHealthPref((s) => s.pref);
+  const { activeMode } = effectiveHealth(mode?.healthcheck, healthPref);
   const minInterval = mode?.healthcheck?.minInterval ?? 60;
-  const canProbe = activeMode === 'on-demand' || activeMode === 'full' || activeMode === 'client-choice';
+  const canProbe = activeMode !== 'off';
   const activeFor = (id: string) =>
     checking[id] ? ('checking' as const) : results[id]?.status;
   const [filter, setFilter] = useState('');

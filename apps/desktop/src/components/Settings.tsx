@@ -9,6 +9,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
+import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
 
 interface SettingsProps {
   onClose: () => void;
@@ -19,6 +20,8 @@ export function Settings({ onClose }: SettingsProps) {
   const { settings, fetchSettings, updateSettings, isLoading } = useSettingsStore();
   const showMemberCount = useDisplayPrefs((s) => s.showMemberCount);
   const setShowMemberCount = useDisplayPrefs((s) => s.setShowMemberCount);
+  const healthPref = useHealthPref((s) => s.pref);
+  const setHealthPref = useHealthPref((s) => s.setPref);
 
   const [selectedTimeout, setSelectedTimeout] = useState<number>(0);
   const [customTimeout, setCustomTimeout] = useState('');
@@ -184,6 +187,29 @@ export function Settings({ onClose }: SettingsProps) {
                 <span className="block text-xs text-muted-foreground">The number next to shared collections (the icon stays)</span>
               </span>
             </label>
+          </section>
+
+          {/* Machine status (ADR 0017) — a client-side narrowing of the server's health policy. */}
+          <section className="border-b border-border pb-6">
+            <h3 className="mb-4 text-lg font-semibold">Machine status</h3>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Health-check</label>
+              <select
+                value={healthPref}
+                onChange={(e) => setHealthPref(e.target.value as HealthPref)}
+                className="w-full rounded border border-border bg-input px-3 py-2 text-sm"
+              >
+                <option value="inherit">Follow the server policy</option>
+                <option value="off">Off — no status</option>
+                <option value="passive">Passive — last seen only</option>
+                <option value="on-demand">On-demand checks</option>
+                <option value="full">Background polling</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                <span className="text-amber-500">Governed by your server</span> — you can only narrow it.
+                Passive “last seen” costs no network traffic; active probing does.
+              </p>
+            </div>
           </section>
 
           {/* Auto-lock settings */}
