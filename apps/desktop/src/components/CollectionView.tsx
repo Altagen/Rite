@@ -6,7 +6,7 @@
  * source already decrypted; actions bubble up to the workspace.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { useServerSession } from '../store/serverSessionStore';
@@ -87,13 +87,19 @@ export function CollectionView({
 }) {
   const { t } = useTranslation();
   const { mode } = useServerSession();
-  const health = useHealth();
+  // Granular store slices (stable action ref; subscribe only to what we render).
+  const checkNow = useHealth((s) => s.checkNow);
+  const checking = useHealth((s) => s.checking);
+  const results = useHealth((s) => s.results);
+  const notice = useHealth((s) => s.notice);
+  const clearNotice = useHealth((s) => s.clearNotice);
   // Active probing is governed (ADR 0017): the Check button appears only when the server
   // allows on-demand/full/client-choice active checks.
   const activeMode = mode?.healthcheck?.active ?? 'off';
+  const minInterval = mode?.healthcheck?.minInterval ?? 60;
   const canProbe = activeMode === 'on-demand' || activeMode === 'full' || activeMode === 'client-choice';
   const activeFor = (id: string) =>
-    health.checking[id] ? ('checking' as const) : health.results[id]?.status;
+    checking[id] ? ('checking' as const) : results[id]?.status;
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'name' | 'host' | 'lastUsed'>('name');
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
@@ -146,7 +152,21 @@ export function CollectionView({
     [allPaths, cur],
   );
   const here = useMemo(() => shown.filter((m) => (m.folder || '') === cur), [shown, cur]);
-  const checkingHere = here.some((m) => health.checking[m.id]);
+  const checkingHere = here.some((m) => checking[m.id]);
+
+  // Background polling (ADR 0017 "full"): auto-check the machines in view on a floor-bounded
+  // cadence. On-demand/off don't poll — only an explicit Check probes. The server also
+  // enforces its own cooldown, so this stays within the min-interval guardrail.
+  const hereKey = here.map((m) => m.id).join(',');
+  useEffect(() => {
+    if (activeMode !== 'full' || here.length === 0) return;
+    const targets = here.slice(0, 64).map((m) => ({ id: m.id, host: m.hostname, port: m.port }));
+    void checkNow(targets);
+    const id = setInterval(() => void checkNow(targets), Math.max(15, minInterval) * 1000);
+    return () => clearInterval(id);
+    // hereKey captures the visible set; checkNow is a stable store action.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode, minInterval, hereKey, checkNow]);
   const countUnder = (p: string) =>
     machines.filter((m) => m.folder === p || (m.folder || '').startsWith(`${p}/`)).length;
 
@@ -320,7 +340,7 @@ export function CollectionView({
         {canProbe && here.length > 0 && (
           <button
             onClick={() =>
-              void health.checkNow(
+              void checkNow(
                 here.slice(0, 64).map((m) => ({ id: m.id, host: m.hostname, port: m.port })),
               )
             }
@@ -355,10 +375,10 @@ export function CollectionView({
       </div>
 
       {/* Governed-probing notice (probing disabled / rate-limited) — calm, dismissable. */}
-      {health.notice && (
+      {notice && (
         <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
-          <span className="flex-1">{health.notice}</span>
-          <button onClick={health.clearNotice} className="font-medium hover:underline" aria-label="Dismiss">
+          <span className="flex-1">{notice}</span>
+          <button onClick={clearNotice} className="font-medium hover:underline" aria-label="Dismiss">
             Dismiss
           </button>
         </div>
