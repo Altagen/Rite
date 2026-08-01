@@ -10,6 +10,7 @@ import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
 import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
+import { useServerSession } from '../store/serverSessionStore';
 
 interface SettingsProps {
   onClose: () => void;
@@ -22,6 +23,13 @@ export function Settings({ onClose }: SettingsProps) {
   const setShowMemberCount = useDisplayPrefs((s) => s.setShowMemberCount);
   const healthPref = useHealthPref((s) => s.pref);
   const setHealthPref = useHealthPref((s) => s.setPref);
+  // Local terminals only: on a server the shell is server-governed (no per-user picker).
+  const isLocalContext = !useServerSession((s) => s.mode)?.accounts;
+  const [shellDraft, setShellDraft] = useState('');
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync draft to async-loaded value
+    setShellDraft(settings.defaultShell);
+  }, [settings.defaultShell]);
 
   const [selectedTimeout, setSelectedTimeout] = useState<number>(0);
   const [customTimeout, setCustomTimeout] = useState('');
@@ -211,6 +219,27 @@ export function Settings({ onClose }: SettingsProps) {
               </p>
             </div>
           </section>
+
+          {/* Default shell — local terminals only (a server governs its own shell). */}
+          {isLocalContext && (
+            <section className="border-b border-border pb-6">
+              <h3 className="mb-4 text-lg font-semibold">Default shell</h3>
+              <div>
+                <label className="mb-1 block text-sm font-medium">Shell for new local terminals</label>
+                <input
+                  value={shellDraft}
+                  onChange={(e) => setShellDraft(e.target.value)}
+                  onBlur={() => {
+                    const v = shellDraft.trim();
+                    if (v && v !== settings.defaultShell) void updateSettings({ defaultShell: v });
+                  }}
+                  placeholder="/usr/bin/bash"
+                  className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">Path to the shell, e.g. /usr/bin/zsh or /usr/bin/fish.</p>
+              </div>
+            </section>
+          )}
 
           {/* Auto-lock settings */}
           <section className="border-b border-border pb-6">
