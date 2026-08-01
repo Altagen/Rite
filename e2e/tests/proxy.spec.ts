@@ -1,5 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { argon2id } from 'hash-wasm';
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
+
+// hash-wasm lives in the desktop package (pnpm doesn't hoist it to the repo root), so
+// resolve it from there — the same bridge the e2e/*.mjs smoke checks use.
+const requireFromApp = createRequire(resolve(__dirname, '../../apps/desktop/index.html'));
+const argon2id: (opts: {
+  password: string;
+  salt: Uint8Array;
+  parallelism: number;
+  iterations: number;
+  memorySize: number;
+  hashLength: number;
+  outputType: 'hex' | 'binary';
+}) => Promise<string & Uint8Array> = requireFromApp('hash-wasm').argon2id;
 
 const hexToBytes = (h: string) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
 
@@ -22,7 +36,7 @@ test('connect to a remote server through the local proxy', async ({ page }) => {
   await password.fill(strong);
   await page.locator('#confirmPassword').fill(strong);
   await page.locator('button[type="submit"]').click();
-  await expect(page.getByText('Local Terminal')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 15_000 });
 
   // Add the remote to the roster and switch to it. The context hub is native-only
   // (the browser has no shell), so drive the mux's roster/active endpoints directly,
@@ -42,7 +56,7 @@ test('connect to a remote server through the local proxy', async ({ page }) => {
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
   // The proxied login lands in the remote's workspace — served through the proxy.
-  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
 });
 
 test('a remote terminal streams over the WebSocket proxy', async ({ page }) => {
@@ -52,7 +66,7 @@ test('a remote terminal streams over the WebSocket proxy', async ({ page }) => {
   await page.locator('#username').fill('envadmin');
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
 
   // Drive a terminal ON THE REMOTE and listen on the proxied /ws — all same-origin
   // to :1424, which bridges to :1423's /ws.
@@ -112,7 +126,7 @@ test('vault connections are stored zero-knowledge on the remote (ADR 0011)', asy
   await page.locator('#username').fill('envadmin');
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
 
   // Create a connection with a distinctive host through the mux (:1424). The mux
   // encrypts it with the held key and stores an opaque blob on the remote.
@@ -189,7 +203,7 @@ test('client-execute: a saved connection opens SSH locally and streams over the 
   await page.locator('#username').fill('envadmin');
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
 
   const output = await page.evaluate(async () => {
     const post = (path: string, body?: unknown) =>

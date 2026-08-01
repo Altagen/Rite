@@ -20,7 +20,7 @@ test('pin a self-signed remote cert and log in through the TLS proxy', async ({ 
   await password.fill(strong);
   await page.locator('#confirmPassword').fill(strong);
   await page.locator('button[type="submit"]').click();
-  await expect(page.getByText('Local Terminal')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 15_000 });
 
   // Add the self-signed https remote: the probe reports it untrusted and returns
   // the fingerprint, which we pin (TOFU), then switch to it. The context hub is
@@ -46,5 +46,5 @@ test('pin a self-signed remote cert and log in through the TLS proxy', async ({ 
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
   // The proxied (TLS + pinned) login lands in the remote's workspace.
-  await expect(page.getByRole('button', { name: 'Local Terminal' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
 });
