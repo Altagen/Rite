@@ -400,6 +400,7 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/default-shell", patch(set_default_shell))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
+        .route("/api/admin/healthcheck", patch(set_healthcheck))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
         // guard-gated to admin); team management is per-team authorized in-handler.
         .route(
@@ -977,6 +978,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         .await?
         .unwrap_or_else(|| "bash".to_string());
     let allow_quick_ssh = state.db.get_setting("allow_quick_ssh").await? == Some("1".to_string());
+    let healthcheck = healthcheck_policy(&state).await?;
     Ok(Json(json!({
         "accounts": state.accounts,
         "needsBootstrap": needs_bootstrap,
@@ -986,7 +988,28 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "serveWebui": state.serve_webui,
         "defaultShell": default_shell,
         "allowQuickSsh": allow_quick_ssh,
+        "healthcheck": healthcheck,
     })))
+}
+
+/// The machine health-check policy (ADR 0017), stored as one JSON setting with sane defaults:
+/// passive "last seen" on; active probing off; TCP-connect the only method; no user restriction;
+/// a 60s min interval. The client obeys it (passive is always free; active is governed).
+async fn healthcheck_policy(state: &ServerState) -> Result<Value, AppError> {
+    let stored = state
+        .db
+        .get_setting("healthcheck_policy")
+        .await?
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok());
+    Ok(stored.unwrap_or_else(|| {
+        json!({
+            "passiveStatus": true,
+            "active": "off",              // off | on-demand | full | client-choice
+            "methods": ["tcp-connect"],   // subset of tcp-connect | icmp | ssh-handshake
+            "restrictUsers": [],          // usernames allowed to actively probe (empty = all)
+            "minInterval": 60,
+        })
+    }))
 }
 
 #[derive(Deserialize)]
@@ -1053,6 +1076,33 @@ async fn set_quick_ssh(
         .set_setting("allow_quick_ssh", if req.enabled { "1" } else { "0" })
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Set the machine health-check policy (org-admin only). The whole policy is stored as one
+/// JSON blob and surfaced in server_mode; the client obeys it (ADR 0017). Validated lightly:
+/// the active mode must be a known value and methods a known subset.
+async fn set_healthcheck(
+    State(state): State<ServerState>,
+    Json(policy): Json<Value>,
+) -> Result<Response, AppError> {
+    let active = policy.get("active").and_then(|v| v.as_str()).unwrap_or("off");
+    if !["off", "on-demand", "full", "client-choice"].contains(&active) {
+        return Ok((StatusCode::BAD_REQUEST, "invalid active mode").into_response());
+    }
+    if let Some(methods) = policy.get("methods").and_then(|v| v.as_array()) {
+        let known = ["tcp-connect", "icmp", "ssh-handshake"];
+        if methods
+            .iter()
+            .any(|m| !m.as_str().is_some_and(|s| known.contains(&s)))
+        {
+            return Ok((StatusCode::BAD_REQUEST, "invalid probe method").into_response());
+        }
+    }
+    state
+        .db
+        .set_setting("healthcheck_policy", &policy.to_string())
+        .await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 #[derive(Deserialize)]
