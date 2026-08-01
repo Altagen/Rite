@@ -228,6 +228,14 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_set_healthcheck: async (a) => {
+    await json('/api/admin/healthcheck', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(a),
+    });
+    return null;
+  },
 
   // Teams / RBAC (product-model) — keyless rosters (ADR 0016).
   admin_list_teams: () => json('/api/admin/teams'),

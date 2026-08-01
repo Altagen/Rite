@@ -346,7 +346,18 @@ const ServerModeSchema = z.object({
   // terminals on this server, and whether ad-hoc Quick SSH is allowed (off by default).
   defaultShell: z.string().optional(),
   allowQuickSsh: z.boolean().optional(),
+  // Machine health-check policy (ADR 0017): passive "last seen" + governed active probing.
+  healthcheck: z
+    .object({
+      passiveStatus: z.boolean(),
+      active: z.enum(['off', 'on-demand', 'full', 'client-choice']),
+      methods: z.array(z.string()),
+      restrictUsers: z.array(z.string()),
+      minInterval: z.number(),
+    })
+    .optional(),
 });
+export type HealthcheckPolicy = NonNullable<z.infer<typeof ServerModeSchema>['healthcheck']>;
 const PreloginSchema = z.object({ salt: z.string(), params: KdfParamsSchema });
 const ServerUserSchema = z.object({
   // True while the account still uses an admin-set password (first login / after reset):
@@ -502,6 +513,9 @@ export const BackendAdmin = {
   /** Allow/forbid ad-hoc Quick SSH from the toolbar (org-admin). */
   setQuickSsh: (enabled: boolean) =>
     invokeWithValidation('admin_set_quick_ssh', z.null(), { enabled }),
+  /** Set the machine health-check policy (org-admin). Sends the whole policy object. */
+  setHealthcheck: (policy: HealthcheckPolicy) =>
+    invokeWithValidation('admin_set_healthcheck', z.null(), policy as unknown as Record<string, unknown>),
 
   // Collections governance (admin). Names stay encrypted — counts/membership only.
   listCollections: () => invokeWithValidation('admin_list_collections', z.array(CollectionSummarySchema)),

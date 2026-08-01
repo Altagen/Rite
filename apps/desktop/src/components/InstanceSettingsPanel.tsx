@@ -5,7 +5,20 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Backend } from '../utils/backend';
+import { Backend, type HealthcheckPolicy } from '../utils/backend';
+
+const DEFAULT_HC: HealthcheckPolicy = {
+  passiveStatus: true,
+  active: 'off',
+  methods: ['tcp-connect'],
+  restrictUsers: [],
+  minInterval: 60,
+};
+const HC_METHODS: { id: string; label: string }[] = [
+  { id: 'tcp-connect', label: 'TCP-connect' },
+  { id: 'icmp', label: 'ICMP' },
+  { id: 'ssh-handshake', label: 'SSH handshake' },
+];
 
 export function InstanceSettingsPanel() {
   const [name, setName] = useState('');
@@ -13,6 +26,7 @@ export function InstanceSettingsPanel() {
   const [persistence, setPersistence] = useState(true);
   const [shell, setShell] = useState('bash');
   const [quickSsh, setQuickSsh] = useState(false);
+  const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -25,10 +39,23 @@ export function InstanceSettingsPanel() {
       setPersistence(mode.sessionPersistence !== false);
       setShell(mode.defaultShell ?? 'bash');
       setQuickSsh(mode.allowQuickSsh === true);
+      setHc(mode.healthcheck ?? DEFAULT_HC);
     } catch {
       setError('Failed to load instance settings');
     }
   }, []);
+
+  // Optimistic save of the whole policy; revert on failure.
+  const saveHc = async (next: HealthcheckPolicy) => {
+    const prev = hc;
+    setHc(next);
+    try {
+      await Backend.Admin.setHealthcheck(next);
+    } catch (err) {
+      setHc(prev);
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
 
   const changeShell = async (next: string) => {
     const prev = shell;
@@ -202,6 +229,102 @@ export function InstanceSettingsPanel() {
               }`}
             />
           </button>
+        </div>
+
+        {/* Machine health-check (ADR 0017): passive "last seen" is free; active is governed. */}
+        <div className="border-t border-border p-4">
+          <div className="font-medium">Machine health-check</div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            <b>Passive “last seen”</b> (from users&apos; own connections) costs no traffic. <b>Active probing</b> makes
+            network requests from every client — a scan-like footprint at scale — so it&apos;s governed here.
+          </p>
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">Show status</div>
+            <p className="mt-1 text-sm text-muted-foreground">The passive “last seen” pastille. No probing.</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={hc.passiveStatus}
+            onClick={() => saveHc({ ...hc, passiveStatus: !hc.passiveStatus })}
+            className={`relative h-6 w-11 flex-none rounded-full transition-colors ${hc.passiveStatus ? 'bg-primary' : 'bg-muted'}`}
+          >
+            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${hc.passiveStatus ? 'translate-x-5' : 'translate-x-0.5'}`} />
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-start justify-between gap-4 border-t border-border p-4">
+          <div className="min-w-[220px] flex-1">
+            <div className="font-medium">Active probing</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <b>Off</b> passive only · <b>On-demand</b> only when a user asks · <b>Full</b> background polling allowed ·
+              <b>Client&apos;s choice</b> each client picks its cadence.
+            </p>
+          </div>
+          <div className="inline-flex flex-wrap overflow-hidden rounded-md border border-input">
+            {(['off', 'on-demand', 'full', 'client-choice'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => saveHc({ ...hc, active: m })}
+                className={`border-r border-input px-3 py-1.5 text-xs last:border-r-0 ${
+                  hc.active === m ? 'bg-primary/20 font-semibold text-primary' : 'bg-background text-muted-foreground hover:bg-muted'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}>
+          <div>
+            <div className="font-medium">Allowed methods</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              ICMP is blocked on some networks and required on others. Clients may use only a method enabled here.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            {HC_METHODS.map((m) => {
+              const on = hc.methods.includes(m.id);
+              return (
+                <label key={m.id} className="flex cursor-pointer select-none items-center gap-1.5 text-sm">
+                  <span className={`grid h-[17px] w-[17px] place-items-center rounded border text-[11px] font-bold ${on ? 'border-primary bg-primary text-primary-foreground' : 'border-input'}`}>
+                    {on ? '✓' : ''}
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={on}
+                    onChange={() =>
+                      saveHc({ ...hc, methods: on ? hc.methods.filter((x) => x !== m.id) : [...hc.methods, m.id] })
+                    }
+                  />
+                  {m.label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' || hc.active === 'on-demand' ? 'pointer-events-none opacity-40' : ''}`}>
+          <div>
+            <div className="font-medium">Minimum interval</div>
+            <p className="mt-1 text-sm text-muted-foreground">Floor for background polling, so status never saturates the network.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={5}
+              value={hc.minInterval}
+              onChange={(e) => setHc({ ...hc, minInterval: Number(e.target.value) })}
+              onBlur={() => saveHc(hc)}
+              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            />
+            <span className="text-sm text-muted-foreground">seconds</span>
+          </div>
         </div>
       </div>
     </div>
