@@ -27,6 +27,7 @@ export function InstanceSettingsPanel() {
   const [shell, setShell] = useState('bash');
   const [quickSsh, setQuickSsh] = useState(false);
   const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
+  const [userInput, setUserInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -307,6 +308,51 @@ export function InstanceSettingsPanel() {
               );
             })}
           </div>
+        </div>
+
+        <div className={`flex flex-col gap-2 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}>
+          <div>
+            <div className="font-medium">Who can run active checks</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Empty means everyone. Add usernames to restrict active probing to specific people; passive “last seen” stays available to all.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {hc.restrictUsers.length === 0 && (
+              <span className="text-sm text-muted-foreground">Everyone allowed</span>
+            )}
+            {hc.restrictUsers.map((u) => (
+              <span key={u} className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-sm">
+                {u}
+                <button
+                  onClick={() => saveHc({ ...hc, restrictUsers: hc.restrictUsers.filter((x) => x !== u) })}
+                  className="text-muted-foreground hover:text-foreground"
+                  aria-label={`Remove ${u}`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const u = userInput.trim();
+              if (u && !hc.restrictUsers.includes(u)) saveHc({ ...hc, restrictUsers: [...hc.restrictUsers, u] });
+              setUserInput('');
+            }}
+          >
+            <input
+              value={userInput}
+              onChange={(e) => setUserInput(e.target.value)}
+              placeholder="username"
+              className="w-40 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            />
+            <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted">
+              Add
+            </button>
+          </form>
         </div>
 
         <div className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' || hc.active === 'on-demand' ? 'pointer-events-none opacity-40' : ''}`}>
