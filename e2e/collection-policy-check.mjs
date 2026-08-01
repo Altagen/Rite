@@ -30,6 +30,16 @@ async function newCollectionBody(kp) {
   const nameEnc = await aes(metaKey, new TextEncoder().encode(JSON.stringify({ name: 'X', color: '#fff' })));
   return { nameEnc, protectedMetaKey: b64(sodium.crypto_box_seal(metaKey, kp.publicKey)), protectedItemsKey: b64(sodium.crypto_box_seal(itemsKey, kp.publicKey)), metaKeyGroupEnc: null, groupEpoch: null };
 }
+// Create a collection owned by `kp` and keep its keys, so we can seal them to another member.
+async function createColl(token, kp) {
+  const metaKey = sodium.randombytes_buf(32), itemsKey = sodium.randombytes_buf(32);
+  const nameEnc = await aes(metaKey, new TextEncoder().encode(JSON.stringify({ name: 'C', color: '#fff' })));
+  const { id } = await (await post('/api/collections', { nameEnc, protectedMetaKey: b64(sodium.crypto_box_seal(metaKey, kp.publicKey)), protectedItemsKey: b64(sodium.crypto_box_seal(itemsKey, kp.publicKey)), metaKeyGroupEnc: null, groupEpoch: null }, token)).json();
+  return { id, metaKey, itemsKey };
+}
+// Add `userPubHex` as a member of `id`, sealing the collection keys to them.
+const addMember = (id, userId, userPubHex, metaKey, itemsKey, token, role = 'viewer') =>
+  post(`/api/collections/${id}/members`, { userId, role, protectedMetaKey: b64(sodium.crypto_box_seal(metaKey, hx(userPubHex))), protectedItemsKey: b64(sodium.crypto_box_seal(itemsKey, hx(userPubHex))) }, token);
 
 let step = '';
 const ok = (m) => console.log('  ✓ ' + m);
@@ -38,9 +48,12 @@ try {
   const av = await vaultFor('AdminPass1!');
   const admin = (await (await post('/api/server/bootstrap', { username: 'admin', ...av.body })).json()).token;
   const bv = await vaultFor('BobTemp1!');
-  await post('/api/admin/users', { username: 'bob', role: 'user', ...bv.body }, admin);
+  const bob = await (await post('/api/admin/users', { username: 'bob', role: 'user', ...bv.body }, admin)).json();
   const bobL = await login('bob', 'BobTemp1!');
-  ok('admin + non-admin bob provisioned');
+  const cv = await vaultFor('CarolTemp1!');
+  const carol = await (await post('/api/admin/users', { username: 'carol', role: 'user', ...cv.body }, admin)).json();
+  const carolPub = bh(cv.kp.publicKey);
+  ok('admin + non-admins bob & carol provisioned');
 
   step = 'default-policy';
   const mode0 = await getJson('/api/server/mode');
@@ -66,6 +79,25 @@ try {
   assert.equal((await patch('/api/admin/collection-policy', { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 0, defaultRole: 'editor' }, admin)).status, 204, 'reopen');
   assert.equal((await post('/api/collections', await newCollectionBody(bv.kp), bobL.token)).status, 201, 'bob creates again');
   ok('create re-allowed → bob creates again (201)');
+
+  step = 'max-members';
+  // Cap at 1: bob's fresh collection already has him (owner) → adding anyone exceeds it.
+  assert.equal((await patch('/api/admin/collection-policy', { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 1, defaultRole: 'viewer' }, admin)).status, 204, 'cap set');
+  const capped = await createColl(bobL.token, bv.kp);
+  assert.equal((await addMember(capped.id, carol.id, carolPub, capped.metaKey, capped.itemsKey, bobL.token)).status, 409, 'add past cap refused');
+  ok('member cap enforced → adding past the limit is 409');
+
+  step = 'sharing-outside-teams';
+  assert.equal((await patch('/api/admin/collection-policy', { allowCreate: true, allowSharingOutsideTeams: false, maxMembers: 0, defaultRole: 'viewer' }, admin)).status, 204, 'external sharing off');
+  const shared = await createColl(bobL.token, bv.kp);
+  // bob and carol share no team yet → refused.
+  assert.equal((await addMember(shared.id, carol.id, carolPub, shared.metaKey, shared.itemsKey, bobL.token)).status, 403, 'outside-team add refused');
+  // Admin puts them in the same team → now bob may add carol.
+  const team = await (await post('/api/admin/teams', { name: 'eng' }, admin)).json();
+  await post(`/api/teams/${team.id}/members`, { userId: bob.id, role: 'member' }, admin);
+  await post(`/api/teams/${team.id}/members`, { userId: carol.id, role: 'member' }, admin);
+  assert.equal((await addMember(shared.id, carol.id, carolPub, shared.metaKey, shared.itemsKey, bobL.token)).status, 204, 'teammate add allowed');
+  ok('no-sharing-outside-teams enforced → non-teammate 403, teammate 204');
 
   console.log('\n✅ collection-policy-check passed');
 } catch (e) {
