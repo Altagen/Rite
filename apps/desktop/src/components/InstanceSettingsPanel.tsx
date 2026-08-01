@@ -24,6 +24,8 @@ export function InstanceSettingsPanel() {
   const [name, setName] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
   const [persistence, setPersistence] = useState(true);
+  const [hostKey, setHostKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [shell, setShell] = useState('bash');
   const [quickSsh, setQuickSsh] = useState(false);
   const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
@@ -38,6 +40,7 @@ export function InstanceSettingsPanel() {
       setName(current);
       setSaved(current);
       setPersistence(mode.sessionPersistence !== false);
+      setHostKey(mode.hostKey ?? null);
       setShell(mode.defaultShell ?? 'bash');
       setQuickSsh(mode.allowQuickSsh === true);
       setHc(mode.healthcheck ?? DEFAULT_HC);
@@ -151,6 +154,27 @@ export function InstanceSettingsPanel() {
         <p className="text-xs text-muted-foreground">
           Saved. It appears for everyone after their next page load.
         </p>
+      )}
+
+      {/* Host key (ADR 0012 TOFU): publish it so users can pin this server out-of-band. */}
+      {hostKey && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4">
+          <div className="min-w-0">
+            <div className="font-medium">Host key</div>
+            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">SHA256:{hostKey}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Share this so users can pin this server on first connect.</p>
+          </div>
+          <button
+            onClick={() => {
+              void navigator.clipboard?.writeText(`SHA256:${hostKey}`);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
       )}
 
       <div className="rounded-lg border border-border bg-card p-4">

@@ -356,6 +356,9 @@ const ServerModeSchema = z.object({
       minInterval: z.number(),
     })
     .optional(),
+  // This server's own TLS leaf fingerprint (hex) for out-of-band pinning; null behind a
+  // reverse proxy (rite-server doesn't terminate TLS then).
+  hostKey: z.string().nullable().optional(),
   // Collection governance policy (admin → Collections). Absent ⇒ permissive defaults.
   collectionPolicy: z
     .object({

@@ -61,6 +61,10 @@ pub struct ServerState {
     /// guard stays the hard boundary — these gate the UI surface only.
     pub serve_admin: bool,
     pub serve_webui: bool,
+    /// This server's own TLS leaf-cert SHA-256 fingerprint (hex), shown in the admin
+    /// console so operators can publish it for out-of-band pinning (ADR 0012 TOFU).
+    /// Set only when rite-server terminates TLS itself; `None` behind a reverse proxy.
+    pub host_key: Option<Arc<String>>,
     /// Per-account login rate limiter (brute-force protection, server mode).
     login_limiter: Arc<LoginLimiter>,
     /// True when rite-server terminates TLS itself (adds HSTS). Behind a reverse
@@ -254,6 +258,7 @@ impl ServerState {
             accounts: false,
             serve_admin: env_flag("RITE_SERVE_ADMIN", true),
             serve_webui: env_flag("RITE_SERVE_WEBUI", true),
+            host_key: None,
             login_limiter: Arc::new(LoginLimiter::default()),
             tls: false,
             context: Arc::new(std::sync::Mutex::new(ActiveContext::Local)),
@@ -283,6 +288,12 @@ impl ServerState {
     /// Mark that rite-server terminates TLS itself (so it emits HSTS).
     pub fn with_tls(mut self) -> Self {
         self.tls = true;
+        self
+    }
+
+    /// Record this server's own TLS leaf fingerprint (hex) for the admin console.
+    pub fn with_host_key(mut self, fingerprint: String) -> Self {
+        self.host_key = Some(Arc::new(fingerprint));
         self
     }
 
@@ -630,10 +641,29 @@ pub async fn serve_tls(
 ) -> Result<()> {
     let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(cert, key).await?;
     let socket: std::net::SocketAddr = addr.parse()?;
+    // Compute our own leaf fingerprint so the admin console can publish it for pinning.
+    let mut state = state.with_tls();
+    if let Some(fp) = leaf_fingerprint_from_pem(cert) {
+        state = state.with_host_key(fp);
+    }
     axum_server::bind_rustls(socket, config)
-        .serve(build_router(state.with_tls()).into_make_service())
+        .serve(build_router(state).into_make_service())
         .await?;
     Ok(())
+}
+
+/// The SHA-256 fingerprint (hex) of the first certificate in a PEM file, matching the
+/// TOFU pin format (ADR 0012). Returns `None` if the file can't be read or parsed.
+fn leaf_fingerprint_from_pem(path: &std::path::Path) -> Option<String> {
+    use base64::Engine;
+    let pem = std::fs::read_to_string(path).ok()?;
+    let begin = "-----BEGIN CERTIFICATE-----";
+    let end = "-----END CERTIFICATE-----";
+    let start = pem.find(begin)? + begin.len();
+    let stop = pem[start..].find(end)? + start;
+    let b64: String = pem[start..stop].chars().filter(|c| !c.is_whitespace()).collect();
+    let der = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
+    Some(tls_pin::cert_fingerprint(&rustls_pki_types::CertificateDer::from(der)))
 }
 
 /// ADR 0009 local-transport guard. When a token is configured (local desktop
@@ -998,6 +1028,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "allowQuickSsh": allow_quick_ssh,
         "healthcheck": healthcheck,
         "collectionPolicy": collection_policy(&state).await?,
+        "hostKey": state.host_key.as_deref(),
     })))
 }
 
