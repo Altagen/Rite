@@ -115,7 +115,7 @@ impl Database {
                 // Backup before migration (only if not initial setup)
                 if current_version > 0 {
                     info!("Creating backup before migration {}...", version);
-                    if let Err(e) = self.create_migration_backup().await {
+                    if let Err(e) = self.create_migration_backup(version).await {
                         warn!(
                             "Failed to create backup: {}. Continuing with migration...",
                             e
@@ -126,10 +126,28 @@ impl Database {
 
                 let mut conn = self.pool.acquire().await?;
 
-                sqlx::raw_sql(sql)
-                    .execute(&mut *conn)
-                    .await
-                    .with_context(|| format!("Failed to run migration {}", version))?;
+                // Normal path: run the whole migration file. On a *drifted* vault (schema
+                // objects already present but schema_version behind — e.g. an old dev vault
+                // whose columns predate the migration that adds them), a non-idempotent
+                // `ADD COLUMN`/`CREATE` errors; reconcile by re-running statement-by-statement
+                // and skipping the parts already applied, so the vault converges instead of
+                // bricking (graceful-handling bar). Non-benign errors still abort.
+                if let Err(e) = sqlx::raw_sql(sql).execute(&mut *conn).await {
+                    if is_benign_ddl_conflict(&e) {
+                        warn!(
+                            "Migration {} meets an already-present schema object ({}); \
+                             reconciling statement-by-statement",
+                            version,
+                            e.as_database_error().map(|d| d.message()).unwrap_or_default()
+                        );
+                        apply_migration_tolerant(&mut conn, sql)
+                            .await
+                            .with_context(|| format!("Failed to run migration {}", version))?;
+                    } else {
+                        return Err(e)
+                            .with_context(|| format!("Failed to run migration {}", version));
+                    }
+                }
 
                 // Record the applied version so it is never re-run. The runner owns
                 // this (not each migration file) so it can't be forgotten — a missed
@@ -333,10 +351,12 @@ impl Database {
         Ok(())
     }
 
-    /// Create automatic migration backup with timestamp
-    async fn create_migration_backup(&self) -> Result<()> {
+    /// Create automatic migration backup with timestamp. The version is part of the name so
+    /// several migrations applied in the same second don't collide on one filename (which made
+    /// `VACUUM INTO` fail — "database already exists" — and lost all but the first backup).
+    async fn create_migration_backup(&self, version: i64) -> Result<()> {
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-        let backup_filename = format!("vault_pre_migration_{}.db", timestamp);
+        let backup_filename = format!("vault_pre_migration_{}_v{}.db", timestamp, version);
 
         let backup_dir = self
             .db_path
@@ -609,6 +629,47 @@ impl Database {
     }
 }
 
+/// A SQLite error that means "this DDL was already applied" — safe to skip on a drifted vault
+/// (adding a column that exists, or creating a table/index that exists). Idempotent by intent.
+fn is_benign_ddl_conflict(e: &sqlx::Error) -> bool {
+    e.as_database_error().is_some_and(|db| {
+        let m = db.message().to_ascii_lowercase();
+        m.contains("duplicate column name") || m.contains("already exists")
+    })
+}
+
+/// Re-run a migration one statement at a time, skipping statements that hit a benign DDL
+/// conflict (the object already exists). Only used as a fallback after the whole-file run hit
+/// such a conflict, so a drifted vault converges. Non-benign errors abort.
+async fn apply_migration_tolerant(conn: &mut sqlx::SqliteConnection, sql: &str) -> Result<()> {
+    for stmt in split_sql_statements(sql) {
+        if let Err(e) = sqlx::raw_sql(&stmt).execute(&mut *conn).await {
+            if is_benign_ddl_conflict(&e) {
+                continue; // already applied on this vault — skip
+            }
+            return Err(e).context("statement failed while reconciling a drifted migration");
+        }
+    }
+    Ok(())
+}
+
+/// Split a migration file into individual statements on `;`. The migrations are simple DDL/DML
+/// with no triggers or `BEGIN…END` blocks, so this is safe; `--` comment lines and blank
+/// fragments are dropped. Only ever used on the tolerant fallback path.
+fn split_sql_statements(sql: &str) -> Vec<String> {
+    sql.split(';')
+        .map(|frag| {
+            frag.lines()
+                .filter(|l| !l.trim_start().starts_with("--"))
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string()
+        })
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -631,6 +692,39 @@ mod tests {
         // A fresh DB migrates all the way to the latest schema (each applied
         // migration records its version).
         assert_eq!(db.get_schema_version().await.unwrap(), 17);
+    }
+
+    #[test]
+    fn split_sql_statements_drops_comments_and_blanks() {
+        let sql = "-- a comment\nALTER TABLE t ADD COLUMN a TEXT; -- trailing\n\nCREATE INDEX i ON t(a);";
+        let stmts = super::split_sql_statements(sql);
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "ALTER TABLE t ADD COLUMN a TEXT");
+        assert_eq!(stmts[1], "CREATE INDEX i ON t(a)");
+    }
+
+    #[tokio::test]
+    async fn migration_runner_tolerates_a_preexisting_column() {
+        // Reproduces the drifted-vault case (schema object already present, version behind):
+        // a migration that adds an existing column plus a new one must skip the dup and still
+        // apply the new column — converge, not brick.
+        let (db, _temp) = create_test_db().await;
+        let mut conn = db.pool().acquire().await.unwrap();
+        super::apply_migration_tolerant(
+            &mut conn,
+            "ALTER TABLE users ADD COLUMN kdf_master_salt BLOB;\n\
+             ALTER TABLE users ADD COLUMN drift_probe_col TEXT;",
+        )
+        .await
+        .expect("tolerant migration should converge on a drifted vault");
+        let cols: Vec<String> = sqlx::query("PRAGMA table_info(users)")
+            .fetch_all(&mut *conn)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.get::<String, _>("name"))
+            .collect();
+        assert!(cols.contains(&"drift_probe_col".to_string()), "new column applied");
     }
 
     #[tokio::test]
