@@ -29,7 +29,12 @@ function useLocalConnectionsSource(): ConnectionsSource {
     refresh: fetchConnections,
     select: selectConnection,
     remove: deleteConnection,
-    connect: (c) => Backend.Terminal.connectTerminal(c.id),
+    connect: async (c) => {
+      const id = await Backend.Terminal.connectTerminal(c.id);
+      // The local vault records "last used" (ADR 0017) — refresh so the pastille reflects it.
+      void fetchConnections();
+      return id;
+    },
     create: async (input) => {
       await createConnection(input);
     },

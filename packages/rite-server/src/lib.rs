@@ -2996,8 +2996,19 @@ async fn connect_ssh(
     }
     let id = state
         .sessions
-        .create_session(req.connection_id, state.events_sink())
+        .create_session(req.connection_id.clone(), state.events_sink())
         .await?;
+    // Record "last used" in the local vault (ADR 0017 passive status). This is the local
+    // single-user DB — the user's own machine — so unlike the accounts context (where it's
+    // client-local to stay zero-knowledge) it's fine to persist it server-side here.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let _ = state
+        .db
+        .update_connection_last_used(&req.connection_id, now)
+        .await;
     state.record_session_owner(&id, as_user(&user));
     Ok(Json(json!({ "sessionId": id })).into_response())
 }
