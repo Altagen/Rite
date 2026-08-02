@@ -21,7 +21,10 @@ use tao::window::{Window, WindowBuilder, WindowId};
 use uuid::Uuid;
 use wry::{WebView, WebViewBuilder};
 
+use std::path::{Path, PathBuf};
+
 mod context_registry;
+mod vault_roster;
 use context_registry::{ContextKey, ContextRegistry, OpenOutcome};
 
 const DEFAULT_SIZE: (f64, f64) = (1200.0, 800.0);
@@ -31,6 +34,10 @@ const MIN_SIZE: (f64, f64) = (800.0, 600.0);
 struct OpenRequest {
     /// Identity for one-window-per-context dedup.
     key: ContextKey,
+    /// The local vault this window's server opens (ADR 0014 multi-vault). A local
+    /// context uses its chosen `.db`; a server context uses the default vault (the
+    /// mux keeps its roster/settings there).
+    db_path: PathBuf,
     /// The `window.__RITE_CONTEXT__` payload injected into the target window so its
     /// frontend knows which context to activate (`{"kind":"local"}` or a server).
     inject: String,
@@ -89,14 +96,26 @@ fn main() -> Result<()> {
     let mut registry = ContextRegistry::<WindowId>::new();
     let mut windows: std::collections::HashMap<WindowId, WindowState> = std::collections::HashMap::new();
 
+    // Multi-vault roster (ADR 0014): remember the local vaults so the hub can list them.
+    // Ensure the default vault is always present, then hand the snapshot to each window as
+    // `window.__RITE_VAULTS__` (the hub reads it; management IPC lands in a follow-up).
+    let mut roster = vault_roster::VaultRoster::load(roster_path());
+    if !roster.contains(db_path()) {
+        if let Err(e) = roster.add(db_path(), "Local vault") {
+            tracing::warn!("[rite-desktop] could not seed the vault roster: {e}");
+        }
+    }
+    let vaults_json = serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
+
     // The launch window shows the context hub (ADR 0014). Its server is the local
     // one, so it's registered as the local context — picking "local vault" in the
     // hub proceeds in this window; picking a server opens another window.
     let launch = OpenRequest {
         key: ContextKey::local(db_path()),
+        db_path: db_path(),
         inject: r#"{"kind":"hub"}"#.to_string(),
     };
-    if let Err(e) = open_window(&event_loop, &proxy, &mut windows, &mut registry, launch) {
+    if let Err(e) = open_window(&event_loop, &proxy, &mut windows, &mut registry, launch, &vaults_json) {
         show_error(
             "Rite failed to start",
             &format!("Could not open the vault or start the local server.\n\n{e:#}"),
@@ -129,7 +148,7 @@ fn main() -> Result<()> {
                         }
                     }
                     OpenOutcome::New => {
-                        if let Err(e) = open_window(target, &proxy, &mut windows, &mut registry, req) {
+                        if let Err(e) = open_window(target, &proxy, &mut windows, &mut registry, req, &vaults_json) {
                             show_error(
                                 "Could not open that context",
                                 &format!("Rite couldn't open a window for this context.\n\n{e:#}"),
@@ -153,10 +172,11 @@ fn open_window(
     windows: &mut std::collections::HashMap<WindowId, WindowState>,
     registry: &mut ContextRegistry<WindowId>,
     req: OpenRequest,
+    vaults_json: &str,
 ) -> Result<()> {
     // Per-window token guarding this window's loopback server (ADR 0009). RAM only.
     let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
-    let port = start_server(token.clone())?;
+    let port = start_server(token.clone(), &req.db_path)?;
     let url = format!("http://127.0.0.1:{port}/");
     tracing::info!("[rite-desktop] window serving on {url}");
 
@@ -171,7 +191,8 @@ fn open_window(
     // Inject the loopback token + the target context, then wire the IPC handler
     // that lets the frontend ask the shell to open another context in a window.
     let init = format!(
-        "window.__RITE_TOKEN__ = '{token}'; window.__RITE_CONTEXT__ = {inject};",
+        "window.__RITE_TOKEN__ = '{token}'; window.__RITE_CONTEXT__ = {inject}; \
+         window.__RITE_VAULTS__ = {vaults_json};",
         inject = req.inject,
     );
     let ipc_proxy = proxy.clone();
@@ -207,23 +228,44 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, body: String) {
         tracing::warn!("[rite-desktop] ignoring non-JSON IPC message");
         return;
     };
-    if msg.get("type").and_then(|t| t.as_str()) != Some("open-context") {
+    let Some(req) = parse_open_request(&msg, &db_path()) else {
         return;
+    };
+    if proxy.send_event(UserEvent::OpenContext(req)).is_err() {
+        tracing::warn!("[rite-desktop] event loop gone; dropping open-context");
     }
-    let req = match msg.get("kind").and_then(|k| k.as_str()) {
-        Some("local") => OpenRequest {
-            key: ContextKey::local(db_path()),
-            inject: r#"{"kind":"local"}"#.to_string(),
-        },
+}
+
+/// Parse an `open-context` IPC message into an [`OpenRequest`], or `None` if it isn't one
+/// we act on. Pure (no event loop / no I/O) so it is unit-tested without a display.
+///
+/// - `local` with a `path` opens that vault (ADR 0014 multi-vault); without one, the default.
+/// - `server` needs a `url`; the id/url/label pass through to the target window.
+fn parse_open_request(msg: &serde_json::Value, default_db: &Path) -> Option<OpenRequest> {
+    if msg.get("type").and_then(|t| t.as_str()) != Some("open-context") {
+        return None;
+    }
+    match msg.get("kind").and_then(|k| k.as_str()) {
+        Some("local") => {
+            let path = msg
+                .get("path")
+                .and_then(|p| p.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| default_db.to_path_buf());
+            Some(OpenRequest {
+                key: ContextKey::local(&path),
+                inject: serde_json::json!({ "kind": "local", "path": path.to_string_lossy() })
+                    .to_string(),
+                db_path: path,
+            })
+        }
         Some("server") => {
-            let Some(url) = msg.get("url").and_then(|u| u.as_str()) else {
-                tracing::warn!("[rite-desktop] open-context server without url");
-                return;
-            };
-            OpenRequest {
+            let url = msg.get("url").and_then(|u| u.as_str())?;
+            Some(OpenRequest {
                 key: ContextKey::server(url),
-                // Pass the roster id/url/label straight through for the target
-                // frontend to activate (the server context it should land in).
+                // Pass the roster id/url/label straight through for the target frontend to
+                // activate; a server window keeps the mux's default local vault.
                 inject: serde_json::json!({
                     "kind": "server",
                     "id": msg.get("id").and_then(|v| v.as_str()),
@@ -231,22 +273,21 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, body: String) {
                     "label": msg.get("label").and_then(|v| v.as_str()),
                 })
                 .to_string(),
-            }
+                db_path: default_db.to_path_buf(),
+            })
         }
         other => {
             tracing::warn!("[rite-desktop] open-context with unknown kind {other:?}");
-            return;
+            None
         }
-    };
-    if proxy.send_event(UserEvent::OpenContext(req)).is_err() {
-        tracing::warn!("[rite-desktop] event loop gone; dropping open-context");
     }
 }
 
 /// Start rite-server in a background thread (its own tokio runtime; the tao event
 /// loop must own the main thread) and block until it binds, returning the port.
 /// Startup errors are reported instead of panicking.
-fn start_server(token: String) -> Result<u16> {
+fn start_server(token: String, db_path: &Path) -> Result<u16> {
+    let db_path = db_path.to_path_buf();
     let (tx, rx) = std::sync::mpsc::channel::<Result<u16, String>>();
     let tx_bound = tx.clone();
     std::thread::spawn(move || {
@@ -259,7 +300,6 @@ fn start_server(token: String) -> Result<u16> {
         };
         rt.block_on(async move {
             let result = async {
-                let db_path = db_path();
                 if let Some(parent) = db_path.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
@@ -332,4 +372,71 @@ fn data_dir() -> std::path::PathBuf {
 
 fn db_path() -> std::path::PathBuf {
     data_dir().join("vault.db")
+}
+
+/// Where the multi-vault roster is persisted (ADR 0014). Next to the vaults, not inside one.
+fn roster_path() -> std::path::PathBuf {
+    data_dir().join("vaults.json")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn default() -> PathBuf {
+        PathBuf::from("/data/vault.db")
+    }
+
+    #[test]
+    fn ignores_non_open_context() {
+        assert!(parse_open_request(&json!({ "type": "other" }), &default()).is_none());
+        assert!(parse_open_request(&json!({ "kind": "local" }), &default()).is_none());
+    }
+
+    #[test]
+    fn local_without_path_uses_the_default_vault() {
+        let req = parse_open_request(&json!({ "type": "open-context", "kind": "local" }), &default()).unwrap();
+        assert_eq!(req.db_path, default());
+        assert_eq!(req.key, ContextKey::local(default()));
+    }
+
+    #[test]
+    fn local_with_path_opens_that_vault() {
+        let req = parse_open_request(
+            &json!({ "type": "open-context", "kind": "local", "path": "/vaults/work.db" }),
+            &default(),
+        )
+        .unwrap();
+        assert_eq!(req.db_path, PathBuf::from("/vaults/work.db"));
+        assert_eq!(req.key, ContextKey::local("/vaults/work.db"));
+        assert!(req.inject.contains("/vaults/work.db"));
+    }
+
+    #[test]
+    fn blank_path_falls_back_to_default() {
+        let req = parse_open_request(
+            &json!({ "type": "open-context", "kind": "local", "path": "   " }),
+            &default(),
+        )
+        .unwrap();
+        assert_eq!(req.db_path, default());
+    }
+
+    #[test]
+    fn server_needs_a_url_and_keeps_the_default_vault() {
+        assert!(parse_open_request(&json!({ "type": "open-context", "kind": "server" }), &default()).is_none());
+        let req = parse_open_request(
+            &json!({ "type": "open-context", "kind": "server", "url": "https://rite.example.com", "label": "Team" }),
+            &default(),
+        )
+        .unwrap();
+        assert_eq!(req.key, ContextKey::server("https://rite.example.com"));
+        assert_eq!(req.db_path, default()); // server window still uses the mux's local vault
+    }
+
+    #[test]
+    fn unknown_kind_is_ignored() {
+        assert!(parse_open_request(&json!({ "type": "open-context", "kind": "wat" }), &default()).is_none());
+    }
 }
