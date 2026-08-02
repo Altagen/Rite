@@ -80,7 +80,21 @@ export function SetupScreen({ asModal = false, onClose }: SetupScreenProps = {})
   };
 
   const content = (
-    <div className="w-full max-w-md space-y-8 p-8">
+    <div className="relative w-full max-w-md space-y-8 p-8">
+        {asModal && onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isLoading}
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            className="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
         <div className="text-center">
           <h1 className="text-4xl font-bold">{t('setup.title')}</h1>
           <p className="mt-2 text-muted-foreground">

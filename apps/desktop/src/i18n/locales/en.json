@@ -161,6 +161,7 @@
   },
   "common": {
     "advancedOptions": "Advanced Options",
-    "seconds": "Seconds"
+    "seconds": "Seconds",
+    "close": "Close"
   }
 }
