@@ -647,25 +647,29 @@ async fn apply_migration_tolerant(conn: &mut sqlx::SqliteConnection, sql: &str) 
             if is_benign_ddl_conflict(&e) {
                 continue; // already applied on this vault — skip
             }
+            let detail = e.as_database_error().map(|d| d.message().to_string());
+            warn!("reconcile: non-benign failure ({detail:?}) on statement: {stmt}");
             return Err(e).context("statement failed while reconciling a drifted migration");
         }
     }
     Ok(())
 }
 
-/// Split a migration file into individual statements on `;`. The migrations are simple DDL/DML
-/// with no triggers or `BEGIN…END` blocks, so this is safe; `--` comment lines and blank
-/// fragments are dropped. Only ever used on the tolerant fallback path.
+/// Split a migration file into individual statements on `;`. Comments are stripped FIRST so a
+/// `;` inside a `-- …` comment (e.g. "a team key; it is sealed") isn't mistaken for a statement
+/// separator. The migrations are simple DDL/DML with no triggers or `BEGIN…END` blocks and no
+/// `--`/`;` inside string literals, so this is safe. Only ever used on the tolerant fallback path.
 fn split_sql_statements(sql: &str) -> Vec<String> {
-    sql.split(';')
-        .map(|frag| {
-            frag.lines()
-                .filter(|l| !l.trim_start().starts_with("--"))
-                .collect::<Vec<_>>()
-                .join("\n")
-                .trim()
-                .to_string()
+    let code: String = sql
+        .lines()
+        .map(|line| match line.find("--") {
+            Some(i) => &line[..i], // keep only the code before the line comment
+            None => line,
         })
+        .collect::<Vec<_>>()
+        .join("\n");
+    code.split(';')
+        .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()
 }
@@ -701,6 +705,13 @@ mod tests {
         assert_eq!(stmts.len(), 2);
         assert_eq!(stmts[0], "ALTER TABLE t ADD COLUMN a TEXT");
         assert_eq!(stmts[1], "CREATE INDEX i ON t(a)");
+    }
+
+    #[test]
+    fn split_sql_statements_ignores_semicolons_inside_comments() {
+        // Regression (migration 008): a ';' inside a comment must not split a statement.
+        let sql = "-- a team key; it is sealed per member\nALTER TABLE t ADD COLUMN k TEXT;";
+        assert_eq!(super::split_sql_statements(sql), vec!["ALTER TABLE t ADD COLUMN k TEXT"]);
     }
 
     #[tokio::test]
