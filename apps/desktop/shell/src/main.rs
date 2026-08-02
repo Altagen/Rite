@@ -220,19 +220,60 @@ fn open_window(
     Ok(())
 }
 
-/// Parse an IPC message from a webview and, if it is an `open-context` request,
-/// forward it to the event loop. Malformed messages are logged and ignored (a
-/// webview must never crash the shell).
+/// Parse an IPC message from a webview and route it. `open-context` opens/focuses a window;
+/// `vault-*` messages manage the multi-vault roster. Malformed or unknown messages are logged
+/// and ignored (a webview must never crash the shell).
 fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, body: String) {
     let Ok(msg) = serde_json::from_str::<serde_json::Value>(&body) else {
         tracing::warn!("[rite-desktop] ignoring non-JSON IPC message");
         return;
     };
-    let Some(req) = parse_open_request(&msg, &db_path()) else {
+    if let Some(req) = parse_open_request(&msg, &db_path()) {
+        if proxy.send_event(UserEvent::OpenContext(req)).is_err() {
+            tracing::warn!("[rite-desktop] event loop gone; dropping open-context");
+        }
         return;
+    }
+    if let Some(cmd) = plan_vault_command(&msg) {
+        // Executor (rfd dialogs for new/open-file; roster mutation for rename/forget) lands in
+        // the desktop increment; the decision is already settled + tested here.
+        tracing::info!("[rite-desktop] vault command recognized (executor pending): {cmd:?}");
+    }
+}
+
+/// A multi-vault management command (ADR 0014), decoded from an IPC message. Pure decision layer,
+/// unit-tested; the shell executes it (native dialogs / roster edits) as thin glue.
+#[derive(Debug, PartialEq)]
+enum VaultCommand {
+    /// Create a new vault — the shell shows a save dialog to choose its location.
+    New,
+    /// Open an existing `.db` — the shell shows an open dialog.
+    OpenFile,
+    /// Relabel a known vault in the roster.
+    Rename { path: PathBuf, label: String },
+    /// Forget a vault from the roster (does not delete the file).
+    Forget { path: PathBuf },
+}
+
+/// Decode a `vault-*` management message, or `None` if it isn't one (or is malformed).
+fn plan_vault_command(msg: &serde_json::Value) -> Option<VaultCommand> {
+    let str_field = |k: &str| {
+        msg.get(k)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
     };
-    if proxy.send_event(UserEvent::OpenContext(req)).is_err() {
-        tracing::warn!("[rite-desktop] event loop gone; dropping open-context");
+    match msg.get("type").and_then(|t| t.as_str())? {
+        "vault-new" => Some(VaultCommand::New),
+        "vault-open-file" => Some(VaultCommand::OpenFile),
+        "vault-rename" => Some(VaultCommand::Rename {
+            path: PathBuf::from(str_field("path")?),
+            label: str_field("label")?.to_string(),
+        }),
+        "vault-forget" => Some(VaultCommand::Forget {
+            path: PathBuf::from(str_field("path")?),
+        }),
+        _ => None,
     }
 }
 
@@ -438,5 +479,40 @@ mod tests {
     #[test]
     fn unknown_kind_is_ignored() {
         assert!(parse_open_request(&json!({ "type": "open-context", "kind": "wat" }), &default()).is_none());
+    }
+
+    #[test]
+    fn vault_command_new_and_open_file() {
+        assert_eq!(plan_vault_command(&json!({ "type": "vault-new" })), Some(VaultCommand::New));
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-open-file" })),
+            Some(VaultCommand::OpenFile)
+        );
+    }
+
+    #[test]
+    fn vault_command_rename_needs_path_and_label() {
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-rename", "path": "/v/a.db", "label": "Work" })),
+            Some(VaultCommand::Rename { path: PathBuf::from("/v/a.db"), label: "Work".into() })
+        );
+        // Missing/blank fields → not a valid command.
+        assert!(plan_vault_command(&json!({ "type": "vault-rename", "path": "/v/a.db" })).is_none());
+        assert!(plan_vault_command(&json!({ "type": "vault-rename", "path": "/v/a.db", "label": "  " })).is_none());
+    }
+
+    #[test]
+    fn vault_command_forget_needs_path() {
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-forget", "path": "/v/a.db" })),
+            Some(VaultCommand::Forget { path: PathBuf::from("/v/a.db") })
+        );
+        assert!(plan_vault_command(&json!({ "type": "vault-forget" })).is_none());
+    }
+
+    #[test]
+    fn non_vault_messages_are_not_commands() {
+        assert!(plan_vault_command(&json!({ "type": "open-context", "kind": "local" })).is_none());
+        assert!(plan_vault_command(&json!({ "type": "whatever" })).is_none());
     }
 }
