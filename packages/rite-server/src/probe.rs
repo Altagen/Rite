@@ -78,9 +78,40 @@ impl ProbeResult {
 /// is a normal `Down` verdict, not a failure of the endpoint.
 pub async fn probe(host: &str, port: u16, method: ProbeMethod, timeout: Duration) -> ProbeResult {
     match method {
-        ProbeMethod::Icmp => ProbeResult::unsupported(),
+        ProbeMethod::Icmp => icmp_ping(host, timeout).await,
         ProbeMethod::TcpConnect => tcp_connect(host, port, timeout, false).await,
         ProbeMethod::SshHandshake => tcp_connect(host, port, timeout, true).await,
+    }
+}
+
+/// Best-effort ICMP via the system `ping` (no raw-socket privileges needed — the setuid/
+/// unprivileged `ping` does the work). Exit code only: 0 ⇒ up, non-zero ⇒ down, and if `ping`
+/// isn't present at all we honestly report `Unsupported` rather than a false "down".
+async fn icmp_ping(host: &str, timeout: Duration) -> ProbeResult {
+    // `Command` doesn't invoke a shell, so `host` can't inject; but a leading '-' could be
+    // read as a flag — reject those defensively (a real hostname/IP never starts with '-').
+    if host.starts_with('-') || host.is_empty() {
+        return ProbeResult::down();
+    }
+    let start = Instant::now();
+    let secs = timeout.as_secs().max(1);
+    let run = tokio::process::Command::new("ping")
+        .arg("-c")
+        .arg("1")
+        .arg("-w")
+        .arg(secs.to_string())
+        .arg(host)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    match tokio::time::timeout(timeout + Duration::from_secs(1), run).await {
+        Ok(Ok(status)) if status.success() => ProbeResult {
+            status: ProbeStatus::Up,
+            latency_ms: Some(start.elapsed().as_millis() as u64),
+        },
+        Ok(Ok(_)) => ProbeResult::down(),          // ping ran, host didn't answer
+        Ok(Err(_)) => ProbeResult::unsupported(),  // ping binary missing / couldn't spawn
+        Err(_) => ProbeResult::down(),             // our own timeout tripped
     }
 }
 
@@ -191,8 +222,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn icmp_is_unsupported() {
-        let r = probe("127.0.0.1", 22, ProbeMethod::Icmp, Duration::from_secs(1)).await;
-        assert_eq!(r.status, ProbeStatus::Unsupported);
+    async fn icmp_pings_localhost_or_is_unsupported() {
+        // Loopback always answers when `ping` runs; if the binary is absent we report
+        // Unsupported. Either way it must never be a false Down.
+        let r = probe("127.0.0.1", 22, ProbeMethod::Icmp, Duration::from_secs(2)).await;
+        assert!(matches!(r.status, ProbeStatus::Up | ProbeStatus::Unsupported));
+    }
+
+    #[tokio::test]
+    async fn icmp_rejects_a_flag_like_host() {
+        let r = probe("-oProxyCommand=x", 0, ProbeMethod::Icmp, Duration::from_secs(1)).await;
+        assert_eq!(r.status, ProbeStatus::Down);
     }
 }

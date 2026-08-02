@@ -96,6 +96,15 @@ try {
   assert.equal(by2.icmp.status, 'unsupported', 'icmp not in allowlist → unsupported');
   ok('ssh-handshake up/down + method outside allowlist → unsupported');
 
+  step = 'icmp-allowed';
+  // With icmp in the allowlist, a best-effort system ping of loopback answers "up" (or,
+  // where `ping` isn't installed, an honest "unsupported" — never a false "down").
+  assert.equal((await patch('/api/admin/healthcheck', { passiveStatus: true, active: 'on-demand', methods: ['icmp'], restrictUsers: [], minInterval: 60 }, admin)).status, 204, 'icmp allowed');
+  await sleep(3100);
+  const res3 = await (await post('/api/healthcheck/probe', { targets: [{ id: 'ping', host: '127.0.0.1', port: 0, method: 'icmp' }] }, admin)).json();
+  assert.ok(['up', 'unsupported'].includes(res3.results[0].status), 'icmp loopback is up (or unsupported without ping), never down');
+  ok(`icmp allowed → loopback ${res3.results[0].status}`);
+
   plain.close(); ssh.close();
   console.log('\n✅ healthcheck-check passed');
 } catch (e) {
