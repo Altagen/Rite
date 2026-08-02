@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Backend, type ContextState, type RemoteServer } from '../utils/backend';
-import { requestOpenContext } from '../utils/nativeShell';
+import { requestOpenContext, nativeVaults, nativeContext, type NativeVault } from '../utils/nativeShell';
 import { CertTrustModal } from './CertTrustModal';
 import riteLandscape from '../assets/rite.png';
 
@@ -114,6 +114,19 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
   };
 
   const isCurrentLocal = current?.kind === 'local';
+  // Multi-vault (ADR 0014): the shell injects the known local vaults; the hub lists them.
+  const vaults = nativeVaults();
+  const currentVaultPath = nativeContext()?.path ?? null;
+  const openVault = (v: NativeVault) => {
+    const isCurrent = isCurrentLocal && currentVaultPath === v.path;
+    if (isCurrent) {
+      onOpenLocalInPlace?.();
+      return onClose?.();
+    }
+    // A different vault opens in its own window (the shell focuses it if already open).
+    requestOpenContext({ kind: 'local', path: v.path });
+    onClose?.();
+  };
 
   return (
     <div className={onClose ? 'fixed inset-0 z-50 overflow-y-auto bg-background/95 backdrop-blur-sm' : 'min-h-screen overflow-y-auto bg-background'}>
@@ -144,24 +157,51 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
         )}
 
         <div className="flex flex-col gap-2">
-          {/* Local vault */}
-          <button
-            onClick={openLocal}
-            className="group flex items-center gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary hover:bg-muted"
-          >
-            <span className="text-2xl" aria-hidden>
-              🔒
-            </span>
-            <span className="flex-1">
-              <span className="block font-medium">Local vault</span>
-              <span className="block text-xs text-muted-foreground">
-                On this machine · unlocked with your master password
+          {/* Local vaults (multi-vault, ADR 0014). Fall back to a single card when the shell
+              injected no roster (older shell / web build). */}
+          {vaults.length > 0 ? (
+            vaults.map((v) => {
+              const isCurrent = isCurrentLocal && currentVaultPath === v.path;
+              return (
+                <button
+                  key={v.path}
+                  onClick={() => openVault(v)}
+                  className="group flex items-center gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary hover:bg-muted"
+                >
+                  <span className="text-2xl" aria-hidden>
+                    🔒
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{v.label}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      On this machine · unlocked with your master password
+                    </span>
+                  </span>
+                  <span className="text-xs font-medium text-muted-foreground group-hover:text-primary">
+                    {isCurrent ? 'Current' : 'Open'}
+                  </span>
+                </button>
+              );
+            })
+          ) : (
+            <button
+              onClick={openLocal}
+              className="group flex items-center gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary hover:bg-muted"
+            >
+              <span className="text-2xl" aria-hidden>
+                🔒
               </span>
-            </span>
-            <span className="text-xs font-medium text-muted-foreground group-hover:text-primary">
-              {isCurrentLocal ? 'Current' : 'Open'}
-            </span>
-          </button>
+              <span className="flex-1">
+                <span className="block font-medium">Local vault</span>
+                <span className="block text-xs text-muted-foreground">
+                  On this machine · unlocked with your master password
+                </span>
+              </span>
+              <span className="text-xs font-medium text-muted-foreground group-hover:text-primary">
+                {isCurrentLocal ? 'Current' : 'Open'}
+              </span>
+            </button>
+          )}
 
           {/* Registered servers */}
           {ctx?.roster.map((s) => {

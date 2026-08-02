@@ -22,8 +22,24 @@ export function nativeContext(): RiteNativeContext | undefined {
 
 /** A context the hub can ask the shell to open in its own window. */
 export type OpenContextRequest =
-  | { kind: 'local' }
+  | { kind: 'local'; path?: string } // path ⇒ a specific vault (multi-vault, ADR 0014)
   | { kind: 'server'; id: string; url: string; label?: string };
+
+/** A local vault the shell knows about (from `window.__RITE_VAULTS__`). */
+export interface NativeVault {
+  path: string;
+  label: string;
+}
+
+/**
+ * The local vaults the shell injected for this window (ADR 0014 multi-vault). The shell
+ * seeds the default vault, so this is non-empty natively; empty in the web build.
+ */
+export function nativeVaults(): NativeVault[] {
+  if (typeof window === 'undefined') return [];
+  const v = window.__RITE_VAULTS__;
+  return Array.isArray(v) ? v : [];
+}
 
 /**
  * Ask the native shell to open the given context in a window (or focus it if it's

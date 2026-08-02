@@ -7,6 +7,14 @@ interface RiteNativeContext {
   id?: string | null;
   url?: string | null;
   label?: string | null;
+  /** For a local window (multi-vault, ADR 0014): the vault `.db` this window opened. */
+  path?: string | null;
+}
+
+/** A local vault the shell knows about (multi-vault roster, ADR 0014). */
+interface RiteNativeVault {
+  path: string;
+  label: string;
 }
 
 interface Window {
@@ -22,6 +30,8 @@ interface Window {
   __RITE_CONTEXT__?: RiteNativeContext;
   /** wry IPC bridge: the frontend asks the shell to open a context in a window. */
   ipc?: { postMessage: (message: string) => void };
+  /** Local vaults the shell knows about (multi-vault roster, ADR 0014). */
+  __RITE_VAULTS__?: RiteNativeVault[];
 }
 
 declare module '*.png' {
