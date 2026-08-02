@@ -440,3 +440,34 @@ test('collections: shared zero-knowledge with roles + RBAC (ADR 0016)', async ({
     (await request.patch(`${BASE}/api/collections/${id}/members/${adminId}`, { headers: auth(adminL.token), data: { role: 'editor' } })).status(),
   ).toBe(409);
 });
+
+test('active health-check UI: Check marks an unreachable machine down (ADR 0017)', async ({ page, request }) => {
+  // Admin turns on on-demand probing for the whole server.
+  const admin = await login(request, 'admin', ADMIN.password);
+  expect(
+    (
+      await request.patch(`${BASE}/api/admin/healthcheck`, {
+        headers: auth(admin),
+        data: { passiveStatus: true, active: 'on-demand', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 },
+      })
+    ).status(),
+  ).toBe(204);
+
+  // Carol signs in (a fresh mode pull picks up the policy) and lands in the workspace.
+  await page.goto('/');
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#username').fill('carol');
+  await page.locator('#password').fill(CAROL_NEW);
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+
+  // Open her Personal collection into the main view — it holds my-web-box (an unreachable host
+  // saved earlier). The governed Check button appears because active probing is on.
+  await page.locator('.m-nm', { hasText: 'Personal' }).first().click();
+  const check = page.getByRole('button', { name: /check/i });
+  await expect(check).toBeVisible({ timeout: 15_000 });
+  await check.click();
+
+  // The server probes the machine's host (unresolvable) → the pastille resolves to "No response".
+  await expect(page.locator('[title*="No response"]').first()).toBeVisible({ timeout: 20_000 });
+});
