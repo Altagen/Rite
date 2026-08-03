@@ -245,14 +245,23 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, body: String) {
 /// unit-tested; the shell executes it (native dialogs / roster edits) as thin glue.
 #[derive(Debug, PartialEq)]
 enum VaultCommand {
-    /// Create a new vault — the shell shows a save dialog to choose its location.
-    New,
-    /// Open an existing `.db` — the shell shows an open dialog.
-    OpenFile,
+    /// Create a new vault. `path`/`label` absent ⇒ the shell shows a save dialog; present ⇒ use
+    /// them directly (a test hook that bypasses the native picker so new/open stay automatable).
+    New {
+        label: Option<String>,
+        path: Option<PathBuf>,
+    },
+    /// Open an existing `.db`. `path` absent ⇒ the shell shows an open dialog; present ⇒ use it.
+    OpenFile { path: Option<PathBuf> },
     /// Relabel a known vault in the roster.
     Rename { path: PathBuf, label: String },
-    /// Forget a vault from the roster (does not delete the file).
+    /// Forget a vault from the roster (does NOT delete the file).
     Forget { path: PathBuf },
+    /// Wipe a vault — erase its master password + all connections (irreversible). Reuses the
+    /// existing reset flow; the frontend confirms before sending.
+    Reset { path: PathBuf },
+    /// Lock a vault in-session (clears its key from RAM; re-requires the master password).
+    Lock { path: PathBuf },
 }
 
 /// Decode a `vault-*` management message, or `None` if it isn't one (or is malformed).
@@ -264,13 +273,24 @@ fn plan_vault_command(msg: &serde_json::Value) -> Option<VaultCommand> {
             .filter(|s| !s.is_empty())
     };
     match msg.get("type").and_then(|t| t.as_str())? {
-        "vault-new" => Some(VaultCommand::New),
-        "vault-open-file" => Some(VaultCommand::OpenFile),
+        "vault-new" => Some(VaultCommand::New {
+            label: str_field("label").map(String::from),
+            path: str_field("path").map(PathBuf::from),
+        }),
+        "vault-open-file" => Some(VaultCommand::OpenFile {
+            path: str_field("path").map(PathBuf::from),
+        }),
         "vault-rename" => Some(VaultCommand::Rename {
             path: PathBuf::from(str_field("path")?),
             label: str_field("label")?.to_string(),
         }),
         "vault-forget" => Some(VaultCommand::Forget {
+            path: PathBuf::from(str_field("path")?),
+        }),
+        "vault-reset" => Some(VaultCommand::Reset {
+            path: PathBuf::from(str_field("path")?),
+        }),
+        "vault-lock" => Some(VaultCommand::Lock {
             path: PathBuf::from(str_field("path")?),
         }),
         _ => None,
@@ -483,11 +503,42 @@ mod tests {
 
     #[test]
     fn vault_command_new_and_open_file() {
-        assert_eq!(plan_vault_command(&json!({ "type": "vault-new" })), Some(VaultCommand::New));
+        // Bare new/open → no path/label ⇒ the shell will show the native dialog.
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-new" })),
+            Some(VaultCommand::New { label: None, path: None })
+        );
         assert_eq!(
             plan_vault_command(&json!({ "type": "vault-open-file" })),
-            Some(VaultCommand::OpenFile)
+            Some(VaultCommand::OpenFile { path: None })
         );
+    }
+
+    #[test]
+    fn vault_command_new_open_accept_a_path_hook() {
+        // The test/automation hook: a path (and label) bypass the native picker.
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-new", "label": "Beta", "path": "/v/beta.db" })),
+            Some(VaultCommand::New { label: Some("Beta".into()), path: Some(PathBuf::from("/v/beta.db")) })
+        );
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-open-file", "path": "/v/x.db" })),
+            Some(VaultCommand::OpenFile { path: Some(PathBuf::from("/v/x.db")) })
+        );
+    }
+
+    #[test]
+    fn vault_command_reset_and_lock_need_path() {
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-reset", "path": "/v/a.db" })),
+            Some(VaultCommand::Reset { path: PathBuf::from("/v/a.db") })
+        );
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-lock", "path": "/v/a.db" })),
+            Some(VaultCommand::Lock { path: PathBuf::from("/v/a.db") })
+        );
+        assert!(plan_vault_command(&json!({ "type": "vault-reset" })).is_none());
+        assert!(plan_vault_command(&json!({ "type": "vault-lock" })).is_none());
     }
 
     #[test]
