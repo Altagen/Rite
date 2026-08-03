@@ -109,6 +109,9 @@ pub struct RemoteServer {
     /// ADR 0012 §4). `None` = validate via webpki roots (a real cert).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cert_fingerprint: Option<String>,
+    /// Optional device-local icon (ADR 0014): an emoji or a `data:` image URI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
 }
 
 /// The one active context (ADR 0006 single active context).
@@ -517,6 +520,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/context/servers", post(add_server))
         .route("/api/context/servers/{id}", delete(remove_server).patch(update_server))
         .route("/api/context/servers/{id}/pin", post(pin_server))
+        .route("/api/context/servers/{id}/icon", post(set_server_icon))
         .route("/api/context/probe", post(probe_remote))
         .route("/api/context/active", post(set_active_context))
         // Local-only vault-key control plane (ADR 0011): the webview posts the
@@ -2724,10 +2728,32 @@ async fn add_server(
             .unwrap_or_else(|| url.clone()),
         url,
         cert_fingerprint: None,
+        icon: None,
     };
     roster.push(entry.clone());
     save_roster(&state, &roster).await?;
     Ok((StatusCode::CREATED, Json(entry)).into_response())
+}
+
+#[derive(Deserialize)]
+struct SetIconReq {
+    /// An emoji or `data:` image URI; absent/null clears it.
+    icon: Option<String>,
+}
+
+/// Set (or clear) a roster server's device-local icon (ADR 0014).
+async fn set_server_icon(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Json(req): Json<SetIconReq>,
+) -> Result<Response, AppError> {
+    let mut roster = load_roster(&state).await;
+    let Some(entry) = roster.iter_mut().find(|s| s.id == id) else {
+        return Ok((StatusCode::NOT_FOUND, "unknown server").into_response());
+    };
+    entry.icon = req.icon.filter(|s| !s.is_empty());
+    save_roster(&state, &roster).await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 async fn remove_server(

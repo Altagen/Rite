@@ -151,6 +151,10 @@ const routes: Record<string, Route> = {
     return null;
   },
   context_probe: (a) => json('/api/context/probe', post({ url: a.url })),
+  context_set_server_icon: async (a) => {
+    await json(`/api/context/servers/${encodeURIComponent(String(a.id))}/icon`, post({ icon: a.icon }));
+    return null;
+  },
   context_pin_server: async (a) => {
     await json(`/api/context/servers/${encodeURIComponent(String(a.id))}/pin`, post({ fingerprint: a.fingerprint }));
     return null;

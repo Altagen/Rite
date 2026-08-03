@@ -598,6 +598,7 @@ const RemoteServerSchema = z.object({
   url: z.string(),
   label: z.string(),
   certFingerprint: z.string().optional(),
+  icon: z.string().optional(), // emoji or data: image URI (device-local, ADR 0014)
 });
 const ContextSchema = z.object({
   active: z.union([z.literal('local'), RemoteServerSchema]),
@@ -626,6 +627,9 @@ export const BackendContext = {
   /** Pin a confirmed self-signed cert fingerprint for a roster server. */
   pinServer: (id: string, fingerprint: string) =>
     invokeWithValidation('context_pin_server', z.null(), { id, fingerprint }),
+  /** Set (or clear, with undefined) a server's device-local icon (emoji or data: image URI). */
+  setServerIcon: (id: string, icon?: string) =>
+    invokeWithValidation('context_set_server_icon', z.null(), { id, icon: icon ?? null }),
   /** Hand the unwrapped vault key to the trusted local server (ADR 0011). */
   vaultUnlock: (userKeyHex: string, autoLockSecs?: number) =>
     invokeWithValidation('context_vault_unlock', z.null(), { userKey: userKeyHex, autoLockSecs }),

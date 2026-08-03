@@ -298,6 +298,7 @@ export async function mockInvoke(
     case 'context_remove_server':
     case 'context_set_active':
     case 'context_pin_server':
+    case 'context_set_server_icon':
     case 'context_vault_unlock':
     case 'context_vault_lock':
       return null;

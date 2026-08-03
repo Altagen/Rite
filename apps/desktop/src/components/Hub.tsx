@@ -38,15 +38,38 @@ export interface HubProps {
 
 const VAULT_EMOJI = ['🔒', '🚀', '🏠', '🖥️', '☁️', '🐳', '🗄️', '🔧', '🧪', '🌐', '🛡️', '📦'];
 
-/** Render a vault's icon: a `data:` image, an emoji, or the default lock glyph. */
-function VaultGlyph({ icon }: { icon?: string }) {
+/** Render a context icon: a `data:` image, an emoji, or a fallback glyph. */
+function IconGlyph({ icon, fallback }: { icon?: string; fallback: string }) {
   if (icon?.startsWith('data:'))
     return <img src={icon} alt="" className="h-7 w-7 flex-none rounded object-cover" />;
   return (
     <span className="text-2xl leading-none" aria-hidden>
-      {icon || '🔒'}
+      {icon || fallback}
     </span>
   );
+}
+
+/** Downscale a picked image to a small square PNG data URI so the roster stays lightweight. */
+function fileToIconDataUri(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('no canvas'));
+        ctx.drawImage(img, 0, 0, 64, 64);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => reject(new Error('bad image'));
+      img.src = String(reader.result);
+    };
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
@@ -86,6 +109,36 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
     if (onOpenLocalInPlace) onOpenLocalInPlace();
     else requestOpenContext({ kind: 'local' });
     onClose?.();
+  };
+
+  // Server icons (ADR 0014): emoji or a device-local image, stored in the roster via the backend.
+  const [serverIconMenu, setServerIconMenu] = useState<string | null>(null);
+  const setServerEmoji = async (s: RemoteServer, icon: string) => {
+    await Backend.Context.setServerIcon(s.id, icon).catch(() => {});
+    setServerIconMenu(null);
+    await refresh();
+  };
+  const setServerImage = (s: RemoteServer) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = () => {
+      const f = input.files?.[0];
+      if (!f) return;
+      void fileToIconDataUri(f)
+        .then((uri) => Backend.Context.setServerIcon(s.id, uri))
+        .then(() => {
+          setServerIconMenu(null);
+          return refresh();
+        })
+        .catch(() => {});
+    };
+    input.click();
+  };
+  const clearServerIcon = async (s: RemoteServer) => {
+    await Backend.Context.setServerIcon(s.id).catch(() => {});
+    setServerIconMenu(null);
+    await refresh();
   };
 
   const openServer = (s: RemoteServer) => {
@@ -278,7 +331,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                         onClick={() => openVault(v)}
                         className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-2 text-left hover:bg-muted"
                       >
-                        <VaultGlyph icon={v.icon} />
+                        <IconGlyph icon={v.icon} fallback="🔒" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{v.label}</span>
                           <span className="block truncate text-xs text-muted-foreground">{v.path}</span>
@@ -421,9 +474,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                   onClick={() => openServer(s)}
                   className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-2 text-left hover:bg-muted"
                 >
-                  <span className="text-2xl" aria-hidden>
-                    🖧
-                  </span>
+                  <IconGlyph icon={s.icon} fallback="🖧" />
                   <span className="min-w-0 flex-1 truncate">
                     <span className="block truncate font-medium">{s.label || s.url}</span>
                     <span className="block truncate text-xs text-muted-foreground">{s.url}</span>
@@ -432,6 +483,46 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                     {isCurrent ? 'Current' : 'Open'}
                   </span>
                 </button>
+                <div className="relative flex-none">
+                  <button
+                    onClick={() => setServerIconMenu(serverIconMenu === s.id ? null : s.id)}
+                    title="Change icon"
+                    aria-label={`Change icon for ${s.label || s.url}`}
+                    className="rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 15l-5-5L5 21" />
+                    </svg>
+                  </button>
+                  {serverIconMenu === s.id && (
+                    <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border bg-card p-2 shadow-lg">
+                      <div className="grid grid-cols-6 gap-1">
+                        {VAULT_EMOJI.map((emo) => (
+                          <button
+                            key={emo}
+                            onClick={() => void setServerEmoji(s, emo)}
+                            className="rounded p-1 text-xl hover:bg-muted"
+                          >
+                            {emo}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between border-t border-border pt-2 text-xs">
+                        <button onClick={() => setServerImage(s)} className="rounded px-2 py-1 font-medium hover:bg-muted">
+                          Image…
+                        </button>
+                        <button
+                          onClick={() => void clearServerIcon(s)}
+                          className="rounded px-2 py-1 text-muted-foreground hover:bg-muted"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={() => startEditServer(s)}
                   title="Edit URL / label"
