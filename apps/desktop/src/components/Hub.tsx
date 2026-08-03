@@ -45,6 +45,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
   const [error, setError] = useState<string | null>(null);
   const [pendingTrust, setPendingTrust] = useState<{ fingerprint: string } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null); // editing a roster server
   // Multi-vault (ADR 0014): re-render when the shell pushes a roster change; inline rename state.
   const [, bumpVaults] = useState(0);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -93,13 +94,34 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
     [url, label, refresh],
   );
 
+  const startEditServer = (s: RemoteServer) => {
+    setEditingId(s.id);
+    setUrl(s.url);
+    setLabel(s.label || '');
+    setAdding(true);
+  };
+  const cancelForm = () => {
+    setAdding(false);
+    setEditingId(null);
+    setUrl('');
+    setLabel('');
+    setError(null);
+  };
+
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!url.trim() || busy) return;
     setBusy(true);
     setError(null);
     try {
-      // Probe the TLS cert first (ADR 0012 §4): a real cert is trusted straight
+      // Editing an existing server: just save url/label (a changed URL re-pins on connect).
+      if (editingId) {
+        await Backend.Context.updateServer(editingId, url.trim(), label.trim() || undefined);
+        cancelForm();
+        await refresh();
+        return;
+      }
+      // Adding: probe the TLS cert first (ADR 0012 §4): a real cert is trusted straight
       // away; a self-signed one needs out-of-band fingerprint confirmation.
       const probe = await Backend.Context.probe(url.trim());
       if (!probe.trusted && probe.fingerprint) {
@@ -108,7 +130,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
       }
       await commitAdd();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add server');
+      setError(err instanceof Error ? err.message : 'Failed to save server');
     } finally {
       setBusy(false);
     }
@@ -346,6 +368,16 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                   </span>
                 </button>
                 <button
+                  onClick={() => startEditServer(s)}
+                  title="Edit URL / label"
+                  aria-label={`Edit ${s.label || s.url}`}
+                  className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
+                  </svg>
+                </button>
+                <button
                   onClick={() => setConfirmRemove(s.id)}
                   title="Remove from this device"
                   aria-label={`Remove ${s.label || s.url}`}
@@ -381,7 +413,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setAdding(false)}
+                onClick={cancelForm}
                 className="rounded px-3 py-1.5 text-sm hover:bg-muted"
               >
                 Cancel
@@ -391,7 +423,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                 disabled={busy || !url.trim()}
                 className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
               >
-                Add server
+                {editingId ? 'Save' : 'Add server'}
               </button>
             </div>
           </form>

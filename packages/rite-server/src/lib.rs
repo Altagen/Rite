@@ -515,7 +515,7 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/context", get(get_context))
         .route("/api/context/servers", post(add_server))
-        .route("/api/context/servers/{id}", delete(remove_server))
+        .route("/api/context/servers/{id}", delete(remove_server).patch(update_server))
         .route("/api/context/servers/{id}/pin", post(pin_server))
         .route("/api/context/probe", post(probe_remote))
         .route("/api/context/active", post(set_active_context))
@@ -2729,6 +2729,51 @@ async fn remove_server(
     } else {
         StatusCode::NOT_FOUND
     })
+}
+
+#[derive(Deserialize)]
+struct UpdateServerReq {
+    url: String,
+    label: Option<String>,
+}
+
+/// Edit a roster server's URL/label (ADR 0012). A changed URL is a different endpoint, so its
+/// pinned cert is cleared — it must be re-pinned (TOFU) on next connect.
+async fn update_server(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateServerReq>,
+) -> Result<Response, AppError> {
+    let url = req.url.trim().trim_end_matches('/').to_string();
+    if !is_valid_remote_url(&url) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "remote must be https:// (http:// only on loopback)" })),
+        )
+            .into_response());
+    }
+    let mut roster = load_roster(&state).await;
+    if roster.iter().any(|s| s.url == url && s.id != id) {
+        return Ok((
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "server already in the roster" })),
+        )
+            .into_response());
+    }
+    let Some(entry) = roster.iter_mut().find(|s| s.id == id) else {
+        return Ok((StatusCode::NOT_FOUND, "unknown server").into_response());
+    };
+    if entry.url != url {
+        entry.cert_fingerprint = None; // new endpoint → re-pin on next connect
+    }
+    entry.url = url.clone();
+    entry.label = req
+        .label
+        .filter(|l| !l.trim().is_empty())
+        .unwrap_or_else(|| url.clone());
+    let updated = entry.clone();
+    save_roster(&state, &roster).await?;
+    Ok(Json(updated).into_response())
 }
 
 #[derive(Deserialize)]

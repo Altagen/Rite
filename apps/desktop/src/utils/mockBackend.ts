@@ -288,6 +288,12 @@ export async function mockInvoke(
         url: String(args?.url ?? ''),
         label: String(args?.label || args?.url || ''),
       };
+    case 'context_update_server':
+      return {
+        id: String(args?.id ?? ''),
+        url: String(args?.url ?? ''),
+        label: String(args?.label || args?.url || ''),
+      };
     case 'context_remove_server':
     case 'context_set_active':
     case 'context_pin_server':

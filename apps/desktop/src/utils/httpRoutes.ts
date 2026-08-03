@@ -132,6 +132,12 @@ const routes: Record<string, Route> = {
 
   context_get: () => json('/api/context'),
   context_add_server: (a) => json('/api/context/servers', post({ url: a.url, label: a.label })),
+  context_update_server: (a) =>
+    json(`/api/context/servers/${encodeURIComponent(String(a.id))}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: a.url, label: a.label }),
+    }),
   context_remove_server: async (a) => {
     await json(`/api/context/servers/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
     return null;

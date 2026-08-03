@@ -610,6 +610,9 @@ export const BackendContext = {
   get: () => invokeWithValidation('context_get', ContextSchema),
   addServer: (url: string, label?: string) =>
     invokeWithValidation('context_add_server', RemoteServerSchema, { url, label }),
+  /** Edit a roster server's URL/label. A changed URL clears its pinned cert (re-pin on connect). */
+  updateServer: (id: string, url: string, label?: string) =>
+    invokeWithValidation('context_update_server', RemoteServerSchema, { id, url, label }),
   removeServer: (id: string) => invokeWithValidation('context_remove_server', z.null(), { id }),
   /** `'local'` or a roster server id. */
   setActive: (server: string) => invokeWithValidation('context_set_active', z.null(), { server }),
