@@ -139,6 +139,11 @@ export const BackendAuth = {
   setupMasterPassword: (password: string) =>
     invokeWithValidation('setup_master_password', z.null(), { password }),
 
+  /** Change the local-vault master password (re-keys all connections). Throws a typed
+   *  RiteHttpError on a wrong current password (401) or a too-weak new one (400). */
+  changeMasterPassword: (oldPassword: string, newPassword: string) =>
+    invokeWithValidation('change_master_password', z.null(), { old: oldPassword, new: newPassword }),
+
   /**
    * Unlock the application with the master password
    */

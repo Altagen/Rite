@@ -118,6 +118,7 @@ export async function mockInvoke(
     case 'lock':
     case 'setup_master_password':
     case 'reset_database':
+    case 'change_master_password':
       return null;
     case 'validate_password': {
       const pw = String(args?.password ?? '');

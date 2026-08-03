@@ -53,6 +53,10 @@ const routes: Record<string, Route> = {
   is_locked: () => json('/api/auth/locked'),
   unlock: (a) => json('/api/auth/unlock', post({ password: a.password })),
   setup_master_password: (a) => json('/api/auth/setup', post({ password: a.password })),
+  change_master_password: async (a) => {
+    await json('/api/auth/change-master-password', post({ old: a.old, new: a.new }));
+    return null;
+  },
   lock: () => json('/api/auth/lock', { method: 'POST' }),
   reset_database: () => json('/api/auth/reset', { method: 'POST' }),
   validate_password: (a) => json('/api/auth/validate-password', post({ password: a.password })),

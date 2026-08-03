@@ -12,6 +12,7 @@ import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../u
 import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
 import { useServerSession } from '../store/serverSessionStore';
 import { Backend } from '../utils/backend';
+import { RiteHttpError } from '../utils/httpError';
 
 interface SettingsProps {
   onClose: () => void;
@@ -31,6 +32,38 @@ export function Settings({ onClose }: SettingsProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync draft to async-loaded value
     setShellDraft(settings.defaultShell);
   }, [settings.defaultShell]);
+  // Change master password (local vault): re-keys all connections server-side.
+  const [pwCurrent, setPwCurrent] = useState('');
+  const [pwNew, setPwNew] = useState('');
+  const [pwConfirm, setPwConfirm] = useState('');
+  const [pwMsg, setPwMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [pwBusy, setPwBusy] = useState(false);
+  const changeMaster = async () => {
+    if (pwBusy) return;
+    if (pwNew !== pwConfirm) {
+      setPwMsg({ kind: 'err', text: 'The new passwords don’t match.' });
+      return;
+    }
+    setPwBusy(true);
+    setPwMsg(null);
+    try {
+      await Backend.Auth.changeMasterPassword(pwCurrent, pwNew);
+      setPwCurrent('');
+      setPwNew('');
+      setPwConfirm('');
+      setPwMsg({ kind: 'ok', text: 'Master password changed.' });
+    } catch (e) {
+      const text =
+        e instanceof RiteHttpError && e.status === 401
+          ? 'The current password is incorrect.'
+          : e instanceof RiteHttpError && e.status === 400
+            ? 'The new password is too weak.'
+            : 'Could not change the master password.';
+      setPwMsg({ kind: 'err', text });
+    } finally {
+      setPwBusy(false);
+    }
+  };
   // Reset vault (local vault only): wipe the master password + all connections, then reboot to
   // first-run. Guarded by typing the confirmation phrase (mirrors the unlock screen).
   const [resetText, setResetText] = useState('');
@@ -455,6 +488,52 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
             </div>
           </section>
+
+          {/* Master password — change it (local vault). Re-keys every connection. */}
+          {isLocalContext && (
+            <section className="border-b border-border pb-6">
+              <h3 className="mb-4 text-lg font-semibold">Master password</h3>
+              <div className="max-w-sm space-y-2">
+                <input
+                  type="password"
+                  value={pwCurrent}
+                  onChange={(e) => setPwCurrent(e.target.value)}
+                  placeholder="Current password"
+                  autoComplete="current-password"
+                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
+                />
+                <input
+                  type="password"
+                  value={pwNew}
+                  onChange={(e) => setPwNew(e.target.value)}
+                  placeholder="New password"
+                  autoComplete="new-password"
+                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
+                />
+                <input
+                  type="password"
+                  value={pwConfirm}
+                  onChange={(e) => setPwConfirm(e.target.value)}
+                  placeholder="Confirm new password"
+                  autoComplete="new-password"
+                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
+                />
+                {pwMsg && (
+                  <p className={`text-xs ${pwMsg.kind === 'ok' ? 'text-green-600' : 'text-red-500'}`}>
+                    {pwMsg.text}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void changeMaster()}
+                  disabled={pwBusy || !pwCurrent || !pwNew || !pwConfirm}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+                >
+                  {pwBusy ? 'Changing…' : 'Change password'}
+                </button>
+              </div>
+            </section>
+          )}
 
           {/* Danger zone — reset this local vault (wipe + reboot to first-run). Local only. */}
           {isLocalContext && (

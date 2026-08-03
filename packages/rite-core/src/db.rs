@@ -532,6 +532,59 @@ impl Database {
         Ok(())
     }
 
+    /// Every connection's stored credential blob: (id, encrypted_credentials, nonce). Used to
+    /// re-encrypt them when the master password changes.
+    pub async fn all_connection_crypto(&self) -> Result<Vec<(String, Vec<u8>, Vec<u8>)>> {
+        let rows = sqlx::query("SELECT id, encrypted_credentials, nonce FROM connections")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows
+            .iter()
+            .map(|r| {
+                (
+                    r.get::<String, _>("id"),
+                    r.get::<Vec<u8>, _>("encrypted_credentials"),
+                    r.get::<Vec<u8>, _>("nonce"),
+                )
+            })
+            .collect())
+    }
+
+    /// Atomically re-key the vault (ADR 0014): replace each connection's re-encrypted credentials
+    /// AND the master-password hash/salt in ONE transaction, so a mid-way failure can never leave a
+    /// mixed-key vault (some connections under the old key, some the new).
+    pub async fn rekey_vault(
+        &self,
+        conns: &[(String, Vec<u8>, Vec<u8>)],
+        new_hash: &str,
+        new_salt: &[u8],
+    ) -> Result<()> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut tx = self.pool.begin().await?;
+        for (id, blob, nonce) in conns {
+            sqlx::query(
+                "UPDATE connections SET encrypted_credentials = ?1, nonce = ?2, updated_at = ?3 WHERE id = ?4",
+            )
+            .bind(blob)
+            .bind(nonce)
+            .bind(now)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        sqlx::query(
+            "INSERT INTO master_password (id, hash, salt, created_at, updated_at) VALUES (1, ?1, ?2, ?3, ?3) \
+             ON CONFLICT(id) DO UPDATE SET hash = excluded.hash, salt = excluded.salt, updated_at = excluded.updated_at",
+        )
+        .bind(new_hash)
+        .bind(new_salt)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
     /// Delete connection
     pub async fn delete_connection(&self, id: &str) -> Result<()> {
         sqlx::query("DELETE FROM connections WHERE id = ?1")

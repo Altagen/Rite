@@ -18,7 +18,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use axum::{Extension, Json, Router};
 use base64::Engine as _;
-use rite_core::auth::{AuthManager, UnlockResult};
+use rite_core::auth::{AuthManager, ChangeMasterOutcome, UnlockResult};
 use rite_core::connection::{
     AuthMethod, Connection, ConnectionInfo, ConnectionMetadata, CreateConnectionInput, Protocol,
     UpdateConnectionInput,
@@ -530,6 +530,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/auth/setup", post(setup))
         .route("/api/auth/lock", post(lock))
         .route("/api/auth/reset", post(reset))
+        .route("/api/auth/change-master-password", post(change_master_password_local))
         .route("/api/auth/validate-password", post(validate_password))
         .route("/api/settings", get(settings))
         .route("/api/settings/{key}", get(get_setting).put(set_setting))
@@ -984,6 +985,27 @@ async fn lock(State(state): State<ServerState>) -> Result<StatusCode, AppError> 
 async fn reset(State(state): State<ServerState>) -> Result<StatusCode, AppError> {
     state.auth.reset_database().await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct ChangeMasterReq {
+    old: String,
+    new: String,
+}
+
+/// Change the local-vault master password (ADR 0014). Re-keys all connections atomically; a wrong
+/// current password → 401, a too-weak new one → 400.
+async fn change_master_password_local(
+    State(state): State<ServerState>,
+    Json(req): Json<ChangeMasterReq>,
+) -> Result<Response, AppError> {
+    match state.auth.change_master_password(&req.old, &req.new).await? {
+        ChangeMasterOutcome::Success => Ok(StatusCode::NO_CONTENT.into_response()),
+        ChangeMasterOutcome::WrongPassword => {
+            Ok((StatusCode::UNAUTHORIZED, "current password is incorrect").into_response())
+        }
+        ChangeMasterOutcome::TooWeak(msg) => Ok((StatusCode::BAD_REQUEST, msg).into_response()),
+    }
 }
 
 async fn validate_password(Json(req): Json<PasswordReq>) -> Json<Value> {
