@@ -56,8 +56,6 @@ impl VaultRoster {
     }
 
     /// Rename a known vault. Returns whether it existed; persists on change.
-    // Wired by the vault-management IPC (rename/remove/new/open-file) in a follow-up increment.
-    #[allow(dead_code)]
     pub fn rename(&mut self, path: impl AsRef<Path>, label: &str) -> std::io::Result<bool> {
         let path = normalize(path.as_ref());
         let Some(e) = self.entries.iter_mut().find(|e| e.path == path) else {
@@ -69,7 +67,6 @@ impl VaultRoster {
     }
 
     /// Forget a vault (does NOT delete the `.db` file — that's a separate "reset").
-    #[allow(dead_code)]
     pub fn remove(&mut self, path: impl AsRef<Path>) -> std::io::Result<bool> {
         let path = normalize(path.as_ref());
         let before = self.entries.len();

@@ -41,6 +41,33 @@ export function nativeVaults(): NativeVault[] {
   return Array.isArray(v) ? v : [];
 }
 
+/** A vault-management command the hub asks the shell to run (ADR 0014). */
+export type VaultCommand =
+  | { type: 'vault-new' } // shell shows a save dialog
+  | { type: 'vault-open-file' } // shell shows an open dialog
+  | { type: 'vault-rename'; path: string; label: string }
+  | { type: 'vault-forget'; path: string }; // drop from the roster (keeps the file)
+
+/**
+ * Ask the native shell to run a vault-management command. Returns false when there's no shell
+ * (web build). The shell pushes the updated roster back via a `rite-vaults-changed` event.
+ */
+export function sendVaultCommand(cmd: VaultCommand): boolean {
+  if (typeof window === 'undefined' || !window.ipc) return false;
+  window.ipc.postMessage(JSON.stringify(cmd));
+  return true;
+}
+
+/**
+ * Subscribe to shell-pushed roster changes (the shell fires `rite-vaults-changed` after a vault
+ * command). Returns an unsubscribe fn. No-op in the web build.
+ */
+export function onVaultsChanged(handler: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('rite-vaults-changed', handler);
+  return () => window.removeEventListener('rite-vaults-changed', handler);
+}
+
 /**
  * Ask the native shell to open the given context in a window (or focus it if it's
  * already open — the shell's one-window-per-context registry decides). Returns

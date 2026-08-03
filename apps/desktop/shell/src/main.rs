@@ -44,15 +44,17 @@ struct OpenRequest {
 }
 
 /// Custom event loop message: created off the event-loop thread (an IPC handler)
-/// and handled on it (where windows may be built).
+/// and handled on it (where windows may be built and the roster mutated).
 enum UserEvent {
     OpenContext(OpenRequest),
+    Vault(VaultCommand),
 }
 
 /// A live window: its server's loopback port, plus the `wry` webview and `tao`
-/// window kept alive for the window's lifetime (dropping them closes it).
+/// window kept alive for the window's lifetime (dropping them closes it). The
+/// webview is also used to push roster updates back into the hub (ADR 0014).
 struct WindowState {
-    _webview: WebView,
+    webview: WebView,
     window: Window,
     #[allow(dead_code)]
     port: u16,
@@ -105,7 +107,7 @@ fn main() -> Result<()> {
             tracing::warn!("[rite-desktop] could not seed the vault roster: {e}");
         }
     }
-    let vaults_json = serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
+    let mut vaults_json = serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
 
     // The launch window shows the context hub (ADR 0014). Its server is the local
     // one, so it's registered as the local context — picking "local vault" in the
@@ -155,6 +157,14 @@ fn main() -> Result<()> {
                             );
                         }
                     }
+                }
+            }
+            Event::UserEvent(UserEvent::Vault(cmd)) => {
+                if apply_vault_command(cmd, &mut roster, &proxy) {
+                    // The roster changed: refresh every open window's hub (ADR 0014).
+                    vaults_json =
+                        serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
+                    broadcast_vaults(&windows, &vaults_json);
                 }
             }
             _ => {}
@@ -216,7 +226,7 @@ fn open_window(
     let webview = webview_builder.build(&window)?;
 
     registry.register(req.key, window_id);
-    windows.insert(window_id, WindowState { _webview: webview, window, port });
+    windows.insert(window_id, WindowState { webview, window, port });
     Ok(())
 }
 
@@ -235,9 +245,9 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, body: String) {
         return;
     }
     if let Some(cmd) = plan_vault_command(&msg) {
-        // Executor (rfd dialogs for new/open-file; roster mutation for rename/forget) lands in
-        // the desktop increment; the decision is already settled + tested here.
-        tracing::info!("[rite-desktop] vault command recognized (executor pending): {cmd:?}");
+        if proxy.send_event(UserEvent::Vault(cmd)).is_err() {
+            tracing::warn!("[rite-desktop] event loop gone; dropping vault command");
+        }
     }
 }
 
@@ -340,6 +350,93 @@ fn parse_open_request(msg: &serde_json::Value, default_db: &Path) -> Option<Open
         other => {
             tracing::warn!("[rite-desktop] open-context with unknown kind {other:?}");
             None
+        }
+    }
+}
+
+/// Execute a vault-management command on the event-loop thread (ADR 0014). Returns whether the
+/// roster changed, so the caller refreshes open hubs. New/OpenFile add to the roster and ask the
+/// loop to open the vault in a window (via an OpenContext event); rename/forget mutate the roster
+/// in place. Reset/Lock are Phase C — logged for now. `rfd` dialogs run here (GTK main thread);
+/// the optional path on New/OpenFile is a test hook that bypasses the picker.
+fn apply_vault_command(
+    cmd: VaultCommand,
+    roster: &mut vault_roster::VaultRoster,
+    proxy: &EventLoopProxy<UserEvent>,
+) -> bool {
+    match cmd {
+        VaultCommand::Rename { path, label } => roster.rename(&path, &label).unwrap_or(false),
+        VaultCommand::Forget { path } => roster.remove(&path).unwrap_or(false),
+        VaultCommand::New { label, path } => {
+            let Some(p) = path.or_else(|| {
+                rfd::FileDialog::new()
+                    .set_title("Create a new Rite vault")
+                    .set_file_name("vault.db")
+                    .save_file()
+            }) else {
+                return false; // the user cancelled the dialog
+            };
+            let label = label.unwrap_or_else(|| vault_label_for(&p));
+            let added = roster.add(&p, &label).unwrap_or(false);
+            open_local_vault(&p, proxy);
+            added
+        }
+        VaultCommand::OpenFile { path } => {
+            let Some(p) = path.or_else(|| {
+                rfd::FileDialog::new()
+                    .set_title("Open a Rite vault")
+                    .add_filter("Rite vault", &["db"])
+                    .pick_file()
+            }) else {
+                return false;
+            };
+            let added = roster.add(&p, &vault_label_for(&p)).unwrap_or(false);
+            open_local_vault(&p, proxy);
+            added
+        }
+        VaultCommand::Reset { path } | VaultCommand::Lock { path } => {
+            tracing::info!(
+                "[rite-desktop] vault command for {} — Phase C executor pending",
+                path.display()
+            );
+            false
+        }
+    }
+}
+
+/// Ask the event loop to open (or focus) a local-vault window at `path`.
+fn open_local_vault(path: &Path, proxy: &EventLoopProxy<UserEvent>) {
+    let req = OpenRequest {
+        key: ContextKey::local(path),
+        db_path: path.to_path_buf(),
+        inject: serde_json::json!({ "kind": "local", "path": path.to_string_lossy() }).to_string(),
+    };
+    if proxy.send_event(UserEvent::OpenContext(req)).is_err() {
+        tracing::warn!("[rite-desktop] event loop gone; couldn't open the vault window");
+    }
+}
+
+/// A default human label for a vault path (the file stem, e.g. `beta.db` → "beta").
+fn vault_label_for(path: &Path) -> String {
+    path.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "Vault".to_string())
+}
+
+/// Push the current roster into every open window's hub: update `window.__RITE_VAULTS__` and
+/// fire `rite-vaults-changed` so the hub re-renders live (no reload).
+fn broadcast_vaults(
+    windows: &std::collections::HashMap<WindowId, WindowState>,
+    vaults_json: &str,
+) {
+    let js = format!(
+        "window.__RITE_VAULTS__ = {vaults_json}; \
+         window.dispatchEvent(new Event('rite-vaults-changed'));"
+    );
+    for w in windows.values() {
+        if let Err(e) = w.webview.evaluate_script(&js) {
+            tracing::warn!("[rite-desktop] couldn't refresh a hub: {e}");
         }
     }
 }

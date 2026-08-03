@@ -15,7 +15,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Backend, type ContextState, type RemoteServer } from '../utils/backend';
-import { requestOpenContext, nativeVaults, nativeContext, type NativeVault } from '../utils/nativeShell';
+import {
+  requestOpenContext,
+  nativeVaults,
+  nativeContext,
+  sendVaultCommand,
+  onVaultsChanged,
+  type NativeVault,
+} from '../utils/nativeShell';
 import { CertTrustModal } from './CertTrustModal';
 import riteLandscape from '../assets/rite.png';
 
@@ -37,6 +44,10 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
   const [error, setError] = useState<string | null>(null);
   const [pendingTrust, setPendingTrust] = useState<{ fingerprint: string } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  // Multi-vault (ADR 0014): re-render when the shell pushes a roster change; inline rename state.
+  const [, bumpVaults] = useState(0);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renameLabel, setRenameLabel] = useState('');
 
   const refresh = useCallback(async () => {
     try {
@@ -51,6 +62,9 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async initial load
     void refresh();
   }, [refresh]);
+
+  // The shell fires `rite-vaults-changed` after a vault command → re-read window.__RITE_VAULTS__.
+  useEffect(() => onVaultsChanged(() => bumpVaults((n) => n + 1)), []);
 
   const openLocal = () => {
     if (current?.kind === 'local') return onClose?.();
@@ -128,6 +142,21 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
     onClose?.();
   };
 
+  // Vault management (ADR 0014). The shell runs the command (native dialog for new/open) and
+  // pushes the updated roster back via `rite-vaults-changed`, so we don't refresh by hand.
+  const newVault = () => sendVaultCommand({ type: 'vault-new' });
+  const openVaultFile = () => sendVaultCommand({ type: 'vault-open-file' });
+  const startRename = (v: NativeVault) => {
+    setRenamingPath(v.path);
+    setRenameLabel(v.label);
+  };
+  const commitRename = () => {
+    const label = renameLabel.trim();
+    if (renamingPath && label) sendVaultCommand({ type: 'vault-rename', path: renamingPath, label });
+    setRenamingPath(null);
+  };
+  const forgetVault = (v: NativeVault) => sendVaultCommand({ type: 'vault-forget', path: v.path });
+
   return (
     <div className={onClose ? 'fixed inset-0 z-50 overflow-y-auto bg-background/95 backdrop-blur-sm' : 'min-h-screen overflow-y-auto bg-background'}>
       <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center gap-6 px-6 py-12 text-foreground">
@@ -162,25 +191,70 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
           {vaults.length > 0 ? (
             vaults.map((v) => {
               const isCurrent = isCurrentLocal && currentVaultPath === v.path;
+              const renaming = renamingPath === v.path;
               return (
-                <button
+                <div
                   key={v.path}
-                  onClick={() => openVault(v)}
-                  className="group flex items-center gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary hover:bg-muted"
+                  className="group flex items-center gap-2 rounded-lg border border-border bg-card p-2 pr-3 transition-colors hover:border-primary"
                 >
-                  <span className="text-2xl" aria-hidden>
-                    🔒
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{v.label}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      On this machine · unlocked with your master password
-                    </span>
-                  </span>
-                  <span className="text-xs font-medium text-muted-foreground group-hover:text-primary">
-                    {isCurrent ? 'Current' : 'Open'}
-                  </span>
-                </button>
+                  {renaming ? (
+                    <div className="flex flex-1 items-center gap-3 p-2">
+                      <span className="text-2xl" aria-hidden>
+                        🔒
+                      </span>
+                      <input
+                        autoFocus
+                        value={renameLabel}
+                        onChange={(e) => setRenameLabel(e.target.value)}
+                        onBlur={commitRename}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') commitRename();
+                          if (e.key === 'Escape') setRenamingPath(null);
+                        }}
+                        aria-label="Vault name"
+                        className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => openVault(v)}
+                        className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-2 text-left hover:bg-muted"
+                      >
+                        <span className="text-2xl" aria-hidden>
+                          🔒
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-medium">{v.label}</span>
+                          <span className="block truncate text-xs text-muted-foreground">{v.path}</span>
+                        </span>
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {isCurrent ? 'Current' : 'Open'}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => startRename(v)}
+                        title="Rename"
+                        aria-label={`Rename ${v.label}`}
+                        className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => forgetVault(v)}
+                        title="Remove from list"
+                        aria-label={`Remove ${v.label} from the list`}
+                        className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
+                        </svg>
+                      </button>
+                    </>
+                  )}
+                </div>
               );
             })
           ) : (
@@ -201,6 +275,30 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                 {isCurrentLocal ? 'Current' : 'Open'}
               </span>
             </button>
+          )}
+
+          {/* New / open a vault file (multi-vault, ADR 0014) — native shell only. */}
+          {vaults.length > 0 && (
+            <div className="flex gap-2">
+              <button
+                onClick={newVault}
+                className="flex flex-1 items-center gap-2 rounded-lg border border-dashed border-border p-3 text-left text-sm text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+              >
+                <span className="text-lg leading-none" aria-hidden>
+                  ＋
+                </span>
+                New local vault…
+              </button>
+              <button
+                onClick={openVaultFile}
+                className="flex flex-1 items-center gap-2 rounded-lg border border-dashed border-border p-3 text-left text-sm text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+              >
+                <span className="text-lg leading-none" aria-hidden>
+                  📂
+                </span>
+                Open a vault file…
+              </button>
+            </div>
           )}
 
           {/* Registered servers */}
