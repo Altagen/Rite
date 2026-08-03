@@ -13,7 +13,14 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Backend, type ContextState, type RemoteServer } from '../utils/backend';
-import { isNativeShell, requestOpenContext } from '../utils/nativeShell';
+import {
+  isNativeShell,
+  requestOpenContext,
+  nativeVaults,
+  nativeContext,
+  sendVaultCommand,
+  onVaultsChanged,
+} from '../utils/nativeShell';
 import { Hub } from './Hub';
 
 export function ContextPill() {
@@ -43,16 +50,27 @@ export function ContextPill() {
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
+  // Re-render when the shell pushes a roster change (ADR 0014).
+  const [, bumpVaults] = useState(0);
+  useEffect(() => onVaultsChanged(() => bumpVaults((n) => n + 1)), []);
 
   if (!isNativeShell()) return null;
 
   const active = ctx?.active;
   const isLocalActive = !active || active === 'local';
-  const currentLabel = isLocalActive ? 'Local vault' : active.label || active.url;
+  const vaults = nativeVaults();
+  const currentVaultPath = nativeContext()?.path ?? null;
+  const currentLabel = isLocalActive
+    ? vaults.find((v) => v.path === currentVaultPath)?.label ?? 'Local vault'
+    : active.label || active.url;
 
   const openLocal = () => {
     setOpen(false);
     if (!isLocalActive) requestOpenContext({ kind: 'local' });
+  };
+  const openVault = (path: string) => {
+    setOpen(false);
+    if (!(isLocalActive && currentVaultPath === path)) requestOpenContext({ kind: 'local', path });
   };
   const openServer = (s: RemoteServer) => {
     setOpen(false);
@@ -81,18 +99,41 @@ export function ContextPill() {
       {open && (
         <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-md border border-border bg-card p-1 shadow-lg">
           <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Local
+            Local vaults
           </p>
-          <button
-            onClick={openLocal}
-            className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
-              isLocalActive ? 'bg-primary/10' : ''
-            }`}
-          >
-            <span className="h-2 w-2 flex-none rounded-full bg-amber-400" />
-            <span className="flex-1 truncate">Local vault</span>
-            {isLocalActive && <span className="text-xs text-primary">current</span>}
-          </button>
+          {vaults.length > 0 ? (
+            vaults.map((v) => {
+              const isCurrent = isLocalActive && currentVaultPath === v.path;
+              return (
+                <button
+                  key={v.path}
+                  onClick={() => openVault(v.path)}
+                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
+                    isCurrent ? 'bg-primary/10' : ''
+                  }`}
+                >
+                  {v.icon?.startsWith('data:') ? (
+                    <img src={v.icon} alt="" className="h-4 w-4 flex-none rounded object-cover" />
+                  ) : (
+                    <span className="flex-none text-sm leading-none">{v.icon || '🔒'}</span>
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{v.label}</span>
+                  {isCurrent && <span className="flex-none text-xs text-primary">current</span>}
+                </button>
+              );
+            })
+          ) : (
+            <button
+              onClick={openLocal}
+              className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
+                isLocalActive ? 'bg-primary/10' : ''
+              }`}
+            >
+              <span className="h-2 w-2 flex-none rounded-full bg-amber-400" />
+              <span className="flex-1 truncate">Local vault</span>
+              {isLocalActive && <span className="text-xs text-primary">current</span>}
+            </button>
+          )}
 
           {ctx && ctx.roster.length > 0 && (
             <>
@@ -122,6 +163,24 @@ export function ContextPill() {
           )}
 
           <div className="my-1 border-t border-border" />
+          <button
+            onClick={() => {
+              setOpen(false);
+              sendVaultCommand({ type: 'vault-new' });
+            }}
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <span aria-hidden>＋</span> New local vault…
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              sendVaultCommand({ type: 'vault-open-file' });
+            }}
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <span aria-hidden>📂</span> Open a vault file…
+          </button>
           <button
             onClick={() => {
               setOpen(false);
