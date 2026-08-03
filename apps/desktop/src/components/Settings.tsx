@@ -11,6 +11,7 @@ import { useTranslation } from '../i18n/i18n';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
 import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
 import { useServerSession } from '../store/serverSessionStore';
+import { Backend } from '../utils/backend';
 
 interface SettingsProps {
   onClose: () => void;
@@ -30,6 +31,18 @@ export function Settings({ onClose }: SettingsProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync draft to async-loaded value
     setShellDraft(settings.defaultShell);
   }, [settings.defaultShell]);
+  // Reset vault (local vault only): wipe the master password + all connections, then reboot to
+  // first-run. Guarded by typing the confirmation phrase (mirrors the unlock screen).
+  const [resetText, setResetText] = useState('');
+  const resetVault = async () => {
+    if (resetText !== 'DELETE ALL DATA') return;
+    try {
+      await Backend.Auth.resetDatabase();
+      window.location.reload();
+    } catch (e) {
+      console.error('Reset vault failed:', e);
+    }
+  };
 
   const [selectedTimeout, setSelectedTimeout] = useState<number>(0);
   const [customTimeout, setCustomTimeout] = useState('');
@@ -442,6 +455,37 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
             </div>
           </section>
+
+          {/* Danger zone — reset this local vault (wipe + reboot to first-run). Local only. */}
+          {isLocalContext && (
+            <section className="pb-6">
+              <h3 className="mb-4 text-lg font-semibold text-red-500">Danger zone</h3>
+              <div className="rounded-md border border-red-500/30 bg-red-500/5 p-4">
+                <div className="font-medium">Reset vault</div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Erase the master password and all connections on this device. This is
+                  irreversible.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <input
+                    value={resetText}
+                    onChange={(e) => setResetText(e.target.value)}
+                    placeholder="Type DELETE ALL DATA"
+                    aria-label="Reset confirmation"
+                    className="w-52 rounded border border-input bg-background px-2 py-1.5 text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void resetVault()}
+                    disabled={resetText !== 'DELETE ALL DATA'}
+                    className="rounded-md border border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                  >
+                    Reset vault
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
         </div>
 
         {/* Actions */}

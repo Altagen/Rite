@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Backend, type ContextState, type RemoteServer } from '../utils/backend';
+import { useAuthStore } from '../store/authStore';
 import {
   requestOpenContext,
   nativeVaults,
@@ -156,6 +157,13 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
     setRenamingPath(null);
   };
   const forgetVault = (v: NativeVault) => sendVaultCommand({ type: 'vault-forget', path: v.path });
+  // Lock the current window's vault (in-session; re-requires the master password). Only the
+  // current vault can be locked from here — other vaults live in their own windows.
+  const lockCurrent = useAuthStore((s) => s.lock);
+  const lockVault = () => {
+    void lockCurrent();
+    onClose?.();
+  };
 
   return (
     <div className={onClose ? 'fixed inset-0 z-50 overflow-y-auto bg-background/95 backdrop-blur-sm' : 'min-h-screen overflow-y-auto bg-background'}>
@@ -232,6 +240,19 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                           {isCurrent ? 'Current' : 'Open'}
                         </span>
                       </button>
+                      {isCurrent && (
+                        <button
+                          onClick={lockVault}
+                          title="Lock"
+                          aria-label={`Lock ${v.label}`}
+                          className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <rect x="5" y="11" width="14" height="10" rx="2" />
+                            <path strokeLinecap="round" d="M8 11V7a4 4 0 118 0v4" />
+                          </svg>
+                        </button>
+                      )}
                       <button
                         onClick={() => startRename(v)}
                         title="Rename"
