@@ -202,8 +202,9 @@ fn open_window(
     // that lets the frontend ask the shell to open another context in a window.
     let init = format!(
         "window.__RITE_TOKEN__ = '{token}'; window.__RITE_CONTEXT__ = {inject}; \
-         window.__RITE_VAULTS__ = {vaults_json};",
+         window.__RITE_VAULTS__ = {vaults_json};{test_hook}",
         inject = req.inject,
+        test_hook = test_ipc_hook(),
     );
     let ipc_proxy = proxy.clone();
     let webview_builder = WebViewBuilder::new()
@@ -422,6 +423,24 @@ fn vault_label_for(path: &Path) -> String {
         .map(|s| s.to_string_lossy().into_owned())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "Vault".to_string())
+}
+
+/// Test hook (host smoke, ADR 0014): when `RITE_TEST_IPC` holds an IPC message, the first window
+/// posts it via `window.ipc` shortly after load — driving the full IPC→executor loop headlessly
+/// (the webview has no webdriver). No-op unless the env var is set; fires exactly once.
+fn test_ipc_hook() -> String {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static FIRED: AtomicBool = AtomicBool::new(false);
+    if FIRED.swap(true, Ordering::SeqCst) {
+        return String::new();
+    }
+    match std::env::var("RITE_TEST_IPC") {
+        Ok(cmd) if !cmd.is_empty() => format!(
+            " setTimeout(function(){{ try {{ window.ipc.postMessage({}); }} catch (e) {{}} }}, 500);",
+            serde_json::to_string(&cmd).unwrap_or_else(|_| "\"\"".to_string())
+        ),
+        _ => String::new(),
+    }
 }
 
 /// Push the current roster into every open window's hub: update `window.__RITE_VAULTS__` and
