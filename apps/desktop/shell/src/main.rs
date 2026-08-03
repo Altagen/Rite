@@ -273,6 +273,11 @@ enum VaultCommand {
     Reset { path: PathBuf },
     /// Lock a vault in-session (clears its key from RAM; re-requires the master password).
     Lock { path: PathBuf },
+    /// Set (or clear, when `icon` is None) a vault's icon to an emoji chosen in the hub.
+    SetIcon { path: PathBuf, icon: Option<String> },
+    /// Set a vault's icon to a device-local image — the shell shows an open dialog, then stores a
+    /// small `data:` URI in the roster.
+    SetImage { path: PathBuf },
 }
 
 /// Decode a `vault-*` management message, or `None` if it isn't one (or is malformed).
@@ -302,6 +307,14 @@ fn plan_vault_command(msg: &serde_json::Value) -> Option<VaultCommand> {
             path: PathBuf::from(str_field("path")?),
         }),
         "vault-lock" => Some(VaultCommand::Lock {
+            path: PathBuf::from(str_field("path")?),
+        }),
+        // `icon` present ⇒ set that emoji; absent ⇒ clear back to the default glyph.
+        "vault-set-icon" => Some(VaultCommand::SetIcon {
+            path: PathBuf::from(str_field("path")?),
+            icon: str_field("icon").map(String::from),
+        }),
+        "vault-set-image" => Some(VaultCommand::SetImage {
             path: PathBuf::from(str_field("path")?),
         }),
         _ => None,
@@ -395,6 +408,26 @@ fn apply_vault_command(
             open_local_vault(&p, proxy);
             added
         }
+        VaultCommand::SetIcon { path, icon } => roster.set_icon(&path, icon).unwrap_or(false),
+        VaultCommand::SetImage { path } => {
+            let Some(img) = rfd::FileDialog::new()
+                .set_title("Choose a vault icon")
+                .add_filter("Image", &["png", "jpg", "jpeg", "gif", "webp"])
+                .pick_file()
+            else {
+                return false;
+            };
+            match encode_icon_data_uri(&img) {
+                Some(uri) => roster.set_icon(&path, Some(uri)).unwrap_or(false),
+                None => {
+                    show_error(
+                        "Couldn't use that image",
+                        "Rite couldn't read or convert the selected image.",
+                    );
+                    false
+                }
+            }
+        }
         VaultCommand::Reset { path } | VaultCommand::Lock { path } => {
             tracing::info!(
                 "[rite-desktop] vault command for {} — Phase C executor pending",
@@ -403,6 +436,18 @@ fn apply_vault_command(
             false
         }
     }
+}
+
+/// Load a device-local image, downscale it to a small square, and return a `data:image/png`
+/// base64 URI — kept small so the roster stays lightweight. `None` on a read/decode failure.
+fn encode_icon_data_uri(path: &Path) -> Option<String> {
+    use base64::Engine;
+    let img = image::open(path).ok()?;
+    let small = img.resize(64, 64, image::imageops::FilterType::Lanczos3);
+    let mut png = std::io::Cursor::new(Vec::new());
+    small.write_to(&mut png, image::ImageFormat::Png).ok()?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(png.into_inner());
+    Some(format!("data:image/png;base64,{b64}"))
 }
 
 /// Ask the event loop to open (or focus) a local-vault window at `path`.
@@ -675,6 +720,23 @@ mod tests {
             Some(VaultCommand::Forget { path: PathBuf::from("/v/a.db") })
         );
         assert!(plan_vault_command(&json!({ "type": "vault-forget" })).is_none());
+    }
+
+    #[test]
+    fn vault_command_set_icon_and_image() {
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-set-icon", "path": "/v/a.db", "icon": "🚀" })),
+            Some(VaultCommand::SetIcon { path: PathBuf::from("/v/a.db"), icon: Some("🚀".into()) })
+        );
+        // No icon ⇒ clear.
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-set-icon", "path": "/v/a.db" })),
+            Some(VaultCommand::SetIcon { path: PathBuf::from("/v/a.db"), icon: None })
+        );
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-set-image", "path": "/v/a.db" })),
+            Some(VaultCommand::SetImage { path: PathBuf::from("/v/a.db") })
+        );
     }
 
     #[test]

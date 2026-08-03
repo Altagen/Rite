@@ -15,6 +15,7 @@ interface RiteNativeContext {
 interface RiteNativeVault {
   path: string;
   label: string;
+  icon?: string;
 }
 
 interface Window {

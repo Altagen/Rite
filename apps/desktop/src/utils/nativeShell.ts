@@ -29,6 +29,8 @@ export type OpenContextRequest =
 export interface NativeVault {
   path: string;
   label: string;
+  /** Device-local icon: an emoji or a `data:` image URI (ADR 0014). Absent ⇒ default glyph. */
+  icon?: string;
 }
 
 /**
@@ -46,7 +48,9 @@ export type VaultCommand =
   | { type: 'vault-new' } // shell shows a save dialog
   | { type: 'vault-open-file' } // shell shows an open dialog
   | { type: 'vault-rename'; path: string; label: string }
-  | { type: 'vault-forget'; path: string }; // drop from the roster (keeps the file)
+  | { type: 'vault-forget'; path: string } // drop from the roster (keeps the file)
+  | { type: 'vault-set-icon'; path: string; icon?: string } // emoji, or absent to clear
+  | { type: 'vault-set-image'; path: string }; // shell picks a device-local image
 
 /**
  * Ask the native shell to run a vault-management command. Returns false when there's no shell

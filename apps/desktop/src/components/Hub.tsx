@@ -36,6 +36,19 @@ export interface HubProps {
   onClose?: () => void;
 }
 
+const VAULT_EMOJI = ['🔒', '🚀', '🏠', '🖥️', '☁️', '🐳', '🗄️', '🔧', '🧪', '🌐', '🛡️', '📦'];
+
+/** Render a vault's icon: a `data:` image, an emoji, or the default lock glyph. */
+function VaultGlyph({ icon }: { icon?: string }) {
+  if (icon?.startsWith('data:'))
+    return <img src={icon} alt="" className="h-7 w-7 flex-none rounded object-cover" />;
+  return (
+    <span className="text-2xl leading-none" aria-hidden>
+      {icon || '🔒'}
+    </span>
+  );
+}
+
 export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
   const [ctx, setCtx] = useState<ContextState | null>(null);
   const [adding, setAdding] = useState(false);
@@ -186,6 +199,20 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
     void lockCurrent();
     onClose?.();
   };
+  // Vault icon (ADR 0014): an emoji or a device-local image, per-vault, device-local.
+  const [iconMenuPath, setIconMenuPath] = useState<string | null>(null);
+  const setVaultEmoji = (v: NativeVault, icon: string) => {
+    sendVaultCommand({ type: 'vault-set-icon', path: v.path, icon });
+    setIconMenuPath(null);
+  };
+  const setVaultImage = (v: NativeVault) => {
+    sendVaultCommand({ type: 'vault-set-image', path: v.path });
+    setIconMenuPath(null);
+  };
+  const clearVaultIcon = (v: NativeVault) => {
+    sendVaultCommand({ type: 'vault-set-icon', path: v.path });
+    setIconMenuPath(null);
+  };
 
   return (
     <div className={onClose ? 'fixed inset-0 z-50 overflow-y-auto bg-background/95 backdrop-blur-sm' : 'min-h-screen overflow-y-auto bg-background'}>
@@ -251,9 +278,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                         onClick={() => openVault(v)}
                         className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-2 text-left hover:bg-muted"
                       >
-                        <span className="text-2xl" aria-hidden>
-                          🔒
-                        </span>
+                        <VaultGlyph icon={v.icon} />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{v.label}</span>
                           <span className="block truncate text-xs text-muted-foreground">{v.path}</span>
@@ -262,6 +287,46 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                           {isCurrent ? 'Current' : 'Open'}
                         </span>
                       </button>
+                      <div className="relative flex-none">
+                        <button
+                          onClick={() => setIconMenuPath(iconMenuPath === v.path ? null : v.path)}
+                          title="Change icon"
+                          aria-label={`Change icon for ${v.label}`}
+                          className="rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                            <circle cx="8.5" cy="8.5" r="1.5" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21 15l-5-5L5 21" />
+                          </svg>
+                        </button>
+                        {iconMenuPath === v.path && (
+                          <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border bg-card p-2 shadow-lg">
+                            <div className="grid grid-cols-6 gap-1">
+                              {VAULT_EMOJI.map((emo) => (
+                                <button
+                                  key={emo}
+                                  onClick={() => setVaultEmoji(v, emo)}
+                                  className="rounded p-1 text-xl hover:bg-muted"
+                                >
+                                  {emo}
+                                </button>
+                              ))}
+                            </div>
+                            <div className="mt-2 flex items-center justify-between border-t border-border pt-2 text-xs">
+                              <button onClick={() => setVaultImage(v)} className="rounded px-2 py-1 font-medium hover:bg-muted">
+                                Image…
+                              </button>
+                              <button
+                                onClick={() => clearVaultIcon(v)}
+                                className="rounded px-2 py-1 text-muted-foreground hover:bg-muted"
+                              >
+                                Reset
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       {isCurrent && (
                         <button
                           onClick={lockVault}

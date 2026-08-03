@@ -158,6 +158,8 @@ const av=u=>`<span class="av" title="${u}" style="background:${avColor(u)}">${u[
 // Vault/server badge — a custom client-side image if set, else a gradient + initial.
 const badgeHTML=item=>item.img
   ? `<span class="badge" style="background-image:url(${item.img});background-size:cover;background-position:center"></span>`
+  : item.emoji
+  ? `<span class="badge" style="display:grid;place-items:center;font-size:18px">${item.emoji}</span>`
   : `<span class="badge ${item.badge}">${item.name[0]}</span>`;
 
 /* Health-check pastille (ADR 0017). In a SERVER context the mode is governed by the
@@ -248,11 +250,18 @@ function signOutServer(id){const s=DATA.servers.find(x=>x.id===id);document.getE
   if(STATE.ctx.type==='server'&&STATE.ctx.id===id){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
   refreshCtx();toast(`Signed out of <span class="accent">${s?s.name:'server'}</span> — still saved, sign in again to reconnect`);}
 /* Custom icon image, stored CLIENT-SIDE only (not sent to any server). */
-function setIcon(type,id){const item=(type==='vault'?DATA.vaults:DATA.servers).find(x=>x.id===id);if(!item)return;
-  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
-  inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{item.img=r.result;refreshCtx();toast(`Icon set for <span class="accent">${item.name}</span> (this device)`);};r.readAsDataURL(f);};
+// An icon is an emoji OR a device-local image (ADR 0014). Emoji is cross-platform + tiny; an
+// image is stored device-local. Either replaces the default badge.
+const ICON_EMOJI=['🔒','🚀','🏠','🖥️','☁️','🐳','🗄️','🔧','🧪','🌐','🛡️','📦'];
+const __iconItem=(type,id)=>(type==='vault'?DATA.vaults:DATA.servers).find(x=>x.id===id);
+function setEmoji(type,id,emoji){const it=__iconItem(type,id);if(it){it.emoji=emoji;delete it.img;refreshCtx();document.querySelector('.backdrop')?.remove();toast('Icon set');}}
+function setImage(type,id){const it=__iconItem(type,id);if(!it)return;const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+  inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{it.img=r.result;delete it.emoji;refreshCtx();document.querySelector('.backdrop')?.remove();toast(`Icon set for <span class="accent">${it.name}</span> (this device)`);};r.readAsDataURL(f);};
   inp.click();}
-function clearIcon(type,id){const item=(type==='vault'?DATA.vaults:DATA.servers).find(x=>x.id===id);if(item){delete item.img;refreshCtx();toast('Icon reset');}}
+function setIcon(type,id){const it=__iconItem(type,id);if(!it)return;document.getElementById('ctxmenu')?.classList.remove('show');
+  showModal({title:'Choose an icon',subtitle:it.name,confirm:'Close',
+    body:`<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:12px">${ICON_EMOJI.map(e=>`<button class="btn btn-ghost" style="font-size:20px" onclick="setEmoji('${type}','${id}','${e}')">${e}</button>`).join('')}</div><button class="btn btn-sm" onclick="setImage('${type}','${id}')">${M.image} Upload an image…</button>`});}
+function clearIcon(type,id){const it=__iconItem(type,id);if(it){delete it.img;delete it.emoji;refreshCtx();toast('Icon reset');}}
 /* Add a server — probes it; unreachable is fine (add anyway, fix later). Nothing
    is created remotely until you sign in. Overrides the generic mock dialog. */
 function dlgAddServer(){showModal({title:'Add a server',subtitle:"A Rite server holds your connections (its own login).",confirm:'Add',
@@ -326,7 +335,7 @@ function openContextManager(){document.getElementById('ctxmenu').classList.remov
   if(!document.getElementById('ctxmgr')){const el=document.createElement('div');el.className='ctxmgr';el.id='ctxmgr';document.body.appendChild(el);}renderCtxMgr();}
 function closeCtxMgr(){const el=document.getElementById('ctxmgr');if(el)el.remove();}
 function renderCtxMgr(){const el=document.getElementById('ctxmgr');if(!el)return;
-  const iconBtns=(type,item)=>`<button class="btn btn-ghost btn-sm" title="Custom icon (this device)" onclick="setIcon('${type}','${item.id}')">${M.image}</button>${item.img?`<button class="btn btn-ghost btn-sm" title="Reset icon" onclick="clearIcon('${type}','${item.id}')">↺</button>`:''}`;
+  const iconBtns=(type,item)=>`<button class="btn btn-ghost btn-sm" title="Set icon (emoji or image)" onclick="setIcon('${type}','${item.id}')">${M.image}</button>${item.img||item.emoji?`<button class="btn btn-ghost btn-sm" title="Reset icon" onclick="clearIcon('${type}','${item.id}')">↺</button>`:''}`;
   const vcard=v=>`<div class="mgr-card ${isCur('vault',v.id)?'cur':''}">${badgeHTML(v)}
     <div class="grow"><div class="nm">${v.name} ${curTag('vault',v.id)}</div><div class="fl mono">${v.file}</div></div>
     <span class="tag ${v.locked?'locked':'unlocked'}">${v.locked?'Locked':'Open'}</span>

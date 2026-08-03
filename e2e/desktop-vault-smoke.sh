@@ -57,4 +57,12 @@ grep -q '\[\]' "$H/.local/share/rite/vaults.json" || die "forget: roster not emp
 ok "forget → roster emptied, .db file kept"
 rm -rf "$H"
 
+# --- set-icon: stores the chosen emoji on the roster entry ---
+H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
+VD="$H/.local/share/rite/vault.db"
+run "{\"type\":\"vault-set-icon\",\"path\":\"$VD\",\"icon\":\"🚀\"}" "$H"
+grep -q '"icon"' "$H/.local/share/rite/vaults.json" || die "set-icon: emoji not stored" "$H/.local/share/rite/vaults.json"
+ok "set-icon → emoji stored on the roster entry"
+rm -rf "$H"
+
 printf '\n\342\234\205 desktop-vault-smoke passed\n'
