@@ -1,8 +1,10 @@
 #!/usr/bin/env sh
 # Desktop multi-vault management smoke (ADR 0014). Drives the REAL wry shell's vault commands
 # end to end via the RITE_TEST_IPC hook (which makes the first window post an IPC message, since
-# the webview has no webdriver), and asserts the on-disk effects: new creates a vault + roster
-# entry + a second window; rename relabels the roster; forget drops it but KEEPS the file.
+# the webview has no webdriver), and asserts the effects: new creates the .db and switches the
+# window onto it WITHOUT registering (register-after-password); ready registers it; switch reloads
+# the window in place and stops the old server (locking the previous vault); rename/forget/delete
+# mutate the roster; forget keeps the file, delete erases it.
 #
 # Build in the container, run on a machine with a display:
 #   podman run ... cargo build -p rite-desktop         # binary → target/debug/rite
@@ -29,15 +31,44 @@ run() {
     timeout -k 2 6 "$BIN" >"$2/app.log" 2>&1 || true
 }
 
-# --- new: creates a vault, adds it to the roster, opens a second window ---
+# --- new: creates the .db and switches THIS window onto it, but does NOT register it yet
+#     (register-after-password, ADR 0014) — the roster keeps only the seeded default vault. ---
 H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
 NEW="$H/.local/share/rite/beta.db"
 run "{\"type\":\"vault-new\",\"path\":\"$NEW\"}" "$H"
 ROSTER="$H/.local/share/rite/vaults.json"
-grep -q '"label": "beta"' "$ROSTER" || die "new: roster missing beta" "$ROSTER"
 [ -f "$NEW" ] || die "new: vault file not created"
-[ "$(grep -c 'window serving on' "$H/app.log")" -ge 2 ] || die "new: second window not opened" "$H/app.log"
-ok "new → roster entry + .db created + second window"
+grep -q 'beta' "$ROSTER" && die "new: beta registered before its master password (should not be)" "$ROSTER"
+# One window, switched in place: the launch server + the switch-target server both bind.
+[ "$(grep -c 'window serving on' "$H/app.log")" -ge 2 ] || die "new: window did not switch onto the vault" "$H/app.log"
+ok "new → .db created + window switched onto it, NOT yet in the roster"
+rm -rf "$H"
+
+# --- ready: the frontend registers a new vault once its master password is set ---
+H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
+run "{\"type\":\"vault-ready\",\"path\":\"/vaults/beta.db\",\"label\":\"Client Beta\"}" "$H"
+grep -q '"label": "Client Beta"' "$H/.local/share/rite/vaults.json" || die "ready: vault not registered" "$H/.local/share/rite/vaults.json"
+ok "ready → vault registered after its password is set"
+rm -rf "$H"
+
+# --- switch: switch-context reloads THIS window onto another vault (one window = one vault);
+#     the previous server stops (so the previous vault locks) — the old loopback port is freed. ---
+H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
+TARGET="$H/.local/share/rite/other.db"
+HOME="$H" XDG_DATA_HOME="$H/.local/share" XDG_CONFIG_HOME="$H/.config" RITE_WEB_DIR="$DIST" \
+  RITE_TEST_IPC="{\"type\":\"switch-context\",\"kind\":\"local\",\"path\":\"$TARGET\"}" RUST_LOG=info "$BIN" >"$H/app.log" 2>&1 &
+SW_PID=$!
+i=0; while [ "$(grep -c 'window serving on' "$H/app.log" 2>/dev/null)" -lt 2 ]; do
+  i=$((i + 1)); [ "$i" -gt 60 ] && { kill "$SW_PID" 2>/dev/null; die "switch: window never switched" "$H/app.log"; }; sleep 0.1
+done
+sleep 0.4
+OLD="$(grep -oE '127.0.0.1:[0-9]+' "$H/app.log" | head -1)"
+NEW_PORT="$(grep -oE '127.0.0.1:[0-9]+' "$H/app.log" | tail -1)"
+[ -f "$TARGET" ] || { kill "$SW_PID" 2>/dev/null; die "switch: target vault not opened"; }
+curl -s -o /dev/null --max-time 2 "http://$OLD/" && { kill "$SW_PID" 2>/dev/null; die "switch: old server still up (previous vault not locked)"; }
+[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://$NEW_PORT/")" = "200" ] || { kill "$SW_PID" 2>/dev/null; die "switch: new server not serving"; }
+kill "$SW_PID" 2>/dev/null
+ok "switch → same window, old server stopped (vault locked), new server serving"
 rm -rf "$H"
 
 # --- rename: relabels the seeded default vault in the roster ---
