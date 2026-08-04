@@ -43,11 +43,32 @@ struct OpenRequest {
     inject: String,
 }
 
-/// Custom event loop message: created off the event-loop thread (an IPC handler)
-/// and handled on it (where windows may be built and the roster mutated).
+/// Custom event loop message: created off the event-loop thread (an IPC handler
+/// or a file-dialog thread) and handled on it (where windows may be built and the
+/// roster mutated).
 enum UserEvent {
     OpenContext(OpenRequest),
     Vault(VaultCommand),
+    /// A native file dialog resolved on its own thread (see [`spawn_file_dialog`]).
+    VaultPicked(VaultPick),
+}
+
+/// Which native file chooser to raise on the dialog thread.
+enum DialogKind {
+    /// "Save as" for a brand-new vault file.
+    New,
+    /// "Open" an existing vault file.
+    Open,
+    /// Pick an image to use as `vault`'s icon.
+    Image(PathBuf),
+}
+
+/// The outcome of a resolved [`DialogKind`], handed back to the event loop so the
+/// roster mutation + window open happen on the owning thread (never off it).
+enum VaultPick {
+    New(PathBuf),
+    Open(PathBuf),
+    Image { vault: PathBuf, file: PathBuf },
 }
 
 /// A live window: its server's loopback port, plus the `wry` webview and `tao`
@@ -164,6 +185,13 @@ fn main() -> Result<()> {
             Event::UserEvent(UserEvent::Vault(cmd)) => {
                 if apply_vault_command(cmd, &mut roster, &proxy) {
                     // The roster changed: refresh every open window's hub (ADR 0014).
+                    vaults_json =
+                        serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
+                    broadcast_vaults(&windows, &vaults_json);
+                }
+            }
+            Event::UserEvent(UserEvent::VaultPicked(pick)) => {
+                if apply_vault_pick(pick, &mut roster, &proxy) {
                     vaults_json =
                         serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
                     broadcast_vaults(&windows, &vaults_json);
@@ -373,8 +401,9 @@ fn parse_open_request(msg: &serde_json::Value, default_db: &Path) -> Option<Open
 /// Execute a vault-management command on the event-loop thread (ADR 0014). Returns whether the
 /// roster changed, so the caller refreshes open hubs. New/OpenFile add to the roster and ask the
 /// loop to open the vault in a window (via an OpenContext event); rename/forget mutate the roster
-/// in place. Reset/Lock are Phase C — logged for now. `rfd` dialogs run here (GTK main thread);
-/// the optional path on New/OpenFile is a test hook that bypasses the picker.
+/// in place. Reset/Lock are Phase C — logged for now. Native file dialogs are raised off this
+/// thread ([`spawn_file_dialog`]) and finish in [`apply_vault_pick`]; the optional path on
+/// New/OpenFile is a test hook that bypasses the picker (and so resolves synchronously here).
 fn apply_vault_command(
     cmd: VaultCommand,
     roster: &mut vault_roster::VaultRoster,
@@ -383,52 +412,35 @@ fn apply_vault_command(
     match cmd {
         VaultCommand::Rename { path, label } => roster.rename(&path, &label).unwrap_or(false),
         VaultCommand::Forget { path } => roster.remove(&path).unwrap_or(false),
-        VaultCommand::New { label, path } => {
-            let Some(p) = path.or_else(|| {
-                rfd::FileDialog::new()
-                    .set_title("Create a new Rite vault")
-                    .set_file_name("vault.db")
-                    .save_file()
-            }) else {
-                return false; // the user cancelled the dialog
-            };
-            let label = label.unwrap_or_else(|| vault_label_for(&p));
-            let added = roster.add(&p, &label).unwrap_or(false);
-            open_local_vault(&p, proxy);
-            added
-        }
-        VaultCommand::OpenFile { path } => {
-            let Some(p) = path.or_else(|| {
-                rfd::FileDialog::new()
-                    .set_title("Open a Rite vault")
-                    .add_filter("Rite vault", &["db"])
-                    .pick_file()
-            }) else {
-                return false;
-            };
-            let added = roster.add(&p, &vault_label_for(&p)).unwrap_or(false);
-            open_local_vault(&p, proxy);
-            added
-        }
+        // A path here is the test hook (bypasses the picker); otherwise raise the native
+        // chooser off the event-loop thread and finish in `apply_vault_pick` once it resolves.
+        VaultCommand::New { label, path } => match path {
+            Some(p) => {
+                let label = label.unwrap_or_else(|| vault_label_for(&p));
+                let added = roster.add(&p, &label).unwrap_or(false);
+                open_local_vault(&p, proxy);
+                added
+            }
+            None => {
+                spawn_file_dialog(proxy.clone(), DialogKind::New);
+                false
+            }
+        },
+        VaultCommand::OpenFile { path } => match path {
+            Some(p) => {
+                let added = roster.add(&p, &vault_label_for(&p)).unwrap_or(false);
+                open_local_vault(&p, proxy);
+                added
+            }
+            None => {
+                spawn_file_dialog(proxy.clone(), DialogKind::Open);
+                false
+            }
+        },
         VaultCommand::SetIcon { path, icon } => roster.set_icon(&path, icon).unwrap_or(false),
         VaultCommand::SetImage { path } => {
-            let Some(img) = rfd::FileDialog::new()
-                .set_title("Choose a vault icon")
-                .add_filter("Image", &["png", "jpg", "jpeg", "gif", "webp"])
-                .pick_file()
-            else {
-                return false;
-            };
-            match encode_icon_data_uri(&img) {
-                Some(uri) => roster.set_icon(&path, Some(uri)).unwrap_or(false),
-                None => {
-                    show_error(
-                        "Couldn't use that image",
-                        "Rite couldn't read or convert the selected image.",
-                    );
-                    false
-                }
-            }
+            spawn_file_dialog(proxy.clone(), DialogKind::Image(path));
+            false
         }
         VaultCommand::Reset { path } | VaultCommand::Lock { path } => {
             tracing::info!(
@@ -438,6 +450,82 @@ fn apply_vault_command(
             false
         }
     }
+}
+
+/// Apply a resolved file-dialog outcome on the event-loop thread: mutate the roster and,
+/// for a vault pick, open its window. Returns `true` when the roster changed (⇒ rebroadcast).
+fn apply_vault_pick(
+    pick: VaultPick,
+    roster: &mut vault_roster::VaultRoster,
+    proxy: &EventLoopProxy<UserEvent>,
+) -> bool {
+    match pick {
+        VaultPick::New(p) => {
+            let added = roster.add(&p, &vault_label_for(&p)).unwrap_or(false);
+            open_local_vault(&p, proxy);
+            added
+        }
+        VaultPick::Open(p) => {
+            let added = roster.add(&p, &vault_label_for(&p)).unwrap_or(false);
+            open_local_vault(&p, proxy);
+            added
+        }
+        VaultPick::Image { vault, file } => match encode_icon_data_uri(&file) {
+            Some(uri) => roster.set_icon(&vault, Some(uri)).unwrap_or(false),
+            None => {
+                show_error(
+                    "Couldn't use that image",
+                    "Rite couldn't read or convert the selected image.",
+                );
+                false
+            }
+        },
+    }
+}
+
+/// Raise a native file chooser without ever re-entering the shell's own GTK/glib event
+/// loop: the blocking `rfd::FileDialog` nests a GTK main loop (which corrupts the running
+/// webview and crashes), so instead we drive `AsyncFileDialog` — whose gtk3 backend runs
+/// the chooser on its own isolated loop — from a throwaway thread, and hand the result back
+/// to the event loop as a [`UserEvent::VaultPicked`]. A cancelled dialog sends nothing.
+fn spawn_file_dialog(proxy: EventLoopProxy<UserEvent>, kind: DialogKind) {
+    std::thread::spawn(move || {
+        // A single-thread runtime just to await rfd's dialog future — no reactor needed,
+        // the gtk3 async backend feeds the result over a channel from its own loop.
+        let rt = match tokio::runtime::Builder::new_current_thread().build() {
+            Ok(rt) => rt,
+            Err(e) => {
+                tracing::warn!("[rite-desktop] couldn't start the file-dialog runtime: {e}");
+                return;
+            }
+        };
+        let picked = rt.block_on(async {
+            match kind {
+                DialogKind::New => rfd::AsyncFileDialog::new()
+                    .set_title("Create a new Rite vault")
+                    .set_file_name("vault.db")
+                    .save_file()
+                    .await
+                    .map(|f| VaultPick::New(f.path().to_path_buf())),
+                DialogKind::Open => rfd::AsyncFileDialog::new()
+                    .set_title("Open a Rite vault")
+                    .add_filter("Rite vault", &["db"])
+                    .pick_file()
+                    .await
+                    .map(|f| VaultPick::Open(f.path().to_path_buf())),
+                DialogKind::Image(vault) => rfd::AsyncFileDialog::new()
+                    .set_title("Choose a vault icon")
+                    .add_filter("Image", &["png", "jpg", "jpeg", "gif", "webp"])
+                    .pick_file()
+                    .await
+                    .map(|f| VaultPick::Image { vault, file: f.path().to_path_buf() }),
+            }
+        });
+        if let Some(pick) = picked {
+            // The event loop is gone only during shutdown; nothing to do then.
+            let _ = proxy.send_event(UserEvent::VaultPicked(pick));
+        }
+    });
 }
 
 /// Load a device-local image, downscale it to a small square, and return a `data:image/png`
