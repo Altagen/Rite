@@ -1077,17 +1077,34 @@ export function Workspace({
           isSidebarOpen ? 'w-[290px]' : 'w-0'
         }`}>
           {isLocked ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                Open a vault to see your saved connections. The local terminal and
-                Quick SSH work without one.
-              </p>
-              <button
-                onClick={() => (lockedVaults.length > 0 ? setShowVaultPicker(true) : setShowUnlockModal(true))}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-              >
-                Open local vault
-              </button>
+            <div className="flex flex-1 flex-col overflow-hidden">
+              {/* Collapse toggle — available locked too, so you can reclaim the space without
+                  authenticating (the reveal button reopens it, same as when a vault is open). */}
+              <div className="flex justify-end p-2">
+                <button
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="m-btn m-btn-ghost"
+                  style={{ padding: '4px' }}
+                  title="Hide sidebar"
+                  aria-label="Hide sidebar"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Open a vault to see your saved connections. The local terminal and
+                  Quick SSH work without one.
+                </p>
+                <button
+                  onClick={() => (lockedVaults.length > 0 ? setShowVaultPicker(true) : setShowUnlockModal(true))}
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  Open local vault
+                </button>
+              </div>
             </div>
           ) : (
           <>
