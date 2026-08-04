@@ -18,6 +18,7 @@ import { Backend, type ContextState, type RemoteServer } from '../utils/backend'
 import { useAuthStore } from '../store/authStore';
 import {
   requestOpenContext,
+  requestSwitchContext,
   nativeVaults,
   nativeContext,
   sendVaultCommand,
@@ -109,7 +110,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
   const openLocal = () => {
     if (current?.kind === 'local') return onClose?.();
     if (onOpenLocalInPlace) onOpenLocalInPlace();
-    else requestOpenContext({ kind: 'local' });
+    else requestSwitchContext({ kind: 'local' });
     onClose?.();
   };
 
@@ -145,6 +146,11 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
 
   const openServer = (s: RemoteServer) => {
     if (current?.kind === 'server' && current.id === s.id) return onClose?.();
+    requestSwitchContext({ kind: 'server', id: s.id, url: s.url, label: s.label });
+    onClose?.();
+  };
+  // Explicit "open in new window" (keeps the current context, opens the target beside it).
+  const openServerNewWindow = (s: RemoteServer) => {
     requestOpenContext({ kind: 'server', id: s.id, url: s.url, label: s.label });
     onClose?.();
   };
@@ -228,7 +234,13 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
       onOpenLocalInPlace?.();
       return onClose?.();
     }
-    // A different vault opens in its own window (the shell focuses it if already open).
+    // Default: switch THIS window to the vault in place (locks the current one). The shell
+    // focuses the other window if this vault is already open elsewhere.
+    requestSwitchContext({ kind: 'local', path: v.path });
+    onClose?.();
+  };
+  // Explicit "open in new window" (keeps the current vault open, opens this one beside it).
+  const openVaultNewWindow = (v: NativeVault) => {
     requestOpenContext({ kind: 'local', path: v.path });
     onClose?.();
   };
@@ -394,6 +406,18 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                           </svg>
                         </button>
                       )}
+                      {!isCurrent && (
+                        <button
+                          onClick={() => openVaultNewWindow(v)}
+                          title="Open in new window"
+                          aria-label={`Open ${v.label} in a new window`}
+                          className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
+                          </svg>
+                        </button>
+                      )}
                       <button
                         onClick={() => startRename(v)}
                         title="Rename"
@@ -527,6 +551,18 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                     </div>
                   )}
                 </div>
+                {!isCurrent && (
+                  <button
+                    onClick={() => openServerNewWindow(s)}
+                    title="Open in new window"
+                    aria-label={`Open ${s.label || s.url} in a new window`}
+                    className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   onClick={() => startEditServer(s)}
                   title="Edit URL / label"

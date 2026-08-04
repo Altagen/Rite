@@ -22,7 +22,9 @@ export function nativeContext(): RiteNativeContext | undefined {
 
 /** A context the hub can ask the shell to open in its own window. */
 export type OpenContextRequest =
-  | { kind: 'local'; path?: string } // path ⇒ a specific vault (multi-vault, ADR 0014)
+  // path ⇒ a specific vault (multi-vault, ADR 0014); pendingLabel ⇒ a brand-new vault not yet
+  // registered — the frontend registers it once its master password is set (Part 3).
+  | { kind: 'local'; path?: string; pendingLabel?: string }
   | { kind: 'server'; id: string; url: string; label?: string };
 
 /** A local vault the shell knows about (from `window.__RITE_VAULTS__`). */
@@ -81,6 +83,20 @@ export function onVaultsChanged(handler: () => void): () => void {
 export function requestOpenContext(request: OpenContextRequest): boolean {
   if (typeof window === 'undefined' || !window.ipc) return false;
   window.ipc.postMessage(JSON.stringify({ type: 'open-context', ...request }));
+  return true;
+}
+
+/**
+ * Ask the native shell to switch THIS window to the given context IN PLACE (ADR 0014,
+ * "one window = one vault"): the current vault locks and the window reloads onto the new
+ * one — no second window. If the target is already open in another window, the shell
+ * focuses that instead (one-window-per-context). This is the default when picking a
+ * vault/server; {@link requestOpenContext} is the explicit "open in new window". Returns
+ * false in the web build.
+ */
+export function requestSwitchContext(request: OpenContextRequest): boolean {
+  if (typeof window === 'undefined' || !window.ipc) return false;
+  window.ipc.postMessage(JSON.stringify({ type: 'switch-context', ...request }));
   return true;
 }
 

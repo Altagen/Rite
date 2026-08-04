@@ -39,6 +39,7 @@ import {
   nativeContext,
   sendVaultCommand,
   requestOpenContext,
+  requestSwitchContext,
 } from '../utils/nativeShell';
 import { transport } from '../utils/transport';
 import { Toast } from './Toast';
@@ -1635,32 +1636,51 @@ export function Workspace({
               {lockedVaults.map((v) => {
                 const isThisWindow = currentVaultPath != null && v.path === currentVaultPath;
                 return (
-                  <button
+                  <div
                     key={v.path}
-                    onClick={() => {
-                      setShowVaultPicker(false);
-                      if (isThisWindow) {
-                        setUnlockFromPicker(true);
-                        setShowUnlockModal(true);
-                      } else requestOpenContext({ kind: 'local', path: v.path });
-                    }}
-                    className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 text-left text-sm hover:border-primary hover:bg-muted"
+                    className="group flex items-center gap-1 rounded-lg border border-border bg-background pr-1 hover:border-primary"
                   >
-                    {v.icon?.startsWith('data:') ? (
-                      <img src={v.icon} alt="" className="h-6 w-6 flex-none rounded object-cover" />
-                    ) : (
-                      <span className="text-xl leading-none" aria-hidden>
-                        {v.icon || '🔒'}
+                    <button
+                      onClick={() => {
+                        setShowVaultPicker(false);
+                        if (isThisWindow) {
+                          setUnlockFromPicker(true);
+                          setShowUnlockModal(true);
+                        } else requestSwitchContext({ kind: 'local', path: v.path });
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-muted"
+                    >
+                      {v.icon?.startsWith('data:') ? (
+                        <img src={v.icon} alt="" className="h-6 w-6 flex-none rounded object-cover" />
+                      ) : (
+                        <span className="text-xl leading-none" aria-hidden>
+                          {v.icon || '🔒'}
+                        </span>
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{v.label}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{v.path}</span>
                       </span>
+                      <span className="flex-none text-xs text-muted-foreground">
+                        {isThisWindow ? 'Unlock' : 'Open'}
+                      </span>
+                    </button>
+                    {!isThisWindow && (
+                      <button
+                        onClick={() => {
+                          setShowVaultPicker(false);
+                          requestOpenContext({ kind: 'local', path: v.path });
+                        }}
+                        title="Open in new window"
+                        aria-label={`Open ${v.label} in a new window`}
+                        className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
+                        </svg>
+                      </button>
                     )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{v.label}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{v.path}</span>
-                    </span>
-                    <span className="flex-none text-xs text-muted-foreground">
-                      {isThisWindow ? 'Unlock' : 'New window'}
-                    </span>
-                  </button>
+                  </div>
                 );
               })}
               <button

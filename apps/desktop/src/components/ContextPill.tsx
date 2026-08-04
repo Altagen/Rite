@@ -16,6 +16,7 @@ import { Backend, type ContextState, type RemoteServer } from '../utils/backend'
 import {
   isNativeShell,
   requestOpenContext,
+  requestSwitchContext,
   nativeVaults,
   nativeContext,
   sendVaultCommand,
@@ -64,24 +65,50 @@ export function ContextPill() {
     ? vaults.find((v) => v.path === currentVaultPath)?.label ?? 'Local vault'
     : active.label || active.url;
 
+  // Default action: switch THIS window in place (locks the current vault). "Open in new
+  // window" (the split button) keeps the current context and opens the target beside it.
   const openLocal = () => {
     setOpen(false);
-    if (!isLocalActive) requestOpenContext({ kind: 'local' });
+    if (!isLocalActive) requestSwitchContext({ kind: 'local' });
   };
   const openVault = (path: string) => {
     setOpen(false);
-    if (!(isLocalActive && currentVaultPath === path)) requestOpenContext({ kind: 'local', path });
+    if (!(isLocalActive && currentVaultPath === path)) requestSwitchContext({ kind: 'local', path });
   };
   const openServer = (s: RemoteServer) => {
     setOpen(false);
     const isCurrent = !isLocalActive && active.id === s.id;
-    if (!isCurrent) requestOpenContext({ kind: 'server', id: s.id, url: s.url, label: s.label });
+    if (!isCurrent) requestSwitchContext({ kind: 'server', id: s.id, url: s.url, label: s.label });
+  };
+  const newWindowVault = (path: string) => {
+    setOpen(false);
+    requestOpenContext({ kind: 'local', path });
+  };
+  const newWindowServer = (s: RemoteServer) => {
+    setOpen(false);
+    requestOpenContext({ kind: 'server', id: s.id, url: s.url, label: s.label });
   };
 
   const chevron = (
     <svg className="h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
+  );
+  const splitIcon = (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
+    </svg>
+  );
+  // A row = a wide "switch this window" button + a subtle "open in new window" split button.
+  const newWindowBtn = (label: string, onClick: () => void) => (
+    <button
+      onClick={onClick}
+      title="Open in new window"
+      aria-label={`Open ${label} in a new window`}
+      className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-background hover:text-foreground group-hover:opacity-100"
+    >
+      {splitIcon}
+    </button>
   );
 
   return (
@@ -105,21 +132,24 @@ export function ContextPill() {
             vaults.map((v) => {
               const isCurrent = isLocalActive && currentVaultPath === v.path;
               return (
-                <button
+                <div
                   key={v.path}
-                  onClick={() => openVault(v.path)}
-                  className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
-                    isCurrent ? 'bg-primary/10' : ''
-                  }`}
+                  className={`group flex items-center gap-1 rounded ${isCurrent ? 'bg-primary/10' : 'hover:bg-muted'}`}
                 >
-                  {v.icon?.startsWith('data:') ? (
-                    <img src={v.icon} alt="" className="h-4 w-4 flex-none rounded object-cover" />
-                  ) : (
-                    <span className="flex-none text-sm leading-none">{v.icon || '🔒'}</span>
-                  )}
-                  <span className="min-w-0 flex-1 truncate">{v.label}</span>
-                  {isCurrent && <span className="flex-none text-xs text-primary">current</span>}
-                </button>
+                  <button
+                    onClick={() => openVault(v.path)}
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
+                  >
+                    {v.icon?.startsWith('data:') ? (
+                      <img src={v.icon} alt="" className="h-4 w-4 flex-none rounded object-cover" />
+                    ) : (
+                      <span className="flex-none text-sm leading-none">{v.icon || '🔒'}</span>
+                    )}
+                    <span className="min-w-0 flex-1 truncate">{v.label}</span>
+                    {isCurrent && <span className="flex-none text-xs text-primary">current</span>}
+                  </button>
+                  {!isCurrent && newWindowBtn(v.label, () => newWindowVault(v.path))}
+                </div>
               );
             })
           ) : (
@@ -143,20 +173,23 @@ export function ContextPill() {
               {ctx.roster.map((s) => {
                 const isCurrent = !isLocalActive && active.id === s.id;
                 return (
-                  <button
+                  <div
                     key={s.id}
-                    onClick={() => openServer(s)}
-                    className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
-                      isCurrent ? 'bg-primary/10' : ''
-                    }`}
+                    className={`group flex items-center gap-1 rounded ${isCurrent ? 'bg-primary/10' : 'hover:bg-muted'}`}
                   >
-                    <span className="h-2 w-2 flex-none rounded-full bg-purple-400" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{s.label || s.url}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{s.url}</span>
-                    </span>
-                    {isCurrent && <span className="text-xs text-primary">current</span>}
-                  </button>
+                    <button
+                      onClick={() => openServer(s)}
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
+                    >
+                      <span className="h-2 w-2 flex-none rounded-full bg-purple-400" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{s.label || s.url}</span>
+                        <span className="block truncate text-xs text-muted-foreground">{s.url}</span>
+                      </span>
+                      {isCurrent && <span className="text-xs text-primary">current</span>}
+                    </button>
+                    {!isCurrent && newWindowBtn(s.label || s.url, () => newWindowServer(s))}
+                  </div>
                 );
               })}
             </>
