@@ -52,6 +52,7 @@ export type VaultCommand =
   | { type: 'vault-rename'; path: string; label: string }
   | { type: 'vault-forget'; path: string } // drop from the roster (keeps the file)
   | { type: 'vault-delete'; path: string } // drop from the roster AND delete the file (irreversible)
+  | { type: 'vault-ready'; path: string; label: string } // register a new vault once its password is set
   | { type: 'vault-set-icon'; path: string; icon?: string } // emoji, or absent to clear
   | { type: 'vault-set-image'; path: string }; // shell picks a device-local image
 

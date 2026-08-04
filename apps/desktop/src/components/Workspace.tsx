@@ -290,6 +290,12 @@ export function Workspace({
       // eslint-disable-next-line react-hooks/set-state-in-effect -- close the unlock modal once the vault is unlocked
       setShowUnlockModal(false);
       setUnlockFromPicker(false);
+      // A brand-new vault only joins the roster now that its master password exists
+      // (register-after-password, ADR 0014): the shell carried its chosen name as pendingLabel.
+      const ctx = nativeContext();
+      if (isNativeShell() && ctx?.pendingLabel && ctx.path) {
+        sendVaultCommand({ type: 'vault-ready', path: ctx.path, label: ctx.pendingLabel });
+      }
       fetchConnections();
     }
   }, [isLocked, showUnlockModal, fetchConnections]);

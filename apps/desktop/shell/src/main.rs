@@ -58,26 +58,35 @@ enum UserEvent {
         window: WindowId,
         req: OpenRequest,
     },
-    Vault(VaultCommand),
+    /// A vault-management command (roster edit / native dialog), tagged with the window
+    /// that posted it so New/Open can switch *that* window to the vault.
+    Vault {
+        window: WindowId,
+        cmd: VaultCommand,
+    },
     /// A native file dialog resolved on its own thread (see [`spawn_file_dialog`]).
     VaultPicked(VaultPick),
 }
 
-/// Which native file chooser to raise on the dialog thread.
+/// Which native file chooser to raise on the dialog thread. New/Open carry the window that
+/// requested them so the resolved pick can switch it in place.
 enum DialogKind {
     /// "Save as" for a brand-new vault file.
-    New,
+    New(WindowId),
     /// "Open" an existing vault file.
-    Open,
+    Open(WindowId),
     /// Pick an image to use as `vault`'s icon.
     Image(PathBuf),
 }
 
-/// The outcome of a resolved [`DialogKind`], handed back to the event loop so the
-/// roster mutation + window open happen on the owning thread (never off it).
+/// The outcome of a resolved [`DialogKind`], handed back to the event loop so the roster
+/// mutation + window switch happen on the owning thread (never off it).
 enum VaultPick {
-    New(PathBuf),
-    Open(PathBuf),
+    /// A brand-new vault at `path`, to open in `window` — NOT yet registered (the frontend
+    /// registers it via `vault-ready` once its master password is set, register-after-password).
+    New { window: WindowId, path: PathBuf },
+    /// An existing vault file at `path`, to register and open in `window`.
+    Open { window: WindowId, path: PathBuf },
     Image { vault: PathBuf, file: PathBuf },
 }
 
@@ -201,21 +210,59 @@ fn main() -> Result<()> {
             Event::UserEvent(UserEvent::SwitchContext { window, req }) => {
                 switch_context(&proxy, &mut windows, &mut registry, window, req, &vaults_json);
             }
-            Event::UserEvent(UserEvent::Vault(cmd)) => {
-                if apply_vault_command(cmd, &mut roster, &proxy) {
+            Event::UserEvent(UserEvent::Vault { window, cmd }) => {
+                if apply_vault_command(window, cmd, &mut roster, &proxy) {
                     // The roster changed: refresh every open window's hub (ADR 0014).
                     vaults_json =
                         serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
                     broadcast_vaults(&windows, &vaults_json);
                 }
             }
-            Event::UserEvent(UserEvent::VaultPicked(pick)) => {
-                if apply_vault_pick(pick, &mut roster, &proxy) {
-                    vaults_json =
-                        serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
-                    broadcast_vaults(&windows, &vaults_json);
+            Event::UserEvent(UserEvent::VaultPicked(pick)) => match pick {
+                // A new vault: switch its window onto it, carrying `pendingLabel` so the frontend
+                // registers it after setup (register-after-password). No roster change yet.
+                VaultPick::New { window, path } => {
+                    let label = vault_label_for(&path);
+                    let inject = serde_json::json!({
+                        "kind": "local",
+                        "path": path.to_string_lossy(),
+                        "pendingLabel": label,
+                    })
+                    .to_string();
+                    let req = OpenRequest { key: ContextKey::local(&path), inject, db_path: path };
+                    switch_context(&proxy, &mut windows, &mut registry, window, req, &vaults_json);
                 }
-            }
+                // An existing vault: register it now, then switch its window onto it.
+                VaultPick::Open { window, path } => {
+                    let added = roster.add(&path, &vault_label_for(&path)).unwrap_or(false);
+                    let inject = serde_json::json!({ "kind": "local", "path": path.to_string_lossy() })
+                        .to_string();
+                    let req = OpenRequest { key: ContextKey::local(&path), inject, db_path: path };
+                    switch_context(&proxy, &mut windows, &mut registry, window, req, &vaults_json);
+                    if added {
+                        vaults_json = serde_json::to_string(roster.entries())
+                            .unwrap_or_else(|_| "[]".to_string());
+                        broadcast_vaults(&windows, &vaults_json);
+                    }
+                }
+                VaultPick::Image { vault, file } => {
+                    let changed = match encode_icon_data_uri(&file) {
+                        Some(uri) => roster.set_icon(&vault, Some(uri)).unwrap_or(false),
+                        None => {
+                            show_error(
+                                "Couldn't use that image",
+                                "Rite couldn't read or convert the selected image.",
+                            );
+                            false
+                        }
+                    };
+                    if changed {
+                        vaults_json = serde_json::to_string(roster.entries())
+                            .unwrap_or_else(|_| "[]".to_string());
+                        broadcast_vaults(&windows, &vaults_json);
+                    }
+                }
+            },
             _ => {}
         }
     });
@@ -374,7 +421,7 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, window: WindowId, body: String)
         }
         _ => {
             if let Some(cmd) = plan_vault_command(&msg) {
-                send(UserEvent::Vault(cmd));
+                send(UserEvent::Vault { window, cmd });
             }
         }
     }
@@ -399,6 +446,9 @@ enum VaultCommand {
     /// Forget a vault AND permanently delete its `.db` file (+ WAL/SHM sidecars). Irreversible;
     /// the frontend confirms first. Mirrors the mock's "Also delete the file permanently" opt-in.
     Delete { path: PathBuf },
+    /// Register a freshly-created vault in the roster — sent by the frontend once its master
+    /// password is set, so a not-yet-configured vault never appears (register-after-password).
+    Ready { path: PathBuf, label: String },
     /// Wipe a vault — erase its master password + all connections (irreversible). Reuses the
     /// existing reset flow; the frontend confirms before sending.
     Reset { path: PathBuf },
@@ -436,6 +486,10 @@ fn plan_vault_command(msg: &serde_json::Value) -> Option<VaultCommand> {
         }),
         "vault-delete" => Some(VaultCommand::Delete {
             path: PathBuf::from(str_field("path")?),
+        }),
+        "vault-ready" => Some(VaultCommand::Ready {
+            path: PathBuf::from(str_field("path")?),
+            label: str_field("label")?.to_string(),
         }),
         "vault-reset" => Some(VaultCommand::Reset {
             path: PathBuf::from(str_field("path")?),
@@ -509,13 +563,14 @@ fn context_request_from(msg: &serde_json::Value, default_db: &Path) -> Option<Op
     }
 }
 
-/// Execute a vault-management command on the event-loop thread (ADR 0014). Returns whether the
-/// roster changed, so the caller refreshes open hubs. New/OpenFile add to the roster and ask the
-/// loop to open the vault in a window (via an OpenContext event); rename/forget mutate the roster
-/// in place. Reset/Lock are Phase C — logged for now. Native file dialogs are raised off this
-/// thread ([`spawn_file_dialog`]) and finish in [`apply_vault_pick`]; the optional path on
-/// New/OpenFile is a test hook that bypasses the picker (and so resolves synchronously here).
+/// Execute a vault-management command on the event-loop thread (ADR 0014), for the window that
+/// posted it. Returns whether the roster changed, so the caller refreshes open hubs. New/OpenFile
+/// raise a native chooser off this thread ([`spawn_file_dialog`]) and finish in the `VaultPicked`
+/// handler, which switches `window` onto the vault; rename/forget/delete/ready/set-icon mutate the
+/// roster in place. Reset/Lock are Phase C. An optional path on New/OpenFile is a test hook that
+/// bypasses the picker — it resolves by posting the equivalent `VaultPicked` for the same window.
 fn apply_vault_command(
+    window: WindowId,
     cmd: VaultCommand,
     roster: &mut vault_roster::VaultRoster,
     proxy: &EventLoopProxy<UserEvent>,
@@ -530,31 +585,28 @@ fn apply_vault_command(
             // deletion is worth a rebroadcast so every hub drops any stale view of it.
             forgotten
         }
-        // A path here is the test hook (bypasses the picker); otherwise raise the native
-        // chooser off the event-loop thread and finish in `apply_vault_pick` once it resolves.
-        VaultCommand::New { label, path } => match path {
-            Some(p) => {
-                let label = label.unwrap_or_else(|| vault_label_for(&p));
-                let added = roster.add(&p, &label).unwrap_or(false);
-                open_local_vault(&p, proxy);
-                added
+        VaultCommand::Ready { path, label } => roster.add(&path, &label).unwrap_or(false),
+        // A path here is the test hook (bypasses the picker) → post the pick directly for this
+        // window; otherwise raise the native chooser and finish in the `VaultPicked` handler.
+        VaultCommand::New { path, .. } => {
+            match path {
+                Some(path) => {
+                    let _ = proxy.send_event(UserEvent::VaultPicked(VaultPick::New { window, path }));
+                }
+                None => spawn_file_dialog(proxy.clone(), DialogKind::New(window)),
             }
-            None => {
-                spawn_file_dialog(proxy.clone(), DialogKind::New);
-                false
+            false
+        }
+        VaultCommand::OpenFile { path } => {
+            match path {
+                Some(path) => {
+                    let _ =
+                        proxy.send_event(UserEvent::VaultPicked(VaultPick::Open { window, path }));
+                }
+                None => spawn_file_dialog(proxy.clone(), DialogKind::Open(window)),
             }
-        },
-        VaultCommand::OpenFile { path } => match path {
-            Some(p) => {
-                let added = roster.add(&p, &vault_label_for(&p)).unwrap_or(false);
-                open_local_vault(&p, proxy);
-                added
-            }
-            None => {
-                spawn_file_dialog(proxy.clone(), DialogKind::Open);
-                false
-            }
-        },
+            false
+        }
         VaultCommand::SetIcon { path, icon } => roster.set_icon(&path, icon).unwrap_or(false),
         VaultCommand::SetImage { path } => {
             spawn_file_dialog(proxy.clone(), DialogKind::Image(path));
@@ -567,37 +619,6 @@ fn apply_vault_command(
             );
             false
         }
-    }
-}
-
-/// Apply a resolved file-dialog outcome on the event-loop thread: mutate the roster and,
-/// for a vault pick, open its window. Returns `true` when the roster changed (⇒ rebroadcast).
-fn apply_vault_pick(
-    pick: VaultPick,
-    roster: &mut vault_roster::VaultRoster,
-    proxy: &EventLoopProxy<UserEvent>,
-) -> bool {
-    match pick {
-        VaultPick::New(p) => {
-            let added = roster.add(&p, &vault_label_for(&p)).unwrap_or(false);
-            open_local_vault(&p, proxy);
-            added
-        }
-        VaultPick::Open(p) => {
-            let added = roster.add(&p, &vault_label_for(&p)).unwrap_or(false);
-            open_local_vault(&p, proxy);
-            added
-        }
-        VaultPick::Image { vault, file } => match encode_icon_data_uri(&file) {
-            Some(uri) => roster.set_icon(&vault, Some(uri)).unwrap_or(false),
-            None => {
-                show_error(
-                    "Couldn't use that image",
-                    "Rite couldn't read or convert the selected image.",
-                );
-                false
-            }
-        },
     }
 }
 
@@ -619,18 +640,18 @@ fn spawn_file_dialog(proxy: EventLoopProxy<UserEvent>, kind: DialogKind) {
         };
         let picked = rt.block_on(async {
             match kind {
-                DialogKind::New => rfd::AsyncFileDialog::new()
+                DialogKind::New(window) => rfd::AsyncFileDialog::new()
                     .set_title("Create a new Rite vault")
                     .set_file_name("vault.db")
                     .save_file()
                     .await
-                    .map(|f| VaultPick::New(f.path().to_path_buf())),
-                DialogKind::Open => rfd::AsyncFileDialog::new()
+                    .map(|f| VaultPick::New { window, path: f.path().to_path_buf() }),
+                DialogKind::Open(window) => rfd::AsyncFileDialog::new()
                     .set_title("Open a Rite vault")
                     .add_filter("Rite vault", &["db"])
                     .pick_file()
                     .await
-                    .map(|f| VaultPick::Open(f.path().to_path_buf())),
+                    .map(|f| VaultPick::Open { window, path: f.path().to_path_buf() }),
                 DialogKind::Image(vault) => rfd::AsyncFileDialog::new()
                     .set_title("Choose a vault icon")
                     .add_filter("Image", &["png", "jpg", "jpeg", "gif", "webp"])
@@ -677,18 +698,6 @@ fn delete_vault_file(path: &Path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => tracing::warn!("[rite-desktop] couldn't delete {} ({e})", target.display()),
         }
-    }
-}
-
-/// Ask the event loop to open (or focus) a local-vault window at `path`.
-fn open_local_vault(path: &Path, proxy: &EventLoopProxy<UserEvent>) {
-    let req = OpenRequest {
-        key: ContextKey::local(path),
-        db_path: path.to_path_buf(),
-        inject: serde_json::json!({ "kind": "local", "path": path.to_string_lossy() }).to_string(),
-    };
-    if proxy.send_event(UserEvent::OpenContext(req)).is_err() {
-        tracing::warn!("[rite-desktop] event loop gone; couldn't open the vault window");
     }
 }
 
@@ -983,6 +992,17 @@ mod tests {
             Some(VaultCommand::Delete { path: PathBuf::from("/v/a.db") })
         );
         assert!(plan_vault_command(&json!({ "type": "vault-delete" })).is_none());
+    }
+
+    #[test]
+    fn vault_command_ready_needs_path_and_label() {
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-ready", "path": "/v/a.db", "label": "Beta" })),
+            Some(VaultCommand::Ready { path: PathBuf::from("/v/a.db"), label: "Beta".into() })
+        );
+        // Missing either field ⇒ not a command (never register a half-specified vault).
+        assert!(plan_vault_command(&json!({ "type": "vault-ready", "path": "/v/a.db" })).is_none());
+        assert!(plan_vault_command(&json!({ "type": "vault-ready", "label": "Beta" })).is_none());
     }
 
     #[test]
