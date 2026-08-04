@@ -113,21 +113,26 @@ export function ContextPill() {
       {splitIcon}
     </button>
   );
-  const removeVaultBtn = (v: NativeVault) => (
+  const removeVaultBtn = (v: NativeVault) => {
+    // The current vault opens the Reset flow (you can't forget the one you're in); others open
+    // the remove/delete flow. The dialog decides — keep the label neutral for both.
+    const current = isLocalActive && currentVaultPath === v.path;
+    return (
     <button
       onClick={() => {
         setOpen(false);
         setRemoveVault(v);
       }}
-      title="Remove from list"
-      aria-label={`Remove ${v.label}`}
+      title={current ? 'Reset vault' : 'Remove from list'}
+      aria-label={current ? `Reset ${v.label}` : `Remove ${v.label}`}
       className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
     >
       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
       </svg>
     </button>
-  );
+    );
+  };
 
   return (
     <div ref={rootRef} className="relative">
@@ -167,7 +172,7 @@ export function ContextPill() {
                     {isCurrent && <span className="flex-none text-xs text-primary">current</span>}
                   </button>
                   {!isCurrent && newWindowBtn(v.label, () => newWindowVault(v.path))}
-                  {!isCurrent && removeVaultBtn(v)}
+                  {removeVaultBtn(v)}
                 </div>
               );
             })

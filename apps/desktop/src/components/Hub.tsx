@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Backend, type ContextState, type RemoteServer } from '../utils/backend';
 import { useAuthStore } from '../store/authStore';
 import {
+  isNativeShell,
   requestOpenContext,
   requestSwitchContext,
   nativeVaults,
@@ -463,8 +464,9 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
             </button>
           )}
 
-          {/* New / open a vault file (multi-vault, ADR 0014) — native shell only. */}
-          {vaults.length > 0 && (
+          {/* New / open a vault file (multi-vault, ADR 0014) — always available natively, even if
+              the roster momentarily reads empty, so you can always add a local vault here. */}
+          {isNativeShell() && (
             <div className="flex gap-2">
               <button
                 onClick={newVault}
