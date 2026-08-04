@@ -42,9 +42,12 @@ import {
   requestSwitchContext,
   requestReloadContext,
   onVaultsChanged,
+  openCreateVault,
+  onCreateVault,
   type NativeVault,
 } from '../utils/nativeShell';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
+import { CreateVaultDialog } from './CreateVaultDialog';
 import { transport } from '../utils/transport';
 import { Toast } from './Toast';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -147,6 +150,7 @@ export function Workspace({
   const [showVaultPicker, setShowVaultPicker] = useState(false); // multi-vault picker (ADR 0014)
   const [unlockFromPicker, setUnlockFromPicker] = useState(false); // came from the picker → back returns there
   const [removeVault, setRemoveVault] = useState<NativeVault | null>(null); // picker remove/delete target
+  const [showCreateVault, setShowCreateVault] = useState(false); // create-vault dialog (any surface triggers it)
   const [abandonNewVault, setAbandonNewVault] = useState(false); // × on a not-yet-set-up new vault
   const [abandonDeleteFile, setAbandonDeleteFile] = useState(true); // its file was just created
 
@@ -293,6 +297,8 @@ export function Workspace({
   // e.g. after deleting/forgetting a vault, without closing and reopening the picker.
   const [, bumpVaults] = useState(0);
   useEffect(() => onVaultsChanged(() => bumpVaults((n) => n + 1)), []);
+  // Any surface (header, pill, hub, picker) can ask to create a vault; the one dialog lives here.
+  useEffect(() => onCreateVault(() => setShowCreateVault(true)), []);
 
   // Escape closes the vault picker (a dialog needs a keyboard exit, not only a click-outside).
   useEffect(() => {
@@ -1064,7 +1070,7 @@ export function Workspace({
 
         {isLocked ? (
           <button
-            onClick={() => (isFirstRun ? sendVaultCommand({ type: 'vault-new' }) : setShowUnlockModal(true))}
+            onClick={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
             className="m-btn m-btn-primary m-btn-sm"
             title={isFirstRun ? 'Create your local vault' : 'Unlock vault'}
           >
@@ -1117,7 +1123,7 @@ export function Workspace({
                 <button
                   onClick={() => {
                     if (lockedVaults.length > 0) setShowVaultPicker(true);
-                    else if (isFirstRun) sendVaultCommand({ type: 'vault-new' });
+                    else if (isFirstRun) openCreateVault();
                     else setShowUnlockModal(true);
                   }}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
@@ -1758,7 +1764,7 @@ export function Workspace({
               <button
                 onClick={() => {
                   setShowVaultPicker(false);
-                  sendVaultCommand({ type: 'vault-new' });
+                  openCreateVault();
                 }}
                 className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm text-muted-foreground hover:border-primary hover:text-foreground"
               >
@@ -1781,6 +1787,8 @@ export function Workspace({
       {removeVault && (
         <VaultRemoveDialog vault={removeVault} onClose={() => setRemoveVault(null)} />
       )}
+
+      {showCreateVault && <CreateVaultDialog onClose={() => setShowCreateVault(false)} />}
 
       {/* Unlock Modal (context-specific, provided by the shell). Closing it returns to the vault
           picker when we came from there, so the user doesn't have to start over. */}

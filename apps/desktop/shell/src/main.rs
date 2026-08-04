@@ -361,10 +361,12 @@ fn build_context_view(
     let window_id = window.id();
 
     // Inject the loopback token + the target context, then wire the IPC handler (tagged with
-    // this window's id, so `switch-context` reloads the window that posted it).
+    // this window's id, so `switch-context` reloads the window that posted it). Also inject a
+    // suggested path for the create-vault dialog so it can show where a new vault would be written.
+    let suggested = serde_json::Value::from(suggested_vault_path().to_string_lossy().into_owned());
     let init = format!(
         "window.__RITE_TOKEN__ = '{token}'; window.__RITE_CONTEXT__ = {inject}; \
-         window.__RITE_VAULTS__ = {vaults_json};{test_hook}",
+         window.__RITE_VAULTS__ = {vaults_json}; window.__RITE_SUGGESTED_VAULT_PATH__ = {suggested};{test_hook}",
         inject = req.inject,
         test_hook = test_ipc_hook(),
     );
@@ -773,6 +775,28 @@ fn vault_label_for(path: &Path) -> String {
         .map(|s| s.to_string_lossy().into_owned())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "Vault".to_string())
+}
+
+/// Where a *new* vault would be written by default, shown in the create dialog so the user sees
+/// the location without opening a picker. The default base path when it isn't registered yet
+/// (reusing its auto-created empty file is fine); otherwise the first free `vault(N).db` that is
+/// neither registered nor already on disk, so we never silently clobber an existing vault.
+fn suggested_vault_path() -> PathBuf {
+    let roster = vault_roster::VaultRoster::load(roster_path());
+    if !roster.contains(db_path()) {
+        return db_path();
+    }
+    let dir = db_path()
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    for i in 1..1000 {
+        let candidate = dir.join(format!("vault({i}).db"));
+        if !roster.contains(&candidate) && !candidate.exists() {
+            return candidate;
+        }
+    }
+    dir.join("vault.db")
 }
 
 /// Test hook (host smoke, ADR 0014): when `RITE_TEST_IPC` holds an IPC message, the first window

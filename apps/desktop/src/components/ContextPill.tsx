@@ -21,6 +21,7 @@ import {
   nativeContext,
   sendVaultCommand,
   onVaultsChanged,
+  openCreateVault,
   type NativeVault,
 } from '../utils/nativeShell';
 import { Hub } from './Hub';
@@ -215,7 +216,7 @@ export function ContextPill() {
           <button
             onClick={() => {
               setOpen(false);
-              sendVaultCommand({ type: 'vault-new' });
+              openCreateVault();
             }}
             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
           >

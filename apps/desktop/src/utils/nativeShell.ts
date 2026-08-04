@@ -47,7 +47,7 @@ export function nativeVaults(): NativeVault[] {
 
 /** A vault-management command the hub asks the shell to run (ADR 0014). */
 export type VaultCommand =
-  | { type: 'vault-new' } // shell shows a save dialog
+  | { type: 'vault-new'; path?: string; label?: string } // path ⇒ create there; absent ⇒ save dialog
   | { type: 'vault-open-file' } // shell shows an open dialog
   | { type: 'vault-rename'; path: string; label: string }
   | { type: 'vault-forget'; path: string } // drop from the roster (keeps the file)
@@ -74,6 +74,26 @@ export function onVaultsChanged(handler: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
   window.addEventListener('rite-vaults-changed', handler);
   return () => window.removeEventListener('rite-vaults-changed', handler);
+}
+
+/** The default path a new vault would be written to (shell-injected), for the create dialog. */
+export function suggestedVaultPath(): string | undefined {
+  return typeof window !== 'undefined' ? window.__RITE_SUGGESTED_VAULT_PATH__ : undefined;
+}
+
+/**
+ * Open the create-vault dialog. Decoupled via a DOM event so any surface (header, pill, hub,
+ * picker) can trigger the single dialog mounted in the workspace, without prop-drilling.
+ */
+export function openCreateVault(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('rite-create-vault'));
+}
+
+/** Subscribe to create-vault requests; returns an unsubscribe fn. */
+export function onCreateVault(handler: () => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  window.addEventListener('rite-create-vault', handler);
+  return () => window.removeEventListener('rite-create-vault', handler);
 }
 
 /**

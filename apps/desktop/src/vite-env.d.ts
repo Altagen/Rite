@@ -39,6 +39,8 @@ interface Window {
   ipc?: { postMessage: (message: string) => void };
   /** Local vaults the shell knows about (multi-vault roster, ADR 0014). */
   __RITE_VAULTS__?: RiteNativeVault[];
+  /** Where a new vault would be written by default (shown in the create dialog, ADR 0014). */
+  __RITE_SUGGESTED_VAULT_PATH__?: string;
 }
 
 declare module '*.png' {

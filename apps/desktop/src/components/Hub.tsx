@@ -24,6 +24,7 @@ import {
   nativeContext,
   sendVaultCommand,
   onVaultsChanged,
+  openCreateVault,
   type NativeVault,
 } from '../utils/nativeShell';
 import { CertTrustModal } from './CertTrustModal';
@@ -248,7 +249,10 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
 
   // Vault management (ADR 0014). The shell runs the command (native dialog for new/open) and
   // pushes the updated roster back via `rite-vaults-changed`, so we don't refresh by hand.
-  const newVault = () => sendVaultCommand({ type: 'vault-new' });
+  const newVault = () => {
+    onClose?.();
+    openCreateVault();
+  };
   const openVaultFile = () => sendVaultCommand({ type: 'vault-open-file' });
   const startRename = (v: NativeVault) => {
     setRenamingPath(v.path);
