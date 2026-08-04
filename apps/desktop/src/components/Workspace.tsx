@@ -122,6 +122,7 @@ export function Workspace({
   const [showQuickSSH, setShowQuickSSH] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [showVaultPicker, setShowVaultPicker] = useState(false); // multi-vault picker (ADR 0014)
+  const [unlockFromPicker, setUnlockFromPicker] = useState(false); // came from the picker → back returns there
 
   // Collection opened in the main area (ADR 0016): which one + which main view is
   // showing (terminal is kept mounted underneath). Plus the members dialog target
@@ -262,11 +263,12 @@ export function Workspace({
     }
   };
 
-  // Close unlock modal when unlocked
+  // Close unlock modal when unlocked (success ⇒ show the workspace, not back to the picker).
   useEffect(() => {
     if (!isLocked && showUnlockModal) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- close the unlock modal once the vault is unlocked
       setShowUnlockModal(false);
+      setUnlockFromPicker(false);
       fetchConnections();
     }
   }, [isLocked, showUnlockModal, fetchConnections]);
@@ -1607,8 +1609,10 @@ export function Workspace({
                     key={v.path}
                     onClick={() => {
                       setShowVaultPicker(false);
-                      if (isThisWindow) setShowUnlockModal(true);
-                      else requestOpenContext({ kind: 'local', path: v.path });
+                      if (isThisWindow) {
+                        setUnlockFromPicker(true);
+                        setShowUnlockModal(true);
+                      } else requestOpenContext({ kind: 'local', path: v.path });
                     }}
                     className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 text-left text-sm hover:border-primary hover:bg-muted"
                   >
@@ -1652,11 +1656,20 @@ export function Workspace({
         </div>
       )}
 
-      {/* Unlock Modal (context-specific, provided by the shell) */}
+      {/* Unlock Modal (context-specific, provided by the shell). Closing it returns to the vault
+          picker when we came from there, so the user doesn't have to start over. */}
       {showUnlockModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
           <div className="mx-4 w-full max-w-lg">
-            {auth.renderUnlockModal({ onClose: () => setShowUnlockModal(false) })}
+            {auth.renderUnlockModal({
+              onClose: () => {
+                setShowUnlockModal(false);
+                if (unlockFromPicker) {
+                  setUnlockFromPicker(false);
+                  setShowVaultPicker(true);
+                }
+              },
+            })}
           </div>
         </div>
       )}
