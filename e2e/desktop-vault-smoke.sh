@@ -57,6 +57,15 @@ grep -q '\[\]' "$H/.local/share/rite/vaults.json" || die "forget: roster not emp
 ok "forget → roster emptied, .db file kept"
 rm -rf "$H"
 
+# --- delete: drops from the roster AND erases the .db file (irreversible opt-in) ---
+H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
+VD="$H/.local/share/rite/vault.db"
+run "{\"type\":\"vault-delete\",\"path\":\"$VD\"}" "$H"
+grep -q '\[\]' "$H/.local/share/rite/vaults.json" || die "delete: roster not emptied" "$H/.local/share/rite/vaults.json"
+[ ! -f "$VD" ] || die "delete: vault file still on disk (should be erased)"
+ok "delete → roster emptied, .db file erased"
+rm -rf "$H"
+
 # --- set-icon: stores the chosen emoji on the roster entry ---
 H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
 VD="$H/.local/share/rite/vault.db"

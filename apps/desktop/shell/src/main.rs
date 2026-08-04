@@ -298,6 +298,9 @@ enum VaultCommand {
     Rename { path: PathBuf, label: String },
     /// Forget a vault from the roster (does NOT delete the file).
     Forget { path: PathBuf },
+    /// Forget a vault AND permanently delete its `.db` file (+ WAL/SHM sidecars). Irreversible;
+    /// the frontend confirms first. Mirrors the mock's "Also delete the file permanently" opt-in.
+    Delete { path: PathBuf },
     /// Wipe a vault — erase its master password + all connections (irreversible). Reuses the
     /// existing reset flow; the frontend confirms before sending.
     Reset { path: PathBuf },
@@ -331,6 +334,9 @@ fn plan_vault_command(msg: &serde_json::Value) -> Option<VaultCommand> {
             label: str_field("label")?.to_string(),
         }),
         "vault-forget" => Some(VaultCommand::Forget {
+            path: PathBuf::from(str_field("path")?),
+        }),
+        "vault-delete" => Some(VaultCommand::Delete {
             path: PathBuf::from(str_field("path")?),
         }),
         "vault-reset" => Some(VaultCommand::Reset {
@@ -412,6 +418,13 @@ fn apply_vault_command(
     match cmd {
         VaultCommand::Rename { path, label } => roster.rename(&path, &label).unwrap_or(false),
         VaultCommand::Forget { path } => roster.remove(&path).unwrap_or(false),
+        VaultCommand::Delete { path } => {
+            let forgotten = roster.remove(&path).unwrap_or(false);
+            delete_vault_file(&path);
+            // The roster changed whenever the entry was there; even if it wasn't, the file
+            // deletion is worth a rebroadcast so every hub drops any stale view of it.
+            forgotten
+        }
         // A path here is the test hook (bypasses the picker); otherwise raise the native
         // chooser off the event-loop thread and finish in `apply_vault_pick` once it resolves.
         VaultCommand::New { label, path } => match path {
@@ -538,6 +551,28 @@ fn encode_icon_data_uri(path: &Path) -> Option<String> {
     small.write_to(&mut png, image::ImageFormat::Png).ok()?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(png.into_inner());
     Some(format!("data:image/png;base64,{b64}"))
+}
+
+/// Permanently delete a vault's database file and its SQLite sidecars (WAL/SHM/journal).
+/// Best-effort and graceful (owner bar): a missing file or permission error is logged, never
+/// fatal — the user already confirmed, and the roster removal stands regardless. If the vault
+/// is still open in another window, unlinking is safe on Linux (that server keeps its fd until
+/// the window closes); the data is gone once nothing holds it.
+fn delete_vault_file(path: &Path) {
+    for suffix in ["", "-wal", "-shm", "-journal"] {
+        let target = if suffix.is_empty() {
+            path.to_path_buf()
+        } else {
+            let mut name = path.as_os_str().to_owned();
+            name.push(suffix);
+            PathBuf::from(name)
+        };
+        match std::fs::remove_file(&target) {
+            Ok(()) => tracing::info!("[rite-desktop] deleted vault file {}", target.display()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => tracing::warn!("[rite-desktop] couldn't delete {} ({e})", target.display()),
+        }
+    }
 }
 
 /// Ask the event loop to open (or focus) a local-vault window at `path`.
@@ -810,6 +845,15 @@ mod tests {
             Some(VaultCommand::Forget { path: PathBuf::from("/v/a.db") })
         );
         assert!(plan_vault_command(&json!({ "type": "vault-forget" })).is_none());
+    }
+
+    #[test]
+    fn vault_command_delete_needs_path() {
+        assert_eq!(
+            plan_vault_command(&json!({ "type": "vault-delete", "path": "/v/a.db" })),
+            Some(VaultCommand::Delete { path: PathBuf::from("/v/a.db") })
+        );
+        assert!(plan_vault_command(&json!({ "type": "vault-delete" })).is_none());
     }
 
     #[test]
