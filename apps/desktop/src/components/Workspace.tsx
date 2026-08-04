@@ -141,7 +141,6 @@ export function Workspace({
 
   // Sidebar state
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [showSidebarButton, setShowSidebarButton] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
   // Quick SSH and Unlock modals
@@ -335,22 +334,6 @@ export function Workspace({
       fetchConnections();
     }
   }, [isLocked, showUnlockModal, fetchConnections]);
-
-  // Show sidebar button for 3 seconds when sidebar closes
-  useEffect(() => {
-    // React to the sidebar opening/closing to drive the reveal button.
-    /* eslint-disable react-hooks/set-state-in-effect */
-    if (!isSidebarOpen) {
-      setShowSidebarButton(true);
-      const timer = setTimeout(() => {
-        setShowSidebarButton(false);
-      }, 3000);
-      return () => clearTimeout(timer);
-    } else {
-      setShowSidebarButton(false);
-    }
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [isSidebarOpen]);
 
   // Update default shell dropdown position when it opens
   useEffect(() => {
@@ -947,8 +930,10 @@ export function Workspace({
     setShowForm(true);
   };
 
-  // Open a collection in the main area (from the sidebar).
+  // Open a collection in the main area (from the sidebar). Clear any selected machine so the
+  // sidebar highlight follows what's actually focused instead of leaving a stale machine lit.
   const handleOpenCollection = (collectionId: string) => {
+    selectConnection(null);
     setOpenCollectionId(collectionId);
     setMainView('collection');
   };
@@ -1276,23 +1261,19 @@ export function Workspace({
           )}
         </aside>
 
-        {/* Hover zone and toggle button when sidebar is closed */}
+        {/* Persistent reveal tab when the sidebar is closed — always visible + above the content
+            (a hover-only button got swallowed by the terminal, leaving no way back). */}
         {!isSidebarOpen && (
-          <div className="absolute left-0 top-0 h-full w-12 z-10 group">
-            <button
-              onClick={() => setIsSidebarOpen(true)}
-              className={`absolute left-0 top-1/2 -translate-y-1/2 bg-card border border-border rounded-r-md p-2 hover:bg-muted transition-all shadow-lg ${
-                showSidebarButton
-                  ? 'opacity-100 animate-pulse'
-                  : 'opacity-0 group-hover:opacity-100'
-              }`}
-              title="Show sidebar"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            title="Show sidebar"
+            aria-label="Show sidebar"
+            className="absolute left-0 top-1/2 z-30 -translate-y-1/2 rounded-r-md border border-l-0 border-border bg-card p-2 shadow-lg transition-colors hover:bg-muted"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+          </button>
         )}
 
         {/* Main content: a Terminal / Collection tab strip (only when a collection
