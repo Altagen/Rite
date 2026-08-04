@@ -102,6 +102,17 @@ export function requestSwitchContext(request: OpenContextRequest): boolean {
 }
 
 /**
+ * Ask the shell to rebuild THIS window onto its current context (fresh server + webview). Use
+ * this after a vault reset instead of `window.location.reload()`, because a plain reload re-injects
+ * the roster snapshot frozen at window-creation time — the rebuild regenerates it. No-op in web.
+ */
+export function requestReloadContext(): boolean {
+  if (typeof window === 'undefined' || !window.ipc) return false;
+  window.ipc.postMessage(JSON.stringify({ type: 'reload-context' }));
+  return true;
+}
+
+/**
  * On a server-context window, activate the injected server so this window's local
  * server proxies to it, then reload once into the remote's login. Guarded by the
  * current active context so the post-activation reload does not re-trigger. A

@@ -58,6 +58,12 @@ enum UserEvent {
         window: WindowId,
         req: OpenRequest,
     },
+    /// Force a rebuild of the posting window onto its *current* context (fresh server + webview,
+    /// so `__RITE_VAULTS__` is regenerated). Used after a vault reset, where a plain page reload
+    /// would re-inject the stale roster snapshot frozen at window-creation time.
+    ReloadContext {
+        window: WindowId,
+    },
     /// A vault-management command (roster edit / native dialog), tagged with the window
     /// that posted it so New/Open can switch *that* window to the vault.
     Vault {
@@ -208,6 +214,33 @@ fn main() -> Result<()> {
             }
             Event::UserEvent(UserEvent::SwitchContext { window, req }) => {
                 switch_context(&proxy, &mut windows, &mut registry, window, req, &vaults_json);
+            }
+            Event::UserEvent(UserEvent::ReloadContext { window }) => {
+                // Rebuild the window onto the local vault it currently holds (reset flow). Its DB
+                // was just wiped, so it comes back first-run; carry `pendingLabel` when it's no
+                // longer registered so setting a new password re-registers it.
+                match registry.context_of(&window).cloned() {
+                    Some(ContextKey::Local(path)) => {
+                        let is_default = ContextKey::Local(path.clone()) == ContextKey::local(db_path());
+                        let mut inject =
+                            serde_json::json!({ "kind": "local", "path": path.to_string_lossy() });
+                        if !roster.contains(&path) {
+                            let label = if is_default {
+                                "Local vault".to_string()
+                            } else {
+                                vault_label_for(&path)
+                            };
+                            inject["pendingLabel"] = serde_json::Value::from(label);
+                        }
+                        let req = OpenRequest {
+                            key: ContextKey::Local(path.clone()),
+                            inject: inject.to_string(),
+                            db_path: path,
+                        };
+                        rebuild_window(&proxy, &mut windows, &mut registry, window, req, &vaults_json);
+                    }
+                    _ => tracing::warn!("[rite-desktop] reload-context: window is not a local vault; ignoring"),
+                }
             }
             Event::UserEvent(UserEvent::Vault { window, cmd }) => {
                 if apply_vault_command(window, cmd, &mut roster, &proxy) {
@@ -364,10 +397,24 @@ fn switch_context(
         }
         return;
     }
-    // Reuse this window. Remove the old state first so its server stops (old vault locks),
-    // then rebuild the webview on the same tao window.
+    rebuild_window(proxy, windows, registry, window_id, req, vaults_json);
+}
+
+/// Tear down `window_id`'s current server + webview (stopping the server → **locking its vault**)
+/// and rebuild it onto `req` in the same OS window, updating the registry to `req.key`. Shared by
+/// the in-place switch and by a forced reload (reset); the caller enforces any one-per-context rule
+/// and same-context guard first. A `build_context_view` failure surfaces an error and drops the
+/// window rather than stranding a blank frame.
+fn rebuild_window(
+    proxy: &EventLoopProxy<UserEvent>,
+    windows: &mut std::collections::HashMap<WindowId, WindowState>,
+    registry: &mut ContextRegistry<WindowId>,
+    window_id: WindowId,
+    req: OpenRequest,
+    vaults_json: &str,
+) {
     let Some(old) = windows.remove(&window_id) else {
-        tracing::warn!("[rite-desktop] switch-context for an unknown window; ignoring");
+        tracing::warn!("[rite-desktop] rebuild for an unknown window; ignoring");
         return;
     };
     // Keep the OS window; drop the old webview + shutdown handle now so the previous
@@ -382,11 +429,9 @@ fn switch_context(
             windows.insert(window_id, WindowState { webview, window, port, shutdown });
         }
         Err(e) => {
-            // The server didn't come up; the window is left without a webview. Surface it and
-            // drop the window (freeing its registry slot) rather than stranding a blank frame.
             registry.remove_window(&window_id);
             show_error(
-                "Could not switch context",
+                "Could not open that context",
                 &format!("Rite couldn't open that vault or server.\n\n{e:#}"),
             );
         }
@@ -418,6 +463,7 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, window: WindowId, body: String)
                 send(UserEvent::SwitchContext { window, req });
             }
         }
+        Some("reload-context") => send(UserEvent::ReloadContext { window }),
         _ => {
             if let Some(cmd) = plan_vault_command(&msg) {
                 send(UserEvent::Vault { window, cmd });

@@ -78,6 +78,22 @@ kill "$SW_PID" 2>/dev/null
 ok "switch → same window, old server stopped (vault locked), new server serving"
 rm -rf "$H"
 
+# --- reload-context: rebuilds the current window (fresh server + webview) so a reset picks up a
+#     regenerated roster snapshot instead of the stale one frozen at window-creation time. ---
+H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
+HOME="$H" XDG_DATA_HOME="$H/.local/share" XDG_CONFIG_HOME="$H/.config" RITE_WEB_DIR="$DIST" \
+  RITE_TEST_IPC='{"type":"reload-context"}' RUST_LOG=info "$BIN" >"$H/app.log" 2>&1 &
+RL_PID=$!
+i=0; while [ "$(grep -c 'window serving on' "$H/app.log" 2>/dev/null)" -lt 2 ]; do
+  i=$((i + 1)); [ "$i" -gt 60 ] && { kill "$RL_PID" 2>/dev/null; die "reload: window never rebuilt" "$H/app.log"; }; sleep 0.1
+done
+sleep 0.4
+RL_PORT="$(grep -oE '127.0.0.1:[0-9]+' "$H/app.log" | tail -1)"
+[ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 2 "http://$RL_PORT/")" = "200" ] || { kill "$RL_PID" 2>/dev/null; die "reload: rebuilt server not serving"; }
+kill "$RL_PID" 2>/dev/null
+ok "reload-context → same window rebuilt, fresh server serving"
+rm -rf "$H"
+
 # --- rename: relabels a registered vault in the roster ---
 H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
 VD="$H/.local/share/rite/vault.db"; seed "$H" "$VD" "Seed"

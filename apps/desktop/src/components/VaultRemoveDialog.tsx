@@ -13,7 +13,13 @@
 
 import { useState } from 'react';
 import { Backend } from '../utils/backend';
-import { isNativeShell, nativeContext, sendVaultCommand, type NativeVault } from '../utils/nativeShell';
+import {
+  isNativeShell,
+  nativeContext,
+  requestReloadContext,
+  sendVaultCommand,
+  type NativeVault,
+} from '../utils/nativeShell';
 
 export function VaultRemoveDialog({
   vault,
@@ -33,8 +39,8 @@ export function VaultRemoveDialog({
         <h3 className="font-semibold">Reset “{vault.label}”?</h3>
         <p className="mt-1 truncate text-xs text-muted-foreground">{vault.path}</p>
         <p className="mt-3 text-sm text-muted-foreground">
-          This vault is open in this window. Resetting <strong>erases its master password and every
-          connection</strong> so you can start from scratch. The file stays, but its contents are gone.
+          This vault is open in this window. Resetting <strong>erases its master password, every
+          connection, and its name/icon</strong> so you can start from scratch.
         </p>
         <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-xs text-muted-foreground">
           Irreversible — there’s no recovery (zero-knowledge). You’ll be asked to set a new master
@@ -48,8 +54,11 @@ export function VaultRemoveDialog({
             onClick={async () => {
               setBusy(true);
               try {
-                await Backend.Auth.resetDatabase();
-                window.location.reload(); // restart into first-run setup
+                await Backend.Auth.resetDatabase(); // wipe the master password + connections
+                // Drop the stale roster entry (name/icon) and rebuild the window via the shell so
+                // __RITE_VAULTS__ is regenerated — a plain page reload would re-inject the old list.
+                sendVaultCommand({ type: 'vault-forget', path: vault.path });
+                if (!requestReloadContext()) window.location.reload();
               } catch {
                 setBusy(false);
               }
