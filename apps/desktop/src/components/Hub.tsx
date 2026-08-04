@@ -368,7 +368,9 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                           </svg>
                         </button>
                         {iconMenuPath === v.path && (
-                          <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border bg-card p-2 shadow-lg">
+                          <>
+                            <div className="fixed inset-0 z-20" onClick={() => setIconMenuPath(null)} />
+                            <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border bg-card p-2 shadow-lg">
                             <div className="grid grid-cols-6 gap-1">
                               {VAULT_EMOJI.map((emo) => (
                                 <button
@@ -391,7 +393,8 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                                 Reset
                               </button>
                             </div>
-                          </div>
+                            </div>
+                          </>
                         )}
                       </div>
                       {isCurrent && (
@@ -524,7 +527,9 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                     </svg>
                   </button>
                   {serverIconMenu === s.id && (
-                    <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border bg-card p-2 shadow-lg">
+                    <>
+                      <div className="fixed inset-0 z-20" onClick={() => setServerIconMenu(null)} />
+                      <div className="absolute right-0 top-full z-30 mt-1 w-56 rounded-md border border-border bg-card p-2 shadow-lg">
                       <div className="grid grid-cols-6 gap-1">
                         {VAULT_EMOJI.map((emo) => (
                           <button
@@ -547,7 +552,8 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                           Reset
                         </button>
                       </div>
-                    </div>
+                      </div>
+                    </>
                   )}
                 </div>
                 {!isCurrent && (
