@@ -148,8 +148,14 @@ fn main() -> Result<()> {
         #[cfg(target_os = "linux")]
         {
             use tao::platform::unix::EventLoopBuilderExtUnix;
-            // Must be a valid GApplication id (reverse-DNS, at least one dot).
-            builder.with_app_id("io.github.altagen.rite");
+            // Must be a valid GApplication id (reverse-DNS, at least one dot). Overridable via
+            // RITE_APP_ID so a second instance on the same machine (multi-client testing) can use a
+            // distinct id — two GTK apps sharing one GApplication id collide (crash in the webview).
+            let app_id = std::env::var("RITE_APP_ID")
+                .ok()
+                .filter(|v| v.contains('.') && !v.trim().is_empty())
+                .unwrap_or_else(|| "io.github.altagen.rite".to_string());
+            builder.with_app_id(app_id);
         }
         builder.build()
     };
