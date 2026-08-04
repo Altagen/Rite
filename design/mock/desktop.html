@@ -386,14 +386,18 @@ function renderCtxMgr(){const el=document.getElementById('ctxmgr');if(!el)return
 /* ================= sidebar library (tree) ================= */
 function renderSide(){const s=document.getElementById('side'),c=STATE.ctx;
   {const r=document.getElementById('sideRail');if(r)r.remove();} // reset the collapse rail each render
-  if(c.type==='home'){s.style.width='290px';s.innerHTML=`<div class="empty" style="height:100%"><div>${ICON.term}</div><div class="big">Base session — terminal & Quick SSH in the toolbar. Pick a vault or server (top-left) for your saved connections.</div></div>`;return;}
-  if(c.type==='vault'&&c.locked){s.style.width='290px';s.innerHTML=`<div class="empty" style="height:100%"><div>${ICON.lock}</div><div class="big">“${c.name}” is locked.</div><button class="btn btn-primary btn-sm" onclick="dlgUnlock(STATE.ctx,()=>{STATE.ctx.locked=false;renderAll()})">Unlock</button></div>`;return;}
+  // Collapse works in EVERY state — base, locked, or library — so you can reclaim the width even
+  // without a vault (a vault isn't mandatory). The rail's arrow re-opens it.
   if(STATE.sideCollapsed){
     s.style.width='0';s.style.borderRight='none';s.innerHTML='';
     const r=document.createElement('div');r.id='sideRail';r.className='side-rail';
     r.innerHTML=`<button title="Show library" onclick="STATE.sideCollapsed=false;renderAll()"><svg class="icon" viewBox="0 0 24 24"><path d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg></button>`;
-    document.body.appendChild(r);
-    return;}
+    document.body.appendChild(r);return;}
+  const hide=`<div style="display:flex;justify-content:flex-end;padding:8px"><button class="btn btn-ghost btn-sm" style="padding:4px" title="Hide panel" onclick="STATE.sideCollapsed=true;renderAll()"><svg class="icon" viewBox="0 0 24 24"><path d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg></button></div>`;
+  if(c.type==='home'){const has=DATA.vaults.length>0;s.style.width='290px';s.style.borderRight='';
+    s.innerHTML=hide+`<div class="empty" style="height:calc(100% - 44px)"><div>${ICON.term}</div><div class="big">${has?'Base session — terminal & Quick SSH in the toolbar. Pick a vault or server (top-left) for your saved connections.':'No vault yet — create one to save connections. The terminal & Quick SSH work without it.'}</div><button class="btn btn-primary btn-sm" onclick="dlgNewVault()">${has?'New local vault':'Create local vault'}</button></div>`;return;}
+  if(c.type==='vault'&&c.locked){s.style.width='290px';s.style.borderRight='';
+    s.innerHTML=hide+`<div class="empty" style="height:calc(100% - 44px)"><div>${ICON.lock}</div><div class="big">“${c.name}” is locked.</div><button class="btn btn-primary btn-sm" onclick="dlgUnlock(STATE.ctx,()=>{STATE.ctx.locked=false;renderAll()})">Unlock</button></div>`;return;}
   s.style.width='290px';s.style.borderRight='';
   s.innerHTML=`<div class="search">${EXICON.search}<input placeholder="Search connections…"></div>
     <div class="side-hdr"><span class="eyebrow">Library</span>
