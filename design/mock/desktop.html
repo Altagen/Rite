@@ -288,10 +288,11 @@ function dlgNewVault(){
   // live validation (mirrors Rite's SetupScreen: length + match, disable until OK)
   const pw=bd.querySelector('#nv-pw'),pw2=bd.querySelector('#nv-pw2'),str=bd.querySelector('#nv-str'),match=bd.querySelector('#nv-match'),ok=bd.querySelector('[data-ok]');
   const upd=()=>{const v=pw.value;
-    const score=(v.length>=12?2:v.length>=8?1:0)+(/[A-Z]/.test(v)?1:0)+(/[0-9]/.test(v)?1:0)+(/[^A-Za-z0-9]/.test(v)?1:0);
+    // Length-first (NIST 800-63B): 12 is the floor (orange), 16+ good (yellow), 20+ strong (green).
+    const variety=(/[a-z]/.test(v)?1:0)+(/[A-Z]/.test(v)?1:0)+(/[0-9]/.test(v)?1:0)+(/[^A-Za-z0-9]/.test(v)?1:0);
     const valid=v.length>=12;
-    str.style.width=Math.min(100,(v.length/18)*100)+'%';
-    str.style.background=!v?'transparent':valid?(score>=4?'#9ece6a':'#e5b567'):'#f7768e';
+    str.style.width=Math.min(100,(v.length/20)*100)+'%';
+    str.style.background=!v?'transparent':!valid?'#f7768e':(v.length>=20&&variety>=3?'#9ece6a':v.length>=16&&variety>=2?'#e0af68':'#ff9e64');
     const matched=!!pw2.value&&v===pw2.value;
     match.textContent=pw2.value?(matched?'✓ Passwords match':'✕ Passwords don’t match'):'';
     match.style.color=matched?'var(--green)':'var(--red)';

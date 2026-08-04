@@ -8,18 +8,23 @@
 import { useMemo, useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 
+// Length-first (NIST 800-63B): 12 chars is the floor (Fair), not the top. Only longer passwords
+// climb to Good/Strong; char variety demotes a long low-variety one but never lifts a short one.
 function strength(p: string): number {
   if (!p) return 0;
-  let s = 0;
-  if (p.length >= 8) s++;
-  if (p.length >= 12) s++;
-  if (/[a-z]/.test(p) && /[A-Z]/.test(p)) s++;
-  if (/\d/.test(p)) s++;
-  if (/[^A-Za-z0-9]/.test(p)) s++;
-  return p.length < 8 ? Math.min(s, 1) : Math.min(s, 4);
+  const len = p.length;
+  const variety =
+    (/[a-z]/.test(p) ? 1 : 0) +
+    (/[A-Z]/.test(p) ? 1 : 0) +
+    (/\d/.test(p) ? 1 : 0) +
+    (/[^A-Za-z0-9]/.test(p) ? 1 : 0);
+  if (len < 12) return 1; // below the 12-char floor
+  if (len >= 20 && variety >= 3) return 4; // strong
+  if (len >= 16 && variety >= 2) return 3; // good
+  return 2; // fair (valid, but minimal)
 }
 const LABEL = ['', 'Too weak', 'Fair', 'Good', 'Strong'];
-const COLOR = ['', 'bg-red-500', 'bg-amber-500', 'bg-green-500', 'bg-green-500'];
+const COLOR = ['', 'bg-red-500', 'bg-amber-500', 'bg-yellow-500', 'bg-green-500'];
 
 export function ForcePasswordChange() {
   const { user, changePassword, loading, error } = useServerSession();

@@ -47,18 +47,15 @@ export function SetupScreen({ asModal = false, onClose }: SetupScreenProps = {})
     return () => clearTimeout(timer);
   }, [password]);
 
-  const getStrengthColor = (score: number): string => {
-    if (score <= 2) return 'bg-red-500';
-    if (score <= 4) return 'bg-orange-500';
-    if (score <= 5) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
-
-  const getStrengthLabel = (score: number): string => {
-    if (score <= 2) return t('setup.strengthWeak');
-    if (score <= 4) return t('setup.strengthFair');
-    if (score <= 5) return t('setup.strengthGood');
-    return t('setup.strengthExcellent');
+  // Length-first strength (NIST 800-63B): 12 chars is the *floor*, not "excellent". Tiers go by
+  // length so a barely-12 password reads as minimal (orange), and only long ones read as strong.
+  // `score` (char variety) only demotes a long-but-low-variety password, never promotes a short one.
+  const getStrength = (pw: string, valid: boolean, score: number) => {
+    const len = pw.length;
+    if (!valid) return { label: t('setup.strengthWeak'), bar: 'bg-red-500', text: 'text-red-600', pct: Math.max(8, Math.min(len / 12, 1) * 30) };
+    if (len >= 20 && score >= 5) return { label: t('setup.strengthExcellent'), bar: 'bg-green-500', text: 'text-green-600', pct: 100 };
+    if (len >= 16 && score >= 4) return { label: t('setup.strengthGood'), bar: 'bg-yellow-500', text: 'text-yellow-600', pct: 74 };
+    return { label: t('setup.strengthFair'), bar: 'bg-orange-500', text: 'text-orange-600', pct: 48 };
   };
 
   const passwordsMatch = password && confirmPassword && password === confirmPassword;
@@ -146,23 +143,27 @@ export function SetupScreen({ asModal = false, onClose }: SetupScreenProps = {})
                 </button>
               </div>
 
-              {/* Password strength bar */}
-              {password && strength && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{t('setup.passwordStrength')}</span>
-                    <span className={`font-medium ${strength.is_valid ? 'text-green-600' : 'text-red-600'}`}>
-                      {getStrengthLabel(strength.score)}
-                    </span>
+              {/* Password strength bar (length-first) */}
+              {password && strength && (() => {
+                const s = getStrength(password, strength.is_valid, strength.score);
+                return (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{t('setup.passwordStrength')}</span>
+                      <span className={`font-medium ${s.text}`}>{s.label}</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full transition-all duration-300 ${s.bar}`}
+                        style={{ width: `${s.pct}%` }}
+                      />
+                    </div>
+                    {strength.is_valid && password.length < 16 && (
+                      <p className="text-[11px] text-muted-foreground">Aim for 16+ characters for a stronger vault.</p>
+                    )}
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={`h-full transition-all duration-300 ${getStrengthColor(strength.score)}`}
-                      style={{ width: `${(strength.score / 7) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Confirm password field */}
