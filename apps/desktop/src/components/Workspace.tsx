@@ -121,6 +121,7 @@ export function Workspace({
   // Quick SSH and Unlock modals
   const [showQuickSSH, setShowQuickSSH] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [showVaultPicker, setShowVaultPicker] = useState(false); // multi-vault picker (ADR 0014)
 
   // Collection opened in the main area (ADR 0016): which one + which main view is
   // showing (terminal is kept mounted underneath). Plus the members dialog target
@@ -1028,61 +1029,17 @@ export function Workspace({
           isSidebarOpen ? 'w-[290px]' : 'w-0'
         }`}>
           {isLocked ? (
-            <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
-              <p className="mb-1 text-sm text-muted-foreground">
-                No vault is open yet. Pick one to see its saved connections — the local terminal and
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                Open a vault to see your saved connections. The local terminal and
                 Quick SSH work without one.
               </p>
-              {lockedVaults.length === 0 ? (
-                // Web build / older shell: a single vault — unlock it directly.
-                <button
-                  onClick={() => setShowUnlockModal(true)}
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                >
-                  Open local vault
-                </button>
-              ) : (
-                <>
-                  {lockedVaults.map((v) => {
-                    const isThisWindow = currentVaultPath != null && v.path === currentVaultPath;
-                    return (
-                      <button
-                        key={v.path}
-                        onClick={() =>
-                          isThisWindow
-                            ? setShowUnlockModal(true)
-                            : requestOpenContext({ kind: 'local', path: v.path })
-                        }
-                        className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-left text-sm hover:border-primary hover:bg-muted"
-                      >
-                        {v.icon?.startsWith('data:') ? (
-                          <img src={v.icon} alt="" className="h-5 w-5 flex-none rounded object-cover" />
-                        ) : (
-                          <span className="text-lg leading-none" aria-hidden>
-                            {v.icon || '🔒'}
-                          </span>
-                        )}
-                        <span className="min-w-0 flex-1 truncate font-medium">{v.label}</span>
-                        <span className="flex-none text-xs text-muted-foreground">
-                          {isThisWindow ? 'Open' : 'New window'}
-                        </span>
-                      </button>
-                    );
-                  })}
-                  <button
-                    onClick={() => sendVaultCommand({ type: 'vault-new' })}
-                    className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-left text-sm text-muted-foreground hover:border-primary hover:text-foreground"
-                  >
-                    <span aria-hidden>＋</span> New local vault…
-                  </button>
-                  <button
-                    onClick={() => sendVaultCommand({ type: 'vault-open-file' })}
-                    className="flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-left text-sm text-muted-foreground hover:border-primary hover:text-foreground"
-                  >
-                    <span aria-hidden>📂</span> Open a vault file…
-                  </button>
-                </>
-              )}
+              <button
+                onClick={() => (lockedVaults.length > 0 ? setShowVaultPicker(true) : setShowUnlockModal(true))}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Open local vault
+              </button>
             </div>
           ) : (
           <>
@@ -1628,6 +1585,72 @@ export function Workspace({
             }}
           />
         ))}
+
+      {/* Vault picker (ADR 0014 multi-vault): the list of known vaults + new/open. Picking this
+          window's vault unlocks it here; a different one opens its own window. */}
+      {showVaultPicker && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowVaultPicker(false)}
+        >
+          <div
+            className="mx-4 w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold">Open a vault</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Pick a local vault, or create/open one.</p>
+            <div className="mt-4 flex flex-col gap-2">
+              {lockedVaults.map((v) => {
+                const isThisWindow = currentVaultPath != null && v.path === currentVaultPath;
+                return (
+                  <button
+                    key={v.path}
+                    onClick={() => {
+                      setShowVaultPicker(false);
+                      if (isThisWindow) setShowUnlockModal(true);
+                      else requestOpenContext({ kind: 'local', path: v.path });
+                    }}
+                    className="flex items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 text-left text-sm hover:border-primary hover:bg-muted"
+                  >
+                    {v.icon?.startsWith('data:') ? (
+                      <img src={v.icon} alt="" className="h-6 w-6 flex-none rounded object-cover" />
+                    ) : (
+                      <span className="text-xl leading-none" aria-hidden>
+                        {v.icon || '🔒'}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{v.label}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{v.path}</span>
+                    </span>
+                    <span className="flex-none text-xs text-muted-foreground">
+                      {isThisWindow ? 'Unlock' : 'New window'}
+                    </span>
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => {
+                  setShowVaultPicker(false);
+                  sendVaultCommand({ type: 'vault-new' });
+                }}
+                className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm text-muted-foreground hover:border-primary hover:text-foreground"
+              >
+                <span aria-hidden>＋</span> New local vault…
+              </button>
+              <button
+                onClick={() => {
+                  setShowVaultPicker(false);
+                  sendVaultCommand({ type: 'vault-open-file' });
+                }}
+                className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm text-muted-foreground hover:border-primary hover:text-foreground"
+              >
+                <span aria-hidden>📂</span> Open a vault file…
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Unlock Modal (context-specific, provided by the shell) */}
       {showUnlockModal && (

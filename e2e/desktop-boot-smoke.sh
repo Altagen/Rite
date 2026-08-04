@@ -29,10 +29,11 @@ HOME="$HOME_DIR" XDG_DATA_HOME="$HOME_DIR/.local/share" XDG_CONFIG_HOME="$HOME_D
   RITE_WEB_DIR="$DIST" RUST_LOG=info "$BIN" >"$LOG" 2>&1 &
 APP_PID=$!
 
-# Wait for the window's server to bind.
+# Wait (up to ~10s) for the window's server to bind — a fresh vault runs all migrations first.
 i=0
 while ! grep -qE "window serving on" "$LOG" 2>/dev/null; do
   i=$((i + 1)); [ "$i" -gt 100 ] && { echo "FAIL: shell never bound a server"; tail -5 "$LOG"; exit 1; }
+  sleep 0.1
 done
 PORT="$(grep -oE '127.0.0.1:[0-9]+' "$LOG" | head -1 | cut -d: -f2)"
 ok() { printf '  \342\234\223 %s\n' "$1"; }

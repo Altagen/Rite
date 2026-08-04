@@ -115,7 +115,9 @@ fn main() -> Result<()> {
     let launch = OpenRequest {
         key: ContextKey::local(db_path()),
         db_path: db_path(),
-        inject: r#"{"kind":"hub"}"#.to_string(),
+        // The launch window holds the default local vault (its server opened it), so carry that
+        // path — the frontend needs it to know which roster entry is "this window".
+        inject: serde_json::json!({ "kind": "hub", "path": db_path().to_string_lossy() }).to_string(),
     };
     if let Err(e) = open_window(&event_loop, &proxy, &mut windows, &mut registry, launch, &vaults_json) {
         show_error(
