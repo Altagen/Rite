@@ -1850,10 +1850,9 @@ export function Workspace({
                   if (abandonDeleteFile) sendVaultCommand({ type: 'vault-delete', path: pendingNewVaultPath });
                   setAbandonNewVault(false);
                   setShowUnlockModal(false);
-                  // Leave the empty vault. If it IS the default base vault, rebuild in place so a
-                  // deleted file is recreated fresh; otherwise switch back to the default.
-                  if (nativeContext()?.isDefault) requestReloadContext();
-                  else requestSwitchContext({ kind: 'local' });
+                  // Leave the abandoned vault and return to the base workspace on the default vault
+                  // (no forced setup) — the shell recreates the default if it was the one abandoned.
+                  requestReloadContext();
                 }}
                 className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600"
               >

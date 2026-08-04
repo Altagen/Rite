@@ -216,30 +216,30 @@ fn main() -> Result<()> {
                 switch_context(&proxy, &mut windows, &mut registry, window, req, &vaults_json);
             }
             Event::UserEvent(UserEvent::ReloadContext { window }) => {
-                // Rebuild the window onto the local vault it currently holds (reset flow). Its DB
-                // was just wiped, so it comes back first-run; carry `pendingLabel` when it's no
-                // longer registered so setting a new password re-registers it.
-                match registry.context_of(&window).cloned() {
-                    Some(ContextKey::Local(path)) => {
-                        let is_default = ContextKey::Local(path.clone()) == ContextKey::local(db_path());
-                        let mut inject =
-                            serde_json::json!({ "kind": "local", "path": path.to_string_lossy() });
-                        if !roster.contains(&path) {
-                            let label = if is_default {
-                                "Local vault".to_string()
-                            } else {
-                                vault_label_for(&path)
-                            };
-                            inject["pendingLabel"] = serde_json::Value::from(label);
+                // Return the window to the BASE workspace on the default vault, base-first (kind:hub)
+                // — no forced password after a reset/abandon; "no vault" is fine, and the user can
+                // create one when they want. The rebuild regenerates `__RITE_VAULTS__` (the reset/
+                // abandoned vault is gone). If the default is already open in ANOTHER window, focus
+                // that and close this one rather than duplicating the context.
+                let base_key = ContextKey::local(db_path());
+                match registry.open(&base_key) {
+                    OpenOutcome::AlreadyOpen(other) if other != window => {
+                        if let Some(w) = windows.get(&other) {
+                            w.window.set_focus();
                         }
-                        let req = OpenRequest {
-                            key: ContextKey::Local(path.clone()),
-                            inject: inject.to_string(),
-                            db_path: path,
-                        };
+                        windows.remove(&window);
+                        registry.remove_window(&window);
+                        if registry.is_empty() {
+                            *control_flow = ControlFlow::Exit;
+                        }
+                    }
+                    _ => {
+                        let inject =
+                            serde_json::json!({ "kind": "hub", "path": db_path().to_string_lossy() })
+                                .to_string();
+                        let req = OpenRequest { key: base_key, inject, db_path: db_path() };
                         rebuild_window(&proxy, &mut windows, &mut registry, window, req, &vaults_json);
                     }
-                    _ => tracing::warn!("[rite-desktop] reload-context: window is not a local vault; ignoring"),
                 }
             }
             Event::UserEvent(UserEvent::Vault { window, cmd }) => {
