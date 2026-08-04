@@ -263,6 +263,16 @@ export function Workspace({
     }
   };
 
+  // Escape closes the vault picker (a dialog needs a keyboard exit, not only a click-outside).
+  useEffect(() => {
+    if (!showVaultPicker) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowVaultPicker(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showVaultPicker]);
+
   // Close unlock modal when unlocked (success ⇒ show the workspace, not back to the picker).
   useEffect(() => {
     if (!isLocked && showUnlockModal) {
@@ -1596,9 +1606,19 @@ export function Workspace({
           onClick={() => setShowVaultPicker(false)}
         >
           <div
-            className="mx-4 w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl"
+            className="relative mx-4 w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
+            <button
+              onClick={() => setShowVaultPicker(false)}
+              aria-label={t('common.close')}
+              title={t('common.close')}
+              className="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
             <h2 className="text-lg font-semibold">Open a vault</h2>
             <p className="mt-1 text-sm text-muted-foreground">Pick a local vault, or create/open one.</p>
             <div className="mt-4 flex flex-col gap-2">
