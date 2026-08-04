@@ -51,6 +51,7 @@ export function MainScreen() {
     <Workspace
       auth={{
         isLocked,
+        isFirstRun: isFirstRun ?? false,
         lock,
         // Opening the local vault: create the master password on first run,
         // otherwise unlock. Both render inside the workspace (base-first, ADR 0014).

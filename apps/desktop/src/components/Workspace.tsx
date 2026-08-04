@@ -69,6 +69,9 @@ import riteLandscape from '../assets/rite.png';
  */
 export interface WorkspaceAuth {
   isLocked: boolean;
+  // First run for THIS window's local vault: no master password set yet, so "unlock" is really
+  // "create a vault". Undefined for accounts contexts (no first-run master-password concept).
+  isFirstRun?: boolean;
   lock: () => void;
   renderUnlockModal: (props: { onClose: () => void }) => ReactNode;
   // Label for the lock/sign-out button. Local vault → "Lock"; an accounts session
@@ -92,6 +95,8 @@ export function Workspace({
   instanceName?: string | null;
 }) {
   const { isLocked, lock } = auth;
+  // First run = no master password on this window's vault yet ⇒ "unlock" is really "create".
+  const isFirstRun = auth.isFirstRun ?? false;
   const { t } = useTranslation();
   const lockLabel = auth.lockLabel ?? t('main.lock');
   // Locked-state vault picker (ADR 0014 multi-vault): the vaults the shell knows about + which
@@ -101,9 +106,14 @@ export function Workspace({
   // A brand-new vault whose master password was never set: the shell created its `.db` and
   // switched this window onto it with a `pendingLabel`, but it's not in the roster yet. Once
   // registered (vault-ready), it appears in `nativeVaults()` and is no longer "pending".
+  // Only a *user-created* new vault (kind:'local') offers the abandon+delete dialog on ×; the
+  // default launch window (kind:'hub') is base-first — its × just returns to the base workspace.
   const pendingCtx = isNativeShell() ? nativeContext() : undefined;
   const pendingNewVaultPath =
-    pendingCtx?.pendingLabel && pendingCtx.path && !lockedVaults.some((v) => v.path === pendingCtx.path)
+    pendingCtx?.kind === 'local' &&
+    pendingCtx?.pendingLabel &&
+    pendingCtx.path &&
+    !lockedVaults.some((v) => v.path === pendingCtx.path)
       ? pendingCtx.path
       : null;
   const { connections, selectedConnectionId } = conns;
@@ -1052,9 +1062,13 @@ export function Workspace({
         {headerExtra}
 
         {isLocked ? (
-          <button onClick={() => setShowUnlockModal(true)} className="m-btn m-btn-primary m-btn-sm" title="Unlock Vault">
+          <button
+            onClick={() => setShowUnlockModal(true)}
+            className="m-btn m-btn-primary m-btn-sm"
+            title={isFirstRun ? 'Create your local vault' : 'Unlock vault'}
+          >
             <IconLock className="h-4 w-4" />
-            <span className="hidden md:inline">Unlock</span>
+            <span className="hidden md:inline">{isFirstRun ? 'Create vault' : 'Unlock'}</span>
           </button>
         ) : (
           <>
@@ -1095,14 +1109,15 @@ export function Workspace({
               </div>
               <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
                 <p className="text-sm text-muted-foreground">
-                  Open a vault to see your saved connections. The local terminal and
-                  Quick SSH work without one.
+                  {isFirstRun && lockedVaults.length === 0
+                    ? 'No vault yet. Create one to save connections — the local terminal and Quick SSH work without it.'
+                    : 'Open a vault to see your saved connections. The local terminal and Quick SSH work without one.'}
                 </p>
                 <button
                   onClick={() => (lockedVaults.length > 0 ? setShowVaultPicker(true) : setShowUnlockModal(true))}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  Open local vault
+                  {isFirstRun && lockedVaults.length === 0 ? 'Create local vault' : 'Open local vault'}
                 </button>
               </div>
             </div>

@@ -143,26 +143,25 @@ fn main() -> Result<()> {
     let mut registry = ContextRegistry::<WindowId>::new();
     let mut windows: std::collections::HashMap<WindowId, WindowState> = std::collections::HashMap::new();
 
-    // Multi-vault roster (ADR 0014): remember the local vaults so the hub can list them.
-    // Ensure the default vault is always present, then hand the snapshot to each window as
-    // `window.__RITE_VAULTS__` (the hub reads it; management IPC lands in a follow-up).
+    // Multi-vault roster (ADR 0014): the local vaults the hub lists. The default vault is NOT
+    // pre-seeded — like any other vault it only joins the roster once its master password is set
+    // (register-after-password), so a fresh install shows "create a vault", not a phantom "unlock".
     let mut roster = vault_roster::VaultRoster::load(roster_path());
-    if !roster.contains(db_path()) {
-        if let Err(e) = roster.add(db_path(), "Local vault") {
-            tracing::warn!("[rite-desktop] could not seed the vault roster: {e}");
-        }
-    }
     let mut vaults_json = serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
 
-    // The launch window shows the context hub (ADR 0014). Its server is the local
-    // one, so it's registered as the local context — picking "local vault" in the
-    // hub proceeds in this window; picking a server opens another window.
+    // The launch window shows the context hub (ADR 0014, base-first). Its server opens the default
+    // local vault; carry that path so the frontend knows which roster entry is "this window". When
+    // the default isn't registered yet (fresh install), carry a `pendingLabel` so setting its
+    // master password registers it (register-after-password), exactly like a user-created vault.
+    let launch_inject = if roster.contains(db_path()) {
+        serde_json::json!({ "kind": "hub", "path": db_path().to_string_lossy() })
+    } else {
+        serde_json::json!({ "kind": "hub", "path": db_path().to_string_lossy(), "pendingLabel": "Local vault" })
+    };
     let launch = OpenRequest {
         key: ContextKey::local(db_path()),
         db_path: db_path(),
-        // The launch window holds the default local vault (its server opened it), so carry that
-        // path — the frontend needs it to know which roster entry is "this window".
-        inject: serde_json::json!({ "kind": "hub", "path": db_path().to_string_lossy() }).to_string(),
+        inject: launch_inject.to_string(),
     };
     if let Err(e) = open_window(&event_loop, &proxy, &mut windows, &mut registry, launch, &vaults_json) {
         show_error(

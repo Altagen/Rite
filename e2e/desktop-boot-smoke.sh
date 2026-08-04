@@ -38,10 +38,11 @@ done
 PORT="$(grep -oE '127.0.0.1:[0-9]+' "$LOG" | head -1 | cut -d: -f2)"
 ok() { printf '  \342\234\223 %s\n' "$1"; }
 
-# 1) The multi-vault roster was seeded with the default vault.
+# 1) The default vault is NOT pre-registered on a fresh boot (register-after-password, ADR 0014):
+#    the roster only gains it once its master password is set, so a fresh install has no vault.
 ROSTER="$HOME_DIR/.local/share/rite/vaults.json"
-grep -q '"label": "Local vault"' "$ROSTER" || { echo "FAIL: roster not seeded"; cat "$ROSTER" 2>/dev/null; exit 1; }
-ok "multi-vault roster seeded ($ROSTER)"
+grep -q '"label"' "$ROSTER" 2>/dev/null && { echo "FAIL: roster pre-seeded a vault before setup"; cat "$ROSTER"; exit 1; }
+ok "no vault pre-registered before its master password (fresh install)"
 
 # 2) The loopback server serves the live frontend (not the embedded "frontend not built").
 INDEX="$(curl -s "http://127.0.0.1:$PORT/")"

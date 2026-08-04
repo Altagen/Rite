@@ -64,16 +64,15 @@ export function ContextPill() {
   const isLocalActive = !active || active === 'local';
   const vaults = nativeVaults();
   const currentVaultPath = nativeContext()?.path ?? null;
+  const currentVault = vaults.find((v) => v.path === currentVaultPath);
+  // No registered vault under this window yet (fresh install, register-after-password) ⇒ don't
+  // pretend there's a "Local vault"; show it's not set up.
   const currentLabel = isLocalActive
-    ? vaults.find((v) => v.path === currentVaultPath)?.label ?? 'Local vault'
+    ? (currentVault?.label ?? (vaults.length === 0 ? 'No vault' : 'Local vault'))
     : active.label || active.url;
 
   // Default action: switch THIS window in place (locks the current vault). "Open in new
   // window" (the split button) keeps the current context and opens the target beside it.
-  const openLocal = () => {
-    setOpen(false);
-    if (!isLocalActive) requestSwitchContext({ kind: 'local' });
-  };
   const openVault = (path: string) => {
     setOpen(false);
     if (!(isLocalActive && currentVaultPath === path)) requestSwitchContext({ kind: 'local', path });
@@ -177,16 +176,9 @@ export function ContextPill() {
               );
             })
           ) : (
-            <button
-              onClick={openLocal}
-              className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted ${
-                isLocalActive ? 'bg-primary/10' : ''
-              }`}
-            >
-              <span className="h-2 w-2 flex-none rounded-full bg-amber-400" />
-              <span className="flex-1 truncate">Local vault</span>
-              {isLocalActive && <span className="text-xs text-primary">current</span>}
-            </button>
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">
+              No vault yet — create one below.
+            </p>
           )}
 
           {ctx && ctx.roster.length > 0 && (

@@ -31,14 +31,21 @@ run() {
     timeout -k 2 6 "$BIN" >"$2/app.log" 2>&1 || true
 }
 
+# Pre-register a vault in the roster (the default is no longer auto-seeded — register-after-
+# password). $1 = home dir, $2 = .db path, $3 = label. Also touches the .db file.
+seed() {
+  : > "$2"
+  printf '[{"path":"%s","label":"%s"}]' "$2" "$3" > "$1/.local/share/rite/vaults.json"
+}
+
 # --- new: creates the .db and switches THIS window onto it, but does NOT register it yet
-#     (register-after-password, ADR 0014) — the roster keeps only the seeded default vault. ---
+#     (register-after-password, ADR 0014) — nothing joins the roster until vault-ready. ---
 H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
 NEW="$H/.local/share/rite/beta.db"
 run "{\"type\":\"vault-new\",\"path\":\"$NEW\"}" "$H"
 ROSTER="$H/.local/share/rite/vaults.json"
 [ -f "$NEW" ] || die "new: vault file not created"
-grep -q 'beta' "$ROSTER" && die "new: beta registered before its master password (should not be)" "$ROSTER"
+grep -q 'beta' "$ROSTER" 2>/dev/null && die "new: beta registered before its master password (should not be)" "$ROSTER"
 # One window, switched in place: the launch server + the switch-target server both bind.
 [ "$(grep -c 'window serving on' "$H/app.log")" -ge 2 ] || die "new: window did not switch onto the vault" "$H/app.log"
 ok "new → .db created + window switched onto it, NOT yet in the roster"
@@ -71,9 +78,9 @@ kill "$SW_PID" 2>/dev/null
 ok "switch → same window, old server stopped (vault locked), new server serving"
 rm -rf "$H"
 
-# --- rename: relabels the seeded default vault in the roster ---
+# --- rename: relabels a registered vault in the roster ---
 H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
-VD="$H/.local/share/rite/vault.db"
+VD="$H/.local/share/rite/vault.db"; seed "$H" "$VD" "Seed"
 run "{\"type\":\"vault-rename\",\"path\":\"$VD\",\"label\":\"Renamed!\"}" "$H"
 grep -q '"label": "Renamed!"' "$H/.local/share/rite/vaults.json" || die "rename: label not updated" "$H/.local/share/rite/vaults.json"
 ok "rename → roster label updated"
@@ -81,7 +88,7 @@ rm -rf "$H"
 
 # --- forget: drops from the roster but keeps the .db file ---
 H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
-VD="$H/.local/share/rite/vault.db"
+VD="$H/.local/share/rite/vault.db"; seed "$H" "$VD" "Seed"
 run "{\"type\":\"vault-forget\",\"path\":\"$VD\"}" "$H"
 grep -q '\[\]' "$H/.local/share/rite/vaults.json" || die "forget: roster not emptied" "$H/.local/share/rite/vaults.json"
 [ -f "$VD" ] || die "forget: vault file was deleted (should be kept)"
@@ -90,7 +97,7 @@ rm -rf "$H"
 
 # --- delete: drops from the roster AND erases the .db file (irreversible opt-in) ---
 H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
-VD="$H/.local/share/rite/vault.db"
+VD="$H/.local/share/rite/vault.db"; seed "$H" "$VD" "Seed"
 run "{\"type\":\"vault-delete\",\"path\":\"$VD\"}" "$H"
 grep -q '\[\]' "$H/.local/share/rite/vaults.json" || die "delete: roster not emptied" "$H/.local/share/rite/vaults.json"
 [ ! -f "$VD" ] || die "delete: vault file still on disk (should be erased)"
@@ -99,7 +106,7 @@ rm -rf "$H"
 
 # --- set-icon: stores the chosen emoji on the roster entry ---
 H="$(mktemp -d /tmp/rite-vault-smoke.XXXXXX)"; mkdir -p "$H/.local/share/rite"
-VD="$H/.local/share/rite/vault.db"
+VD="$H/.local/share/rite/vault.db"; seed "$H" "$VD" "Seed"
 run "{\"type\":\"vault-set-icon\",\"path\":\"$VD\",\"icon\":\"🚀\"}" "$H"
 grep -q '"icon"' "$H/.local/share/rite/vaults.json" || die "set-icon: emoji not stored" "$H/.local/share/rite/vaults.json"
 ok "set-icon → emoji stored on the roster entry"
