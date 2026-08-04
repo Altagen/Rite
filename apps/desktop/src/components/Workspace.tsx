@@ -40,6 +40,7 @@ import {
   sendVaultCommand,
   requestOpenContext,
   requestSwitchContext,
+  requestReloadContext,
   onVaultsChanged,
   type NativeVault,
 } from '../utils/nativeShell';
@@ -1063,7 +1064,7 @@ export function Workspace({
 
         {isLocked ? (
           <button
-            onClick={() => setShowUnlockModal(true)}
+            onClick={() => (isFirstRun ? sendVaultCommand({ type: 'vault-new' }) : setShowUnlockModal(true))}
             className="m-btn m-btn-primary m-btn-sm"
             title={isFirstRun ? 'Create your local vault' : 'Unlock vault'}
           >
@@ -1114,7 +1115,11 @@ export function Workspace({
                     : 'Open a vault to see your saved connections. The local terminal and Quick SSH work without one.'}
                 </p>
                 <button
-                  onClick={() => (lockedVaults.length > 0 ? setShowVaultPicker(true) : setShowUnlockModal(true))}
+                  onClick={() => {
+                    if (lockedVaults.length > 0) setShowVaultPicker(true);
+                    else if (isFirstRun) sendVaultCommand({ type: 'vault-new' });
+                    else setShowUnlockModal(true);
+                  }}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
                   {isFirstRun && lockedVaults.length === 0 ? 'Create local vault' : 'Open local vault'}
@@ -1837,8 +1842,10 @@ export function Workspace({
                   if (abandonDeleteFile) sendVaultCommand({ type: 'vault-delete', path: pendingNewVaultPath });
                   setAbandonNewVault(false);
                   setShowUnlockModal(false);
-                  // Leave the empty vault: switch this window back to the default vault.
-                  requestSwitchContext({ kind: 'local' });
+                  // Leave the empty vault. If it IS the default base vault, rebuild in place so a
+                  // deleted file is recreated fresh; otherwise switch back to the default.
+                  if (nativeContext()?.isDefault) requestReloadContext();
+                  else requestSwitchContext({ kind: 'local' });
                 }}
                 className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600"
               >

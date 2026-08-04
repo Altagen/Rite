@@ -12,6 +12,9 @@ interface RiteNativeContext {
   /** A brand-new vault's chosen name, set only until its master password is created — the
    * frontend registers it in the roster once setup succeeds (ADR 0014, register-after-password). */
   pendingLabel?: string | null;
+  /** True when this window's vault is Rite's default base vault — abandoning it recreates a fresh
+   * one in place rather than switching away. */
+  isDefault?: boolean;
 }
 
 /** A local vault the shell knows about (multi-vault roster, ADR 0014). */

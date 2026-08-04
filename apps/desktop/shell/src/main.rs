@@ -251,18 +251,36 @@ fn main() -> Result<()> {
                 }
             }
             Event::UserEvent(UserEvent::VaultPicked(pick)) => match pick {
-                // A new vault: switch its window onto it, carrying `pendingLabel` so the frontend
+                // A new vault: rebuild its window onto it, carrying `pendingLabel` so the frontend
                 // registers it after setup (register-after-password). No roster change yet.
                 VaultPick::New { window, path } => {
-                    let label = vault_label_for(&path);
+                    let key = ContextKey::local(&path);
+                    let is_default = key == ContextKey::local(db_path());
+                    // The default vault keeps its canonical name; others derive from the filename.
+                    let label = if is_default {
+                        "Local vault".to_string()
+                    } else {
+                        vault_label_for(&path)
+                    };
                     let inject = serde_json::json!({
                         "kind": "local",
                         "path": path.to_string_lossy(),
                         "pendingLabel": label,
+                        "isDefault": is_default,
                     })
                     .to_string();
-                    let req = OpenRequest { key: ContextKey::local(&path), inject, db_path: path };
-                    switch_context(&proxy, &mut windows, &mut registry, window, req, &vaults_json);
+                    let req = OpenRequest { key: key.clone(), inject, db_path: path };
+                    // Focus the window that already holds this vault — unless that's THIS window
+                    // (creating at the default path it's already on): then force a rebuild so the
+                    // setup screen shows even though the context didn't change.
+                    match registry.open(&key) {
+                        OpenOutcome::AlreadyOpen(other) if other != window => {
+                            if let Some(w) = windows.get(&other) {
+                                w.window.set_focus();
+                            }
+                        }
+                        _ => rebuild_window(&proxy, &mut windows, &mut registry, window, req, &vaults_json),
+                    }
                 }
                 // An existing vault: register it now, then switch its window onto it.
                 VaultPick::Open { window, path } => {
@@ -687,6 +705,9 @@ fn spawn_file_dialog(proxy: EventLoopProxy<UserEvent>, kind: DialogKind) {
             match kind {
                 DialogKind::New(window) => rfd::AsyncFileDialog::new()
                     .set_title("Create a new Rite vault")
+                    // Propose Rite's default location + filename so the user sees where it will be
+                    // written and can change it — the same flow whether it's the first vault or another.
+                    .set_directory(db_path().parent().unwrap_or_else(|| Path::new(".")))
                     .set_file_name("vault.db")
                     .save_file()
                     .await
