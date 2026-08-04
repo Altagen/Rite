@@ -6,15 +6,11 @@
 # remote session token it captured from the login on authenticated calls.
 #
 # The browser-driven end-to-end (incl. the WS terminal proxy + client-execute + zero-knowledge) is
-# e2e/tests/proxy.spec.ts; this is the fast pre-release smoke. Needs target/debug/rite-server built.
+# e2e/tests/proxy.spec.ts; this is the fast pre-release smoke.
 #
+# Requirements: a built target/debug/rite-server, plus curl and node on PATH. Run it on a normal
+# Linux host or in CI where a long-lived loopback server can bind:
 #   sh e2e/proxy-smoke.sh
-#
-# Runs wherever the standalone rite-server can run (your machine / CI). In a sandbox that blocks a
-# long-lived standalone server binary, run it inside the ISO-CI container (server + curl + node all
-# work there), which is how it's verified in this repo:
-#   podman run --rm -v "$PWD":/workspace:Z -w /workspace localhost/rite-ci:local \
-#     bash -lc 'cd /workspace && sh e2e/proxy-smoke.sh'
 set -eu
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
