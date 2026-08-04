@@ -273,18 +273,36 @@ function dlgAddServer(){showModal({title:'Add a server',subtitle:"A Rite server 
     DATA.servers.push({id:'s-'+Math.random().toString(36).slice(2,7),name:label||url.replace(/^https?:\/\//,''),url,badge:['s1','s2'][DATA.servers.length%2],online:reachable});
     refreshCtx();
     toast(reachable?`Server <span class="accent">${label||url}</span> added`:`Added <span class="accent">${label||url}</span> — couldn't reach it. Open it to retry, or Edit the URL.`);}});}
+/* Create a vault — TWO steps, matching Rite's desktop flow (register-after-password): first a
+   name + location (Rite proposes the default path, auto-incremented so it never clobbers an
+   existing vault), THEN the master password. The vault joins the list only once the password
+   is set. "Change location…" opens a save dialog (simulated here). */
 function dlgNewVault(){
-  const bd=showModal({title:'New local vault',subtitle:'A named encrypted database on this machine.',confirm:'Create & open',
-    body:`<label class="field"><span>Name</span><input class="inp" id="nv-name" placeholder="e.g. Client Beta"></label>
-      <label class="field"><span>File location</span><div style="display:flex;gap:8px"><input class="inp" id="nv-file" value="~/.local/share/rite/beta.db"><button class="btn btn-sm" onclick="toast('File picker…')">Browse…</button></div></label>
-      <label class="field"><span>Master password</span><input class="inp" id="nv-pw" type="password" placeholder="Create a strong password"><div class="strength"><i id="nv-str"></i></div><div id="nv-hint" class="muted" style="font-size:11px;margin-top:5px">At least 12 characters.</div></label>
+  const defFile='~/.local/share/rite/vault.db';
+  showModal({title:'Create a local vault',subtitle:'An encrypted database on this machine. Next you’ll set its master password.',confirm:'Create vault',
+    body:`<label class="field"><span>Name <span class="muted" style="font-weight:400">(optional)</span></span><input class="inp" id="nv-name" placeholder="e.g. Personal"></label>
+      <div class="field"><span>Location</span>
+        <div class="row" style="border:1px solid var(--border);border-radius:9px;padding:8px 10px;gap:8px;cursor:default">
+          ${ICON.folder}<div class="grow mono" id="nv-file" data-path="${defFile}" style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="muted">~/.local/share/rite/</span><b>vault.db</b></div>
+          <button class="btn btn-ghost btn-sm" onclick="toast('Opens a save dialog to choose a location')">Change location…</button>
+        </div>
+        <div class="muted" style="font-size:11px;margin-top:4px">If a <span class="mono">vault.db</span> already exists, Rite uses <span class="mono">vault(1).db</span>, etc. — it never overwrites one.</div>
+      </div>`,
+    onConfirm:(m)=>{const name=(m.querySelector('#nv-name').value||'').trim();
+      const file=m.querySelector('#nv-file').getAttribute('data-path');
+      dlgCreatePassword(name,file);}});
+}
+/* Step 2: set the master password (Rite's SetupScreen). Only here is the vault added to the list. */
+function dlgCreatePassword(name,file){
+  const bd=showModal({title:'Set the master password',subtitle:file,confirm:'Create & open',
+    body:`<label class="field"><span>Master password</span><input class="inp" id="nv-pw" type="password" placeholder="Create a strong password"><div class="strength"><i id="nv-str"></i></div><div class="muted" style="font-size:11px;margin-top:5px">At least 12 characters — aim for 16+.</div></label>
       <label class="field"><span>Confirm master password</span><input class="inp" id="nv-pw2" type="password" placeholder="Repeat it"><div id="nv-match" style="font-size:11px;margin-top:5px;height:14px"></div></label>
-      <p class="muted" style="font-size:12px;margin:2px 0 0">If you lose this password, the vault can't be decrypted — there's no recovery (zero-knowledge).</p>`,
+      <p class="muted" style="font-size:12px;margin:2px 0 0">If you lose this password, the vault can't be decrypted — there's no recovery (zero-knowledge). The vault joins your list only once the password is set.</p>`,
     onConfirm:(m)=>{const pw=m.querySelector('#nv-pw').value,pw2=m.querySelector('#nv-pw2').value;
       if(pw.length<12||pw!==pw2)return false; // guarded by the disabled button too
-      const name=(m.querySelector('#nv-name').value||'').trim()||'New vault';
-      DATA.vaults.push({id:'v-'+Math.random().toString(36).slice(2,7),name,file:(m.querySelector('#nv-file').value||'').trim()||'~/vault.db',badge:['v1','v2','v3'][DATA.vaults.length%3],locked:false});
-      refreshCtx();toast(`Vault <span class="accent">${name}</span> created`);}});
+      const nm=name||((file.split('/').pop()||'').replace(/\.db$/,''))||'Local vault';
+      DATA.vaults.push({id:'v-'+Math.random().toString(36).slice(2,7),name:nm,file,badge:['v1','v2','v3'][DATA.vaults.length%3],locked:false});
+      refreshCtx();toast(`Vault <span class="accent">${nm}</span> created`);}});
   // live validation (mirrors Rite's SetupScreen: length + match, disable until OK)
   const pw=bd.querySelector('#nv-pw'),pw2=bd.querySelector('#nv-pw2'),str=bd.querySelector('#nv-str'),match=bd.querySelector('#nv-match'),ok=bd.querySelector('[data-ok]');
   const upd=()=>{const v=pw.value;
@@ -324,9 +342,11 @@ function removeVault(id){const v=DATA.vaults.find(x=>x.id===id);if(!v)return;doc
   showModal({title:`Remove “${v.name}”?`,subtitle:v.file,confirm:'Remove',
     body:`<p style="font-size:13px;margin:0 0 10px">Removes this vault from your list. The database file stays on disk — you can open it again anytime.</p>
       <label class="mrow" style="cursor:pointer;padding:10px;border:1px solid rgba(247,118,142,.3);border-radius:9px;background:rgba(247,118,142,.06)"
-        onclick="const c=this.querySelector('.chk');c.classList.toggle('on');c.textContent=c.classList.contains('on')?'✓':''">
-        <span class="chk"></span><div class="grow"><div class="title" style="color:var(--red)">Also delete the file permanently</div><div class="sub">Irreversible — erases <span class="mono">${v.file}</span> and all its connections.</div></div></label>`,
+        onclick="const c=this.querySelector('.chk');c.classList.toggle('on');c.textContent=c.classList.contains('on')?'✓':'';const nc=document.getElementById('rmv-nc');if(nc)nc.style.display=c.classList.contains('on')?'block':'none'">
+        <span class="chk"></span><div class="grow"><div class="title" style="color:var(--red)">Also delete the file permanently</div><div class="sub">Irreversible — erases <span class="mono">${v.file}</span> and all its connections.</div></div></label>
+      <div id="rmv-nc" style="display:none;margin-top:10px"><label class="field"><span>Type <b class="mono">${v.name}</b> to confirm</span><input class="inp" id="rmv-name" placeholder="${v.name}"></label></div>`,
     onConfirm:(m)=>{const del=m.querySelector('.chk').classList.contains('on');
+      if(del&&(m.querySelector('#rmv-name').value||'').trim()!==v.name)return false; // irreversible ⇒ type the name
       const i=DATA.vaults.findIndex(x=>x.id===id);if(i>=0)DATA.vaults.splice(i,1);
       if(STATE.ctx.type==='vault'&&STATE.ctx.id===id){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
       refreshCtx();toast(del?`Vault <span class="accent">${v.name}</span> deleted`:`Removed <span class="accent">${v.name}</span> from the list`);}});}
@@ -643,10 +663,15 @@ function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',bod
   <div class="settings-row"><div><b>Machine status</b><div class="muted" style="font-size:12px">${STATE.ctx.type==='server'?'<span style="color:var(--amber)">Governed by your server</span> — you can only narrow it.':'You govern this for this local vault.'} Passive “last seen” costs no network traffic; active probing does.</div></div><select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select></div>
   <div class="settings-row"><div><b>Show member count on collections</b><div class="muted" style="font-size:12px">The number next to shared collections (the 👥 shared icon stays either way)</div></div><div class="toggle ${STATE.showMemberCount?'on':''}" onclick="this.classList.toggle('on');STATE.showMemberCount=this.classList.contains('on');renderAll()"><i></i></div></div>
   <div class="settings-row" style="border:none;border-top:1px solid rgba(247,118,142,.25);margin-top:8px;padding-top:14px"><div><b style="color:var(--red)">Reset vault</b><div class="muted" style="font-size:12px">Erase the master password and all connections — irreversible</div></div><button class="btn btn-sm" style="color:var(--red);border-color:rgba(247,118,142,.4)" onclick="dlgResetVault()">Reset…</button></div>`});}
-function dlgResetVault(){showModal({title:'Reset this vault?',confirm:'Reset everything',
-  body:`<div class="card" style="padding:12px;border-color:rgba(247,118,142,.35);background:rgba(247,118,142,.06)"><p style="margin:0;font-size:13px;color:var(--fg)">This <b>permanently erases</b> the master password and every connection in this vault. It cannot be undone.</p></div>
-    <label class="field" style="margin-top:12px"><span>Type <b class="mono">RESET</b> to confirm</span><input class="inp" id="reset-confirm" placeholder="RESET"></label>`,
-  onConfirm:(m)=>{if((m.querySelector('#reset-confirm').value||'').trim()!=='RESET')return false;toast('Vault reset');}});}
+/* Reset the current vault ("start fresh") — wipes its master password, connections AND name/icon,
+   then returns to the base workspace (a vault isn't mandatory). Irreversible ⇒ type the vault name. */
+function dlgResetVault(){const nm=(STATE.ctx&&STATE.ctx.name)||'this vault';
+  showModal({title:`Reset “${nm}”?`,confirm:'Reset & start fresh',
+  body:`<div class="card" style="padding:12px;border-color:rgba(247,118,142,.35);background:rgba(247,118,142,.06)"><p style="margin:0;font-size:13px;color:var(--fg)">This <b>permanently erases</b> its master password, every connection, and its name/icon. You'll return to the base workspace — it can't be undone (zero-knowledge).</p></div>
+    <label class="field" style="margin-top:12px"><span>Type <b class="mono">${nm}</b> to confirm</span><input class="inp" id="reset-confirm" placeholder="${nm}"></label>`,
+  onConfirm:(m)=>{if((m.querySelector('#reset-confirm').value||'').trim()!==nm)return false;
+    if(STATE.ctx&&STATE.ctx.type==='vault'){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
+    refreshCtx();toast(`<span class="accent">${nm}</span> reset — start fresh`);}});}
 /* Administration is deliberately NOT available from the desktop client — it lives
    in the server's own web console (open the server URL in a browser). The desktop
    is a client (use vaults + connect to servers), not a server-management surface. */
