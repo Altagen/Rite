@@ -4,7 +4,9 @@
 
 use anyhow::{Context, Result};
 use sqlx::Row;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::{
+    SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
+};
 use std::path::Path;
 use tracing::{info, warn};
 
@@ -29,10 +31,17 @@ impl Database {
 
         info!("Connecting to database at: {}", db_path.display());
 
-        // Set up connection options
+        // Set up connection options. WAL + a busy timeout let the vault survive brief overlaps
+        // where two single-context servers hold the same file at once — e.g. an in-place context
+        // switch or a reset+reload (ADR 0014), where the outgoing server is still shutting down as
+        // the new one writes. Without these, that write hit an immediate "database is locked"
+        // ("Failed to store master password"). WAL also allows concurrent readers + one writer.
         let options = SqliteConnectOptions::new()
             .filename(db_path)
-            .create_if_missing(true);
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(std::time::Duration::from_secs(5));
 
         // Create connection pool
         let pool = SqlitePoolOptions::new()
@@ -737,6 +746,26 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let db = Database::new(&db_path).await.unwrap();
         (db, temp_dir)
+    }
+
+    // Two single-context servers briefly hold the same vault file during a reset+reload / switch
+    // (ADR 0014). With WAL + a busy timeout, a write from one succeeds while the other is still
+    // open — before, this raced to an immediate "database is locked" ("Failed to store master
+    // password"). This opens a second pool on the same file and writes through both.
+    #[tokio::test]
+    async fn concurrent_writers_on_the_same_file_dont_deadlock() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("shared.db");
+        let outgoing = Database::new(&db_path).await.unwrap();
+        // The "new" server opens the same file while the outgoing one is still alive.
+        let incoming = Database::new(&db_path).await.unwrap();
+        incoming
+            .store_master_password("hash-a", b"salt-a")
+            .await
+            .expect("write from the incoming server should not be locked out");
+        // The outgoing server can still read + write too (WAL: readers + one writer).
+        assert!(outgoing.get_master_password().await.unwrap().is_some());
+        outgoing.store_master_password("hash-b", b"salt-b").await.unwrap();
     }
 
     #[tokio::test]
