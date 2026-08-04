@@ -6,7 +6,10 @@
  *   the file; an explicit, irreversible opt-in also deletes the `.db` (+ sidecars, via the shell).
  * - The current vault → you can't "remove it from the list" while you're in it (and it may be the
  *   only one), so instead offer **Reset**: wipe its master password + all connections to start from
- *   scratch (`reset_database`, works even while locked), then reload into first-run setup.
+ *   scratch (`reset_database`, works even while locked), then return to the base workspace.
+ *
+ * The irreversible actions (reset, and delete-the-file) require typing the vault's name to confirm,
+ * as a guard against an accidental click. Forget keeps the file, so it needs no name.
  *
  * Shared by every surface that lists vaults — the hub, the context pill, and the locked-state picker.
  */
@@ -29,9 +32,26 @@ export function VaultRemoveDialog({
   onClose: () => void;
 }) {
   const [deleteFile, setDeleteFile] = useState(false);
+  const [confirmName, setConfirmName] = useState('');
   const [busy, setBusy] = useState(false);
   // The vault this window is on: it can't be forgotten/switched-away here, so reset it instead.
   const isCurrent = isNativeShell() && nativeContext()?.path === vault.path;
+  const nameOk = confirmName.trim() === vault.label;
+
+  const nameConfirmField = (
+    <div className="mt-4">
+      <label className="text-xs text-muted-foreground">
+        Type <span className="font-mono font-medium text-foreground">{vault.label}</span> to confirm
+      </label>
+      <input
+        autoFocus
+        value={confirmName}
+        onChange={(e) => setConfirmName(e.target.value)}
+        placeholder={vault.label}
+        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+      />
+    </div>
+  );
 
   if (isCurrent) {
     return (
@@ -43,9 +63,9 @@ export function VaultRemoveDialog({
           connection, and its name/icon</strong> so you can start from scratch.
         </p>
         <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-xs text-muted-foreground">
-          Irreversible — there’s no recovery (zero-knowledge). You’ll be asked to set a new master
-          password afterwards.
+          Irreversible — there’s no recovery (zero-knowledge).
         </div>
+        {nameConfirmField}
         <div className="mt-4 flex justify-end gap-2">
           <button onClick={onClose} disabled={busy} className="rounded-md px-3 py-1.5 text-sm hover:bg-muted">
             Cancel
@@ -63,7 +83,7 @@ export function VaultRemoveDialog({
                 setBusy(false);
               }
             }}
-            disabled={busy}
+            disabled={busy || !nameOk}
             className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
           >
             {busy ? 'Resetting…' : 'Reset & start fresh'}
@@ -85,7 +105,10 @@ export function VaultRemoveDialog({
         <input
           type="checkbox"
           checked={deleteFile}
-          onChange={(e) => setDeleteFile(e.target.checked)}
+          onChange={(e) => {
+            setDeleteFile(e.target.checked);
+            setConfirmName('');
+          }}
           className="mt-0.5 h-4 w-4 flex-none accent-red-500"
         />
         <span className="min-w-0 text-sm">
@@ -95,6 +118,7 @@ export function VaultRemoveDialog({
           </span>
         </span>
       </label>
+      {deleteFile && nameConfirmField}
       <div className="mt-4 flex justify-end gap-2">
         <button onClick={onClose} className="rounded-md px-3 py-1.5 text-sm hover:bg-muted">
           Cancel
@@ -108,7 +132,8 @@ export function VaultRemoveDialog({
             );
             onClose();
           }}
-          className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600"
+          disabled={deleteFile && !nameOk}
+          className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
         >
           {deleteFile ? 'Delete permanently' : 'Remove'}
         </button>
