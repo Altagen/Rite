@@ -77,8 +77,12 @@ enum UserEvent {
 /// Which native file chooser to raise on the dialog thread. New/Open carry the window that
 /// requested them so the resolved pick can switch it in place.
 enum DialogKind {
-    /// "Save as" for a brand-new vault file.
-    New(WindowId),
+    /// "Save as" for a brand-new vault file. Carries the chosen name (label), if any, so it
+    /// survives the picker.
+    New {
+        window: WindowId,
+        label: Option<String>,
+    },
     /// "Open" an existing vault file.
     Open(WindowId),
     /// Pick an image to use as `vault`'s icon.
@@ -90,7 +94,12 @@ enum DialogKind {
 enum VaultPick {
     /// A brand-new vault at `path`, to open in `window` — NOT yet registered (the frontend
     /// registers it via `vault-ready` once its master password is set, register-after-password).
-    New { window: WindowId, path: PathBuf },
+    /// `label` is the chosen name, if the user typed one (else derived from the filename).
+    New {
+        window: WindowId,
+        path: PathBuf,
+        label: Option<String>,
+    },
     /// An existing vault file at `path`, to register and open in `window`.
     Open { window: WindowId, path: PathBuf },
     Image { vault: PathBuf, file: PathBuf },
@@ -253,15 +262,20 @@ fn main() -> Result<()> {
             Event::UserEvent(UserEvent::VaultPicked(pick)) => match pick {
                 // A new vault: rebuild its window onto it, carrying `pendingLabel` so the frontend
                 // registers it after setup (register-after-password). No roster change yet.
-                VaultPick::New { window, path } => {
+                VaultPick::New { window, path, label } => {
                     let key = ContextKey::local(&path);
                     let is_default = key == ContextKey::local(db_path());
-                    // The default vault keeps its canonical name; others derive from the filename.
-                    let label = if is_default {
-                        "Local vault".to_string()
-                    } else {
-                        vault_label_for(&path)
-                    };
+                    // Use the name the user typed; else the default's canonical name, else the filename.
+                    let label = label
+                        .map(|l| l.trim().to_string())
+                        .filter(|l| !l.is_empty())
+                        .unwrap_or_else(|| {
+                            if is_default {
+                                "Local vault".to_string()
+                            } else {
+                                vault_label_for(&path)
+                            }
+                        });
                     let inject = serde_json::json!({
                         "kind": "local",
                         "path": path.to_string_lossy(),
@@ -653,12 +667,13 @@ fn apply_vault_command(
         VaultCommand::Ready { path, label } => roster.add(&path, &label).unwrap_or(false),
         // A path here is the test hook (bypasses the picker) → post the pick directly for this
         // window; otherwise raise the native chooser and finish in the `VaultPicked` handler.
-        VaultCommand::New { path, .. } => {
+        VaultCommand::New { label, path } => {
             match path {
                 Some(path) => {
-                    let _ = proxy.send_event(UserEvent::VaultPicked(VaultPick::New { window, path }));
+                    let _ = proxy
+                        .send_event(UserEvent::VaultPicked(VaultPick::New { window, path, label }));
                 }
-                None => spawn_file_dialog(proxy.clone(), DialogKind::New(window)),
+                None => spawn_file_dialog(proxy.clone(), DialogKind::New { window, label }),
             }
             false
         }
@@ -705,7 +720,7 @@ fn spawn_file_dialog(proxy: EventLoopProxy<UserEvent>, kind: DialogKind) {
         };
         let picked = rt.block_on(async {
             match kind {
-                DialogKind::New(window) => rfd::AsyncFileDialog::new()
+                DialogKind::New { window, label } => rfd::AsyncFileDialog::new()
                     .set_title("Create a new Rite vault")
                     // Propose Rite's default location + filename so the user sees where it will be
                     // written and can change it — the same flow whether it's the first vault or another.
@@ -713,7 +728,7 @@ fn spawn_file_dialog(proxy: EventLoopProxy<UserEvent>, kind: DialogKind) {
                     .set_file_name("vault.db")
                     .save_file()
                     .await
-                    .map(|f| VaultPick::New { window, path: f.path().to_path_buf() }),
+                    .map(|f| VaultPick::New { window, path: f.path().to_path_buf(), label }),
                 DialogKind::Open(window) => rfd::AsyncFileDialog::new()
                     .set_title("Open a Rite vault")
                     .add_filter("Rite vault", &["db"])

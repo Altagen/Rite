@@ -6,6 +6,7 @@
  * then switches onto the fresh vault and prompts for a master password (register-after-password).
  */
 
+import { useState } from 'react';
 import { sendVaultCommand, suggestedVaultPath } from '../utils/nativeShell';
 
 export function CreateVaultDialog({ onClose }: { onClose: () => void }) {
@@ -13,6 +14,8 @@ export function CreateVaultDialog({ onClose }: { onClose: () => void }) {
   const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
   const dir = slash >= 0 ? path.slice(0, slash + 1) : '';
   const file = slash >= 0 ? path.slice(slash + 1) : path;
+  const [name, setName] = useState('');
+  const label = name.trim() || undefined; // empty ⇒ the shell derives it from the filename
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -24,6 +27,20 @@ export function CreateVaultDialog({ onClose }: { onClose: () => void }) {
         <p className="mt-1 text-sm text-muted-foreground">
           An encrypted database on this machine. Next you’ll set its master password.
         </p>
+
+        <div className="mt-4">
+          <label htmlFor="cv-name" className="text-xs font-medium text-muted-foreground">
+            Name <span className="font-normal">(optional)</span>
+          </label>
+          <input
+            id="cv-name"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Personal"
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+          />
+        </div>
 
         <div className="mt-4">
           <span className="text-xs font-medium text-muted-foreground">Location</span>
@@ -41,8 +58,9 @@ export function CreateVaultDialog({ onClose }: { onClose: () => void }) {
         <div className="mt-5 flex items-center justify-between gap-2">
           <button
             onClick={() => {
-              // Native picker path: create with no path → the shell shows the save dialog.
-              sendVaultCommand({ type: 'vault-new' });
+              // Native picker path: create with no path → the shell shows the save dialog. The
+              // typed name is carried through so it survives the picker.
+              sendVaultCommand({ type: 'vault-new', label });
               onClose();
             }}
             className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -55,8 +73,8 @@ export function CreateVaultDialog({ onClose }: { onClose: () => void }) {
             </button>
             <button
               onClick={() => {
-                if (path) sendVaultCommand({ type: 'vault-new', path });
-                else sendVaultCommand({ type: 'vault-new' }); // no suggestion ⇒ fall back to the picker
+                // path present ⇒ create there; else no suggestion ⇒ fall back to the picker.
+                sendVaultCommand({ type: 'vault-new', label, ...(path ? { path } : {}) });
                 onClose();
               }}
               className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
