@@ -40,6 +40,7 @@ import {
   sendVaultCommand,
   requestOpenContext,
   requestSwitchContext,
+  onVaultsChanged,
   type NativeVault,
 } from '../utils/nativeShell';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
@@ -266,6 +267,11 @@ export function Workspace({
       setInstalledShells(shells.map(s => s.path));
     }
   };
+
+  // Re-render when the shell pushes a roster change (ADR 0014) so the picker list stays live —
+  // e.g. after deleting/forgetting a vault, without closing and reopening the picker.
+  const [, bumpVaults] = useState(0);
+  useEffect(() => onVaultsChanged(() => bumpVaults((n) => n + 1)), []);
 
   // Escape closes the vault picker (a dialog needs a keyboard exit, not only a click-outside).
   useEffect(() => {
