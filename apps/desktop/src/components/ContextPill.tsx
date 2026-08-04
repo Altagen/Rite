@@ -102,13 +102,14 @@ export function ContextPill() {
       <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
     </svg>
   );
-  // A row = a wide "switch this window" button + subtle hover actions (new window / remove).
+  // A row = a wide "switch this window" button + a visible "open in new window" action (kept
+  // discoverable, not hover-only) and a hover-only remove.
   const newWindowBtn = (label: string, onClick: () => void) => (
     <button
       onClick={onClick}
-      title="Open in new window"
+      title="Open in a new window"
       aria-label={`Open ${label} in a new window`}
-      className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-background hover:text-foreground group-hover:opacity-100"
+      className="flex-none rounded p-1.5 text-muted-foreground opacity-70 transition hover:bg-background hover:text-foreground hover:opacity-100"
     >
       {splitIcon}
     </button>
@@ -213,6 +214,18 @@ export function ContextPill() {
           )}
 
           <div className="my-1 border-t border-border" />
+          {!isLocalActive && (
+            <button
+              onClick={() => {
+                setOpen(false);
+                requestOpenContext({ kind: 'local' });
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Open your local vault in a separate window, alongside this one"
+            >
+              {splitIcon} Open a local window
+            </button>
+          )}
           <button
             onClick={() => {
               setOpen(false);
