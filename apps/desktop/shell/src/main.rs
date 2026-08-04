@@ -22,6 +22,7 @@ use uuid::Uuid;
 use wry::{WebView, WebViewBuilder};
 
 use std::path::{Path, PathBuf};
+use tokio::sync::oneshot;
 
 mod context_registry;
 mod vault_roster;
@@ -47,7 +48,16 @@ struct OpenRequest {
 /// or a file-dialog thread) and handled on it (where windows may be built and the
 /// roster mutated).
 enum UserEvent {
+    /// Open a context in a NEW window (or focus it if already open) — the explicit
+    /// "open in new window" action.
     OpenContext(OpenRequest),
+    /// Switch the posting window IN PLACE to another context (ADR 0014): its server is
+    /// torn down (locking the previous vault) and the same window reloads onto the new
+    /// one. The default action when picking a vault/server in the hub or pill.
+    SwitchContext {
+        window: WindowId,
+        req: OpenRequest,
+    },
     Vault(VaultCommand),
     /// A native file dialog resolved on its own thread (see [`spawn_file_dialog`]).
     VaultPicked(VaultPick),
@@ -79,6 +89,11 @@ struct WindowState {
     window: Window,
     #[allow(dead_code)]
     port: u16,
+    /// Dropping this stops the window's server (graceful shutdown), so the dropped
+    /// `ServerState` zeroizes its vault key — the vault **locks**. Held for the window's
+    /// lifetime; dropped on window close or replaced on an in-place context switch.
+    #[allow(dead_code)]
+    shutdown: oneshot::Sender<()>,
 }
 
 fn main() -> Result<()> {
@@ -156,8 +171,9 @@ fn main() -> Result<()> {
                 window_id: closed,
                 ..
             } => {
-                // Drop the window (and its webview); its server thread is torn down
-                // in a later increment. The last window to close ends the process.
+                // Drop the window: its webview closes and its `shutdown` sender drops,
+                // gracefully stopping the window's server (which locks its vault). The
+                // last window to close ends the process.
                 windows.remove(&closed);
                 registry.remove_window(&closed);
                 if registry.is_empty() {
@@ -182,6 +198,9 @@ fn main() -> Result<()> {
                     }
                 }
             }
+            Event::UserEvent(UserEvent::SwitchContext { window, req }) => {
+                switch_context(&proxy, &mut windows, &mut registry, window, req, &vaults_json);
+            }
             Event::UserEvent(UserEvent::Vault(cmd)) => {
                 if apply_vault_command(cmd, &mut roster, &proxy) {
                     // The roster changed: refresh every open window's hub (ADR 0014).
@@ -202,10 +221,9 @@ fn main() -> Result<()> {
     });
 }
 
-/// Start a server, build a window + webview for `req`, and register it. On success
+/// Start a server, build a NEW window + webview for `req`, and register it. On success
 /// the window is inserted into `windows` and its key into `registry` (so a failed
-/// build leaves both untouched). The webview posts `open-context` IPC messages
-/// back through `proxy`.
+/// build leaves both untouched).
 fn open_window(
     target: &EventLoopWindowTarget<UserEvent>,
     proxy: &EventLoopProxy<UserEvent>,
@@ -214,12 +232,6 @@ fn open_window(
     req: OpenRequest,
     vaults_json: &str,
 ) -> Result<()> {
-    // Per-window token guarding this window's loopback server (ADR 0009). RAM only.
-    let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
-    let port = start_server(token.clone(), &req.db_path)?;
-    let url = format!("http://127.0.0.1:{port}/");
-    tracing::info!("[rite-desktop] window serving on {url}");
-
     let window = WindowBuilder::new()
         .with_title("Rite")
         .with_window_icon(load_icon())
@@ -227,9 +239,32 @@ fn open_window(
         .with_min_inner_size(LogicalSize::new(MIN_SIZE.0, MIN_SIZE.1))
         .build(target)?;
     let window_id = window.id();
+    let (webview, port, shutdown) = build_context_view(&window, &req, proxy, vaults_json)?;
+    registry.register(req.key, window_id);
+    windows.insert(window_id, WindowState { webview, window, port, shutdown });
+    Ok(())
+}
 
-    // Inject the loopback token + the target context, then wire the IPC handler
-    // that lets the frontend ask the shell to open another context in a window.
+/// Start `req`'s server and build a webview for it into the (already-created) `window`.
+/// Used both to populate a fresh window ([`open_window`]) and to reload an existing one
+/// onto a new context ([`switch_context`]). Returns the webview, the server's port, and a
+/// shutdown handle whose drop stops that server (locking its vault). The webview posts
+/// `open-context` / `switch-context` / `vault-*` IPC messages back through `proxy`.
+fn build_context_view(
+    window: &Window,
+    req: &OpenRequest,
+    proxy: &EventLoopProxy<UserEvent>,
+    vaults_json: &str,
+) -> Result<(WebView, u16, oneshot::Sender<()>)> {
+    // Per-window token guarding this window's loopback server (ADR 0009). RAM only.
+    let token = format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+    let (port, shutdown) = start_server(token.clone(), &req.db_path)?;
+    let url = format!("http://127.0.0.1:{port}/");
+    tracing::info!("[rite-desktop] window serving on {url}");
+    let window_id = window.id();
+
+    // Inject the loopback token + the target context, then wire the IPC handler (tagged with
+    // this window's id, so `switch-context` reloads the window that posted it).
     let init = format!(
         "window.__RITE_TOKEN__ = '{token}'; window.__RITE_CONTEXT__ = {inject}; \
          window.__RITE_VAULTS__ = {vaults_json};{test_hook}",
@@ -240,7 +275,7 @@ fn open_window(
     let webview_builder = WebViewBuilder::new()
         .with_url(&url)
         .with_initialization_script(&init)
-        .with_ipc_handler(move |request| handle_ipc(&ipc_proxy, request.into_body()));
+        .with_ipc_handler(move |request| handle_ipc(&ipc_proxy, window_id, request.into_body()));
 
     // On Linux, wry is GTK-based: it must be built into the window's GTK vbox, not
     // from a raw window handle. Other platforms use the window handle directly.
@@ -254,30 +289,93 @@ fn open_window(
         webview_builder.build_gtk(vbox)?
     };
     #[cfg(not(target_os = "linux"))]
-    let webview = webview_builder.build(&window)?;
+    let webview = webview_builder.build(window)?;
 
-    registry.register(req.key, window_id);
-    windows.insert(window_id, WindowState { webview, window, port });
-    Ok(())
+    Ok((webview, port, shutdown))
 }
 
-/// Parse an IPC message from a webview and route it. `open-context` opens/focuses a window;
-/// `vault-*` messages manage the multi-vault roster. Malformed or unknown messages are logged
-/// and ignored (a webview must never crash the shell).
-fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, body: String) {
+/// Switch `window_id` IN PLACE to `req`'s context (ADR 0014 §multi-window): the default
+/// action when the user picks another vault/server. One-window-per-context still holds —
+/// if the target is already open in a *different* window we focus that instead. Otherwise
+/// we drop this window's old webview + shutdown handle (stopping its server → **locking the
+/// previous vault**) and rebuild its webview onto the new context, reusing the same window.
+fn switch_context(
+    proxy: &EventLoopProxy<UserEvent>,
+    windows: &mut std::collections::HashMap<WindowId, WindowState>,
+    registry: &mut ContextRegistry<WindowId>,
+    window_id: WindowId,
+    req: OpenRequest,
+    vaults_json: &str,
+) {
+    // Already this window's context → nothing to switch (avoid a pointless relock+reload).
+    if registry.context_of(&window_id) == Some(&req.key) {
+        return;
+    }
+    // Open in another window → focus it, leave this one as-is (never two on one context).
+    if let OpenOutcome::AlreadyOpen(other) = registry.open(&req.key) {
+        if let Some(w) = windows.get(&other) {
+            w.window.set_focus();
+        }
+        return;
+    }
+    // Reuse this window. Remove the old state first so its server stops (old vault locks),
+    // then rebuild the webview on the same tao window.
+    let Some(old) = windows.remove(&window_id) else {
+        tracing::warn!("[rite-desktop] switch-context for an unknown window; ignoring");
+        return;
+    };
+    // Keep the OS window; drop the old webview + shutdown handle now so the previous
+    // server stops and its vault locks before (or alongside) the new one comes up.
+    let WindowState { window, webview, shutdown, .. } = old;
+    drop(webview);
+    drop(shutdown);
+    match build_context_view(&window, &req, proxy, vaults_json) {
+        Ok((webview, port, shutdown)) => {
+            registry.remove_window(&window_id);
+            registry.register(req.key, window_id);
+            windows.insert(window_id, WindowState { webview, window, port, shutdown });
+        }
+        Err(e) => {
+            // The server didn't come up; the window is left without a webview. Surface it and
+            // drop the window (freeing its registry slot) rather than stranding a blank frame.
+            registry.remove_window(&window_id);
+            show_error(
+                "Could not switch context",
+                &format!("Rite couldn't open that vault or server.\n\n{e:#}"),
+            );
+        }
+    }
+}
+
+/// Parse an IPC message from `window`'s webview and route it. `open-context` opens/focuses a
+/// separate window; `switch-context` reloads *this* window onto another context; `vault-*`
+/// messages manage the multi-vault roster. Malformed or unknown messages are logged and ignored
+/// (a webview must never crash the shell).
+fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, window: WindowId, body: String) {
     let Ok(msg) = serde_json::from_str::<serde_json::Value>(&body) else {
         tracing::warn!("[rite-desktop] ignoring non-JSON IPC message");
         return;
     };
-    if let Some(req) = parse_open_request(&msg, &db_path()) {
-        if proxy.send_event(UserEvent::OpenContext(req)).is_err() {
-            tracing::warn!("[rite-desktop] event loop gone; dropping open-context");
+    let send = |event| {
+        if proxy.send_event(event).is_err() {
+            tracing::warn!("[rite-desktop] event loop gone; dropping IPC event");
         }
-        return;
-    }
-    if let Some(cmd) = plan_vault_command(&msg) {
-        if proxy.send_event(UserEvent::Vault(cmd)).is_err() {
-            tracing::warn!("[rite-desktop] event loop gone; dropping vault command");
+    };
+    match msg.get("type").and_then(|t| t.as_str()) {
+        Some("open-context") => {
+            if let Some(req) = context_request_from(&msg, &db_path()) {
+                send(UserEvent::OpenContext(req));
+            }
+        }
+        Some("switch-context") => {
+            if let Some(req) = context_request_from(&msg, &db_path()) {
+                send(UserEvent::SwitchContext { window, req });
+            }
+        }
+        _ => {
+            if let Some(cmd) = plan_vault_command(&msg) {
+                send(UserEvent::Vault(cmd));
+            }
         }
     }
 }
@@ -357,15 +455,15 @@ fn plan_vault_command(msg: &serde_json::Value) -> Option<VaultCommand> {
     }
 }
 
-/// Parse an `open-context` IPC message into an [`OpenRequest`], or `None` if it isn't one
-/// we act on. Pure (no event loop / no I/O) so it is unit-tested without a display.
+/// Build an [`OpenRequest`] from a context message's `kind`/fields (no `type` check). Shared by
+/// `open-context` (new window) and `switch-context` (reload this window). Pure (no event loop /
+/// no I/O) so it is unit-tested without a display.
 ///
-/// - `local` with a `path` opens that vault (ADR 0014 multi-vault); without one, the default.
+/// - `local` with a `path` opens that vault (ADR 0014 multi-vault); without one, the default. An
+///   optional `pendingLabel` (a not-yet-registered new vault) is carried through so the frontend
+///   can register it after the master password is set (Part 3).
 /// - `server` needs a `url`; the id/url/label pass through to the target window.
-fn parse_open_request(msg: &serde_json::Value, default_db: &Path) -> Option<OpenRequest> {
-    if msg.get("type").and_then(|t| t.as_str()) != Some("open-context") {
-        return None;
-    }
+fn context_request_from(msg: &serde_json::Value, default_db: &Path) -> Option<OpenRequest> {
     match msg.get("kind").and_then(|k| k.as_str()) {
         Some("local") => {
             let path = msg
@@ -374,10 +472,17 @@ fn parse_open_request(msg: &serde_json::Value, default_db: &Path) -> Option<Open
                 .filter(|s| !s.trim().is_empty())
                 .map(PathBuf::from)
                 .unwrap_or_else(|| default_db.to_path_buf());
+            let mut inject = serde_json::json!({ "kind": "local", "path": path.to_string_lossy() });
+            if let Some(label) = msg
+                .get("pendingLabel")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+            {
+                inject["pendingLabel"] = serde_json::Value::from(label);
+            }
             Some(OpenRequest {
                 key: ContextKey::local(&path),
-                inject: serde_json::json!({ "kind": "local", "path": path.to_string_lossy() })
-                    .to_string(),
+                inject: inject.to_string(),
                 db_path: path,
             })
         }
@@ -630,12 +735,14 @@ fn broadcast_vaults(
     }
 }
 
-/// Start rite-server in a background thread (its own tokio runtime; the tao event
-/// loop must own the main thread) and block until it binds, returning the port.
-/// Startup errors are reported instead of panicking.
-fn start_server(token: String, db_path: &Path) -> Result<u16> {
+/// Start rite-server in a background thread (its own tokio runtime; the tao event loop
+/// must own the main thread) and block until it binds, returning the port and a shutdown
+/// handle. Dropping (or firing) the handle stops the server gracefully — the dropped
+/// `ServerState` zeroizes the vault key, i.e. the vault locks. Errors are reported, not panics.
+fn start_server(token: String, db_path: &Path) -> Result<(u16, oneshot::Sender<()>)> {
     let db_path = db_path.to_path_buf();
     let (tx, rx) = std::sync::mpsc::channel::<Result<u16, String>>();
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let tx_bound = tx.clone();
     std::thread::spawn(move || {
         let rt = match tokio::runtime::Runtime::new() {
@@ -654,9 +761,17 @@ fn start_server(token: String, db_path: &Path) -> Result<u16> {
                     .await
                     .context("open vault")?
                     .with_token(token);
-                rite_server::serve(state, "127.0.0.1:0", move |port| {
-                    let _ = tx_bound.send(Ok(port));
-                })
+                rite_server::serve_with_shutdown(
+                    state,
+                    "127.0.0.1:0",
+                    move |port| {
+                        let _ = tx_bound.send(Ok(port));
+                    },
+                    // Resolves when the handle is fired OR simply dropped (window closed/switched).
+                    async move {
+                        let _ = shutdown_rx.await;
+                    },
+                )
                 .await
                 .context("serve")?;
                 Ok::<(), anyhow::Error>(())
@@ -669,7 +784,7 @@ fn start_server(token: String, db_path: &Path) -> Result<u16> {
     });
 
     match rx.recv() {
-        Ok(Ok(port)) => Ok(port),
+        Ok(Ok(port)) => Ok((port, shutdown_tx)),
         Ok(Err(msg)) => Err(anyhow::anyhow!(msg)),
         Err(_) => Err(anyhow::anyhow!("server thread exited before binding")),
     }
@@ -736,21 +851,35 @@ mod tests {
     }
 
     #[test]
-    fn ignores_non_open_context() {
-        assert!(parse_open_request(&json!({ "type": "other" }), &default()).is_none());
-        assert!(parse_open_request(&json!({ "kind": "local" }), &default()).is_none());
+    fn context_request_needs_a_known_kind() {
+        // Type dispatch (open vs switch) lives in `handle_ipc`; the builder is kind-driven.
+        assert!(context_request_from(&json!({ "type": "other" }), &default()).is_none());
+        assert!(context_request_from(&json!({ "nope": 1 }), &default()).is_none());
+        // A bare local kind (no type) builds the default-vault request.
+        assert!(context_request_from(&json!({ "kind": "local" }), &default()).is_some());
+    }
+
+    #[test]
+    fn local_carries_pending_label_when_present() {
+        let req = context_request_from(
+            &json!({ "kind": "local", "path": "/v/new.db", "pendingLabel": "Client Beta" }),
+            &default(),
+        )
+        .unwrap();
+        assert!(req.inject.contains("pendingLabel"));
+        assert!(req.inject.contains("Client Beta"));
     }
 
     #[test]
     fn local_without_path_uses_the_default_vault() {
-        let req = parse_open_request(&json!({ "type": "open-context", "kind": "local" }), &default()).unwrap();
+        let req = context_request_from(&json!({ "type": "open-context", "kind": "local" }), &default()).unwrap();
         assert_eq!(req.db_path, default());
         assert_eq!(req.key, ContextKey::local(default()));
     }
 
     #[test]
     fn local_with_path_opens_that_vault() {
-        let req = parse_open_request(
+        let req = context_request_from(
             &json!({ "type": "open-context", "kind": "local", "path": "/vaults/work.db" }),
             &default(),
         )
@@ -762,7 +891,7 @@ mod tests {
 
     #[test]
     fn blank_path_falls_back_to_default() {
-        let req = parse_open_request(
+        let req = context_request_from(
             &json!({ "type": "open-context", "kind": "local", "path": "   " }),
             &default(),
         )
@@ -772,8 +901,8 @@ mod tests {
 
     #[test]
     fn server_needs_a_url_and_keeps_the_default_vault() {
-        assert!(parse_open_request(&json!({ "type": "open-context", "kind": "server" }), &default()).is_none());
-        let req = parse_open_request(
+        assert!(context_request_from(&json!({ "type": "open-context", "kind": "server" }), &default()).is_none());
+        let req = context_request_from(
             &json!({ "type": "open-context", "kind": "server", "url": "https://rite.example.com", "label": "Team" }),
             &default(),
         )
@@ -784,7 +913,7 @@ mod tests {
 
     #[test]
     fn unknown_kind_is_ignored() {
-        assert!(parse_open_request(&json!({ "type": "open-context", "kind": "wat" }), &default()).is_none());
+        assert!(context_request_from(&json!({ "type": "open-context", "kind": "wat" }), &default()).is_none());
     }
 
     #[test]

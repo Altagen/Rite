@@ -627,12 +627,26 @@ async fn security_headers(State(state): State<ServerState>, req: Request, next: 
 }
 
 /// Bind `addr`, report the bound port (useful when `addr` uses port 0), then
-/// serve until shutdown. The desktop shell uses this to learn the random local
-/// port for its webview.
+/// serve forever. The desktop shell uses this to learn the random local port for
+/// its webview.
 pub async fn serve(state: ServerState, addr: &str, on_bound: impl FnOnce(u16)) -> Result<()> {
+    serve_with_shutdown(state, addr, on_bound, std::future::pending::<()>()).await
+}
+
+/// Like [`serve`], but stops gracefully once `shutdown` resolves. The desktop shell
+/// (ADR 0014 in-place context switch) fires this to tear a window's server down so
+/// the dropped [`ServerState`] zeroizes the vault key — i.e. the previous vault locks.
+pub async fn serve_with_shutdown(
+    state: ServerState,
+    addr: &str,
+    on_bound: impl FnOnce(u16),
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     on_bound(listener.local_addr()?.port());
-    axum::serve(listener, build_router(state)).await?;
+    axum::serve(listener, build_router(state))
+        .with_graceful_shutdown(shutdown)
+        .await?;
     Ok(())
 }
 
