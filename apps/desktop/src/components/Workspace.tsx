@@ -273,6 +273,16 @@ export function Workspace({
     return () => document.removeEventListener('keydown', onKey);
   }, [showVaultPicker]);
 
+  // A window opened *explicitly* for a vault (kind:'local' — via New/Open-vault) surfaces its
+  // unlock/setup at once: the user asked for THAT vault, so prompt for it (SetupScreen on first
+  // run, else UnlockScreen). The launch window (kind:'hub') stays base-first (ADR 0014) — the
+  // terminal works with no vault, so it never auto-prompts. Runs once on mount; a fresh window's
+  // server always starts locked, so no isLocked guard is needed.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- auto-surface the opened vault
+    if (isNativeShell() && nativeContext()?.kind === 'local') setShowUnlockModal(true);
+  }, []);
+
   // Close unlock modal when unlocked (success ⇒ show the workspace, not back to the picker).
   useEffect(() => {
     if (!isLocked && showUnlockModal) {
