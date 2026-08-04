@@ -21,13 +21,16 @@ import {
   nativeContext,
   sendVaultCommand,
   onVaultsChanged,
+  type NativeVault,
 } from '../utils/nativeShell';
 import { Hub } from './Hub';
+import { VaultRemoveDialog } from './VaultRemoveDialog';
 
 export function ContextPill() {
   const [ctx, setCtx] = useState<ContextState | null>(null);
   const [open, setOpen] = useState(false);
   const [showManager, setShowManager] = useState(false);
+  const [removeVault, setRemoveVault] = useState<NativeVault | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
@@ -99,7 +102,7 @@ export function ContextPill() {
       <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
     </svg>
   );
-  // A row = a wide "switch this window" button + a subtle "open in new window" split button.
+  // A row = a wide "switch this window" button + subtle hover actions (new window / remove).
   const newWindowBtn = (label: string, onClick: () => void) => (
     <button
       onClick={onClick}
@@ -108,6 +111,21 @@ export function ContextPill() {
       className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-background hover:text-foreground group-hover:opacity-100"
     >
       {splitIcon}
+    </button>
+  );
+  const removeVaultBtn = (v: NativeVault) => (
+    <button
+      onClick={() => {
+        setOpen(false);
+        setRemoveVault(v);
+      }}
+      title="Remove from list"
+      aria-label={`Remove ${v.label}`}
+      className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
+    >
+      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
+      </svg>
     </button>
   );
 
@@ -149,6 +167,7 @@ export function ContextPill() {
                     {isCurrent && <span className="flex-none text-xs text-primary">current</span>}
                   </button>
                   {!isCurrent && newWindowBtn(v.label, () => newWindowVault(v.path))}
+                  {!isCurrent && removeVaultBtn(v)}
                 </div>
               );
             })
@@ -234,6 +253,10 @@ export function ContextPill() {
             void refresh();
           }}
         />
+      )}
+
+      {removeVault && (
+        <VaultRemoveDialog vault={removeVault} onClose={() => setRemoveVault(null)} />
       )}
     </div>
   );

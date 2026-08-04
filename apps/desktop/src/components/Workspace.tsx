@@ -40,7 +40,9 @@ import {
   sendVaultCommand,
   requestOpenContext,
   requestSwitchContext,
+  type NativeVault,
 } from '../utils/nativeShell';
+import { VaultRemoveDialog } from './VaultRemoveDialog';
 import { transport } from '../utils/transport';
 import { Toast } from './Toast';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -124,6 +126,7 @@ export function Workspace({
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [showVaultPicker, setShowVaultPicker] = useState(false); // multi-vault picker (ADR 0014)
   const [unlockFromPicker, setUnlockFromPicker] = useState(false); // came from the picker → back returns there
+  const [removeVault, setRemoveVault] = useState<NativeVault | null>(null); // picker remove/delete target
 
   // Collection opened in the main area (ADR 0016): which one + which main view is
   // showing (terminal is kept mounted underneath). Plus the members dialog target
@@ -1686,6 +1689,16 @@ export function Workspace({
                         </svg>
                       </button>
                     )}
+                    <button
+                      onClick={() => setRemoveVault(v)}
+                      title="Remove from list"
+                      aria-label={`Remove ${v.label}`}
+                      className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
+                      </svg>
+                    </button>
                   </div>
                 );
               })}
@@ -1710,6 +1723,10 @@ export function Workspace({
             </div>
           </div>
         </div>
+      )}
+
+      {removeVault && (
+        <VaultRemoveDialog vault={removeVault} onClose={() => setRemoveVault(null)} />
       )}
 
       {/* Unlock Modal (context-specific, provided by the shell). Closing it returns to the vault
