@@ -20,6 +20,7 @@ import { CollectionsDashboard } from './CollectionsDashboard';
 import { TeamsDashboard } from './TeamsDashboard';
 import { ForcePasswordChange } from './ForcePasswordChange';
 import { IconCollection, IconShield, IconUsers } from './icons';
+import { isNativeShell } from '../utils/nativeShell';
 
 /** Reload without the password left no keys in RAM — re-auth to decrypt. */
 function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
@@ -100,9 +101,13 @@ export function AccountsShell() {
               <span className="hidden md:inline">Collections</span>
             </button>
             {canAdmin ? (
-              <button onClick={() => navigate('/admin')} className="m-btn m-btn-ghost m-btn-sm" title="Administration">
+              <button
+                onClick={() => navigate('/admin')}
+                className="m-btn m-btn-ghost m-btn-sm"
+                title={isNativeShell() ? 'Organization (users & server settings are in the web console)' : 'Administration'}
+              >
                 <IconShield className="h-4 w-4" />
-                <span className="hidden md:inline">Admin</span>
+                <span className="hidden md:inline">{isNativeShell() ? 'Organization' : 'Admin'}</span>
               </button>
             ) : null}
           </>

@@ -29,6 +29,7 @@ import { AdminUsersPanel } from './AdminUsersPanel';
 import { TeamsPanel } from './TeamsPanel';
 import { InstanceSettingsPanel } from './InstanceSettingsPanel';
 import { IconUsers, IconShield, IconGear, IconLock, IconCollection } from './icons';
+import { isNativeShell } from '../utils/nativeShell';
 import riteLogo from '../assets/rite.png';
 
 type Sec = 'overview' | 'users' | 'teams' | 'collections' | 'instance';
@@ -40,6 +41,11 @@ const NAV: { id: Sec; label: string; icon: React.ReactNode }[] = [
   { id: 'collections', label: 'Collections', icon: <IconCollection className="h-4 w-4" /> },
   { id: 'instance', label: 'Instance', icon: <IconGear className="h-4 w-4" /> },
 ];
+
+// Org management (teams + collections) is available in the desktop client; heavy INSTANCE
+// administration (overview stats, user accounts, server settings) stays in the web console — the
+// desktop is a client (mock + Bitwarden/Vaultwarden model). The API guard is the real boundary.
+const ORG_SECTIONS: Sec[] = ['teams', 'collections'];
 
 function IconGrid() {
   return (
@@ -54,7 +60,12 @@ function IconGrid() {
 
 export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}) {
   const { mode, logout } = useServerSession();
-  const [sec, setSec] = useState<Sec>('overview');
+  // In the desktop client, only org management (teams/collections) is exposed; instance admin
+  // lives in the web console. On the web, the full console is shown.
+  const orgOnly = isNativeShell();
+  const nav = orgOnly ? NAV.filter((n) => ORG_SECTIONS.includes(n.id)) : NAV;
+  // Default to an always-visible section; the nav only offers visible ones, so `sec` stays valid.
+  const [sec, setSec] = useState<Sec>(orgOnly ? 'collections' : 'overview');
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
@@ -63,7 +74,7 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
         <div className="m-brand flex items-center gap-2.5">
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
           <span className="rounded-md border border-primary/40 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
-            Admin
+            {orgOnly ? 'Organization' : 'Admin'}
           </span>
         </div>
         {mode?.instanceName && (
@@ -90,7 +101,7 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
       <div className="flex min-h-0 flex-1">
         {/* Left nav */}
         <nav className="flex w-[220px] flex-shrink-0 flex-col gap-0.5 border-r border-border bg-input p-2.5">
-          {NAV.map((n) => (
+          {nav.map((n) => (
             <button
               key={n.id}
               onClick={() => setSec(n.id)}
@@ -104,16 +115,22 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
               {n.label}
             </button>
           ))}
+          {orgOnly && (
+            <p className="mt-auto px-2 pt-3 text-[11px] leading-relaxed text-muted-foreground">
+              Users &amp; server settings are managed in the web console — open the server URL in a
+              browser.
+            </p>
+          )}
         </nav>
 
         {/* Content */}
         <main className="min-w-0 flex-1 overflow-y-auto px-8 py-7">
           <div className="mx-auto max-w-[1400px]">
-            {sec === 'overview' && <Overview onGo={setSec} />}
-            {sec === 'users' && <AdminUsersPanel />}
+            {!orgOnly && sec === 'overview' && <Overview onGo={setSec} />}
+            {!orgOnly && sec === 'users' && <AdminUsersPanel />}
             {sec === 'teams' && <TeamsPanel />}
             {sec === 'collections' && <CollectionsGovernance />}
-            {sec === 'instance' && <InstanceSettingsPanel />}
+            {!orgOnly && sec === 'instance' && <InstanceSettingsPanel />}
           </div>
         </main>
       </div>

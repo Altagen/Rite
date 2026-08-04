@@ -676,9 +676,11 @@ function dlgResetVault(){const nm=(STATE.ctx&&STATE.ctx.name)||'this vault';
   onConfirm:(m)=>{if((m.querySelector('#reset-confirm').value||'').trim()!==nm)return false;
     if(STATE.ctx&&STATE.ctx.type==='vault'){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
     refreshCtx();toast(`<span class="accent">${nm}</span> reset — start fresh`);}});}
-/* Administration is deliberately NOT available from the desktop client — it lives
-   in the server's own web console (open the server URL in a browser). The desktop
-   is a client (use vaults + connect to servers), not a server-management surface. */
+/* Light ORG management (teams + collections) IS available from the desktop client — admins
+   shouldn't need a browser just to manage collections. But heavy INSTANCE administration (user
+   accounts, server settings) stays in the server's web console (open the server URL in a browser).
+   The desktop is a client + light org management, not a server-management surface. Mirrors
+   Bitwarden/Vaultwarden: native clients = use + org; instance/system admin = web-only. */
 
 /* ================= notifications + discover (server context only) =================
    A local vault is single-user: no teams, no sharing requests. These only exist when
