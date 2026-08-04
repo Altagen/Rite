@@ -98,6 +98,14 @@ export function Workspace({
   // one this window holds, so "no vault open" offers the list + new/open instead of one button.
   const lockedVaults = isNativeShell() ? nativeVaults() : [];
   const currentVaultPath = nativeContext()?.path ?? null;
+  // A brand-new vault whose master password was never set: the shell created its `.db` and
+  // switched this window onto it with a `pendingLabel`, but it's not in the roster yet. Once
+  // registered (vault-ready), it appears in `nativeVaults()` and is no longer "pending".
+  const pendingCtx = isNativeShell() ? nativeContext() : undefined;
+  const pendingNewVaultPath =
+    pendingCtx?.pendingLabel && pendingCtx.path && !lockedVaults.some((v) => v.path === pendingCtx.path)
+      ? pendingCtx.path
+      : null;
   const { connections, selectedConnectionId } = conns;
   const fetchConnections = conns.refresh;
   const deleteConnection = conns.remove;
@@ -128,6 +136,8 @@ export function Workspace({
   const [showVaultPicker, setShowVaultPicker] = useState(false); // multi-vault picker (ADR 0014)
   const [unlockFromPicker, setUnlockFromPicker] = useState(false); // came from the picker → back returns there
   const [removeVault, setRemoveVault] = useState<NativeVault | null>(null); // picker remove/delete target
+  const [abandonNewVault, setAbandonNewVault] = useState(false); // × on a not-yet-set-up new vault
+  const [abandonDeleteFile, setAbandonDeleteFile] = useState(true); // its file was just created
 
   // Collection opened in the main area (ADR 0016): which one + which main view is
   // showing (terminal is kept mounted underneath). Plus the members dialog target
@@ -1742,6 +1752,13 @@ export function Workspace({
           <div className="mx-4 w-full max-w-lg">
             {auth.renderUnlockModal({
               onClose: () => {
+                // Closing a brand-new vault before its password is set: confirm the abandon
+                // (and offer to delete the file we just created) instead of silently leaving it.
+                if (pendingNewVaultPath) {
+                  setAbandonDeleteFile(true);
+                  setAbandonNewVault(true);
+                  return; // keep the setup modal mounted behind the confirm
+                }
                 setShowUnlockModal(false);
                 if (unlockFromPicker) {
                   setUnlockFromPicker(false);
@@ -1749,6 +1766,53 @@ export function Workspace({
                 }
               },
             })}
+          </div>
+        </div>
+      )}
+
+      {abandonNewVault && pendingNewVaultPath && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl">
+            <h3 className="font-semibold">Abandon this new vault?</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              You haven’t set a master password, so this vault isn’t saved. Its file was just created
+              at:
+            </p>
+            <p className="mt-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs">{pendingNewVaultPath}</p>
+            <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+              <input
+                type="checkbox"
+                checked={abandonDeleteFile}
+                onChange={(e) => setAbandonDeleteFile(e.target.checked)}
+                className="mt-0.5 h-4 w-4 flex-none accent-red-500"
+              />
+              <span className="min-w-0 text-sm">
+                <span className="font-medium text-red-500">Delete the file</span>
+                <span className="block text-xs text-muted-foreground">
+                  Removes the empty vault file from your machine.
+                </span>
+              </span>
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setAbandonNewVault(false)}
+                className="rounded-md px-3 py-1.5 text-sm hover:bg-muted"
+              >
+                Keep setting up
+              </button>
+              <button
+                onClick={() => {
+                  if (abandonDeleteFile) sendVaultCommand({ type: 'vault-delete', path: pendingNewVaultPath });
+                  setAbandonNewVault(false);
+                  setShowUnlockModal(false);
+                  // Leave the empty vault: switch this window back to the default vault.
+                  requestSwitchContext({ kind: 'local' });
+                }}
+                className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600"
+              >
+                {abandonDeleteFile ? 'Abandon & delete file' : 'Abandon & keep file'}
+              </button>
+            </div>
           </div>
         </div>
       )}
