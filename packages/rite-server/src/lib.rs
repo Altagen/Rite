@@ -412,6 +412,7 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/users/{id}", delete(admin_delete_user))
         .route("/api/admin/users/{id}/status", patch(admin_set_status))
+        .route("/api/admin/users/{id}/role", patch(admin_set_role))
         .route("/api/admin/users/{id}/reset", post(admin_reset_user))
         .route("/api/admin/instance", patch(set_instance_name))
         .route(
@@ -727,9 +728,16 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
             }
             None => return (StatusCode::UNAUTHORIZED, "authentication required").into_response(),
         };
-        // Admin endpoints require the admin role.
-        if path.starts_with("/api/admin") && user.role != Role::Admin {
-            return (StatusCode::FORBIDDEN, "admin role required").into_response();
+        // Admin endpoints require the admin role — except org management (teams + users), which a
+        // `manager` may also reach. Everything else under /api/admin (instance config, collection
+        // oversight/escrow, group keys) stays admin-only.
+        if path.starts_with("/api/admin") {
+            let org = path.starts_with("/api/admin/teams") || path.starts_with("/api/admin/users");
+            let allowed =
+                user.role == Role::Admin || (org && user.role == Role::Manager);
+            if !allowed {
+                return (StatusCode::FORBIDDEN, "insufficient role").into_response();
+            }
         }
         req.extensions_mut().insert(Arc::new(user));
     }
@@ -1554,8 +1562,18 @@ struct CreateUserReq {
 
 async fn admin_create_user(
     State(state): State<ServerState>,
+    Extension(caller): Extension<Arc<User>>,
     Json(req): Json<CreateUserReq>,
 ) -> Result<Response, AppError> {
+    // A manager may invite regular users, but never create admins/managers (no privilege escalation);
+    // admins may create any role.
+    if caller.role == Role::Manager && req.role != Role::User {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "managers can only create regular users" })),
+        )
+            .into_response());
+    }
     let salt = server_auth::parse_hex_salt(&req.salt)?;
     let vault = server_auth::VaultKey {
         master_salt: server_auth::parse_hex_salt(&req.master_salt)?,
@@ -1607,6 +1625,50 @@ async fn admin_set_status(
         return Ok((StatusCode::BAD_REQUEST, "invalid status").into_response());
     }
     let ok = server_auth::set_user_status(state.db.pool(), &id, &req.status).await?;
+    Ok(if ok {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    })
+}
+
+#[derive(Deserialize)]
+struct RoleReq {
+    role: Role,
+}
+
+/// Change a user's server role. Admin-only (the /api/admin guard enforces it). Restricted to
+/// `user` ⇄ `manager`: assigning `admin`, or changing an existing admin's role, keeps its own
+/// escrow-group crypto path (out of scope). You can't change your own role.
+async fn admin_set_role(
+    State(state): State<ServerState>,
+    Extension(current): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<RoleReq>,
+) -> Result<Response, AppError> {
+    if id == current.id {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "you can't change your own role" })),
+        )
+            .into_response());
+    }
+    if req.role == Role::Admin {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "admin can't be assigned here" })),
+        )
+            .into_response());
+    }
+    // Don't demote an existing admin through this path — that would touch the escrow group.
+    if server_auth::get_role(state.db.pool(), &id).await? == Some(server_auth::Role::Admin) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "can't change an admin's role here" })),
+        )
+            .into_response());
+    }
+    let ok = server_auth::set_role(state.db.pool(), &id, req.role).await?;
     Ok(if ok {
         StatusCode::NO_CONTENT.into_response()
     } else {

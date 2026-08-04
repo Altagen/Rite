@@ -17,11 +17,14 @@ use uuid::Uuid;
 /// Session lifetime.
 const SESSION_TTL_SECS: i64 = 60 * 60 * 24 * 7; // 7 days
 
-/// Account role.
+/// Account role. `Manager` is org management (teams + users + collections via the normal
+/// surfaces) without instance administration; it stays OUT of the admin escrow group (ADR 0011),
+/// so it never oversees/escrows collection keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     Admin,
+    Manager,
     User,
 }
 
@@ -29,15 +32,39 @@ impl Role {
     fn as_str(self) -> &'static str {
         match self {
             Role::Admin => "admin",
+            Role::Manager => "manager",
             Role::User => "user",
         }
     }
     fn parse(s: &str) -> Role {
         match s {
             "admin" => Role::Admin,
+            "manager" => Role::Manager,
             _ => Role::User,
         }
     }
+}
+
+/// The current role of an account, or `None` if it doesn't exist.
+pub async fn get_role(db: &SqlitePool, id: &str) -> Result<Option<Role>> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT role FROM users WHERE id = ?")
+        .bind(id)
+        .fetch_optional(db)
+        .await?;
+    Ok(row.map(|(r,)| Role::parse(&r)))
+}
+
+/// Change an existing account's role. Used by admins to promote/demote between `user` and
+/// `manager` (admin assignment keeps its own create-time crypto path). Returns whether a row changed.
+pub async fn set_role(db: &SqlitePool, id: &str, role: Role) -> Result<bool> {
+    let n = sqlx::query("UPDATE users SET role = ?, updated_at = ? WHERE id = ?")
+        .bind(role.as_str())
+        .bind(now())
+        .bind(id)
+        .execute(db)
+        .await?
+        .rows_affected();
+    Ok(n > 0)
 }
 
 /// A server account (never carries the verifier or vault key).
@@ -556,5 +583,46 @@ mod tests {
             got,
             "a2e680d85e0e6e2a1b1195522590802c68d8f4f8ecc4ca123031617f687e10e7"
         );
+    }
+
+    fn dummy_vault() -> VaultKey {
+        VaultKey {
+            master_salt: vec![0u8; 16],
+            protected_user_key: "v1.aa.bb".into(),
+            public_key: "00".repeat(32),
+            protected_private_key: "v1.cc.dd".into(),
+        }
+    }
+
+    // The manager role persists, reads back, and can be flipped user⇄manager (admin promote/demote).
+    #[tokio::test]
+    async fn manager_role_persists_and_flips() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db = crate::db::Database::new(&tmp.path().join("t.db")).await.unwrap();
+        let pool = db.pool();
+        let params = KdfParams::recommended();
+
+        let u = create_user(pool, "boss", &generate_salt(), params, "hash", Role::Manager, &dummy_vault(), true)
+            .await
+            .unwrap();
+        assert_eq!(u.role, Role::Manager, "created as manager");
+        assert_eq!(get_role(pool, &u.id).await.unwrap(), Some(Role::Manager));
+
+        assert!(set_role(pool, &u.id, Role::User).await.unwrap(), "demote to user");
+        assert_eq!(get_role(pool, &u.id).await.unwrap(), Some(Role::User));
+        assert!(set_role(pool, &u.id, Role::Manager).await.unwrap(), "promote to manager");
+        assert_eq!(get_role(pool, &u.id).await.unwrap(), Some(Role::Manager));
+
+        // Unknown id ⇒ no change / no role.
+        assert!(!set_role(pool, "nope", Role::User).await.unwrap());
+        assert_eq!(get_role(pool, "nope").await.unwrap(), None);
+    }
+
+    #[test]
+    fn role_string_roundtrip() {
+        for r in [Role::Admin, Role::Manager, Role::User] {
+            assert_eq!(Role::parse(r.as_str()), r);
+        }
+        assert_eq!(Role::parse("weird"), Role::User); // unknown falls back
     }
 }
