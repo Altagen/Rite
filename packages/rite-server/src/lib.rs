@@ -423,6 +423,11 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/admin/default-shell", patch(set_default_shell))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
         .route("/api/admin/registration", patch(set_open_registration))
+        .route(
+            "/api/admin/enrollment-tokens",
+            get(admin_list_tokens).post(admin_create_token),
+        )
+        .route("/api/admin/enrollment-tokens/{id}", delete(admin_revoke_token))
         .route("/api/admin/collection-policy", patch(set_collection_policy))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
         .route("/api/healthcheck/probe", post(healthcheck_probe))
@@ -730,11 +735,13 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
             }
             None => return (StatusCode::UNAUTHORIZED, "authentication required").into_response(),
         };
-        // Admin endpoints require the admin role — except org management (teams + users), which a
-        // `manager` may also reach. Everything else under /api/admin (instance config, collection
-        // oversight/escrow, group keys) stays admin-only.
+        // Admin endpoints require the admin role — except org management (teams, users, enrollment
+        // tokens), which a `manager` may also reach. Everything else under /api/admin (instance
+        // config, collection oversight/escrow, group keys) stays admin-only.
         if path.starts_with("/api/admin") {
-            let org = path.starts_with("/api/admin/teams") || path.starts_with("/api/admin/users");
+            let org = path.starts_with("/api/admin/teams")
+                || path.starts_with("/api/admin/users")
+                || path.starts_with("/api/admin/enrollment-tokens");
             let allowed =
                 user.role == Role::Admin || (org && user.role == Role::Manager);
             if !allowed {
@@ -1491,23 +1498,34 @@ async fn server_bootstrap(
     Ok(Json(json!({ "token": token, "user": user, "vault": vault_out })).into_response())
 }
 
-/// Self-service registration (ADR 0015 phase 1). Public, but gated on the opt-in
-/// `open_registration` setting (off by default). The client generates its own keys, so the
-/// account is role `user`, no team, and needs no forced password change — the admin never
-/// sees the keys (unlike an admin-provisioned account). Returns a session like bootstrap.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RegisterReq {
+    username: String,
+    salt: String, // hex
+    params: KdfParams,
+    auth_hash: String,
+    master_salt: String, // hex
+    protected_user_key: String,
+    public_key: String, // hex (X25519)
+    protected_private_key: String,
+    /// An optional invitation token (ADR 0015 phase 3): when present it is redeemed (recipe
+    /// applied, single-use) and bypasses the open_registration gate.
+    #[serde(default)]
+    token: Option<String>,
+}
+
+/// Self-service registration + invitation-token redemption (ADR 0015 phases 1 & 3). Public. The
+/// client always generates its own keys, so the account needs no forced password change — the admin
+/// never sees the keys. Two paths: with a valid `token`, the encoded role + team recipe is applied
+/// (single-use, and it works even when open registration is off); without one, plain signup that
+/// requires the opt-in `open_registration` setting and lands role `user`, no team. Returns a session.
 async fn server_register(
     State(state): State<ServerState>,
-    Json(req): Json<BootstrapReq>,
+    Json(req): Json<RegisterReq>,
 ) -> Result<Response, AppError> {
     if !state.accounts {
         return Ok((StatusCode::BAD_REQUEST, "not a server").into_response());
-    }
-    if state.db.get_setting("open_registration").await? != Some("1".to_string()) {
-        return Ok((
-            StatusCode::FORBIDDEN,
-            Json(json!({ "error": "open registration is disabled" })),
-        )
-            .into_response());
     }
     let username = req.username.trim();
     if username.is_empty() || username.chars().count() > 64 {
@@ -1524,6 +1542,66 @@ async fn server_register(
         public_key: req.public_key,
         protected_private_key: req.protected_private_key,
     };
+    let session = |state: ServerState, user: server_auth::User| async move {
+        let token = server_auth::create_session(state.db.pool(), &user.id).await?;
+        let vault_out = server_auth::get_user_vault(state.db.pool(), &user.id).await?;
+        Ok::<_, AppError>(
+            (StatusCode::CREATED, Json(json!({ "token": token, "user": user, "vault": vault_out })))
+                .into_response(),
+        )
+    };
+
+    // --- Path A: redeem an invitation token (recipe applied, single-use, bypasses the gate). ---
+    if let Some(tok) = req.token.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        let Some(recipe) = rite_core::enrollment::claim(state.db.pool(), tok).await? else {
+            return Ok((
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "invalid or expired invitation token" })),
+            )
+                .into_response());
+        };
+        return match server_auth::create_user(
+            state.db.pool(),
+            username,
+            &salt,
+            req.params,
+            &req.auth_hash,
+            recipe.role,
+            &vault,
+            false,
+        )
+        .await
+        {
+            Ok(user) => {
+                // Apply the recipe's team grants. Best-effort: a team deleted since the token was
+                // minted is simply skipped rather than failing the whole redemption.
+                for (team_id, team_role) in &recipe.teams {
+                    let _ =
+                        rite_core::teams::set_member(state.db.pool(), team_id, &user.id, *team_role)
+                            .await;
+                }
+                session(state, user).await
+            }
+            Err(_) => {
+                // Signup failed (duplicate username): reopen the single-use token so it can be retried.
+                let _ = rite_core::enrollment::release(state.db.pool(), &recipe.id).await;
+                Ok((
+                    StatusCode::CONFLICT,
+                    Json(json!({ "error": "username already exists" })),
+                )
+                    .into_response())
+            }
+        };
+    }
+
+    // --- Path B: plain self-service — requires the opt-in setting, lands role `user`. ---
+    if state.db.get_setting("open_registration").await? != Some("1".to_string()) {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "open registration is disabled" })),
+        )
+            .into_response());
+    }
     match server_auth::create_user(
         state.db.pool(),
         username,
@@ -1532,26 +1610,96 @@ async fn server_register(
         &req.auth_hash,
         Role::User,
         &vault,
-        false, // self-set password → no forced change
+        false,
     )
     .await
     {
-        Ok(user) => {
-            let token = server_auth::create_session(state.db.pool(), &user.id).await?;
-            let vault_out = server_auth::get_user_vault(state.db.pool(), &user.id).await?;
-            Ok((
-                StatusCode::CREATED,
-                Json(json!({ "token": token, "user": user, "vault": vault_out })),
-            )
-                .into_response())
-        }
-        // Almost always a duplicate username (UNIQUE constraint).
+        Ok(user) => session(state, user).await,
         Err(_) => Ok((
             StatusCode::CONFLICT,
             Json(json!({ "error": "username already exists" })),
         )
             .into_response()),
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TeamGrantReq {
+    team_id: String,
+    #[serde(default)]
+    team_role: Option<String>, // "admin" | "member" (default member)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateTokenReq {
+    role: Role,
+    #[serde(default)]
+    teams: Vec<TeamGrantReq>,
+    #[serde(default)]
+    expires_in_secs: Option<i64>, // None = never
+}
+
+/// Mint an enrollment token (ADR 0015 phase 3). Admin or manager (guard-gated to org). A manager
+/// may mint only user-role tokens (no privilege escalation, like `admin_create_user`); an admin may
+/// mint user or manager — never admin (that keeps its escrow-crypto create path). The plaintext is
+/// returned ONCE; only its hash is stored.
+async fn admin_create_token(
+    State(state): State<ServerState>,
+    Extension(caller): Extension<Arc<User>>,
+    Json(req): Json<CreateTokenReq>,
+) -> Result<Response, AppError> {
+    if req.role == Role::Admin {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "admin tokens are not allowed" })),
+        )
+            .into_response());
+    }
+    if caller.role == Role::Manager && req.role != Role::User {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "managers can only mint user tokens" })),
+        )
+            .into_response());
+    }
+    let teams = req
+        .teams
+        .into_iter()
+        .map(|t| {
+            let role = t
+                .team_role
+                .as_deref()
+                .map(rite_core::teams::TeamRole::parse)
+                .unwrap_or(rite_core::teams::TeamRole::Member);
+            (t.team_id, role)
+        })
+        .collect();
+    let (token, info) = rite_core::enrollment::create(
+        state.db.pool(),
+        rite_core::enrollment::NewToken { role: req.role, teams, expires_in_secs: req.expires_in_secs },
+        &caller.id,
+    )
+    .await?;
+    Ok((StatusCode::CREATED, Json(json!({ "token": token, "info": info }))).into_response())
+}
+
+async fn admin_list_tokens(
+    State(state): State<ServerState>,
+) -> Result<Json<Vec<rite_core::enrollment::TokenInfo>>, AppError> {
+    Ok(Json(rite_core::enrollment::list(state.db.pool()).await?))
+}
+
+async fn admin_revoke_token(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<Response, AppError> {
+    Ok(if rite_core::enrollment::revoke(state.db.pool(), &id).await? {
+        StatusCode::NO_CONTENT.into_response()
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    })
 }
 
 /// The current authenticated user (guard inserted it) + its vault key material,
