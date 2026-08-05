@@ -99,8 +99,9 @@ impl Database {
             (15, include_str!("../migrations/015_collection_offer.sql")),
             (16, include_str!("../migrations/016_access_requests.sql")),
             (17, include_str!("../migrations/017_must_change_password.sql")),
+            (18, include_str!("../migrations/018_enrollment_tokens.sql")),
             // Future migrations go here:
-            // (18, include_str!("../migrations/018_another_feature.sql")),
+            // (19, include_str!("../migrations/019_another_feature.sql")),
         ];
 
         // Expected latest version
@@ -777,7 +778,7 @@ mod tests {
 
         // A fresh DB migrates all the way to the latest schema (each applied
         // migration records its version).
-        assert_eq!(db.get_schema_version().await.unwrap(), 17);
+        assert_eq!(db.get_schema_version().await.unwrap(), 18);
     }
 
     #[test]
@@ -827,14 +828,14 @@ mod tests {
 
         // First open runs every migration to the latest version.
         let db1 = Database::new(&db_path).await.unwrap();
-        assert_eq!(db1.get_schema_version().await.unwrap(), 17);
+        assert_eq!(db1.get_schema_version().await.unwrap(), 18);
         drop(db1);
 
         // Reopening the SAME vault must be a clean no-op: without the recorded
         // versions the runner would re-apply non-idempotent DDL (`ADD COLUMN` →
         // "duplicate column") and fail — the exact desktop second-launch bug.
         let db2 = Database::new(&db_path).await.unwrap();
-        assert_eq!(db2.get_schema_version().await.unwrap(), 17);
+        assert_eq!(db2.get_schema_version().await.unwrap(), 18);
     }
 
     #[tokio::test]

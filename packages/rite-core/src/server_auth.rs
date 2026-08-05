@@ -29,14 +29,14 @@ pub enum Role {
 }
 
 impl Role {
-    fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Role::Admin => "admin",
             Role::Manager => "manager",
             Role::User => "user",
         }
     }
-    fn parse(s: &str) -> Role {
+    pub fn parse(s: &str) -> Role {
         match s {
             "admin" => Role::Admin,
             "manager" => Role::Manager,

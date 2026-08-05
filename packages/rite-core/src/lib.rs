@@ -10,6 +10,7 @@ pub mod collection_store;
 pub mod connection;
 pub mod connections_manager;
 pub mod db;
+pub mod enrollment;
 pub mod events;
 pub mod known_hosts;
 pub mod library_store;
