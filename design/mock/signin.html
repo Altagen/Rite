@@ -61,6 +61,11 @@
     <!-- Register-mode only: confirm the new password (the real ServerAuthScreen reveals it too). -->
     <label class="field" id="confirmField" style="display:none"><span>Confirm password</span>
       <input class="inp" id="pw2" type="password" autocomplete="new-password" placeholder="Repeat your password" oninput="upd()"></label>
+    <!-- Optional invitation token (ADR 0015 phase 3): redeeming works even when open registration
+         is off; the token carries the role/team recipe (never a key), single-use. -->
+    <label class="field" id="tokenField" style="display:none"><span>Invitation token <span class="muted" style="font-weight:400">· optional</span></span>
+      <input class="inp" id="token" autocomplete="off" placeholder="rite_…" oninput="upd()">
+      <div class="muted" style="font-size:11.5px;margin-top:5px" id="tokHint">Have an invite? Paste it to join with your role and teams already set.</div></label>
 
     <div class="rowbtw" id="sirow">
       <label onclick="toggleStay()"><span class="cbox on" id="stayBox">✓</span> Stay signed in</label>
@@ -72,9 +77,9 @@
     <div class="zk"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>
       <div id="zktext">Your password is checked without ever leaving this device — the server only sees an unreplayable hash, never the password itself.</div></div>
 
-    <!-- The "Create an account" link only appears when the instance has open_registration on
-         (ADR 0015 phase 1). Off by default → the card is sign-in only, as today. -->
-    <div class="demo" id="demo">First time here? <a onclick="location.href='setup.html?mode=first&u=alex'">Set your password</a> · <span class="muted">Open registration is on —</span> <a onclick="setMode(true)">Create an account</a></div>
+    <!-- "Create an account" appears only when the instance has open_registration on (phase 1);
+         "invitation token" is always available so a holder can redeem even when it's off (phase 3). -->
+    <div class="demo" id="demo">First time here? <a onclick="location.href='setup.html?mode=first&u=alex'">Set your password</a> · <span class="muted">Open registration is on —</span> <a onclick="setMode(true)">Create an account</a> · Have an invitation token? <a onclick="redeem()">Redeem</a></div>
   </div>
 
 <script>
@@ -94,6 +99,7 @@ function setMode(reg){
     :'Unlock your connections on this device.';
   $('go').textContent=reg?'Create account':'Sign in';
   $('confirmField').style.display=reg?'block':'none';
+  $('tokenField').style.display=reg?'block':'none';
   $('sirow').style.display=reg?'none':'flex';
   $('pw').autocomplete=reg?'new-password':'current-password';
   $('zktext').textContent=reg
@@ -101,9 +107,11 @@ function setMode(reg){
     :'Your password is checked without ever leaving this device — the server only sees an unreplayable hash, never the password itself.';
   $('demo').innerHTML=reg
     ? `Already have an account? <a onclick="setMode(false)">Sign in</a>`
-    : `First time here? <a onclick="location.href='setup.html?mode=first&u=alex'">Set your password</a> · <span class="muted">Open registration is on —</span> <a onclick="setMode(true)">Create an account</a>`;
+    : `First time here? <a onclick="location.href='setup.html?mode=first&u=alex'">Set your password</a> · <span class="muted">Open registration is on —</span> <a onclick="setMode(true)">Create an account</a> · Have an invitation token? <a onclick="redeem()">Redeem</a>`;
   upd();
 }
+// Reach the create-account form to redeem an invite (works even if open registration is off).
+function redeem(){setMode(true);const t=$('token');if(t)t.focus();}
 function toggleEye(){const pw=$('pw');const show=pw.type==='password';pw.type=show?'text':'password';$('eye').style.color=show?'var(--accent)':'';}
 function toggleStay(){STAY=!STAY;$('stayBox').classList.toggle('on',STAY);$('stayBox').textContent=STAY?'✓':'';}
 function forgot(){
@@ -122,7 +130,7 @@ function toast(msg){
 }
 function submit(){
   if($('go').disabled)return;
-  if(REG){ toast('Creating your account…'); setTimeout(()=>location.href='web.html',700); return; }
+  if(REG){ toast($('token').value.trim()?'Redeeming your invitation…':'Creating your account…'); setTimeout(()=>location.href='web.html',700); return; }
   // Mock: pretend anything but the demo password fails, to show the error state.
   if($('pw').value!=='demo' && $('pw').value.length<3){$('err').classList.add('show');return;}
   toast('Unlocking…');

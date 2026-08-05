@@ -99,6 +99,18 @@
   .hc-live{color:var(--accent);font-weight:600}
   .gate{transition:opacity .15s}
   .gate.off{opacity:.42;pointer-events:none}
+  /* Manager role badge (amber) — matches the client. */
+  .role-manager{background:color-mix(in oklab,var(--amber) 20%,transparent);color:var(--amber);border:1px solid color-mix(in oklab,var(--amber) 35%,transparent)}
+  /* Enrollment tokens (ADR 0015 phase 3). */
+  .zk-note{background:color-mix(in oklab,var(--accent) 7%,transparent);border:1px solid color-mix(in oklab,var(--accent) 22%,transparent);border-radius:10px;padding:11px 14px;font-size:12.5px;color:var(--fg-dim);line-height:1.55}
+  .tok-frag{font-family:ui-monospace,Menlo,monospace;font-size:13px;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;color:var(--fg)}
+  table.tbl tr.tok-dim td{opacity:.5}
+  .tk-teams{display:flex;flex-direction:column;gap:6px;max-height:170px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:8px}
+  .tk-team{display:flex;align-items:center;gap:9px;font-size:13px;padding:5px 8px;border-radius:8px;cursor:pointer}
+  .tk-team.on{background:color-mix(in oklab,var(--accent) 10%,transparent)}
+  .tk-team select{padding:3px 6px;font-size:12px}
+  .tk-reveal{display:flex;align-items:center;gap:10px;background:var(--card2);border:1px dashed color-mix(in oklab,var(--accent) 45%,transparent);border-radius:10px;padding:12px 14px}
+  .tk-reveal code{flex:1;font-family:ui-monospace,Menlo,monospace;font-size:15px;font-weight:600;letter-spacing:.02em;word-break:break-all;color:var(--fg)}
   /* Responsive: narrow the nav, then turn it into a horizontal tab bar on top. */
   @media (max-width:900px){ .admin-nav{width:180px} .admin-main{padding:20px 18px} }
   @media (max-width:640px){ .admin-body{flex-direction:column} .admin-nav{width:100%;flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border);padding:8px} .navitem{white-space:nowrap} .admin-main{padding:18px 14px} .admin-main .panel{overflow-x:auto} }
@@ -137,6 +149,7 @@ const STATUS={frank:'disabled'};
 const NAV=[
   {id:'overview',label:'Overview',ic:'<svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>'},
   {id:'users',label:'Users',ic:EXICON.users},
+  {id:'invitations',label:'Invitations',ic:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 8l9 5 9-5M4 6h16a1 1 0 011 1v10a1 1 0 01-1 1H4a1 1 0 01-1-1V7a1 1 0 011-1z"/></svg>'},
   {id:'teams',label:'Teams',ic:'<svg class="icon" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M2.5 20a6.5 6.5 0 0113 0"/><circle cx="17" cy="9" r="2.2"/><path d="M15.5 20a6 6 0 016-1.5"/></svg>'},
   {id:'collections',label:'Collections',ic:'<svg class="icon" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"/></svg>'},
   {id:'instance',label:'Instance',ic:EXICON.gear},
@@ -205,6 +218,75 @@ function users(){
       </table>
     </div>`;
 }
+
+// ---- Enrollment tokens (ADR 0015 phase 3) ----------------------------------------------
+// An admin (or a manager, for role-user tokens) mints a single-use invitation encoding an org
+// role + team membership(s) + expiry. The server stores only its SHA-256, and the full token is
+// shown ONCE at creation. Redeeming self-registers the holder with the recipe already applied;
+// access to a collection's encrypted machines still follows the usual member grant.
+let TOKENS=[
+  {id:'t1',frag:'rite_x8k2',role:'user',teams:[{name:'Platform',role:'member'}],expires:'in 6 days',status:'active'},
+  {id:'t2',frag:'rite_9f3a',role:'manager',teams:[],expires:'in 23 hours',status:'active'},
+  {id:'t3',frag:'rite_aa11',role:'user',teams:[{name:'Design',role:'member'}],expires:'expired',status:'expired'},
+];
+let PENDING_TOK=null;
+function roleBadge(r){return `<span class="role-badge role-${r}">${r}</span>`;}
+function tokTeams(ts){return ts.length?ts.map(t=>`${t.name} <span class="muted">· ${t.role}</span>`).join(', '):'<span class="muted">—</span>';}
+function invitations(){
+  const rows=TOKENS.length?TOKENS.map(t=>`<tr class="${t.status==='expired'?'tok-dim':''}">
+      <td><code class="tok-frag">${t.frag}…</code></td>
+      <td>${roleBadge(t.role)}</td>
+      <td style="font-size:13px">${tokTeams(t.teams)}</td>
+      <td><span class="muted" style="font-size:13px">${t.expires}</span></td>
+      <td><div class="rowacts">${t.status==='expired'
+        ?`<button class="btn btn-ghost" title="Remove" onclick="TOKENS=TOKENS.filter(x=>x.id!=='${t.id}');renderContent();toast('Removed')" style="color:var(--red)">${EXICON.trash}</button>`
+        :`<button class="btn btn-ghost btn-sm" title="Revoke this token" onclick="TOKENS=TOKENS.filter(x=>x.id!=='${t.id}');renderContent();toast('Token revoked')" style="color:var(--red)">Revoke</button>`}</div></td></tr>`).join('')
+    :`<tr><td colspan="5" class="muted" style="padding:22px;text-align:center">No invitation tokens yet. Generate one to onboard a member without being present.</td></tr>`;
+  return `<div class="page-h"><h1>Invitations</h1><span class="sub">Enrollment tokens · single-use</span><div style="flex:1"></div>
+      <button class="btn btn-primary btn-sm" onclick="genToken()">${ICONplus} Generate token</button></div>
+    <div class="zk-note" style="margin-bottom:14px">A token grants <b>membership + role immediately</b> on redeem; access to a collection's encrypted machines still follows the usual <b>member grant</b> (a key-holder seals them in). Tokens are <b>single-use</b>, <b>hashed at rest</b> (a DB dump reveals nothing), and the full value is shown <b>once</b>.</div>
+    <div class="panel"><table class="tbl">
+      <thead><tr><th>Token</th><th>Role</th><th>Teams</th><th>Expires</th><th style="text-align:right">Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+function genToken(){
+  const b=document.getElementById('bd');
+  const teamRows=ORG.teams.map(t=>`<label class="tk-team"><input type="checkbox" data-team="${t.name}" onchange="this.closest('.tk-team').classList.toggle('on',this.checked)"><span style="flex:1">${t.name}</span>
+     <select class="inp tk-trole" style="width:auto"><option value="member">member</option><option value="admin">admin</option></select></label>`).join('');
+  b.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
+    <header><h3>Generate an invitation token</h3><p>The holder self-registers with this recipe already applied. You'll see the token once.</p></header>
+    <div class="body">
+      <label class="field"><span>Org role</span>
+        <select class="inp" id="tkRole"><option value="user">user</option><option value="manager">manager</option></select>
+        <div class="muted" style="font-size:12px;margin-top:5px">Managers can mint <b>user</b> tokens only; admins can mint <b>user</b> or <b>manager</b> (never admin).</div></label>
+      <label class="field"><span>Add to teams</span></label>
+      <div class="tk-teams">${teamRows||'<div class="muted" style="font-size:13px">No teams yet.</div>'}</div>
+      <label class="field" style="margin-top:12px"><span>Expires</span>
+        <select class="inp" id="tkExp"><option value="1">in 24 hours</option><option value="7" selected>in 7 days</option><option value="30">in 30 days</option><option value="0">never</option></select></label>
+    </div>
+    <div class="foot"><button class="btn btn-sm" onclick="closeBd()">Cancel</button><button class="btn btn-sm btn-primary" onclick="revealToken()">Generate</button></div>
+  </div>`;
+  b.classList.add('show');
+}
+function revealToken(){
+  const role=document.getElementById('tkRole').value;
+  const expTxt={'1':'in 24 hours','7':'in 7 days','30':'in 30 days','0':'never'}[document.getElementById('tkExp').value];
+  const teams=[...document.querySelectorAll('.tk-team.on')].map(l=>({name:l.querySelector('input').dataset.team,role:l.querySelector('.tk-trole').value}));
+  const full='rite_'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);
+  PENDING_TOK={id:'t'+Date.now(),frag:full.slice(0,9),role,teams,expires:expTxt,status:'active'};
+  const meta=`Role <b>${role}</b>${teams.length?' · teams '+teams.map(t=>t.name+' ('+t.role+')').join(', '):''} · expires ${expTxt} · single-use.`;
+  const b=document.getElementById('bd');
+  b.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
+    <header><h3>Copy this token now</h3><p>For security the server keeps only a hash — you <b>won't be able to see it again</b>. Share it out-of-band (not by email in clear).</p></header>
+    <div class="body">
+      <div class="tk-reveal"><code>${full}</code><button class="btn btn-sm" onclick="navigator.clipboard&&navigator.clipboard.writeText('${full}');toast('Token copied')">Copy</button></div>
+      <div class="muted" style="font-size:12.5px;margin-top:10px">${meta}</div>
+    </div>
+    <div class="foot"><button class="btn btn-sm btn-primary" onclick="commitToken()">Done</button></div>
+  </div>`;
+}
+function commitToken(){if(PENDING_TOK){TOKENS.unshift(PENDING_TOK);PENDING_TOK=null;}closeBd();renderContent();toast('Invitation token created');}
 
 function teams(){
   if(SUB!==null){const t=ORG.teams[SUB];return `<div class="page-h">${backBtn('Teams')}</div>
@@ -336,7 +418,7 @@ function askReset(u){
   b.classList.add('show');
   setTimeout(()=>{const i=document.getElementById('rkc');if(i)i.focus();},30);
 }
-function renderContent(){document.getElementById('content').innerHTML='<div class="wrap">'+({overview,users,teams,collections,instance})[SEC]()+'</div>';}
+function renderContent(){document.getElementById('content').innerHTML='<div class="wrap">'+({overview,users,invitations,teams,collections,instance})[SEC]()+'</div>';}
 function toast(m){let t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);}t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1600);}
 renderNav();renderContent();
 </script>
