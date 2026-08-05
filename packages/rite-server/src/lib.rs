@@ -404,6 +404,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/server/login", post(server_login))
         .route("/api/server/logout", post(server_logout))
         .route("/api/server/bootstrap", post(server_bootstrap))
+        .route("/api/server/register", post(server_register))
         .route("/api/server/me", get(server_me))
         .route("/api/server/change-password", post(change_password))
         .route(
@@ -421,6 +422,7 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/default-shell", patch(set_default_shell))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
+        .route("/api/admin/registration", patch(set_open_registration))
         .route("/api/admin/collection-policy", patch(set_collection_policy))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
         .route("/api/healthcheck/probe", post(healthcheck_probe))
@@ -802,7 +804,10 @@ async fn proxy_to_remote(state: &ServerState, server: &RemoteServer, req: Reques
         Err(_) => return (StatusCode::BAD_REQUEST, "request body too large").into_response(),
     };
 
-    let is_login = path == "/api/server/login" || path == "/api/server/bootstrap";
+    // login/bootstrap/register all return a fresh session token to capture for the mux.
+    let is_login = path == "/api/server/login"
+        || path == "/api/server/bootstrap"
+        || path == "/api/server/register";
 
     let mut rb = state
         .http_client
@@ -871,6 +876,7 @@ fn is_public_server_path(path: &str) -> bool {
             | "/api/server/prelogin"
             | "/api/server/login"
             | "/api/server/bootstrap"
+            | "/api/server/register"
             | "/api/server/logout"
     )
 }
@@ -1064,6 +1070,10 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         .await?
         .unwrap_or_else(|| "bash".to_string());
     let allow_quick_ssh = state.db.get_setting("allow_quick_ssh").await? == Some("1".to_string());
+    // Self-service registration (ADR 0015 phase 1). Off by default — an invite-only instance
+    // leaves it off; turning it on lets the sign-in screen offer "Create an account".
+    let open_registration =
+        state.db.get_setting("open_registration").await? == Some("1".to_string());
     let healthcheck = healthcheck_policy(&state).await?;
     Ok(Json(json!({
         "accounts": state.accounts,
@@ -1074,6 +1084,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "serveWebui": state.serve_webui,
         "defaultShell": default_shell,
         "allowQuickSsh": allow_quick_ssh,
+        "openRegistration": open_registration,
         "healthcheck": healthcheck,
         "collectionPolicy": collection_policy(&state).await?,
         "hostKey": state.host_key.as_deref(),
@@ -1181,6 +1192,19 @@ async fn set_quick_ssh(
     state
         .db
         .set_setting("allow_quick_ssh", if req.enabled { "1" } else { "0" })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Turn self-service registration on/off (org-admin only; guard-gated by `/api/admin`, and
+/// NOT `/api/admin/{users,teams}` so a manager can't flip it). Off by default (ADR 0015).
+async fn set_open_registration(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<StatusCode, AppError> {
+    state
+        .db
+        .set_setting("open_registration", if req.enabled { "1" } else { "0" })
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1465,6 +1489,69 @@ async fn server_bootstrap(
     let token = server_auth::create_session(state.db.pool(), &user.id).await?;
     let vault_out = server_auth::get_user_vault(state.db.pool(), &user.id).await?;
     Ok(Json(json!({ "token": token, "user": user, "vault": vault_out })).into_response())
+}
+
+/// Self-service registration (ADR 0015 phase 1). Public, but gated on the opt-in
+/// `open_registration` setting (off by default). The client generates its own keys, so the
+/// account is role `user`, no team, and needs no forced password change — the admin never
+/// sees the keys (unlike an admin-provisioned account). Returns a session like bootstrap.
+async fn server_register(
+    State(state): State<ServerState>,
+    Json(req): Json<BootstrapReq>,
+) -> Result<Response, AppError> {
+    if !state.accounts {
+        return Ok((StatusCode::BAD_REQUEST, "not a server").into_response());
+    }
+    if state.db.get_setting("open_registration").await? != Some("1".to_string()) {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "open registration is disabled" })),
+        )
+            .into_response());
+    }
+    let username = req.username.trim();
+    if username.is_empty() || username.chars().count() > 64 {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "username must be 1–64 characters" })),
+        )
+            .into_response());
+    }
+    let salt = server_auth::parse_hex_salt(&req.salt)?;
+    let vault = server_auth::VaultKey {
+        master_salt: server_auth::parse_hex_salt(&req.master_salt)?,
+        protected_user_key: req.protected_user_key,
+        public_key: req.public_key,
+        protected_private_key: req.protected_private_key,
+    };
+    match server_auth::create_user(
+        state.db.pool(),
+        username,
+        &salt,
+        req.params,
+        &req.auth_hash,
+        Role::User,
+        &vault,
+        false, // self-set password → no forced change
+    )
+    .await
+    {
+        Ok(user) => {
+            let token = server_auth::create_session(state.db.pool(), &user.id).await?;
+            let vault_out = server_auth::get_user_vault(state.db.pool(), &user.id).await?;
+            Ok((
+                StatusCode::CREATED,
+                Json(json!({ "token": token, "user": user, "vault": vault_out })),
+            )
+                .into_response())
+        }
+        // Almost always a duplicate username (UNIQUE constraint).
+        Err(_) => Ok((
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "username already exists" })),
+        )
+            .into_response()),
+    }
 }
 
 /// The current authenticated user (guard inserted it) + its vault key material,
