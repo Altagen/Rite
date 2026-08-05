@@ -398,7 +398,7 @@ const ServerUserSchema = z.object({
   mustChangePassword: z.boolean().optional(),
   id: z.string(),
   username: z.string(),
-  role: z.enum(['admin', 'user']),
+  role: z.enum(['admin', 'manager', 'user']),
   status: z.string(),
   createdAt: z.number(),
 });
@@ -526,6 +526,9 @@ export const BackendAdmin = {
     }),
   setStatus: (id: string, status: 'active' | 'disabled') =>
     invokeWithValidation('admin_set_status', z.null(), { id, status }),
+  // Admin-only: flip a user between 'user' and 'manager' (never assign/change admin).
+  setRole: (id: string, role: 'user' | 'manager') =>
+    invokeWithValidation('admin_set_role', z.null(), { id, role }),
   /** Reset a user's access (admin): re-provision a temp vault + wipe their sharing crypto.
    *  Keeps username/role/teams; the user sets their own password at next login. */
   resetUser: (

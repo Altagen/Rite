@@ -33,19 +33,18 @@ import { isNativeShell } from '../utils/nativeShell';
 import riteLogo from '../assets/rite.png';
 
 type Sec = 'overview' | 'users' | 'teams' | 'collections' | 'instance';
+type Role = 'admin' | 'manager' | 'user';
 
-const NAV: { id: Sec; label: string; icon: React.ReactNode }[] = [
-  { id: 'overview', label: 'Overview', icon: <IconGrid /> },
-  { id: 'users', label: 'Users', icon: <IconUsers className="h-4 w-4" /> },
-  { id: 'teams', label: 'Teams', icon: <IconUsers className="h-4 w-4" /> },
-  { id: 'collections', label: 'Collections', icon: <IconCollection className="h-4 w-4" /> },
-  { id: 'instance', label: 'Instance', icon: <IconGear className="h-4 w-4" /> },
+// Sections are gated on TWO axes: the account role (managers do org only — users + teams), and the
+// shell (the desktop client hides heavy INSTANCE administration, which lives in the web console —
+// Bitwarden/Vaultwarden model). The API guard is the real boundary; this is UX.
+const NAV: { id: Sec; label: string; icon: React.ReactNode; roles: Role[]; webOnly?: boolean }[] = [
+  { id: 'overview', label: 'Overview', icon: <IconGrid />, roles: ['admin'], webOnly: true },
+  { id: 'users', label: 'Users', icon: <IconUsers className="h-4 w-4" />, roles: ['admin', 'manager'] },
+  { id: 'teams', label: 'Teams', icon: <IconUsers className="h-4 w-4" />, roles: ['admin', 'manager'] },
+  { id: 'collections', label: 'Collections', icon: <IconCollection className="h-4 w-4" />, roles: ['admin'] },
+  { id: 'instance', label: 'Instance', icon: <IconGear className="h-4 w-4" />, roles: ['admin'], webOnly: true },
 ];
-
-// Org management (teams + collections) is available in the desktop client; heavy INSTANCE
-// administration (overview stats, user accounts, server settings) stays in the web console — the
-// desktop is a client (mock + Bitwarden/Vaultwarden model). The API guard is the real boundary.
-const ORG_SECTIONS: Sec[] = ['teams', 'collections'];
 
 function IconGrid() {
   return (
@@ -59,13 +58,17 @@ function IconGrid() {
 }
 
 export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}) {
-  const { mode, logout } = useServerSession();
-  // In the desktop client, only org management (teams/collections) is exposed; instance admin
-  // lives in the web console. On the web, the full console is shown.
-  const orgOnly = isNativeShell();
-  const nav = orgOnly ? NAV.filter((n) => ORG_SECTIONS.includes(n.id)) : NAV;
+  const { mode, logout, user } = useServerSession();
+  const role = (user?.role ?? 'user') as Role;
+  const native = isNativeShell();
+  // Visible sections = allowed by role AND by shell (native hides web-only instance admin).
+  const nav = NAV.filter((n) => n.roles.includes(role) && (!native || !n.webOnly));
   // Default to an always-visible section; the nav only offers visible ones, so `sec` stays valid.
-  const [sec, setSec] = useState<Sec>(orgOnly ? 'collections' : 'overview');
+  const [sec, setSec] = useState<Sec>(nav[0]?.id ?? 'teams');
+  // "Admin" only for a full admin on the web console; otherwise it's the org surface.
+  const label = role === 'admin' && !native ? 'Admin' : 'Organization';
+  // Some sections are hidden here (native shell, or a manager) ⇒ point instance admin at the web.
+  const hasHidden = nav.length < NAV.filter((n) => n.roles.includes(role)).length || native;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
@@ -74,7 +77,7 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
         <div className="m-brand flex items-center gap-2.5">
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
           <span className="rounded-md border border-primary/40 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
-            {orgOnly ? 'Organization' : 'Admin'}
+            {label}
           </span>
         </div>
         {mode?.instanceName && (
@@ -115,22 +118,27 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
               {n.label}
             </button>
           ))}
-          {orgOnly && (
+          {hasHidden && (
             <p className="mt-auto px-2 pt-3 text-[11px] leading-relaxed text-muted-foreground">
-              Users &amp; server settings are managed in the web console — open the server URL in a
-              browser.
+              {native
+                ? 'Server settings live in the web console — open the server URL in a browser.'
+                : 'Instance administration is limited to admins.'}
             </p>
           )}
         </nav>
 
-        {/* Content */}
+        {/* Content — the nav only offers sections this role+shell may see; guard the panels too. */}
         <main className="min-w-0 flex-1 overflow-y-auto px-8 py-7">
           <div className="mx-auto max-w-[1400px]">
-            {!orgOnly && sec === 'overview' && <Overview onGo={setSec} />}
-            {!orgOnly && sec === 'users' && <AdminUsersPanel />}
-            {sec === 'teams' && <TeamsPanel />}
-            {sec === 'collections' && <CollectionsGovernance />}
-            {!orgOnly && sec === 'instance' && <InstanceSettingsPanel />}
+            {nav.some((n) => n.id === sec) && (
+              <>
+                {sec === 'overview' && <Overview onGo={setSec} />}
+                {sec === 'users' && <AdminUsersPanel />}
+                {sec === 'teams' && <TeamsPanel />}
+                {sec === 'collections' && <CollectionsGovernance />}
+                {sec === 'instance' && <InstanceSettingsPanel />}
+              </>
+            )}
           </div>
         </main>
       </div>

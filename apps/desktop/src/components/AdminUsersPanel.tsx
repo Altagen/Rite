@@ -43,7 +43,9 @@ export function AdminUsersPanel() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'user' | 'admin'>('user');
+  const [role, setRole] = useState<'user' | 'admin' | 'manager'>('user');
+  // A manager can invite regular users only; only an admin assigns roles.
+  const meIsAdmin = me?.role === 'admin';
   // Reset-access dialog: the admin sets a temp password to relay out-of-band; the user
   // re-keys on next login. Their sharing crypto is wiped server-side (re-request access).
   const [resetTarget, setResetTarget] = useState<ServerUser | null>(null);
@@ -174,11 +176,30 @@ export function AdminUsersPanel() {
                   <td className="px-4 py-2.5">
                     <span
                       className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
-                        u.role === 'admin' ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
+                        u.role === 'admin'
+                          ? 'bg-primary/15 text-primary'
+                          : u.role === 'manager'
+                            ? 'bg-amber-500/15 text-amber-600'
+                            : 'bg-secondary text-muted-foreground'
                       }`}
                     >
                       {u.role}
                     </span>
+                    {/* Admins can promote/demote between user and manager (not admins). */}
+                    {meIsAdmin && !isSelf && u.role !== 'admin' && (
+                      <button
+                        onClick={() =>
+                          act(async () => {
+                            await Backend.Admin.setRole(u.id, u.role === 'manager' ? 'user' : 'manager');
+                          })
+                        }
+                        disabled={busy}
+                        className="ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                        title={u.role === 'manager' ? 'Demote to user' : 'Promote to manager'}
+                      >
+                        {u.role === 'manager' ? '→ user' : '→ manager'}
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     <span
@@ -283,16 +304,24 @@ export function AdminUsersPanel() {
           <label htmlFor="new-role" className="text-xs font-medium text-muted-foreground">
             Role
           </label>
-          <select
-            id="new-role"
-            value={role}
-            onChange={(e) => setRole(e.target.value as 'user' | 'admin')}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-            disabled={busy}
-          >
-            <option value="user">user</option>
-            <option value="admin">admin</option>
-          </select>
+          {meIsAdmin ? (
+            <select
+              id="new-role"
+              value={role}
+              onChange={(e) => setRole(e.target.value as 'user' | 'admin' | 'manager')}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+              disabled={busy}
+            >
+              <option value="user">user</option>
+              <option value="manager">manager</option>
+              <option value="admin">admin</option>
+            </select>
+          ) : (
+            // A manager can only invite regular users.
+            <span className="rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
+              user
+            </span>
+          )}
         </div>
         <button
           type="submit"

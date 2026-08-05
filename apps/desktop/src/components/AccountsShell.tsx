@@ -55,17 +55,18 @@ export function AccountsShell() {
   // vault) before anything else, so the account becomes zero-knowledge from the admin.
   if (user.mustChangePassword) return <ForcePasswordChange />;
 
-  const isAdmin = user.role === 'admin';
   // Runtime serve-surface gating (rite-admin-console-split): a deployment can turn
   // the admin console and/or the client workspace off. Both default on when absent.
   const serveAdmin = mode?.serveAdmin !== false;
   const serveWebui = mode?.serveWebui !== false;
-  const canAdmin = isAdmin && serveAdmin;
+  // Org management (the /admin console) is open to admins AND managers; the console itself
+  // filters its sections by role (managers: users + teams only) and by shell.
+  const canManage = (user.role === 'admin' || user.role === 'manager') && serveAdmin;
 
-  // Admin-only server (client workspace off): no Workspace at all — an admin gets the
+  // Admin-only server (client workspace off): no Workspace at all — an admin/manager gets the
   // console as the whole surface; anyone else is told they have no access here.
   if (!serveWebui) {
-    return canAdmin ? (
+    return canManage ? (
       <AdminDashboard hideBack />
     ) : (
       <AdminOnlyNotice onSignOut={() => logout()} />
@@ -73,9 +74,9 @@ export function AccountsShell() {
   }
 
   // `/admin` and `/collections` are real routes rendered as overlays over the
-  // (kept-mounted) workspace, so live terminals survive a trip to admin. A non-admin
-  // (or an admin on a server with the console gated off) is bounced back to the app.
-  if (path === '/admin' && !canAdmin) navigate('/');
+  // (kept-mounted) workspace, so live terminals survive a trip to admin. Someone without org
+  // access (or an admin on a server with the console gated off) is bounced back to the app.
+  if (path === '/admin' && !canManage) navigate('/');
 
   return (
     <>
@@ -100,14 +101,20 @@ export function AccountsShell() {
               <IconCollection className="h-4 w-4" />
               <span className="hidden md:inline">Collections</span>
             </button>
-            {canAdmin ? (
+            {canManage ? (
               <button
                 onClick={() => navigate('/admin')}
                 className="m-btn m-btn-ghost m-btn-sm"
-                title={isNativeShell() ? 'Organization (users & server settings are in the web console)' : 'Administration'}
+                title={
+                  isNativeShell() || user.role === 'manager'
+                    ? 'Organization (server settings are in the web console)'
+                    : 'Administration'
+                }
               >
                 <IconShield className="h-4 w-4" />
-                <span className="hidden md:inline">{isNativeShell() ? 'Organization' : 'Admin'}</span>
+                <span className="hidden md:inline">
+                  {isNativeShell() || user.role === 'manager' ? 'Organization' : 'Admin'}
+                </span>
               </button>
             ) : null}
           </>
@@ -115,7 +122,7 @@ export function AccountsShell() {
       />
       {path === '/teams' && <TeamsDashboard />}
       {path === '/collections' && <CollectionsDashboard />}
-      {path === '/admin' && canAdmin && <AdminDashboard />}
+      {path === '/admin' && canManage && <AdminDashboard />}
     </>
   );
 }

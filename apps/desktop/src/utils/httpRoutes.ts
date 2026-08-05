@@ -193,6 +193,14 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_set_role: async (a) => {
+    await json(`/api/admin/users/${encodeURIComponent(String(a.id))}/role`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ role: a.role }),
+    });
+    return null;
+  },
   admin_reset_user: async (a) => {
     await json(`/api/admin/users/${encodeURIComponent(String(a.id))}/reset`, {
       method: 'POST',
