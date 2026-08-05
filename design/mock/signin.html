@@ -78,8 +78,9 @@
       <div id="zktext">Your password is checked without ever leaving this device — the server only sees an unreplayable hash, never the password itself.</div></div>
 
     <!-- "Create an account" appears only when the instance has open_registration on (phase 1);
-         "invitation token" is always available so a holder can redeem even when it's off (phase 3). -->
-    <div class="demo" id="demo">First time here? <a onclick="location.href='setup.html?mode=first&u=alex'">Set your password</a> · <span class="muted">Open registration is on —</span> <a onclick="setMode(true)">Create an account</a> · Have an invitation token? <a onclick="redeem()">Redeem</a></div>
+         "invitation token" is always available so a holder can redeem even when it's off (phase 3).
+         (Admin-provisioned first-login goes to setup.html automatically after sign-in — no link.) -->
+    <div class="demo" id="demo"><span class="muted">Open registration is on —</span> <a onclick="setMode(true)">Create an account</a> · Have an invitation token? <a onclick="redeem()">Redeem</a></div>
   </div>
 
 <script>
@@ -107,7 +108,7 @@ function setMode(reg){
     :'Your password is checked without ever leaving this device — the server only sees an unreplayable hash, never the password itself.';
   $('demo').innerHTML=reg
     ? `Already have an account? <a onclick="setMode(false)">Sign in</a>`
-    : `First time here? <a onclick="location.href='setup.html?mode=first&u=alex'">Set your password</a> · <span class="muted">Open registration is on —</span> <a onclick="setMode(true)">Create an account</a> · Have an invitation token? <a onclick="redeem()">Redeem</a>`;
+    : `<span class="muted">Open registration is on —</span> <a onclick="setMode(true)">Create an account</a> · Have an invitation token? <a onclick="redeem()">Redeem</a>`;
   upd();
 }
 // Reach the create-account form to redeem an invite (works even if open registration is off).
