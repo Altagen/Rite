@@ -47,19 +47,22 @@
       <div class="glyph"><svg viewBox="0 0 24 24"><path d="M4 6l6 6-6 6"/><path d="M13 18h7"/></svg></div>
       <div><div class="nm">Acme Corp</div><div class="sub">rite.acme.io</div></div>
     </div>
-    <h1>Sign in</h1>
-    <p class="lead">Unlock your connections on this device.</p>
+    <h1 id="title">Sign in</h1>
+    <p class="lead" id="lead">Unlock your connections on this device.</p>
 
     <div class="err" id="err">Wrong username or password. <span class="muted">Try again, or ask an admin to reset your access.</span></div>
 
     <label class="field"><span>Username</span>
       <input class="inp" id="user" autocomplete="username" placeholder="e.g. alex" oninput="upd()" value="alex"></label>
-    <label class="field"><span>Password</span>
+    <label class="field"><span id="pwLabel">Password</span>
       <div class="pw-wrap"><input class="inp" id="pw" type="password" autocomplete="current-password" placeholder="Your password" oninput="upd()">
         <button class="eye" id="eye" title="Show password" onclick="toggleEye()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
     </label>
+    <!-- Register-mode only: confirm the new password (the real ServerAuthScreen reveals it too). -->
+    <label class="field" id="confirmField" style="display:none"><span>Confirm password</span>
+      <input class="inp" id="pw2" type="password" autocomplete="new-password" placeholder="Repeat your password" oninput="upd()"></label>
 
-    <div class="rowbtw">
+    <div class="rowbtw" id="sirow">
       <label onclick="toggleStay()"><span class="cbox on" id="stayBox">✓</span> Stay signed in</label>
       <a onclick="forgot()">Forgot your password?</a>
     </div>
@@ -67,15 +70,40 @@
     <button class="btn btn-primary go" id="go" onclick="submit()">Sign in</button>
 
     <div class="zk"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>
-      <div>Your password is checked without ever leaving this device — the server only sees an unreplayable hash, never the password itself.</div></div>
+      <div id="zktext">Your password is checked without ever leaving this device — the server only sees an unreplayable hash, never the password itself.</div></div>
 
-    <div class="demo">First time here? <a onclick="location.href='setup.html?mode=first&u=alex'">Set your password</a></div>
+    <!-- The "Create an account" link only appears when the instance has open_registration on
+         (ADR 0015 phase 1). Off by default → the card is sign-in only, as today. -->
+    <div class="demo" id="demo">First time here? <a onclick="location.href='setup.html?mode=first&u=alex'">Set your password</a> · <span class="muted">Open registration is on —</span> <a onclick="setMode(true)">Create an account</a></div>
   </div>
 
 <script>
 const $=id=>document.getElementById(id);
-let STAY=true;
-function upd(){$('go').disabled=!($('user').value.trim() && $('pw').value);$('err').classList.remove('show');}
+let STAY=true, REG=false;
+function upd(){
+  const base=$('user').value.trim() && $('pw').value;
+  const ok=REG ? (base && $('pw2').value===$('pw').value) : base;
+  $('go').disabled=!ok;$('err').classList.remove('show');
+}
+// Toggle the one card between sign-in and self-registration (open_registration, ADR 0015).
+function setMode(reg){
+  REG=reg;
+  $('title').textContent=reg?'Create your account':'Sign in';
+  $('lead').textContent=reg
+    ?'Pick a username and a strong password — it encrypts your vault on this device.'
+    :'Unlock your connections on this device.';
+  $('go').textContent=reg?'Create account':'Sign in';
+  $('confirmField').style.display=reg?'block':'none';
+  $('sirow').style.display=reg?'none':'flex';
+  $('pw').autocomplete=reg?'new-password':'current-password';
+  $('zktext').textContent=reg
+    ?'Your keys are generated here and never leave this device — the server stores only sealed blobs and an unreplayable verifier, never your password.'
+    :'Your password is checked without ever leaving this device — the server only sees an unreplayable hash, never the password itself.';
+  $('demo').innerHTML=reg
+    ? `Already have an account? <a onclick="setMode(false)">Sign in</a>`
+    : `First time here? <a onclick="location.href='setup.html?mode=first&u=alex'">Set your password</a> · <span class="muted">Open registration is on —</span> <a onclick="setMode(true)">Create an account</a>`;
+  upd();
+}
 function toggleEye(){const pw=$('pw');const show=pw.type==='password';pw.type=show?'text':'password';$('eye').style.color=show?'var(--accent)':'';}
 function toggleStay(){STAY=!STAY;$('stayBox').classList.toggle('on',STAY);$('stayBox').textContent=STAY?'✓':'';}
 function forgot(){
@@ -87,13 +115,17 @@ function forgot(){
   bd.addEventListener('click',e=>{if(e.target===bd)bd.remove();});
   document.body.appendChild(bd);
 }
-function submit(){
-  if($('go').disabled)return;
-  // Mock: pretend anything but the demo password fails, to show the error state.
-  if($('pw').value!=='demo' && $('pw').value.length<3){$('err').classList.add('show');return;}
+function toast(msg){
   const t=document.createElement('div');t.className='toast show';
   t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);padding:11px 16px;border-radius:10px;box-shadow:var(--shadow);font-size:13px;z-index:80';
-  t.textContent='Unlocking…';document.body.appendChild(t);
+  t.textContent=msg;document.body.appendChild(t);
+}
+function submit(){
+  if($('go').disabled)return;
+  if(REG){ toast('Creating your account…'); setTimeout(()=>location.href='web.html',700); return; }
+  // Mock: pretend anything but the demo password fails, to show the error state.
+  if($('pw').value!=='demo' && $('pw').value.length<3){$('err').classList.add('show');return;}
+  toast('Unlocking…');
   setTimeout(()=>location.href='web.html',700);
 }
 $('pw').addEventListener('keydown',e=>{if(e.key==='Enter')submit();});

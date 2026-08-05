@@ -224,7 +224,7 @@ function teams(){
     </table></div>`;
 }
 
-let PERSIST=true, WEBUI=true, ADMINUI=true, SRVSHELL='bash', QUICKSSH=false;
+let PERSIST=true, WEBUI=true, ADMINUI=true, SRVSHELL='bash', QUICKSSH=false, OPENREG=false;
 function tog(v){return `<div class="toggle ${v?'on':''}"><i></i></div>`;}
 // Health-check server policy (ADR 0017). Governs what CONNECTED clients may do; applied
 // live over the existing WS (no reconnect). Passive "last seen" is free; active is gated.
@@ -258,6 +258,8 @@ function instance(){
         <div style="display:flex;gap:8px"><input class="inp" style="width:200px" value="Acme Corp"><button class="btn btn-primary btn-sm" onclick="toast('Instance name saved')">Save</button></div></div>
       <div class="setrow"><div><div class="lab">Session persistence</div><div class="hint">Let users stay signed in across reloads (vault key in sessionStorage, cleared on tab close). Still zero-knowledge.</div></div>
         <div onclick="PERSIST=!PERSIST;renderContent();toast('Session persistence '+(PERSIST?'on':'off'))">${tog(PERSIST)}</div></div>
+      <div class="setrow"><div><div class="lab">Open registration</div><div class="hint"><b>Off by default.</b> When on, the sign-in screen offers <b>Create an account</b> — anyone who can reach this server self-registers (role <b>user</b>, no team; they generate their own keys, so the admin never sees them). Leave off for invite-only instances (admin-provisioned or enrollment tokens).</div></div>
+        <div onclick="OPENREG=!OPENREG;renderContent();toast('Open registration '+(OPENREG?'on':'off'))">${tog(OPENREG)}</div></div>
       <div class="setrow"><div><div class="lab">Serve the web UI <span class="soon">planned</span></div><div class="hint">The base connection-manager UI at <code>/</code>. Disable to force clients to use the desktop app.</div></div>
         <div onclick="WEBUI=!WEBUI;renderContent();toast('Serve web UI '+(WEBUI?'on':'off'))">${tog(WEBUI)}</div></div>
       <div class="setrow"><div><div class="lab">Serve this admin console <span class="soon">planned</span></div><div class="hint">This dashboard at <code>/admin</code>. Turn off for a deployment managed purely as-code.</div></div>
