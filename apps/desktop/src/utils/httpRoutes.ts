@@ -109,6 +109,20 @@ const routes: Record<string, Route> = {
         protectedPrivateKey: a.protectedPrivateKey,
       }),
     ),
+  server_register: (a) =>
+    json(
+      '/api/server/register',
+      post({
+        username: a.username,
+        salt: a.salt,
+        params: a.params,
+        authHash: a.authHash,
+        masterSalt: a.masterSalt,
+        protectedUserKey: a.protectedUserKey,
+        publicKey: a.publicKey,
+        protectedPrivateKey: a.protectedPrivateKey,
+      }),
+    ),
   server_logout: async () => {
     await json('/api/server/logout', { method: 'POST' });
     return null;
@@ -247,6 +261,14 @@ const routes: Record<string, Route> = {
   },
   admin_set_quick_ssh: async (a) => {
     await json('/api/admin/quick-ssh', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: a.enabled }),
+    });
+    return null;
+  },
+  admin_set_open_registration: async (a) => {
+    await json('/api/admin/registration', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enabled: a.enabled }),

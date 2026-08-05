@@ -165,11 +165,12 @@ export async function mockInvoke(
 
     // --- Server accounts (dev mock behaves as local: no accounts) ---
     case 'server_mode':
-      return { accounts: false, needsBootstrap: false, instanceName: null, sessionPersistence: true, defaultShell: 'bash', allowQuickSsh: false, healthcheck: { passiveStatus: true, active: 'off', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 }, collectionPolicy: { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 0, defaultRole: 'viewer' } };
+      return { accounts: false, needsBootstrap: false, instanceName: null, sessionPersistence: true, defaultShell: 'bash', allowQuickSsh: false, openRegistration: false, healthcheck: { passiveStatus: true, active: 'off', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 }, collectionPolicy: { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 0, defaultRole: 'viewer' } };
     case 'admin_set_instance':
     case 'admin_set_session_persistence':
     case 'admin_set_default_shell':
     case 'admin_set_quick_ssh':
+    case 'admin_set_open_registration':
     case 'admin_set_healthcheck':
     case 'admin_set_collection_policy':
       return null;
@@ -183,6 +184,18 @@ export async function mockInvoke(
           id: 'mock-admin',
           username: String(args?.username ?? 'admin'),
           role: 'admin',
+          status: 'active',
+          createdAt: now(),
+        },
+        vault: null,
+      };
+    case 'server_register':
+      return {
+        token: 'mock-session',
+        user: {
+          id: 'mock-user',
+          username: String(args?.username ?? 'user'),
+          role: 'user',
           status: 'active',
           createdAt: now(),
         },

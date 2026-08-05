@@ -351,6 +351,9 @@ const ServerModeSchema = z.object({
   // terminals on this server, and whether ad-hoc Quick SSH is allowed (off by default).
   defaultShell: z.string().optional(),
   allowQuickSsh: z.boolean().optional(),
+  // Self-service registration (ADR 0015): when on, the sign-in screen offers "Create an
+  // account". Off/absent ⇒ invite-only (admin-provisioned or enrollment token).
+  openRegistration: z.boolean().optional(),
   // Machine health-check policy (ADR 0017): passive "last seen" + governed active probing.
   healthcheck: z
     .object({
@@ -444,6 +447,27 @@ export const BackendServer = {
     },
   ) =>
     invokeWithValidation('server_bootstrap', LoginResultSchema, {
+      username,
+      salt,
+      params,
+      authHash,
+      ...vault,
+    }),
+  /** Self-service signup (ADR 0015; same crypto payload as bootstrap, role `user`). Gated
+   *  on the instance's open_registration setting — 403 when off. Returns a session. */
+  register: (
+    username: string,
+    salt: string,
+    params: unknown,
+    authHash: string,
+    vault: {
+      masterSalt: string;
+      protectedUserKey: string;
+      publicKey: string;
+      protectedPrivateKey: string;
+    },
+  ) =>
+    invokeWithValidation('server_register', LoginResultSchema, {
       username,
       salt,
       params,
@@ -555,6 +579,9 @@ export const BackendAdmin = {
   /** Allow/forbid ad-hoc Quick SSH from the toolbar (org-admin). */
   setQuickSsh: (enabled: boolean) =>
     invokeWithValidation('admin_set_quick_ssh', z.null(), { enabled }),
+  /** Turn self-service registration on/off (org-admin only, ADR 0015). */
+  setOpenRegistration: (enabled: boolean) =>
+    invokeWithValidation('admin_set_open_registration', z.null(), { enabled }),
   /** Set the machine health-check policy (org-admin). Sends the whole policy object. */
   setHealthcheck: (policy: HealthcheckPolicy) =>
     invokeWithValidation('admin_set_healthcheck', z.null(), policy as unknown as Record<string, unknown>),

@@ -28,6 +28,7 @@ export function InstanceSettingsPanel() {
   const [copied, setCopied] = useState(false);
   const [shell, setShell] = useState('bash');
   const [quickSsh, setQuickSsh] = useState(false);
+  const [openReg, setOpenReg] = useState(false);
   const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
   const [userInput, setUserInput] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +44,7 @@ export function InstanceSettingsPanel() {
       setHostKey(mode.hostKey ?? null);
       setShell(mode.defaultShell ?? 'bash');
       setQuickSsh(mode.allowQuickSsh === true);
+      setOpenReg(mode.openRegistration === true);
       setHc(mode.healthcheck ?? DEFAULT_HC);
     } catch {
       setError('Failed to load instance settings');
@@ -79,6 +81,17 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setQuickSsh(next);
     } catch (err) {
       setQuickSsh(!next);
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
+
+  const toggleOpenReg = async () => {
+    const next = !openReg;
+    setOpenReg(next);
+    try {
+      await Backend.Admin.setOpenRegistration(next);
+    } catch (err) {
+      setOpenReg(!next);
       setError(err instanceof Error ? err.message : 'Failed to save');
     }
   };
@@ -199,6 +212,34 @@ export function InstanceSettingsPanel() {
             <span
               className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
                 persistence ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-medium">Open registration</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <b>Off by default.</b> When on, the sign-in screen offers <b>Create an account</b> — anyone who can reach
+              this server can self-register (role <b>user</b>, no team). They generate their own keys, so you never see
+              them. Leave off for an invite-only instance (admin-provisioned accounts or enrollment tokens).
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={openReg}
+            onClick={toggleOpenReg}
+            className={`relative h-6 w-11 flex-none rounded-full transition-colors ${
+              openReg ? 'bg-primary' : 'bg-muted'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+                openReg ? 'translate-x-5' : 'translate-x-0.5'
               }`}
             />
           </button>

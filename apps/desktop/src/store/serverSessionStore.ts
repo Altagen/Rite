@@ -103,6 +103,8 @@ interface ServerSessionState {
   loadMode: () => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   bootstrap: (username: string, password: string) => Promise<void>;
+  /** Self-service signup (ADR 0015): generate own keys, create the account, sign in. */
+  register: (username: string, password: string) => Promise<void>;
   /** Set my own password (first login / after reset): fresh vault + keypair, clears the flag. */
   changePassword: (password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -228,6 +230,53 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       });
     } catch (e) {
       set({ error: e instanceof Error ? e.message : 'Failed to create the admin', loading: false });
+      throw e;
+    }
+  },
+
+  register: async (username, password) => {
+    set({ loading: true, error: null });
+    try {
+      const salt = randomSaltHex();
+      // Same client-side crypto as bootstrap: derive the auth hash + generate a fresh vault
+      // key/keypair (both Argon2id) in parallel. The server never sees the password.
+      const [authHash, vaultKey] = await Promise.all([
+        deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS),
+        createVaultKey(password),
+      ]);
+      const { token, user } = await Backend.Server.register(username, salt, DEFAULT_KDF_PARAMS, authHash, {
+        masterSalt: vaultKey.masterSaltHex,
+        protectedUserKey: vaultKey.protectedUserKey,
+        publicKey: vaultKey.publicKeyHex,
+        protectedPrivateKey: vaultKey.protectedPrivateKey,
+      });
+      setSessionToken(token);
+      await syncLocalVault(vaultKey.userKey);
+      const mode = get().mode;
+      const publicKey = hexToBytes(vaultKey.publicKeyHex);
+      if (mode?.sessionPersistence !== false) {
+        persistKeys({ userKey: vaultKey.userKey, privateKey: vaultKey.privateKey, publicKey });
+      } else {
+        clearKeys();
+      }
+      set({
+        user,
+        userKey: vaultKey.userKey,
+        privateKey: vaultKey.privateKey,
+        publicKey,
+        loading: false,
+        sessionExpired: false,
+      });
+    } catch (e) {
+      const msg =
+        e instanceof RiteHttpError && e.status === 409
+          ? 'That username is already taken'
+          : e instanceof RiteHttpError && e.status === 403
+            ? 'Registration is closed on this server'
+            : e instanceof Error
+              ? e.message
+              : 'Failed to create your account';
+      set({ error: msg, loading: false });
       throw e;
     }
   },
