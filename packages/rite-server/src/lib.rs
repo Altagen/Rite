@@ -2764,6 +2764,42 @@ fn is_valid_remote_url(url: &str) -> bool {
     false
 }
 
+/// Canonical form stored in the roster: trim, drop a trailing slash, and lowercase the
+/// scheme + authority (host[:port] is case-insensitive). Any path is preserved but is not
+/// lowercased. Storing the canonical form keeps the roster tidy and case-stable.
+fn normalize_remote_url(raw: &str) -> String {
+    let trimmed = raw.trim().trim_end_matches('/');
+    match trimmed.split_once("://") {
+        Some((scheme, rest)) => {
+            let (authority, path) = match rest.split_once('/') {
+                Some((a, p)) => (a, Some(p)),
+                None => (rest, None),
+            };
+            let base = format!("{}://{}", scheme.to_ascii_lowercase(), authority.to_ascii_lowercase());
+            match path {
+                Some(p) => format!("{base}/{p}"),
+                None => base,
+            }
+        }
+        None => trimmed.to_ascii_lowercase(),
+    }
+}
+
+/// The origin key used to dedupe the roster: scheme + authority only, lowercased (path
+/// dropped) — identical to the desktop shell's `ContextKey::server`. Two spellings of one
+/// endpoint (case, trailing slash, path) therefore collapse to a single roster entry, so
+/// the roster can never disagree with the shell's one-window-per-context registry.
+fn remote_origin(url: &str) -> String {
+    let trimmed = url.trim();
+    match trimmed.split_once("://") {
+        Some((scheme, rest)) => {
+            let authority = rest.split_once('/').map(|(a, _)| a).unwrap_or(rest);
+            format!("{}://{}", scheme.to_ascii_lowercase(), authority.to_ascii_lowercase())
+        }
+        None => trimmed.trim_end_matches('/').to_ascii_lowercase(),
+    }
+}
+
 async fn get_context(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
     let roster = load_roster(&state).await;
     let active = active_json(&state.context.lock().unwrap());
@@ -2780,7 +2816,7 @@ async fn add_server(
     State(state): State<ServerState>,
     Json(req): Json<AddServerReq>,
 ) -> Result<Response, AppError> {
-    let url = req.url.trim().trim_end_matches('/').to_string();
+    let url = normalize_remote_url(&req.url);
     if !is_valid_remote_url(&url) {
         return Ok((
             StatusCode::BAD_REQUEST,
@@ -2788,8 +2824,9 @@ async fn add_server(
         )
             .into_response());
     }
+    let origin = remote_origin(&url);
     let mut roster = load_roster(&state).await;
-    if roster.iter().any(|s| s.url == url) {
+    if roster.iter().any(|s| remote_origin(&s.url) == origin) {
         return Ok((
             StatusCode::CONFLICT,
             Json(json!({ "error": "server already in the roster" })),
@@ -2868,7 +2905,7 @@ async fn update_server(
     Path(id): Path<String>,
     Json(req): Json<UpdateServerReq>,
 ) -> Result<Response, AppError> {
-    let url = req.url.trim().trim_end_matches('/').to_string();
+    let url = normalize_remote_url(&req.url);
     if !is_valid_remote_url(&url) {
         return Ok((
             StatusCode::BAD_REQUEST,
@@ -2876,8 +2913,9 @@ async fn update_server(
         )
             .into_response());
     }
+    let origin = remote_origin(&url);
     let mut roster = load_roster(&state).await;
-    if roster.iter().any(|s| s.url == url && s.id != id) {
+    if roster.iter().any(|s| remote_origin(&s.url) == origin && s.id != id) {
         return Ok((
             StatusCode::CONFLICT,
             Json(json!({ "error": "server already in the roster" })),
@@ -2946,7 +2984,7 @@ async fn probe_remote(
     State(state): State<ServerState>,
     Json(req): Json<ProbeReq>,
 ) -> Result<Response, AppError> {
-    let url = req.url.trim().trim_end_matches('/').to_string();
+    let url = normalize_remote_url(&req.url);
     if !is_valid_remote_url(&url) {
         return Ok((
             StatusCode::BAD_REQUEST,
@@ -3515,6 +3553,31 @@ mod tests {
         assert!(h.get().is_some());
         h.lock();
         assert!(h.get().is_none(), "explicit lock zeroizes");
+    }
+
+    #[test]
+    fn remote_url_normalizes_scheme_host_and_trailing_slash() {
+        // Scheme + host lowercased, trailing slash dropped; a path is kept (not lowercased).
+        assert_eq!(normalize_remote_url("  HTTPS://Rite.Example.COM/ "), "https://rite.example.com");
+        assert_eq!(normalize_remote_url("https://rite.example.com"), "https://rite.example.com");
+        assert_eq!(normalize_remote_url("https://Host:8443/Base/"), "https://host:8443/Base");
+    }
+
+    #[test]
+    fn remote_origin_matches_registry_key_semantics() {
+        // Same origin key for every spelling that the shell's ContextKey::server collapses:
+        // case, trailing slash, and any path all fold to one origin.
+        let want = "https://rite.example.com";
+        for spelling in [
+            "https://rite.example.com",
+            "HTTPS://Rite.Example.com/",
+            "https://rite.example.com/some/path",
+            "  https://RITE.example.com  ",
+        ] {
+            assert_eq!(remote_origin(spelling), want, "{spelling} should map to {want}");
+        }
+        // A different port is a different origin.
+        assert_ne!(remote_origin("https://rite.example.com"), remote_origin("https://rite.example.com:8443"));
     }
 
     async fn test_state() -> ServerState {
