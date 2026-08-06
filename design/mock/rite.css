@@ -198,6 +198,8 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
 .profile{flex:none}
 @media (max-width:900px){ .lbl{display:none} .profile .pmeta{display:none} .profile .chev{display:none} .profile{padding:3px} }
 
-/* Narrow widths: drop the instance chip so it never collides with the toolbar (the server is
-   still shown in the profile dropdown). `.appbar .inst` outranks each page's inline `.inst`. */
-@media (max-width:720px){ .appbar .inst{display:none} }
+/* Narrow widths, in two steps: first drop just the server URL to shrink the instance box while
+   keeping its name; only on a truly tiny window hide the whole chip (the server stays in the
+   profile dropdown). `.appbar .inst` outranks each page's inline `.inst`. */
+@media (max-width:820px){ .inst-url{display:none} }
+@media (max-width:560px){ .appbar .inst{display:none} }
