@@ -696,14 +696,15 @@ function dlgResetVault(){const nm=(STATE.ctx&&STATE.ctx.name)||'this vault';
 /* ================= notifications + discover (server context only) =================
    A local vault is single-user: no teams, no sharing requests. These only exist when
    the current context is a SERVER (ADR 0016/0017). */
-function inboxRows(){
+function inboxRows(limit){
   if(!ORG.accessRequests.length)return `<div style="text-align:center;color:var(--muted);padding:22px 0">No pending requests — you're all caught up.</div>`;
-  return ORG.accessRequests.map((r,i)=>`<div class="mrow" style="cursor:default;gap:11px">${av(r.user)}<div class="grow"><div class="title"><b>${r.user}</b> requests access to <b>${r.coll}</b></div><div class="sub">${r.team?`discovered via team ${r.team} · `:''}${r.when}</div></div><button class="btn btn-ghost btn-sm" onclick="dismissReq(${i})">Dismiss</button><button class="btn btn-primary btn-sm" onclick="grantReq(${i})">${EXICON.key} Grant</button></div>`).join('');
+  return (limit?ORG.accessRequests.slice(0,limit):ORG.accessRequests).map((r,i)=>`<div class="mrow" style="cursor:default;gap:11px">${av(r.user)}<div class="grow"><div class="title"><b>${r.user}</b> requests access to <b>${r.coll}</b></div><div class="sub">${r.team?`discovered via team ${r.team} · `:''}${r.when}</div></div><button class="btn btn-ghost btn-sm" onclick="dismissReq(${i})">Dismiss</button><button class="btn btn-primary btn-sm" onclick="grantReq(${i})">${EXICON.key} Grant</button></div>`).join('');
 }
 function openInbox(){document.querySelectorAll('.backdrop').forEach(b=>b.remove());const bd=document.createElement('div');bd.className='backdrop show';
-  bd.innerHTML=`<div class="modal" style="max-width:540px"><header><h3>Notifications</h3><p>People asking to join collections you can grant.</p></header><div class="body" id="inboxBody">${inboxRows()}</div><div class="foot"><button class="btn btn-ghost" onclick="this.closest('.backdrop').remove()">Close</button></div></div>`;
+  const total=ORG.accessRequests.length, CAP=5;
+  bd.innerHTML=`<div class="modal" style="max-width:540px"><header><h3>Notifications</h3><p>People asking to join collections you can grant.${total>CAP?` Showing the latest ${CAP} of ${total}.`:''}</p></header><div class="body" id="inboxBody" style="max-height:52vh;overflow:auto">${inboxRows(CAP)}</div><div class="foot" style="justify-content:space-between"><button class="btn btn-ghost btn-sm" onclick="location.href='notifications.html'">See all notifications →</button><button class="btn btn-ghost" onclick="this.closest('.backdrop').remove()">Close</button></div></div>`;
   bd.addEventListener('click',e=>{if(e.target===bd)bd.remove();});document.body.appendChild(bd);}
-function refreshInbox(){const b=document.getElementById('inboxBody');if(b)b.innerHTML=inboxRows();renderActs();}
+function refreshInbox(){const b=document.getElementById('inboxBody');if(b)b.innerHTML=inboxRows(5);renderActs();}
 function grantReq(i){const r=ORG.accessRequests[i];toast(`Sealed machine access to <span class="accent">${r.user}</span> · ${r.coll}`);ORG.accessRequests.splice(i,1);refreshInbox();}
 function dismissReq(i){const r=ORG.accessRequests[i];toast(`Dismissed ${r.user}'s request`);ORG.accessRequests.splice(i,1);refreshInbox();}
 const DREQ=new Set(ORG.myRequests);
