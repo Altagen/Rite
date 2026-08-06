@@ -173,7 +173,23 @@ export async function mockInvoke(
     case 'admin_set_open_registration':
     case 'admin_set_healthcheck':
     case 'admin_set_collection_policy':
+    case 'admin_revoke_enrollment_token':
       return null;
+    case 'admin_list_enrollment_tokens':
+      return [];
+    case 'admin_create_enrollment_token':
+      return {
+        token: 'rite_mockmocktoken',
+        info: {
+          id: 'tok-mock',
+          prefix: 'rite_mock',
+          role: String(args?.role ?? 'user'),
+          teams: (args?.teams as unknown[] | undefined) ?? [],
+          expiresAt: null,
+          createdAt: now(),
+          consumedAt: null,
+        },
+      };
     case 'server_prelogin':
       return { salt: '00112233445566778899aabbccddeeff', params: { mem: 19456, iter: 2, par: 1 } };
     case 'server_login':

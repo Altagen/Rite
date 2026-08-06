@@ -453,8 +453,9 @@ export const BackendServer = {
       authHash,
       ...vault,
     }),
-  /** Self-service signup (ADR 0015; same crypto payload as bootstrap, role `user`). Gated
-   *  on the instance's open_registration setting — 403 when off. Returns a session. */
+  /** Self-service signup (ADR 0015; same crypto payload as bootstrap). With a `token` it redeems
+   *  an invitation (role/team recipe applied, bypasses open_registration); without one it's the
+   *  opt-in signup (role `user`, 403 when open registration is off). Returns a session. */
   register: (
     username: string,
     salt: string,
@@ -466,6 +467,7 @@ export const BackendServer = {
       publicKey: string;
       protectedPrivateKey: string;
     },
+    token?: string,
   ) =>
     invokeWithValidation('server_register', LoginResultSchema, {
       username,
@@ -473,6 +475,7 @@ export const BackendServer = {
       params,
       authHash,
       ...vault,
+      ...(token ? { token } : {}),
     }),
   logout: () => invokeWithValidation('server_logout', z.null()),
   me: () => invokeWithValidation('server_me', MeSchema),
@@ -524,6 +527,21 @@ const AdminGroupGrantSchema = z.object({ epoch: z.number(), protectedPrivateKey:
 const AdminKeySchema = z.object({ userId: z.string(), username: z.string(), publicKey: z.string() });
 export type AdminGroupKey = z.infer<typeof AdminGroupKeySchema>;
 export type AdminKey = z.infer<typeof AdminKeySchema>;
+
+// Enrollment tokens (ADR 0015 phase 3). Only the display prefix + metadata come back — never the
+// plaintext (that is shown once on mint). `consumedAt`/`expiresAt` are epoch seconds or null.
+const EnrollmentTokenSchema = z.object({
+  id: z.string(),
+  prefix: z.string(),
+  role: z.enum(['admin', 'manager', 'user']),
+  teams: z.array(z.object({ teamId: z.string(), teamRole: z.enum(['admin', 'member']) })),
+  expiresAt: z.number().nullable(),
+  createdAt: z.number(),
+  consumedAt: z.number().nullable(),
+});
+const MintedTokenSchema = z.object({ token: z.string(), info: EnrollmentTokenSchema });
+export type EnrollmentToken = z.infer<typeof EnrollmentTokenSchema>;
+export type MintedToken = z.infer<typeof MintedTokenSchema>;
 
 export const BackendAdmin = {
   listUsers: () => invokeWithValidation('admin_list_users', z.array(ServerUserSchema)),
@@ -582,6 +600,19 @@ export const BackendAdmin = {
   /** Turn self-service registration on/off (org-admin only, ADR 0015). */
   setOpenRegistration: (enabled: boolean) =>
     invokeWithValidation('admin_set_open_registration', z.null(), { enabled }),
+
+  // Enrollment tokens (ADR 0015 phase 3). Admin + manager; a manager may mint user tokens only.
+  listEnrollmentTokens: () =>
+    invokeWithValidation('admin_list_enrollment_tokens', z.array(EnrollmentTokenSchema)),
+  /** Mint a token; returns the plaintext ONCE (+ its stored info). */
+  createEnrollmentToken: (spec: {
+    role: 'user' | 'manager';
+    teams: { teamId: string; teamRole: 'admin' | 'member' }[];
+    expiresInSecs: number | null;
+  }) =>
+    invokeWithValidation('admin_create_enrollment_token', MintedTokenSchema, spec as unknown as Record<string, unknown>),
+  revokeEnrollmentToken: (id: string) =>
+    invokeWithValidation('admin_revoke_enrollment_token', z.null(), { id }),
   /** Set the machine health-check policy (org-admin). Sends the whole policy object. */
   setHealthcheck: (policy: HealthcheckPolicy) =>
     invokeWithValidation('admin_set_healthcheck', z.null(), policy as unknown as Record<string, unknown>),

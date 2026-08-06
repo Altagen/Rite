@@ -26,13 +26,14 @@ import {
 } from '../utils/adminGroup';
 import { sealCollectionKeyToHex } from '../utils/collectionCrypto';
 import { AdminUsersPanel } from './AdminUsersPanel';
+import { InvitationsPanel } from './InvitationsPanel';
 import { TeamsPanel } from './TeamsPanel';
 import { InstanceSettingsPanel } from './InstanceSettingsPanel';
 import { IconUsers, IconShield, IconGear, IconLock, IconCollection } from './icons';
 import { isNativeShell } from '../utils/nativeShell';
 import riteLogo from '../assets/rite.png';
 
-type Sec = 'overview' | 'users' | 'teams' | 'collections' | 'instance';
+type Sec = 'overview' | 'users' | 'invitations' | 'teams' | 'collections' | 'instance';
 type Role = 'admin' | 'manager' | 'user';
 
 // Sections are gated on TWO axes: the account role (managers do org only — users + teams), and the
@@ -41,6 +42,7 @@ type Role = 'admin' | 'manager' | 'user';
 const NAV: { id: Sec; label: string; icon: React.ReactNode; roles: Role[]; webOnly?: boolean }[] = [
   { id: 'overview', label: 'Overview', icon: <IconGrid />, roles: ['admin'], webOnly: true },
   { id: 'users', label: 'Users', icon: <IconUsers className="h-4 w-4" />, roles: ['admin', 'manager'] },
+  { id: 'invitations', label: 'Invitations', icon: <IconTicket />, roles: ['admin', 'manager'] },
   { id: 'teams', label: 'Teams', icon: <IconUsers className="h-4 w-4" />, roles: ['admin', 'manager'] },
   { id: 'collections', label: 'Collections', icon: <IconCollection className="h-4 w-4" />, roles: ['admin'] },
   { id: 'instance', label: 'Instance', icon: <IconGear className="h-4 w-4" />, roles: ['admin'], webOnly: true },
@@ -53,6 +55,15 @@ function IconGrid() {
       <rect x="14" y="3" width="7" height="5" rx="1.5" />
       <rect x="14" y="12" width="7" height="9" rx="1.5" />
       <rect x="3" y="16" width="7" height="5" rx="1.5" />
+    </svg>
+  );
+}
+
+function IconTicket() {
+  return (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l9 5 9-5" />
+      <rect x="3" y="6" width="18" height="12" rx="1.5" />
     </svg>
   );
 }
@@ -134,6 +145,7 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
               <>
                 {sec === 'overview' && <Overview onGo={setSec} />}
                 {sec === 'users' && <AdminUsersPanel />}
+                {sec === 'invitations' && <InvitationsPanel />}
                 {sec === 'teams' && <TeamsPanel />}
                 {sec === 'collections' && <CollectionsGovernance />}
                 {sec === 'instance' && <InstanceSettingsPanel />}

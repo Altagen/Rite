@@ -1,10 +1,11 @@
 /**
  * Server login / first-run admin bootstrap / self-service registration (ADR 0010 + 0015).
  *
- * Shown when the endpoint is a shared server and no session is active. The
- * password is turned into an auth hash client-side (see serverSessionStore) and
- * never sent. When the server has no admin yet it switches to bootstrap mode; when
- * the instance has open registration on, a "Create an account" tab appears.
+ * Shown when the endpoint is a shared server and no session is active. The password is turned into
+ * an auth hash client-side (see serverSessionStore) and never sent. When the server has no admin yet
+ * it switches to bootstrap mode; otherwise a "Create an account" entry appears when open registration
+ * is on, and a "Redeem an invitation token" entry is always available (a token works even when open
+ * registration is off — it carries a role/team recipe, never a key).
  */
 
 import { useState } from 'react';
@@ -14,27 +15,30 @@ export function ServerAuthScreen() {
   const { mode, login, bootstrap, register, loading, error, clearError, sessionExpired } =
     useServerSession();
   const isBootstrap = mode?.needsBootstrap === true;
-  // Self-registration is offered only when the instance opts in (and not during bootstrap,
-  // where the very first account must be the admin).
-  const canRegister = !isBootstrap && mode?.openRegistration === true;
+  const openReg = mode?.openRegistration === true;
 
   const [tab, setTab] = useState<'signin' | 'register'>('signin');
-  const isRegister = canRegister && tab === 'register';
+  const isRegister = !isBootstrap && tab === 'register';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [token, setToken] = useState('');
 
   const isNewAccount = isBootstrap || isRegister; // generates fresh keys from this password
   const mismatch = isRegister && confirm.length > 0 && confirm !== password;
+  // With open registration off, an account can only be created here by redeeming a token.
+  const tokenRequired = isRegister && !openReg;
   const canSubmit =
     username.trim().length > 0 &&
     password.length > 0 &&
     !loading &&
-    (!isRegister || confirm === password);
+    (!isRegister || confirm === password) &&
+    (!tokenRequired || token.trim().length > 0);
 
   const switchTab = (next: 'signin' | 'register') => {
     clearError();
     setConfirm('');
+    setToken('');
     setTab(next);
   };
 
@@ -46,7 +50,7 @@ export function ServerAuthScreen() {
       if (isBootstrap) {
         await bootstrap(username.trim(), password);
       } else if (isRegister) {
-        await register(username.trim(), password);
+        await register(username.trim(), password, token.trim() || undefined);
       } else {
         await login(username.trim(), password);
       }
@@ -138,6 +142,32 @@ export function ServerAuthScreen() {
             </div>
           )}
 
+          {isRegister && (
+            <div className="space-y-2">
+              <label htmlFor="token" className="text-sm font-medium">
+                Invitation token{' '}
+                <span className="font-normal text-muted-foreground">
+                  {tokenRequired ? '· required' : '· optional'}
+                </span>
+              </label>
+              <input
+                id="token"
+                type="text"
+                autoComplete="off"
+                placeholder="rite_…"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                disabled={loading}
+              />
+              <p className="text-xs text-muted-foreground">
+                {tokenRequired
+                  ? 'This server is invite-only — paste the token you were given to join.'
+                  : 'Have an invite? Paste it to join with your role and teams already set.'}
+              </p>
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={!canSubmit}
@@ -160,7 +190,7 @@ export function ServerAuthScreen() {
                   : 'Sign in'}
           </button>
 
-          {canRegister && (
+          {!isBootstrap && (
             <p className="text-center text-sm text-muted-foreground">
               {isRegister ? (
                 <>
@@ -175,13 +205,26 @@ export function ServerAuthScreen() {
                 </>
               ) : (
                 <>
-                  New here?{' '}
+                  {openReg && (
+                    <>
+                      New here?{' '}
+                      <button
+                        type="button"
+                        onClick={() => switchTab('register')}
+                        className="font-medium text-primary hover:underline"
+                      >
+                        Create an account
+                      </button>
+                      {' · '}
+                    </>
+                  )}
+                  Have an invitation token?{' '}
                   <button
                     type="button"
                     onClick={() => switchTab('register')}
                     className="font-medium text-primary hover:underline"
                   >
-                    Create an account
+                    Redeem
                   </button>
                 </>
               )}

@@ -121,6 +121,7 @@ const routes: Record<string, Route> = {
         protectedUserKey: a.protectedUserKey,
         publicKey: a.publicKey,
         protectedPrivateKey: a.protectedPrivateKey,
+        ...(a.token ? { token: a.token } : {}),
       }),
     ),
   server_logout: async () => {
@@ -273,6 +274,13 @@ const routes: Record<string, Route> = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enabled: a.enabled }),
     });
+    return null;
+  },
+  admin_list_enrollment_tokens: () => json('/api/admin/enrollment-tokens'),
+  admin_create_enrollment_token: (a) =>
+    json('/api/admin/enrollment-tokens', post({ role: a.role, teams: a.teams, expiresInSecs: a.expiresInSecs })),
+  admin_revoke_enrollment_token: async (a) => {
+    await json(`/api/admin/enrollment-tokens/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
     return null;
   },
   admin_set_healthcheck: async (a) => {

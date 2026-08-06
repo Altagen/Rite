@@ -103,8 +103,9 @@ interface ServerSessionState {
   loadMode: () => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   bootstrap: (username: string, password: string) => Promise<void>;
-  /** Self-service signup (ADR 0015): generate own keys, create the account, sign in. */
-  register: (username: string, password: string) => Promise<void>;
+  /** Self-service signup (ADR 0015): generate own keys, create the account, sign in. An optional
+   *  invitation token redeems an enrollment recipe (and works even when open registration is off). */
+  register: (username: string, password: string, token?: string) => Promise<void>;
   /** Set my own password (first login / after reset): fresh vault + keypair, clears the flag. */
   changePassword: (password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -234,7 +235,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
     }
   },
 
-  register: async (username, password) => {
+  register: async (username, password, inviteToken) => {
     set({ loading: true, error: null });
     try {
       const salt = randomSaltHex();
@@ -244,12 +245,19 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS),
         createVaultKey(password),
       ]);
-      const { token, user } = await Backend.Server.register(username, salt, DEFAULT_KDF_PARAMS, authHash, {
-        masterSalt: vaultKey.masterSaltHex,
-        protectedUserKey: vaultKey.protectedUserKey,
-        publicKey: vaultKey.publicKeyHex,
-        protectedPrivateKey: vaultKey.protectedPrivateKey,
-      });
+      const { token, user } = await Backend.Server.register(
+        username,
+        salt,
+        DEFAULT_KDF_PARAMS,
+        authHash,
+        {
+          masterSalt: vaultKey.masterSaltHex,
+          protectedUserKey: vaultKey.protectedUserKey,
+          publicKey: vaultKey.publicKeyHex,
+          protectedPrivateKey: vaultKey.protectedPrivateKey,
+        },
+        inviteToken,
+      );
       setSessionToken(token);
       await syncLocalVault(vaultKey.userKey);
       const mode = get().mode;
@@ -272,7 +280,9 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         e instanceof RiteHttpError && e.status === 409
           ? 'That username is already taken'
           : e instanceof RiteHttpError && e.status === 403
-            ? 'Registration is closed on this server'
+            ? inviteToken
+              ? 'That invitation is invalid or has expired'
+              : 'Registration is closed on this server'
             : e instanceof Error
               ? e.message
               : 'Failed to create your account';
