@@ -1795,6 +1795,27 @@ struct CreateUserReq {
     protected_private_key: String,
 }
 
+fn role_rank(r: Role) -> u8 {
+    match r {
+        Role::Admin => 2,
+        Role::Manager => 1,
+        Role::User => 0,
+    }
+}
+
+/// RBAC hierarchy (owner rule): may `caller` manage — change role, disable, reset, or delete — an
+/// account whose current role is `target`? A caller only ever acts on ranks **below** their own,
+/// never at or above it: a manager touches regular users only (never other managers or admins).
+/// Admins are the top tier with no higher authority, so they self-govern (incl. peers) — that's what
+/// makes offboarding another admin possible, via the escrow-rotating disable/delete paths.
+fn can_manage(caller: Role, target: Role) -> bool {
+    match caller {
+        Role::Admin => true,
+        Role::Manager => role_rank(target) < role_rank(Role::Manager),
+        Role::User => false,
+    }
+}
+
 async fn admin_create_user(
     State(state): State<ServerState>,
     Extension(caller): Extension<Arc<User>>,
@@ -1859,6 +1880,16 @@ async fn admin_set_status(
     if req.status != "active" && req.status != "disabled" {
         return Ok((StatusCode::BAD_REQUEST, "invalid status").into_response());
     }
+    let Some(target_role) = server_auth::get_role(state.db.pool(), &id).await? else {
+        return Ok((StatusCode::NOT_FOUND, "unknown user").into_response());
+    };
+    if !can_manage(current.role, target_role) {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "you can't manage an account at or above your level" })),
+        )
+            .into_response());
+    }
     let ok = server_auth::set_user_status(state.db.pool(), &id, &req.status).await?;
     Ok(if ok {
         StatusCode::NO_CONTENT.into_response()
@@ -1888,18 +1919,34 @@ async fn admin_set_role(
         )
             .into_response());
     }
-    if req.role == Role::Admin {
+    let Some(target_role) = server_auth::get_role(state.db.pool(), &id).await? else {
+        return Ok((StatusCode::NOT_FOUND, "unknown user").into_response());
+    };
+    // Owner rule: only manage ranks below yours (a manager can't touch peers/admins).
+    if !can_manage(current.role, target_role) {
         return Ok((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "admin can't be assigned here" })),
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "you can't manage an account at or above your level" })),
         )
             .into_response());
     }
-    // Don't demote an existing admin through this path — that would touch the escrow group.
-    if server_auth::get_role(state.db.pool(), &id).await? == Some(server_auth::Role::Admin) {
+    // An existing admin's role isn't flipped here — that must go through the escrow-rotating
+    // disable/delete paths, not a bare role change.
+    if target_role == Role::Admin {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "can't change an admin's role here" })),
+            Json(json!({ "error": "can't change an admin's role here — disable or delete instead" })),
+        )
+            .into_response());
+    }
+    // Assignment ceiling: admins may assign any role (incl. promoting to admin); a manager may only
+    // assign a role strictly below manager (i.e. user) — never create a peer or a superior.
+    let assign_ok =
+        current.role == Role::Admin || role_rank(req.role) < role_rank(current.role);
+    if !assign_ok {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "you can't assign a role at or above your level" })),
         )
             .into_response());
     }
@@ -1936,6 +1983,16 @@ async fn admin_reset_user(
     if id == current.id {
         return Ok((StatusCode::BAD_REQUEST, "you can't reset your own account").into_response());
     }
+    let Some(target_role) = server_auth::get_role(state.db.pool(), &id).await? else {
+        return Ok((StatusCode::NOT_FOUND, "unknown user").into_response());
+    };
+    if !can_manage(current.role, target_role) {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "you can't manage an account at or above your level" })),
+        )
+            .into_response());
+    }
     let salt = server_auth::parse_hex_salt(&req.salt)?;
     let vault = server_auth::VaultKey {
         master_salt: server_auth::parse_hex_salt(&req.master_salt)?,
@@ -1962,6 +2019,16 @@ async fn admin_delete_user(
         return Ok((
             StatusCode::BAD_REQUEST,
             Json(json!({ "error": "you can't delete yourself" })),
+        )
+            .into_response());
+    }
+    let Some(target_role) = server_auth::get_role(state.db.pool(), &id).await? else {
+        return Ok((StatusCode::NOT_FOUND, "unknown user").into_response());
+    };
+    if !can_manage(current.role, target_role) {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "you can't manage an account at or above your level" })),
         )
             .into_response());
     }
