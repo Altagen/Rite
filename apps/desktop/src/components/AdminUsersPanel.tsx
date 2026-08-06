@@ -19,7 +19,9 @@ const fmtJoined = (epochSeconds: number) =>
     : '—';
 
 export function AdminUsersPanel() {
-  const { user: me, publicKey, privateKey } = useServerSession();
+  const { user: me, publicKey, privateKey, mode } = useServerSession();
+  // Instance policy (admin → Instance): confirm every role change before applying it.
+  const confirmRoleChange = mode?.confirmRoleChange === true;
 
   // Removing an admin must cut their FUTURE access to escrowed collection names:
   // rotate the Admin group (fresh epoch, re-seal every escrow, re-grant the remaining
@@ -204,13 +206,18 @@ export function AdminUsersPanel() {
                         onChange={(e) => {
                           const nr = e.target.value as 'user' | 'manager' | 'admin';
                           if (nr === u.role) return;
-                          if (
-                            nr === 'admin' &&
-                            !window.confirm(
-                              `Promote ${u.username} to admin? They get full server access and can read collection names via the Admin group.`,
+                          if (nr === 'admin') {
+                            // Promotion to admin always confirms — it grants full server access.
+                            if (
+                              !window.confirm(
+                                `Promote ${u.username} to admin? They get full server access and can read collection names via the Admin group.`,
+                              )
                             )
-                          )
-                            return;
+                              return;
+                          } else if (confirmRoleChange) {
+                            // Instance policy: confirm any other role change too.
+                            if (!window.confirm(`Change ${u.username}'s role from ${u.role} to ${nr}?`)) return;
+                          }
                           act(async () => {
                             await Backend.Admin.setRole(u.id, nr);
                             // A new admin needs the current group key sealed to them (O(1), no rotation).

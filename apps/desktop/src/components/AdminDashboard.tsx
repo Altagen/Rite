@@ -73,14 +73,27 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
   const { mode, logout, user } = useServerSession();
   const role = (user?.role ?? 'user') as Role;
   const native = isNativeShell();
-  // Visible sections = allowed by role AND by shell (native hides web-only instance admin).
-  const nav = NAV.filter((n) => n.roles.includes(role) && (!native || !n.webOnly));
+  // Instance master switch (admin → Instance): with invitations off, hide the tab entirely —
+  // the server also refuses to mint/redeem, so this just keeps the UI honest.
+  const allowInvitations = mode?.allowInvitations !== false;
+  // Visible sections = allowed by role AND by shell (native hides web-only instance admin) AND,
+  // for Invitations, the instance switch.
+  const nav = NAV.filter(
+    (n) =>
+      n.roles.includes(role) &&
+      (!native || !n.webOnly) &&
+      (n.id !== 'invitations' || allowInvitations),
+  );
   // Default to an always-visible section; the nav only offers visible ones, so `sec` stays valid.
   const [sec, setSec] = useState<Sec>(nav[0]?.id ?? 'teams');
   // "Admin" only for a full admin on the web console; otherwise it's the org surface.
   const label = role === 'admin' && !native ? 'Admin' : 'Organization';
   // Some sections are hidden here (native shell, or a manager) ⇒ point instance admin at the web.
   const hasHidden = nav.length < NAV.filter((n) => n.roles.includes(role)).length || native;
+
+  // The effective section — derived, so if the selected one stops being visible (e.g. an admin
+  // turns invitations off while it's open via a live policy push) we fall back without an effect.
+  const activeSec = nav.some((n) => n.id === sec) ? sec : (nav[0]?.id ?? 'teams');
 
   // Esc closes the admin surface (two-worlds: it's a mode you open and close), unless it's the
   // only screen (web console with no connection manager behind it).
@@ -132,7 +145,7 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
               key={n.id}
               onClick={() => setSec(n.id)}
               className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition ${
-                sec === n.id
+                activeSec === n.id
                   ? 'border-primary/30 bg-primary/[0.13] text-primary'
                   : 'border-transparent text-muted-foreground hover:bg-secondary'
               }`}
@@ -153,16 +166,12 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
         {/* Content — the nav only offers sections this role+shell may see; guard the panels too. */}
         <main className="min-w-0 flex-1 overflow-y-auto px-8 py-7">
           <div className="mx-auto max-w-[1400px]">
-            {nav.some((n) => n.id === sec) && (
-              <>
-                {sec === 'overview' && <Overview onGo={setSec} />}
-                {sec === 'users' && <AdminUsersPanel />}
-                {sec === 'invitations' && <InvitationsPanel />}
-                {sec === 'teams' && <TeamsPanel />}
-                {sec === 'collections' && <CollectionsGovernance />}
-                {sec === 'instance' && <InstanceSettingsPanel />}
-              </>
-            )}
+            {activeSec === 'overview' && <Overview onGo={setSec} />}
+            {activeSec === 'users' && <AdminUsersPanel />}
+            {activeSec === 'invitations' && <InvitationsPanel />}
+            {activeSec === 'teams' && <TeamsPanel />}
+            {activeSec === 'collections' && <CollectionsGovernance />}
+            {activeSec === 'instance' && <InstanceSettingsPanel />}
           </div>
         </main>
       </div>

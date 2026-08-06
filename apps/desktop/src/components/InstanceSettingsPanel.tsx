@@ -29,6 +29,8 @@ export function InstanceSettingsPanel() {
   const [shell, setShell] = useState('bash');
   const [quickSsh, setQuickSsh] = useState(false);
   const [openReg, setOpenReg] = useState(false);
+  const [allowInv, setAllowInv] = useState(true);
+  const [confirmRole, setConfirmRole] = useState(false);
   const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
   const [userInput, setUserInput] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +47,8 @@ export function InstanceSettingsPanel() {
       setShell(mode.defaultShell ?? 'bash');
       setQuickSsh(mode.allowQuickSsh === true);
       setOpenReg(mode.openRegistration === true);
+      setAllowInv(mode.allowInvitations !== false);
+      setConfirmRole(mode.confirmRoleChange === true);
       setHc(mode.healthcheck ?? DEFAULT_HC);
     } catch {
       setError('Failed to load instance settings');
@@ -92,6 +96,28 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setOpenRegistration(next);
     } catch (err) {
       setOpenReg(!next);
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
+
+  const toggleAllowInv = async () => {
+    const next = !allowInv;
+    setAllowInv(next);
+    try {
+      await Backend.Admin.setAllowInvitations(next);
+    } catch (err) {
+      setAllowInv(!next);
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
+
+  const toggleConfirmRole = async () => {
+    const next = !confirmRole;
+    setConfirmRole(next);
+    try {
+      await Backend.Admin.setConfirmRoleChange(next);
+    } catch (err) {
+      setConfirmRole(!next);
       setError(err instanceof Error ? err.message : 'Failed to save');
     }
   };
@@ -240,6 +266,61 @@ export function InstanceSettingsPanel() {
             <span
               className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
                 openReg ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-medium">Allow invitations</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <b>On by default.</b> The master switch for enrollment-token invitations (Invitations tab). Turn it off to
+              close the invite path instance-wide — no new tokens can be minted and existing ones stop working, enforced
+              on the server. Independent of open registration (invitations are the invite-only path).
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={allowInv}
+            onClick={toggleAllowInv}
+            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
+              allowInv ? 'bg-primary' : 'bg-muted'
+            }`}
+          >
+            <span
+              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                allowInv ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-medium">Confirm role changes</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <b>Off by default.</b> When on, changing an account&apos;s role in Users asks for a confirmation first — a
+              guard against an accidental promotion or demotion. A UX safety prompt, applied on every client.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={confirmRole}
+            onClick={toggleConfirmRole}
+            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
+              confirmRole ? 'bg-primary' : 'bg-muted'
+            }`}
+          >
+            <span
+              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                confirmRole ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
           </button>

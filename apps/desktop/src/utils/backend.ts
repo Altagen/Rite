@@ -354,6 +354,11 @@ const ServerModeSchema = z.object({
   // Self-service registration (ADR 0015): when on, the sign-in screen offers "Create an
   // account". Off/absent ⇒ invite-only (admin-provisioned or enrollment token).
   openRegistration: z.boolean().optional(),
+  // Master switch for the invitation-token path (mint + redeem). Default true when absent —
+  // independent of openRegistration (tokens are the invite-only path). Enforced server-side.
+  allowInvitations: z.boolean().optional(),
+  // UX safety policy: when on, the client confirms every account role change. Default false.
+  confirmRoleChange: z.boolean().optional(),
   // Machine health-check policy (ADR 0017): passive "last seen" + governed active probing.
   healthcheck: z
     .object({
@@ -601,6 +606,12 @@ export const BackendAdmin = {
   /** Turn self-service registration on/off (org-admin only, ADR 0015). */
   setOpenRegistration: (enabled: boolean) =>
     invokeWithValidation('admin_set_open_registration', z.null(), { enabled }),
+  /** Master switch for invitation tokens — mint + redeem (org-admin only). Enforced server-side. */
+  setAllowInvitations: (enabled: boolean) =>
+    invokeWithValidation('admin_set_allow_invitations', z.null(), { enabled }),
+  /** Turn the client's "confirm every role change" safety prompt on/off (org-admin only). */
+  setConfirmRoleChange: (enabled: boolean) =>
+    invokeWithValidation('admin_set_confirm_role_change', z.null(), { enabled }),
 
   // Enrollment tokens (ADR 0015 phase 3). Admin + manager; a manager may mint user tokens only.
   listEnrollmentTokens: () =>
