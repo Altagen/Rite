@@ -197,3 +197,7 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
    button labels before the bar would ever wrap the chip off the first row. */
 .profile{flex:none}
 @media (max-width:900px){ .lbl{display:none} .profile .pmeta{display:none} .profile .chev{display:none} .profile{padding:3px} }
+
+/* Narrow widths: drop the instance chip so it never collides with the toolbar (the server is
+   still shown in the profile dropdown). `.appbar .inst` outranks each page's inline `.inst`. */
+@media (max-width:720px){ .appbar .inst{display:none} }
