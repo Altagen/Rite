@@ -199,7 +199,7 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
    labels stay until the window is genuinely narrow, so compacting them never leaves a premature void.
    The profile stays pinned top-right, compacting to just its avatar. */
 .profile{flex:none}
-.appbar .inst{flex:0 1 auto;min-width:0;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.appbar .inst .dot{display:inline-block;vertical-align:middle;margin-right:7px}
-@media (max-width:820px){ .inst-url{display:none} }   /* clean-drop the server URL, keep the name */
-@media (max-width:760px){ .lbl{display:none} .profile .pmeta{display:none} .profile .chev{display:none} .profile{padding:3px} }
+.appbar .inst{flex:0 0 auto;white-space:nowrap}   /* fixed size — its name never clips; the toolbar's overflow menu manages the width instead */
+@media (max-width:960px){ .inst-url{display:none} }   /* clean-drop the server URL early, keep the name */
+@media (max-width:600px){ .profile .pmeta{display:none} .profile .chev{display:none} .profile{padding:3px} }
+@media (max-width:500px){ .appbar .inst{display:none} }   /* only on a truly tiny window (in the profile menu) */

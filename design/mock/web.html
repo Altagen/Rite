@@ -52,7 +52,7 @@
   textarea.inp:focus{outline:none;border-color:var(--accent)}
   .inst{display:flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--border2);border-radius:10px;background:var(--card);font-weight:650}
   .inst .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
-  .appbar{flex-wrap:nowrap}#acts{flex-wrap:nowrap;justify-content:flex-end;min-width:0}
+  .appbar{flex-wrap:nowrap}#acts{flex-wrap:nowrap;justify-content:flex-end;flex:none}
   .inst{min-width:0;overflow:hidden}.inst span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .notif{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 2px var(--bg)}
   /* Health-check pastille (ADR 0017). Down is muted, not red — an unreachable machine is a
@@ -63,7 +63,7 @@
   .pst.seen{background:color-mix(in oklab,var(--muted) 55%,transparent)}
   .pst.check{background:var(--amber);animation:pstPulse 1s ease-in-out infinite}
   @keyframes pstPulse{0%,100%{opacity:.35}50%{opacity:1}}
-  @media (max-width:760px){ .lbl{display:none} .side{width:240px} }
+  @media (max-width:760px){ .side{width:240px} }
   @media (max-width:560px){ .side{position:absolute;z-index:20;height:100%;box-shadow:var(--shadow)} }
 </style>
 </head>
@@ -77,6 +77,7 @@
     <span id="acts" style="display:flex;gap:10px;align-items:center"></span>
   </div>
   <!-- Profile dropdown: always know who's signed in + their role, with account actions. -->
+  <div class="pmenu" id="ovMenu" style="width:210px"></div>
   <div class="pmenu" id="pmenu">
     <div class="pmenu-head"><span class="avatar" id="pmAv"></span><div><div class="pname" id="pmName" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span id="pmServer"></span></div></div></div>
     <div class="pi-sep"></div>
@@ -193,14 +194,40 @@ const ALLOW_QUICK_SSH=false;
 /* ================= header actions (web) ================= */
 function renderActs(){
   document.getElementById('instName').textContent=STATE.instanceName;
+  // .tb-item buttons collapse into the "⋯" overflow menu (fitBar) when the bar runs out of room —
+  // gradually, one at a time, so the header stays smooth and the instance name never gets crushed.
   document.getElementById('acts').innerHTML=`
     <button class="btn btn-primary btn-sm" title="New terminal on the server (${SERVER_SHELL})" onclick="toast('New terminal · ${SERVER_SHELL}')">${ICON.term} <span class="lbl">Terminal</span></button>
-    ${ALLOW_QUICK_SSH?`<button class="btn btn-sm" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`:''}
-    <button class="btn btn-ghost btn-sm" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
-    <button class="btn btn-ghost btn-sm" title="Collections — yours + Discover (offered to your teams)" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>
-    ${IS_ADMIN?`<button class="btn btn-ghost btn-sm" title="Administration — users, teams, invitations, instance" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Administration</span></button>`:''}
+    ${ALLOW_QUICK_SSH?`<button class="btn btn-sm tb-item" data-label="Quick SSH" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`:''}
+    <button class="btn btn-ghost btn-sm tb-item" data-label="Teams" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
+    <button class="btn btn-ghost btn-sm tb-item" data-label="Collections" title="Collections — yours + Discover (offered to your teams)" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>
+    ${IS_ADMIN?`<button class="btn btn-ghost btn-sm tb-item" data-label="Administration" title="Administration — users, teams, invitations, instance" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Administration</span></button>`:''}
+    <button class="btn btn-ghost btn-sm" id="ovBtn" title="More" style="display:none" onclick="toggleOv(event)"><svg class="icon" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
     <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
-    <button class="profile" onclick="toggleProfile(event)" title="Your account"><span class="avatar" style="background:${ME_COLOR}">${ME_INIT}</span><span class="pmeta"><span class="pname">${ME_NAME}</span><span class="prole role-${ME_ROLE}">${ME_ROLE}</span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>`;initProfile();}
+    <button class="profile" onclick="toggleProfile(event)" title="Your account"><span class="avatar" style="background:${ME_COLOR}">${ME_INIT}</span><span class="pmeta"><span class="pname">${ME_NAME}</span><span class="prole role-${ME_ROLE}">${ME_ROLE}</span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>`;
+  initProfile(); fitBar();
+}
+// Overflow menu: collapse the lowest-priority toolbar buttons into "⋯" until the bar fits, one at a
+// time — so narrowing the window is smooth (no big label-drop jump) and the instance name is kept.
+function fitBar(){
+  const bar=document.querySelector('.appbar'), acts=document.getElementById('acts');
+  const ovBtn=document.getElementById('ovBtn'), ovMenu=document.getElementById('ovMenu');
+  if(!bar||!acts||!ovBtn||!ovMenu) return;
+  const items=[...acts.querySelectorAll('.tb-item')];
+  items.forEach(i=>i.style.display=''); ovMenu.innerHTML=''; ovBtn.style.display='none';
+  if(bar.scrollWidth>bar.clientWidth) ovBtn.style.display='';   // the ⋯ itself will be needed
+  for(let i=items.length-1;i>=0 && bar.scrollWidth>bar.clientWidth;i--){
+    const it=items[i]; it.style.display='none';
+    const ic=it.querySelector('svg,img'); const mi=document.createElement('div'); mi.className='pi';
+    mi.innerHTML=(ic?ic.outerHTML:'')+' '+it.getAttribute('data-label');
+    mi.onclick=()=>{ovMenu.classList.remove('show');it.click();};
+    ovMenu.prepend(mi);
+  }
+  if(!ovMenu.children.length) ovBtn.style.display='none';
+}
+function toggleOv(e){e.stopPropagation();const m=document.getElementById('ovMenu');const r=e.currentTarget.getBoundingClientRect();m.style.top=(r.bottom+6)+'px';m.style.right='auto';m.style.left=Math.max(8,r.right-210)+'px';m.classList.toggle('show');}
+document.addEventListener('click',e=>{if(!e.target.closest('#ovBtn')&&!e.target.closest('#ovMenu'))document.getElementById('ovMenu').classList.remove('show');});
+let _fitRT; window.addEventListener('resize',()=>{clearTimeout(_fitRT);_fitRT=setTimeout(fitBar,90);});
 
 /* ================= sidebar library ================= */
 function renderSide(){const s=document.getElementById('side');
