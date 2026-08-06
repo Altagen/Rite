@@ -9,6 +9,19 @@
 
 const now = () => Math.floor(Date.now() / 1000);
 
+// Dev harness (see utils/devHarness): when a `?harness` surface is requested, the mock
+// behaves as a shared server so the accounts/admin screens render standalone. The flag is
+// mirrored to sessionStorage because our navigate() drops the query on the first hop.
+const harnessOn = () => {
+  if (typeof window === 'undefined') return false;
+  if (new URLSearchParams(location.search).has('harness')) return true;
+  try {
+    return sessionStorage.getItem('rite-dev-harness') !== null;
+  } catch {
+    return false;
+  }
+};
+
 interface MockConnection {
   id: string;
   name: string;
@@ -163,9 +176,11 @@ export async function mockInvoke(
     case 'reject_host_key':
       return null;
 
-    // --- Server accounts (dev mock behaves as local: no accounts) ---
+    // --- Server accounts ---
+    // Default: behave as a local vault (no accounts). Under the dev harness (?harness=…) behave
+    // as a shared server so the accounts/admin surfaces are browsable in the backend-less mock.
     case 'server_mode':
-      return { accounts: false, needsBootstrap: false, instanceName: null, sessionPersistence: true, defaultShell: 'bash', allowQuickSsh: false, openRegistration: false, healthcheck: { passiveStatus: true, active: 'off', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 }, collectionPolicy: { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 0, defaultRole: 'viewer' } };
+      return { accounts: harnessOn(), needsBootstrap: false, instanceName: harnessOn() ? 'Acme Corp' : null, sessionPersistence: true, defaultShell: 'bash', allowQuickSsh: false, openRegistration: false, healthcheck: { passiveStatus: true, active: 'off', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 }, collectionPolicy: { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 0, defaultRole: 'viewer' } };
     case 'admin_set_instance':
     case 'admin_set_session_persistence':
     case 'admin_set_default_shell':
@@ -266,10 +281,22 @@ export async function mockInvoke(
     case 'admin_delete_user':
       return null;
 
-    // --- Teams (dev mock: empty) ---
-    case 'admin_list_teams':
-    case 'teams_mine':
+    // --- Teams (rich under the harness so the admin Teams surface renders) ---
+    case 'admin_list_teams': {
+      const day = 86400;
+      return [
+        { id: 'team-eng', name: 'Eng', createdAt: now() - 200 * day },
+        { id: 'team-ops', name: 'Ops', createdAt: now() - 150 * day },
+        { id: 'team-design', name: 'Design', createdAt: now() - 100 * day },
+      ];
+    }
     case 'team_members':
+      return [
+        { userId: 'mock-admin', username: 'alex', role: 'admin', publicKey: null },
+        { userId: 'mock-carol', username: 'carol', role: 'admin', publicKey: null },
+        { userId: 'mock-dan', username: 'dan', role: 'member', publicKey: null },
+      ];
+    case 'teams_mine':
     case 'vault_conn_list':
       return [];
     case 'vault_conn_create':
@@ -283,6 +310,30 @@ export async function mockInvoke(
     case 'team_add_member':
     case 'team_remove_member':
       return null;
+
+    // --- Admin collection governance (rich under the harness) ---
+    // c-perso is a solo collection (1 member) → the governance list must exclude it.
+    case 'admin_list_collections': {
+      const day = 86400;
+      const mk = (id: string, members: number, items: number, ageDays: number) => ({
+        id, createdAt: now() - ageDays * day, memberCount: members, itemCount: items,
+        nameEnc: '', metaKeyGroupEnc: null, groupEpoch: null,
+      });
+      return [
+        mk('c-infra', 4, 1, 180),
+        mk('c-prod', 3, 3, 150),
+        mk('c-db', 2, 2, 120),
+        mk('c-perso', 1, 2, 90),
+      ];
+    }
+    case 'admin_collection_members':
+      return [
+        { userId: 'mock-admin', username: 'alex', role: 'owner', publicKey: null, hasItemsKey: true },
+        { userId: 'mock-carol', username: 'carol', role: 'editor', publicKey: null, hasItemsKey: true },
+        { userId: 'mock-dan', username: 'dan', role: 'viewer', publicKey: null, hasItemsKey: false },
+      ];
+    case 'admin_list_admins':
+      return [];
 
     // --- Collections (ADR 0016; dev mock: empty) ---
     case 'directory_list':
