@@ -205,13 +205,13 @@ export function InstanceSettingsPanel() {
             role="switch"
             aria-checked={persistence}
             onClick={togglePersistence}
-            className={`relative h-6 w-11 flex-none rounded-full transition-colors ${
+            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
               persistence ? 'bg-primary' : 'bg-muted'
             }`}
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-                persistence ? 'translate-x-5' : 'translate-x-0.5'
+              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                persistence ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
           </button>
@@ -233,13 +233,13 @@ export function InstanceSettingsPanel() {
             role="switch"
             aria-checked={openReg}
             onClick={toggleOpenReg}
-            className={`relative h-6 w-11 flex-none rounded-full transition-colors ${
+            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
               openReg ? 'bg-primary' : 'bg-muted'
             }`}
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-                openReg ? 'translate-x-5' : 'translate-x-0.5'
+              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                openReg ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
           </button>
@@ -287,11 +287,11 @@ export function InstanceSettingsPanel() {
             role="switch"
             aria-checked={quickSsh}
             onClick={toggleQuickSsh}
-            className={`relative h-6 w-11 flex-none rounded-full transition-colors ${quickSsh ? 'bg-primary' : 'bg-muted'}`}
+            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${quickSsh ? 'bg-primary' : 'bg-muted'}`}
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
-                quickSsh ? 'translate-x-5' : 'translate-x-0.5'
+              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
+                quickSsh ? 'translate-x-5' : 'translate-x-0'
               }`}
             />
           </button>
@@ -316,9 +316,9 @@ export function InstanceSettingsPanel() {
             role="switch"
             aria-checked={hc.passiveStatus}
             onClick={() => saveHc({ ...hc, passiveStatus: !hc.passiveStatus })}
-            className={`relative h-6 w-11 flex-none rounded-full transition-colors ${hc.passiveStatus ? 'bg-primary' : 'bg-muted'}`}
+            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${hc.passiveStatus ? 'bg-primary' : 'bg-muted'}`}
           >
-            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${hc.passiveStatus ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hc.passiveStatus ? 'translate-x-5' : 'translate-x-0'}`} />
           </button>
         </div>
 

@@ -261,9 +261,9 @@ function PolicyToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
       role="switch"
       aria-checked={on}
       onClick={onClick}
-      className={`relative h-6 w-11 flex-none rounded-full transition-colors ${on ? 'bg-primary' : 'bg-muted'}`}
+      className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${on ? 'bg-primary' : 'bg-muted'}`}
     >
-      <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${on ? 'translate-x-5' : 'translate-x-0.5'}`} />
+      <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${on ? 'translate-x-5' : 'translate-x-0'}`} />
     </button>
   );
 }
