@@ -13,6 +13,11 @@ import { useServerSession } from '../store/serverSessionStore';
 import { deriveAuthHash, randomSaltHex, DEFAULT_KDF_PARAMS, createVaultKey } from '../utils/serverAuth';
 import { ensureGroupKey, myGroupPrivateKey, rotateGroup, grantToAdmin } from '../utils/adminGroup';
 
+const fmtJoined = (epochSeconds: number) =>
+  epochSeconds
+    ? new Date(epochSeconds * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : '—';
+
 export function AdminUsersPanel() {
   const { user: me, publicKey, privateKey } = useServerSession();
 
@@ -165,6 +170,7 @@ export function AdminUsersPanel() {
               <th className="px-4 py-3 font-semibold">Username</th>
               <th className="px-4 py-3 font-semibold">Role</th>
               <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 font-semibold">Joined</th>
               <th className="px-4 py-3 text-right font-semibold">Actions</th>
             </tr>
           </thead>
@@ -231,6 +237,19 @@ export function AdminUsersPanel() {
                     >
                       {u.status}
                     </span>
+                    {/* Provisioned account still on its admin-set password — hasn't done a first
+                        login to set their own. Amber, informational. */}
+                    {u.mustChangePassword && (
+                      <span
+                        className="ml-2 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-600"
+                        title="Provisioned — hasn't set their own password yet"
+                      >
+                        awaiting first login
+                      </span>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2.5 text-[13px] text-muted-foreground" title="Registered on this server">
+                    {fmtJoined(u.createdAt)}
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     {!isSelf && canManage(u) && (

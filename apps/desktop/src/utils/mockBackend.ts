@@ -243,10 +243,16 @@ export async function mockInvoke(
         },
         vault: null,
       };
-    case 'admin_list_users':
+    case 'admin_list_users': {
+      const day = 86400;
       return [
-        { id: 'mock-admin', username: 'admin', role: 'admin', status: 'active', createdAt: now() },
+        { id: 'mock-admin', username: 'alex', role: 'admin', status: 'active', createdAt: now() - 270 * day, mustChangePassword: false },
+        { id: 'mock-carol', username: 'carol', role: 'user', status: 'active', createdAt: now() - 200 * day, mustChangePassword: false },
+        { id: 'mock-dan', username: 'dan', role: 'user', status: 'active', createdAt: now() - 160 * day, mustChangePassword: false },
+        { id: 'mock-erin', username: 'erin', role: 'user', status: 'active', createdAt: now() - 5 * day, mustChangePassword: true },
+        { id: 'mock-frank', username: 'frank', role: 'user', status: 'disabled', createdAt: now() - 2 * day, mustChangePassword: false },
       ];
+    }
     case 'admin_create_user':
       return {
         id: `mock-${Math.random().toString(36).slice(2, 8)}`,

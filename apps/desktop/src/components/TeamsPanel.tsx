@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Backend, type Team, type TeamMember, type ServerUser } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
+import { DangerZone } from './DangerZone';
 
 const roleLabel = (r: TeamMember['role']) => (r === 'admin' ? 'Manager' : 'Member');
 
@@ -118,23 +119,7 @@ export function TeamsPanel() {
 
       {selected && (
         <div className="space-y-4 rounded-lg border border-border p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium">{selected.name}</h3>
-            <button
-              onClick={() =>
-                act(async () => {
-                  await Backend.Teams.remove(selected.id);
-                  setSelected(null);
-                  setMembers([]);
-                  await refresh();
-                })
-              }
-              disabled={busy}
-              className="rounded border border-red-500/30 px-2 py-1 text-xs text-red-600 hover:bg-red-500/10 disabled:opacity-50"
-            >
-              Delete team
-            </button>
-          </div>
+          <h3 className="font-medium">{selected.name}</h3>
 
           <table className="w-full text-sm">
             <thead className="text-left text-muted-foreground">
@@ -207,6 +192,21 @@ export function TeamsPanel() {
               Add
             </button>
           </div>
+
+          <DangerZone
+            title="Delete team"
+            desc="Removes the team (a roster). Collections offered to it are no longer offered; membership in those collections is unaffected."
+            action="Delete team"
+            disabled={busy}
+            onAction={() =>
+              act(async () => {
+                await Backend.Teams.remove(selected.id);
+                setSelected(null);
+                setMembers([]);
+                await refresh();
+              })
+            }
+          />
         </div>
       )}
     </div>

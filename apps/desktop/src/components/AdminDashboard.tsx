@@ -29,6 +29,7 @@ import { AdminUsersPanel } from './AdminUsersPanel';
 import { InvitationsPanel } from './InvitationsPanel';
 import { TeamsPanel } from './TeamsPanel';
 import { InstanceSettingsPanel } from './InstanceSettingsPanel';
+import { DangerZone } from './DangerZone';
 import { IconUsers, IconShield, IconGear, IconLock, IconCollection } from './icons';
 import { isNativeShell } from '../utils/nativeShell';
 import riteLogo from '../assets/rite.png';
@@ -81,6 +82,17 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
   // Some sections are hidden here (native shell, or a manager) ⇒ point instance admin at the web.
   const hasHidden = nav.length < NAV.filter((n) => n.roles.includes(role)).length || native;
 
+  // Esc closes the admin surface (two-worlds: it's a mode you open and close), unless it's the
+  // only screen (web console with no connection manager behind it).
+  useEffect(() => {
+    if (hideBack) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') navigate('/');
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [hideBack]);
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
       {/* Top bar — a distinct admin surface */}
@@ -99,11 +111,11 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
         )}
         <span className="m-spacer" />
         {!hideBack && (
-          <button onClick={() => navigate('/')} className="m-btn m-btn-sm" title="Back to the connection manager">
+          <button onClick={() => navigate('/')} className="m-btn m-btn-sm" title="Close — back to the app (Esc)">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
             </svg>
-            <span className="hidden md:inline">Back to app</span>
+            <span className="hidden md:inline">Close</span>
           </button>
         )}
         <button onClick={() => logout()} className="m-btn m-btn-ghost m-btn-sm" title="Sign out">
@@ -496,40 +508,53 @@ function CollectionsGovernance() {
             </div>
           );
         })()}
-        <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5">
-          <div>
-            <div className="font-semibold text-red-500">Delete collection</div>
-            <div className="text-xs text-muted-foreground">Force-remove it for every member. The encrypted machines are lost.</div>
-          </div>
-          <button onClick={() => del(sel)} className="rounded-md border border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-500/10">
-            Delete
-          </button>
-        </div>
+        <DangerZone
+          title="Delete collection"
+          desc="Force-remove it for every member. The encrypted machines are lost."
+          action="Delete collection"
+          onAction={() => del(sel)}
+        />
       </>
     );
   }
 
+  // Governance is about SHARED collections. A solo collection (owner only) is someone's
+  // private space — never listed for cleanup here, mirroring the "Personal stays private"
+  // rule from the mock. memberCount > 1 is the honest signal we have server-side.
+  const shared = colls?.filter((c) => c.memberCount > 1) ?? null;
+  const personal = colls ? colls.length - (shared?.length ?? 0) : 0;
+
   return (
     <>
       <div className="mb-5">
-        <h1 className="text-[22px] font-bold">Collections</h1>
-        <span className="text-[13px] text-muted-foreground">Server-wide governance</span>
+        <h1 className="text-[22px] font-bold">Collection governance</h1>
+        <span className="text-[13px] text-muted-foreground">Policies + oversight, server-wide</span>
       </div>
       <ZkBanner />
       <CollectionPolicyPanel />
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b border-border px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-border px-4 py-3">
+          <span className="text-sm font-semibold">Shared collections</span>
+          {personal > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {personal} personal — kept private, not shown
+            </span>
+          )}
+        </div>
+        <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b border-border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
           <span>Collection</span>
           <span className="text-right">Members</span>
           <span className="text-right">Machines</span>
           <span className="w-6" />
         </div>
-        {colls === null ? (
+        {shared === null ? (
           <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
-        ) : colls.length === 0 ? (
-          <div className="px-4 py-4 text-sm text-muted-foreground">No collections.</div>
+        ) : shared.length === 0 ? (
+          <div className="px-4 py-4 text-sm text-muted-foreground">
+            No shared collections{personal > 0 ? ' — personal ones stay private' : ''}.
+          </div>
         ) : (
-          colls.map((c) => (
+          shared.map((c) => (
             <button
               key={c.id}
               onClick={() => open(c.id)}
