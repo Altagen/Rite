@@ -21,11 +21,11 @@ const EXICON = {
 const ORG = {
   me:'alex',
   users:[
-    {u:'alex', role:'admin', label:'alex (you)'},
-    {u:'carol', role:'user', label:'carol'},
-    {u:'dan', role:'user', label:'dan'},
-    {u:'erin', role:'user', label:'erin'},
-    {u:'frank', role:'user', label:'frank'},
+    {u:'alex', role:'admin', label:'alex (you)', joined:'2025-11-02', pw:true},
+    {u:'carol', role:'user', label:'carol', joined:'2026-01-15', pw:true},
+    {u:'dan', role:'user', label:'dan', joined:'2026-02-20', pw:true},
+    {u:'erin', role:'user', label:'erin', joined:'2026-02-28', pw:false},
+    {u:'frank', role:'user', label:'frank', joined:'2026-03-01', pw:true},
   ],
   // Teams are keyless rosters: a group of people + a per-member role ('admin' =
   // Manager, in the UI | member). Nothing is encrypted with a team key — sharing is

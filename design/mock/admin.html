@@ -24,12 +24,19 @@
   .page-h h1{font-size:22px;font-weight:700}
   .page-h .sub{color:var(--muted);font-size:13px}
   .stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:26px}
-  .stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px}
+  .stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px}
   .stat .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
   .stat .v{font-size:30px;font-weight:750;margin-top:6px;line-height:1}
   .stat .d{font-size:12px;color:var(--fg-dim);margin-top:6px}
-  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden}
-  .panel-h{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:14px}
+  .panel-h{display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid var(--border)}
+  /* Danger zone: on-theme (dark) but unmistakably red, and always last in a view. */
+  .danger-zone{border-color:color-mix(in oklab,var(--red) 38%,var(--border));background:color-mix(in oklab,var(--red) 5%,var(--card))}
+  .danger-zone .panel-h{border-bottom-color:color-mix(in oklab,var(--red) 22%,var(--border))}
+  .danger-zone .panel-h .t{color:var(--red)}
+  .btn-outline-danger{border-color:color-mix(in oklab,var(--red) 45%,transparent);color:var(--red);background:none}
+  .btn-outline-danger:hover{background:color-mix(in oklab,var(--red) 13%,transparent);border-color:var(--red)}
+  .pw-pending{margin-left:8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 8px;border-radius:999px;background:color-mix(in oklab,var(--amber) 16%,transparent);color:var(--amber);border:1px solid color-mix(in oklab,var(--amber) 32%,transparent)}
   .panel-h .t{font-weight:650;font-size:15px}
   table.tbl{width:100%;border-collapse:collapse}
   table.tbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:10px 18px;border-bottom:1px solid var(--border)}
@@ -55,7 +62,7 @@
   .toggle.on{background:var(--accent);border-color:var(--accent)}
   .toggle i{width:18px;height:18px;border-radius:50%;background:#fff;flex:none;box-shadow:0 1px 2px rgba(0,0,0,.35);transition:.15s}
   .toggle.on i{margin-left:auto}
-  .setrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--border)}
+  .setrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 0;border-bottom:1px solid var(--border)}
   .setrow:last-child{border-bottom:none}
   .setrow .lab{font-weight:600} .setrow .hint{font-size:12px;color:var(--muted);margin-top:3px}
   .maxw{max-width:100%}
@@ -63,7 +70,7 @@
   table.tbl tr.click{cursor:pointer} table.tbl tr.click:hover td{background:var(--card2)}
   .back{display:inline-flex;align-items:center;gap:5px;color:var(--muted);cursor:pointer;font-size:13px;font-weight:600}
   .back:hover{color:var(--fg)}
-  .mrow{display:flex;align-items:center;gap:12px;padding:12px 18px;border-bottom:1px solid var(--border)}
+  .mrow{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border)}
   .mrow:last-child{border-bottom:none} .mrow:hover{background:var(--card2)} .mrow .nm{flex:1;font-weight:550}
   .add-pick{display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--border);background:var(--bg2)}
   .add-pick select{flex:1}
@@ -166,7 +173,7 @@
       <span class="pmeta"><span class="pname" id="pName"></span><span class="prole" id="pRole"></span></span>
       <span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
     </button>
-    <button class="btn btn-primary btn-sm" title="Done — back to the app (Esc)" onclick="exitConfig()"><svg class="icon" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg> <span>Done</span></button>
+    <button class="btn btn-sm" title="Close — back to the app (Esc)" onclick="exitConfig()"><svg class="icon" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg> <span>Close</span></button>
   </div>
   <!-- Profile dropdown: identity at a glance (who + role), and account actions. -->
   <div class="pmenu" id="pmenu">
@@ -255,18 +262,20 @@ function overview(){
 }
 
 const roleColor=r=>r==='admin'?'var(--accent)':r==='manager'?'var(--amber)':'var(--fg-dim)';
+const fmtDate=d=>d?new Date(d).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}):'—';
 function users(){
   return `<div class="page-h"><h1>Users</h1><span class="sub">${ORG.users.length} accounts</span><div style="flex:1"></div>
       <button class="btn btn-primary btn-sm" onclick="newUserDialog()">${ICONplus} New user</button></div>
     <div class="panel">
       <table class="tbl">
-        <thead><tr><th>Username</th><th>Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+        <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Joined</th><th style="text-align:right">Actions</th></tr></thead>
         <tbody>${ORG.users.map(u=>{const st=STATUS[u.u]||'active';const self=u.u===ORG.me;return `<tr>
           <td><div style="display:flex;align-items:center;gap:10px">${av(u.u)}<b>${u.u}</b>${self?'<span class="muted" style="font-size:12px">(you)</span>':''}</div></td>
           <td>${self
             ? `<span class="role-badge role-${u.role}">${u.role}</span>`
             : `<select class="role-sel" style="color:${roleColor(u.role)}" onchange="roleChange(this,'${u.u}','${u.role}')">${['user','manager','admin'].map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${r}</option>`).join('')}</select>`}</td>
-          <td><span class="st ${st}"><span class="dot"></span>${st}</span></td>
+          <td><span class="st ${st}"><span class="dot"></span>${st}</span>${u.pw===false?'<span class="pw-pending" title="Provisioned — hasn\'t set their own password yet">awaiting first login</span>':''}</td>
+          <td class="muted" style="font-size:13px;white-space:nowrap" title="Registered on this server">${fmtDate(u.joined)}</td>
           <td><div class="rowacts">
             ${self?'<span class="muted" style="font-size:12px;padding-right:6px">—</span>':`<button class="btn btn-ghost" title="Actions" onclick="rowMenu(event,'${u.u}','${st}')"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button>`}
           </div></td></tr>`;}).join('')}</tbody>
@@ -410,8 +419,8 @@ function teams(){
     <div class="page-h" style="margin-bottom:16px"><span style="color:var(--accent)">${EXICON.users}</span><h1>${t.name}</h1><span class="sub">${t.members.length} members</span></div>
     <div class="panel" style="overflow:visible"><div class="panel-h"><span class="t">Members</span></div>
       ${t.members.map(m=>memberRow(m,m!==t.members[0])).join('')}${addPicker(t.members,t.name)}</div>
-    <div class="panel"><div class="panel-h"><span class="t">Danger zone</span></div>
-      <div style="padding:14px 18px;display:flex;align-items:center;gap:12px"><span style="flex:1"><b>Delete team</b><div class="muted" style="font-size:12px">Removes the team (a roster). Collections offered to it are no longer offered; membership in those collections is unaffected.</div></span><button class="btn btn-sm" style="color:var(--red)" onclick="toast('Delete “${t.name}”…')">Delete</button></div></div>`;}
+    <div class="panel danger-zone"><div class="panel-h"><span class="t">Danger zone</span></div>
+      <div style="padding:16px 18px;display:flex;align-items:center;gap:12px"><span style="flex:1"><b>Delete team</b><div class="muted" style="font-size:12px">Removes the team (a roster). Collections offered to it are no longer offered; membership in those collections is unaffected.</div></span><button class="btn btn-sm btn-outline-danger" onclick="toast('Delete “${t.name}”…')">Delete team</button></div></div>`;}
   return `<div class="page-h"><h1>Teams</h1><span class="sub">${ORG.teams.length} groups · RBAC</span><div style="flex:1"></div>
       <button class="btn btn-primary btn-sm" onclick="toast('New team…')">${ICONplus} New team</button></div>
     <div class="panel"><table class="tbl">
@@ -485,26 +494,26 @@ function collections(){
     <div class="panel" style="overflow:visible"><div class="panel-h"><span class="t">Members · ${c.members.length}</span></div>
       ${c.members.map(m=>memberRow(m,m!==c.owner,c.pending.includes(m))).join('')}
       ${c.shared?`<div style="padding:12px 18px;border-top:1px solid var(--border)"><div style="font-weight:600;font-size:13px;margin-bottom:2px">Grant name / roster access</div><div class="muted" style="font-size:12px;margin-bottom:8px">Adds them to the roster and lets them see the name (via the group escrow). Machine access is completed by a member.</div>${addPicker(c.members,c.name)}</div>`:''}</div>
-    <div class="panel"><div class="panel-h"><span class="t">Danger zone</span></div>
-      <div style="padding:14px 18px;display:flex;align-items:center;gap:12px"><span style="flex:1"><b>Delete collection</b><div class="muted" style="font-size:12px">Force-remove it for every member. The encrypted machines are lost.</div></span><button class="btn btn-sm" style="color:var(--red)" onclick="toast('Delete “${c.name}”…')">Delete</button></div></div>`;}
+    <div class="panel danger-zone"><div class="panel-h"><span class="t">Danger zone</span></div>
+      <div style="padding:16px 18px;display:flex;align-items:center;gap:12px"><span style="flex:1"><b>Delete collection</b><div class="muted" style="font-size:12px">Force-remove it for every member. The encrypted machines are lost.</div></span><button class="btn btn-sm btn-outline-danger" onclick="toast('Delete “${c.name}”…')">Delete collection</button></div></div>`;}
   const shared=FLATCOLL.filter(c=>c.shared).length, personal=FLATCOLL.length-shared;
   const machines=FLATCOLL.reduce((n,c)=>n+c.machines,0);
   return `<div class="page-h"><h1>Collection governance</h1><span class="sub">Policies + oversight, server-wide</span></div>
     <div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Zero-knowledge.</b> The server holds no keys. Collection <b>names</b> are readable here only through the Admin-group escrow; machine hosts &amp; credentials stay sealed to members — even admins can't read them. Un-escrowed collections (e.g. personal) show by id. Granting a member gives <b>name/roster</b> access; full machine access is completed by a member.</div></div>
     <div class="stat-grid">
-      ${statCard('Collections',FLATCOLL.length,`${shared} shared · ${personal} personal`)}
+      ${statCard('Shared collections',shared,`${personal} personal — kept private`)}
       ${statCard('Machines',machines,'across all collections')}
       ${statCard('Orphaned',2,'empty &amp; unused &gt; 30d')}
       ${statCard('Avg members','2.4','per shared collection')}
     </div>
-    <div class="panel" style="margin-bottom:16px"><div class="panel-h"><span class="t">All collections</span><span style="flex:1"></span><button class="btn btn-primary btn-sm" onclick="toast('New collection…')">${ICONplus} New</button></div>
+    <div class="panel" style="margin-bottom:16px"><div class="panel-h"><span class="t">Shared collections</span><span class="muted" style="font-size:12px;margin-left:10px">Personal collections aren't shown — they're private to their owner</span><span style="flex:1"></span><button class="btn btn-primary btn-sm" onclick="toast('New collection…')">${ICONplus} New</button></div>
       <table class="tbl"><thead><tr><th>Collection</th><th>Owner</th><th>Members</th><th>Machines</th><th style="text-align:right">Manage</th></tr></thead>
-      <tbody>${FLATCOLL.map((c,i)=>`<tr class="click" onclick="drill(${i})">
-        <td><div style="display:flex;align-items:center;gap:10px"><span style="color:var(--accent)">${layers}</span>${c.shared?`<b>${c.name}</b>`:`<b class="muted">Collection ${c.id}</b><span class="muted" style="font-size:11px">· personal · name private</span>`}</div></td>
+      <tbody>${FLATCOLL.map((c,i)=>c.shared?`<tr class="click" onclick="drill(${i})">
+        <td><div style="display:flex;align-items:center;gap:10px"><span style="color:var(--accent)">${layers}</span><b>${c.name}</b></div></td>
         <td>${av(c.owner)}</td>
         <td><div style="display:flex;align-items:center;gap:8px"><div class="avs">${c.members.slice(0,5).map(av).join('')}</div><span class="muted" style="font-size:13px">${c.members.length}</span></div></td>
         <td>${c.machines}</td>
-        <td><div style="display:flex;justify-content:flex-end">${chevR}</div></td></tr>`).join('')}</tbody></table></div>
+        <td><div style="display:flex;justify-content:flex-end">${chevR}</div></td></tr>`:'').join('')}</tbody></table></div>
     <div class="panel" style="padding:6px 20px 12px;margin-bottom:16px">
       <div class="setrow"><div><div class="lab">Allow users to create collections</div><div class="hint">When off, only admins provision collections.</div></div><div onclick="COLLCREATE=!COLLCREATE;renderContent();toast('Create '+(COLLCREATE?'allowed':'blocked'))">${tog(COLLCREATE)}</div></div>
       <div class="setrow"><div><div class="lab">Allow sharing outside teams</div><div class="hint">Members can add anyone in the directory, not just teammates.</div></div><div onclick="COLLSHARE=!COLLSHARE;renderContent();toast('External sharing '+(COLLSHARE?'on':'off'))">${tog(COLLSHARE)}</div></div>
