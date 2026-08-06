@@ -198,7 +198,7 @@ function renderActs(){
     ${ALLOW_QUICK_SSH?`<button class="btn btn-sm" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`:''}
     <button class="btn btn-ghost btn-sm" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
     <button class="btn btn-ghost btn-sm" title="Collections — yours + Discover (offered to your teams)" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>
-    ${IS_ADMIN?`<button class="btn btn-ghost btn-sm" title="Configuration — users, teams, invitations, instance" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Configuration</span></button>`:''}
+    ${IS_ADMIN?`<button class="btn btn-ghost btn-sm" title="Administration — users, teams, invitations, instance" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Administration</span></button>`:''}
     <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
     <button class="profile" onclick="toggleProfile(event)" title="Your account"><span class="avatar" style="background:${ME_COLOR}">${ME_INIT}</span><span class="pmeta"><span class="pname">${ME_NAME}</span><span class="prole role-${ME_ROLE}">${ME_ROLE}</span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>`;initProfile();}
 
