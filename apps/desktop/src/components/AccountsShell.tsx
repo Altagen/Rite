@@ -94,35 +94,36 @@ export function AccountsShell() {
         conns={conns}
         instanceName={mode?.instanceName}
         identity={{ username: user.username, role: user.role }}
-        headerExtra={
-          <>
-            <AccessRequestsBell />
-            <button onClick={() => navigate('/teams')} className="m-btn m-btn-ghost m-btn-sm" title="Teams">
-              <IconUsers className="h-4 w-4" />
-              <span className="hidden md:inline">Teams</span>
-            </button>
-            <button onClick={() => navigate('/collections')} className="m-btn m-btn-ghost m-btn-sm" title="Collections">
-              <IconCollection className="h-4 w-4" />
-              <span className="hidden md:inline">Collections</span>
-            </button>
-            {canManage ? (
-              <button
-                onClick={() => navigate('/admin')}
-                className="m-btn m-btn-ghost m-btn-sm"
-                title={
-                  isNativeShell() || user.role === 'manager'
-                    ? 'Organization (server settings are in the web console)'
-                    : 'Administration'
-                }
-              >
-                <IconShield className="h-4 w-4" />
-                <span className="hidden md:inline">
-                  {isNativeShell() || user.role === 'manager' ? 'Organization' : 'Admin'}
-                </span>
-              </button>
-            ) : null}
-          </>
-        }
+        navActions={[
+          {
+            id: 'teams',
+            label: 'Teams',
+            icon: <IconUsers className="h-4 w-4" />,
+            onClick: () => navigate('/teams'),
+          },
+          {
+            id: 'collections',
+            label: 'Collections',
+            title: 'Collections — yours + Discover (offered to your teams)',
+            icon: <IconCollection className="h-4 w-4" />,
+            onClick: () => navigate('/collections'),
+          },
+          ...(canManage
+            ? [
+                {
+                  id: 'admin',
+                  label: isNativeShell() || user.role === 'manager' ? 'Organization' : 'Admin',
+                  title:
+                    isNativeShell() || user.role === 'manager'
+                      ? 'Organization (server settings are in the web console)'
+                      : 'Administration',
+                  icon: <IconShield className="h-4 w-4" />,
+                  onClick: () => navigate('/admin'),
+                },
+              ]
+            : []),
+        ]}
+        headerExtra={<AccessRequestsBell />}
       />
       {path === '/teams' && <TeamsDashboard />}
       {path === '/collections' && <CollectionsDashboard />}

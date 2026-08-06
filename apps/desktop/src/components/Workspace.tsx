@@ -15,6 +15,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useTranslation } from '../i18n/i18n';
 import { LibrarySidebar } from './LibrarySidebar';
 import { ProfilePastille } from './ProfilePastille';
+import { OverflowNav, type NavAction } from './OverflowNav';
 import { ConnectionForm } from './ConnectionForm';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
@@ -90,6 +91,7 @@ export function Workspace({
   headerExtra,
   instanceName,
   identity,
+  navActions,
 }: {
   auth: WorkspaceAuth;
   conns: ConnectionsSource;
@@ -103,6 +105,9 @@ export function Workspace({
   // profile pastille (Settings + Sign out live in its menu) instead of the standalone
   // gear + lock. Local vault shells pass nothing and keep the gear/lock controls.
   identity?: { username: string; role: string };
+  // Accounts context only: the collapsible header nav (Teams / Collections / Admin). Rendered
+  // through OverflowNav so it folds into a "⋯" menu before the row wraps. Local shells omit it.
+  navActions?: NavAction[];
 }) {
   const { isLocked, lock } = auth;
   // First run = no master password on this window's vault yet ⇒ "unlock" is really "create".
@@ -241,6 +246,7 @@ export function Workspace({
   const [showDefaultShellDropdown, setShowDefaultShellDropdown] = useState(false);
   const [defaultShellDropdownPosition, setDefaultShellDropdownPosition] = useState({ top: 0, left: 0 });
   const defaultShellButtonRef = useRef<HTMLButtonElement>(null);
+  const appbarRef = useRef<HTMLElement>(null);
 
   // Installed shells state
   const [installedShells, setInstalledShells] = useState<string[]>([]);
@@ -1004,7 +1010,9 @@ export function Workspace({
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       {/* Header (design mock: brand · context pill · actions) */}
-      <header className="m-appbar">
+      {/* Accounts context: m-appbar-fit forces one row + non-shrinking children, so OverflowNav's
+          scrollWidth measurement is meaningful and the pastille stays pinned right. */}
+      <header ref={appbarRef} className={`m-appbar${navActions?.length ? ' m-appbar-fit' : ''}`}>
         <div className="m-brand">
           <img src={riteLandscape} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
@@ -1056,7 +1064,10 @@ export function Workspace({
           </button>
         )}
 
-        {/* Shell-provided actions (e.g. the org-admin surface entry). */}
+        {/* Collapsible nav (Teams / Collections / Admin) — folds into "⋯" before the row wraps. */}
+        {navActions?.length ? <OverflowNav actions={navActions} appbarRef={appbarRef} /> : null}
+
+        {/* Shell-provided always-visible actions (e.g. the notifications bell). */}
         {headerExtra}
 
         {isLocked ? (

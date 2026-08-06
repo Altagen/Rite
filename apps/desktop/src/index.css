@@ -176,6 +176,19 @@
   .m-spacer {
     flex: 1;
   }
+  /* Accounts header (Workspace with navActions): one row, and children that keep their natural
+     width instead of shrinking — so OverflowNav can detect real overflow (scrollWidth) and fold
+     the nav into "⋯". The spacer still absorbs slack. */
+  .m-appbar-fit {
+    flex-wrap: nowrap;
+  }
+  .m-appbar-fit > * {
+    flex-shrink: 0;
+  }
+  .m-appbar-fit > .m-spacer {
+    flex: 1 1 0;
+    min-width: 0;
+  }
 
   /* sidebar chrome */
   .m-side-hdr {
