@@ -93,6 +93,7 @@ export function AccountsShell() {
         }}
         conns={conns}
         instanceName={mode?.instanceName}
+        identity={{ username: user.username, role: user.role }}
         headerExtra={
           <>
             <AccessRequestsBell />

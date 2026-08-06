@@ -14,6 +14,7 @@ import { type ConnectionInfo, type ConnectionsSource } from '../store/connection
 import { useSettingsStore } from '../store/settingsStore';
 import { useTranslation } from '../i18n/i18n';
 import { LibrarySidebar } from './LibrarySidebar';
+import { ProfilePastille } from './ProfilePastille';
 import { ConnectionForm } from './ConnectionForm';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
@@ -88,6 +89,7 @@ export function Workspace({
   conns,
   headerExtra,
   instanceName,
+  identity,
 }: {
   auth: WorkspaceAuth;
   conns: ConnectionsSource;
@@ -97,6 +99,10 @@ export function Workspace({
   // A global instance name (accounts context) shown by the brand so users can
   // tell which server they're on. The browser has no context pill.
   instanceName?: string | null;
+  // Accounts context only: the signed-in identity. When present, the header shows the
+  // profile pastille (Settings + Sign out live in its menu) instead of the standalone
+  // gear + lock. Local vault shells pass nothing and keep the gear/lock controls.
+  identity?: { username: string; role: string };
 }) {
   const { isLocked, lock } = auth;
   // First run = no master password on this window's vault yet ⇒ "unlock" is really "create".
@@ -1062,6 +1068,15 @@ export function Workspace({
             <IconLock className="h-4 w-4" />
             <span className="hidden md:inline">{isFirstRun ? 'Create vault' : 'Unlock'}</span>
           </button>
+        ) : identity ? (
+          // Accounts context: the pastille owns Settings + Sign out.
+          <ProfilePastille
+            username={identity.username}
+            role={identity.role}
+            instanceName={instanceName}
+            onSettings={() => setShowSettings(true)}
+            onSignOut={() => lock()}
+          />
         ) : (
           <>
             <button onClick={() => setShowSettings(true)} className="m-btn m-btn-ghost m-btn-sm" title={t('settings.title')}>
