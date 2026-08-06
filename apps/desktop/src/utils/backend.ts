@@ -568,8 +568,9 @@ export const BackendAdmin = {
     }),
   setStatus: (id: string, status: 'active' | 'disabled') =>
     invokeWithValidation('admin_set_status', z.null(), { id, status }),
-  // Admin-only: flip a user between 'user' and 'manager' (never assign/change admin).
-  setRole: (id: string, role: 'user' | 'manager') =>
+  // Change a user's role (admin-only in practice; the server enforces the owner rule). Admins may
+  // promote up to admin — the caller must then seal the Admin-group key to the new admin.
+  setRole: (id: string, role: 'user' | 'manager' | 'admin') =>
     invokeWithValidation('admin_set_role', z.null(), { id, role }),
   /** Reset a user's access (admin): re-provision a temp vault + wipe their sharing crypto.
    *  Keeps username/role/teams; the user sets their own password at next login. */

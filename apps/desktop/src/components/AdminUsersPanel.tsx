@@ -46,6 +46,10 @@ export function AdminUsersPanel() {
   const [role, setRole] = useState<'user' | 'admin' | 'manager'>('user');
   // A manager can invite regular users only; only an admin assigns roles.
   const meIsAdmin = me?.role === 'admin';
+  // Owner rule (mirrors the server): you can only manage accounts strictly below your level. Admins
+  // are the top tier and govern everyone (incl. peers — that's how an admin is offboarded); a
+  // manager may act on regular users only, never other managers or admins.
+  const canManage = (u: ServerUser) => meIsAdmin || (me?.role === 'manager' && u.role === 'user');
   // Reset-access dialog: the admin sets a temp password to relay out-of-band; the user
   // re-keys on next login. Their sharing crypto is wiped server-side (re-request access).
   const [resetTarget, setResetTarget] = useState<ServerUser | null>(null);
@@ -185,20 +189,36 @@ export function AdminUsersPanel() {
                     >
                       {u.role}
                     </span>
-                    {/* Admins can promote/demote between user and manager (not admins). */}
+                    {/* Admins set any role up to admin (an existing admin's role is fixed here —
+                        offboard via Disable/Delete, which rotate the escrow group). Promoting to
+                        admin also seals the Admin-group key to the new admin. */}
                     {meIsAdmin && !isSelf && u.role !== 'admin' && (
-                      <button
-                        onClick={() =>
+                      <select
+                        value={u.role}
+                        onChange={(e) => {
+                          const nr = e.target.value as 'user' | 'manager' | 'admin';
+                          if (nr === u.role) return;
+                          if (
+                            nr === 'admin' &&
+                            !window.confirm(
+                              `Promote ${u.username} to admin? They get full server access and can read collection names via the Admin group.`,
+                            )
+                          )
+                            return;
                           act(async () => {
-                            await Backend.Admin.setRole(u.id, u.role === 'manager' ? 'user' : 'manager');
-                          })
-                        }
+                            await Backend.Admin.setRole(u.id, nr);
+                            // A new admin needs the current group key sealed to them (O(1), no rotation).
+                            if (nr === 'admin') await grantReenabledAdmin(u.id);
+                          });
+                        }}
                         disabled={busy}
-                        className="ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                        title={u.role === 'manager' ? 'Demote to user' : 'Promote to manager'}
+                        className="ml-2 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-50"
+                        title="Change role"
                       >
-                        {u.role === 'manager' ? '→ user' : '→ manager'}
-                      </button>
+                        <option value="user">user</option>
+                        <option value="manager">manager</option>
+                        <option value="admin">admin</option>
+                      </select>
                     )}
                   </td>
                   <td className="px-4 py-2.5">
@@ -213,7 +233,7 @@ export function AdminUsersPanel() {
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    {!isSelf && (
+                    {!isSelf && canManage(u) && (
                       <div className="flex justify-end gap-2">
                         <button
                           onClick={() =>
