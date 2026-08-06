@@ -172,3 +172,23 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
 .collapsebar{display:flex;flex-direction:column;align-items:center;padding-top:10px;gap:8px}
 .menu{position:fixed;background:var(--card);border:1px solid var(--border2);border-radius:11px;box-shadow:var(--shadow);padding:6px;z-index:60;min-width:190px}
 .menu .row{padding:8px 10px}
+
+/* ---- Identity: profile chip + dropdown (shared across the app + admin console) ---- */
+.avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:750;font-size:12px;color:#0a0e1a;flex:none;letter-spacing:.02em}
+.profile{display:flex;align-items:center;gap:9px;padding:3px 9px 3px 3px;border-radius:999px;border:1px solid var(--border2);background:var(--card2);cursor:pointer;transition:.14s}
+.profile:hover{border-color:var(--accent)}
+.profile .pmeta{display:flex;flex-direction:column;line-height:1.15;text-align:left}
+.profile .pname{font-weight:650;font-size:13px}
+.prole{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.prole.role-admin{color:var(--accent)} .prole.role-manager{color:var(--amber)} .prole.role-user{color:var(--muted)}
+.profile .chev{color:var(--muted);display:grid;place-items:center}
+.pmenu{position:fixed;top:56px;right:16px;width:252px;background:var(--card);border:1px solid var(--border2);border-radius:14px;box-shadow:var(--shadow);padding:6px;z-index:60;display:none}
+.pmenu.show{display:block;animation:pop .12s ease}
+@keyframes pop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.pmenu-head{display:flex;align-items:center;gap:11px;padding:9px 10px 11px}
+.pmenu-head .avatar{width:40px;height:40px;font-size:15px}
+.pi{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;font-size:13.5px;color:var(--fg-dim);cursor:pointer}
+.pi:hover{background:var(--card2);color:var(--fg)}
+.pi svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;flex:none}
+.pi.danger:hover{color:var(--red)}
+.pi-sep{height:1px;background:var(--border);margin:5px 4px}

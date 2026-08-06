@@ -112,6 +112,16 @@
     <div class="spacer"></div>
     <span id="acts" style="display:flex;gap:10px;align-items:center"></span>
   </div>
+  <!-- Profile dropdown (server context): who you're signed in as on this server + account actions.
+       On a local vault there's no server account — the context pill + Lock convey the local identity. -->
+  <div class="pmenu" id="pmenu">
+    <div class="pmenu-head"><span class="avatar" id="pmAv"></span><div><div class="pname" id="pmName" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span id="pmServer"></span></div></div></div>
+    <div class="pi-sep"></div>
+    <div class="pi" onclick="closeProfile();openSettings()"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> Change password</div>
+    <div class="pi" onclick="closeProfile();toast('Username copied')"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg> Copy username</div>
+    <div class="pi-sep"></div>
+    <div class="pi danger" onclick="closeProfile();signOutServer(STATE.ctx.id)"><svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 19H6a2 2 0 01-2-2V7a2 2 0 012-2h6"/></svg> Sign out of this server</div>
+  </div>
   <div style="flex:1;display:flex;min-height:0">
     <div class="side" id="side" style="width:290px"></div>
     <main style="flex:1;display:flex;flex-direction:column;min-width:0">
@@ -727,9 +737,13 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
   ${STATE.ctx.type==='vault'&&!STATE.ctx.locked?`<button class="btn btn-ghost btn-sm" title="Lock vault" onclick="lockVault('${STATE.ctx.id}')">${ICON.lock}</button>`:''}
   ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Discover collections offered to your teams" onclick="openDiscover()">${M.compass} <span class="lbl">Discover</span></button>
   <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
-  <button class="btn btn-ghost btn-sm" title="Sign out of ${STATE.ctx.name}" onclick="signOutServer('${STATE.ctx.id}')">${M.signout}</button>`:''}
+  <button class="profile" onclick="toggleProfile(event)" title="Your account on ${STATE.ctx.name}"><span class="avatar" style="background:${avColor(ORG.me)}">${(ORG.me||'?').slice(0,2).toUpperCase()}</span><span class="pmeta"><span class="pname">${ORG.me}</span><span class="prole role-admin">admin</span></span><span class="chev">${EXICON.chevD}</span></button>`:''}
   <button class="btn btn-ghost btn-sm" title="Settings" onclick="openSettings()">${EXICON.gear}</button>
   ${STATE.ctx.type!=='home'?`<button class="btn btn-ghost btn-sm" title="Open in new window" onclick="openInNewWindow('${STATE.ctx.name}')">${EXICON.split}</button>`:''}`;}
+// Profile dropdown (server context). Populated from the active server context on open.
+function toggleProfile(e){e.stopPropagation();const a=document.getElementById('pmAv');a.textContent=(ORG.me||'?').slice(0,2).toUpperCase();a.style.background=avColor(ORG.me);document.getElementById('pmName').textContent=ORG.me;document.getElementById('pmServer').textContent=(STATE.ctx&&STATE.ctx.name)||'';document.getElementById('pmenu').classList.toggle('show');}
+function closeProfile(){document.getElementById('pmenu').classList.remove('show');}
+document.addEventListener('click',e=>{if(!e.target.closest('.profile')&&!e.target.closest('.pmenu'))closeProfile();});
 function renderAll(){renderPill();renderActs();renderSide();renderMain();}
 STATE.ctx=Object.assign({type:'server'},DATA.servers[0]); // start on a server to show collections
 renderAll();

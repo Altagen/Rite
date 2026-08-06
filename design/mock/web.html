@@ -75,6 +75,15 @@
     <div class="spacer"></div>
     <span id="acts" style="display:flex;gap:10px;align-items:center"></span>
   </div>
+  <!-- Profile dropdown: always know who's signed in + their role, with account actions. -->
+  <div class="pmenu" id="pmenu">
+    <div class="pmenu-head"><span class="avatar" id="pmAv"></span><div><div class="pname" id="pmName" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span id="pmServer"></span></div></div></div>
+    <div class="pi-sep"></div>
+    <div class="pi" onclick="closeProfile();openSettings()"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> Change password</div>
+    <div class="pi" onclick="closeProfile();toast('Username copied')"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg> Copy username</div>
+    <div class="pi-sep"></div>
+    <div class="pi danger" onclick="toast('Signed out')"><svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 19H6a2 2 0 01-2-2V7a2 2 0 012-2h6"/></svg> Sign out</div>
+  </div>
   <div style="flex:1;display:flex;min-height:0">
     <div class="side" id="side" style="width:290px"></div>
     <main style="flex:1;display:flex;flex-direction:column;min-width:0">
@@ -164,6 +173,12 @@ function collectMachines(node){let out=[...(node.conns||[])];(node.children||[])
 function underColl(id){let res=false;(function rec(list,inColl){for(const n of list){if(n.id===id){res=inColl;return;}if(n.children)rec(n.children,inColl||n.type==='coll');}})(LIB,false);return res;}
 
 const IS_ADMIN=true;
+// Who's signed in (server account). Real client: from the session / whoami.
+const ME_NAME=ORG.me, ME_ROLE=IS_ADMIN?'admin':'user', ME_INIT=(ME_NAME||'?').slice(0,2).toUpperCase(), ME_COLOR=avColor(ME_NAME);
+function toggleProfile(e){e.stopPropagation();document.getElementById('pmenu').classList.toggle('show');}
+function closeProfile(){document.getElementById('pmenu').classList.remove('show');}
+function initProfile(){const a=document.getElementById('pmAv');if(!a)return;a.textContent=ME_INIT;a.style.background=ME_COLOR;document.getElementById('pmName').textContent=ME_NAME;document.getElementById('pmServer').textContent=document.getElementById('instName').textContent;}
+document.addEventListener('click',e=>{if(!e.target.closest('.profile')&&!e.target.closest('.pmenu'))closeProfile();});
 let STATE={sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp'};
 // The web UI opens terminals ON THE SERVER, so the shell is the server's default (set by the
 // admin in Instance settings), not a per-user pick. Choosing between local shells (fish/zsh/…)
@@ -184,7 +199,7 @@ function renderActs(){
     ${IS_ADMIN?`<button class="btn btn-ghost btn-sm" title="Administration" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Admin</span></button>`:''}
     <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
     <button class="btn btn-ghost btn-sm" title="Settings" onclick="openSettings()">${EXICON.gear}</button>
-    <button class="btn btn-ghost btn-sm" title="Sign out" onclick="toast('Signed out')"><svg class="icon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> <span class="lbl">Sign out</span></button>`;}
+    <button class="profile" onclick="toggleProfile(event)" title="Your account"><span class="avatar" style="background:${ME_COLOR}">${ME_INIT}</span><span class="pmeta"><span class="pname">${ME_NAME}</span><span class="prole role-${ME_ROLE}">${ME_ROLE}</span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>`;initProfile();}
 
 /* ================= sidebar library ================= */
 function renderSide(){const s=document.getElementById('side');
