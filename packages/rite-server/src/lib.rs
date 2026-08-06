@@ -423,6 +423,11 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/admin/default-shell", patch(set_default_shell))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
         .route("/api/admin/registration", patch(set_open_registration))
+        .route("/api/admin/invitations", patch(set_allow_invitations))
+        .route(
+            "/api/admin/confirm-role-change",
+            patch(set_confirm_role_change),
+        )
         .route(
             "/api/admin/enrollment-tokens",
             get(admin_list_tokens).post(admin_create_token),
@@ -1081,6 +1086,14 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
     // leaves it off; turning it on lets the sign-in screen offer "Create an account".
     let open_registration =
         state.db.get_setting("open_registration").await? == Some("1".to_string());
+    // Master switch for the invitation-token path (mint + redeem). Default ON, and independent of
+    // open_registration: tokens are the invite-only path, needed precisely when open reg is off.
+    let allow_invitations =
+        state.db.get_setting("allow_invitations").await? != Some("0".to_string());
+    // A UX safety policy, server-persisted so every client honours it: when on, the client asks
+    // to confirm each account role change before applying it. Default off.
+    let confirm_role_change =
+        state.db.get_setting("confirm_role_change").await? == Some("1".to_string());
     let healthcheck = healthcheck_policy(&state).await?;
     Ok(Json(json!({
         "accounts": state.accounts,
@@ -1092,6 +1105,8 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "defaultShell": default_shell,
         "allowQuickSsh": allow_quick_ssh,
         "openRegistration": open_registration,
+        "allowInvitations": allow_invitations,
+        "confirmRoleChange": confirm_role_change,
         "healthcheck": healthcheck,
         "collectionPolicy": collection_policy(&state).await?,
         "hostKey": state.host_key.as_deref(),
@@ -1212,6 +1227,38 @@ async fn set_open_registration(
     state
         .db
         .set_setting("open_registration", if req.enabled { "1" } else { "0" })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Master switch for the invitation-token path (mint + redeem), org-admin only. Default ON;
+/// turning it off closes invitations instance-wide without touching open_registration.
+async fn set_allow_invitations(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<StatusCode, AppError> {
+    state
+        .db
+        .set_setting("allow_invitations", if req.enabled { "1" } else { "0" })
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Whether the invitation-token path is open (default ON). Read where tokens are minted and
+/// redeemed so the master switch is enforced server-side, not just hidden in the UI.
+async fn invitations_allowed(state: &ServerState) -> Result<bool, AppError> {
+    Ok(state.db.get_setting("allow_invitations").await? != Some("0".to_string()))
+}
+
+/// Turn the client's "confirm every role change" safety prompt on/off (org-admin only). A UX
+/// policy persisted server-side so all clients agree; no server enforcement. Default off.
+async fn set_confirm_role_change(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<StatusCode, AppError> {
+    state
+        .db
+        .set_setting("confirm_role_change", if req.enabled { "1" } else { "0" })
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1553,6 +1600,15 @@ async fn server_register(
 
     // --- Path A: redeem an invitation token (recipe applied, single-use, bypasses the gate). ---
     if let Some(tok) = req.token.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+        // The master switch closes redemption too — a disabled instance honours no token, even
+        // one minted earlier (the client hides the field; this is the real boundary).
+        if !invitations_allowed(&state).await? {
+            return Ok((
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "invitations are disabled on this instance" })),
+            )
+                .into_response());
+        }
         let Some(recipe) = rite_core::enrollment::claim(state.db.pool(), tok).await? else {
             return Ok((
                 StatusCode::FORBIDDEN,
@@ -1650,6 +1706,13 @@ async fn admin_create_token(
     Extension(caller): Extension<Arc<User>>,
     Json(req): Json<CreateTokenReq>,
 ) -> Result<Response, AppError> {
+    if !invitations_allowed(&state).await? {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "invitations are disabled on this instance" })),
+        )
+            .into_response());
+    }
     if req.role == Role::Admin {
         return Ok((
             StatusCode::BAD_REQUEST,
