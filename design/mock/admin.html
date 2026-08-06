@@ -170,10 +170,12 @@
   </div>
   <!-- Profile dropdown: identity at a glance (who + role), and account actions. -->
   <div class="pmenu" id="pmenu">
-    <div class="phead"><span class="avatar" id="avLg"></span><div><div class="pname" id="pName2" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span id="pServer"></span></div></div></div>
-    <div class="psep"></div>
+    <div class="pmenu-head"><span class="avatar" id="pmAv"></span><div><div class="pname" id="pmName" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span id="pmServer"></span></div></div></div>
+    <div class="pi-sep"></div>
+    <div class="pi" onclick="closeProfile();(typeof openSettings==='function'?openSettings():toast('Settings…'))"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.1 5.1l2.1 2.1M16.8 16.8l2.1 2.1M18.9 5.1l-2.1 2.1M7.2 16.8l-2.1 2.1"/></svg> Settings</div>
     <div class="pi" onclick="closeProfile();toast('Change password…')"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> Change password</div>
-    <div class="psep"></div>
+    <div class="pi" onclick="closeProfile();toast('Username copied')"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg> Copy username</div>
+    <div class="pi-sep"></div>
     <div class="pi danger" onclick="toast('Signed out')"><svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 19H6a2 2 0 01-2-2V7a2 2 0 012-2h6"/></svg> Sign out</div>
   </div>
   <div class="admin-body">
@@ -544,10 +546,10 @@ const MEROLE=(ORG.users.find(u=>u.u===ORG.me)||{role:'admin'}).role;
 const ME={name:ORG.me,role:MEROLE,server:'rite.acme.io'};
 function initProfile(){
   const init=ME.name.slice(0,2).toUpperCase();
-  ['avSm','avLg'].forEach(id=>{const e=document.getElementById(id);e.textContent=init;e.style.background=avColor(ME.name);});
+  ['avSm','pmAv'].forEach(id=>{const e=document.getElementById(id);e.textContent=init;e.style.background=avColor(ME.name);});
   document.getElementById('pName').textContent=ME.name;
-  document.getElementById('pName2').textContent=ME.name;
-  document.getElementById('pServer').textContent=ME.server;
+  document.getElementById('pmName').textContent=ME.name;
+  document.getElementById('pmServer').textContent=ME.server;
   const r=document.getElementById('pRole');r.textContent=ME.role;r.className='prole role-'+ME.role;
 }
 function toggleProfile(e){e.stopPropagation();document.getElementById('pmenu').classList.toggle('show');}
