@@ -49,9 +49,12 @@
   .tcard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;cursor:pointer;transition:.13s}
   .tcard:hover{border-color:var(--accent);transform:translateY(-2px)}
   .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
-  .toggle{width:42px;height:24px;border-radius:999px;background:var(--card2);border:1px solid var(--border2);position:relative;cursor:pointer;flex-shrink:0}
+  /* Flex track: 2px inset padding + a knob sized to the inner height, pushed right on `.on` via
+     margin-left:auto. The knob can never escape — no hand-tuned offset to drift. */
+  .toggle{display:inline-flex;align-items:center;width:44px;height:24px;padding:2px;border-radius:999px;background:var(--card2);border:1px solid var(--border2);cursor:pointer;flex-shrink:0;box-sizing:border-box;transition:background .15s,border-color .15s}
   .toggle.on{background:var(--accent);border-color:var(--accent)}
-  .toggle i{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.15s}.toggle.on i{left:20px}
+  .toggle i{width:18px;height:18px;border-radius:50%;background:#fff;flex:none;box-shadow:0 1px 2px rgba(0,0,0,.35);transition:.15s}
+  .toggle.on i{margin-left:auto}
   .setrow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid var(--border)}
   .setrow:last-child{border-bottom:none}
   .setrow .lab{font-weight:600} .setrow .hint{font-size:12px;color:var(--muted);margin-top:3px}
@@ -114,6 +117,29 @@
   .tk-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
   .tk-chip{border:1px solid var(--border);background:none;color:var(--fg-dim);border-radius:999px;padding:4px 11px;font-size:12px;cursor:pointer}
   .tk-chip.on{border-color:var(--accent);background:color-mix(in oklab,var(--accent) 12%,transparent);color:var(--accent)}
+  /* Identity: a colour-seeded avatar + a profile chip in the appbar, and its dropdown. */
+  .avatar{border-radius:50%;display:grid;place-items:center;font-weight:750;color:#0a0e1a;flex:none;letter-spacing:.02em;width:30px;height:30px;font-size:12px}
+  .profile{display:flex;align-items:center;gap:9px;padding:3px 9px 3px 3px;border-radius:999px;border:1px solid var(--border2);background:var(--card2);cursor:pointer;transition:.14s}
+  .profile:hover{border-color:var(--accent)}
+  .profile .pmeta{display:flex;flex-direction:column;line-height:1.15;text-align:left}
+  .profile .pname{font-weight:650;font-size:13px}
+  .prole{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+  .prole.role-admin{color:var(--accent)} .prole.role-manager{color:var(--amber)} .prole.role-user{color:var(--muted)}
+  .profile .chev{color:var(--muted);display:grid;place-items:center}
+  .pmenu{position:fixed;top:56px;right:16px;width:256px;background:var(--card);border:1px solid var(--border2);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.5);padding:6px;z-index:60;display:none}
+  .pmenu.show{display:block;animation:pop .12s ease}
+  @keyframes pop{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .pmenu .phead{display:flex;align-items:center;gap:11px;padding:11px 11px 12px}
+  .pmenu .phead .avatar{width:42px;height:42px;font-size:16px}
+  .pmenu .pi{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;font-size:13.5px;color:var(--fg-dim);cursor:pointer}
+  .pmenu .pi:hover{background:var(--card2);color:var(--fg)}
+  .pmenu .pi svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8}
+  .pmenu .pi.danger:hover{color:var(--red)}
+  .psep{height:1px;background:var(--border);margin:5px 4px}
+  /* Inline role picker in the users table (change role in place, up to admin). */
+  .role-sel{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:3px 26px 3px 9px;border-radius:999px;border:1px solid var(--border2);background:var(--card2);cursor:pointer;
+    appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23858ea6' stroke-width='2.4'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 7px center;background-size:12px}
+  .role-sel:hover{border-color:var(--accent)}
   /* Responsive: narrow the nav, then turn it into a horizontal tab bar on top. */
   @media (max-width:900px){ .admin-nav{width:180px} .admin-main{padding:20px 18px} }
   @media (max-width:640px){ .admin-body{flex-direction:column} .admin-nav{width:100%;flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border);padding:8px} .navitem{white-space:nowrap} .admin-main{padding:18px 14px} .admin-main .panel{overflow-x:auto} }
@@ -126,7 +152,20 @@
     <div class="inst"><span class="dot"></span><span id="instName">Acme Corp</span> <span class="muted" style="font-weight:400;font-size:12px">· rite.acme.io</span></div>
     <div class="spacer"></div>
     <button class="btn btn-sm" title="Back to the connection manager" onclick="location.href='web.html'"><svg class="icon" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg> <span>Back to app</span></button>
-    <button class="btn btn-ghost btn-sm" title="Sign out" onclick="toast('Signed out')"><svg class="icon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> <span>Sign out</span></button>
+    <button class="profile" onclick="toggleProfile(event)" title="Your account">
+      <span class="avatar" id="avSm"></span>
+      <span class="pmeta"><span class="pname" id="pName"></span><span class="prole" id="pRole"></span></span>
+      <span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
+    </button>
+  </div>
+  <!-- Profile dropdown: identity at a glance (who + role), and account actions. -->
+  <div class="pmenu" id="pmenu">
+    <div class="phead"><span class="avatar" id="avLg"></span><div><div class="pname" id="pName2" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span id="pServer"></span></div></div></div>
+    <div class="psep"></div>
+    <div class="pi" onclick="location.href='web.html'"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg> Back to the app</div>
+    <div class="pi" onclick="closeProfile();toast('Change password…')"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg> Change password</div>
+    <div class="psep"></div>
+    <div class="pi danger" onclick="toast('Signed out')"><svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 19H6a2 2 0 01-2-2V7a2 2 0 012-2h6"/></svg> Sign out</div>
   </div>
   <div class="admin-body">
     <nav class="admin-nav" id="nav"></nav>
@@ -202,24 +241,46 @@ function overview(){
     </div>`;
 }
 
+const roleColor=r=>r==='admin'?'var(--accent)':r==='manager'?'var(--amber)':'var(--fg-dim)';
 function users(){
   return `<div class="page-h"><h1>Users</h1><span class="sub">${ORG.users.length} accounts</span><div style="flex:1"></div>
-      <button class="btn btn-primary btn-sm" onclick="toast('New user…')">${ICONplus} New user</button></div>
+      <button class="btn btn-primary btn-sm" onclick="newUserDialog()">${ICONplus} New user</button></div>
     <div class="panel">
       <table class="tbl">
         <thead><tr><th>Username</th><th>Role</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
-        <tbody>${ORG.users.map(u=>{const st=STATUS[u.u]||'active';return `<tr>
-          <td><div style="display:flex;align-items:center;gap:10px">${av(u.u)}<b>${u.u}</b>${u.u===ORG.me?'<span class="muted" style="font-size:12px">(you)</span>':''}</div></td>
-          <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+        <tbody>${ORG.users.map(u=>{const st=STATUS[u.u]||'active';const self=u.u===ORG.me;return `<tr>
+          <td><div style="display:flex;align-items:center;gap:10px">${av(u.u)}<b>${u.u}</b>${self?'<span class="muted" style="font-size:12px">(you)</span>':''}</div></td>
+          <td>${self
+            ? `<span class="role-badge role-${u.role}">${u.role}</span>`
+            : `<select class="role-sel" style="color:${roleColor(u.role)}" onchange="toast('${u.u} → '+this.value)">${['user','manager','admin'].map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${r}</option>`).join('')}</select>`}</td>
           <td><span class="st ${st}"><span class="dot"></span>${st}</span></td>
           <td><div class="rowacts">
-            <button class="btn btn-ghost" title="Change role" onclick="toast('Change role of ${u.u}')">${EXICON.shield}</button>
-            ${u.u===ORG.me?'':`<button class="btn btn-ghost" title="Reset access (lost password)" onclick="askReset('${u.u}')" style="color:var(--amber)"><svg class="icon" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3.4M16.5 6.7l2.2 2.2M13.6 9.6l2.2 2.2"/></svg></button>`}
+            ${self?'<span class="muted" style="font-size:12px;padding-right:4px">—</span>':`
+            <button class="btn btn-ghost" title="Reset access (lost password)" onclick="askReset('${u.u}')" style="color:var(--amber)"><svg class="icon" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3.4M16.5 6.7l2.2 2.2M13.6 9.6l2.2 2.2"/></svg></button>
             <button class="btn btn-ghost" title="${st==='active'?'Disable':'Enable'}" onclick="toast('${st==='active'?'Disable':'Enable'} ${u.u}')"><svg class="icon" viewBox="0 0 24 24">${st==='active'?'<path d="M18.36 6.64A9 9 0 015.64 18.36M12 3v9"/>':'<path d="M5 12l5 5L20 7"/>'}</svg></button>
-            <button class="btn btn-ghost" title="Delete" onclick="toast('Delete ${u.u}')" style="color:var(--red)">${EXICON.trash}</button>
+            <button class="btn btn-ghost" title="Delete" onclick="toast('Delete ${u.u}')" style="color:var(--red)">${EXICON.trash}</button>`}
           </div></td></tr>`;}).join('')}</tbody>
       </table>
     </div>`;
+}
+// Add-user modal — opened from the top button, so the list never pushes the form around.
+function genPw(){const a='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';let s='';for(let i=0;i<16;i++)s+=a[Math.floor(Math.random()*a.length)];const f=document.getElementById('nuPw');if(f){f.value=s;f.type='text';}}
+function newUserDialog(){
+  const b=document.getElementById('bd');
+  b.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
+    <header><h3>Add a user</h3><p>Create an account and hand over a temporary password — the user sets their own at first login, so you never keep it.</p></header>
+    <div class="body">
+      <label class="field"><span>Username</span><input class="inp" id="nuUser" autocomplete="off" placeholder="e.g. dana"></label>
+      <label class="field"><span>Temporary password</span>
+        <div style="display:flex;gap:8px"><input class="inp" id="nuPw" type="text" placeholder="Type or generate" style="flex:1"><button class="btn btn-sm" onclick="genPw()">Generate</button></div></label>
+      <label class="field"><span>Role</span>
+        <select class="inp" id="nuRole"><option value="user">user</option><option value="manager">manager</option><option value="admin">admin</option></select>
+        <div class="muted" style="font-size:12px;margin-top:5px">Managers run org onboarding (users, teams, invitations); admins manage the whole instance. You can promote later.</div></label>
+    </div>
+    <div class="foot"><button class="btn btn-sm" onclick="closeBd()">Cancel</button><button class="btn btn-sm btn-primary" onclick="closeBd();toast('User created — share the temporary password')">Create user</button></div>
+  </div>`;
+  b.classList.add('show');
+  setTimeout(()=>{const i=document.getElementById('nuUser');if(i)i.focus();},30);
 }
 
 // ---- Enrollment tokens (ADR 0015 phase 3) ----------------------------------------------
@@ -432,7 +493,22 @@ function askReset(u){
 }
 function renderContent(){document.getElementById('content').innerHTML='<div class="wrap">'+({overview,users,invitations,teams,collections,instance})[SEC]()+'</div>';}
 function toast(m){let t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);}t.textContent=m;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1600);}
-renderNav();renderContent();
+// Identity (mock org data; the real client fills this from the session / whoami).
+const MEROLE=(ORG.users.find(u=>u.u===ORG.me)||{role:'admin'}).role;
+const ME={name:ORG.me,role:MEROLE,server:'rite.acme.io'};
+function initProfile(){
+  const init=ME.name.slice(0,2).toUpperCase();
+  ['avSm','avLg'].forEach(id=>{const e=document.getElementById(id);e.textContent=init;e.style.background=avColor(ME.name);});
+  document.getElementById('pName').textContent=ME.name;
+  document.getElementById('pName2').textContent=ME.name;
+  document.getElementById('pServer').textContent=ME.server;
+  const r=document.getElementById('pRole');r.textContent=ME.role;r.className='prole role-'+ME.role;
+}
+function toggleProfile(e){e.stopPropagation();document.getElementById('pmenu').classList.toggle('show');}
+function closeProfile(){document.getElementById('pmenu').classList.remove('show');}
+document.addEventListener('click',e=>{if(!e.target.closest('.profile')&&!e.target.closest('.pmenu'))closeProfile();});
+
+initProfile();renderNav();renderContent();
 </script>
 </body>
 </html>
