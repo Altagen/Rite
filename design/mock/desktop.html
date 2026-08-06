@@ -737,6 +737,7 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
   ${STATE.ctx.type==='vault'&&!STATE.ctx.locked?`<button class="btn btn-ghost btn-sm" title="Lock vault" onclick="lockVault('${STATE.ctx.id}')">${ICON.lock}</button>`:''}
   ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Discover collections offered to your teams" onclick="openDiscover()">${M.compass} <span class="lbl">Discover</span></button>
   <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
+  <button class="btn btn-ghost btn-sm" title="Configuration — users, teams, invitations, instance" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Configuration</span></button>
   <button class="profile" onclick="toggleProfile(event)" title="Your account on ${STATE.ctx.name}"><span class="avatar" style="background:${avColor(ORG.me)}">${(ORG.me||'?').slice(0,2).toUpperCase()}</span><span class="pmeta"><span class="pname">${ORG.me}</span><span class="prole role-admin">admin</span></span><span class="chev">${EXICON.chevD}</span></button>`:''}
   <button class="btn btn-ghost btn-sm" title="Settings" onclick="openSettings()">${EXICON.gear}</button>
   ${STATE.ctx.type!=='home'?`<button class="btn btn-ghost btn-sm" title="Open in new window" onclick="openInNewWindow('${STATE.ctx.name}')">${EXICON.split}</button>`:''}`;}
