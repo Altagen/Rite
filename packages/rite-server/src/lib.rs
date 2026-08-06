@@ -1664,6 +1664,28 @@ async fn admin_create_token(
         )
             .into_response());
     }
+    // A past/zero expiry would mint a dead token — reject it (a client date-picker in the past).
+    if matches!(req.expires_in_secs, Some(s) if s <= 0) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "expiry must be in the future" })),
+        )
+            .into_response());
+    }
+    // A recipe may only grant membership to teams the minter can administer (org-admins pass all),
+    // mirroring add_team_member — otherwise a token would bypass per-team authorization.
+    for t in &req.teams {
+        if !rite_core::teams::team_exists(state.db.pool(), &t.team_id).await? {
+            return Ok((StatusCode::BAD_REQUEST, Json(json!({ "error": "unknown team" }))).into_response());
+        }
+        if !can_admin_team(&state, &caller, &t.team_id).await? {
+            return Ok((
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "you can't grant membership to a team you don't administer" })),
+            )
+                .into_response());
+        }
+    }
     let teams = req
         .teams
         .into_iter()
@@ -1687,14 +1709,33 @@ async fn admin_create_token(
 
 async fn admin_list_tokens(
     State(state): State<ServerState>,
+    Extension(caller): Extension<Arc<User>>,
 ) -> Result<Json<Vec<rite_core::enrollment::TokenInfo>>, AppError> {
-    Ok(Json(rite_core::enrollment::list(state.db.pool()).await?))
+    let mut tokens = rite_core::enrollment::list(state.db.pool()).await?;
+    // Owner rule: a manager manages only what's below them — user-role invitations. Admins see all.
+    if caller.role != Role::Admin {
+        tokens.retain(|t| t.role == Role::User);
+    }
+    Ok(Json(tokens))
 }
 
 async fn admin_revoke_token(
     State(state): State<ServerState>,
+    Extension(caller): Extension<Arc<User>>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
+    match rite_core::enrollment::role_of(state.db.pool(), &id).await? {
+        None => return Ok(StatusCode::NOT_FOUND.into_response()),
+        // A manager can only revoke tokens it could itself mint (user-role).
+        Some(role) if caller.role != Role::Admin && role != Role::User => {
+            return Ok((
+                StatusCode::FORBIDDEN,
+                Json(json!({ "error": "you can't manage this token" })),
+            )
+                .into_response());
+        }
+        _ => {}
+    }
     Ok(if rite_core::enrollment::revoke(state.db.pool(), &id).await? {
         StatusCode::NO_CONTENT.into_response()
     } else {

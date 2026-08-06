@@ -125,6 +125,15 @@ async fn token_teams(db: &SqlitePool, token_id: &str) -> Result<Vec<TeamGrant>> 
         .collect())
 }
 
+/// The org role a token grants, by id (to scope the admin surface). None if the id is unknown.
+pub async fn role_of(db: &SqlitePool, id: &str) -> Result<Option<Role>> {
+    let row: Option<(String,)> = sqlx::query_as("SELECT role FROM enrollment_tokens WHERE id = ?")
+        .bind(id)
+        .fetch_optional(db)
+        .await?;
+    Ok(row.map(|(r,)| Role::parse(&r)))
+}
+
 /// Revoke (delete) a token. Cascade removes its team rows. Returns whether one was removed.
 pub async fn revoke(db: &SqlitePool, id: &str) -> Result<bool> {
     let n = sqlx::query("DELETE FROM enrollment_tokens WHERE id = ?")
