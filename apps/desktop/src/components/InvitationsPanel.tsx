@@ -8,14 +8,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
-import { Backend, type EnrollmentToken, type MintedToken, type Team } from '../utils/backend';
+import { Backend, type EnrollmentToken, type MintedToken } from '../utils/backend';
 
-const EXPIRY_OPTIONS: { label: string; secs: number | null }[] = [
-  { label: 'in 24 hours', secs: 86400 },
-  { label: 'in 7 days', secs: 604800 },
-  { label: 'in 30 days', secs: 2592000 },
-  { label: 'never', secs: null },
-];
+type TeamOption = { id: string; name: string };
+
+const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+const addDaysISO = (n: number) => isoDate(new Date(Date.now() + n * 86400_000));
+const TOMORROW = addDaysISO(1);
+const QUICK_DAYS = [7, 30, 90];
 
 function expiryLabel(t: EnrollmentToken): string {
   if (t.expiresAt === null) return 'never';
@@ -47,7 +47,7 @@ export function InvitationsPanel() {
   const { user } = useServerSession();
   const isAdmin = user?.role === 'admin';
   const [tokens, setTokens] = useState<EnrollmentToken[] | null>(null);
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [showGen, setShowGen] = useState(false);
   const [reveal, setReveal] = useState<MintedToken | null>(null);
@@ -60,10 +60,15 @@ export function InvitationsPanel() {
   }, []);
   useEffect(() => {
     load();
-    Backend.Teams.listAll()
-      .then(setTeams)
+    // Only offer teams the caller may grant into: an admin gets every team; a manager only the
+    // teams they administer (the server enforces this too — mirror it here so the picker is honest).
+    const source = isAdmin
+      ? Backend.Teams.listAll()
+      : Backend.Teams.mine().then((ts) => ts.filter((t) => t.role === 'admin'));
+    source
+      .then((ts) => setTeams(ts.map((t) => ({ id: t.id, name: t.name }))))
       .catch(() => setTeams([]));
-  }, [load]);
+  }, [load, isAdmin]);
 
   const revoke = async (id: string) => {
     setErr(null);
@@ -213,13 +218,14 @@ function GenerateDialog({
   onCreated,
 }: {
   isAdmin: boolean;
-  teams: Team[];
+  teams: TeamOption[];
   onClose: () => void;
   onCreated: (minted: MintedToken) => void;
 }) {
   const [role, setRole] = useState<'user' | 'manager'>('user');
   const [picked, setPicked] = useState<Record<string, 'admin' | 'member'>>({});
-  const [expiry, setExpiry] = useState(EXPIRY_OPTIONS[1].label);
+  // '' = never expires; otherwise a 'YYYY-MM-DD' date (the token dies at the end of that day).
+  const [expiry, setExpiry] = useState<string>(addDaysISO(30));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -235,7 +241,10 @@ function GenerateDialog({
     setBusy(true);
     setErr(null);
     try {
-      const secs = EXPIRY_OPTIONS.find((o) => o.label === expiry)?.secs ?? null;
+      // A chosen date → seconds until end of that day; empty → never expires.
+      const secs = expiry
+        ? Math.max(60, Math.floor((new Date(expiry + 'T23:59:59').getTime() - Date.now()) / 1000))
+        : null;
       const minted = await Backend.Admin.createEnrollmentToken({
         role,
         teams: Object.entries(picked).map(([teamId, teamRole]) => ({ teamId, teamRole })),
@@ -321,18 +330,43 @@ function GenerateDialog({
             <label htmlFor="tk-expiry" className="text-sm font-medium">
               Expires
             </label>
-            <select
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_DAYS.map((d) => {
+                const on = expiry === addDaysISO(d);
+                return (
+                  <button
+                    type="button"
+                    key={d}
+                    onClick={() => setExpiry(addDaysISO(d))}
+                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                      on ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-secondary'
+                    }`}
+                  >
+                    {d} days
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setExpiry('')}
+                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                  expiry === '' ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-secondary'
+                }`}
+              >
+                No expiration
+              </button>
+            </div>
+            <input
               id="tk-expiry"
+              type="date"
+              min={TOMORROW}
               value={expiry}
               onChange={(e) => setExpiry(e.target.value)}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            >
-              {EXPIRY_OPTIONS.map((o) => (
-                <option key={o.label} value={o.label}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            />
+            <p className="text-xs text-muted-foreground">
+              {expiry ? `The token stops working after ${expiry}.` : 'The token never expires — revoke it manually.'}
+            </p>
           </div>
         </div>
 
