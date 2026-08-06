@@ -30,7 +30,9 @@ import { InvitationsPanel } from './InvitationsPanel';
 import { TeamsPanel } from './TeamsPanel';
 import { InstanceSettingsPanel } from './InstanceSettingsPanel';
 import { DangerZone } from './DangerZone';
-import { IconUsers, IconShield, IconGear, IconLock, IconCollection } from './icons';
+import { IconUsers, IconShield, IconGear, IconCollection } from './icons';
+import { ProfilePastille } from './ProfilePastille';
+import { useSettingsModal } from '../store/settingsModal';
 import { isNativeShell } from '../utils/nativeShell';
 import riteLogo from '../assets/rite.png';
 
@@ -71,6 +73,7 @@ function IconTicket() {
 
 export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}) {
   const { mode, logout, user } = useServerSession();
+  const setSettingsOpen = useSettingsModal((s) => s.setOpen);
   const role = (user?.role ?? 'user') as Role;
   const native = isNativeShell();
   // Instance master switch (admin → Instance): with invitations off, hide the tab entirely —
@@ -131,10 +134,15 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
             <span className="hidden md:inline">Close</span>
           </button>
         )}
-        <button onClick={() => logout()} className="m-btn m-btn-ghost m-btn-sm" title="Sign out">
-          <IconLock className="h-4 w-4" />
-          <span className="hidden md:inline">Sign out</span>
-        </button>
+        {user && (
+          <ProfilePastille
+            username={user.username}
+            role={user.role}
+            instanceName={mode?.instanceName}
+            onSettings={() => setSettingsOpen(true)}
+            onSignOut={() => logout()}
+          />
+        )}
       </header>
 
       <div className="flex min-h-0 flex-1">

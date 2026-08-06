@@ -7,31 +7,24 @@
  * today is a collection access request).
  */
 
-import { useEffect, useState } from 'react';
-import { navigate } from '../store/route';
+import { useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { useAccessRequests } from '../store/accessRequests';
 import { RequestRow } from './AccessRequestsInbox';
-import { IconLock } from './icons';
+import { OverlayHeaderControls } from './OverlayHeaderControls';
 import riteLogo from '../assets/rite.png';
 
 const PER_PAGE = 8;
 
 export function NotificationsDashboard() {
-  const { mode, logout } = useServerSession();
+  const { mode } = useServerSession();
   const ctl = useAccessRequests();
   const { requests, error } = ctl;
   const [page, setPage] = useState(0);
 
-  // Esc closes the page; stay in range if the list shrinks (a grant/dismiss removes a row).
+  // Keep the page in range if the list shrinks (a grant/dismiss removes a row). Close/Esc live
+  // in OverlayHeaderControls.
   const pageCount = Math.max(1, Math.ceil(requests.length / PER_PAGE));
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') navigate('/');
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
   const safePage = Math.min(page, pageCount - 1);
   if (safePage !== page) setPage(safePage);
   const slice = requests.slice(safePage * PER_PAGE, safePage * PER_PAGE + PER_PAGE);
@@ -49,16 +42,7 @@ export function NotificationsDashboard() {
           </span>
         )}
         <span className="m-spacer" />
-        <button onClick={() => navigate('/')} className="m-btn m-btn-sm" title="Close — back to the app (Esc)">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
-          </svg>
-          <span className="hidden md:inline">Close</span>
-        </button>
-        <button onClick={() => logout()} className="m-btn m-btn-ghost m-btn-sm" title="Sign out">
-          <IconLock className="h-4 w-4" />
-          <span className="hidden md:inline">Sign out</span>
-        </button>
+        <OverlayHeaderControls />
       </header>
 
       <main className="min-w-0 flex-1 overflow-y-auto px-6 py-7">

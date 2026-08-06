@@ -16,6 +16,7 @@ import { useTranslation } from '../i18n/i18n';
 import { LibrarySidebar } from './LibrarySidebar';
 import { ProfilePastille } from './ProfilePastille';
 import { OverflowNav, type NavAction } from './OverflowNav';
+import { useSettingsModal } from '../store/settingsModal';
 import { ConnectionForm } from './ConnectionForm';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
@@ -152,7 +153,11 @@ export function Workspace({
 
   // Sidebar state
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
+  // Settings modal is global (store) so the accounts overlay pages can open it too; here we own
+  // the toggle. The modal element is rendered by this component in local mode, and by AccountsShell
+  // in a server session (so it stays reachable above the Teams/Collections/… overlays).
+  const showSettings = useSettingsModal((s) => s.open);
+  const setShowSettings = useSettingsModal((s) => s.setOpen);
 
   // Quick SSH and Unlock modals
   const [showQuickSSH, setShowQuickSSH] = useState(false);
@@ -1629,8 +1634,9 @@ export function Workspace({
         </div>
       )}
 
-      {/* Settings Modal */}
-      {showSettings && (
+      {/* Settings Modal — local mode only. In a server session AccountsShell renders it (once,
+          above the overlay pages) since it drives the same global store. */}
+      {showSettings && !identity && (
         <Settings onClose={() => setShowSettings(false)} />
       )}
 

@@ -21,6 +21,8 @@ import { TeamsDashboard } from './TeamsDashboard';
 import { NotificationsDashboard } from './NotificationsDashboard';
 import { AccessRequestsBell } from './AccessRequestsInbox';
 import { ForcePasswordChange } from './ForcePasswordChange';
+import { Settings } from './Settings';
+import { useSettingsModal } from '../store/settingsModal';
 import { IconCollection, IconShield, IconUsers } from './icons';
 import { isNativeShell } from '../utils/nativeShell';
 
@@ -48,6 +50,8 @@ export function AccountsShell() {
   const { user, userKey, logout, mode } = useServerSession();
   const conns = useAccountsConnectionsSource();
   const path = useRoutePath();
+  const settingsOpen = useSettingsModal((s) => s.open);
+  const setSettingsOpen = useSettingsModal((s) => s.setOpen);
   if (!user) return null;
 
   // A user without the unwrapped vault key (token-only resume) must re-auth.
@@ -65,13 +69,19 @@ export function AccountsShell() {
   // filters its sections by role (managers: users + teams only) and by shell.
   const canManage = (user.role === 'admin' || user.role === 'manager') && serveAdmin;
 
+  // The Settings modal is global (store-driven) so every accounts surface — the workspace and
+  // each overlay page's identity pastille — opens the same one. Rendered here so it sits above
+  // the overlays and is present even when there's no Workspace (admin-only server below).
+  const settingsModal = settingsOpen ? <Settings onClose={() => setSettingsOpen(false)} /> : null;
+
   // Admin-only server (client workspace off): no Workspace at all — an admin/manager gets the
   // console as the whole surface; anyone else is told they have no access here.
   if (!serveWebui) {
-    return canManage ? (
-      <AdminDashboard hideBack />
-    ) : (
-      <AdminOnlyNotice onSignOut={() => logout()} />
+    return (
+      <>
+        {canManage ? <AdminDashboard hideBack /> : <AdminOnlyNotice onSignOut={() => logout()} />}
+        {settingsModal}
+      </>
     );
   }
 
@@ -129,6 +139,7 @@ export function AccountsShell() {
       {path === '/collections' && <CollectionsDashboard />}
       {path === '/notifications' && <NotificationsDashboard />}
       {path === '/admin' && canManage && <AdminDashboard />}
+      {settingsModal}
     </>
   );
 }

@@ -16,6 +16,7 @@ import {
 import { useServerSession } from '../store/serverSessionStore';
 import { navigate } from '../store/route';
 import { IconLock, IconUsers, IconCollection } from './icons';
+import { OverlayHeaderControls } from './OverlayHeaderControls';
 import riteLogo from '../assets/rite.png';
 
 const AVATAR_COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#e0af68'];
@@ -38,7 +39,7 @@ function Avatar({ name }: { name: string }) {
 const roleLabel = (r: TeamMember['role']) => (r === 'admin' ? 'Manager' : 'Member');
 
 export function TeamsDashboard() {
-  const { user: me, mode, logout } = useServerSession();
+  const { user: me, mode } = useServerSession();
   const [teams, setTeams] = useState<UserTeam[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -121,9 +122,9 @@ export function TeamsDashboard() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
       <header className="m-appbar">
-        <button onClick={() => navigate('/')} className="m-brand flex items-center gap-2.5" title="Back to the app">
+        <div className="m-brand flex items-center gap-2.5">
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
-        </button>
+        </div>
         {mode?.instanceName && (
           <span className="m-chip" title="Server instance">
             <span className="m-dot" />
@@ -131,16 +132,7 @@ export function TeamsDashboard() {
           </span>
         )}
         <span className="m-spacer" />
-        <button onClick={() => navigate('/')} className="m-btn m-btn-sm" title="Back to the app">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
-          </svg>
-          <span className="hidden md:inline">Back to app</span>
-        </button>
-        <button onClick={() => logout()} className="m-btn m-btn-ghost m-btn-sm" title="Sign out">
-          <IconLock className="h-4 w-4" />
-          <span className="hidden md:inline">Sign out</span>
-        </button>
+        <OverlayHeaderControls />
       </header>
 
       <div className="flex min-h-0 flex-1">

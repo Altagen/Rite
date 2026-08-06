@@ -7,15 +7,13 @@
 
 import { useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
-import { navigate } from '../store/route';
 import { CollectionsPanel } from './CollectionsPanel';
 import { DiscoverPanel } from './DiscoverPanel';
-import { AccessRequestsBell } from './AccessRequestsInbox';
-import { IconLock } from './icons';
+import { OverlayHeaderControls } from './OverlayHeaderControls';
 import riteLogo from '../assets/rite.png';
 
 export function CollectionsDashboard() {
-  const { mode, logout } = useServerSession();
+  const { mode } = useServerSession();
   const [tab, setTab] = useState<'mine' | 'discover'>('mine');
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
@@ -30,17 +28,7 @@ export function CollectionsDashboard() {
           </span>
         )}
         <span className="m-spacer" />
-        <AccessRequestsBell />
-        <button onClick={() => navigate('/')} className="m-btn m-btn-sm" title="Back to the app">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
-          </svg>
-          <span className="hidden md:inline">Back to app</span>
-        </button>
-        <button onClick={() => logout()} className="m-btn m-btn-ghost m-btn-sm" title="Sign out">
-          <IconLock className="h-4 w-4" />
-          <span className="hidden md:inline">Sign out</span>
-        </button>
+        <OverlayHeaderControls />
       </header>
       <nav className="flex gap-1 border-b border-border bg-input px-4 pt-1.5">
         {(['mine', 'discover'] as const).map((t) => (
