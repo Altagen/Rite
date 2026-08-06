@@ -210,7 +210,9 @@ const FLATCOLL=[];(function rec(l){l.forEach(c=>{FLATCOLL.push({name:c.name,shar
 // Demo: a roster-only member — an admin granted them name/roster access via the group
 // escrow; they hold no itemsKey until a member seals machine access ("roster only").
 (function(){const c=FLATCOLL.find(x=>x.shared&&x.members.length>2);if(c)c.pending=[c.members[c.members.length-1]];})();
-function renderNav(){document.getElementById('nav').innerHTML=NAV.map(n=>`<div class="navitem ${SEC===n.id?'on':''}" onclick="go('${n.id}')"><span class="ic">${n.ic}</span>${n.label}</div>`).join('');}
+// Invitations is hidden when the instance disables the feature (accounts then created by admins only).
+function navItems(){return NAV.filter(n=>n.id!=='invitations'||ALLOWINV);}
+function renderNav(){document.getElementById('nav').innerHTML=navItems().map(n=>`<div class="navitem ${SEC===n.id?'on':''}" onclick="go('${n.id}')"><span class="ic">${n.ic}</span>${n.label}</div>`).join('');}
 function go(id){SEC=id;SUB=null;renderNav();renderContent();}
 function drill(i){SUB=i;renderContent();}
 function memberRow(m,removable,pending){return `<div class="mrow">${av(m)}<span class="nm">${m}</span>${pending?'<span class="role-badge role-user" title="Roster access only — awaiting machine access from a member">roster only</span>':''}${removable?`<button class="btn btn-ghost btn-sm" title="Remove" onclick="toast('Remove ${m}')" style="color:var(--red)">${EXICON.trash}</button>`:'<span class="muted" style="font-size:12px">owner</span>'}</div>`;}
@@ -416,7 +418,7 @@ function teams(){
     </table></div>`;
 }
 
-let PERSIST=true, WEBUI=true, ADMINUI=true, SRVSHELL='bash', QUICKSSH=false, OPENREG=false, CONFIRMROLE=true;
+let PERSIST=true, WEBUI=true, ADMINUI=true, SRVSHELL='bash', QUICKSSH=false, OPENREG=false, CONFIRMROLE=true, ALLOWINV=true;
 function tog(v){return `<div class="toggle ${v?'on':''}"><i></i></div>`;}
 // Health-check server policy (ADR 0017). Governs what CONNECTED clients may do; applied
 // live over the existing WS (no reconnect). Passive "last seen" is free; active is gated.
@@ -454,6 +456,8 @@ function instance(){
         <div onclick="OPENREG=!OPENREG;renderContent();toast('Open registration '+(OPENREG?'on':'off'))">${tog(OPENREG)}</div></div>
       <div class="setrow"><div><div class="lab">Confirm role changes</div><div class="hint">Ask for confirmation before changing a user's role (&ldquo;Change <b>dana</b> to <b>admin</b>?&rdquo;). <b>On by default</b> — protects against a mis-click that hands out admin. Turn off if you promote in bulk and find the prompt slows you down.</div></div>
         <div onclick="CONFIRMROLE=!CONFIRMROLE;renderContent();toast('Confirm role changes '+(CONFIRMROLE?'on':'off'))">${tog(CONFIRMROLE)}</div></div>
+      <div class="setrow"><div><div class="lab">Allow invitations</div><div class="hint">Enrollment tokens for invite-only onboarding (independent of open registration). <b>On by default.</b> When off, the <b>Invitations</b> section disappears and no token can be minted or redeemed — accounts are then created by an admin directly. Existing tokens stop working.</div></div>
+        <div onclick="ALLOWINV=!ALLOWINV;if(!ALLOWINV&&SEC==='invitations')SEC='overview';renderNav();renderContent();toast('Invitations '+(ALLOWINV?'allowed':'disabled'))">${tog(ALLOWINV)}</div></div>
       <div class="setrow"><div><div class="lab">Serve the web UI <span class="soon">planned</span></div><div class="hint">The base connection-manager UI at <code>/</code>. Disable to force clients to use the desktop app.</div></div>
         <div onclick="WEBUI=!WEBUI;renderContent();toast('Serve web UI '+(WEBUI?'on':'off'))">${tog(WEBUI)}</div></div>
       <div class="setrow"><div><div class="lab">Serve this admin console <span class="soon">planned</span></div><div class="hint">This dashboard at <code>/admin</code>. Turn off for a deployment managed purely as-code.</div></div>
