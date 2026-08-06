@@ -343,8 +343,22 @@ export async function mockInvoke(
     case 'collection_members':
     case 'collection_items':
     case 'collections_offered':
-    case 'collections_requests':
       return [];
+    // Notifications (access requests). Rich under the harness so the bell + Notifications
+    // page (pagination) are exercisable; otherwise empty like the rest of the dev mock.
+    case 'collections_requests': {
+      if (!harnessOn()) return [];
+      const teams = ['Eng', 'Ops', 'Design', null];
+      const names = ['carol', 'dan', 'erin', 'frank', 'grace', 'heidi', 'ivan', 'judy', 'mallory', 'niaj', 'olivia'];
+      return names.map((u, i) => ({
+        collectionId: `c-${i % 3}`,
+        userId: `mock-${u}`,
+        username: u,
+        publicKey: null,
+        teamName: teams[i % teams.length],
+        createdAt: now() - i * 3600,
+      }));
+    }
     case 'collection_create':
       return { id: `col-${Math.random().toString(36).slice(2, 8)}` };
     case 'collection_item_create':

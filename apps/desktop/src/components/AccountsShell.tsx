@@ -18,6 +18,8 @@ import { AdminDashboard } from './AdminDashboard';
 import { AdminOnlyNotice } from './AdminOnlyNotice';
 import { CollectionsDashboard } from './CollectionsDashboard';
 import { TeamsDashboard } from './TeamsDashboard';
+import { NotificationsDashboard } from './NotificationsDashboard';
+import { AccessRequestsBell } from './AccessRequestsInbox';
 import { ForcePasswordChange } from './ForcePasswordChange';
 import { IconCollection, IconShield, IconUsers } from './icons';
 import { isNativeShell } from '../utils/nativeShell';
@@ -93,6 +95,7 @@ export function AccountsShell() {
         instanceName={mode?.instanceName}
         headerExtra={
           <>
+            <AccessRequestsBell />
             <button onClick={() => navigate('/teams')} className="m-btn m-btn-ghost m-btn-sm" title="Teams">
               <IconUsers className="h-4 w-4" />
               <span className="hidden md:inline">Teams</span>
@@ -122,6 +125,7 @@ export function AccountsShell() {
       />
       {path === '/teams' && <TeamsDashboard />}
       {path === '/collections' && <CollectionsDashboard />}
+      {path === '/notifications' && <NotificationsDashboard />}
       {path === '/admin' && canManage && <AdminDashboard />}
     </>
   );
