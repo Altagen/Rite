@@ -192,3 +192,8 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
 .pi svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;flex:none}
 .pi.danger:hover{color:var(--red)}
 .pi-sep{height:1px;background:var(--border);margin:5px 4px}
+
+/* Responsive header: keep the profile pinned top-right — compact it (avatar only) and drop
+   button labels before the bar would ever wrap the chip off the first row. */
+.profile{flex:none}
+@media (max-width:900px){ .lbl{display:none} .profile .pmeta{display:none} .profile .chev{display:none} .profile{padding:3px} }

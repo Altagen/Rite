@@ -93,8 +93,8 @@
   textarea.inp{width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:9px;padding:10px 12px;color:var(--fg);font-family:inherit;font-size:14px;resize:vertical}
   textarea.inp:focus{outline:none;border-color:var(--accent)}
   /* responsive: never overflow / overlap */
-  .appbar{flex-wrap:wrap;row-gap:8px}
-  #acts{flex-wrap:wrap;justify-content:flex-end}
+  .appbar{flex-wrap:nowrap}
+  #acts{flex-wrap:nowrap;justify-content:flex-end;min-width:0}
   .badge{flex:none}
   .ccard{min-width:0}.ccard .nm,.ccard .tgt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mgr-card{flex-wrap:wrap;row-gap:8px}.mgr-card .grow{min-width:140px}

@@ -52,7 +52,8 @@
   textarea.inp:focus{outline:none;border-color:var(--accent)}
   .inst{display:flex;align-items:center;gap:8px;padding:5px 12px;border:1px solid var(--border2);border-radius:10px;background:var(--card);font-weight:650}
   .inst .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
-  .appbar{flex-wrap:wrap;row-gap:8px}#acts{flex-wrap:wrap;justify-content:flex-end}
+  .appbar{flex-wrap:nowrap}#acts{flex-wrap:nowrap;justify-content:flex-end;min-width:0}
+  .inst{min-width:0;overflow:hidden}.inst span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .notif{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 2px var(--bg)}
   /* Health-check pastille (ADR 0017). Down is muted, not red — an unreachable machine is a
      normal state, not an error. Passive = a dim "last seen" light; no probing. */
