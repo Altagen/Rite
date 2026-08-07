@@ -70,5 +70,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libasound2t64 \
     && rm -rf /var/lib/apt/lists/*
 
+# Mirror GitHub Actions' environment: `CI=true` is set on every runner. pnpm 11 checks it before
+# running scripts (verifyDepsBeforeRun) and, without it, aborts a non-interactive node_modules
+# reconcile ("no TTY") — so `task check` would fail locally but pass in CI. Setting it here keeps
+# the ISO-CI image faithful: a local `task check` passes iff CI passes.
+ENV CI=true
+
 WORKDIR /workspace
 CMD ["bash"]
