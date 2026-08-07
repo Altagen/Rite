@@ -99,15 +99,17 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
   const activeSec = nav.some((n) => n.id === sec) ? sec : (nav[0]?.id ?? 'teams');
 
   // Esc closes the admin surface (two-worlds: it's a mode you open and close), unless it's the
-  // only screen (web console with no connection manager behind it).
+  // only screen (web console with no connection manager behind it) or the Settings modal is open
+  // over it (Esc there is the modal's).
+  const settingsOpen = useSettingsModal((s) => s.open);
   useEffect(() => {
-    if (hideBack) return;
+    if (hideBack || settingsOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') navigate('/');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [hideBack]);
+  }, [hideBack, settingsOpen]);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">

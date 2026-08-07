@@ -14,15 +14,18 @@ import { ProfilePastille } from './ProfilePastille';
 export function OverlayHeaderControls() {
   const { user, mode, logout } = useServerSession();
   const setSettingsOpen = useSettingsModal((s) => s.setOpen);
+  const settingsOpen = useSettingsModal((s) => s.open);
 
-  // Esc closes the overlay (a "mode" you open and close over the app), matching the × button.
+  // Esc closes the overlay (a "mode" you open and close over the app), matching the × button —
+  // but not while the Settings modal is open over it (Esc there is the modal's to handle/ignore).
   useEffect(() => {
+    if (settingsOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') navigate('/');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [settingsOpen]);
 
   return (
     <>
