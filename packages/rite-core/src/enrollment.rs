@@ -65,8 +65,16 @@ pub struct ClaimedRecipe {
 }
 
 /// Mint a token. Returns the plaintext token (shown to the admin ONCE) and its stored info.
-pub async fn create(db: &SqlitePool, spec: NewToken, created_by: &str) -> Result<(String, TokenInfo)> {
-    let token = format!("rite_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+pub async fn create(
+    db: &SqlitePool,
+    spec: NewToken,
+    created_by: &str,
+) -> Result<(String, TokenInfo)> {
+    let token = format!(
+        "rite_{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    );
     let prefix: String = token.chars().take(9).collect(); // "rite_" + 4 hex
     let id = Uuid::new_v4().to_string();
     let created_at = now();
@@ -86,19 +94,33 @@ pub async fn create(db: &SqlitePool, spec: NewToken, created_by: &str) -> Result
     .await?;
     let mut teams = Vec::new();
     for (team_id, team_role) in &spec.teams {
-        sqlx::query("INSERT INTO enrollment_token_teams (token_id, team_id, team_role) VALUES (?, ?, ?)")
-            .bind(&id)
-            .bind(team_id)
-            .bind(team_role.as_str())
-            .execute(db)
-            .await?;
-        teams.push(TeamGrant { team_id: team_id.clone(), team_role: *team_role });
+        sqlx::query(
+            "INSERT INTO enrollment_token_teams (token_id, team_id, team_role) VALUES (?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(team_id)
+        .bind(team_role.as_str())
+        .execute(db)
+        .await?;
+        teams.push(TeamGrant {
+            team_id: team_id.clone(),
+            team_role: *team_role,
+        });
     }
-    let info = TokenInfo { id, prefix, role: spec.role, teams, expires_at, created_at, consumed_at: None };
+    let info = TokenInfo {
+        id,
+        prefix,
+        role: spec.role,
+        teams,
+        expires_at,
+        created_at,
+        consumed_at: None,
+    };
     Ok((token, info))
 }
 
 /// All tokens with their team grants, newest first (for the admin list).
+#[allow(clippy::type_complexity)] // the sqlx row is a one-off select tuple, mapped immediately below
 pub async fn list(db: &SqlitePool) -> Result<Vec<TokenInfo>> {
     let rows: Vec<(String, String, String, Option<i64>, i64, Option<i64>)> = sqlx::query_as(
         "SELECT id, prefix, role, expires_at, created_at, consumed_at FROM enrollment_tokens ORDER BY created_at DESC",
@@ -108,7 +130,15 @@ pub async fn list(db: &SqlitePool) -> Result<Vec<TokenInfo>> {
     let mut out = Vec::with_capacity(rows.len());
     for (id, prefix, role, expires_at, created_at, consumed_at) in rows {
         let teams = token_teams(db, &id).await?;
-        out.push(TokenInfo { id, prefix, role: Role::parse(&role), teams, expires_at, created_at, consumed_at });
+        out.push(TokenInfo {
+            id,
+            prefix,
+            role: Role::parse(&role),
+            teams,
+            expires_at,
+            created_at,
+            consumed_at,
+        });
     }
     Ok(out)
 }
@@ -121,7 +151,10 @@ async fn token_teams(db: &SqlitePool, token_id: &str) -> Result<Vec<TeamGrant>> 
             .await?;
     Ok(rows
         .into_iter()
-        .map(|(team_id, team_role)| TeamGrant { team_id, team_role: TeamRole::parse(&team_role) })
+        .map(|(team_id, team_role)| TeamGrant {
+            team_id,
+            team_role: TeamRole::parse(&team_role),
+        })
         .collect())
 }
 
@@ -169,8 +202,16 @@ pub async fn claim(db: &SqlitePool, token: &str) -> Result<Option<ClaimedRecipe>
             .bind(&hash)
             .fetch_one(db)
             .await?;
-    let teams = token_teams(db, &id).await?.into_iter().map(|g| (g.team_id, g.team_role)).collect();
-    Ok(Some(ClaimedRecipe { id, role: Role::parse(&role), teams }))
+    let teams = token_teams(db, &id)
+        .await?
+        .into_iter()
+        .map(|g| (g.team_id, g.team_role))
+        .collect();
+    Ok(Some(ClaimedRecipe {
+        id,
+        role: Role::parse(&role),
+        teams,
+    }))
 }
 
 /// Undo a claim (on a failed signup) so the single-use invite can be retried.
@@ -189,7 +230,11 @@ mod tests {
 
     async fn pool() -> SqlitePool {
         let dir = Box::leak(Box::new(tempfile::tempdir().unwrap()));
-        Database::new(&dir.path().join("t.db")).await.unwrap().pool().clone()
+        Database::new(&dir.path().join("t.db"))
+            .await
+            .unwrap()
+            .pool()
+            .clone()
     }
 
     #[tokio::test]
@@ -197,7 +242,11 @@ mod tests {
         let db = pool().await;
         let (token, info) = create(
             &db,
-            NewToken { role: Role::User, teams: vec![("team-1".into(), TeamRole::Member)], expires_in_secs: Some(3600) },
+            NewToken {
+                role: Role::User,
+                teams: vec![("team-1".into(), TeamRole::Member)],
+                expires_in_secs: Some(3600),
+            },
             "admin-1",
         )
         .await
@@ -212,31 +261,66 @@ mod tests {
         assert!(listed[0].consumed_at.is_none());
 
         // First claim wins and returns the recipe; a second claim of the same token fails.
-        let claimed = claim(&db, &token).await.unwrap().expect("first claim succeeds");
+        let claimed = claim(&db, &token)
+            .await
+            .unwrap()
+            .expect("first claim succeeds");
         assert_eq!(claimed.role, Role::User);
-        assert_eq!(claimed.teams, vec![("team-1".to_string(), TeamRole::Member)]);
-        assert!(claim(&db, &token).await.unwrap().is_none(), "single-use: second claim fails");
+        assert_eq!(
+            claimed.teams,
+            vec![("team-1".to_string(), TeamRole::Member)]
+        );
+        assert!(
+            claim(&db, &token).await.unwrap().is_none(),
+            "single-use: second claim fails"
+        );
 
         // Release re-opens it (failed-signup retry).
         release(&db, &claimed.id).await.unwrap();
-        assert!(claim(&db, &token).await.unwrap().is_some(), "released token can be claimed again");
+        assert!(
+            claim(&db, &token).await.unwrap().is_some(),
+            "released token can be claimed again"
+        );
     }
 
     #[tokio::test]
     async fn expired_and_revoked_cannot_be_claimed() {
         let db = pool().await;
-        let (expired, _) =
-            create(&db, NewToken { role: Role::User, teams: vec![], expires_in_secs: Some(-1) }, "admin-1")
-                .await
-                .unwrap();
-        assert!(claim(&db, &expired).await.unwrap().is_none(), "expired token can't be claimed");
+        let (expired, _) = create(
+            &db,
+            NewToken {
+                role: Role::User,
+                teams: vec![],
+                expires_in_secs: Some(-1),
+            },
+            "admin-1",
+        )
+        .await
+        .unwrap();
+        assert!(
+            claim(&db, &expired).await.unwrap().is_none(),
+            "expired token can't be claimed"
+        );
 
-        let (live, info) =
-            create(&db, NewToken { role: Role::Manager, teams: vec![], expires_in_secs: None }, "admin-1")
-                .await
-                .unwrap();
+        let (live, info) = create(
+            &db,
+            NewToken {
+                role: Role::Manager,
+                teams: vec![],
+                expires_in_secs: None,
+            },
+            "admin-1",
+        )
+        .await
+        .unwrap();
         assert!(revoke(&db, &info.id).await.unwrap(), "revoke removes it");
-        assert!(claim(&db, &live).await.unwrap().is_none(), "revoked token can't be claimed");
-        assert!(!revoke(&db, &info.id).await.unwrap(), "revoking a gone token is false");
+        assert!(
+            claim(&db, &live).await.unwrap().is_none(),
+            "revoked token can't be claimed"
+        );
+        assert!(
+            !revoke(&db, &info.id).await.unwrap(),
+            "revoking a gone token is false"
+        );
     }
 }

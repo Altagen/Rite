@@ -432,7 +432,10 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/admin/enrollment-tokens",
             get(admin_list_tokens).post(admin_create_token),
         )
-        .route("/api/admin/enrollment-tokens/{id}", delete(admin_revoke_token))
+        .route(
+            "/api/admin/enrollment-tokens/{id}",
+            delete(admin_revoke_token),
+        )
         .route("/api/admin/collection-policy", patch(set_collection_policy))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
         .route("/api/healthcheck/probe", post(healthcheck_probe))
@@ -531,7 +534,10 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/context", get(get_context))
         .route("/api/context/servers", post(add_server))
-        .route("/api/context/servers/{id}", delete(remove_server).patch(update_server))
+        .route(
+            "/api/context/servers/{id}",
+            delete(remove_server).patch(update_server),
+        )
         .route("/api/context/servers/{id}/pin", post(pin_server))
         .route("/api/context/servers/{id}/icon", post(set_server_icon))
         .route("/api/context/probe", post(probe_remote))
@@ -547,7 +553,10 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/auth/setup", post(setup))
         .route("/api/auth/lock", post(lock))
         .route("/api/auth/reset", post(reset))
-        .route("/api/auth/change-master-password", post(change_master_password_local))
+        .route(
+            "/api/auth/change-master-password",
+            post(change_master_password_local),
+        )
         .route("/api/auth/validate-password", post(validate_password))
         .route("/api/settings", get(settings))
         .route("/api/settings/{key}", get(get_setting).put(set_setting))
@@ -693,9 +702,14 @@ fn leaf_fingerprint_from_pem(path: &std::path::Path) -> Option<String> {
     let end = "-----END CERTIFICATE-----";
     let start = pem.find(begin)? + begin.len();
     let stop = pem[start..].find(end)? + start;
-    let b64: String = pem[start..stop].chars().filter(|c| !c.is_whitespace()).collect();
+    let b64: String = pem[start..stop]
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
     let der = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
-    Some(tls_pin::cert_fingerprint(&rustls_pki_types::CertificateDer::from(der)))
+    Some(tls_pin::cert_fingerprint(
+        &rustls_pki_types::CertificateDer::from(der),
+    ))
 }
 
 /// ADR 0009 local-transport guard. When a token is configured (local desktop
@@ -747,8 +761,7 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
             let org = path.starts_with("/api/admin/teams")
                 || path.starts_with("/api/admin/users")
                 || path.starts_with("/api/admin/enrollment-tokens");
-            let allowed =
-                user.role == Role::Admin || (org && user.role == Role::Manager);
+            let allowed = user.role == Role::Admin || (org && user.role == Role::Manager);
             if !allowed {
                 return (StatusCode::FORBIDDEN, "insufficient role").into_response();
             }
@@ -1043,7 +1056,11 @@ async fn change_master_password_local(
     State(state): State<ServerState>,
     Json(req): Json<ChangeMasterReq>,
 ) -> Result<Response, AppError> {
-    match state.auth.change_master_password(&req.old, &req.new).await? {
+    match state
+        .auth
+        .change_master_password(&req.old, &req.new)
+        .await?
+    {
         ChangeMasterOutcome::Success => Ok(StatusCode::NO_CONTENT.into_response()),
         ChangeMasterOutcome::WrongPassword => {
             Ok((StatusCode::UNAUTHORIZED, "current password is incorrect").into_response())
@@ -1276,7 +1293,12 @@ async fn set_collection_policy(
     if !["viewer", "editor"].contains(&role) {
         return Ok((StatusCode::BAD_REQUEST, "invalid default role").into_response());
     }
-    if policy.get("maxMembers").and_then(|v| v.as_i64()).unwrap_or(0) < 0 {
+    if policy
+        .get("maxMembers")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0)
+        < 0
+    {
         return Ok((StatusCode::BAD_REQUEST, "maxMembers must be ≥ 0").into_response());
     }
     state
@@ -1293,7 +1315,10 @@ async fn set_healthcheck(
     State(state): State<ServerState>,
     Json(policy): Json<Value>,
 ) -> Result<Response, AppError> {
-    let active = policy.get("active").and_then(|v| v.as_str()).unwrap_or("off");
+    let active = policy
+        .get("active")
+        .and_then(|v| v.as_str())
+        .unwrap_or("off");
     if !["off", "on-demand", "full", "client-choice"].contains(&active) {
         return Ok((StatusCode::BAD_REQUEST, "invalid active mode").into_response());
     }
@@ -1355,9 +1380,11 @@ async fn healthcheck_probe(
         .and_then(|v| v.as_str())
         .unwrap_or("off");
     if active == "off" {
-        return Ok(
-            (StatusCode::FORBIDDEN, "active probing is disabled by the server").into_response(),
-        );
+        return Ok((
+            StatusCode::FORBIDDEN,
+            "active probing is disabled by the server",
+        )
+            .into_response());
     }
     // restrict-users: a non-empty list is an allowlist of usernames permitted to probe.
     if let Some(list) = policy.get("restrictUsers").and_then(|v| v.as_array()) {
@@ -1387,9 +1414,11 @@ async fn healthcheck_probe(
             .get(&key)
             .is_some_and(|prev| now.duration_since(*prev) < PROBE_COOLDOWN)
         {
-            return Ok(
-                (StatusCode::TOO_MANY_REQUESTS, "probing too fast — slow down").into_response(),
-            );
+            return Ok((
+                StatusCode::TOO_MANY_REQUESTS,
+                "probing too fast — slow down",
+            )
+                .into_response());
         }
         throttle.insert(key, now);
     }
@@ -1398,7 +1427,11 @@ async fn healthcheck_probe(
     let allowed: Vec<String> = policy
         .get("methods")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|m| m.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|m| m.as_str().map(String::from))
+                .collect()
+        })
         .filter(|v: &Vec<String>| !v.is_empty())
         .unwrap_or_else(|| vec!["tcp-connect".to_string()]);
     let default_method = allowed[0].clone();
@@ -1593,13 +1626,21 @@ async fn server_register(
         let token = server_auth::create_session(state.db.pool(), &user.id).await?;
         let vault_out = server_auth::get_user_vault(state.db.pool(), &user.id).await?;
         Ok::<_, AppError>(
-            (StatusCode::CREATED, Json(json!({ "token": token, "user": user, "vault": vault_out })))
+            (
+                StatusCode::CREATED,
+                Json(json!({ "token": token, "user": user, "vault": vault_out })),
+            )
                 .into_response(),
         )
     };
 
     // --- Path A: redeem an invitation token (recipe applied, single-use, bypasses the gate). ---
-    if let Some(tok) = req.token.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
+    if let Some(tok) = req
+        .token
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    {
         // The master switch closes redemption too — a disabled instance honours no token, even
         // one minted earlier (the client hides the field; this is the real boundary).
         if !invitations_allowed(&state).await? {
@@ -1632,9 +1673,13 @@ async fn server_register(
                 // Apply the recipe's team grants. Best-effort: a team deleted since the token was
                 // minted is simply skipped rather than failing the whole redemption.
                 for (team_id, team_role) in &recipe.teams {
-                    let _ =
-                        rite_core::teams::set_member(state.db.pool(), team_id, &user.id, *team_role)
-                            .await;
+                    let _ = rite_core::teams::set_member(
+                        state.db.pool(),
+                        team_id,
+                        &user.id,
+                        *team_role,
+                    )
+                    .await;
                 }
                 session(state, user).await
             }
@@ -1739,12 +1784,18 @@ async fn admin_create_token(
     // mirroring add_team_member — otherwise a token would bypass per-team authorization.
     for t in &req.teams {
         if !rite_core::teams::team_exists(state.db.pool(), &t.team_id).await? {
-            return Ok((StatusCode::BAD_REQUEST, Json(json!({ "error": "unknown team" }))).into_response());
+            return Ok((
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "unknown team" })),
+            )
+                .into_response());
         }
         if !can_admin_team(&state, &caller, &t.team_id).await? {
             return Ok((
                 StatusCode::FORBIDDEN,
-                Json(json!({ "error": "you can't grant membership to a team you don't administer" })),
+                Json(
+                    json!({ "error": "you can't grant membership to a team you don't administer" }),
+                ),
             )
                 .into_response());
         }
@@ -1763,11 +1814,19 @@ async fn admin_create_token(
         .collect();
     let (token, info) = rite_core::enrollment::create(
         state.db.pool(),
-        rite_core::enrollment::NewToken { role: req.role, teams, expires_in_secs: req.expires_in_secs },
+        rite_core::enrollment::NewToken {
+            role: req.role,
+            teams,
+            expires_in_secs: req.expires_in_secs,
+        },
         &caller.id,
     )
     .await?;
-    Ok((StatusCode::CREATED, Json(json!({ "token": token, "info": info }))).into_response())
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "token": token, "info": info })),
+    )
+        .into_response())
 }
 
 async fn admin_list_tokens(
@@ -1799,11 +1858,13 @@ async fn admin_revoke_token(
         }
         _ => {}
     }
-    Ok(if rite_core::enrollment::revoke(state.db.pool(), &id).await? {
-        StatusCode::NO_CONTENT.into_response()
-    } else {
-        StatusCode::NOT_FOUND.into_response()
-    })
+    Ok(
+        if rite_core::enrollment::revoke(state.db.pool(), &id).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        },
+    )
 }
 
 /// The current authenticated user (guard inserted it) + its vault key material,
@@ -1846,8 +1907,16 @@ async fn change_password(
         protected_private_key: req.protected_private_key,
     };
     Ok(
-        if server_auth::set_credentials(state.db.pool(), &user.id, &salt, req.params, &req.auth_hash, &vault, false)
-            .await?
+        if server_auth::set_credentials(
+            state.db.pool(),
+            &user.id,
+            &salt,
+            req.params,
+            &req.auth_hash,
+            &vault,
+            false,
+        )
+        .await?
         {
             StatusCode::NO_CONTENT.into_response()
         } else {
@@ -2039,14 +2108,15 @@ async fn admin_set_role(
     if target_role == Role::Admin {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "can't change an admin's role here — disable or delete instead" })),
+            Json(
+                json!({ "error": "can't change an admin's role here — disable or delete instead" }),
+            ),
         )
             .into_response());
     }
     // Assignment ceiling: admins may assign any role (incl. promoting to admin); a manager may only
     // assign a role strictly below manager (i.e. user) — never create a peer or a superior.
-    let assign_ok =
-        current.role == Role::Admin || role_rank(req.role) < role_rank(current.role);
+    let assign_ok = current.role == Role::Admin || role_rank(req.role) < role_rank(current.role);
     if !assign_ok {
         return Ok((
             StatusCode::FORBIDDEN,
@@ -2105,8 +2175,16 @@ async fn admin_reset_user(
         protected_private_key: req.protected_private_key,
     };
     // must_change = true: the temp password is admin-known, so the user re-keys on next login.
-    if !server_auth::set_credentials(state.db.pool(), &id, &salt, req.params, &req.auth_hash, &vault, true)
-        .await?
+    if !server_auth::set_credentials(
+        state.db.pool(),
+        &id,
+        &salt,
+        req.params,
+        &req.auth_hash,
+        &vault,
+        true,
+    )
+    .await?
     {
         return Ok((StatusCode::NOT_FOUND, "unknown user").into_response());
     }
@@ -2480,11 +2558,13 @@ async fn remove_team_member(
         )
             .into_response());
     }
-    Ok(if rite_core::teams::remove_member(db, &id, &user_id).await? {
-        StatusCode::NO_CONTENT.into_response()
-    } else {
-        StatusCode::NOT_FOUND.into_response()
-    })
+    Ok(
+        if rite_core::teams::remove_member(db, &id, &user_id).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        },
+    )
 }
 
 // --- collections (ADR 0016) --------------------------------------------------
@@ -2540,11 +2620,16 @@ async fn create_collection_ep(
 ) -> Result<Response, AppError> {
     // Governance: an admin may forbid non-admins from provisioning collections.
     let policy = collection_policy(&state).await?;
-    let allow_create = policy.get("allowCreate").and_then(|v| v.as_bool()).unwrap_or(true);
+    let allow_create = policy
+        .get("allowCreate")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
     if !allow_create && user.role != Role::Admin {
-        return Ok(
-            (StatusCode::FORBIDDEN, "collection creation is restricted to admins").into_response(),
-        );
+        return Ok((
+            StatusCode::FORBIDDEN,
+            "collection creation is restricted to admins",
+        )
+            .into_response());
     }
     let id = coll::create_collection(
         state.db.pool(),
@@ -2619,7 +2704,11 @@ async fn set_collection_offer_ep(
     match coll_role(&state, &user, &id).await? {
         Some(r) if r.can_manage() => {}
         _ => {
-            return Ok((StatusCode::FORBIDDEN, "only an owner can offer a collection").into_response())
+            return Ok((
+                StatusCode::FORBIDDEN,
+                "only an owner can offer a collection",
+            )
+                .into_response());
         }
     }
     if !rite_core::teams::team_exists(state.db.pool(), &req.team_id).await? {
@@ -2630,7 +2719,8 @@ async fn set_collection_offer_ep(
         return Ok((StatusCode::BAD_REQUEST, "a discovery label is required").into_response());
     }
     Ok(
-        if coll::set_collection_offer(state.db.pool(), &id, Some(&req.team_id), Some(label)).await? {
+        if coll::set_collection_offer(state.db.pool(), &id, Some(&req.team_id), Some(label)).await?
+        {
             StatusCode::NO_CONTENT.into_response()
         } else {
             StatusCode::NOT_FOUND.into_response()
@@ -2647,7 +2737,9 @@ async fn clear_collection_offer_ep(
     match coll_role(&state, &user, &id).await? {
         Some(r) if r.can_manage() => {}
         _ => {
-            return Ok((StatusCode::FORBIDDEN, "only an owner can change the offer").into_response())
+            return Ok(
+                (StatusCode::FORBIDDEN, "only an owner can change the offer").into_response(),
+            );
         }
     }
     Ok(
@@ -2764,11 +2856,16 @@ async fn add_collection_member_ep(
     if user.role != Role::Admin {
         let policy = collection_policy(&state).await?;
         // Member cap (0 = unlimited).
-        let max = policy.get("maxMembers").and_then(|v| v.as_i64()).unwrap_or(0);
+        let max = policy
+            .get("maxMembers")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
         if max > 0 {
             let count = coll::list_members(state.db.pool(), &id).await?.len() as i64;
             if count >= max {
-                return Ok((StatusCode::CONFLICT, "collection is at its member limit").into_response());
+                return Ok(
+                    (StatusCode::CONFLICT, "collection is at its member limit").into_response()
+                );
             }
         }
         // No sharing outside teams: the target must share a team with the person adding them.
@@ -3181,7 +3278,11 @@ fn normalize_remote_url(raw: &str) -> String {
                 Some((a, p)) => (a, Some(p)),
                 None => (rest, None),
             };
-            let base = format!("{}://{}", scheme.to_ascii_lowercase(), authority.to_ascii_lowercase());
+            let base = format!(
+                "{}://{}",
+                scheme.to_ascii_lowercase(),
+                authority.to_ascii_lowercase()
+            );
             match path {
                 Some(p) => format!("{base}/{p}"),
                 None => base,
@@ -3200,7 +3301,11 @@ fn remote_origin(url: &str) -> String {
     match trimmed.split_once("://") {
         Some((scheme, rest)) => {
             let authority = rest.split_once('/').map(|(a, _)| a).unwrap_or(rest);
-            format!("{}://{}", scheme.to_ascii_lowercase(), authority.to_ascii_lowercase())
+            format!(
+                "{}://{}",
+                scheme.to_ascii_lowercase(),
+                authority.to_ascii_lowercase()
+            )
         }
         None => trimmed.trim_end_matches('/').to_ascii_lowercase(),
     }
@@ -3321,7 +3426,10 @@ async fn update_server(
     }
     let origin = remote_origin(&url);
     let mut roster = load_roster(&state).await;
-    if roster.iter().any(|s| remote_origin(&s.url) == origin && s.id != id) {
+    if roster
+        .iter()
+        .any(|s| remote_origin(&s.url) == origin && s.id != id)
+    {
         return Ok((
             StatusCode::CONFLICT,
             Json(json!({ "error": "server already in the roster" })),
@@ -3387,7 +3495,7 @@ struct ProbeReq {
 /// the leaf SHA-256 fingerprint and whether webpki roots would accept it, so the
 /// UI can show the fingerprint for out-of-band confirmation before pinning.
 async fn probe_remote(
-    State(state): State<ServerState>,
+    State(_state): State<ServerState>,
     Json(req): Json<ProbeReq>,
 ) -> Result<Response, AppError> {
     let url = normalize_remote_url(&req.url);
@@ -3964,9 +4072,18 @@ mod tests {
     #[test]
     fn remote_url_normalizes_scheme_host_and_trailing_slash() {
         // Scheme + host lowercased, trailing slash dropped; a path is kept (not lowercased).
-        assert_eq!(normalize_remote_url("  HTTPS://Rite.Example.COM/ "), "https://rite.example.com");
-        assert_eq!(normalize_remote_url("https://rite.example.com"), "https://rite.example.com");
-        assert_eq!(normalize_remote_url("https://Host:8443/Base/"), "https://host:8443/Base");
+        assert_eq!(
+            normalize_remote_url("  HTTPS://Rite.Example.COM/ "),
+            "https://rite.example.com"
+        );
+        assert_eq!(
+            normalize_remote_url("https://rite.example.com"),
+            "https://rite.example.com"
+        );
+        assert_eq!(
+            normalize_remote_url("https://Host:8443/Base/"),
+            "https://host:8443/Base"
+        );
     }
 
     #[test]
@@ -3980,10 +4097,17 @@ mod tests {
             "https://rite.example.com/some/path",
             "  https://RITE.example.com  ",
         ] {
-            assert_eq!(remote_origin(spelling), want, "{spelling} should map to {want}");
+            assert_eq!(
+                remote_origin(spelling),
+                want,
+                "{spelling} should map to {want}"
+            );
         }
         // A different port is a different origin.
-        assert_ne!(remote_origin("https://rite.example.com"), remote_origin("https://rite.example.com:8443"));
+        assert_ne!(
+            remote_origin("https://rite.example.com"),
+            remote_origin("https://rite.example.com:8443")
+        );
     }
 
     async fn test_state() -> ServerState {

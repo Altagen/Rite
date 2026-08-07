@@ -61,7 +61,11 @@ impl VaultRoster {
     }
 
     /// Set (or clear, with `None`) a vault's device-local icon. Returns whether it existed.
-    pub fn set_icon(&mut self, path: impl AsRef<Path>, icon: Option<String>) -> std::io::Result<bool> {
+    pub fn set_icon(
+        &mut self,
+        path: impl AsRef<Path>,
+        icon: Option<String>,
+    ) -> std::io::Result<bool> {
         let path = normalize(path.as_ref());
         let Some(e) = self.entries.iter_mut().find(|e| e.path == path) else {
             return Ok(false);

@@ -54,22 +54,14 @@ enum UserEvent {
     /// Switch the posting window IN PLACE to another context (ADR 0014): its server is
     /// torn down (locking the previous vault) and the same window reloads onto the new
     /// one. The default action when picking a vault/server in the hub or pill.
-    SwitchContext {
-        window: WindowId,
-        req: OpenRequest,
-    },
+    SwitchContext { window: WindowId, req: OpenRequest },
     /// Force a rebuild of the posting window onto its *current* context (fresh server + webview,
     /// so `__RITE_VAULTS__` is regenerated). Used after a vault reset, where a plain page reload
     /// would re-inject the stale roster snapshot frozen at window-creation time.
-    ReloadContext {
-        window: WindowId,
-    },
+    ReloadContext { window: WindowId },
     /// A vault-management command (roster edit / native dialog), tagged with the window
     /// that posted it so New/Open can switch *that* window to the vault.
-    Vault {
-        window: WindowId,
-        cmd: VaultCommand,
-    },
+    Vault { window: WindowId, cmd: VaultCommand },
     /// A native file dialog resolved on its own thread (see [`spawn_file_dialog`]).
     VaultPicked(VaultPick),
 }
@@ -101,8 +93,14 @@ enum VaultPick {
         label: Option<String>,
     },
     /// An existing vault file at `path`, to register and open in `window`.
-    Open { window: WindowId, path: PathBuf },
-    Image { vault: PathBuf, file: PathBuf },
+    Open {
+        window: WindowId,
+        path: PathBuf,
+    },
+    Image {
+        vault: PathBuf,
+        file: PathBuf,
+    },
 }
 
 /// A live window: its server's loopback port, plus the `wry` webview and `tao`
@@ -162,13 +160,15 @@ fn main() -> Result<()> {
     let proxy = event_loop.create_proxy();
 
     let mut registry = ContextRegistry::<WindowId>::new();
-    let mut windows: std::collections::HashMap<WindowId, WindowState> = std::collections::HashMap::new();
+    let mut windows: std::collections::HashMap<WindowId, WindowState> =
+        std::collections::HashMap::new();
 
     // Multi-vault roster (ADR 0014): the local vaults the hub lists. The default vault is NOT
     // pre-seeded — like any other vault it only joins the roster once its master password is set
     // (register-after-password), so a fresh install shows "create a vault", not a phantom "unlock".
     let mut roster = vault_roster::VaultRoster::load(roster_path());
-    let mut vaults_json = serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
+    let mut vaults_json =
+        serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
 
     // The launch window shows the context hub (ADR 0014, base-first). Its server opens the default
     // local vault; carry that path so the frontend knows which roster entry is "this window". When
@@ -184,7 +184,14 @@ fn main() -> Result<()> {
         db_path: db_path(),
         inject: launch_inject.to_string(),
     };
-    if let Err(e) = open_window(&event_loop, &proxy, &mut windows, &mut registry, launch, &vaults_json) {
+    if let Err(e) = open_window(
+        &event_loop,
+        &proxy,
+        &mut windows,
+        &mut registry,
+        launch,
+        &vaults_json,
+    ) {
         show_error(
             "Rite failed to start",
             &format!("Could not open the vault or start the local server.\n\n{e:#}"),
@@ -358,7 +365,15 @@ fn open_window(
     let window_id = window.id();
     let (webview, port, shutdown) = build_context_view(&window, &req, proxy, vaults_json)?;
     registry.register(req.key, window_id);
-    windows.insert(window_id, WindowState { webview, window, port, shutdown });
+    windows.insert(
+        window_id,
+        WindowState {
+            webview,
+            window,
+            port,
+            shutdown,
+        },
+    );
     Ok(())
 }
 
@@ -459,14 +474,27 @@ fn rebuild_window(
     };
     // Keep the OS window; drop the old webview + shutdown handle now so the previous
     // server stops and its vault locks before (or alongside) the new one comes up.
-    let WindowState { window, webview, shutdown, .. } = old;
+    let WindowState {
+        window,
+        webview,
+        shutdown,
+        ..
+    } = old;
     drop(webview);
     drop(shutdown);
     match build_context_view(&window, &req, proxy, vaults_json) {
         Ok((webview, port, shutdown)) => {
             registry.remove_window(&window_id);
             registry.register(req.key, window_id);
-            windows.insert(window_id, WindowState { webview, window, port, shutdown });
+            windows.insert(
+                window_id,
+                WindowState {
+                    webview,
+                    window,
+                    port,
+                    shutdown,
+                },
+            );
         }
         Err(e) => {
             registry.remove_window(&window_id);
@@ -676,8 +704,11 @@ fn apply_vault_command(
         VaultCommand::New { label, path } => {
             match path {
                 Some(path) => {
-                    let _ = proxy
-                        .send_event(UserEvent::VaultPicked(VaultPick::New { window, path, label }));
+                    let _ = proxy.send_event(UserEvent::VaultPicked(VaultPick::New {
+                        window,
+                        path,
+                        label,
+                    }));
                 }
                 None => spawn_file_dialog(proxy.clone(), DialogKind::New { window, label }),
             }
@@ -734,19 +765,29 @@ fn spawn_file_dialog(proxy: EventLoopProxy<UserEvent>, kind: DialogKind) {
                     .set_file_name("vault.db")
                     .save_file()
                     .await
-                    .map(|f| VaultPick::New { window, path: f.path().to_path_buf(), label }),
+                    .map(|f| VaultPick::New {
+                        window,
+                        path: f.path().to_path_buf(),
+                        label,
+                    }),
                 DialogKind::Open(window) => rfd::AsyncFileDialog::new()
                     .set_title("Open a Rite vault")
                     .add_filter("Rite vault", &["db"])
                     .pick_file()
                     .await
-                    .map(|f| VaultPick::Open { window, path: f.path().to_path_buf() }),
+                    .map(|f| VaultPick::Open {
+                        window,
+                        path: f.path().to_path_buf(),
+                    }),
                 DialogKind::Image(vault) => rfd::AsyncFileDialog::new()
                     .set_title("Choose a vault icon")
                     .add_filter("Image", &["png", "jpg", "jpeg", "gif", "webp"])
                     .pick_file()
                     .await
-                    .map(|f| VaultPick::Image { vault, file: f.path().to_path_buf() }),
+                    .map(|f| VaultPick::Image {
+                        vault,
+                        file: f.path().to_path_buf(),
+                    }),
             }
         });
         if let Some(pick) = picked {
@@ -840,10 +881,7 @@ fn test_ipc_hook() -> String {
 
 /// Push the current roster into every open window's hub: update `window.__RITE_VAULTS__` and
 /// fire `rite-vaults-changed` so the hub re-renders live (no reload).
-fn broadcast_vaults(
-    windows: &std::collections::HashMap<WindowId, WindowState>,
-    vaults_json: &str,
-) {
+fn broadcast_vaults(windows: &std::collections::HashMap<WindowId, WindowState>, vaults_json: &str) {
     let js = format!(
         "window.__RITE_VAULTS__ = {vaults_json}; \
          window.dispatchEvent(new Event('rite-vaults-changed'));"
@@ -992,7 +1030,11 @@ mod tests {
 
     #[test]
     fn local_without_path_uses_the_default_vault() {
-        let req = context_request_from(&json!({ "type": "open-context", "kind": "local" }), &default()).unwrap();
+        let req = context_request_from(
+            &json!({ "type": "open-context", "kind": "local" }),
+            &default(),
+        )
+        .unwrap();
         assert_eq!(req.db_path, default());
         assert_eq!(req.key, ContextKey::local(default()));
     }
@@ -1021,7 +1063,13 @@ mod tests {
 
     #[test]
     fn server_needs_a_url_and_keeps_the_default_vault() {
-        assert!(context_request_from(&json!({ "type": "open-context", "kind": "server" }), &default()).is_none());
+        assert!(
+            context_request_from(
+                &json!({ "type": "open-context", "kind": "server" }),
+                &default()
+            )
+            .is_none()
+        );
         let req = context_request_from(
             &json!({ "type": "open-context", "kind": "server", "url": "https://rite.example.com", "label": "Team" }),
             &default(),
@@ -1033,7 +1081,13 @@ mod tests {
 
     #[test]
     fn unknown_kind_is_ignored() {
-        assert!(context_request_from(&json!({ "type": "open-context", "kind": "wat" }), &default()).is_none());
+        assert!(
+            context_request_from(
+                &json!({ "type": "open-context", "kind": "wat" }),
+                &default()
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -1041,7 +1095,10 @@ mod tests {
         // Bare new/open → no path/label ⇒ the shell will show the native dialog.
         assert_eq!(
             plan_vault_command(&json!({ "type": "vault-new" })),
-            Some(VaultCommand::New { label: None, path: None })
+            Some(VaultCommand::New {
+                label: None,
+                path: None
+            })
         );
         assert_eq!(
             plan_vault_command(&json!({ "type": "vault-open-file" })),
@@ -1053,12 +1110,19 @@ mod tests {
     fn vault_command_new_open_accept_a_path_hook() {
         // The test/automation hook: a path (and label) bypass the native picker.
         assert_eq!(
-            plan_vault_command(&json!({ "type": "vault-new", "label": "Beta", "path": "/v/beta.db" })),
-            Some(VaultCommand::New { label: Some("Beta".into()), path: Some(PathBuf::from("/v/beta.db")) })
+            plan_vault_command(
+                &json!({ "type": "vault-new", "label": "Beta", "path": "/v/beta.db" })
+            ),
+            Some(VaultCommand::New {
+                label: Some("Beta".into()),
+                path: Some(PathBuf::from("/v/beta.db"))
+            })
         );
         assert_eq!(
             plan_vault_command(&json!({ "type": "vault-open-file", "path": "/v/x.db" })),
-            Some(VaultCommand::OpenFile { path: Some(PathBuf::from("/v/x.db")) })
+            Some(VaultCommand::OpenFile {
+                path: Some(PathBuf::from("/v/x.db"))
+            })
         );
     }
 
@@ -1066,11 +1130,15 @@ mod tests {
     fn vault_command_reset_and_lock_need_path() {
         assert_eq!(
             plan_vault_command(&json!({ "type": "vault-reset", "path": "/v/a.db" })),
-            Some(VaultCommand::Reset { path: PathBuf::from("/v/a.db") })
+            Some(VaultCommand::Reset {
+                path: PathBuf::from("/v/a.db")
+            })
         );
         assert_eq!(
             plan_vault_command(&json!({ "type": "vault-lock", "path": "/v/a.db" })),
-            Some(VaultCommand::Lock { path: PathBuf::from("/v/a.db") })
+            Some(VaultCommand::Lock {
+                path: PathBuf::from("/v/a.db")
+            })
         );
         assert!(plan_vault_command(&json!({ "type": "vault-reset" })).is_none());
         assert!(plan_vault_command(&json!({ "type": "vault-lock" })).is_none());
@@ -1079,19 +1147,33 @@ mod tests {
     #[test]
     fn vault_command_rename_needs_path_and_label() {
         assert_eq!(
-            plan_vault_command(&json!({ "type": "vault-rename", "path": "/v/a.db", "label": "Work" })),
-            Some(VaultCommand::Rename { path: PathBuf::from("/v/a.db"), label: "Work".into() })
+            plan_vault_command(
+                &json!({ "type": "vault-rename", "path": "/v/a.db", "label": "Work" })
+            ),
+            Some(VaultCommand::Rename {
+                path: PathBuf::from("/v/a.db"),
+                label: "Work".into()
+            })
         );
         // Missing/blank fields → not a valid command.
-        assert!(plan_vault_command(&json!({ "type": "vault-rename", "path": "/v/a.db" })).is_none());
-        assert!(plan_vault_command(&json!({ "type": "vault-rename", "path": "/v/a.db", "label": "  " })).is_none());
+        assert!(
+            plan_vault_command(&json!({ "type": "vault-rename", "path": "/v/a.db" })).is_none()
+        );
+        assert!(
+            plan_vault_command(
+                &json!({ "type": "vault-rename", "path": "/v/a.db", "label": "  " })
+            )
+            .is_none()
+        );
     }
 
     #[test]
     fn vault_command_forget_needs_path() {
         assert_eq!(
             plan_vault_command(&json!({ "type": "vault-forget", "path": "/v/a.db" })),
-            Some(VaultCommand::Forget { path: PathBuf::from("/v/a.db") })
+            Some(VaultCommand::Forget {
+                path: PathBuf::from("/v/a.db")
+            })
         );
         assert!(plan_vault_command(&json!({ "type": "vault-forget" })).is_none());
     }
@@ -1100,7 +1182,9 @@ mod tests {
     fn vault_command_delete_needs_path() {
         assert_eq!(
             plan_vault_command(&json!({ "type": "vault-delete", "path": "/v/a.db" })),
-            Some(VaultCommand::Delete { path: PathBuf::from("/v/a.db") })
+            Some(VaultCommand::Delete {
+                path: PathBuf::from("/v/a.db")
+            })
         );
         assert!(plan_vault_command(&json!({ "type": "vault-delete" })).is_none());
     }
@@ -1108,8 +1192,13 @@ mod tests {
     #[test]
     fn vault_command_ready_needs_path_and_label() {
         assert_eq!(
-            plan_vault_command(&json!({ "type": "vault-ready", "path": "/v/a.db", "label": "Beta" })),
-            Some(VaultCommand::Ready { path: PathBuf::from("/v/a.db"), label: "Beta".into() })
+            plan_vault_command(
+                &json!({ "type": "vault-ready", "path": "/v/a.db", "label": "Beta" })
+            ),
+            Some(VaultCommand::Ready {
+                path: PathBuf::from("/v/a.db"),
+                label: "Beta".into()
+            })
         );
         // Missing either field ⇒ not a command (never register a half-specified vault).
         assert!(plan_vault_command(&json!({ "type": "vault-ready", "path": "/v/a.db" })).is_none());
@@ -1119,17 +1208,27 @@ mod tests {
     #[test]
     fn vault_command_set_icon_and_image() {
         assert_eq!(
-            plan_vault_command(&json!({ "type": "vault-set-icon", "path": "/v/a.db", "icon": "🚀" })),
-            Some(VaultCommand::SetIcon { path: PathBuf::from("/v/a.db"), icon: Some("🚀".into()) })
+            plan_vault_command(
+                &json!({ "type": "vault-set-icon", "path": "/v/a.db", "icon": "🚀" })
+            ),
+            Some(VaultCommand::SetIcon {
+                path: PathBuf::from("/v/a.db"),
+                icon: Some("🚀".into())
+            })
         );
         // No icon ⇒ clear.
         assert_eq!(
             plan_vault_command(&json!({ "type": "vault-set-icon", "path": "/v/a.db" })),
-            Some(VaultCommand::SetIcon { path: PathBuf::from("/v/a.db"), icon: None })
+            Some(VaultCommand::SetIcon {
+                path: PathBuf::from("/v/a.db"),
+                icon: None
+            })
         );
         assert_eq!(
             plan_vault_command(&json!({ "type": "vault-set-image", "path": "/v/a.db" })),
-            Some(VaultCommand::SetImage { path: PathBuf::from("/v/a.db") })
+            Some(VaultCommand::SetImage {
+                path: PathBuf::from("/v/a.db")
+            })
         );
     }
 

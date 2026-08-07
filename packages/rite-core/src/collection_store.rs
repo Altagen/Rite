@@ -332,6 +332,7 @@ pub async fn list_members(db: &SqlitePool, collection_id: &str) -> Result<Vec<Co
 }
 
 /// Collections the given user is a member of (with their role + sealed key).
+#[allow(clippy::type_complexity)] // the sqlx row is a one-off select tuple, mapped immediately below
 pub async fn list_collections_for_user(
     db: &SqlitePool,
     user_id: &str,
@@ -357,7 +358,16 @@ pub async fn list_collections_for_user(
     Ok(rows
         .into_iter()
         .map(
-            |(id, name_enc, role, protected_meta_key, protected_items_key, created_at, team_id, discovery_label)| {
+            |(
+                id,
+                name_enc,
+                role,
+                protected_meta_key,
+                protected_items_key,
+                created_at,
+                team_id,
+                discovery_label,
+            )| {
                 UserCollection {
                     id,
                     name_enc,
@@ -419,6 +429,7 @@ pub async fn remove_access_request(
 
 /// Access requests on collections the caller can grant (they are an owner/editor). Joins the
 /// requester's name/public key + the team the collection is offered to (for context).
+#[allow(clippy::type_complexity)] // the sqlx row is a one-off select tuple, mapped immediately below
 pub async fn list_incoming_requests(
     db: &SqlitePool,
     grantee_id: &str,
@@ -439,13 +450,15 @@ pub async fn list_incoming_requests(
     Ok(rows
         .into_iter()
         .map(
-            |(collection_id, user_id, username, public_key, team_name, created_at)| IncomingRequest {
-                collection_id,
-                user_id,
-                username,
-                public_key,
-                team_name,
-                created_at,
+            |(collection_id, user_id, username, public_key, team_name, created_at)| {
+                IncomingRequest {
+                    collection_id,
+                    user_id,
+                    username,
+                    public_key,
+                    team_name,
+                    created_at,
+                }
             },
         )
         .collect())
@@ -506,18 +519,21 @@ pub async fn list_offered_to_user(
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, team_id, team_name, discovery_label, my_role)| OfferedCollection {
-            id,
-            team_id,
-            team_name,
-            discovery_label,
-            member_role: my_role.map(|r| CollectionRole::parse(&r)),
-        })
+        .map(
+            |(id, team_id, team_name, discovery_label, my_role)| OfferedCollection {
+                id,
+                team_id,
+                team_name,
+                discovery_label,
+                member_role: my_role.map(|r| CollectionRole::parse(&r)),
+            },
+        )
         .collect())
 }
 
 /// Every collection with member + item counts (admin governance). No key needed;
 /// names remain encrypted.
+#[allow(clippy::type_complexity)] // the sqlx row is a one-off select tuple, mapped immediately below
 pub async fn list_all_collections(db: &SqlitePool) -> Result<Vec<CollectionSummary>> {
     let rows: Vec<(String, i64, i64, i64, String, Option<String>, Option<i64>)> = sqlx::query_as(
         "SELECT c.id, c.created_at,
@@ -993,6 +1009,11 @@ mod tests {
         // Resolving (grant or dismiss) removes it; a second resolve is a no-op.
         assert!(remove_access_request(pool, &cid, &dan).await.unwrap());
         assert!(!remove_access_request(pool, &cid, &dan).await.unwrap());
-        assert!(list_incoming_requests(pool, &alice).await.unwrap().is_empty());
+        assert!(
+            list_incoming_requests(pool, &alice)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 }

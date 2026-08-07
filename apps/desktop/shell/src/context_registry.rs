@@ -42,7 +42,11 @@ impl ContextKey {
             Some((scheme, rest)) => {
                 // Split host[:port] from the path; normalize the authority only.
                 let (authority, _path) = rest.split_once('/').unwrap_or((rest, ""));
-                format!("{}://{}", scheme.to_ascii_lowercase(), authority.to_ascii_lowercase())
+                format!(
+                    "{}://{}",
+                    scheme.to_ascii_lowercase(),
+                    authority.to_ascii_lowercase()
+                )
             }
             None => trimmed.trim_end_matches('/').to_ascii_lowercase(),
         };
@@ -68,7 +72,9 @@ pub struct ContextRegistry<Id> {
 
 impl<Id> Default for ContextRegistry<Id> {
     fn default() -> Self {
-        Self { open: HashMap::new() }
+        Self {
+            open: HashMap::new(),
+        }
     }
 }
 
@@ -126,12 +132,24 @@ mod tests {
 
     #[test]
     fn server_key_normalizes_scheme_host_and_trailing_slash() {
-        assert_eq!(ContextKey::server("https://rite.example.com"), ContextKey::server("HTTPS://Rite.Example.com/"));
-        assert_eq!(ContextKey::server("https://rite.example.com"), ContextKey::server("  https://rite.example.com//  "));
+        assert_eq!(
+            ContextKey::server("https://rite.example.com"),
+            ContextKey::server("HTTPS://Rite.Example.com/")
+        );
+        assert_eq!(
+            ContextKey::server("https://rite.example.com"),
+            ContextKey::server("  https://rite.example.com//  ")
+        );
         // The port is part of the origin: different ports are different contexts.
-        assert_ne!(ContextKey::server("https://x.com:1"), ContextKey::server("https://x.com:2"));
+        assert_ne!(
+            ContextKey::server("https://x.com:1"),
+            ContextKey::server("https://x.com:2")
+        );
         // A path does not distinguish an origin (the server is the same endpoint).
-        assert_eq!(ContextKey::server("https://x.com/a"), ContextKey::server("https://x.com/b"));
+        assert_eq!(
+            ContextKey::server("https://x.com/a"),
+            ContextKey::server("https://x.com/b")
+        );
     }
 
     #[test]
@@ -153,8 +171,14 @@ mod tests {
         reg.register(ContextKey::server("https://a.example"), 1);
         reg.register(ContextKey::Local(PathBuf::from("/data/vault.db")), 2);
         assert_eq!(reg.len(), 2);
-        assert_eq!(reg.open(&ContextKey::server("https://a.example")), OpenOutcome::AlreadyOpen(1));
-        assert_eq!(reg.open(&ContextKey::Local(PathBuf::from("/data/vault.db"))), OpenOutcome::AlreadyOpen(2));
+        assert_eq!(
+            reg.open(&ContextKey::server("https://a.example")),
+            OpenOutcome::AlreadyOpen(1)
+        );
+        assert_eq!(
+            reg.open(&ContextKey::Local(PathBuf::from("/data/vault.db"))),
+            OpenOutcome::AlreadyOpen(2)
+        );
     }
 
     #[test]

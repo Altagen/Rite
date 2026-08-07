@@ -98,7 +98,10 @@ impl Database {
             (14, include_str!("../migrations/014_drop_team_keys.sql")),
             (15, include_str!("../migrations/015_collection_offer.sql")),
             (16, include_str!("../migrations/016_access_requests.sql")),
-            (17, include_str!("../migrations/017_must_change_password.sql")),
+            (
+                17,
+                include_str!("../migrations/017_must_change_password.sql"),
+            ),
             (18, include_str!("../migrations/018_enrollment_tokens.sql")),
             // Future migrations go here:
             // (19, include_str!("../migrations/019_another_feature.sql")),
@@ -148,7 +151,9 @@ impl Database {
                             "Migration {} meets an already-present schema object ({}); \
                              reconciling statement-by-statement",
                             version,
-                            e.as_database_error().map(|d| d.message()).unwrap_or_default()
+                            e.as_database_error()
+                                .map(|d| d.message())
+                                .unwrap_or_default()
                         );
                         apply_migration_tolerant(&mut conn, sql)
                             .await
@@ -766,7 +771,10 @@ mod tests {
             .expect("write from the incoming server should not be locked out");
         // The outgoing server can still read + write too (WAL: readers + one writer).
         assert!(outgoing.get_master_password().await.unwrap().is_some());
-        outgoing.store_master_password("hash-b", b"salt-b").await.unwrap();
+        outgoing
+            .store_master_password("hash-b", b"salt-b")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -783,7 +791,8 @@ mod tests {
 
     #[test]
     fn split_sql_statements_drops_comments_and_blanks() {
-        let sql = "-- a comment\nALTER TABLE t ADD COLUMN a TEXT; -- trailing\n\nCREATE INDEX i ON t(a);";
+        let sql =
+            "-- a comment\nALTER TABLE t ADD COLUMN a TEXT; -- trailing\n\nCREATE INDEX i ON t(a);";
         let stmts = super::split_sql_statements(sql);
         assert_eq!(stmts.len(), 2);
         assert_eq!(stmts[0], "ALTER TABLE t ADD COLUMN a TEXT");
@@ -794,7 +803,10 @@ mod tests {
     fn split_sql_statements_ignores_semicolons_inside_comments() {
         // Regression (migration 008): a ';' inside a comment must not split a statement.
         let sql = "-- a team key; it is sealed per member\nALTER TABLE t ADD COLUMN k TEXT;";
-        assert_eq!(super::split_sql_statements(sql), vec!["ALTER TABLE t ADD COLUMN k TEXT"]);
+        assert_eq!(
+            super::split_sql_statements(sql),
+            vec!["ALTER TABLE t ADD COLUMN k TEXT"]
+        );
     }
 
     #[tokio::test]
@@ -818,7 +830,10 @@ mod tests {
             .iter()
             .map(|r| r.get::<String, _>("name"))
             .collect();
-        assert!(cols.contains(&"drift_probe_col".to_string()), "new column applied");
+        assert!(
+            cols.contains(&"drift_probe_col".to_string()),
+            "new column applied"
+        );
     }
 
     #[tokio::test]

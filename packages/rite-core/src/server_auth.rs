@@ -172,6 +172,7 @@ pub struct VaultKey {
     pub protected_private_key: String,
 }
 
+#[allow(clippy::too_many_arguments)] // provisioning needs salt+params+hash+vault material + role/flag
 pub async fn create_user(
     db: &SqlitePool,
     username: &str,
@@ -292,7 +293,17 @@ pub async fn bootstrap_admin(db: &SqlitePool, username: &str, password: &str) ->
         public_key: to_hex(&public_key),
         protected_private_key,
     };
-    create_user(db, username, &salt, params, &auth_hash, Role::Admin, &vault, false).await?;
+    create_user(
+        db,
+        username,
+        &salt,
+        params,
+        &auth_hash,
+        Role::Admin,
+        &vault,
+        false,
+    )
+    .await?;
     Ok(())
 }
 
@@ -309,6 +320,7 @@ pub struct UserVault {
 }
 
 /// Fetch a user's vault key material (if set).
+#[allow(clippy::type_complexity)] // the sqlx row is a one-off select tuple, mapped immediately below
 pub async fn get_user_vault(db: &SqlitePool, user_id: &str) -> Result<Option<UserVault>> {
     let row: Option<(Option<Vec<u8>>, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
         "SELECT kdf_master_salt, protected_user_key, public_key, protected_private_key FROM users WHERE id = ?",
@@ -490,14 +502,16 @@ pub async fn list_users(db: &SqlitePool) -> Result<Vec<User>> {
     .await?;
     Ok(rows
         .into_iter()
-        .map(|(id, username, role, status, created_at, must_change)| User {
-            id,
-            username,
-            role: Role::parse(&role),
-            status,
-            created_at,
-            must_change_password: must_change != 0,
-        })
+        .map(
+            |(id, username, role, status, created_at, must_change)| User {
+                id,
+                username,
+                role: Role::parse(&role),
+                status,
+                created_at,
+                must_change_password: must_change != 0,
+            },
+        )
         .collect())
 }
 
@@ -598,19 +612,36 @@ mod tests {
     #[tokio::test]
     async fn manager_role_persists_and_flips() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let db = crate::db::Database::new(&tmp.path().join("t.db")).await.unwrap();
+        let db = crate::db::Database::new(&tmp.path().join("t.db"))
+            .await
+            .unwrap();
         let pool = db.pool();
         let params = KdfParams::recommended();
 
-        let u = create_user(pool, "boss", &generate_salt(), params, "hash", Role::Manager, &dummy_vault(), true)
-            .await
-            .unwrap();
+        let u = create_user(
+            pool,
+            "boss",
+            &generate_salt(),
+            params,
+            "hash",
+            Role::Manager,
+            &dummy_vault(),
+            true,
+        )
+        .await
+        .unwrap();
         assert_eq!(u.role, Role::Manager, "created as manager");
         assert_eq!(get_role(pool, &u.id).await.unwrap(), Some(Role::Manager));
 
-        assert!(set_role(pool, &u.id, Role::User).await.unwrap(), "demote to user");
+        assert!(
+            set_role(pool, &u.id, Role::User).await.unwrap(),
+            "demote to user"
+        );
         assert_eq!(get_role(pool, &u.id).await.unwrap(), Some(Role::User));
-        assert!(set_role(pool, &u.id, Role::Manager).await.unwrap(), "promote to manager");
+        assert!(
+            set_role(pool, &u.id, Role::Manager).await.unwrap(),
+            "promote to manager"
+        );
         assert_eq!(get_role(pool, &u.id).await.unwrap(), Some(Role::Manager));
 
         // Unknown id ⇒ no change / no role.

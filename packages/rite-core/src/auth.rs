@@ -155,7 +155,8 @@ impl AuthManager {
             .get_master_password()
             .await?
             .ok_or_else(|| anyhow!("No master password set"))?;
-        let parsed = PasswordHash::new(&stored_hash).map_err(|e| anyhow!("bad stored hash: {e}"))?;
+        let parsed =
+            PasswordHash::new(&stored_hash).map_err(|e| anyhow!("bad stored hash: {e}"))?;
         if Argon2::default()
             .verify_password(old.as_bytes(), &parsed)
             .is_err()
@@ -200,7 +201,10 @@ impl AuthManager {
             .to_string();
         self.db.rekey_vault(&updates, &new_hash, &new_salt).await?;
         *self.master_key.write().await = Some(Arc::new(new_key));
-        info!("Master password changed ({} connections re-keyed)", updates.len());
+        info!(
+            "Master password changed ({} connections re-keyed)",
+            updates.len()
+        );
         Ok(ChangeMasterOutcome::Success)
     }
 
@@ -330,7 +334,9 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let db = Database::new(&temp.path().join("v.db")).await.unwrap();
         let auth = AuthManager::new(db.clone());
-        auth.setup_master_password("Old-Str0ng!P@ss1").await.unwrap();
+        auth.setup_master_password("Old-Str0ng!P@ss1")
+            .await
+            .unwrap();
         let conns = ConnectionsManager::new(db.clone(), auth.clone());
         conns
             .create_connection(CreateConnectionInput {
@@ -339,7 +345,9 @@ mod tests {
                 hostname: "h".into(),
                 port: 22,
                 username: "u".into(),
-                auth_method: AuthMethod::Password { password: "s3cret-pw".into() },
+                auth_method: AuthMethod::Password {
+                    password: "s3cret-pw".into(),
+                },
                 color: None,
                 icon: None,
                 folder: None,
@@ -352,12 +360,16 @@ mod tests {
 
         // Wrong current password is rejected.
         assert!(matches!(
-            auth.change_master_password("nope", "New-Str0ng!P@ss2").await.unwrap(),
+            auth.change_master_password("nope", "New-Str0ng!P@ss2")
+                .await
+                .unwrap(),
             ChangeMasterOutcome::WrongPassword
         ));
         // Change succeeds with the right current password.
         assert!(matches!(
-            auth.change_master_password("Old-Str0ng!P@ss1", "New-Str0ng!P@ss2").await.unwrap(),
+            auth.change_master_password("Old-Str0ng!P@ss1", "New-Str0ng!P@ss2")
+                .await
+                .unwrap(),
             ChangeMasterOutcome::Success
         ));
 

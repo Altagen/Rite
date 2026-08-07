@@ -109,9 +109,9 @@ async fn icmp_ping(host: &str, timeout: Duration) -> ProbeResult {
             status: ProbeStatus::Up,
             latency_ms: Some(start.elapsed().as_millis() as u64),
         },
-        Ok(Ok(_)) => ProbeResult::down(),          // ping ran, host didn't answer
-        Ok(Err(_)) => ProbeResult::unsupported(),  // ping binary missing / couldn't spawn
-        Err(_) => ProbeResult::down(),             // our own timeout tripped
+        Ok(Ok(_)) => ProbeResult::down(), // ping ran, host didn't answer
+        Ok(Err(_)) => ProbeResult::unsupported(), // ping binary missing / couldn't spawn
+        Err(_) => ProbeResult::down(),    // our own timeout tripped
     }
 }
 
@@ -226,12 +226,21 @@ mod tests {
         // Loopback always answers when `ping` runs; if the binary is absent we report
         // Unsupported. Either way it must never be a false Down.
         let r = probe("127.0.0.1", 22, ProbeMethod::Icmp, Duration::from_secs(2)).await;
-        assert!(matches!(r.status, ProbeStatus::Up | ProbeStatus::Unsupported));
+        assert!(matches!(
+            r.status,
+            ProbeStatus::Up | ProbeStatus::Unsupported
+        ));
     }
 
     #[tokio::test]
     async fn icmp_rejects_a_flag_like_host() {
-        let r = probe("-oProxyCommand=x", 0, ProbeMethod::Icmp, Duration::from_secs(1)).await;
+        let r = probe(
+            "-oProxyCommand=x",
+            0,
+            ProbeMethod::Icmp,
+            Duration::from_secs(1),
+        )
+        .await;
         assert_eq!(r.status, ProbeStatus::Down);
     }
 }
