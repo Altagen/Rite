@@ -1,13 +1,16 @@
 // Cross-impl gate for the sealed-box crypto (ADR 0013 phase 1). Proves the
 // browser's libsodium `crypto_box_seal` is byte-compatible with the Rust
 // `rite_crypto::sealbox` (dryoc): opens a Rust-produced sealed box with a pinned
-// keypair, and emits a JS-produced one the Rust test opens in turn. Run from
-// apps/desktop (so libsodium-wrappers resolves): `node ../../e2e/sealbox-check.mjs`.
-// libsodium-wrappers' ESM build has a broken internal import under raw Node
-// (the bundler handles it fine for the app); load the CJS build here.
+// keypair, and emits a JS-produced one the Rust test opens in turn.
+// Resolve libsodium-wrappers from apps/desktop, where it's a direct dependency (the e2e dir
+// has none of its own) — like the other e2e checks, and robust to pnpm hoisting changes
+// (libsodium 0.8 no longer hoists to the workspace root). Its ESM build has a broken internal
+// import under raw Node (the bundler handles it fine for the app); load the CJS build here.
 import { createRequire } from 'node:module';
+import { resolve, join } from 'node:path';
 import assert from 'node:assert/strict';
-const sodium = createRequire(import.meta.url)('libsodium-wrappers');
+const ROOT = resolve(new URL('..', import.meta.url).pathname);
+const sodium = createRequire(join(ROOT, 'apps/desktop/index.html'))('libsodium-wrappers');
 
 const hexToBytes = (h) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
 const PK = hexToBytes('f1e708d2d28121dae7e360cbcd9764e2a49f3181f63f74d11b119e9ab1882435');
