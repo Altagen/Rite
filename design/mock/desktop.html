@@ -92,6 +92,22 @@
   .modal .body{max-height:72vh;overflow:auto}
   textarea.inp{width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:9px;padding:10px 12px;color:var(--fg);font-family:inherit;font-size:14px;resize:vertical}
   textarea.inp:focus{outline:none;border-color:var(--accent)}
+  /* Focus mode (client/native only): the toolbar slides away so terminals fill the screen. Hover
+     the top edge (or press F11/Esc) to reveal/exit — never traps the user (hint pill + hover-reveal). */
+  body.focus .appbar{position:fixed;top:0;left:0;right:0;z-index:60;transform:translateY(-100%);transition:transform .2s ease;box-shadow:var(--shadow)}
+  body.focus.reveal .appbar{transform:translateY(0)}
+  #focusHint{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:61;display:none;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:6px 14px;font-size:12px;color:var(--muted);box-shadow:var(--shadow)}
+  body.focus #focusHint{display:flex;animation:focusHintFade 4s ease forwards}
+  @keyframes focusHintFade{0%{opacity:0}10%{opacity:.96}70%{opacity:.96}100%{opacity:.2}}
+  #focusHint kbd,.sc-tbl kbd{font:600 11px var(--mono);background:var(--bg);border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--fg)}
+  /* Keyboard-shortcuts reference table (Settings, read-only) */
+  .sc-tbl{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+  .sc-tbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700;padding:6px 8px;border-bottom:1px solid var(--border)}
+  .sc-tbl td{padding:8px;border-bottom:1px solid var(--border);vertical-align:top}
+  .sc-tbl tr:last-child td{border-bottom:none}
+  .sc-tbl td:nth-child(2){white-space:nowrap}
+  .sc-tbl .d{color:var(--muted);font-size:12px}
+
   /* responsive: never overflow / overlap */
   .appbar{flex-wrap:nowrap}
   #acts{flex-wrap:nowrap;justify-content:flex-end;flex:none}
@@ -132,6 +148,8 @@
   </div>
 </div>
 <div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a></div>
+<!-- Focus-mode hint: only shown in focus mode; fades but stays faintly so the user is never trapped. -->
+<div id="focusHint">Focus mode · <kbd>Esc</kbd> or <kbd>F11</kbd> to exit · hover the top edge to reveal the toolbar</div>
 
 <script src="rite.js"></script>
 <script src="full-data.js"></script>
@@ -215,7 +233,7 @@ function walk(list,fn){list.forEach(n=>{fn(n);if(n.children)walk(n.children,fn);
 function find(id){let r=null;walk(LIB,n=>{if(n.id===id)r=n;});return r;}
 function allColls(){const a=[];walk(LIB,n=>{if(n.type==='coll')a.push(n);});return a;}
 
-let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp'};
+let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',focus:false,focusCollapseSidebar:false,_sidePrev:false};
 const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
 // Quick SSH in a SERVER context follows the server policy (off by default — server
 // connections belong in collections). A local vault is self-governed → always available.
@@ -677,6 +695,16 @@ function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',bod
   <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
   <div class="settings-row"><div><b>Machine status</b><div class="muted" style="font-size:12px">${STATE.ctx.type==='server'?'<span style="color:var(--amber)">Governed by your server</span> — you can only narrow it.':'You govern this for this local vault.'} Passive “last seen” costs no network traffic; active probing does.</div></div><select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select></div>
   <div class="settings-row"><div><b>Show member count on collections</b><div class="muted" style="font-size:12px">The number next to shared collections (the 👥 shared icon stays either way)</div></div><div class="toggle ${STATE.showMemberCount?'on':''}" onclick="this.classList.toggle('on');STATE.showMemberCount=this.classList.contains('on');renderAll()"><i></i></div></div>
+  <div class="settings-row"><div><b>Auto-collapse sidebar in focus mode</b><div class="muted" style="font-size:12px">When you enter focus mode (F11), also hide the library sidebar for a terminals-only view.</div></div><div class="toggle ${STATE.focusCollapseSidebar?'on':''}" onclick="this.classList.toggle('on');STATE.focusCollapseSidebar=this.classList.contains('on')"><i></i></div></div>
+  <div class="settings-row" style="display:block;padding-top:14px"><b>Keyboard shortcuts</b><div class="muted" style="font-size:12px;margin-bottom:6px">Reference — not editable.</div>
+    <table class="sc-tbl"><thead><tr><th>Action</th><th>Keys</th><th>Description</th></tr></thead><tbody>
+      <tr><td>Focus mode</td><td><kbd>F11</kbd></td><td class="d">Hide the toolbar so terminals fill the screen. <kbd>Esc</kbd> or <kbd>F11</kbd> to exit; hover the top edge to reveal the toolbar.</td></tr>
+      <tr><td>Close terminal pane</td><td><kbd>Ctrl</kbd> <kbd>W</kbd></td><td class="d">Close the focused split pane.</td></tr>
+      <tr><td>Split horizontally</td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>H</kbd></td><td class="d">Split the pane into top / bottom.</td></tr>
+      <tr><td>Split vertically</td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd></td><td class="d">Split the pane into left / right.</td></tr>
+      <tr><td>Find in terminal</td><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>F</kbd></td><td class="d">Search the terminal scrollback.</td></tr>
+      <tr><td>Close find / dialog</td><td><kbd>Esc</kbd></td><td class="d">Dismiss the search bar or an open dialog.</td></tr>
+    </tbody></table></div>
   <div class="settings-row" style="border:none;border-top:1px solid rgba(247,118,142,.25);margin-top:8px;padding-top:14px"><div><b style="color:var(--red)">Reset vault</b><div class="muted" style="font-size:12px">Erase the master password and all connections — irreversible</div></div><button class="btn btn-sm" style="color:var(--red);border-color:rgba(247,118,142,.4)" onclick="dlgResetVault()">Reset…</button></div>`});}
 /* Reset the current vault ("start fresh") — wipes its master password, connections AND name/icon,
    then returns to the base workspace (a vault isn't mandatory). Irreversible ⇒ type the vault name. */
@@ -735,6 +763,7 @@ function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<spa
 function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHELLS[0];
   document.getElementById('acts').innerHTML=`<button class="btn btn-primary btn-sm" title="New local terminal (${sh.name})" onclick="toast('New local terminal · ${sh.name}')">${ICON.plus} <span class="lbl">Terminal</span></button>
   <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
+  <button class="btn btn-ghost btn-sm" title="Focus mode (F11) — hide the toolbar, terminals fill the screen" onclick="toggleFocus()"><svg class="icon" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
   ${STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK?'':`<button class="btn btn-sm" onclick="dlgQuickSSH()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`}
   ${STATE.ctx.type==='vault'&&!STATE.ctx.locked?`<button class="btn btn-ghost btn-sm" title="Lock vault" onclick="lockVault('${STATE.ctx.id}')">${ICON.lock}</button>`:''}
   ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Discover collections offered to your teams" onclick="openDiscover()">${M.compass} <span class="lbl">Discover</span></button>
@@ -746,6 +775,31 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
 function toggleProfile(e){e.stopPropagation();const a=document.getElementById('pmAv');a.textContent=(ORG.me||'?').slice(0,2).toUpperCase();a.style.background=avColor(ORG.me);document.getElementById('pmName').textContent=ORG.me;document.getElementById('pmServer').textContent=(STATE.ctx&&STATE.ctx.name)||'';document.getElementById('pmenu').classList.toggle('show');}
 function closeProfile(){document.getElementById('pmenu').classList.remove('show');}
 document.addEventListener('click',e=>{if(!e.target.closest('.profile')&&!e.target.closest('.pmenu'))closeProfile();});
+
+/* ================= focus mode (client/native only) =================
+   Hide the toolbar so terminals fill the screen. Toggle via the toolbar button or F11; exit via
+   F11/Esc; hover the top edge to reveal the toolbar without leaving focus. Opt-in auto-collapse of
+   the sidebar (Settings) for a terminals-only view. In the real client the shell also enters real
+   OS fullscreen (tao set_fullscreen); here we best-effort the browser Fullscreen API for the demo. */
+function toggleFocus(){
+  STATE.focus=!STATE.focus;
+  document.body.classList.toggle('focus',STATE.focus);
+  if(STATE.focus){
+    if(STATE.focusCollapseSidebar){STATE._sidePrev=STATE.sideCollapsed;STATE.sideCollapsed=true;}
+    try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen();}catch(e){/* fullscreen may be blocked (iframe/policy) — the toolbar-hide still applies */}
+  }else{
+    document.body.classList.remove('reveal');
+    if(STATE.focusCollapseSidebar)STATE.sideCollapsed=STATE._sidePrev;
+    try{if(document.exitFullscreen&&document.fullscreenElement)document.exitFullscreen();}catch(e){}
+  }
+  renderAll();
+}
+// Reveal the hidden toolbar while the cursor is near the top edge (hover-reveal, not an exit).
+document.addEventListener('mousemove',e=>{if(STATE.focus)document.body.classList.toggle('reveal',e.clientY<=56);});
+document.addEventListener('keydown',e=>{
+  if(e.key==='F11'){e.preventDefault();toggleFocus();return;}
+  if(e.key==='Escape'&&STATE.focus&&!document.querySelector('.backdrop')){e.preventDefault();toggleFocus();}
+});
 function renderAll(){renderPill();renderActs();renderSide();renderMain();}
 STATE.ctx=Object.assign({type:'server'},DATA.servers[0]); // start on a server to show collections
 renderAll();
