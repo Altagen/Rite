@@ -7,11 +7,12 @@
  * serves the local master-password vault and the accounts session (ADR 0014).
  */
 
-import { useEffect, useState, useRef, type ReactNode } from 'react';
+import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
 import { useSettingsStore } from '../store/settingsStore';
+import { useFocusMode } from '../store/focusMode';
 import { useTranslation } from '../i18n/i18n';
 import { LibrarySidebar } from './LibrarySidebar';
 import { ProfilePastille } from './ProfilePastille';
@@ -41,6 +42,7 @@ import {
   nativeVaults,
   nativeContext,
   sendVaultCommand,
+  setNativeFullscreen,
   requestOpenContext,
   requestSwitchContext,
   requestReloadContext,
@@ -153,6 +155,13 @@ export function Workspace({
 
   // Sidebar state
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // Focus mode (client/native only): hide the header so terminals fill the screen. `active` + the
+  // auto-collapse-sidebar preference live in a small store; `reveal` is local (hover-to-peek).
+  const focusActive = useFocusMode((s) => s.active);
+  const setFocusActive = useFocusMode((s) => s.setActive);
+  const focusAutoCollapse = useFocusMode((s) => s.autoCollapse);
+  const [focusReveal, setFocusReveal] = useState(false);
+  const sidebarBeforeFocusRef = useRef(true);
   // Settings modal is global (store) so the accounts overlay pages can open it too; here we own
   // the toggle. The modal element is rendered by this component in local mode, and by AccountsShell
   // in a server session (so it stays reachable above the Teams/Collections/… overlays).
@@ -325,6 +334,49 @@ export function Workspace({
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [showVaultPicker]);
+
+  // Focus mode: enter/leave hides the header (terminals fill the screen), optionally collapses the
+  // sidebar (opt-in, restored on exit), and asks the shell for real OS fullscreen. Native only.
+  const native = isNativeShell();
+  const toggleFocus = useCallback(() => {
+    const entering = !focusActive;
+    setFocusActive(entering);
+    if (entering) {
+      if (focusAutoCollapse) {
+        sidebarBeforeFocusRef.current = isSidebarOpen;
+        setIsSidebarOpen(false);
+      }
+      setNativeFullscreen(true);
+    } else {
+      setFocusReveal(false);
+      if (focusAutoCollapse) setIsSidebarOpen(sidebarBeforeFocusRef.current);
+      setNativeFullscreen(false);
+    }
+  }, [focusActive, focusAutoCollapse, isSidebarOpen, setFocusActive]);
+
+  // F11 toggles focus; Esc exits it. Native shell only — the web UI doesn't offer focus mode.
+  useEffect(() => {
+    if (!native) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'F11') {
+        e.preventDefault();
+        toggleFocus();
+      } else if (e.key === 'Escape' && focusActive) {
+        e.preventDefault();
+        toggleFocus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [native, focusActive, toggleFocus]);
+
+  // Hover the top edge to peek the hidden header without leaving focus.
+  useEffect(() => {
+    if (!focusActive) return;
+    const onMove = (e: MouseEvent) => setFocusReveal(e.clientY <= 56);
+    document.addEventListener('mousemove', onMove);
+    return () => document.removeEventListener('mousemove', onMove);
+  }, [focusActive]);
 
   // A window opened *explicitly* for a vault (kind:'local' — via New/Open-vault) surfaces its
   // unlock/setup at once: the user asked for THAT vault, so prompt for it (SetupScreen on first
@@ -1017,7 +1069,16 @@ export function Workspace({
       {/* Header (design mock: brand · context pill · actions) */}
       {/* Accounts context: m-appbar-fit forces one row + non-shrinking children, so OverflowNav's
           scrollWidth measurement is meaningful and the pastille stays pinned right. */}
-      <header ref={appbarRef} className={`m-appbar${navActions?.length ? ' m-appbar-fit' : ''}`}>
+      <header
+        ref={appbarRef}
+        className={`m-appbar${navActions?.length ? ' m-appbar-fit' : ''}${
+          focusActive
+            ? ` fixed left-0 right-0 top-0 z-[55] shadow-lg transition-transform duration-200 ${
+                focusReveal ? 'translate-y-0' : '-translate-y-full'
+              }`
+            : ''
+        }`}
+      >
         <div className="m-brand">
           <img src={riteLandscape} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
@@ -1059,6 +1120,20 @@ export function Workspace({
           <span className="hidden text-muted-foreground md:inline">{settings.defaultShell.split('/').pop()}</span>
           <IconChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
+        )}
+
+        {/* Focus mode (client/native only): hide the toolbar, terminals fill the screen (F11). */}
+        {native && (
+          <button
+            onClick={toggleFocus}
+            className={`m-btn m-btn-sm${focusActive ? ' text-primary' : ''}`}
+            title="Focus mode (F11) — hide the toolbar, terminals fill the screen"
+            aria-pressed={focusActive}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+            </svg>
+          </button>
         )}
 
         {/* Quick SSH — hidden when the server forbids it (server-governed capability) */}
@@ -1105,6 +1180,18 @@ export function Workspace({
           </>
         )}
       </header>
+
+      {/* Focus-mode hint: shown only in focus mode so the exit affordances stay visible — the user
+          is never trapped. Fades to faint but doesn't disappear. */}
+      {focusActive && (
+        <div className="pointer-events-none fixed bottom-4 left-1/2 z-[56] flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs text-muted-foreground opacity-90 shadow-lg">
+          Focus mode ·{' '}
+          <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">Esc</kbd>{' '}
+          or{' '}
+          <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">F11</kbd>{' '}
+          to exit · hover the top edge to reveal the toolbar
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="flex flex-1 overflow-hidden relative">

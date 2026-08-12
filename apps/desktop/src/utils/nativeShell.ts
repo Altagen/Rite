@@ -76,6 +76,16 @@ export function onVaultsChanged(handler: () => void): () => void {
   return () => window.removeEventListener('rite-vaults-changed', handler);
 }
 
+/**
+ * Ask the native shell to enter/leave real OS fullscreen (focus mode, ADR n/a — client ergonomics).
+ * The shell runs `tao` `Window::set_fullscreen`. No-op in the web build (there's no shell), where
+ * focus mode isn't offered anyway (gated on isNativeShell()).
+ */
+export function setNativeFullscreen(on: boolean): void {
+  if (typeof window === 'undefined' || !window.ipc) return;
+  window.ipc.postMessage(JSON.stringify({ type: 'set-fullscreen', on }));
+}
+
 /** The default path a new vault would be written to (shell-injected), for the create dialog. */
 export function suggestedVaultPath(): string | undefined {
   return typeof window !== 'undefined' ? window.__RITE_SUGGESTED_VAULT_PATH__ : undefined;

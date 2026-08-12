@@ -17,7 +17,7 @@ use anyhow::{Context, Result};
 use tao::dpi::LogicalSize;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget};
-use tao::window::{Window, WindowBuilder, WindowId};
+use tao::window::{Fullscreen, Window, WindowBuilder, WindowId};
 use uuid::Uuid;
 use wry::{WebView, WebViewBuilder};
 
@@ -62,6 +62,8 @@ enum UserEvent {
     /// A vault-management command (roster edit / native dialog), tagged with the window
     /// that posted it so New/Open can switch *that* window to the vault.
     Vault { window: WindowId, cmd: VaultCommand },
+    /// Enter/leave real OS fullscreen for the posting window (focus mode — client ergonomics).
+    SetFullscreen { window: WindowId, on: bool },
     /// A native file dialog resolved on its own thread (see [`spawn_file_dialog`]).
     VaultPicked(VaultPick),
 }
@@ -270,6 +272,13 @@ fn main() -> Result<()> {
                     vaults_json =
                         serde_json::to_string(roster.entries()).unwrap_or_else(|_| "[]".to_string());
                     broadcast_vaults(&windows, &vaults_json);
+                }
+            }
+            Event::UserEvent(UserEvent::SetFullscreen { window, on }) => {
+                // Focus mode: borderless fullscreen on the current monitor (or leave it). The
+                // frontend already hid the header; this makes the OS window match.
+                if let Some(w) = windows.get(&window) {
+                    w.window.set_fullscreen(on.then(|| Fullscreen::Borderless(None)));
                 }
             }
             Event::UserEvent(UserEvent::VaultPicked(pick)) => match pick {
@@ -532,6 +541,10 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, window: WindowId, body: String)
             }
         }
         Some("reload-context") => send(UserEvent::ReloadContext { window }),
+        Some("set-fullscreen") => {
+            let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
+            send(UserEvent::SetFullscreen { window, on });
+        }
         _ => {
             if let Some(cmd) = plan_vault_command(&msg) {
                 send(UserEvent::Vault { window, cmd });

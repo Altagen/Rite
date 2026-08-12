@@ -11,8 +11,22 @@ import { useTranslation } from '../i18n/i18n';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
 import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
 import { useServerSession } from '../store/serverSessionStore';
+import { useFocusMode } from '../store/focusMode';
+import { isNativeShell } from '../utils/nativeShell';
 import { Backend } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
+
+// Read-only keyboard-shortcuts reference (mirrors design/mock/desktop.html). Focus mode is
+// client/native only — filtered out of the table on the web UI where it doesn't apply.
+const KBD = 'rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground';
+const SHORTCUTS: { action: string; keys: string[]; desc: string; nativeOnly?: boolean }[] = [
+  { action: 'Focus mode', keys: ['F11'], desc: 'Hide the toolbar so terminals fill the screen. Esc or F11 to exit; hover the top edge to reveal the toolbar.', nativeOnly: true },
+  { action: 'Close terminal pane', keys: ['Ctrl', 'W'], desc: 'Close the focused split pane.' },
+  { action: 'Split horizontally', keys: ['Ctrl', 'Shift', 'H'], desc: 'Split the pane into top / bottom.' },
+  { action: 'Split vertically', keys: ['Ctrl', 'Shift', 'V'], desc: 'Split the pane into left / right.' },
+  { action: 'Find in terminal', keys: ['Ctrl/⌘', 'F'], desc: 'Search the terminal scrollback.' },
+  { action: 'Close find / dialog', keys: ['Esc'], desc: 'Dismiss the search bar or an open dialog.' },
+];
 
 interface SettingsProps {
   onClose: () => void;
@@ -21,6 +35,9 @@ interface SettingsProps {
 export function Settings({ onClose }: SettingsProps) {
   const { t, locale, setLocale } = useTranslation();
   const { settings, fetchSettings, updateSettings, isLoading } = useSettingsStore();
+  const native = isNativeShell();
+  const focusAutoCollapse = useFocusMode((s) => s.autoCollapse);
+  const setFocusAutoCollapse = useFocusMode((s) => s.setAutoCollapse);
   const showMemberCount = useDisplayPrefs((s) => s.showMemberCount);
   const setShowMemberCount = useDisplayPrefs((s) => s.setShowMemberCount);
   const healthPref = useHealthPref((s) => s.pref);
@@ -565,6 +582,60 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
             </section>
           )}
+
+          {/* Focus mode (client/native only) */}
+          {native && (
+            <section className="border-b border-border pb-6">
+              <h3 className="mb-4 text-lg font-semibold">Focus mode</h3>
+              <label className="flex cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={focusAutoCollapse}
+                  onChange={(e) => setFocusAutoCollapse(e.target.checked)}
+                  className="h-5 w-5 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary"
+                />
+                <div>
+                  <div className="font-medium">Auto-collapse sidebar in focus mode</div>
+                  <div className="text-sm text-muted-foreground">
+                    When you enter focus mode (F11), also hide the library sidebar for a terminals-only view.
+                  </div>
+                </div>
+              </label>
+            </section>
+          )}
+
+          {/* Keyboard shortcuts (read-only reference) */}
+          <section className="border-b border-border pb-6">
+            <h3 className="mb-1 text-lg font-semibold">Keyboard shortcuts</h3>
+            <p className="mb-3 text-sm text-muted-foreground">Reference — not editable.</p>
+            <div className="overflow-hidden rounded-lg border border-border">
+              <table className="w-full text-sm">
+                <thead className="bg-secondary/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Action</th>
+                    <th className="px-3 py-2 font-semibold">Keys</th>
+                    <th className="px-3 py-2 font-semibold">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {SHORTCUTS.filter((s) => native || !s.nativeOnly).map((s) => (
+                    <tr key={s.action} className="border-t border-border align-top">
+                      <td className="whitespace-nowrap px-3 py-2">{s.action}</td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        {s.keys.map((k, i) => (
+                          <span key={k}>
+                            {i > 0 && ' '}
+                            <kbd className={KBD}>{k}</kbd>
+                          </span>
+                        ))}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{s.desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
 
         {/* Actions */}
