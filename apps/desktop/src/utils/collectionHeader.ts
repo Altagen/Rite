@@ -22,6 +22,11 @@ export interface CollectionHeader {
   name: string;
   color: string | null;
   folders?: CollectionFolder[];
+  // Active health-check opt-out for the whole collection (ADR 0017, further-restrict): false ⇒
+  // members never actively probe this collection's machines (passive "last seen" still shows).
+  // Owner-set, sealed in the header (zero-knowledge), so every member honours it. Absent ⇒ follow
+  // the server/user policy.
+  hc?: boolean | null;
   // Marks the auto-provisioned per-user "Personal" collection (a real 1-member
   // collection, ADR 0016). The marker lives in the encrypted header so it stays
   // zero-knowledge; the client finds Personal by decrypting headers.

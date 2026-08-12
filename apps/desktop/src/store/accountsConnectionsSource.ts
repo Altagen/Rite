@@ -232,7 +232,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [writableCollections, setWritableCollections] = useState<{ id: string; name: string }[]>([]);
   const [collectionList, setCollectionList] = useState<
-    { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean }[]
+    { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean; hc: boolean | null }[]
   >([]);
   const entries = useRef<Map<string, Entry>>(new Map());
   const collections = useRef<Map<string, CollectionCtx>>(new Map());
@@ -257,7 +257,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       const writable: { id: string; name: string; isPersonal: boolean }[] = [];
       // Every readable collection (including empty ones), so the tree can show a
       // node before it has any machine. Personal is one of them (marked).
-      const list: { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean }[] = [];
+      const list: { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean; hc: boolean | null }[] = [];
       for (const col of cols) {
         if (!col.protectedMetaKey) continue;
         try {
@@ -279,6 +279,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
             folders: header.folders ?? [],
             memberCount,
             isPersonal,
+            hc: header.hc ?? null,
           });
           if (canWrite(col.role)) writable.push({ id: col.id, name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name, isPersonal });
           if (itemsKey)

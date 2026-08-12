@@ -19,18 +19,22 @@ export function CollectionEditDialog({
   collectionId,
   initialName,
   initialColor,
+  initialHc,
   onClose,
   onSaved,
 }: {
   collectionId?: string; // present ⇒ rename; absent ⇒ create
   initialName?: string;
   initialColor?: string | null;
+  initialHc?: boolean | null; // false ⇒ this collection opts out of active health-checks (ADR 0017)
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { publicKey, privateKey } = useServerSession();
   const [name, setName] = useState(initialName ?? '');
   const [color, setColor] = useState(initialColor ?? COLORS[0]);
+  // Active health-check for this collection (owner setting). Off ⇒ hc=false in the sealed header.
+  const [hcOn, setHcOn] = useState(initialHc !== false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const editing = !!collectionId;
@@ -45,13 +49,18 @@ export function CollectionEditDialog({
         // Rename: re-encrypt the header (metaKey), preserving the collection's folders.
         if (!publicKey || !privateKey) throw new Error('session keys unavailable');
         const { metaKey, header } = await readCollectionHeader(collectionId!, publicKey, privateKey);
-        await writeCollectionHeader(collectionId!, metaKey, { ...header, name: name.trim(), color });
+        await writeCollectionHeader(collectionId!, metaKey, {
+          ...header,
+          name: name.trim(),
+          color,
+          hc: hcOn ? null : false,
+        });
       } else {
         // Create: fresh split keys sealed to myself (first owner). The name/colour is
         // encrypted with metaKey; items will use the separate itemsKey (ADR 0016).
         if (!publicKey) throw new Error('session keys unavailable');
         const { metaKey, itemsKey } = generateCollectionKeys();
-        const nameEnc = await encryptCollectionField(metaKey, { name: name.trim(), color });
+        const nameEnc = await encryptCollectionField(metaKey, { name: name.trim(), color, hc: hcOn ? null : false });
         await Backend.Collections.create(
           nameEnc,
           await sealCollectionKey(publicKey, metaKey),
@@ -104,6 +113,25 @@ export function CollectionEditDialog({
             />
           ))}
         </div>
+
+        {/* Active health-check opt-out for the whole collection (ADR 0017). Passive "last seen" is
+            unaffected — this only stops synthetic reachability probes for its machines. */}
+        <label className="mb-5 flex cursor-pointer items-start gap-3">
+          <input
+            type="checkbox"
+            checked={hcOn}
+            onChange={(e) => setHcOn(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary"
+            disabled={busy}
+          />
+          <span>
+            <span className="block text-sm font-medium">Active health-check for this collection</span>
+            <span className="block text-xs text-muted-foreground">
+              When off, members never actively probe this collection&apos;s machines. Passive &ldquo;last
+              seen&rdquo; still shows.
+            </span>
+          </span>
+        </label>
 
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">

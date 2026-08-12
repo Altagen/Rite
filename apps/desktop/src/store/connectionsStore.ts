@@ -125,6 +125,8 @@ export interface ConnectionsSource {
     folders: { name: string; color: string | null }[];
     memberCount: number;
     isPersonal: boolean;
+    // Collection-wide active-probe opt-out (ADR 0017): false ⇒ never probe its machines.
+    hc?: boolean | null;
   }[];
 }
 

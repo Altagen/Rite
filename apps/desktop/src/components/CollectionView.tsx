@@ -59,6 +59,7 @@ export function CollectionView({
   name,
   color,
   role,
+  hc,
   machines,
   folders,
   canWrite,
@@ -74,6 +75,7 @@ export function CollectionView({
   name: string;
   color?: string | null;
   role?: string | null;
+  hc?: boolean | null; // collection-wide active-probe opt-out (ADR 0017): false ⇒ never probe here
   machines: ConnectionInfo[];
   folders?: { name: string; color: string | null }[]; // declared sub-folders (show empty)
   canWrite: boolean;
@@ -98,7 +100,10 @@ export function CollectionView({
   const healthPref = useHealthPref((s) => s.pref);
   const { activeMode } = effectiveHealth(mode?.healthcheck, healthPref);
   const minInterval = mode?.healthcheck?.minInterval ?? 60;
-  const canProbe = activeMode !== 'off';
+  // Most-restrictive-wins (ADR 0017): a collection the owner opted out (hc===false) is never
+  // actively probed, regardless of the server/user policy. Passive "last seen" is unaffected.
+  const collectionProbes = hc !== false;
+  const canProbe = activeMode !== 'off' && collectionProbes;
   const activeFor = (id: string) =>
     checking[id] ? ('checking' as const) : results[id]?.status;
   const [filter, setFilter] = useState('');
@@ -153,8 +158,12 @@ export function CollectionView({
     [allPaths, cur],
   );
   const here = useMemo(() => shown.filter((m) => (m.folder || '') === cur), [shown, cur]);
-  // Machines that opt out of active probing (ADR 0017, hc===false) are never probed.
-  const probeHere = useMemo(() => here.filter((m) => m.hc !== false), [here]);
+  // Machines that opt out (hc===false) are never probed — and nothing is probed at all when the
+  // whole collection opted out (ADR 0017 further-restrict).
+  const probeHere = useMemo(
+    () => (collectionProbes ? here.filter((m) => m.hc !== false) : []),
+    [here, collectionProbes],
+  );
   const checkingHere = probeHere.some((m) => checking[m.id]);
 
   // Background polling (ADR 0017 "full"): auto-check the (probeable) machines in view on a

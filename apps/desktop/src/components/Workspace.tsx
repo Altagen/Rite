@@ -186,7 +186,7 @@ export function Workspace({
   const [membersCollectionId, setMembersCollectionId] = useState<string | null>(null);
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
   const [formDefaultFolder, setFormDefaultFolder] = useState<string | null>(null);
-  const [collectionEdit, setCollectionEdit] = useState<{ id?: string; name?: string; color?: string | null } | null>(null);
+  const [collectionEdit, setCollectionEdit] = useState<{ id?: string; name?: string; color?: string | null; hc?: boolean | null } | null>(null);
   const [showNewCollection, setShowNewCollection] = useState(false);
   // When a new collection is created from a root folder's ＋, place it there.
   const [pendingCollectionFolder, setPendingCollectionFolder] = useState<string | null>(null);
@@ -1354,7 +1354,10 @@ export function Workspace({
               }
               onOpenMembers={isAccountsContext ? (id) => setMembersCollectionId(id) : undefined}
               onRenameCollection={
-                isAccountsContext ? (id, name, color) => setCollectionEdit({ id, name, color }) : undefined
+                isAccountsContext
+                  ? (id, name, color) =>
+                      setCollectionEdit({ id, name, color, hc: conns.collections?.find((c) => c.id === id)?.hc })
+                  : undefined
               }
               onDeleteCollection={isAccountsContext ? (id, name) => setDeleteCollectionTarget({ id, name }) : undefined}
               libraryFolders={isAccountsContext ? tree.folders : undefined}
@@ -1445,6 +1448,7 @@ export function Workspace({
                   name={openCollectionName}
                   color={openCollectionColor}
                   role={openCollectionRole}
+                  hc={openCol?.hc}
                   machines={openCollectionMachines}
                   folders={openCol?.folders}
                   canWrite={openCollectionWritable}
@@ -1659,6 +1663,7 @@ export function Workspace({
           collectionId={collectionEdit.id}
           initialName={collectionEdit.name}
           initialColor={collectionEdit.color}
+          initialHc={collectionEdit.hc}
           onClose={() => setCollectionEdit(null)}
           onSaved={fetchConnections}
         />
