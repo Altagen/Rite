@@ -125,7 +125,24 @@ try {
   assert.equal((await post('/api/server/register', await vaultBody('bob', 'BobPass1234!', 'user'))).status, 403, 'register 403 again once closed');
   ok('admin closed registration again → new signups refused (403)');
 
-  console.log('\n✅ SELF-REGISTRATION OK — opt-in open_registration gate, role user, admin-only toggle (ADR 0015 phase 1)');
+  step = 'rate-limit';
+  // The register limiter runs BEFORE the open_registration gate and counts every attempt, so with
+  // registration off no accounts are created — repeated hits just return 403 until the per-client
+  // window is exhausted, then 429 with a Retry-After hint. (Earlier steps already share the bucket.)
+  let got429 = false;
+  let retryAfter = null;
+  for (let i = 0; i < 14 && !got429; i++) {
+    const r = await post('/api/server/register', await vaultBody(`rl${i}`, 'RlPass123456!', 'user'));
+    if (r.status === 429) {
+      got429 = true;
+      retryAfter = r.headers.get('retry-after');
+    }
+  }
+  assert.ok(got429, 'self-service register is rate-limited (429) after repeated attempts');
+  assert.ok(retryAfter && Number(retryAfter) > 0, '429 carries a Retry-After hint');
+  ok('self-service registration is rate-limited per client (429 + Retry-After)');
+
+  console.log('\n✅ SELF-REGISTRATION OK — opt-in open_registration gate, role user, admin-only toggle + signup rate limit (ADR 0015 phase 1)');
   cleanup();
   process.exit(0);
 } catch (e) {

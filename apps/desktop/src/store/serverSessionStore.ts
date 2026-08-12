@@ -279,13 +279,15 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
       const msg =
         e instanceof RiteHttpError && e.status === 409
           ? 'That username is already taken'
-          : e instanceof RiteHttpError && e.status === 403
-            ? inviteToken
-              ? 'That invitation is invalid or has expired'
-              : 'Registration is closed on this server'
-            : e instanceof Error
-              ? e.message
-              : 'Failed to create your account';
+          : e instanceof RiteHttpError && e.status === 429
+            ? 'Too many sign-up attempts — please try again in a few minutes'
+            : e instanceof RiteHttpError && e.status === 403
+              ? inviteToken
+                ? 'That invitation is invalid or has expired'
+                : 'Registration is closed on this server'
+              : e instanceof Error
+                ? e.message
+                : 'Failed to create your account';
       set({ error: msg, loading: false });
       throw e;
     }

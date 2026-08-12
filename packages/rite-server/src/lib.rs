@@ -67,6 +67,8 @@ pub struct ServerState {
     pub host_key: Option<Arc<String>>,
     /// Per-account login rate limiter (brute-force protection, server mode).
     login_limiter: Arc<LoginLimiter>,
+    /// Self-service signup rate limiter (anti-abuse on /api/server/register).
+    register_limiter: Arc<RegisterLimiter>,
     /// True when rite-server terminates TLS itself (adds HSTS). Behind a reverse
     /// proxy this stays false and the proxy owns HSTS.
     pub tls: bool,
@@ -223,6 +225,54 @@ impl LoginLimiter {
     }
 }
 
+/// In-memory fixed-window rate limit for self-service signup (`/api/server/register`): at most
+/// `MAX` attempts per `WINDOW` per client key. Keyed on the `X-Forwarded-For` client IP behind a
+/// reverse proxy, else a single `global` bucket (a directly-exposed server can't trust the peer,
+/// and open registration is opt-in + off by default anyway). Caps ALL attempts (incl. failed/dup),
+/// so it also blunts account-enumeration probing. Resets on restart, like the login limiter.
+#[derive(Default)]
+struct RegisterLimiter {
+    inner: std::sync::Mutex<HashMap<String, (u32, std::time::Instant)>>,
+}
+
+impl RegisterLimiter {
+    const MAX: u32 = 10;
+    const WINDOW: std::time::Duration = std::time::Duration::from_secs(600);
+
+    /// Records one attempt for `key`. Returns `Some(retry_after_secs)` if the key is already at the
+    /// limit for the current window (the caller should 429), else `None`.
+    fn check_and_record(&self, key: &str) -> Option<u64> {
+        let now = std::time::Instant::now();
+        let mut map = self.inner.lock().unwrap();
+        let e = map.entry(key.to_string()).or_insert((0, now));
+        if now.duration_since(e.1) > Self::WINDOW {
+            *e = (0, now);
+        }
+        if e.0 >= Self::MAX {
+            let retry = Self::WINDOW
+                .checked_sub(now.duration_since(e.1))
+                .map(|d| d.as_secs() + 1)
+                .unwrap_or(1);
+            return Some(retry);
+        }
+        e.0 += 1;
+        None
+    }
+}
+
+/// Best-effort client key for rate limiting: the first `X-Forwarded-For` hop (set by a trusted
+/// reverse proxy), else a single shared `global` bucket.
+fn client_key(headers: &HeaderMap) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| "global".to_string())
+}
+
 /// A boolean env flag: returns `default` when unset, else off for `0/false/off/no`
 /// (case-insensitive) and on for anything else. Used by the serve-surface flags.
 fn env_flag(name: &str, default: bool) -> bool {
@@ -263,6 +313,7 @@ impl ServerState {
             serve_webui: env_flag("RITE_SERVE_WEBUI", true),
             host_key: None,
             login_limiter: Arc::new(LoginLimiter::default()),
+            register_limiter: Arc::new(RegisterLimiter::default()),
             tls: false,
             context: Arc::new(std::sync::Mutex::new(ActiveContext::Local)),
             remote_token: Arc::new(std::sync::Mutex::new(None)),
@@ -1602,10 +1653,24 @@ struct RegisterReq {
 /// requires the opt-in `open_registration` setting and lands role `user`, no team. Returns a session.
 async fn server_register(
     State(state): State<ServerState>,
+    headers: HeaderMap,
     Json(req): Json<RegisterReq>,
 ) -> Result<Response, AppError> {
     if !state.accounts {
         return Ok((StatusCode::BAD_REQUEST, "not a server").into_response());
+    }
+    // Anti-abuse: cap self-service signups per client (X-Forwarded-For behind a proxy, else a global
+    // bucket). Counts every attempt (incl. failed/duplicate) so it also blunts enumeration probing.
+    if let Some(retry) = state
+        .register_limiter
+        .check_and_record(&client_key(&headers))
+    {
+        return Ok((
+            StatusCode::TOO_MANY_REQUESTS,
+            [(header::RETRY_AFTER, retry.to_string())],
+            Json(json!({ "error": "too many sign-up attempts — try again later" })),
+        )
+            .into_response());
     }
     let username = req.username.trim();
     if username.is_empty() || username.chars().count() > 64 {
@@ -4047,6 +4112,31 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt;
+
+    #[test]
+    fn register_limiter_caps_per_window_per_key() {
+        let rl = RegisterLimiter::default();
+        for _ in 0..RegisterLimiter::MAX {
+            assert!(
+                rl.check_and_record("1.2.3.4").is_none(),
+                "attempts under the cap pass"
+            );
+        }
+        assert!(
+            rl.check_and_record("1.2.3.4").is_some(),
+            "the (MAX+1)th attempt is limited (429)"
+        );
+        // A different client key has its own independent budget.
+        assert!(rl.check_and_record("5.6.7.8").is_none());
+    }
+
+    #[test]
+    fn client_key_prefers_first_forwarded_hop_else_global() {
+        let mut h = HeaderMap::new();
+        assert_eq!(client_key(&h), "global");
+        h.insert("x-forwarded-for", "203.0.113.7, 10.0.0.1".parse().unwrap());
+        assert_eq!(client_key(&h), "203.0.113.7");
+    }
 
     #[test]
     fn vault_key_holder_locks_and_expires() {
