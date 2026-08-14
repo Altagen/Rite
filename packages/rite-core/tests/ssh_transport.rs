@@ -1,0 +1,315 @@
+//! End-to-end transport test for the real SSH client path (`terminal.rs`).
+//!
+//! `terminal.rs` carries every interactive session yet had no test. Here we
+//! stand up an in-process russh **server** on loopback and drive it through the
+//! genuine [`SshSession::connect`] client — the same code the desktop shell and
+//! rite-server run — so a regression in connect / auth / PTY / shell / data
+//! round-trip / resize / close, or in host-key (MITM) rejection, fails CI.
+//!
+//! It exercises our client against russh's own server (not OpenSSH), so it
+//! guards *our* logic, not cross-implementation interop.
+
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use rite_core::connection::{AuthMethod, Connection, ConnectionMetadata, Protocol};
+use rite_core::db::Database;
+use rite_core::events::{SessionEvents, SharedEvents};
+use rite_core::known_hosts;
+use rite_core::terminal::SshSession;
+
+use russh::server::{
+    Auth, ChannelOpenHandle, Config as ServerConfig, Handler, Msg, Server, Session,
+};
+use russh::{Channel, ChannelId};
+use tokio::net::TcpListener;
+
+const USER: &str = "tester";
+const PASS: &str = "s3cret";
+const BANNER: &[u8] = b"RITE-TEST-BANNER\r\n";
+
+// ---------------------------------------------------------------------------
+// Minimal in-process SSH server
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct TestServer;
+
+impl Server for TestServer {
+    type Handler = TestHandler;
+    fn new_client(&mut self, _peer: Option<SocketAddr>) -> TestHandler {
+        TestHandler
+    }
+}
+
+struct TestHandler;
+
+impl Handler for TestHandler {
+    type Error = russh::Error;
+
+    async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
+        if user == USER && password == PASS {
+            Ok(Auth::Accept)
+        } else {
+            Ok(Auth::reject())
+        }
+    }
+
+    async fn channel_open_session(
+        &mut self,
+        _channel: Channel<Msg>,
+        reply: ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
+    }
+
+    async fn pty_request(
+        &mut self,
+        channel: ChannelId,
+        _term: &str,
+        _cols: u32,
+        _rows: u32,
+        _pw: u32,
+        _ph: u32,
+        _modes: &[(russh::Pty, u32)],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        // Emulate a shell's initial output (MOTD / prompt).
+        session.data(channel, BANNER.to_vec())?;
+        Ok(())
+    }
+
+    async fn data(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        // Deterministic echo with a marker so the round-trip is unambiguous.
+        let mut out = b"echo:".to_vec();
+        out.extend_from_slice(data);
+        session.data(channel, out)?;
+        Ok(())
+    }
+
+    async fn window_change_request(
+        &mut self,
+        _channel: ChannelId,
+        _cols: u32,
+        _rows: u32,
+        _pw: u32,
+        _ph: u32,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+/// Bind an ephemeral loopback port and run the test SSH server on it.
+/// Returns the port the client should dial.
+async fn spawn_test_server() -> u16 {
+    let key =
+        russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519).unwrap();
+    let config = Arc::new(ServerConfig {
+        keys: vec![key],
+        auth_rejection_time: Duration::from_millis(50),
+        ..Default::default()
+    });
+
+    let socket = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = socket.local_addr().unwrap().port();
+
+    tokio::spawn(async move {
+        let mut server = TestServer;
+        let _ = server.run_on_socket(config, &socket).await;
+    });
+
+    port
+}
+
+// ---------------------------------------------------------------------------
+// Event sink spy — accumulates all session output bytes
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+struct Spy {
+    out: Arc<Mutex<Vec<u8>>>,
+    host_key_changed: Arc<Mutex<bool>>,
+}
+
+impl SessionEvents for Spy {
+    fn terminal_data(&self, _session_id: &str, data: &[u8]) {
+        self.out.lock().unwrap().extend_from_slice(data);
+    }
+    fn terminal_exit(&self, _session_id: &str, _exit_status: u32) {}
+    fn terminal_closed(&self, _session_id: &str) {}
+    fn terminal_error(&self, _session_id: &str, _error: &str) {}
+    fn connection_dead(&self, _session_id: &str, _reason: &str) {}
+    fn host_key_unknown(&self, _host: &str, _port: u16, _key_type: &str, _fingerprint: &str) {}
+    fn host_key_added(&self, _host: &str, _port: u16, _key_type: &str, _fingerprint: &str) {}
+    fn host_key_changed(&self, _host: &str, _port: u16, _old_fp: &str, _new_fp: &str) {
+        *self.host_key_changed.lock().unwrap() = true;
+    }
+}
+
+/// Poll `haystack` until it contains `needle`, or the deadline passes.
+async fn wait_for(haystack: &Arc<Mutex<Vec<u8>>>, needle: &[u8], timeout: Duration) -> bool {
+    let start = Instant::now();
+    loop {
+        {
+            let g = haystack.lock().unwrap();
+            if g.windows(needle.len()).any(|w| w == needle) {
+                return true;
+            }
+        }
+        if start.elapsed() > timeout {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+async fn test_db() -> (tempfile::TempDir, Arc<sqlx::SqlitePool>) {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::new(&dir.path().join("test.db")).await.unwrap();
+    let pool = Arc::new(db.pool().clone());
+    (dir, pool)
+}
+
+fn test_connection(port: u16) -> Connection {
+    Connection {
+        id: "test-conn".into(),
+        name: "test".into(),
+        protocol: Protocol::SSH,
+        hostname: "127.0.0.1".into(),
+        port,
+        username: USER.into(),
+        auth_method: AuthMethod::Password {
+            password: PASS.into(),
+        },
+        metadata: ConnectionMetadata {
+            color: None,
+            icon: None,
+            folder: None,
+            notes: None,
+        },
+        ssh_keep_alive_override: None,
+        ssh_keep_alive_interval: None,
+        created_at: 0,
+        updated_at: 0,
+        last_used_at: None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+/// The full happy path: TCP connect → password auth → PTY → shell → receive the
+/// server banner → send input and see it echoed → resize → close. This is the
+/// contract the whole product rides on.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ssh_session_connects_authenticates_and_round_trips() {
+    let port = spawn_test_server().await;
+    let (_dir, pool) = test_db().await;
+
+    let spy = Arc::new(Spy::default());
+    let out = spy.out.clone();
+    let events: SharedEvents = spy;
+
+    // force_accept_host_key = true → Quick-SSH TOFU path (host key saved, no prompt).
+    let session = SshSession::connect(
+        test_connection(port),
+        AuthMethod::Password {
+            password: PASS.into(),
+        },
+        events,
+        pool,
+        None,
+        true,
+    )
+    .await
+    .expect("SSH session should connect and authenticate");
+
+    // Switch to streaming and fold any already-buffered bytes into the spy, so
+    // the assertion is race-free whether the banner arrived before or after.
+    let buffered = session.claim_initial_output().await;
+    out.lock().unwrap().extend_from_slice(&buffered);
+
+    assert!(
+        wait_for(&out, BANNER, Duration::from_secs(5)).await,
+        "should receive the shell banner"
+    );
+
+    session
+        .send_input(b"ping\n")
+        .await
+        .expect("send_input should succeed");
+    assert!(
+        wait_for(&out, b"echo:ping", Duration::from_secs(5)).await,
+        "server should echo our input back through the channel"
+    );
+
+    session
+        .resize(120, 40)
+        .await
+        .expect("resize should succeed");
+    session.close().await.expect("close should succeed");
+}
+
+/// Security-critical: if a known host presents a *different* key, the connection
+/// must be rejected (potential MITM) regardless of verification mode.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ssh_session_rejects_changed_host_key() {
+    let port = spawn_test_server().await;
+    let (_dir, pool) = test_db().await;
+
+    // Seed known_hosts with a DIFFERENT key for this host:port, simulating a
+    // previously-trusted server whose key has since changed.
+    let bogus = russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519)
+        .unwrap()
+        .public_key()
+        .clone();
+    known_hosts::add_host_key(&pool, "127.0.0.1", port, &bogus)
+        .await
+        .unwrap();
+
+    let spy = Arc::new(Spy::default());
+    let changed = spy.host_key_changed.clone();
+    let events: SharedEvents = spy;
+
+    // force_accept_host_key = false → the real verification path (defaults to strict).
+    let result = SshSession::connect(
+        test_connection(port),
+        AuthMethod::Password {
+            password: PASS.into(),
+        },
+        events,
+        pool,
+        None,
+        false,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "connection to a host whose key changed must be rejected"
+    );
+    assert!(
+        *changed.lock().unwrap(),
+        "a host_key_changed event must be emitted for the UI"
+    );
+}

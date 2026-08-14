@@ -4171,6 +4171,7 @@ dependencies = [
  "argon2 0.5.3",
  "chrono",
  "portable-pty",
+ "rand 0.10.2",
  "rite-crypto",
  "russh",
  "serde",
