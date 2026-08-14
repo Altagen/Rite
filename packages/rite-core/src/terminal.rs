@@ -271,16 +271,25 @@ impl SshSession {
                 );
                 // Load private key
                 let key_data = tokio::fs::read(key_path).await?;
-                let key = if let Some(pass) = passphrase {
-                    russh::keys::decode_secret_key(&String::from_utf8(key_data)?, Some(pass))?
+                let key = russh::keys::decode_secret_key(
+                    &String::from_utf8(key_data)?,
+                    passphrase.as_deref(),
+                )?;
+
+                // RSA keys must be signed with rsa-sha2-256/512: OpenSSH >= 8.8
+                // rejects the legacy SHA-1 "ssh-rsa" signature that a `None` hash
+                // produces, so we ask the server which RSA hash it accepts. Non-RSA
+                // keys (ed25519/ecdsa) ignore the hash algorithm.
+                let hash_alg = if matches!(key.algorithm(), russh::keys::Algorithm::Rsa { .. }) {
+                    session.best_supported_rsa_hash().await?.flatten()
                 } else {
-                    russh::keys::decode_secret_key(&String::from_utf8(key_data)?, None)?
+                    None
                 };
 
                 session
                     .authenticate_publickey(
                         &connection.username,
-                        PrivateKeyWithHashAlg::new(Arc::new(key), None),
+                        PrivateKeyWithHashAlg::new(Arc::new(key), hash_alg),
                     )
                     .await?
             }

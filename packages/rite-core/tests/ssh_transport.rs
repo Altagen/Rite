@@ -56,6 +56,16 @@ impl Handler for TestHandler {
         }
     }
 
+    // Accept any key whose signature verifies (russh checks the signature before
+    // calling this). Lets the RSA-hash-negotiation path be exercised end-to-end.
+    async fn auth_publickey(
+        &mut self,
+        _user: &str,
+        _key: &russh::keys::PublicKey,
+    ) -> Result<Auth, Self::Error> {
+        Ok(Auth::Accept)
+    }
+
     async fn channel_open_session(
         &mut self,
         _channel: Channel<Msg>,
@@ -312,4 +322,57 @@ async fn ssh_session_rejects_changed_host_key() {
         *changed.lock().unwrap(),
         "a host_key_changed event must be emitted for the UI"
     );
+}
+
+/// Public-key auth with an **RSA** key — path coverage for the rsa-sha2 branch:
+/// decode → `best_supported_rsa_hash()` → sign → authenticate, with no panic.
+/// (russh's own server accepts both ssh-rsa and rsa-sha2, so this can't by itself
+/// prove SHA-1 is refused; the OpenSSH >= 8.8 rejection is guarded by code review.
+/// The point is that the RSA auth path stays working through terminal.rs.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ssh_session_authenticates_with_rsa_key() {
+    let port = spawn_test_server().await;
+    let (dir, pool) = test_db().await;
+
+    // Throwaway RSA key written as an OpenSSH private key on disk (the format
+    // terminal.rs loads from `key_path`).
+    let rsa = russh::keys::PrivateKey::random(
+        &mut rand::rng(),
+        russh::keys::Algorithm::Rsa { hash: None },
+    )
+    .expect("RSA keygen");
+    let pem = rsa
+        .to_openssh(russh::keys::ssh_key::LineEnding::LF)
+        .expect("serialize RSA key");
+    let key_path = dir.path().join("id_rsa");
+    tokio::fs::write(&key_path, pem.as_bytes()).await.unwrap();
+
+    let mut conn = test_connection(port);
+    conn.auth_method = AuthMethod::PublicKey {
+        key_path: key_path.to_string_lossy().into_owned(),
+        passphrase: None,
+    };
+
+    let spy = Arc::new(Spy::default());
+    let out = spy.out.clone();
+    let events: SharedEvents = spy;
+
+    let session = SshSession::connect(
+        conn.clone(),
+        conn.auth_method.clone(),
+        events,
+        pool,
+        None,
+        true,
+    )
+    .await
+    .expect("RSA public-key auth should succeed with rsa-sha2 negotiation");
+
+    let buffered = session.claim_initial_output().await;
+    out.lock().unwrap().extend_from_slice(&buffered);
+    assert!(
+        wait_for(&out, BANNER, Duration::from_secs(5)).await,
+        "should receive the shell banner after RSA auth"
+    );
+    session.close().await.expect("close should succeed");
 }
