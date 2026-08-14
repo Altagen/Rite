@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "apps/desktop/shell",
     "packages/crypto",
-    "packages/protocols",
     "packages/rite-core",
     "packages/rite-server",
 ]
