@@ -376,3 +376,36 @@ async fn ssh_session_authenticates_with_rsa_key() {
     );
     session.close().await.expect("close should succeed");
 }
+
+/// A dead endpoint must surface a clean error rather than hang or panic. Here the
+/// port is not listening, so connect fails fast (refused); the 20s timeout in
+/// `SshSession::connect` covers the slower filtered/drop-SYN case.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ssh_session_fails_cleanly_on_refused_connection() {
+    // Bind then drop a listener to obtain a port that is almost certainly free.
+    let dead_port = {
+        let l = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        l.local_addr().unwrap().port()
+    };
+    let (_dir, pool) = test_db().await;
+
+    let spy = Arc::new(Spy::default());
+    let events: SharedEvents = spy;
+
+    let result = SshSession::connect(
+        test_connection(dead_port),
+        AuthMethod::Password {
+            password: PASS.into(),
+        },
+        events,
+        pool,
+        None,
+        true,
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "connecting to a dead endpoint must return an error, not hang"
+    );
+}

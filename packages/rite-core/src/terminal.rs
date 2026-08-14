@@ -249,7 +249,22 @@ impl SshSession {
         // Connect to SSH server (host key verification happens in handler.check_server_key())
         let addr = format!("{}:{}", connection.hostname, connection.port);
         tracing::info!("[terminal.rs] Attempting TCP connection to {}...", addr);
-        let mut session = client::connect(config, &addr, handler).await?;
+        // Bound the connect + handshake so an unreachable/filtered host fails with
+        // a clear error instead of hanging on the OS TCP timeout (~2 min).
+        const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+        let mut session =
+            match tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, &addr, handler))
+                .await
+            {
+                Ok(result) => result?,
+                Err(_) => {
+                    return Err(anyhow!(
+                        "Connection to {} timed out after {}s",
+                        addr,
+                        CONNECT_TIMEOUT.as_secs()
+                    ));
+                }
+            };
         tracing::info!("[terminal.rs] TCP connection established");
 
         // Authenticate
