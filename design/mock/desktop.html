@@ -610,17 +610,70 @@ function collMore(id,e){const c=find(id);const owner=(c.roles&&c.roles[ORG.me])=
     {icon:M.coll,label:'Rename… (all members)',onclick:()=>toast(`Rename “${c.name}” — every member sees the new name`)},
     {icon:EXICON.trash,label:'Delete collection',onclick:()=>toast(`Delete “${c.name}”…`)});
   floatMenu(e,items);}
-function ncAuth(v){const pw=document.getElementById('nc-pw'),k=document.getElementById('nc-key');if(pw&&k){pw.style.display=v==='publicKey'?'none':'';k.style.display=v==='publicKey'?'':'none';}}
-function dlgNewConn(collName,existing){const e=existing||{};const auth=e.authType||'password';
+/* SSH agent (native only): the client asks a running ssh-agent to sign the
+   challenge — the private key and its passphrase never leave the agent, and Rite
+   stores nothing. It is also the ONLY way to use hardware keys (YubiKey/FIDO).
+   Mock state below drives both the detected panel and the graceful empty states. */
+const AGENT={available:true,keys:[
+  {name:'id_ed25519',type:'ed25519',fp:'SHA256:aB3k9…Qz',hw:false},
+  {name:'YubiKey 5C',type:'sk-ssh-ed25519',fp:'SHA256:xY9m2…Lp',hw:true},
+]};
+function agentPanel(p,e){e=e||{};
+  const abox='background:color-mix(in oklab,var(--accent) 8%,transparent);border:1px solid color-mix(in oklab,var(--accent) 25%,transparent);border-radius:12px;padding:12px 14px';
+  const nbox='background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 14px';
+  const mono='font-family:ui-monospace,SFMono-Regular,monospace;font-size:11.5px';
+  if(!AGENT.available)return `<div style="${nbox}">
+    <div style="font-weight:600;margin-bottom:5px">⚠︎ No SSH agent detected</div>
+    <p class="muted" style="font-size:12px;margin:0 0 7px">Rite couldn't reach an agent — <code style="${mono}">$SSH_AUTH_SOCK</code> is unset. Start one and add a key, then reopen this dialog:</p>
+    <pre style="${mono};background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:0;white-space:pre-wrap">eval "$(ssh-agent)"\nssh-add ~/.ssh/id_ed25519</pre></div>`;
+  if(!AGENT.keys.length)return `<div style="${nbox}">
+    <div style="font-weight:600;margin-bottom:5px">SSH agent running · no identities</div>
+    <p class="muted" style="font-size:12px;margin:0">Add a key with <code style="${mono}">ssh-add ~/.ssh/id_ed25519</code>, then reopen this dialog.</p></div>`;
+  return `
+    <label class="field"><span>Identity</span>
+      <select class="inp" id="${p}-agent-id">
+        <option value="" ${!e.agentIdentity?'selected':''}>Offer all agent keys (default)</option>
+        ${AGENT.keys.map(k=>`<option value="${k.fp}" ${e.agentIdentity===k.fp?'selected':''}>${k.name} · ${k.hw?'hardware · FIDO':k.type}</option>`).join('')}
+      </select>
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">Pin one to present only that key to the server (less fingerprint exposure). Default offers all, like <code style="${mono}">ssh</code>.</span>
+    </label>
+    <div style="${abox};margin-top:2px">
+      <div style="display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:9px"><span style="color:var(--accent)">✓</span> SSH agent · ${AGENT.keys.length} ${AGENT.keys.length>1?'identities':'identity'} available</div>
+      <div style="display:flex;flex-direction:column;gap:7px">${AGENT.keys.map(k=>`<div style="display:flex;align-items:center;gap:9px">
+        <span style="color:var(--accent);display:grid;place-items:center;flex:none">${EXICON.key}</span>
+        <span style="font-weight:600;font-size:13px">${k.name}</span>
+        <span class="muted" style="${mono}">${k.fp}</span>
+        <span style="margin-left:auto;flex:none;font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;${k.hw?'background:color-mix(in oklab,var(--accent) 20%,transparent);color:var(--accent)':'background:var(--card2);color:var(--muted)'}">${k.hw?'hardware · FIDO':k.type}</span>
+      </div>`).join('')}</div>
+      <p class="muted" style="font-size:12px;line-height:1.55;margin:10px 0 0">Rite asks the agent to sign — your key and passphrase never leave it, and <b>nothing is stored in Rite</b>. Hardware keys (YubiKey/FIDO) work only this way.</p>
+    </div>
+    <label style="display:flex;gap:10px;align-items:flex-start;margin-top:11px;cursor:pointer">
+      <input type="checkbox" id="${p}-agent-fwd" ${e.agentForward?'checked':''} style="margin-top:3px;flex:none">
+      <span><b style="font-size:13px">Forward agent to this host</b><span class="muted" style="display:block;font-size:12px;line-height:1.5;margin-top:2px">⚠ Lets the remote machine reuse your local keys to hop onward (agent forwarding). Powerful but risky — a compromised host could use your agent. Leave off unless you need it.</span></span>
+    </label>`;
+}
+/* Shared authentication section — one source of truth for New machine AND Quick
+   SSH so they stay ISO (this is the future React <AuthSection> component). `p` is
+   an id prefix ('nc' | 'qs'); `e` is the existing record for edit-mode prefill. */
+function authSelect(p,e){e=e||{};const a=e.authType||'password';
+  return `<select class="inp" id="${p}-auth" onchange="authToggle('${p}',this.value)"><option value="password" ${a==='password'?'selected':''}>Password</option><option value="publicKey" ${a==='publicKey'?'selected':''}>Public key (file)</option><option value="agent" ${a==='agent'?'selected':''}>SSH agent</option></select>`;}
+function authPanels(p,e){e=e||{};const a=e.authType||'password';
+  return `<div id="${p}-pw" style="${a==='password'?'':'display:none'}"><label class="field"><span>Password</span><input class="inp" type="password" placeholder="${e.name?'••••••••':'password'}"></label></div>
+    <div id="${p}-key" style="${a==='publicKey'?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519"></label><label class="field"><span>Key passphrase (optional)</span><input class="inp" type="password" placeholder="if the key is encrypted"></label></div>
+    <div id="${p}-agent" style="${a==='agent'?'':'display:none'}">${agentPanel(p,e)}</div>`;}
+function authToggle(p,v){const pw=document.getElementById(p+'-pw'),k=document.getElementById(p+'-key'),ag=document.getElementById(p+'-agent');
+  if(pw)pw.style.display=v==='password'?'':'none';
+  if(k)k.style.display=v==='publicKey'?'':'none';
+  if(ag)ag.style.display=v==='agent'?'':'none';}
+function dlgNewConn(collName,existing){const e=existing||{};
   showModal({title:existing?'Edit machine':'New machine',subtitle:collName?('in “'+collName+'”'):'',wide:true,confirm:'Save',
   body:`<label class="field"><span>Name</span><input class="inp" id="nc-name" value="${e.name||''}" placeholder="Prod web"></label>
     <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>Protocol</span><select class="inp" id="nc-proto"><option ${e.protocol!=='SFTP'?'selected':''}>SSH</option><option ${e.protocol==='SFTP'?'selected':''}>SFTP</option></select></label>
       <label class="field" style="flex:2"><span>Host</span><input class="inp" id="nc-host" value="${e.host||''}" placeholder="10.0.0.5"></label>
       <label class="field" style="flex:1"><span>Port</span><input class="inp" id="nc-port" value="${e.port||22}"></label></div>
     <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>User</span><input class="inp" id="nc-user" value="${e.user||''}" placeholder="deploy"></label>
-      <label class="field" style="flex:1"><span>Authentication</span><select class="inp" id="nc-auth" onchange="ncAuth(this.value)"><option value="password" ${auth!=='publicKey'?'selected':''}>Password</option><option value="publicKey" ${auth==='publicKey'?'selected':''}>Public key</option></select></label></div>
-    <div id="nc-pw" style="${auth==='publicKey'?'display:none':''}"><label class="field"><span>Password</span><input class="inp" type="password" placeholder="${existing?'••••••••':'password'}"></label></div>
-    <div id="nc-key" style="${auth==='publicKey'?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519"></label><label class="field"><span>Key passphrase (optional)</span><input class="inp" type="password" placeholder="if the key is encrypted"></label></div>
+      <label class="field" style="flex:1"><span>Authentication</span>${authSelect('nc',e)}</label></div>
+    ${authPanels('nc',e)}
     ${swatchRow(e.color||'#56c7c0')}
     <div style="display:flex;gap:10px;align-items:flex-end"><label class="field" style="flex:1"><span>Keep-alive</span><select class="inp" id="nc-ka" onchange="document.getElementById('nc-kai').style.display=this.value==='on'?'':'none'"><option value="off" ${e.sshKeepAliveOverride==='enabled'?'':'selected'}>Disabled</option><option value="on" ${e.sshKeepAliveOverride==='enabled'?'selected':''}>Enabled</option></select></label>
       <label class="field" id="nc-kai" style="flex:1;${e.sshKeepAliveOverride==='enabled'?'':'display:none'}"><span>Interval (s)</span><input class="inp" value="${e.sshKeepAliveInterval||30}"></label></div>
@@ -630,7 +683,8 @@ function dlgNewConn(collName,existing){const e=existing||{};const auth=e.authTyp
     <label class="field"><span>Collection</span><select class="inp" id="nc-coll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
     ${(()=>{const c=allColls().find(x=>x.name===collName);return c&&c.shared?`<p class="muted" style="font-size:12px;margin:6px 0 0">${EXICON.users} Shared collection — saving re-encrypts for all ${c.members.length} members (needs write access · RBAC).</p>`:'';})()}`,
   onConfirm:(m)=>{const g=s=>m.querySelector(s);
-    const rec={name:(g('#nc-name').value||'').trim()||'machine',protocol:g('#nc-proto').value,host:(g('#nc-host').value||'').trim(),port:Number(g('#nc-port').value)||22,user:(g('#nc-user').value||'').trim(),authType:g('#nc-auth').value,color:__pickColor,notes:(g('#nc-notes').value||'').trim(),sshKeepAliveOverride:g('#nc-ka').value==='on'?'enabled':'disabled',sshKeepAliveInterval:Number((g('#nc-kai').querySelector('input')||{}).value)||30,hc:g('#nc-hc').value==='off'?false:undefined};
+    const _aid=g('#nc-agent-id'),_afwd=g('#nc-agent-fwd'),_atype=g('#nc-auth').value;
+    const rec={name:(g('#nc-name').value||'').trim()||'machine',protocol:g('#nc-proto').value,host:(g('#nc-host').value||'').trim(),port:Number(g('#nc-port').value)||22,user:(g('#nc-user').value||'').trim(),authType:_atype,agentIdentity:_atype==='agent'&&_aid?_aid.value:undefined,agentForward:_atype==='agent'&&_afwd?_afwd.checked:undefined,color:__pickColor,notes:(g('#nc-notes').value||'').trim(),sshKeepAliveOverride:g('#nc-ka').value==='on'?'enabled':'disabled',sshKeepAliveInterval:Number((g('#nc-kai').querySelector('input')||{}).value)||30,hc:g('#nc-hc').value==='off'?false:undefined};
     if(existing){Object.assign(existing,rec);}
     else{const cn=allColls().find(c=>c.name===g('#nc-coll').value);if(cn){if(!cn.conns)cn.conns=[];cn.conns.push({...rec,last:'just now'});}}
     renderAll();toast(existing?'Machine updated':`Machine saved to ${g('#nc-coll').value}`);}});}
@@ -638,11 +692,13 @@ function dlgNewConn(collName,existing){const e=existing||{};const auth=e.authTyp
 /* Quick SSH — connect once; optionally save it into a collection (like Rite). */
 function dlgQuickSSH(){showModal({title:'⚡ Quick SSH',subtitle:'Connect once — save it to a collection to keep it.',wide:true,confirm:'Connect',
   body:`<label class="field"><span>Host</span><input class="inp" id="qs-host" placeholder="user@host  or  host"></label>
-    <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>Port</span><input class="inp" id="qs-port" value="22"></label><label class="field" style="flex:2"><span>Password</span><input class="inp" id="qs-pw" type="password" placeholder="••••••"></label></div>
+    <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>Port</span><input class="inp" id="qs-port" value="22"></label>
+      <label class="field" style="flex:1"><span>Authentication</span>${authSelect('qs',{})}</label></div>
+    ${authPanels('qs',{})}
     <label class="field"><span>Save to collection (optional)</span><select class="inp" id="qs-save"><option value="">Don't save — connect once</option>${allColls().map(c=>`<option>${c.name}</option>`).join('')}</select></label>`,
-  onConfirm:(m)=>{const into=m.querySelector('#qs-save').value,raw=(m.querySelector('#qs-host').value||'').trim()||'host';
-    if(into){const c=allColls().find(x=>x.name===into);if(c){if(!c.conns)c.conns=[];c.conns.push({name:raw,host:raw.replace(/^.*@/,''),user:(raw.match(/^(.*)@/)||[])[1]||'root',port:Number(m.querySelector('#qs-port').value)||22,last:'just now'});}renderAll();toast(`Connected · saved to <span class="accent">${into}</span>`);}
-    else toast('Opening SSH session…');}});}
+  onConfirm:(m)=>{const into=m.querySelector('#qs-save').value,raw=(m.querySelector('#qs-host').value||'').trim()||'host',auth=m.querySelector('#qs-auth').value;
+    if(into){const c=allColls().find(x=>x.name===into);if(c){if(!c.conns)c.conns=[];c.conns.push({name:raw,host:raw.replace(/^.*@/,''),user:(raw.match(/^(.*)@/)||[])[1]||'root',port:Number(m.querySelector('#qs-port').value)||22,authType:auth,last:'just now'});}renderAll();toast(`Connected${auth==='agent'?' via agent':''} · saved to <span class="accent">${into}</span>`);}
+    else toast(`Opening SSH session${auth==='agent'?' via agent':''}…`);}});}
 
 /* ================= member picker (collections, ADR 0016) ================= */
 function roleSel(u,role,locked){return `<select class="inp" style="width:auto;padding:4px 7px;font-size:12px" ${locked?'disabled title="the collection needs at least one owner"':''} onclick="event.stopPropagation()" onchange="event.stopPropagation();mpRole('${u}',this.value)">
