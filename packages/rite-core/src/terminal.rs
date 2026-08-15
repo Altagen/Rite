@@ -308,6 +308,71 @@ impl SshSession {
                     )
                     .await?
             }
+            AuthMethod::Agent { ref identity, .. } => {
+                tracing::debug!("[terminal.rs] Using SSH agent authentication");
+                let mut agent = russh::keys::agent::client::AgentClient::connect_env()
+                    .await
+                    .map_err(|e| {
+                        anyhow!(
+                            "No SSH agent available (is ssh-agent running and SSH_AUTH_SOCK set?): {}",
+                            e
+                        )
+                    })?;
+                let identities = agent
+                    .request_identities()
+                    .await
+                    .map_err(|e| anyhow!("Failed to list SSH agent identities: {}", e))?;
+                // Extract plain public keys (certificates aren't handled here) and,
+                // if the user pinned one by SHA256 fingerprint, offer only that;
+                // otherwise offer every key the agent holds, like `ssh`.
+                let candidates: Vec<PublicKey> = identities
+                    .into_iter()
+                    .filter_map(|id| match id {
+                        russh::keys::agent::AgentIdentity::PublicKey { key, .. } => Some(key),
+                        _ => None,
+                    })
+                    .filter(|k| match identity {
+                        Some(fp) if !fp.is_empty() => {
+                            k.fingerprint(russh::keys::HashAlg::Sha256).to_string() == *fp
+                        }
+                        _ => true,
+                    })
+                    .collect();
+                if candidates.is_empty() {
+                    return Err(anyhow!(
+                        "SSH agent has no usable identities (add one with `ssh-add`)"
+                    ));
+                }
+                let mut authed = false;
+                for key in candidates {
+                    // RSA keys must be signed with rsa-sha2 against modern servers.
+                    let hash_alg = if matches!(key.algorithm(), russh::keys::Algorithm::Rsa { .. })
+                    {
+                        session.best_supported_rsa_hash().await?.flatten()
+                    } else {
+                        None
+                    };
+                    if let Ok(russh::client::AuthResult::Success) = session
+                        .authenticate_publickey_with(
+                            &connection.username,
+                            key,
+                            hash_alg,
+                            &mut agent,
+                        )
+                        .await
+                    {
+                        authed = true;
+                        break;
+                    }
+                }
+                if authed {
+                    russh::client::AuthResult::Success
+                } else {
+                    return Err(anyhow!(
+                        "SSH agent authentication was rejected for all identities"
+                    ));
+                }
+            }
         };
 
         if !matches!(auth_result, russh::client::AuthResult::Success) {
@@ -320,6 +385,16 @@ impl SshSession {
         tracing::info!("[terminal.rs] Opening channel...");
         let mut channel = session.channel_open_session().await?;
         tracing::info!("[terminal.rs] Channel opened");
+
+        // Agent forwarding (opt-in, agent auth only): let the remote host reuse the
+        // local agent to hop onward. Non-fatal — a server that refuses it shouldn't
+        // block the session.
+        if let AuthMethod::Agent { forward: true, .. } = &auth_method {
+            tracing::info!("[terminal.rs] Requesting SSH agent forwarding");
+            if let Err(e) = channel.agent_forward(true).await {
+                tracing::warn!("[terminal.rs] Agent forwarding request failed: {}", e);
+            }
+        }
 
         // Request PTY
         tracing::info!("[terminal.rs] Requesting PTY (xterm-256color, 80x24)...");

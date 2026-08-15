@@ -3810,6 +3810,11 @@ enum QuickAuthMethod {
         key_path: String,
         passphrase: Option<String>,
     },
+    Agent {
+        identity: Option<String>,
+        #[serde(default)]
+        forward: bool,
+    },
 }
 
 impl From<QuickAuthMethod> for AuthMethod {
@@ -3823,6 +3828,7 @@ impl From<QuickAuthMethod> for AuthMethod {
                 key_path,
                 passphrase,
             },
+            QuickAuthMethod::Agent { identity, forward } => AuthMethod::Agent { identity, forward },
         }
     }
 }

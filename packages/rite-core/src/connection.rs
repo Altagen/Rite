@@ -54,6 +54,17 @@ pub enum AuthMethod {
         key_path: String,
         passphrase: Option<String>,
     },
+    /// Authenticate via a running SSH agent (`SSH_AUTH_SOCK`). The private key
+    /// never leaves the agent — this is also the only way to use hardware keys
+    /// (FIDO/PIV). Nothing secret is stored by Rite.
+    Agent {
+        /// SHA256 fingerprint of a specific agent identity to offer; `None`
+        /// offers every identity the agent holds, like `ssh`.
+        identity: Option<String>,
+        /// Request agent forwarding so the remote host can reuse the agent.
+        #[serde(default)]
+        forward: bool,
+    },
 }
 
 /// Connection metadata (not encrypted)
@@ -202,6 +213,7 @@ impl Connection {
         let auth_type = match &self.auth_method {
             AuthMethod::Password { .. } => "password".to_string(),
             AuthMethod::PublicKey { .. } => "publicKey".to_string(),
+            AuthMethod::Agent { .. } => "agent".to_string(),
         };
 
         ConnectionInfo {
