@@ -7,7 +7,9 @@
 
 import { useState } from 'react';
 import { Backend } from '../utils/backend';
-import { type CreateConnectionInput } from '../store/connectionsStore';
+import { type CreateConnectionInput, type AuthType } from '../store/connectionsStore';
+import { AuthSection } from './AuthSection';
+import { makeAuthState, toAuthMethodInput, type AuthState } from '../utils/authMethod';
 
 interface QuickSSHModalProps {
   onClose: () => void;
@@ -17,8 +19,6 @@ interface QuickSSHModalProps {
   collectionTargets?: { id: string; name: string }[];
   onSaveToCollection?: (input: CreateConnectionInput) => Promise<void>;
 }
-
-type AuthType = 'password' | 'publicKey';
 
 export interface QuickSSHConnectionInfo {
   host: string;
@@ -34,10 +34,7 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
   const [host, setHost] = useState('');
   const [port, setPort] = useState(22);
   const [username, setUsername] = useState('');
-  const [authType, setAuthType] = useState<AuthType>('password');
-  const [password, setPassword] = useState('');
-  const [keyPath, setKeyPath] = useState('');
-  const [passphrase, setPassphrase] = useState('');
+  const [auth, setAuth] = useState<AuthState>(makeAuthState());
   const [saveCollectionId, setSaveCollectionId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -48,10 +45,8 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
     setLoading(true);
 
     try {
-      // Build auth method for quick_ssh_connect
-      const authMethod = authType === 'password'
-        ? { type: 'password' as const, password }
-        : { type: 'publicKey' as const, keyPath, passphrase: passphrase || undefined };
+      // Build auth method for quick_ssh_connect (shared shape with the form)
+      const authMethod = toAuthMethodInput(auth);
 
       console.log('[QuickSSH] Connecting via quick_ssh_connect...');
       const sessionId = await Backend.Terminal.quickSshConnect(
@@ -68,10 +63,10 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
         host,
         port,
         username,
-        authType,
-        password: authType === 'password' ? password : undefined,
-        keyPath: authType === 'publicKey' ? keyPath : undefined,
-        passphrase: authType === 'publicKey' && passphrase ? passphrase : undefined,
+        authType: auth.authType,
+        password: auth.authType === 'password' ? auth.password : undefined,
+        keyPath: auth.authType === 'publicKey' ? auth.keyPath : undefined,
+        passphrase: auth.authType === 'publicKey' && auth.passphrase ? auth.passphrase : undefined,
       };
 
       // Optionally persist this one-off into a shared collection (ADR 0016). Saving
@@ -183,89 +178,8 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
             </div>
           </div>
 
-          {/* Auth Type */}
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Authentication
-            </label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="authType"
-                  value="password"
-                  checked={authType === 'password'}
-                  onChange={(e) => setAuthType(e.target.value as AuthType)}
-                  className="h-4 w-4 text-primary focus:ring-primary"
-                  disabled={loading}
-                />
-                <span className="text-sm">Password</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="authType"
-                  value="publicKey"
-                  checked={authType === 'publicKey'}
-                  onChange={(e) => setAuthType(e.target.value as AuthType)}
-                  className="h-4 w-4 text-primary focus:ring-primary"
-                  disabled={loading}
-                />
-                <span className="text-sm">SSH Key</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Password Auth */}
-          {authType === 'password' && (
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Password <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
-                className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                required
-                disabled={loading}
-              />
-            </div>
-          )}
-
-          {/* Public Key Auth */}
-          {authType === 'publicKey' && (
-            <>
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Private Key Path <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={keyPath}
-                  onChange={(e) => setKeyPath(e.target.value)}
-                  placeholder="~/.ssh/id_rsa"
-                  className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  required
-                  disabled={loading}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Passphrase (optional)
-                </label>
-                <input
-                  type="password"
-                  value={passphrase}
-                  onChange={(e) => setPassphrase(e.target.value)}
-                  placeholder="Enter passphrase if needed"
-                  className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  disabled={loading}
-                />
-              </div>
-            </>
-          )}
+          {/* Authentication — shared with the connection form (password / key / agent) */}
+          <AuthSection value={auth} onChange={setAuth} />
 
           {/* Save to collection (ADR 0016) — optional */}
           {collectionTargets && collectionTargets.length > 0 && (
@@ -300,7 +214,7 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
             <button
               type="submit"
               className="rounded bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
-              disabled={loading || !host || !username || (authType === 'password' && !password) || (authType === 'publicKey' && !keyPath)}
+              disabled={loading || !host || !username || (auth.authType === 'password' && !auth.password) || (auth.authType === 'publicKey' && !auth.keyPath)}
             >
               {loading && (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent" />

@@ -12,7 +12,18 @@ import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
 export type Protocol = 'SSH' | 'SFTP' | 'Local';
-export type AuthType = 'password' | 'publicKey';
+export type AuthType = 'password' | 'publicKey' | 'agent';
+
+/**
+ * Auth method as sent to the backend (mirrors the Rust `AuthMethod` enum).
+ * `agent` authenticates via the local SSH agent (SSH_AUTH_SOCK) — the private
+ * key never leaves the agent; `identity` optionally pins one key by SHA256
+ * fingerprint (else all are offered), `forward` requests agent forwarding.
+ */
+export type AuthMethodInput =
+  | { type: 'password'; password: string }
+  | { type: 'publicKey'; keyPath: string; passphrase?: string }
+  | { type: 'agent'; identity?: string; forward?: boolean };
 
 export interface ConnectionInfo {
   id: string;
@@ -51,14 +62,7 @@ export interface CreateConnectionInput {
   hostname: string;
   port: number;
   username: string;
-  authMethod: {
-    type: 'password';
-    password: string;
-  } | {
-    type: 'publicKey';
-    keyPath: string;
-    passphrase?: string;
-  };
+  authMethod: AuthMethodInput;
   color?: string;
   icon?: string;
   folder?: string;
@@ -78,14 +82,7 @@ export interface UpdateConnectionInput {
   hostname?: string;
   port?: number;
   username?: string;
-  authMethod?: {
-    type: 'password';
-    password: string;
-  } | {
-    type: 'publicKey';
-    keyPath: string;
-    passphrase?: string;
-  };
+  authMethod?: AuthMethodInput;
   color?: string;
   icon?: string;
   folder?: string;

@@ -274,6 +274,10 @@ export const BackendTerminal = {
       type: 'publicKey';
       keyPath: string;
       passphrase?: string;
+    } | {
+      type: 'agent';
+      identity?: string;
+      forward?: boolean;
     }
   ) =>
     invokeWithValidation('quick_ssh_connect', StringSchema, {

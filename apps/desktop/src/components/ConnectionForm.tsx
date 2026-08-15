@@ -8,6 +8,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { type CreateConnectionInput, type UpdateConnectionInput, type ConnectionInfo, type Protocol } from '../store/connectionsStore';
 import type { QuickSSHConnectionInfo } from './QuickSSHModal';
+import { AuthSection } from './AuthSection';
+import { makeAuthState, toAuthMethodInput, type AuthState } from '../utils/authMethod';
 
 interface ConnectionFormProps {
   connection?: ConnectionInfo | null;
@@ -49,10 +51,15 @@ export function ConnectionForm({
   const [hostname, setHostname] = useState(connection?.hostname || prefillData?.host || '');
   const [port, setPort] = useState(connection?.port || prefillData?.port || 22);
   const [username, setUsername] = useState(connection?.username || prefillData?.username || '');
-  const [authMethod, setAuthMethod] = useState<'password' | 'publicKey'>(prefillData?.authType || 'password');
-  const [password, setPassword] = useState(prefillData?.password || '');
-  const [keyPath, setKeyPath] = useState(prefillData?.keyPath || '');
-  const [keyPassphrase, setKeyPassphrase] = useState(prefillData?.passphrase || '');
+  // Authentication state — shared shape with Quick SSH via <AuthSection>.
+  const [auth, setAuth] = useState<AuthState>(
+    makeAuthState({
+      authType: prefillData?.authType ?? 'password',
+      password: prefillData?.password ?? '',
+      keyPath: prefillData?.keyPath ?? '',
+      passphrase: prefillData?.passphrase ?? '',
+    }),
+  );
   const [folder, setFolder] = useState(connection?.folder || defaultFolder || '');
   // ADR 0016 save target (accounts context): a collection id. "Personal" (the
   // vault-backed collection) is always the first target, the default.
@@ -78,8 +85,6 @@ export function ConnectionForm({
   const keepAliveDropdownRef = useRef<HTMLDivElement>(null);
 
   // UI state
-  const [showPassword, setShowPassword] = useState(false);
-  const [showKeyPassphrase, setShowKeyPassphrase] = useState(false);
   const [showProtocolDropdown, setShowProtocolDropdown] = useState(false);
   const protocolDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -144,11 +149,11 @@ export function ConnectionForm({
       newErrors.username = t('connections.validation.usernameRequired');
     }
 
-    if (authMethod === 'password' && !password && !connection) {
+    if (auth.authType === 'password' && !auth.password && !connection) {
       newErrors.password = t('connections.validation.passwordRequired');
     }
 
-    if (authMethod === 'publicKey' && !keyPath.trim()) {
+    if (auth.authType === 'publicKey' && !auth.keyPath.trim()) {
       newErrors.keyPath = t('connections.validation.keyPathRequired');
     }
 
@@ -216,15 +221,15 @@ export function ConnectionForm({
           hc: hcOptOut ? false : null, // always send so turning it back off clears the opt-out
         };
 
-        // Only include auth method if password or key path is provided
-        if (authMethod === 'password' && password) {
-          input.authMethod = { type: 'password', password };
-        } else if (authMethod === 'publicKey' && keyPath) {
-          input.authMethod = {
-            type: 'publicKey',
-            keyPath,
-            ...(keyPassphrase && { passphrase: keyPassphrase }),
-          };
+        // Only include auth method when there's something to change: for password
+        // keep the existing one if left blank; key-file needs a path; agent has no
+        // secret so it's always safe to (re)apply.
+        if (auth.authType === 'password') {
+          if (auth.password) input.authMethod = { type: 'password', password: auth.password };
+        } else if (auth.authType === 'publicKey') {
+          if (auth.keyPath) input.authMethod = toAuthMethodInput(auth);
+        } else {
+          input.authMethod = toAuthMethodInput(auth);
         }
 
         await update(input);
@@ -236,14 +241,7 @@ export function ConnectionForm({
           hostname,
           port,
           username,
-          authMethod:
-            authMethod === 'password'
-              ? { type: 'password', password }
-              : {
-                  type: 'publicKey',
-                  keyPath,
-                  ...(keyPassphrase && { passphrase: keyPassphrase }),
-                },
+          authMethod: toAuthMethodInput(auth),
           ...(folder && { folder }),
           ...(collectionTargetId && { collectionId: collectionTargetId }),
           ...(color && { color }),
@@ -399,118 +397,13 @@ export function ConnectionForm({
             {errors.username && <p className="mt-1 text-sm text-red-500">{errors.username}</p>}
           </div>
 
-          {/* Authentication Method */}
-          <div>
-            <label className="mb-2 block text-sm font-medium">{t('connections.authMethod')}</label>
-            <div className="flex gap-4">
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  value="password"
-                  checked={authMethod === 'password'}
-                  onChange={(e) => setAuthMethod(e.target.value as 'password' | 'publicKey')}
-                  className="mr-2"
-                />
-                {t('connections.authPassword')}
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  value="publicKey"
-                  checked={authMethod === 'publicKey'}
-                  onChange={(e) => setAuthMethod(e.target.value as 'password' | 'publicKey')}
-                  className="mr-2"
-                />
-                {t('connections.authPublicKey')}
-              </label>
-            </div>
-          </div>
-
-          {/* Password or Key Path */}
-          {authMethod === 'password' ? (
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                {t('connections.password')} {!connection && <span className="text-red-500">*</span>}
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={connection ? '••••••••' : t('connections.passwordPlaceholder')}
-                  className="w-full rounded border border-border bg-input px-3 py-2 pr-10 text-foreground focus:border-primary focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  title={showPassword ? t('connections.hidePassword') : t('connections.showPassword')}
-                >
-                  {showPassword ? (
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                    </svg>
-                  ) : (
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-              {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
-              {connection && (
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Leave empty to keep current password
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  {t('connections.keyPath')} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={keyPath}
-                  onChange={(e) => setKeyPath(e.target.value)}
-                  placeholder={t('connections.keyPathPlaceholder')}
-                  className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
-                />
-                {errors.keyPath && <p className="mt-1 text-sm text-red-500">{errors.keyPath}</p>}
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">{t('connections.keyPassphrase')}</label>
-                <div className="relative">
-                  <input
-                    type={showKeyPassphrase ? 'text' : 'password'}
-                    value={keyPassphrase}
-                    onChange={(e) => setKeyPassphrase(e.target.value)}
-                    placeholder={t('connections.keyPassphrasePlaceholder')}
-                    className="w-full rounded border border-border bg-input px-3 py-2 pr-10 text-foreground focus:border-primary focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKeyPassphrase(!showKeyPassphrase)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    title={showKeyPassphrase ? t('connections.hidePassword') : t('connections.showPassword')}
-                  >
-                    {showKeyPassphrase ? (
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                      </svg>
-                    ) : (
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Authentication — shared with Quick SSH (password / key file / agent) */}
+          <AuthSection
+            value={auth}
+            onChange={setAuth}
+            isEdit={!!connection}
+            errors={{ password: errors.password, keyPath: errors.keyPath }}
+          />
 
           {/* Colour */}
           <div>

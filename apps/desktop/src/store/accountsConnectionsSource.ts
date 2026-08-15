@@ -56,7 +56,8 @@ export interface StoredRecord {
   username: string;
   authMethod:
     | { type: 'password'; password: string }
-    | { type: 'publicKey'; keyPath: string; passphrase?: string };
+    | { type: 'publicKey'; keyPath: string; passphrase?: string }
+    | { type: 'agent'; identity?: string; forward?: boolean };
   color: string | null;
   icon: string | null;
   folder: string | null;
