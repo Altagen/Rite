@@ -63,6 +63,16 @@ async function invokeWithValidation<T>(
 // Auth schemas
 const BooleanSchema = z.boolean();
 const StringSchema = z.string();
+
+/** A public identity from the local SSH agent (connection form picker). */
+const AgentIdentitySchema = z.object({
+  name: z.string(),
+  fingerprint: z.string(),
+  algo: z.string(),
+  hardware: z.boolean(),
+});
+export type AgentIdentity = z.infer<typeof AgentIdentitySchema>;
+const AgentIdentityArraySchema = z.array(AgentIdentitySchema);
 const NullableStringSchema = z.string().nullable();
 
 const UnlockResponseSchema = z.object({
@@ -247,6 +257,13 @@ export const BackendTerminal = {
    */
   getInstalledShells: (shells: string[]) =>
     invokeWithValidation('get_installed_shells', StringArraySchema, { shells }),
+
+  /**
+   * List the public identities held by the local SSH agent (native-only —
+   * powers the connection form's identity picker).
+   */
+  listAgentIdentities: () =>
+    invokeWithValidation('list_agent_identities', AgentIdentityArraySchema, {}),
 
   /**
    * Connect to a terminal (SSH connection)

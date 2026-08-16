@@ -6,9 +6,10 @@
  * (file) are always offered; SSH agent is offered only in the native shell —
  * a browser can't reach $SSH_AUTH_SOCK.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { isNativeShell } from '../utils/nativeShell';
+import { Backend, type AgentIdentity } from '../utils/backend';
 import type { AuthState } from '../utils/authMethod';
 
 const INPUT_CLS =
@@ -51,6 +52,22 @@ export function AuthSection({ value, onChange, isEdit, errors }: AuthSectionProp
   const [showPassword, setShowPassword] = useState(false);
   const [showPassphrase, setShowPassphrase] = useState(false);
   const set = (patch: Partial<AuthState>) => onChange({ ...value, ...patch });
+
+  // Live SSH-agent identities (native only). `null` = still querying; an empty
+  // list = no agent / no keys (a normal, graceful state — not an error).
+  const [identities, setIdentities] = useState<AgentIdentity[] | null>(null);
+  useEffect(() => {
+    if (value.authType !== 'agent' || !native) return;
+    let cancelled = false;
+    // Reset to the "checking" state, then query the agent — this fetch-on-switch
+    // is exactly the effect's job.
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    setIdentities(null);
+    Backend.Terminal.listAgentIdentities()
+      .then((list) => { if (!cancelled) setIdentities(list); })
+      .catch(() => { if (!cancelled) setIdentities([]); });
+    return () => { cancelled = true; };
+  }, [value.authType, native]);
 
   return (
     <div className="space-y-4">
@@ -131,22 +148,71 @@ export function AuthSection({ value, onChange, isEdit, errors }: AuthSectionProp
       {/* SSH agent (native only) */}
       {value.authType === 'agent' && native && (
         <div className="space-y-3">
-          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-            <p className="mb-1 text-sm font-medium text-foreground">✓ {t('connections.authAgentIdentityHint')}</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">{t('connections.authAgentNote')}</p>
-          </div>
-          <label className="flex cursor-pointer items-start gap-2">
-            <input
-              type="checkbox"
-              checked={value.agentForward}
-              onChange={(e) => set({ agentForward: e.target.checked })}
-              className="mt-0.5"
-            />
-            <span className="text-sm">
-              <span className="font-medium">{t('connections.authAgentForward')}</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">⚠ {t('connections.authAgentForwardHint')}</span>
-            </span>
-          </label>
+          {identities === null ? (
+            <p className="text-sm text-muted-foreground">{t('connections.authAgentChecking')}</p>
+          ) : identities.length === 0 ? (
+            <div className="rounded-lg border border-border bg-muted/30 p-3">
+              <p className="mb-1 text-sm font-medium text-foreground">⚠︎ {t('connections.authAgentNone')}</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">{t('connections.authAgentNoneHint')}</p>
+            </div>
+          ) : (
+            <>
+              {/* Identity picker — pin one or offer all */}
+              <div>
+                <label className="mb-1 block text-sm font-medium">{t('connections.authAgentIdentity')}</label>
+                <select
+                  value={value.agentIdentity}
+                  onChange={(e) => set({ agentIdentity: e.target.value })}
+                  className={INPUT_CLS}
+                >
+                  <option value="">{t('connections.authAgentOfferAll')}</option>
+                  {identities.map((id) => (
+                    <option key={id.fingerprint} value={id.fingerprint}>
+                      {id.name} · {id.hardware ? 'hardware · FIDO' : id.algo}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('connections.authAgentIdentityHint')}</p>
+              </div>
+
+              {/* Detected identities + security rationale */}
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
+                <p className="mb-2 text-sm font-medium text-foreground">
+                  ✓ {identities.length} {identities.length > 1 ? t('connections.authAgentIdentitiesN') : t('connections.authAgentIdentity1')}
+                </p>
+                <ul className="space-y-1.5">
+                  {identities.map((id) => (
+                    <li key={id.fingerprint} className="flex items-center gap-2 text-xs">
+                      <span className="font-medium text-foreground">{id.name}</span>
+                      <span className="font-mono text-muted-foreground">{id.fingerprint}</span>
+                      <span
+                        className={`ml-auto flex-none rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                          id.hardware ? 'bg-primary/20 text-primary' : 'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        {id.hardware ? 'hardware · FIDO' : id.algo}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t('connections.authAgentNote')}</p>
+              </div>
+
+              {/* Agent forwarding (opt-in) */}
+              <label className="flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={value.agentForward}
+                  onChange={(e) => set({ agentForward: e.target.checked })}
+                  className="mt-0.5"
+                />
+                <span className="text-sm">
+                  <span className="font-medium">{t('connections.authAgentForward')}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">⚠ {t('connections.authAgentForwardHint')}</span>
+                </span>
+              </label>
+            </>
+          )}
         </div>
       )}
     </div>

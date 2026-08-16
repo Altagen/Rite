@@ -413,6 +413,12 @@ export async function mockInvoke(
     // --- Terminal (no backend PTY in the browser; sessions are inert) ---
     case 'get_installed_shells':
       return (args?.shells as string[]) ?? commonShells;
+    case 'list_agent_identities':
+      // Mirrors the design mock's AGENT fixture (a plain key + a hardware key).
+      return [
+        { name: 'id_ed25519', fingerprint: 'SHA256:aB3k9…Qz', algo: 'ssh-ed25519', hardware: false },
+        { name: 'YubiKey 5C', fingerprint: 'SHA256:xY9m2…Lp', algo: 'sk-ssh-ed25519@openssh.com', hardware: true },
+      ];
     case 'connect_terminal':
     case 'connect_local_terminal':
     case 'quick_ssh_connect':
