@@ -28,6 +28,55 @@ pub enum SessionCommand {
     Close,
 }
 
+/// A public identity held by the SSH agent, for the connection form's picker.
+/// Read-only and non-secret: public keys, fingerprints and comments only.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentIdentityInfo {
+    /// The agent's comment for the key, or its fingerprint when blank.
+    pub name: String,
+    /// SHA256 fingerprint (the value used to pin an identity).
+    pub fingerprint: String,
+    /// Key algorithm, e.g. "ssh-ed25519" or "sk-ssh-ed25519@openssh.com".
+    pub algo: String,
+    /// A hardware-backed FIDO key (sk-*).
+    pub hardware: bool,
+}
+
+/// List the public identities the local SSH agent holds (`SSH_AUTH_SOCK`).
+/// Powers the connection form's identity picker; certificates are skipped.
+pub async fn list_agent_identities() -> Result<Vec<AgentIdentityInfo>> {
+    let mut agent = russh::keys::agent::client::AgentClient::connect_env()
+        .await
+        .map_err(|e| anyhow!("No SSH agent available (is SSH_AUTH_SOCK set?): {}", e))?;
+    let ids = agent
+        .request_identities()
+        .await
+        .map_err(|e| anyhow!("Failed to list SSH agent identities: {}", e))?;
+    Ok(ids
+        .into_iter()
+        .filter_map(|id| match id {
+            russh::keys::agent::AgentIdentity::PublicKey { key, comment } => {
+                let fingerprint = key.fingerprint(russh::keys::HashAlg::Sha256).to_string();
+                let algo = key.algorithm().to_string();
+                let hardware = algo.starts_with("sk-");
+                let name = if comment.trim().is_empty() {
+                    fingerprint.clone()
+                } else {
+                    comment
+                };
+                Some(AgentIdentityInfo {
+                    name,
+                    fingerprint,
+                    algo,
+                    hardware,
+                })
+            }
+            _ => None,
+        })
+        .collect())
+}
+
 /// SSH Client Handler with host key verification
 struct SshClientHandler {
     db: Arc<SqlitePool>,

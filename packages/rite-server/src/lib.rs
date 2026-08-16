@@ -635,6 +635,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/ssh-config/import", post(import_ssh_config))
         .route("/api/ssh/host-key/accept", post(accept_host_key))
         .route("/api/ssh/host-key/reject", post(reject_host_key))
+        .route("/api/ssh/agent-identities", get(agent_identities))
         .route("/api/shells", post(installed_shells))
         .route("/api/terminal", get(list_sessions))
         .route("/api/terminal/ssh", post(connect_ssh))
@@ -3265,6 +3266,13 @@ async fn parse_ssh_config(
     Ok(Json(rite_core::ssh_config::parse_ssh_config(
         &req.config_path,
     )?))
+}
+
+/// List the public identities held by the local SSH agent (for the connection
+/// form's identity picker). Local-only, read-only; agent auth is native-gated in
+/// the UI, so this reflects the machine running the client.
+async fn agent_identities() -> Result<Json<Vec<rite_core::terminal::AgentIdentityInfo>>, AppError> {
+    Ok(Json(rite_core::terminal::list_agent_identities().await?))
 }
 
 #[derive(Deserialize)]
