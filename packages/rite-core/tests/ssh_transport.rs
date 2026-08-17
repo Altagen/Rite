@@ -250,6 +250,7 @@ async fn ssh_session_connects_authenticates_and_round_trips() {
         pool,
         None,
         true,
+        None,
     )
     .await
     .expect("SSH session should connect and authenticate");
@@ -311,6 +312,7 @@ async fn ssh_session_rejects_changed_host_key() {
         pool,
         None,
         false,
+        None,
     )
     .await;
 
@@ -364,6 +366,7 @@ async fn ssh_session_authenticates_with_rsa_key() {
         pool,
         None,
         true,
+        None,
     )
     .await
     .expect("RSA public-key auth should succeed with rsa-sha2 negotiation");
@@ -401,6 +404,7 @@ async fn ssh_session_fails_cleanly_on_refused_connection() {
         pool,
         None,
         true,
+        None,
     )
     .await;
 
@@ -408,4 +412,210 @@ async fn ssh_session_fails_cleanly_on_refused_connection() {
         result.is_err(),
         "connecting to a dead endpoint must return an error, not hang"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard-interactive (2FA / OTP / PAM) — a server that rejects the password
+// method and drives auth via a single masked prompt.
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct KbdServer {
+    label: &'static str,
+    expect: &'static str,
+}
+
+impl Server for KbdServer {
+    type Handler = KbdHandler;
+    fn new_client(&mut self, _peer: Option<SocketAddr>) -> KbdHandler {
+        KbdHandler {
+            label: self.label,
+            expect: self.expect,
+        }
+    }
+}
+
+struct KbdHandler {
+    label: &'static str,
+    expect: &'static str,
+}
+
+impl Handler for KbdHandler {
+    type Error = russh::Error;
+
+    // Reject the password method so the client falls through to keyboard-interactive.
+    async fn auth_password(&mut self, _user: &str, _password: &str) -> Result<Auth, Self::Error> {
+        Ok(Auth::reject())
+    }
+
+    async fn auth_keyboard_interactive<'a>(
+        &'a mut self,
+        _user: &str,
+        _submethods: &str,
+        response: Option<russh::server::Response<'a>>,
+    ) -> Result<Auth, Self::Error> {
+        match response {
+            // First contact: issue the challenge with one masked prompt.
+            None => Ok(Auth::Partial {
+                name: "".into(),
+                instructions: "Second factor".into(),
+                prompts: std::borrow::Cow::Owned(vec![(
+                    std::borrow::Cow::Owned(self.label.to_string()),
+                    false,
+                )]),
+            }),
+            // The client answered: accept iff it matches.
+            Some(mut resp) => {
+                let ans = resp
+                    .next()
+                    .map(|b| String::from_utf8_lossy(b.as_ref()).into_owned())
+                    .unwrap_or_default();
+                if ans == self.expect {
+                    Ok(Auth::Accept)
+                } else {
+                    Ok(Auth::reject())
+                }
+            }
+        }
+    }
+
+    async fn channel_open_session(
+        &mut self,
+        _channel: Channel<Msg>,
+        reply: ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
+    }
+
+    async fn pty_request(
+        &mut self,
+        channel: ChannelId,
+        _term: &str,
+        _cols: u32,
+        _rows: u32,
+        _pw: u32,
+        _ph: u32,
+        _modes: &[(russh::Pty, u32)],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        session.data(channel, BANNER.to_vec())?;
+        Ok(())
+    }
+}
+
+async fn spawn_kbd_server(label: &'static str, expect: &'static str) -> u16 {
+    let key =
+        russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519).unwrap();
+    let config = Arc::new(ServerConfig {
+        keys: vec![key],
+        auth_rejection_time: Duration::from_millis(50),
+        ..Default::default()
+    });
+    let socket = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = socket.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut server = KbdServer { label, expect };
+        let _ = server.run_on_socket(config, &socket).await;
+    });
+    port
+}
+
+/// A prompt provider that always returns canned answers (stands in for the UI).
+struct StaticProvider {
+    answers: Vec<String>,
+}
+
+#[async_trait::async_trait]
+impl rite_core::events::InteractiveAuth for StaticProvider {
+    async fn keyboard_interactive(
+        &self,
+        _name: &str,
+        _instructions: &str,
+        _prompts: &[rite_core::events::KbdPrompt],
+    ) -> Option<Vec<String>> {
+        Some(self.answers.clone())
+    }
+}
+
+/// A one-time-code prompt (not password-labelled) is collected from the provider
+/// and sent back — the 2FA second-factor path.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ssh_session_completes_keyboard_interactive_via_provider() {
+    let port = spawn_kbd_server("Verification code:", "123456").await;
+    let (_dir, pool) = test_db().await;
+
+    let spy = Arc::new(Spy::default());
+    let out = spy.out.clone();
+    let events: SharedEvents = spy;
+    let provider: rite_core::events::SharedInteractive = Arc::new(StaticProvider {
+        answers: vec!["123456".into()],
+    });
+
+    let session = SshSession::connect(
+        test_connection(port),
+        AuthMethod::Password {
+            password: PASS.into(),
+        },
+        events,
+        pool,
+        None,
+        true,
+        Some(provider),
+    )
+    .await
+    .expect("keyboard-interactive should complete via the provider");
+
+    let buffered = session.claim_initial_output().await;
+    out.lock().unwrap().extend_from_slice(&buffered);
+    assert!(
+        wait_for(&out, BANNER, Duration::from_secs(5)).await,
+        "should reach the shell after answering the challenge"
+    );
+    session.close().await.expect("close should succeed");
+}
+
+/// A masked "Password:" prompt is auto-answered from the connection's password —
+/// no provider, so the user is never asked for what Rite already holds.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ssh_session_autoanswers_keyboard_interactive_password() {
+    let port = spawn_kbd_server("Password:", PASS).await;
+    let (_dir, pool) = test_db().await;
+
+    let spy = Arc::new(Spy::default());
+    let out = spy.out.clone();
+    let events: SharedEvents = spy;
+
+    let session = SshSession::connect(
+        test_connection(port),
+        AuthMethod::Password {
+            password: PASS.into(),
+        },
+        events,
+        pool,
+        None,
+        true,
+        None, // no UI provider — the password prompt must be auto-answered
+    )
+    .await
+    .expect("a keyboard-interactive password prompt should be auto-answered");
+
+    let buffered = session.claim_initial_output().await;
+    out.lock().unwrap().extend_from_slice(&buffered);
+    assert!(
+        wait_for(&out, BANNER, Duration::from_secs(5)).await,
+        "should reach the shell after the auto-answered password"
+    );
+    session.close().await.expect("close should succeed");
 }

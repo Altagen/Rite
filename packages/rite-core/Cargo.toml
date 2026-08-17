@@ -12,6 +12,7 @@ rite-crypto = { path = "../crypto" }
 
 # Async / errors / logging
 tokio = { workspace = true }
+async-trait = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 
@@ -37,6 +38,7 @@ chrono = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+async-trait = { workspace = true }
 tempfile = "3.27"
 # In-process russh server for the transport integration test (loopback SSH).
 # Must match the rand_core russh/ssh-key use (0.10) so PrivateKey::random accepts our RNG.

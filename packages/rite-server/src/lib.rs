@@ -3783,14 +3783,14 @@ async fn connect_ssh(
         let (connection, auth) = vault_conn::to_connection(&req.connection_id, input)?;
         let id = state
             .sessions
-            .create_quick_ssh_session(connection, auth, state.events_sink())
+            .create_quick_ssh_session(connection, auth, state.events_sink(), None)
             .await?;
         state.record_session_owner(&id, as_user(&user));
         return Ok(Json(json!({ "sessionId": id })).into_response());
     }
     let id = state
         .sessions
-        .create_session(req.connection_id.clone(), state.events_sink())
+        .create_session(req.connection_id.clone(), state.events_sink(), None)
         .await?;
     // Record "last used" in the local vault (ADR 0017 passive status). This is the local
     // single-user DB — the user's own machine — so unlike the accounts context (where it's
@@ -3883,7 +3883,7 @@ async fn quick_ssh(
     };
     let id = state
         .sessions
-        .create_quick_ssh_session(connection, auth, state.events_sink())
+        .create_quick_ssh_session(connection, auth, state.events_sink(), None)
         .await?;
     state.record_session_owner(&id, as_user(&user));
     Ok(Json(json!({ "sessionId": id })))

@@ -15,7 +15,7 @@ use uuid::Uuid;
 
 use crate::connection::{AuthMethod, Connection};
 use crate::db::Database;
-use crate::events::SharedEvents;
+use crate::events::{KbdPrompt, SharedEvents, SharedInteractive};
 use crate::known_hosts::{self, HostKeyVerificationResult};
 
 /// Unique identifier for a terminal session
@@ -263,6 +263,97 @@ pub struct SshSession {
     initial_buffer: Arc<Mutex<Option<Vec<u8>>>>,
 }
 
+/// Drive a server-issued keyboard-interactive exchange (2FA / OTP / PAM) to
+/// completion. A masked prompt whose text mentions "password" is auto-answered
+/// with `stored_password` — so the user is never asked for something Rite
+/// already holds — and every other prompt (OTPs, live challenges) is collected
+/// from `interactive`. Handles any number of prompts across any number of
+/// rounds. Returns whether authentication succeeded.
+async fn keyboard_interactive_auth(
+    session: &mut client::Handle<SshClientHandler>,
+    username: &str,
+    stored_password: Option<&str>,
+    interactive: Option<&SharedInteractive>,
+) -> Result<bool> {
+    use russh::client::KeyboardInteractiveAuthResponse as Kir;
+
+    let mut response = session
+        .authenticate_keyboard_interactive_start(username.to_string(), None)
+        .await?;
+
+    loop {
+        match response {
+            Kir::Success => return Ok(true),
+            Kir::Failure { .. } => return Ok(false),
+            Kir::InfoRequest {
+                name,
+                instructions,
+                prompts,
+            } => {
+                // Auto-answer masked "password" prompts from what Rite holds;
+                // leave everything else (OTPs, live challenges) for the UI.
+                let mut answers: Vec<Option<String>> = prompts
+                    .iter()
+                    .map(|p| {
+                        if !p.echo && p.prompt.to_lowercase().contains("password") {
+                            stored_password.map(|pw| pw.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                let need_ui: Vec<usize> = answers
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, a)| a.is_none())
+                    .map(|(i, _)| i)
+                    .collect();
+
+                if !need_ui.is_empty() {
+                    let ui_prompts: Vec<KbdPrompt> = need_ui
+                        .iter()
+                        .map(|&i| KbdPrompt {
+                            prompt: prompts[i].prompt.clone(),
+                            echo: prompts[i].echo,
+                        })
+                        .collect();
+                    let provided = match interactive {
+                        Some(provider) => match provider
+                            .keyboard_interactive(&name, &instructions, &ui_prompts)
+                            .await
+                        {
+                            Some(a) => a,
+                            None => return Ok(false), // user cancelled
+                        },
+                        None => {
+                            return Err(anyhow!(
+                                "This server requires interactive input (keyboard-interactive) that this session can't collect"
+                            ));
+                        }
+                    };
+                    if provided.len() != need_ui.len() {
+                        return Err(anyhow!(
+                            "keyboard-interactive: expected {} answer(s), got {}",
+                            need_ui.len(),
+                            provided.len()
+                        ));
+                    }
+                    for (slot, ans) in need_ui.into_iter().zip(provided) {
+                        answers[slot] = Some(ans);
+                    }
+                }
+
+                let final_answers: Vec<String> =
+                    answers.into_iter().map(|a| a.unwrap_or_default()).collect();
+                response = session
+                    .authenticate_keyboard_interactive_respond(final_answers)
+                    .await?;
+            }
+        }
+    }
+}
+
 impl SshSession {
     /// Create a new SSH session by connecting to a remote server
     pub async fn connect(
@@ -272,6 +363,7 @@ impl SshSession {
         db_pool: Arc<SqlitePool>,
         keep_alive_interval: Option<u64>, // Keep-alive interval in seconds (None = disabled)
         force_accept_host_key: bool,      // For Quick SSH: bypass host key verification
+        interactive: Option<SharedInteractive>, // Collects keyboard-interactive answers (2FA/PAM)
     ) -> Result<Self> {
         let session_id = Uuid::new_v4().to_string();
         tracing::info!(
@@ -424,9 +516,27 @@ impl SshSession {
             }
         };
 
-        if !matches!(auth_result, russh::client::AuthResult::Success) {
-            tracing::error!("[terminal.rs] Authentication failed!");
-            return Err(anyhow!("Authentication failed"));
+        if !auth_result.success() {
+            // The primary method didn't fully authenticate. The server may want a
+            // keyboard-interactive exchange — either a 2FA second factor (partial
+            // success) or the method it actually accepts. Attempt it, auto-answering
+            // a password Rite already holds and asking the UI for the rest.
+            tracing::info!("[terminal.rs] Primary auth incomplete, trying keyboard-interactive");
+            let stored_password = match &auth_method {
+                AuthMethod::Password { password } => Some(password.as_str()),
+                _ => None,
+            };
+            let authed = keyboard_interactive_auth(
+                &mut session,
+                &connection.username,
+                stored_password,
+                interactive.as_ref(),
+            )
+            .await?;
+            if !authed {
+                tracing::error!("[terminal.rs] Authentication failed!");
+                return Err(anyhow!("Authentication failed"));
+            }
         }
         tracing::info!("[terminal.rs] Authentication successful");
 
@@ -683,6 +793,7 @@ impl SessionManager {
         &self,
         connection_id: String,
         events: SharedEvents,
+        interactive: Option<SharedInteractive>,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_session called for connection_id: {}",
@@ -773,6 +884,7 @@ impl SessionManager {
             Arc::new(self.db.pool().clone()),
             keep_alive_interval,
             false,
+            interactive,
         )
         .await?;
         let session_id = ssh_session.id.clone();
@@ -853,6 +965,7 @@ impl SessionManager {
         connection: Connection,
         auth_method: AuthMethod,
         events: SharedEvents,
+        interactive: Option<SharedInteractive>,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_quick_ssh_session called for {}",
@@ -888,6 +1001,7 @@ impl SessionManager {
             Arc::new(self.db.pool().clone()),
             keep_alive_interval,
             true,
+            interactive,
         )
         .await?;
         let session_id = ssh_session.id.clone();

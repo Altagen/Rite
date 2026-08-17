@@ -30,3 +30,32 @@ pub trait SessionEvents: Send + Sync {
 
 /// Shared, transport-agnostic events sink.
 pub type SharedEvents = Arc<dyn SessionEvents>;
+
+/// A single keyboard-interactive prompt from the server (RFC 4256).
+#[derive(Debug, Clone)]
+pub struct KbdPrompt {
+    /// The text the server wants shown, e.g. "Verification code:".
+    pub prompt: String,
+    /// Whether the typed characters should be visible (usernames) or hidden
+    /// (passwords, OTPs). Rite masks the field when this is false.
+    pub echo: bool,
+}
+
+/// Collects answers to a server-driven keyboard-interactive challenge (2FA /
+/// OTP / PAM). rite-core runs the auth exchange but can't reach a UI; the shell
+/// implements this (rite-server bridges it to the client over the WebSocket).
+/// A password Rite already holds is auto-answered before this is ever called,
+/// so it only fires for things Rite can't know (a one-time code, a live prompt).
+#[async_trait::async_trait]
+pub trait InteractiveAuth: Send + Sync {
+    /// Return exactly one answer per prompt, or `None` to abort the connection.
+    async fn keyboard_interactive(
+        &self,
+        name: &str,
+        instructions: &str,
+        prompts: &[KbdPrompt],
+    ) -> Option<Vec<String>>;
+}
+
+/// Shared, transport-agnostic keyboard-interactive prompt provider.
+pub type SharedInteractive = Arc<dyn InteractiveAuth>;
