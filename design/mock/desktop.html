@@ -147,7 +147,7 @@
     </main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a></div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a></div>
 <!-- Focus-mode hint: only shown in focus mode; fades but stays faintly so the user is never trapped. -->
 <div id="focusHint">Focus mode · <kbd>Esc</kbd> or <kbd>F11</kbd> to exit · hover the top edge to reveal the toolbar</div>
 
@@ -448,10 +448,10 @@ function nodeRow(n,depth,exp){const isColl=n.type==='coll';
     <span class="acts">${isColl
       ?`<button class="btn btn-ghost" title="Add" onclick="event.stopPropagation();collAdd('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();collMore('${n.id}',event)">${EXICON.more}</button>`
       :`<button class="btn btn-ghost" title="New here" onclick="event.stopPropagation();folderMenu('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();folderMore('${n.id}',event)">${EXICON.more}</button>`}</span></div>`;}
-function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click to open')">
+function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="toast('${cn.name} · double-click to open')">
     <span class="ca"></span><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
     <span class="nm">${cn.name}</span>${pastille(cn)}
-    <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();toast('▶ ${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="Edit" onclick="event.stopPropagation();dlgNewConn('',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${EXICON.more}</button></span></div>`;}
+    <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="Edit" onclick="event.stopPropagation();dlgNewConn('',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${EXICON.more}</button></span></div>`;}
 function n_toggle(id){const n=find(id);n.open=!n.open;renderSide();}
 
 /* ================= main: terminal tabs + collection CARDS ================= */
@@ -474,11 +474,11 @@ function paneGrid(){if(STATE.ctx.type==='home')return `<div class="pane-wrap foc
     <div class="pane-wrap" style="flex:1">${termHTML('deploy@10.0.0.4')}</div></div>`;}
 function cardsView(coll){
   const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
-  const card=cn=>`<div class="ccard" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click')">
+  const card=cn=>`<div class="ccard" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="toast('${cn.name} · double-click')">
     <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span>${pastille(cn)}<span style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" title="Move to folder…" style="padding:3px" onclick="event.stopPropagation();dlgMoveConn('${cn.name}',event)">${M.move}</button>
       <button class="btn btn-ghost btn-sm" title="Edit machine" style="padding:3px" onclick="event.stopPropagation();dlgNewConn('${coll.name}',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button>
-      <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();toast('▶ Connecting…')">${ICON.play}</button></div>
+      <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button></div>
     <div class="tgt">${cn.user}@${cn.host}:${cn.port}</div>
     <div class="meta"><span>⏱ ${cn.last}</span><span>ssh</span></div></div>`;
   const grid=list=>`<div class="cards ${STATE.layout}">${sortF(list).map(card).join('')}</div>`;
@@ -742,6 +742,30 @@ function mpRole(u,role){window.__mp.roles[u]=role;mpRenderMembers();}
 function openHostKey(){showModal({title:'Unknown host key',subtitle:'First connection to this host (TOFU).',
   body:`<div class="card" style="padding:12px;border-color:rgba(229,181,103,.4);background:rgba(229,181,103,.07)"><div style="display:flex;gap:10px;align-items:center"><span style="color:var(--amber)">${ICON.lock}</span><b>web-03.acme.io:22</b></div><div class="mono" style="margin-top:8px;font-size:12px;color:var(--fg-dim);word-break:break-all">SHA256:aX9k2Lm…7pQr4tZ ed25519</div></div><p class="muted" style="font-size:13px;margin:12px 0 0">Verify out-of-band before trusting. Rite pins it for next time.</p>`,
   confirm:'Trust & connect',onConfirm:()=>toast('Host key pinned')});}
+/* Keyboard-interactive — server-driven challenge/response during auth (2FA / OTP
+   / PAM). The sibling of the host-key modal: the server sends prompts, we collect
+   the answers and send them back; it may repeat for another round. Data-driven so
+   it renders one or many prompts, each masked unless the server says to echo. */
+const KBD_DEMO={host:'alex@web-03.acme.io:22',name:'Two-factor authentication',
+  note:'✓ Primary auth accepted — one more step.',
+  instruction:'Enter the 6-digit code from your authenticator app.',
+  prompts:[{label:'Verification code:',echo:false}]};
+function openKbdInteractive(ch){ch=ch||KBD_DEMO;
+  showModal({title:ch.name||'Server verification',subtitle:'The server needs more to sign you in.',confirm:'Verify',
+  body:`${ch.note?`<p style="color:var(--accent);font-size:12.5px;font-weight:600;margin:0 0 10px">${ch.note}</p>`:''}<div class="card" style="padding:11px 13px;display:flex;gap:10px;align-items:center"><span style="color:var(--accent)">${EXICON.shield}</span><b class="mono" style="font-size:13px">${ch.host}</b></div>
+    ${ch.instruction?`<p class="muted" style="font-size:13px;margin:12px 0 2px">${ch.instruction}</p>`:''}
+    ${ch.prompts.map((pr,i)=>`<label class="field"><span>${pr.label}</span><input class="inp" type="${pr.echo?'text':'password'}" ${i===0?'autofocus':''} placeholder="${pr.echo?'':'••••••'}"></label>`).join('')}
+    <p class="muted" style="font-size:12px;margin:10px 0 0">Requested by the server (keyboard-interactive). Your answer is sent to the server to sign in — <b>nothing is stored by Rite</b>.</p>`,
+  onConfirm:()=>toast('Verifying with the server…')});}
+/* Simulate connecting to a machine: the primary auth runs, then (for the demo)
+   the server asks for a second factor via keyboard-interactive — the real path
+   by which the challenge modal appears. A stored/entered password is auto-
+   answered, so only the OTP is asked here. */
+function connectMachine(host,name){toast(`▶ ${name} · authenticating…`);
+  setTimeout(()=>openKbdInteractive({host,name:'Two-factor authentication',
+    note:'✓ Primary auth accepted — one more step.',
+    instruction:'Enter the 6-digit code from your authenticator app.',
+    prompts:[{label:'Verification code:',echo:false}]}),650);}
 function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',body:`
   <div class="settings-row"><div><b>Interface language</b><div class="muted" style="font-size:12px">English / Français</div></div><select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select></div>
   <div class="settings-row"><div><b>Theme</b><div class="muted" style="font-size:12px">Dark / light</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
