@@ -248,6 +248,16 @@ export const BackendSsh = {
   /** Drop a pending unknown host key (user declined). */
   rejectHostKey: (host: string, port: number) =>
     invokeWithValidation('reject_host_key', z.null(), { host, port }),
+
+  /**
+   * Answer an in-flight keyboard-interactive challenge (2FA/PAM): one string per
+   * prompt, or `null` to cancel the connection.
+   */
+  kbdInteractiveRespond: (challengeId: string, responses: string[] | null) =>
+    invokeWithValidation('kbd_interactive_respond', z.object({ ok: z.boolean() }), {
+      challengeId,
+      responses,
+    }),
 } as const;
 
 // Terminal Commands

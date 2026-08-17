@@ -36,6 +36,7 @@ import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
 import { ImportSSHConfigModal } from './ImportSSHConfigModal';
 import { ImportSSHPasteModal } from './ImportSSHPasteModal';
 import { HostKeyModal, type HostKeyPrompt } from './HostKeyModal';
+import { KbdInteractiveModal, type KbdChallenge } from './KbdInteractiveModal';
 import { ContextPill } from './ContextPill';
 import {
   isNativeShell,
@@ -221,6 +222,46 @@ export function Workspace({
   const [hostKeyPrompt, setHostKeyPrompt] = useState<HostKeyPrompt | null>(null);
   const [hostKeyBusy, setHostKeyBusy] = useState(false);
   const lastConnectionRef = useRef<ConnectionInfo | null>(null);
+
+  // Keyboard-interactive (2FA/PAM) challenge emitted by the backend during connect.
+  const [kbdChallenge, setKbdChallenge] = useState<KbdChallenge | null>(null);
+  const [kbdBusy, setKbdBusy] = useState(false);
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      unlisten = await transport().listen<KbdChallenge>('ssh:kbd-interactive', (p) =>
+        setKbdChallenge(p),
+      );
+    })();
+    return () => unlisten?.();
+  }, []);
+  const handleKbdSubmit = useCallback(
+    async (responses: string[]) => {
+      const ch = kbdChallenge;
+      if (!ch) return;
+      setKbdBusy(true);
+      try {
+        await Backend.Ssh.kbdInteractiveRespond(ch.challengeId, responses);
+      } catch (err) {
+        console.error('[kbd-interactive] respond failed:', err);
+      } finally {
+        setKbdBusy(false);
+        setKbdChallenge(null);
+      }
+    },
+    [kbdChallenge],
+  );
+  const handleKbdCancel = useCallback(async () => {
+    const ch = kbdChallenge;
+    setKbdChallenge(null);
+    if (ch) {
+      try {
+        await Backend.Ssh.kbdInteractiveRespond(ch.challengeId, null);
+      } catch (err) {
+        console.error('[kbd-interactive] cancel failed:', err);
+      }
+    }
+  }, [kbdChallenge]);
 
   // Surface strict-mode host-key prompts emitted by the backend over the transport.
   useEffect(() => {
@@ -1749,6 +1790,15 @@ export function Workspace({
           busy={hostKeyBusy}
           onAccept={handleAcceptHostKey}
           onReject={handleRejectHostKey}
+        />
+      )}
+
+      {kbdChallenge && (
+        <KbdInteractiveModal
+          challenge={kbdChallenge}
+          busy={kbdBusy}
+          onSubmit={handleKbdSubmit}
+          onCancel={handleKbdCancel}
         />
       )}
 

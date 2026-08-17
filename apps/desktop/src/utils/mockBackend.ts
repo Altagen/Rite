@@ -175,6 +175,9 @@ export async function mockInvoke(
     case 'accept_host_key':
     case 'reject_host_key':
       return null;
+    case 'kbd_interactive_respond':
+      // The mock has no live SSH auth flow; acknowledge so callers don't error.
+      return { ok: true };
 
     // --- Server accounts ---
     // Default: behave as a local vault (no accounts). Under the dev harness (?harness=…) behave

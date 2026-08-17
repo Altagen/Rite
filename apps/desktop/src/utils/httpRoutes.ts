@@ -524,6 +524,8 @@ const routes: Record<string, Route> = {
     await json('/api/ssh/host-key/reject', post({ host: a.host, port: a.port }));
     return null;
   },
+  kbd_interactive_respond: (a) =>
+    json('/api/ssh/kbd-interactive/respond', post({ challengeId: a.challengeId, responses: a.responses })),
 
   quick_ssh_connect: async (a) =>
     (
