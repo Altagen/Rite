@@ -39,7 +39,7 @@ russh = "0.62"
 suppaftp = "10.0"
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite"] }
 
 # Logging
 tracing = "0.1"
