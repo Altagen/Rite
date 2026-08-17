@@ -36,7 +36,7 @@ mod probe;
 mod tls_pin;
 mod vault_conn;
 mod ws_events;
-use ws_events::WsSessionEvents;
+use ws_events::{KbdRegistry, WsInteractiveAuth, WsSessionEvents};
 
 /// Shared server state: the rite-core managers plus a broadcast of session
 /// events to connected WebSocket clients.
@@ -47,6 +47,9 @@ pub struct ServerState {
     pub connections: Arc<ConnectionsManager>,
     pub sessions: Arc<SessionManager>,
     pub events_tx: broadcast::Sender<String>,
+    /// In-flight keyboard-interactive challenges (2FA/PAM) awaiting a client
+    /// answer, keyed by a random challenge id (owner-checked on respond).
+    kbd_challenges: KbdRegistry,
     /// When set (local desktop shell), API/WS requests require this bearer token
     /// and a loopback Host — the ADR 0009 local-transport guard. `None` in
     /// dev/container mode.
@@ -323,6 +326,7 @@ impl ServerState {
             vault: Arc::new(std::sync::Mutex::new(VaultKeyHolder::new())),
             session_owners: Arc::new(std::sync::Mutex::new(HashMap::new())),
             probe_throttle: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            kbd_challenges: Arc::new(std::sync::Mutex::new(HashMap::new())),
         })
     }
 
@@ -354,6 +358,22 @@ impl ServerState {
     /// A `SessionEvents` sink that broadcasts session output to WebSocket clients.
     fn events_sink(&self) -> Arc<WsSessionEvents> {
         Arc::new(WsSessionEvents::new(self.events_tx.clone()))
+    }
+
+    /// A keyboard-interactive prompt provider bound to the connecting user: it
+    /// broadcasts challenges over the WS and awaits the answer they POST back.
+    fn interactive_provider(
+        &self,
+        user: Option<&User>,
+    ) -> Option<rite_core::events::SharedInteractive> {
+        let owner = user
+            .map(|u| u.id.clone())
+            .unwrap_or_else(|| "local".to_string());
+        Some(Arc::new(WsInteractiveAuth::new(
+            self.events_tx.clone(),
+            self.kbd_challenges.clone(),
+            owner,
+        )))
     }
 
     /// The proxy HTTP client (pinned-TLS), for the vault-connection transform.
@@ -636,6 +656,10 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/ssh/host-key/accept", post(accept_host_key))
         .route("/api/ssh/host-key/reject", post(reject_host_key))
         .route("/api/ssh/agent-identities", get(agent_identities))
+        .route(
+            "/api/ssh/kbd-interactive/respond",
+            post(kbd_interactive_respond),
+        )
         .route("/api/shells", post(installed_shells))
         .route("/api/terminal", get(list_sessions))
         .route("/api/terminal/ssh", post(connect_ssh))
@@ -3276,6 +3300,41 @@ async fn agent_identities() -> Result<Json<Vec<rite_core::terminal::AgentIdentit
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KbdRespondReq {
+    challenge_id: String,
+    /// One answer per prompt, or `null` if the user cancelled the challenge.
+    responses: Option<Vec<String>>,
+}
+
+/// Deliver the client's answers to an in-flight keyboard-interactive challenge
+/// (2FA/PAM). Only the user who triggered the connect (the challenge owner) may
+/// answer; an unknown/expired id is a harmless no-op.
+async fn kbd_interactive_respond(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<KbdRespondReq>,
+) -> Result<Json<Value>, AppError> {
+    let owner = as_user(&user)
+        .map(|u| u.id.clone())
+        .unwrap_or_else(|| "local".to_string());
+    let pending = {
+        let mut reg = state.kbd_challenges.lock().unwrap();
+        match reg.get(&req.challenge_id) {
+            Some(p) if p.owner != owner => {
+                return Err(anyhow::anyhow!("not your challenge").into());
+            }
+            Some(_) => reg.remove(&req.challenge_id),
+            None => None,
+        }
+    };
+    if let Some(p) = pending {
+        let _ = p.tx.send(req.responses);
+    }
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
 struct ImportEntriesReq {
     entries: Vec<SshConfigEntry>,
 }
@@ -3783,14 +3842,23 @@ async fn connect_ssh(
         let (connection, auth) = vault_conn::to_connection(&req.connection_id, input)?;
         let id = state
             .sessions
-            .create_quick_ssh_session(connection, auth, state.events_sink(), None)
+            .create_quick_ssh_session(
+                connection,
+                auth,
+                state.events_sink(),
+                state.interactive_provider(as_user(&user)),
+            )
             .await?;
         state.record_session_owner(&id, as_user(&user));
         return Ok(Json(json!({ "sessionId": id })).into_response());
     }
     let id = state
         .sessions
-        .create_session(req.connection_id.clone(), state.events_sink(), None)
+        .create_session(
+            req.connection_id.clone(),
+            state.events_sink(),
+            state.interactive_provider(as_user(&user)),
+        )
         .await?;
     // Record "last used" in the local vault (ADR 0017 passive status). This is the local
     // single-user DB — the user's own machine — so unlike the accounts context (where it's
@@ -3883,7 +3951,12 @@ async fn quick_ssh(
     };
     let id = state
         .sessions
-        .create_quick_ssh_session(connection, auth, state.events_sink(), None)
+        .create_quick_ssh_session(
+            connection,
+            auth,
+            state.events_sink(),
+            state.interactive_provider(as_user(&user)),
+        )
         .await?;
     state.record_session_owner(&id, as_user(&user));
     Ok(Json(json!({ "sessionId": id })))

@@ -10,6 +10,7 @@ license.workspace = true
 rite-core = { path = "../rite-core" }
 rite-crypto = { path = "../crypto" }
 
+async-trait = { workspace = true }
 axum = { version = "0.8", features = ["ws"] }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }

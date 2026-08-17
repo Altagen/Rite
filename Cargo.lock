@@ -4195,6 +4195,7 @@ name = "rite-server"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "axum-server",
  "base64 0.22.1",
