@@ -354,6 +354,7 @@ mod tests {
                 notes: None,
                 ssh_keep_alive_override: None,
                 ssh_keep_alive_interval: None,
+                preconnect: None,
             })
             .await
             .unwrap();

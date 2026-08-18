@@ -89,6 +89,7 @@ pub struct Connection {
     pub metadata: ConnectionMetadata,
     pub ssh_keep_alive_override: Option<String>, // NULL, "disabled", or "enabled"
     pub ssh_keep_alive_interval: Option<i64>,    // Interval in seconds, NULL = use global
+    pub preconnect: Option<String>,              // pre-connect hook: local command, NULL = none
     pub created_at: i64,
     pub updated_at: i64,
     pub last_used_at: Option<i64>,
@@ -111,6 +112,7 @@ pub struct ConnectionInfo {
     pub notes: Option<String>,
     pub ssh_keep_alive_override: Option<String>, // NULL, "disabled", or "enabled"
     pub ssh_keep_alive_interval: Option<i64>,    // Interval in seconds
+    pub preconnect: Option<String>,              // pre-connect hook: local command, NULL = none
     pub created_at: i64,
     pub updated_at: i64,
     pub last_used_at: Option<i64>,
@@ -132,6 +134,7 @@ pub struct CreateConnectionInput {
     pub notes: Option<String>,
     pub ssh_keep_alive_override: Option<String>, // NULL, "disabled", or "enabled"
     pub ssh_keep_alive_interval: Option<i64>,    // Interval in seconds
+    pub preconnect: Option<String>,              // pre-connect hook: local command
 }
 
 /// Input for updating a connection
@@ -151,6 +154,7 @@ pub struct UpdateConnectionInput {
     pub notes: Option<String>,
     pub ssh_keep_alive_override: Option<Option<String>>, // Nested Option to allow setting to NULL
     pub ssh_keep_alive_interval: Option<Option<i64>>,    // Nested Option to allow setting to NULL
+    pub preconnect: Option<Option<String>>,              // Nested Option to allow clearing
 }
 
 impl Connection {
@@ -175,6 +179,7 @@ impl Connection {
             },
             ssh_keep_alive_override: input.ssh_keep_alive_override,
             ssh_keep_alive_interval: input.ssh_keep_alive_interval,
+            preconnect: input.preconnect.filter(|s| !s.trim().is_empty()),
             created_at: now,
             updated_at: now,
             last_used_at: None,
@@ -230,6 +235,7 @@ impl Connection {
             notes: self.metadata.notes.clone(),
             ssh_keep_alive_override: self.ssh_keep_alive_override.clone(),
             ssh_keep_alive_interval: self.ssh_keep_alive_interval,
+            preconnect: self.preconnect.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
             last_used_at: self.last_used_at,
@@ -273,6 +279,9 @@ impl Connection {
         }
         if let Some(ssh_keep_alive_interval) = input.ssh_keep_alive_interval {
             self.ssh_keep_alive_interval = ssh_keep_alive_interval;
+        }
+        if let Some(preconnect) = input.preconnect {
+            self.preconnect = preconnect.filter(|s| !s.trim().is_empty());
         }
 
         self.updated_at = Utc::now().timestamp_millis();

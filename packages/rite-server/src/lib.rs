@@ -3945,6 +3945,7 @@ async fn quick_ssh(
         },
         ssh_keep_alive_override: None,
         ssh_keep_alive_interval: None,
+        preconnect: None,
         last_used_at: None,
         created_at: now,
         updated_at: now,
