@@ -21,6 +21,12 @@ use crate::known_hosts::{self, HostKeyVerificationResult};
 /// Unique identifier for a terminal session
 pub type SessionId = String;
 
+/// Cap on the pre-claim initial-output buffer. If the frontend never claims a
+/// session (its terminal pane never mounts), a chatty server could otherwise
+/// grow it without bound; we keep only the most recent bytes so memory stays
+/// bounded and, when the pane does attach, it shows the current state.
+const MAX_INITIAL_BUFFER: usize = 1024 * 1024; // 1 MiB
+
 /// Commands that can be sent to a terminal session
 pub enum SessionCommand {
     SendInput(Vec<u8>),
@@ -657,8 +663,14 @@ impl SshSession {
                             Some(ChannelMsg::Data { ref data }) => {
                                 let mut buf_guard = initial_buffer_clone.lock().await;
                                 if let Some(ref mut buf) = *buf_guard {
-                                    // Buffering mode: accumulate until frontend calls claim.
+                                    // Buffering mode: accumulate until frontend calls claim,
+                                    // but keep only the most recent MAX_INITIAL_BUFFER bytes so
+                                    // an unclaimed session can't grow the buffer without bound.
                                     buf.extend_from_slice(data);
+                                    if buf.len() > MAX_INITIAL_BUFFER {
+                                        let overflow = buf.len() - MAX_INITIAL_BUFFER;
+                                        buf.drain(0..overflow);
+                                    }
                                 } else {
                                     // Streaming mode: frontend has already claimed the buffer.
                                     events.terminal_data(&session_id_clone, &data[..]);
