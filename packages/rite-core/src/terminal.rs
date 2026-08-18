@@ -377,8 +377,15 @@ impl SshSession {
             connection.username
         );
 
-        // Create SSH client configuration
-        let config = Arc::new(client::Config::default());
+        // Create SSH client configuration. Use russh's native SSH keepalive
+        // (keepalive@openssh.com) instead of an app-level heartbeat, so we never
+        // fight the real terminal size and the transport itself detects a dead peer.
+        let mut config = client::Config::default();
+        if let Some(secs) = keep_alive_interval {
+            config.keepalive_interval = Some(std::time::Duration::from_secs(secs));
+            config.keepalive_max = 3;
+        }
+        let config = Arc::new(config);
         let handler = SshClientHandler {
             db: db_pool,
             host: connection.hostname.clone(),
@@ -613,59 +620,28 @@ impl SshSession {
             }
             tracing::info!("[terminal.rs] Shell started, buffering initial output");
 
-            // Start the event loop immediately to capture all output including MOTD
-            // Keep-alive timer will be initialized on first tick
-            let mut keep_alive_timer: Option<tokio::time::Interval> = None;
-            let mut keep_alive_initialized = false;
-
+            // Event loop: russh drives keepalive internally (see Config above), so
+            // here we only pump commands to the channel and channel output back.
             loop {
-                // Initialize keep-alive on first loop iteration (after we're already listening)
-                if !keep_alive_initialized {
-                    keep_alive_timer = if let Some(interval_secs) = keep_alive_interval {
-                        tracing::info!(
-                            "[terminal.rs] Keep-alive enabled: {} seconds",
-                            interval_secs
-                        );
-                        Some(tokio::time::interval(std::time::Duration::from_secs(
-                            interval_secs,
-                        )))
-                    } else {
-                        tracing::info!("[terminal.rs] Keep-alive disabled");
-                        None
-                    };
-                    keep_alive_initialized = true;
-                }
-
                 tokio::select! {
-                    // Keep-alive timer
-                    _ = async {
-                        match &mut keep_alive_timer {
-                            Some(timer) => timer.tick().await,
-                            None => std::future::pending().await, // Never completes if disabled
-                        }
-                    } => {
-                        tracing::trace!("[terminal.rs] Sending keep-alive...");
-                        // Try to send a window size query as a keep-alive heartbeat
-                        // If this fails, the connection is likely dead
-                        if let Err(e) = channel.window_change(80, 24, 0, 0).await {
-                            tracing::error!("[terminal.rs] Keep-alive failed: {}. Connection appears dead.", e);
-                            events.connection_dead(&session_id_clone, "Keep-alive failed");
-                            events.terminal_closed(&session_id_clone);
-                            break;
-                        }
-                    }
                     // Handle commands from SessionManager
                     Some(cmd) = command_rx.recv() => {
                         match cmd {
                             SessionCommand::SendInput(data) => {
                                 if let Err(e) = channel.data(&data[..]).await {
-                                    eprintln!("Error sending input: {}", e);
+                                    // Never drop the user's keystrokes silently — surface it.
+                                    tracing::error!("[terminal.rs] Failed to send input: {}", e);
+                                    events.terminal_error(
+                                        &session_id_clone,
+                                        &format!("Failed to send input: {}", e),
+                                    );
+                                    events.connection_dead(&session_id_clone, "Input send failed");
                                     break;
                                 }
                             }
                             SessionCommand::Resize { cols, rows } => {
                                 if let Err(e) = channel.window_change(cols, rows, 0, 0).await {
-                                    eprintln!("Error resizing terminal: {}", e);
+                                    tracing::warn!("[terminal.rs] Failed to resize terminal: {}", e);
                                 }
                             }
                             SessionCommand::Close => {
@@ -696,7 +672,14 @@ impl SshSession {
                                 events.terminal_closed(&session_id_clone);
                                 break;
                             }
-                            None => break,
+                            None => {
+                                // The channel/session ended without a clean EOF or exit
+                                // status — the connection dropped (network loss, or russh's
+                                // keepalive gave up). Tell the UI instead of dying silently.
+                                events.connection_dead(&session_id_clone, "Connection lost");
+                                events.terminal_closed(&session_id_clone);
+                                break;
+                            }
                             other => {
                                 tracing::warn!("[terminal.rs] Unhandled channel message: {:?}", other);
                             }
