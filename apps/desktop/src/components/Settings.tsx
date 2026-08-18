@@ -12,6 +12,7 @@ import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../u
 import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
 import { useServerSession } from '../store/serverSessionStore';
 import { useFocusMode } from '../store/focusMode';
+import { useAutoReconnect } from '../store/autoReconnect';
 import { isNativeShell } from '../utils/nativeShell';
 import { Backend } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
@@ -38,6 +39,8 @@ export function Settings({ onClose }: SettingsProps) {
   const native = isNativeShell();
   const focusAutoCollapse = useFocusMode((s) => s.autoCollapse);
   const setFocusAutoCollapse = useFocusMode((s) => s.setAutoCollapse);
+  const autoReconnect = useAutoReconnect((s) => s.enabled);
+  const setAutoReconnect = useAutoReconnect((s) => s.setEnabled);
   const showMemberCount = useDisplayPrefs((s) => s.showMemberCount);
   const setShowMemberCount = useDisplayPrefs((s) => s.setShowMemberCount);
   const healthPref = useHealthPref((s) => s.pref);
@@ -582,6 +585,27 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
             </section>
           )}
+
+          {/* SSH connections */}
+          <section className="border-b border-border pb-6">
+            <h3 className="mb-4 text-lg font-semibold">SSH connections</h3>
+            <label className="flex cursor-pointer items-center gap-3">
+              <input
+                type="checkbox"
+                checked={autoReconnect}
+                onChange={(e) => setAutoReconnect(e.target.checked)}
+                className="h-5 w-5 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary"
+              />
+              <div>
+                <div className="font-medium">Auto-reconnect lost SSH connections</div>
+                <div className="text-sm text-muted-foreground">
+                  Off by default. When on, a dropped session reconnects automatically — a new shell,
+                  so your history, on-screen output and any running job are lost. When off, the pane
+                  shows a Reconnect button instead. Either way you&apos;re told you were disconnected.
+                </div>
+              </div>
+            </label>
+          </section>
 
           {/* Focus mode (client/native only) */}
           {native && (
