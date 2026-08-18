@@ -147,7 +147,7 @@
     </main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a> · <a href="#" onclick="demoDisconnect();return false">disconnect</a></div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a> · <a href="#" onclick="demoDisconnect();return false">disconnect</a> · <a href="#" onclick="runPreconnect(false);return false">pre-connect ✓</a> · <a href="#" onclick="runPreconnect(true);return false">pre-connect ✕</a></div>
 <!-- Focus-mode hint: only shown in focus mode; fades but stays faintly so the user is never trapped. -->
 <div id="focusHint">Focus mode · <kbd>Esc</kbd> or <kbd>F11</kbd> to exit · hover the top edge to reveal the toolbar</div>
 
@@ -679,12 +679,14 @@ function dlgNewConn(collName,existing){const e=existing||{};
       <label class="field" id="nc-kai" style="flex:1;${e.sshKeepAliveOverride==='enabled'?'':'display:none'}"><span>Interval (s)</span><input class="inp" value="${e.sshKeepAliveInterval||30}"></label></div>
     <label class="field"><span>Health-check</span><select class="inp" id="nc-hc"><option value="inherit" ${e.hc===false?'':'selected'}>Follow the collection / server policy</option><option value="off" ${e.hc===false?'selected':''}>Never probe this machine</option></select>
       <span class="muted" style="font-size:12px;display:block;margin-top:6px">A machine can opt out of active probing; it can't opt into more than allowed.</span></label>
+    <label class="field"><span>Pre-connect command <span class="muted" style="font-weight:400">(optional)</span></span><textarea class="inp mono" id="nc-preconnect" oninput="autoGrow(this)" placeholder="wg-quick up wg0&#10;# one line, or a mini-script (fail-fast)" spellcheck="false" rows="${e.preconnect?Math.min((e.preconnect.match(/\n/g)||[]).length+1,6):2}" style="resize:vertical;overflow:auto;min-height:52px;line-height:1.5">${e.preconnect||''}</textarea>
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">A <b>local</b> command run <b>before</b> connecting — one line, or a few lines for a mini-script (<b>fail-fast</b>: any line failing aborts). <code style="font-family:ui-monospace,monospace">tailscale up</code>, <code style="font-family:ui-monospace,monospace">aws sso login</code>, <code style="font-family:ui-monospace,monospace">kinit</code>, mount a VPN… Interactive prompts (password, browser) run in a small terminal. If it fails, Rite <b>won't connect</b> and shows why. Runs on your machine, never on the server.</span></label>
     <label class="field"><span>Notes</span><textarea class="inp" id="nc-notes" rows="2" placeholder="Optional notes…">${e.notes||''}</textarea></label>
     <label class="field"><span>Collection</span><select class="inp" id="nc-coll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
     ${(()=>{const c=allColls().find(x=>x.name===collName);return c&&c.shared?`<p class="muted" style="font-size:12px;margin:6px 0 0">${EXICON.users} Shared collection — saving re-encrypts for all ${c.members.length} members (needs write access · RBAC).</p>`:'';})()}`,
   onConfirm:(m)=>{const g=s=>m.querySelector(s);
     const _aid=g('#nc-agent-id'),_afwd=g('#nc-agent-fwd'),_atype=g('#nc-auth').value;
-    const rec={name:(g('#nc-name').value||'').trim()||'machine',protocol:g('#nc-proto').value,host:(g('#nc-host').value||'').trim(),port:Number(g('#nc-port').value)||22,user:(g('#nc-user').value||'').trim(),authType:_atype,agentIdentity:_atype==='agent'&&_aid?_aid.value:undefined,agentForward:_atype==='agent'&&_afwd?_afwd.checked:undefined,color:__pickColor,notes:(g('#nc-notes').value||'').trim(),sshKeepAliveOverride:g('#nc-ka').value==='on'?'enabled':'disabled',sshKeepAliveInterval:Number((g('#nc-kai').querySelector('input')||{}).value)||30,hc:g('#nc-hc').value==='off'?false:undefined};
+    const rec={name:(g('#nc-name').value||'').trim()||'machine',protocol:g('#nc-proto').value,host:(g('#nc-host').value||'').trim(),port:Number(g('#nc-port').value)||22,user:(g('#nc-user').value||'').trim(),authType:_atype,agentIdentity:_atype==='agent'&&_aid?_aid.value:undefined,agentForward:_atype==='agent'&&_afwd?_afwd.checked:undefined,color:__pickColor,notes:(g('#nc-notes').value||'').trim(),sshKeepAliveOverride:g('#nc-ka').value==='on'?'enabled':'disabled',sshKeepAliveInterval:Number((g('#nc-kai').querySelector('input')||{}).value)||30,hc:g('#nc-hc').value==='off'?false:undefined,preconnect:(g('#nc-preconnect').value||'').trim()||undefined};
     if(existing){Object.assign(existing,rec);}
     else{const cn=allColls().find(c=>c.name===g('#nc-coll').value);if(cn){if(!cn.conns)cn.conns=[];cn.conns.push({...rec,last:'just now'});}}
     renderAll();toast(existing?'Machine updated':`Machine saved to ${g('#nc-coll').value}`);}});}
@@ -773,6 +775,45 @@ function connectMachine(host,name){toast(`▶ ${name} · authenticating…`);
 function demoDisconnect(){STATE.demoDisconnected=true;renderMain();
   toast(STATE.autoReconnect?'Connection lost — reconnected automatically':'Connection lost — a Reconnect button is available');}
 function reconnectPane(){STATE.demoDisconnected=false;renderMain();toast('Reconnected — new shell');}
+/* Pre-connect hook (Wave-1): a per-connection LOCAL command that must succeed
+   BEFORE we connect (wg-quick / tailscale up / aws sso login / kinit / mount…).
+   Success → open the session; failure → abort + show the command's output so the
+   user knows exactly why (graceful-handling). Runs client-side, never on the server. */
+/* Auto-grow a textarea: one line when empty, expands with content (capped). */
+function autoGrow(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,180)+'px';}
+const PRECONNECT={host:'deploy@web-03.acme.io:22',cmd:'wg-quick up wg0'};
+/* Runs in a real (mini) PTY, not a hidden capture — so interactive commands
+   (kinit password, aws sso browser) work and progress streams live. willFail
+   drives the demo outcome: exit 0 → connect; non-zero → stay + Retry. */
+function runPreconnect(willFail){const o=PRECONNECT;
+  const lines=willFail
+    ?['[#] ip link add wg0 type wireguard','RTNETLINK answers: Operation not permitted','Unable to access interface: Operation not permitted']
+    :['[#] ip link add wg0 type wireguard','[#] wg setconf wg0 /dev/fd/63','[#] ip -4 address add 10.9.0.2/24 dev wg0','[#] ip link set mtu 1420 up dev wg0'];
+  const base=`<span style="color:var(--accent)">$ ${o.cmd}</span>\n`;
+  const bd=showModal({title:'Pre-connect',subtitle:`Runs on your machine before connecting to ${o.host}`,wide:true,confirm:'Cancel',
+    body:`<div style="background:var(--bg);border:1px solid var(--border);border-radius:9px;overflow:hidden">
+        <div style="padding:5px 11px;border-bottom:1px solid var(--border);font:600 11px ui-monospace,monospace;color:var(--muted);display:flex;align-items:center;gap:7px"><span class="pst check"></span> <span id="pc-hdr">pre-connect · running on your machine · interactive</span></div>
+        <div id="pc-out" style="font-family:ui-monospace,monospace;font-size:12px;line-height:1.5;padding:10px 12px;white-space:pre-wrap;max-height:220px;overflow:auto;min-height:104px">${base}<span class="cursor"></span></div>
+      </div>
+      <p id="pc-note" class="muted" style="font-size:12px;margin:11px 0 0">Running… interactive prompts (a password, a browser) would appear right here.</p>`,
+    onConfirm:()=>toast('Pre-connect cancelled — not connected')});
+  const out=bd.querySelector('#pc-out'),hdr=bd.querySelector('#pc-hdr'),note=bd.querySelector('#pc-note'),okBtn=bd.querySelector('[data-ok]'),xBtn=bd.querySelector('[data-x]');
+  xBtn.style.display='none'; // single abort button while running
+  let shown=0;
+  const render=tail=>{out.innerHTML=base+lines.slice(0,shown).join('\n')+(shown?'\n':'')+tail; out.scrollTop=out.scrollHeight;};
+  const step=()=>{ if(!document.body.contains(bd))return;
+    if(shown<lines.length){ shown++; render('<span class="cursor"></span>'); setTimeout(step,300); }
+    else{ const dot=bd.querySelector('.pst'); if(dot)dot.className='pst '+(willFail?'down':'up');
+      if(willFail){ render('<b style="color:var(--red)">✕ pre-connect failed (exit 1) — connection aborted.</b> <span class="cursor"></span>');
+        hdr.textContent='pre-connect · failed'; note.innerHTML='<b>Nothing was opened.</b> Retry, or Cancel and edit the connection.';
+        okBtn.textContent='⟳ Retry'; okBtn.onclick=()=>{bd.remove();runPreconnect(true);}; xBtn.style.display=''; xBtn.textContent='Close';
+      }else{ render('<b style="color:var(--green)">✓ pre-connect succeeded — connecting…</b>');
+        hdr.textContent='pre-connect · done'; note.textContent='The command succeeded — Rite is opening the session.';
+        okBtn.textContent='Opening…'; okBtn.disabled=true;
+        setTimeout(()=>{ if(document.body.contains(bd)){bd.remove(); toast('Opening SSH session…');} },850);
+      } }
+  };
+  setTimeout(step,450);}
 function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',body:`
   <div class="settings-row"><div><b>Interface language</b><div class="muted" style="font-size:12px">English / Français</div></div><select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select></div>
   <div class="settings-row"><div><b>Theme</b><div class="muted" style="font-size:12px">Dark / light</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
