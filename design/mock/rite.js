@@ -100,10 +100,35 @@ function termHTML(host){
   const who=host?`<span class="ok">${host}</span>`:'<span class="ok">local</span>';
   const I=(d,r)=>`<svg class="icon" viewBox="0 0 24 24"${r?' style="transform:rotate(90deg)"':''}><path d="${d}"/></svg>`;
   const grip=`<div class="grip" title="Drag to reorganize pane"><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div></div>`;
+  // Reconnect state — SSH panes only. The mock's demoDisconnected flag simulates a
+  // dropped session; STATE.autoReconnect decides auto-reconnect (a banner) vs a
+  // manual "Reconnect" button. Either way the user is told they were disconnected.
+  const lost = !!host && typeof STATE!=='undefined' && STATE.demoDisconnected;
+  const auto = typeof STATE!=='undefined' && STATE.autoReconnect;
+  let status;
+  if(!host) status='';
+  else if(!lost) status='<span class="muted" style="font-size:12px">Connected</span>';
+  else if(auto) status='<span style="font-size:12px;font-weight:600;color:var(--amber)">Reconnected</span>';
+  else status='<span style="font-size:12px;font-weight:600;color:var(--red)">Disconnected</span>';
+  const reconnectBtn = (lost && !auto)
+    ? `<button onclick="reconnectPane()" title="Reconnect — opens a new shell" style="display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:7px;border:1px solid color-mix(in oklab,var(--accent) 40%,transparent);background:color-mix(in oklab,var(--accent) 12%,transparent);color:var(--accent);font-weight:600;font-size:12px;cursor:pointer">⟳ Reconnect</button>`
+    : '';
+  let banner='';
+  if(lost && auto) banner=`<div style="background:color-mix(in oklab,var(--amber) 12%,transparent);border:1px solid color-mix(in oklab,var(--amber) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ Connection lost — <b>automatically reconnected</b>. This is a new shell: your previous history, on-screen output and any running job were lost.</div>`;
+  else if(lost) banner=`<div style="background:color-mix(in oklab,var(--red) 10%,transparent);border:1px solid color-mix(in oklab,var(--red) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ <b>Connection lost.</b> Reconnecting opens a <b>new shell</b> (history & on-screen output are lost) — use <b>Reconnect ↗</b> when you're ready.</div>`;
+  const body = (lost && auto)
+    ? `${banner}<div class="ln"><span class="pr">${who} ~ ❯</span> <span class="cursor"></span></div>`
+    : `${banner}<div class="ln di"># ${host?'ssh '+host:'local shell — /usr/bin/fish'}</div>
+      <div class="ln"><span class="pr">${who} ~ ❯</span> uname -a</div>
+      <div class="ln di">Linux rite 7.1.3 #1 SMP x86_64 GNU/Linux</div>
+      <div class="ln"><span class="pr">${who} ~ ❯</span> ls</div>
+      <div class="ln di">Documents  Downloads  projects  .config</div>
+      <div class="ln"><span class="pr">${who} ~ ❯</span> ${lost?'<span class="muted">(disconnected)</span>':'<span class="cursor"></span>'}</div>`;
   return `<div class="termpane">
     <div class="termpane-hdr">
-      <div class="who">${host?'<span class="st"></span>':''}<span class="name">${host?host:'Local Terminal ('+(typeof STATE!=='undefined'?STATE.defaultShell:'fish')+')'}</span>${host?'<span class="muted" style="font-size:12px">Connected</span>':''}</div>
+      <div class="who">${host?'<span class="st"></span>':''}<span class="name">${host?host:'Local Terminal ('+(typeof STATE!=='undefined'?STATE.defaultShell:'fish')+')'}</span>${status}</div>
       <div class="termpane-acts">
+        ${reconnectBtn}
         ${grip}
         <button title="Split horizontal (Ctrl+Shift+H)">${I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4')}</button>
         <button title="Split vertical (Ctrl+Shift+V)">${I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4',1)}</button>
@@ -113,12 +138,7 @@ function termHTML(host){
       </div>
     </div>
     <div class="term-body scroll">
-      <div class="ln di"># ${host?'ssh '+host:'local shell — /usr/bin/fish'}</div>
-      <div class="ln"><span class="pr">${who} ~ ❯</span> uname -a</div>
-      <div class="ln di">Linux rite 7.1.3 #1 SMP x86_64 GNU/Linux</div>
-      <div class="ln"><span class="pr">${who} ~ ❯</span> ls</div>
-      <div class="ln di">Documents  Downloads  projects  .config</div>
-      <div class="ln"><span class="pr">${who} ~ ❯</span> <span class="cursor"></span></div>
+      ${body}
     </div>
   </div>`;
 }

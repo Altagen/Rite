@@ -147,7 +147,7 @@
     </main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a></div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a> · <a href="#" onclick="demoDisconnect();return false">disconnect</a></div>
 <!-- Focus-mode hint: only shown in focus mode; fades but stays faintly so the user is never trapped. -->
 <div id="focusHint">Focus mode · <kbd>Esc</kbd> or <kbd>F11</kbd> to exit · hover the top edge to reveal the toolbar</div>
 
@@ -233,7 +233,7 @@ function walk(list,fn){list.forEach(n=>{fn(n);if(n.children)walk(n.children,fn);
 function find(id){let r=null;walk(LIB,n=>{if(n.id===id)r=n;});return r;}
 function allColls(){const a=[];walk(LIB,n=>{if(n.type==='coll')a.push(n);});return a;}
 
-let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',focus:false,focusCollapseSidebar:false,_sidePrev:false};
+let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
 const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
 // Quick SSH in a SERVER context follows the server policy (off by default — server
 // connections belong in collections). A local vault is self-governed → always available.
@@ -766,6 +766,13 @@ function connectMachine(host,name){toast(`▶ ${name} · authenticating…`);
     note:'✓ Primary auth accepted — one more step.',
     instruction:'Enter the 6-digit code from your authenticator app.',
     prompts:[{label:'Verification code:',echo:false}]}),650);}
+/* Reconnect (P2 UX): a dropped SSH session is NEVER force-reconnected — reconnecting
+   opens a new shell (history + on-screen output + any running job are lost). If the
+   user opted in (STATE.autoReconnect) we reconnect automatically and tell them; else
+   we surface a "Reconnect" button. Either way they're warned they were disconnected. */
+function demoDisconnect(){STATE.demoDisconnected=true;renderMain();
+  toast(STATE.autoReconnect?'Connection lost — reconnected automatically':'Connection lost — a Reconnect button is available');}
+function reconnectPane(){STATE.demoDisconnected=false;renderMain();toast('Reconnected — new shell');}
 function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',body:`
   <div class="settings-row"><div><b>Interface language</b><div class="muted" style="font-size:12px">English / Français</div></div><select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select></div>
   <div class="settings-row"><div><b>Theme</b><div class="muted" style="font-size:12px">Dark / light</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
@@ -773,6 +780,7 @@ function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',bod
   <div class="settings-row"><div><b>Auto-clear clipboard</b><div class="muted" style="font-size:12px">Clear 30s after a copy (security)</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
   <div class="settings-row"><div><b>Default shell</b><div class="muted" style="font-size:12px">New local terminals (also in the toolbar)</div></div><select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name}${s.installed?'':' (not installed)'}</option>`).join('')}</select></div>
   <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
+  <div class="settings-row"><div><b>Auto-reconnect lost SSH connections</b><div class="muted" style="font-size:12px">Off by default. On → a dropped session reconnects automatically (a <b>new shell</b>: history, on-screen output and any running job are lost). Off → we show a <b>Reconnect</b> button instead. Either way you're told you were disconnected.</div></div><div class="toggle ${STATE.autoReconnect?'on':''}" onclick="this.classList.toggle('on');STATE.autoReconnect=this.classList.contains('on');renderMain()"><i></i></div></div>
   <div class="settings-row"><div><b>Machine status</b><div class="muted" style="font-size:12px">${STATE.ctx.type==='server'?'<span style="color:var(--amber)">Governed by your server</span> — you can only narrow it.':'You govern this for this local vault.'} Passive “last seen” costs no network traffic; active probing does.</div></div><select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select></div>
   <div class="settings-row"><div><b>Show member count on collections</b><div class="muted" style="font-size:12px">The number next to shared collections (the 👥 shared icon stays either way)</div></div><div class="toggle ${STATE.showMemberCount?'on':''}" onclick="this.classList.toggle('on');STATE.showMemberCount=this.classList.contains('on');renderAll()"><i></i></div></div>
   <div class="settings-row"><div><b>Auto-collapse sidebar in focus mode</b><div class="muted" style="font-size:12px">When you enter focus mode (F11), also hide the library sidebar for a terminals-only view.</div></div><div class="toggle ${STATE.focusCollapseSidebar?'on':''}" onclick="this.classList.toggle('on');STATE.focusCollapseSidebar=this.classList.contains('on')"><i></i></div></div>
