@@ -288,6 +288,14 @@ export const BackendTerminal = {
     invokeWithValidation('connect_local_terminal', StringSchema, { shell }),
 
   /**
+   * Run a pre-connect hook: a one-shot local command in a PTY, before SSH.
+   * The returned session streams output and emits `terminal-exit` with the
+   * command's exit code (0 = proceed to open the SSH session).
+   */
+  runPreconnect: (command: string) =>
+    invokeWithValidation('run_preconnect', StringSchema, { command }),
+
+  /**
    * Quick SSH connect (temporary connection)
    */
   quickSshConnect: (

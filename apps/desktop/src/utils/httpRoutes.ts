@@ -546,6 +546,10 @@ const routes: Record<string, Route> = {
   connect_local_terminal: async (a) =>
     (await json<{ sessionId: string }>('/api/terminal/local', post({ shell: a.shell }))).sessionId,
 
+  run_preconnect: async (a) =>
+    (await json<{ sessionId: string }>('/api/terminal/preconnect', post({ command: a.command })))
+      .sessionId,
+
   send_terminal_input: async (a) => {
     await json(`/api/terminal/${a.sessionId}/input`, post({ data: a.data }));
     return null;

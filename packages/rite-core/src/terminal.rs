@@ -971,6 +971,28 @@ impl SessionManager {
         Ok(session_id)
     }
 
+    /// Run a pre-connect hook: a one-shot local command executed (in a PTY) before
+    /// the ssh session opens. The returned session streams the command's output and
+    /// emits `terminal-exit` with its exit code — the caller opens ssh only on 0.
+    pub async fn run_preconnect(
+        &self,
+        events: SharedEvents,
+        command: String,
+    ) -> Result<SessionId> {
+        tracing::info!("[terminal.rs] run_preconnect called");
+
+        let local_session =
+            crate::local_terminal::LocalSession::run_command(events, command).await?;
+        let session_id = local_session.id.clone();
+        tracing::info!("[terminal.rs] Pre-connect session created: {}", session_id);
+
+        let session = Session::Local(local_session);
+        let mut sessions = self.sessions.lock().await;
+        sessions.insert(session_id.clone(), session);
+
+        Ok(session_id)
+    }
+
     /// Create a quick SSH session (no unlock required, credentials not saved)
     ///
     /// For ad-hoc SSH connections that don't need to be saved to the vault

@@ -424,6 +424,7 @@ export async function mockInvoke(
       ];
     case 'connect_terminal':
     case 'connect_local_terminal':
+    case 'run_preconnect':
     case 'quick_ssh_connect':
       return `mock-session-${Math.random().toString(36).slice(2, 8)}`;
     case 'claim_session_output':

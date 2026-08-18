@@ -665,6 +665,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/terminal/ssh", post(connect_ssh))
         .route("/api/terminal/quick-ssh", post(quick_ssh))
         .route("/api/terminal/local", post(create_local))
+        .route("/api/terminal/preconnect", post(run_preconnect))
         .route("/api/terminal/{id}/input", post(send_input))
         .route("/api/terminal/{id}/claim", post(claim))
         .route("/api/terminal/{id}/resize", post(resize))
@@ -3813,6 +3814,24 @@ async fn create_local(
     let id = state
         .sessions
         .create_local_session(state.events_sink(), req.shell)
+        .await?;
+    state.record_session_owner(&id, as_user(&user));
+    Ok(Json(json!({ "sessionId": id })))
+}
+
+#[derive(Deserialize)]
+struct PreconnectReq {
+    command: String,
+}
+
+async fn run_preconnect(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<PreconnectReq>,
+) -> Result<Json<Value>, AppError> {
+    let id = state
+        .sessions
+        .run_preconnect(state.events_sink(), req.command)
         .await?;
     state.record_session_owner(&id, as_user(&user));
     Ok(Json(json!({ "sessionId": id })))

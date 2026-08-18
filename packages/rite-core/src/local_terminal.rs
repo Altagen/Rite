@@ -30,6 +30,25 @@ impl LocalSession {
     ///
     /// Spawns a local shell (bash/zsh/fish) using portable-pty
     pub async fn spawn(events: SharedEvents, shell: Option<String>) -> Result<Self> {
+        Self::spawn_inner(events, shell, None).await
+    }
+
+    /// Run a one-shot local command (the pre-connect hook) in a PTY.
+    ///
+    /// The command is executed fail-fast (`set -e`) in the user's shell; it is a
+    /// full PTY session so interactive helpers (`aws sso login`, `kinit`, a
+    /// passphrase prompt) can read input and render normally. When the command
+    /// finishes, a `terminal-exit` event carries its exit code — 0 means the
+    /// caller may proceed to open the ssh session.
+    pub async fn run_command(events: SharedEvents, command: String) -> Result<Self> {
+        Self::spawn_inner(events, None, Some(command)).await
+    }
+
+    async fn spawn_inner(
+        events: SharedEvents,
+        shell: Option<String>,
+        run: Option<String>,
+    ) -> Result<Self> {
         let session_id = Uuid::new_v4().to_string();
         tracing::info!("Creating local session: {}", session_id);
 
@@ -89,7 +108,22 @@ impl LocalSession {
         let mut cmd = CommandBuilder::new(&shell_cmd);
         let shell_name = shell_cmd.split('/').next_back().unwrap_or("");
 
-        tracing::debug!("Launching {} as interactive shell", shell_name);
+        match &run {
+            Some(run_cmd) => {
+                tracing::debug!("Running one-shot command via {}", shell_name);
+                // Fail-fast so a mini-script stops on the first error. fish uses a
+                // different option syntax, so only enable errexit on posix shells.
+                cmd.arg("-c");
+                if shell_name == "fish" {
+                    cmd.arg(run_cmd);
+                } else {
+                    cmd.arg(format!("set -e\n{run_cmd}"));
+                }
+            }
+            None => {
+                tracing::debug!("Launching {} as interactive shell", shell_name);
+            }
+        }
 
         // Configure shell-specific environment variables
         if shell_name == "fish" {
