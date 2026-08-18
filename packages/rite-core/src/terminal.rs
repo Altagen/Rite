@@ -484,7 +484,11 @@ impl SshSession {
                         "SSH agent has no usable identities (add one with `ssh-add`)"
                     ));
                 }
-                let mut authed = false;
+                // Try each candidate. Stop on full success — or on a *partial*
+                // success (the server accepted the key as one factor and wants
+                // another): return that result so the outer flow runs the
+                // keyboard-interactive exchange (agent + 2FA).
+                let mut result: Option<russh::client::AuthResult> = None;
                 for key in candidates {
                     // RSA keys must be signed with rsa-sha2 against modern servers.
                     let hash_alg = if matches!(key.algorithm(), russh::keys::Algorithm::Rsa { .. })
@@ -493,7 +497,7 @@ impl SshSession {
                     } else {
                         None
                     };
-                    if let Ok(russh::client::AuthResult::Success) = session
+                    match session
                         .authenticate_publickey_with(
                             &connection.username,
                             key,
@@ -502,16 +506,30 @@ impl SshSession {
                         )
                         .await
                     {
-                        authed = true;
-                        break;
+                        Ok(r) => {
+                            let stop = matches!(
+                                &r,
+                                russh::client::AuthResult::Success
+                                    | russh::client::AuthResult::Failure {
+                                        partial_success: true,
+                                        ..
+                                    }
+                            );
+                            result = Some(r);
+                            if stop {
+                                break;
+                            }
+                        }
+                        Err(e) => tracing::warn!("[terminal.rs] agent key auth error: {}", e),
                     }
                 }
-                if authed {
-                    russh::client::AuthResult::Success
-                } else {
-                    return Err(anyhow!(
-                        "SSH agent authentication was rejected for all identities"
-                    ));
+                match result {
+                    Some(r) => r,
+                    None => {
+                        return Err(anyhow!(
+                            "SSH agent authentication failed for all identities"
+                        ));
+                    }
                 }
             }
         };

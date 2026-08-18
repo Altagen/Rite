@@ -619,3 +619,177 @@ async fn ssh_session_autoanswers_keyboard_interactive_password() {
     );
     session.close().await.expect("close should succeed");
 }
+
+// ---------------------------------------------------------------------------
+// Public key accepted as a first factor, then a keyboard-interactive second
+// factor. This is the shared partial-success → keyboard-interactive path that
+// agent + 2FA now routes through: the primary returns partial-success (not a
+// hard error) and the fallthrough finishes the login. (The agent leg itself
+// needs a live SSH_AUTH_SOCK agent, so it can't be tested hermetically; this
+// covers the mechanism it feeds.)
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct Pubkey2faServer {
+    expect: &'static str,
+}
+
+impl Server for Pubkey2faServer {
+    type Handler = Pubkey2faHandler;
+    fn new_client(&mut self, _peer: Option<SocketAddr>) -> Pubkey2faHandler {
+        Pubkey2faHandler {
+            expect: self.expect,
+        }
+    }
+}
+
+struct Pubkey2faHandler {
+    expect: &'static str,
+}
+
+impl Handler for Pubkey2faHandler {
+    type Error = russh::Error;
+
+    // Accept the key as a first factor, but demand a second (partial success).
+    async fn auth_publickey(
+        &mut self,
+        _user: &str,
+        _key: &russh::keys::PublicKey,
+    ) -> Result<Auth, Self::Error> {
+        Ok(Auth::Reject {
+            proceed_with_methods: None,
+            partial_success: true,
+        })
+    }
+
+    async fn auth_keyboard_interactive<'a>(
+        &'a mut self,
+        _user: &str,
+        _submethods: &str,
+        response: Option<russh::server::Response<'a>>,
+    ) -> Result<Auth, Self::Error> {
+        match response {
+            None => Ok(Auth::Partial {
+                name: "".into(),
+                instructions: "Second factor".into(),
+                prompts: std::borrow::Cow::Owned(vec![(
+                    std::borrow::Cow::Borrowed("Verification code:"),
+                    false,
+                )]),
+            }),
+            Some(mut resp) => {
+                let ans = resp
+                    .next()
+                    .map(|b| String::from_utf8_lossy(b.as_ref()).into_owned())
+                    .unwrap_or_default();
+                if ans == self.expect {
+                    Ok(Auth::Accept)
+                } else {
+                    Ok(Auth::reject())
+                }
+            }
+        }
+    }
+
+    async fn channel_open_session(
+        &mut self,
+        _channel: Channel<Msg>,
+        reply: ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        Ok(())
+    }
+
+    async fn pty_request(
+        &mut self,
+        channel: ChannelId,
+        _term: &str,
+        _cols: u32,
+        _rows: u32,
+        _pw: u32,
+        _ph: u32,
+        _modes: &[(russh::Pty, u32)],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        session.data(channel, BANNER.to_vec())?;
+        Ok(())
+    }
+}
+
+async fn spawn_pubkey_2fa_server(expect: &'static str) -> u16 {
+    let key =
+        russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519).unwrap();
+    let config = Arc::new(ServerConfig {
+        keys: vec![key],
+        auth_rejection_time: Duration::from_millis(50),
+        ..Default::default()
+    });
+    let socket = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = socket.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut server = Pubkey2faServer { expect };
+        let _ = server.run_on_socket(config, &socket).await;
+    });
+    port
+}
+
+/// Primary public-key auth returns partial success → the server then asks for a
+/// one-time code, which the provider supplies. Guards the fallthrough that agent
+/// + 2FA relies on.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ssh_session_publickey_then_second_factor() {
+    let port = spawn_pubkey_2fa_server("246810").await;
+    let (dir, pool) = test_db().await;
+
+    let key =
+        russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519).unwrap();
+    let pem = key
+        .to_openssh(russh::keys::ssh_key::LineEnding::LF)
+        .expect("serialize key");
+    let key_path = dir.path().join("id_ed25519");
+    tokio::fs::write(&key_path, pem.as_bytes()).await.unwrap();
+
+    let mut conn = test_connection(port);
+    conn.auth_method = AuthMethod::PublicKey {
+        key_path: key_path.to_string_lossy().into_owned(),
+        passphrase: None,
+    };
+
+    let spy = Arc::new(Spy::default());
+    let out = spy.out.clone();
+    let events: SharedEvents = spy;
+    let provider: rite_core::events::SharedInteractive = Arc::new(StaticProvider {
+        answers: vec!["246810".into()],
+    });
+
+    let session = SshSession::connect(
+        conn.clone(),
+        conn.auth_method.clone(),
+        events,
+        pool,
+        None,
+        true,
+        Some(provider),
+    )
+    .await
+    .expect("a partial-success primary should complete via the second factor");
+
+    let buffered = session.claim_initial_output().await;
+    out.lock().unwrap().extend_from_slice(&buffered);
+    assert!(
+        wait_for(&out, BANNER, Duration::from_secs(5)).await,
+        "should reach the shell after the second factor"
+    );
+    session.close().await.expect("close should succeed");
+}
