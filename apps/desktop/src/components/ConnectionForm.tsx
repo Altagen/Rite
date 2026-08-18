@@ -71,6 +71,7 @@ export function ConnectionForm({
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   const [hcOptOut, setHcOptOut] = useState(connection?.hc === false);
   const [notes, setNotes] = useState(connection?.notes || '');
+  const [preconnect, setPreconnect] = useState(connection?.preconnect || '');
   const [sshKeepAliveOverride, setSshKeepAliveOverride] = useState<string | null>(
     connection?.sshKeepAliveOverride ?? null
   );
@@ -218,6 +219,7 @@ export function ConnectionForm({
           ...(notes && { notes }),
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
+          preconnect: preconnect.trim() || null, // always send so clearing it works
           hc: hcOptOut ? false : null, // always send so turning it back off clears the opt-out
         };
 
@@ -249,6 +251,7 @@ export function ConnectionForm({
           ...(notes && { notes }),
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
+          ...(preconnect.trim() && { preconnect: preconnect.trim() }),
           ...(hcOptOut && { hc: false }),
         };
 
@@ -486,6 +489,28 @@ export function ConnectionForm({
                   rows={3}
                   className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
                 />
+              </div>
+
+              {/* Pre-connect hook: a local command run before the SSH session opens
+                  (e.g. bring up a VPN, refresh an SSO token). Runs in a PTY so
+                  interactive helpers work; a non-zero exit aborts the connection. */}
+              <div>
+                <label className="mb-1 block text-sm font-medium">{t('preconnect.label')}</label>
+                <textarea
+                  value={preconnect}
+                  onChange={(e) => setPreconnect(e.target.value)}
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    el.style.height = 'auto';
+                    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+                  }}
+                  placeholder={t('preconnect.placeholder')}
+                  rows={2}
+                  spellCheck={false}
+                  style={{ resize: 'vertical', minHeight: 52 }}
+                  className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm text-foreground focus:border-primary focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">{t('preconnect.hint')}</p>
               </div>
 
               {/* SSH Keep-Alive Settings */}

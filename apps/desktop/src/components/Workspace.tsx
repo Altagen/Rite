@@ -37,6 +37,7 @@ import { ImportSSHConfigModal } from './ImportSSHConfigModal';
 import { ImportSSHPasteModal } from './ImportSSHPasteModal';
 import { HostKeyModal, type HostKeyPrompt } from './HostKeyModal';
 import { KbdInteractiveModal, type KbdChallenge } from './KbdInteractiveModal';
+import { PreconnectModal } from './PreconnectModal';
 import { ContextPill } from './ContextPill';
 import {
   isNativeShell,
@@ -222,6 +223,8 @@ export function Workspace({
   const [hostKeyPrompt, setHostKeyPrompt] = useState<HostKeyPrompt | null>(null);
   const [hostKeyBusy, setHostKeyBusy] = useState(false);
   const lastConnectionRef = useRef<ConnectionInfo | null>(null);
+  // Pre-connect hook: the connection whose hook is running before we open SSH.
+  const [preconnectPrompt, setPreconnectPrompt] = useState<ConnectionInfo | null>(null);
 
   // Keyboard-interactive (2FA/PAM) challenge emitted by the backend during connect.
   const [kbdChallenge, setKbdChallenge] = useState<KbdChallenge | null>(null);
@@ -589,8 +592,18 @@ export function Workspace({
     setActiveTabId(newTab.id);
   };
 
-  // Handle connect - open terminal (allows multiple tabs for same connection)
+  // Handle connect - open terminal (allows multiple tabs for same connection).
+  // A pre-connect hook (a local command — VPN up, SSO refresh) runs first in a
+  // modal; the connection only proceeds when it exits 0.
   const handleConnect = async (connection: ConnectionInfo) => {
+    if (connection.preconnect?.trim()) {
+      setPreconnectPrompt(connection);
+      return;
+    }
+    await doConnect(connection);
+  };
+
+  const doConnect = async (connection: ConnectionInfo) => {
     console.log('[MainScreen] handleConnect called for connection:', connection.name, 'ID:', connection.id);
     // Remember the attempt so an accepted host-key prompt can retry it.
     lastConnectionRef.current = connection;
@@ -647,7 +660,8 @@ export function Workspace({
       await Backend.Ssh.acceptHostKey(hostKeyPrompt.host, hostKeyPrompt.port);
       setHostKeyPrompt(null);
       if (lastConnectionRef.current) {
-        await handleConnect(lastConnectionRef.current);
+        // Pre-connect already ran before the host-key prompt — go straight to SSH.
+        await doConnect(lastConnectionRef.current);
       }
     } catch (error) {
       console.error('[MainScreen] Failed to accept host key:', error);
@@ -1799,6 +1813,20 @@ export function Workspace({
           busy={kbdBusy}
           onSubmit={handleKbdSubmit}
           onCancel={handleKbdCancel}
+        />
+      )}
+
+      {/* Pre-connect hook: runs a local command before opening SSH */}
+      {preconnectPrompt && preconnectPrompt.preconnect && (
+        <PreconnectModal
+          command={preconnectPrompt.preconnect}
+          connectionName={preconnectPrompt.name}
+          onSuccess={() => {
+            const conn = preconnectPrompt;
+            setPreconnectPrompt(null);
+            void doConnect(conn);
+          }}
+          onCancel={() => setPreconnectPrompt(null)}
         />
       )}
 

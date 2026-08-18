@@ -171,6 +171,17 @@
     "custom": "Personnalisé",
     "customLabel": "Secondes"
   },
+  "preconnect": {
+    "label": "Commande de pré-connexion",
+    "placeholder": "wg-quick up wg0\n# une ligne, ou un mini-script (arrêt à la première erreur)",
+    "hint": "S'exécute en local avant l'ouverture de la session SSH — monter un VPN, rafraîchir un jeton SSO. Un code de sortie non nul annule la connexion.",
+    "title": "Pré-connexion en cours",
+    "runningFor": "avant la connexion à {name}",
+    "failed": "Échec de la pré-connexion — la connexion a été annulée.",
+    "retry": "Réessayer",
+    "cancel": "Annuler",
+    "skip": "Se connecter quand même"
+  },
   "common": {
     "advancedOptions": "Options avancées",
     "seconds": "Secondes",

@@ -974,11 +974,7 @@ impl SessionManager {
     /// Run a pre-connect hook: a one-shot local command executed (in a PTY) before
     /// the ssh session opens. The returned session streams the command's output and
     /// emits `terminal-exit` with its exit code — the caller opens ssh only on 0.
-    pub async fn run_preconnect(
-        &self,
-        events: SharedEvents,
-        command: String,
-    ) -> Result<SessionId> {
+    pub async fn run_preconnect(&self, events: SharedEvents, command: String) -> Result<SessionId> {
         tracing::info!("[terminal.rs] run_preconnect called");
 
         let local_session =

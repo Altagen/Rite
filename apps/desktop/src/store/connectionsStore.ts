@@ -39,6 +39,9 @@ export interface ConnectionInfo {
   notes?: string | null;
   sshKeepAliveOverride?: string | null;
   sshKeepAliveInterval?: number | null;
+  // Pre-connect hook: a local command run (in a PTY) before the SSH session opens,
+  // e.g. `wg-quick up wg0` or `aws sso login`. Empty/absent ⇒ none.
+  preconnect?: string | null;
   // Health-check opt-out (ADR 0017): false ⇒ this machine is never actively probed,
   // even where the server policy allows it. Absent/true ⇒ follow the policy. A machine
   // can opt out of probing but can't opt into more than the server permits.
@@ -69,6 +72,7 @@ export interface CreateConnectionInput {
   notes?: string;
   sshKeepAliveOverride?: string | null;
   sshKeepAliveInterval?: number | null;
+  preconnect?: string | null; // pre-connect hook (see ConnectionInfo.preconnect)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
   // ADR 0016: save this machine into a shared collection (encrypted with the
   // collection key) instead of the personal vault. Absent ⇒ personal vault.
@@ -89,6 +93,7 @@ export interface UpdateConnectionInput {
   notes?: string;
   sshKeepAliveOverride?: string | null;
   sshKeepAliveInterval?: number | null;
+  preconnect?: string | null; // pre-connect hook (see ConnectionInfo.preconnect)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
 }
 

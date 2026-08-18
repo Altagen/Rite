@@ -171,6 +171,17 @@
     "custom": "Custom",
     "customLabel": "Seconds"
   },
+  "preconnect": {
+    "label": "Pre-connect command",
+    "placeholder": "wg-quick up wg0\n# one line, or a mini-script (fail-fast)",
+    "hint": "Runs locally before the SSH session opens — bring up a VPN, refresh an SSO token. A non-zero exit cancels the connection.",
+    "title": "Running pre-connect",
+    "runningFor": "before connecting to {name}",
+    "failed": "Pre-connect failed — the connection was cancelled.",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "skip": "Connect anyway"
+  },
   "common": {
     "advancedOptions": "Advanced Options",
     "seconds": "Seconds",

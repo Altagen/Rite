@@ -64,6 +64,8 @@ export interface StoredRecord {
   notes: string | null;
   sshKeepAliveOverride: string | null;
   sshKeepAliveInterval: number | null;
+  // Pre-connect hook: a local command run before SSH opens. Sealed inside the blob.
+  preconnect?: string | null;
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   // Sealed inside the blob, so the opt-out is zero-knowledge like everything else.
   hc?: boolean | null;
@@ -177,6 +179,7 @@ function toInfo(
     notes: r.notes,
     sshKeepAliveOverride: r.sshKeepAliveOverride,
     sshKeepAliveInterval: r.sshKeepAliveInterval,
+    preconnect: r.preconnect ?? null,
     hc: r.hc ?? null,
     createdAt,
     updatedAt,
@@ -199,6 +202,7 @@ function recordFromCreate(input: CreateConnectionInput): StoredRecord {
     notes: input.notes ?? null,
     sshKeepAliveOverride: input.sshKeepAliveOverride ?? null,
     sshKeepAliveInterval: input.sshKeepAliveInterval ?? null,
+    preconnect: input.preconnect ?? null,
     hc: input.hc ?? null,
   };
 }
@@ -218,6 +222,7 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   if (input.notes !== undefined) merged.notes = input.notes;
   if (input.sshKeepAliveOverride !== undefined) merged.sshKeepAliveOverride = input.sshKeepAliveOverride;
   if (input.sshKeepAliveInterval !== undefined) merged.sshKeepAliveInterval = input.sshKeepAliveInterval;
+  if (input.preconnect !== undefined) merged.preconnect = input.preconnect;
   if (input.hc !== undefined) merged.hc = input.hc;
   return merged;
 }
