@@ -8,7 +8,7 @@ use russh::ChannelMsg;
 use russh::client::{self};
 use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
 use sqlx::SqlitePool;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
 use uuid::Uuid;
@@ -26,6 +26,10 @@ pub type SessionId = String;
 /// grow it without bound; we keep only the most recent bytes so memory stays
 /// bounded and, when the pane does attach, it shows the current state.
 const MAX_INITIAL_BUFFER: usize = 1024 * 1024; // 1 MiB
+
+/// Bound the connect + handshake (per hop) so an unreachable/filtered host fails
+/// with a clear error instead of hanging on the OS TCP timeout (~2 min).
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
 /// Commands that can be sent to a terminal session
 pub enum SessionCommand {
@@ -267,6 +271,10 @@ pub struct SshSession {
     /// Buffer for the initial SSH output (MOTD, welcome message, first prompt).
     /// `Some(bytes)` = still buffering; `None` = streaming mode (frontend has claimed).
     initial_buffer: Arc<Mutex<Option<Vec<u8>>>>,
+    /// Jump-host `Handle`s for a ProxyJump chain, held so the tunnels carrying this
+    /// session stay up for its whole life; they drop with the session. Empty for a
+    /// direct connection.
+    _jump_handles: Vec<client::Handle<SshClientHandler>>,
 }
 
 /// Drive a server-issued keyboard-interactive exchange (2FA / OTP / PAM) to
@@ -360,8 +368,214 @@ async fn keyboard_interactive_auth(
     }
 }
 
+/// Authenticate a freshly-connected session with `auth_method`, running the
+/// keyboard-interactive fallthrough (2FA / PAM / the method the server actually
+/// wants) when the primary method doesn't fully authenticate. Errors on failure.
+/// Used for the target *and* for every jump host in a ProxyJump chain — each hop
+/// authenticates independently, end-to-end (a bastion never sees the target's
+/// credentials, and the target never sees a bastion's).
+async fn authenticate_session(
+    session: &mut client::Handle<SshClientHandler>,
+    username: &str,
+    auth_method: &AuthMethod,
+    interactive: Option<&SharedInteractive>,
+) -> Result<()> {
+    let auth_result = match auth_method {
+        AuthMethod::Password { password } => {
+            session.authenticate_password(username, password).await?
+        }
+        AuthMethod::PublicKey {
+            key_path,
+            passphrase,
+        } => {
+            let key_data = tokio::fs::read(key_path).await?;
+            let key = russh::keys::decode_secret_key(
+                &String::from_utf8(key_data)?,
+                passphrase.as_deref(),
+            )?;
+            // RSA keys must be signed with rsa-sha2-256/512: modern OpenSSH rejects
+            // the legacy SHA-1 "ssh-rsa" signature. Non-RSA keys ignore the hash.
+            let hash_alg = if matches!(key.algorithm(), russh::keys::Algorithm::Rsa { .. }) {
+                session.best_supported_rsa_hash().await?.flatten()
+            } else {
+                None
+            };
+            session
+                .authenticate_publickey(
+                    username,
+                    PrivateKeyWithHashAlg::new(Arc::new(key), hash_alg),
+                )
+                .await?
+        }
+        AuthMethod::Agent { identity, .. } => {
+            let mut agent = russh::keys::agent::client::AgentClient::connect_env()
+                .await
+                .map_err(|e| {
+                    anyhow!(
+                        "No SSH agent available (is ssh-agent running and SSH_AUTH_SOCK set?): {}",
+                        e
+                    )
+                })?;
+            let identities = agent
+                .request_identities()
+                .await
+                .map_err(|e| anyhow!("Failed to list SSH agent identities: {}", e))?;
+            let candidates: Vec<PublicKey> = identities
+                .into_iter()
+                .filter_map(|id| match id {
+                    russh::keys::agent::AgentIdentity::PublicKey { key, .. } => Some(key),
+                    _ => None,
+                })
+                .filter(|k| match identity {
+                    Some(fp) if !fp.is_empty() => {
+                        k.fingerprint(russh::keys::HashAlg::Sha256).to_string() == *fp
+                    }
+                    _ => true,
+                })
+                .collect();
+            if candidates.is_empty() {
+                return Err(anyhow!(
+                    "SSH agent has no usable identities (add one with `ssh-add`)"
+                ));
+            }
+            // Try each candidate; stop on full success, or on a *partial* success
+            // (accepted as one factor, server wants another) so the caller runs the
+            // keyboard-interactive exchange (agent + 2FA).
+            let mut result: Option<russh::client::AuthResult> = None;
+            for key in candidates {
+                let hash_alg = if matches!(key.algorithm(), russh::keys::Algorithm::Rsa { .. }) {
+                    session.best_supported_rsa_hash().await?.flatten()
+                } else {
+                    None
+                };
+                match session
+                    .authenticate_publickey_with(username, key, hash_alg, &mut agent)
+                    .await
+                {
+                    Ok(r) => {
+                        let stop = matches!(
+                            &r,
+                            russh::client::AuthResult::Success
+                                | russh::client::AuthResult::Failure {
+                                    partial_success: true,
+                                    ..
+                                }
+                        );
+                        result = Some(r);
+                        if stop {
+                            break;
+                        }
+                    }
+                    Err(e) => tracing::warn!("[terminal.rs] agent key auth error: {}", e),
+                }
+            }
+            match result {
+                Some(r) => r,
+                None => {
+                    return Err(anyhow!(
+                        "SSH agent authentication failed for all identities"
+                    ));
+                }
+            }
+        }
+    };
+
+    if !auth_result.success() {
+        tracing::info!("[terminal.rs] Primary auth incomplete, trying keyboard-interactive");
+        let stored_password = match auth_method {
+            AuthMethod::Password { password } => Some(password.as_str()),
+            _ => None,
+        };
+        let authed =
+            keyboard_interactive_auth(session, username, stored_password, interactive).await?;
+        if !authed {
+            return Err(anyhow!("Authentication failed"));
+        }
+    }
+    Ok(())
+}
+
+/// Establish the tunnelled transport to `(target_host, target_port)` through an
+/// ordered chain of jump hosts (outermost / TCP-facing first). The first hop is
+/// reached over TCP; each subsequent hop rides a `direct-tcpip` channel opened on
+/// the previous hop; finally a `direct-tcpip` channel to the target yields the
+/// stream the target's SSH handshake runs over. Returns that stream plus the jump
+/// `Handle`s — the caller keeps them alive for the tunnel's lifetime.
+async fn open_jump_tunnel(
+    jumps: &[(Connection, AuthMethod)],
+    target_host: &str,
+    target_port: u16,
+    db_pool: Arc<SqlitePool>,
+    events: SharedEvents,
+    force_accept_host_key: bool,
+) -> Result<(
+    russh::ChannelStream<client::Msg>,
+    Vec<client::Handle<SshClientHandler>>,
+)> {
+    let mut handles: Vec<client::Handle<SshClientHandler>> = Vec::new();
+    for (i, (conn, auth)) in jumps.iter().enumerate() {
+        let config = Arc::new(client::Config::default());
+        // Each bastion's host key is verified like any host (its own known_hosts
+        // entry); an unknown one prompts the user, same as the target.
+        let handler = SshClientHandler {
+            db: db_pool.clone(),
+            host: conn.hostname.clone(),
+            port: conn.port,
+            events: events.clone(),
+            force_accept_host_key,
+        };
+        let mut handle = if i == 0 {
+            let addr = format!("{}:{}", conn.hostname, conn.port);
+            match tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, &addr, handler))
+                .await
+            {
+                Ok(result) => result?,
+                Err(_) => {
+                    return Err(anyhow!(
+                        "Connection to jump host {} timed out after {}s",
+                        addr,
+                        CONNECT_TIMEOUT.as_secs()
+                    ));
+                }
+            }
+        } else {
+            let prev = handles.last().expect("previous hop exists for i > 0");
+            let channel = prev
+                .channel_open_direct_tcpip(conn.hostname.clone(), conn.port as u32, "127.0.0.1", 0)
+                .await
+                .map_err(|e| {
+                    anyhow!(
+                        "Failed to open tunnel to jump host {}: {}",
+                        conn.hostname,
+                        e
+                    )
+                })?;
+            client::connect_stream(config, channel.into_stream(), handler).await?
+        };
+        authenticate_session(&mut handle, &conn.username, auth, None)
+            .await
+            .map_err(|e| anyhow!("Jump host {} authentication failed: {}", conn.hostname, e))?;
+        handles.push(handle);
+    }
+
+    let last = handles.last().expect("jump chain is non-empty");
+    let channel = last
+        .channel_open_direct_tcpip(target_host.to_string(), target_port as u32, "127.0.0.1", 0)
+        .await
+        .map_err(|e| {
+            anyhow!(
+                "Failed to open tunnel to {}:{}: {}",
+                target_host,
+                target_port,
+                e
+            )
+        })?;
+    Ok((channel.into_stream(), handles))
+}
+
 impl SshSession {
     /// Create a new SSH session by connecting to a remote server
+    #[allow(clippy::too_many_arguments)]
     pub async fn connect(
         connection: Connection,
         auth_method: AuthMethod,
@@ -370,6 +584,7 @@ impl SshSession {
         keep_alive_interval: Option<u64>, // Keep-alive interval in seconds (None = disabled)
         force_accept_host_key: bool,      // For Quick SSH: bypass host key verification
         interactive: Option<SharedInteractive>, // Collects keyboard-interactive answers (2FA/PAM)
+        jumps: Vec<(Connection, AuthMethod)>, // Jump-host chain (outermost/TCP first); empty = direct
     ) -> Result<Self> {
         let session_id = Uuid::new_v4().to_string();
         tracing::info!(
@@ -392,21 +607,22 @@ impl SshSession {
             config.keepalive_max = 3;
         }
         let config = Arc::new(config);
+        // Establish the transport to the target. Directly over TCP, or — when the
+        // connection names a jump host — tunnelled through a chain of bastions (each
+        // a direct-tcpip channel carrying the next hop's SSH, like OpenSSH ProxyJump).
+        // Host-key verification runs per hop in each handler.check_server_key().
         let handler = SshClientHandler {
-            db: db_pool,
+            db: db_pool.clone(),
             host: connection.hostname.clone(),
             port: connection.port,
             events: events.clone(),
             force_accept_host_key,
         };
-
-        // Connect to SSH server (host key verification happens in handler.check_server_key())
-        let addr = format!("{}:{}", connection.hostname, connection.port);
-        tracing::info!("[terminal.rs] Attempting TCP connection to {}...", addr);
-        // Bound the connect + handshake so an unreachable/filtered host fails with
-        // a clear error instead of hanging on the OS TCP timeout (~2 min).
-        const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
-        let mut session =
+        // Jump handles are retained on the session so the tunnel stays up for its life.
+        let mut jump_handles: Vec<client::Handle<SshClientHandler>> = Vec::new();
+        let mut session = if jumps.is_empty() {
+            let addr = format!("{}:{}", connection.hostname, connection.port);
+            tracing::info!("[terminal.rs] Attempting TCP connection to {}...", addr);
             match tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, &addr, handler))
                 .await
             {
@@ -418,157 +634,38 @@ impl SshSession {
                         CONNECT_TIMEOUT.as_secs()
                     ));
                 }
-            };
-        tracing::info!("[terminal.rs] TCP connection established");
-
-        // Authenticate
-        tracing::info!("[terminal.rs] Authenticating...");
-        let auth_result = match auth_method {
-            AuthMethod::Password { ref password } => {
-                tracing::debug!("[terminal.rs] Using password authentication");
-                session
-                    .authenticate_password(&connection.username, password)
-                    .await?
             }
-            AuthMethod::PublicKey {
-                ref key_path,
-                ref passphrase,
-            } => {
-                tracing::debug!(
-                    "[terminal.rs] Using public key authentication from: {}",
-                    key_path
-                );
-                // Load private key
-                let key_data = tokio::fs::read(key_path).await?;
-                let key = russh::keys::decode_secret_key(
-                    &String::from_utf8(key_data)?,
-                    passphrase.as_deref(),
-                )?;
-
-                // RSA keys must be signed with rsa-sha2-256/512: OpenSSH >= 8.8
-                // rejects the legacy SHA-1 "ssh-rsa" signature that a `None` hash
-                // produces, so we ask the server which RSA hash it accepts. Non-RSA
-                // keys (ed25519/ecdsa) ignore the hash algorithm.
-                let hash_alg = if matches!(key.algorithm(), russh::keys::Algorithm::Rsa { .. }) {
-                    session.best_supported_rsa_hash().await?.flatten()
-                } else {
-                    None
-                };
-
-                session
-                    .authenticate_publickey(
-                        &connection.username,
-                        PrivateKeyWithHashAlg::new(Arc::new(key), hash_alg),
-                    )
-                    .await?
-            }
-            AuthMethod::Agent { ref identity, .. } => {
-                tracing::debug!("[terminal.rs] Using SSH agent authentication");
-                let mut agent = russh::keys::agent::client::AgentClient::connect_env()
-                    .await
-                    .map_err(|e| {
-                        anyhow!(
-                            "No SSH agent available (is ssh-agent running and SSH_AUTH_SOCK set?): {}",
-                            e
-                        )
-                    })?;
-                let identities = agent
-                    .request_identities()
-                    .await
-                    .map_err(|e| anyhow!("Failed to list SSH agent identities: {}", e))?;
-                // Extract plain public keys (certificates aren't handled here) and,
-                // if the user pinned one by SHA256 fingerprint, offer only that;
-                // otherwise offer every key the agent holds, like `ssh`.
-                let candidates: Vec<PublicKey> = identities
-                    .into_iter()
-                    .filter_map(|id| match id {
-                        russh::keys::agent::AgentIdentity::PublicKey { key, .. } => Some(key),
-                        _ => None,
-                    })
-                    .filter(|k| match identity {
-                        Some(fp) if !fp.is_empty() => {
-                            k.fingerprint(russh::keys::HashAlg::Sha256).to_string() == *fp
-                        }
-                        _ => true,
-                    })
-                    .collect();
-                if candidates.is_empty() {
-                    return Err(anyhow!(
-                        "SSH agent has no usable identities (add one with `ssh-add`)"
-                    ));
-                }
-                // Try each candidate. Stop on full success — or on a *partial*
-                // success (the server accepted the key as one factor and wants
-                // another): return that result so the outer flow runs the
-                // keyboard-interactive exchange (agent + 2FA).
-                let mut result: Option<russh::client::AuthResult> = None;
-                for key in candidates {
-                    // RSA keys must be signed with rsa-sha2 against modern servers.
-                    let hash_alg = if matches!(key.algorithm(), russh::keys::Algorithm::Rsa { .. })
-                    {
-                        session.best_supported_rsa_hash().await?.flatten()
-                    } else {
-                        None
-                    };
-                    match session
-                        .authenticate_publickey_with(
-                            &connection.username,
-                            key,
-                            hash_alg,
-                            &mut agent,
-                        )
-                        .await
-                    {
-                        Ok(r) => {
-                            let stop = matches!(
-                                &r,
-                                russh::client::AuthResult::Success
-                                    | russh::client::AuthResult::Failure {
-                                        partial_success: true,
-                                        ..
-                                    }
-                            );
-                            result = Some(r);
-                            if stop {
-                                break;
-                            }
-                        }
-                        Err(e) => tracing::warn!("[terminal.rs] agent key auth error: {}", e),
-                    }
-                }
-                match result {
-                    Some(r) => r,
-                    None => {
-                        return Err(anyhow!(
-                            "SSH agent authentication failed for all identities"
-                        ));
-                    }
-                }
-            }
-        };
-
-        if !auth_result.success() {
-            // The primary method didn't fully authenticate. The server may want a
-            // keyboard-interactive exchange — either a 2FA second factor (partial
-            // success) or the method it actually accepts. Attempt it, auto-answering
-            // a password Rite already holds and asking the UI for the rest.
-            tracing::info!("[terminal.rs] Primary auth incomplete, trying keyboard-interactive");
-            let stored_password = match &auth_method {
-                AuthMethod::Password { password } => Some(password.as_str()),
-                _ => None,
-            };
-            let authed = keyboard_interactive_auth(
-                &mut session,
-                &connection.username,
-                stored_password,
-                interactive.as_ref(),
+        } else {
+            tracing::info!(
+                "[terminal.rs] Reaching {}:{} through {} jump host(s)",
+                connection.hostname,
+                connection.port,
+                jumps.len()
+            );
+            let (stream, handles) = open_jump_tunnel(
+                &jumps,
+                &connection.hostname,
+                connection.port,
+                db_pool.clone(),
+                events.clone(),
+                force_accept_host_key,
             )
             .await?;
-            if !authed {
-                tracing::error!("[terminal.rs] Authentication failed!");
-                return Err(anyhow!("Authentication failed"));
-            }
-        }
+            jump_handles = handles;
+            client::connect_stream(config, stream, handler).await?
+        };
+        tracing::info!("[terminal.rs] Transport to target established");
+
+        // Authenticate to the target end-to-end (through any tunnel — the target
+        // never sees a jump host's credentials, nor a jump the target's).
+        tracing::info!("[terminal.rs] Authenticating...");
+        authenticate_session(
+            &mut session,
+            &connection.username,
+            &auth_method,
+            interactive.as_ref(),
+        )
+        .await?;
         tracing::info!("[terminal.rs] Authentication successful");
 
         // Open a channel with PTY
@@ -705,6 +802,7 @@ impl SshSession {
             id: session_id,
             command_tx,
             initial_buffer,
+            _jump_handles: jump_handles,
         })
     }
 
@@ -887,6 +985,13 @@ impl SessionManager {
             updated_at: row.updated_at,
         };
 
+        // Resolve the jump-host chain (ProxyJump): follow this connection's `jump`
+        // reference, decrypting each bastion's credentials, until a direct one — so
+        // the transport can tunnel through them. Cycle- and depth-guarded.
+        let jumps = self
+            .resolve_jump_chain(row.jump.as_deref(), &master_key)
+            .await?;
+
         // Create SSH session
         tracing::info!(
             "[terminal.rs] Creating SSH session for {}...",
@@ -900,6 +1005,7 @@ impl SessionManager {
             keep_alive_interval,
             false,
             interactive,
+            jumps,
         )
         .await?;
         let session_id = ssh_session.id.clone();
@@ -972,6 +1078,69 @@ impl SessionManager {
         Ok(session_id)
     }
 
+    /// Resolve a jump-host chain into decrypted `(Connection, AuthMethod)` hops in
+    /// establishment order (outermost / TCP-facing first). Follows each hop's own
+    /// `jump` reference, so a bastion-behind-a-bastion is built automatically;
+    /// guards against reference cycles and pathological depth.
+    async fn resolve_jump_chain(
+        &self,
+        first_jump: Option<&str>,
+        master_key: &crate::auth::MasterKey,
+    ) -> Result<Vec<(Connection, AuthMethod)>> {
+        const MAX_HOPS: usize = 10;
+        let mut hops: Vec<(Connection, AuthMethod)> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        let mut next = first_jump.map(|s| s.to_string());
+
+        while let Some(id) = next {
+            if !seen.insert(id.clone()) {
+                return Err(anyhow!("Jump-host chain has a cycle at connection {}", id));
+            }
+            if hops.len() >= MAX_HOPS {
+                return Err(anyhow!("Jump-host chain too deep (> {} hops)", MAX_HOPS));
+            }
+            let row = self
+                .db
+                .get_connection(&id)
+                .await?
+                .ok_or_else(|| anyhow!("Jump-host connection {} not found", id))?;
+            let auth = Connection::decrypt_credentials(
+                &row.encrypted_credentials,
+                &row.nonce,
+                master_key,
+            )?;
+            let conn = Connection {
+                id: row.id.clone(),
+                name: row.name.clone(),
+                protocol: crate::connection::Protocol::from_str(&row.protocol)?,
+                hostname: row.hostname.clone(),
+                port: row.port as u16,
+                username: row.username.clone(),
+                auth_method: auth.clone(),
+                metadata: crate::connection::ConnectionMetadata {
+                    color: row.color.clone(),
+                    icon: row.icon.clone(),
+                    folder: row.folder.clone(),
+                    notes: row.notes.clone(),
+                },
+                ssh_keep_alive_override: row.ssh_keep_alive_override.clone(),
+                ssh_keep_alive_interval: row.ssh_keep_alive_interval,
+                preconnect: row.preconnect.clone(),
+                jump: row.jump.clone(),
+                last_used_at: row.last_used_at,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            };
+            next = row.jump.clone();
+            hops.push((conn, auth));
+        }
+
+        // `hops` is nearest-jump-first (target.jump, then ITS jump, …). The transport
+        // establishes the outermost (TCP-facing) hop first, so reverse into that order.
+        hops.reverse();
+        Ok(hops)
+    }
+
     /// Run a pre-connect hook: a one-shot local command executed (in a PTY) before
     /// the ssh session opens. The returned session streams the command's output and
     /// emits `terminal-exit` with its exit code — the caller opens ssh only on 0.
@@ -1035,6 +1204,7 @@ impl SessionManager {
             keep_alive_interval,
             true,
             interactive,
+            Vec::new(), // Quick SSH is ad-hoc — no saved jump chain
         )
         .await?;
         let session_id = ssh_session.id.clone();

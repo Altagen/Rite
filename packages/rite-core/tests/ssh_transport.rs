@@ -22,7 +22,8 @@ use rite_core::terminal::SshSession;
 use russh::server::{
     Auth, ChannelOpenHandle, Config as ServerConfig, Handler, Msg, Server, Session,
 };
-use russh::{Channel, ChannelId};
+use russh::{Channel, ChannelId, ChannelMsg};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 const USER: &str = "tester";
@@ -151,6 +152,103 @@ async fn spawn_test_server() -> u16 {
 }
 
 // ---------------------------------------------------------------------------
+// In-process bastion (jump host): authenticates, then forwards any direct-tcpip
+// channel to the requested address by splicing it to a real TCP connection —
+// exactly what a ProxyJump bastion does. Chainable: pointing one bastion at
+// another simply nests the tunnels.
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct BastionServer;
+
+impl Server for BastionServer {
+    type Handler = BastionHandler;
+    fn new_client(&mut self, _peer: Option<SocketAddr>) -> BastionHandler {
+        BastionHandler
+    }
+}
+
+struct BastionHandler;
+
+impl Handler for BastionHandler {
+    type Error = russh::Error;
+
+    async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
+        if user == USER && password == PASS {
+            Ok(Auth::Accept)
+        } else {
+            Ok(Auth::reject())
+        }
+    }
+
+    async fn channel_open_direct_tcpip(
+        &mut self,
+        mut channel: Channel<Msg>,
+        host_to_connect: &str,
+        port_to_connect: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: ChannelOpenHandle,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let addr = format!("{}:{}", host_to_connect, port_to_connect);
+        // Dropping `reply` without accepting auto-rejects, so only accept on success.
+        if let Ok(mut tcp) = tokio::net::TcpStream::connect(&addr).await {
+            reply.accept().await;
+            // Splice the SSH channel ↔ the forwarded TCP socket (the manual pump
+            // from russh's own direct-tcpip example — reliable across versions).
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 65536];
+                let mut tcp_closed = false;
+                loop {
+                    tokio::select! {
+                        r = tcp.read(&mut buf), if !tcp_closed => match r {
+                            Ok(0) => { tcp_closed = true; let _ = channel.eof().await; }
+                            Ok(n) => { if channel.data(&buf[..n]).await.is_err() { break; } }
+                            Err(_) => break,
+                        },
+                        msg = channel.wait() => match msg {
+                            Some(ChannelMsg::Data { data }) => {
+                                if tcp.write_all(&data).await.is_err() { break; }
+                            }
+                            Some(ChannelMsg::Eof) | None => break,
+                            _ => {}
+                        },
+                    }
+                }
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Bind an ephemeral loopback port and run a forwarding bastion on it.
+async fn spawn_bastion_server() -> u16 {
+    let key =
+        russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519).unwrap();
+    let config = Arc::new(ServerConfig {
+        keys: vec![key],
+        auth_rejection_time: Duration::from_millis(50),
+        ..Default::default()
+    });
+    let socket = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let port = socket.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        let mut server = BastionServer;
+        let _ = server.run_on_socket(config, &socket).await;
+    });
+    port
+}
+
+/// A saved connection for a jump host (reuses the loopback + test credentials).
+fn jump_connection(port: u16) -> Connection {
+    let mut c = test_connection(port);
+    c.id = format!("jump-{port}");
+    c.name = format!("bastion-{port}");
+    c
+}
+
+// ---------------------------------------------------------------------------
 // Event sink spy — accumulates all session output bytes
 // ---------------------------------------------------------------------------
 
@@ -253,6 +351,7 @@ async fn ssh_session_connects_authenticates_and_round_trips() {
         None,
         true,
         None,
+        Vec::new(),
     )
     .await
     .expect("SSH session should connect and authenticate");
@@ -315,6 +414,7 @@ async fn ssh_session_rejects_changed_host_key() {
         None,
         false,
         None,
+        Vec::new(),
     )
     .await;
 
@@ -369,6 +469,7 @@ async fn ssh_session_authenticates_with_rsa_key() {
         None,
         true,
         None,
+        Vec::new(),
     )
     .await
     .expect("RSA public-key auth should succeed with rsa-sha2 negotiation");
@@ -407,6 +508,7 @@ async fn ssh_session_fails_cleanly_on_refused_connection() {
         None,
         true,
         None,
+        Vec::new(),
     )
     .await;
 
@@ -575,6 +677,7 @@ async fn ssh_session_completes_keyboard_interactive_via_provider() {
         None,
         true,
         Some(provider),
+        Vec::new(),
     )
     .await
     .expect("keyboard-interactive should complete via the provider");
@@ -609,6 +712,7 @@ async fn ssh_session_autoanswers_keyboard_interactive_password() {
         None,
         true,
         None, // no UI provider — the password prompt must be auto-answered
+        Vec::new(),
     )
     .await
     .expect("a keyboard-interactive password prompt should be auto-answered");
@@ -783,6 +887,7 @@ async fn ssh_session_publickey_then_second_factor() {
         None,
         true,
         Some(provider),
+        Vec::new(),
     )
     .await
     .expect("a partial-success primary should complete via the second factor");
@@ -793,5 +898,112 @@ async fn ssh_session_publickey_then_second_factor() {
         wait_for(&out, BANNER, Duration::from_secs(5)).await,
         "should reach the shell after the second factor"
     );
+    session.close().await.expect("close should succeed");
+}
+
+/// Jump host (ProxyJump): reach the target *through* one bastion. The client
+/// TCP-connects + authenticates the bastion, opens a direct-tcpip channel to the
+/// target, and runs the whole SSH handshake + shell over that tunnel. Proves the
+/// channel-generic transport (`open_jump_tunnel` + `connect_stream`) end-to-end.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ssh_session_connects_through_a_jump_host() {
+    let target_port = spawn_test_server().await;
+    let bastion_port = spawn_bastion_server().await;
+    let (_dir, pool) = test_db().await;
+
+    let spy = Arc::new(Spy::default());
+    let out = spy.out.clone();
+    let events: SharedEvents = spy;
+
+    let session = SshSession::connect(
+        test_connection(target_port),
+        AuthMethod::Password {
+            password: PASS.into(),
+        },
+        events,
+        pool,
+        None,
+        true,
+        None,
+        vec![(
+            jump_connection(bastion_port),
+            AuthMethod::Password {
+                password: PASS.into(),
+            },
+        )],
+    )
+    .await
+    .expect("session should connect through the jump host");
+
+    let buffered = session.claim_initial_output().await;
+    out.lock().unwrap().extend_from_slice(&buffered);
+    assert!(
+        wait_for(&out, BANNER, Duration::from_secs(5)).await,
+        "should reach the target shell through the bastion"
+    );
+
+    session
+        .send_input(b"ping\n")
+        .await
+        .expect("send should succeed through the tunnel");
+    assert!(
+        wait_for(&out, b"echo:ping", Duration::from_secs(5)).await,
+        "input should round-trip through the tunnel"
+    );
+
+    session.close().await.expect("close should succeed");
+}
+
+/// Chained jump hosts: reach the target through TWO bastions (client → b1 → b2 →
+/// target). Exercises the tunnelled `connect_stream` hop (b2 reached *through* b1)
+/// on top of the TCP-facing first hop — the multi-hop path built by resolving a
+/// jump-of-jump chain.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ssh_session_connects_through_two_jump_hosts() {
+    let target_port = spawn_test_server().await;
+    let b2_port = spawn_bastion_server().await;
+    let b1_port = spawn_bastion_server().await;
+    let (_dir, pool) = test_db().await;
+
+    let spy = Arc::new(Spy::default());
+    let out = spy.out.clone();
+    let events: SharedEvents = spy;
+
+    // Establishment order: outermost (TCP) first — b1, then b2 tunnelled through b1.
+    let session = SshSession::connect(
+        test_connection(target_port),
+        AuthMethod::Password {
+            password: PASS.into(),
+        },
+        events,
+        pool,
+        None,
+        true,
+        None,
+        vec![
+            (
+                jump_connection(b1_port),
+                AuthMethod::Password {
+                    password: PASS.into(),
+                },
+            ),
+            (
+                jump_connection(b2_port),
+                AuthMethod::Password {
+                    password: PASS.into(),
+                },
+            ),
+        ],
+    )
+    .await
+    .expect("session should connect through two chained jump hosts");
+
+    let buffered = session.claim_initial_output().await;
+    out.lock().unwrap().extend_from_slice(&buffered);
+    assert!(
+        wait_for(&out, BANNER, Duration::from_secs(5)).await,
+        "should reach the target shell through both bastions"
+    );
+
     session.close().await.expect("close should succeed");
 }
