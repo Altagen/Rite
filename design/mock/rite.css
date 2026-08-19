@@ -211,4 +211,5 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
 .snip-name{font-weight:600;font-size:13px}
 .snip-count{font-weight:600;font-size:10.5px;color:var(--accent);border:1px solid var(--border2);border-radius:5px;padding:0 5px;margin-left:5px;vertical-align:1px}
 .snip-cmd{display:block;font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.snip-add{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+.snip-add{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);padding-top:13px;margin-top:2px}
+.snip-add-foot{display:flex;justify-content:flex-end}

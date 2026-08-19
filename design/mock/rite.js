@@ -84,9 +84,9 @@ function snipBody(host){
   return `<p class="muted" style="font-size:12px;margin:0 0 10px">Run a saved command on <b>${host?host:'this pane'}</b> (Run) or on <b>every open pane</b> (⇉). Multiple lines run <b>one after another</b> (no <code style="font-family:ui-monospace,monospace">&amp;&amp;</code> needed). Runs client-side — just typed into the session.</p>
     <div class="snip-list">${rows}</div>
     <div class="snip-add">
-      <label class="field" style="width:150px"><span>Name</span><input class="inp" id="snip-name" placeholder="Tail nginx"></label>
-      <label class="field" style="flex:1;min-width:200px"><span>Command <span class="muted" style="font-weight:400">(one per line)</span></span><textarea class="inp mono" id="snip-cmd" rows="2" spellcheck="false" style="resize:vertical;min-height:44px;line-height:1.5" placeholder="git pull&#10;npm ci&#10;npm run build"></textarea></label>
-      <button class="btn btn-primary btn-sm" data-snip-add style="margin-top:18px">Add</button>
+      <label class="field"><span>Name</span><input class="inp" id="snip-name" placeholder="Deploy check"></label>
+      <label class="field"><span>Command <span class="muted" style="font-weight:400">· one per line</span></span><textarea class="inp mono" id="snip-cmd" rows="3" spellcheck="false" style="resize:vertical;min-height:66px;line-height:1.6" placeholder="git pull&#10;npm ci&#10;npm run build"></textarea></label>
+      <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-snip-add>Add snippet</button></div>
     </div>`;
 }
 function openSnippets(host){
