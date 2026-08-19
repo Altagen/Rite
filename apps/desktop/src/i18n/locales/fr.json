@@ -182,9 +182,11 @@
     "remove": "Supprimer",
     "name": "Nom",
     "command": "Commande",
+    "onePerLine": "une par ligne",
+    "nCmds": "{n} cmd",
     "add": "Ajouter",
     "done": "Terminé",
-    "fillAll": "Donnez un nom et une commande au snippet."
+    "fillAll": "Donnez un nom et au moins une commande au snippet."
   },
   "pf": {
     "title": "Redirection de ports",

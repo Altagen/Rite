@@ -182,9 +182,11 @@
     "remove": "Remove",
     "name": "Name",
     "command": "Command",
+    "onePerLine": "one per line",
+    "nCmds": "{n} cmds",
     "add": "Add",
     "done": "Done",
-    "fillAll": "Give the snippet a name and a command."
+    "fillAll": "Give the snippet a name and at least one command."
   },
   "pf": {
     "title": "Port forwarding",

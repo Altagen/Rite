@@ -19,8 +19,15 @@ interface Props {
   onClose: () => void;
 }
 
+// Non-empty command lines — the units that run one after another.
+const linesOf = (command: string) =>
+  command.split('\n').map((l) => l.trim()).filter(Boolean);
+
+// Send a snippet to a session: its lines are typed in order, so the shell runs
+// them one after another (like pasting) — no && chaining needed.
 async function sendTo(sessionId: string, command: string) {
-  const bytes = Array.from(new TextEncoder().encode(`${command}\n`));
+  const script = `${command.replace(/\n+$/, '')}\n`;
+  const bytes = Array.from(new TextEncoder().encode(script));
   await Backend.Terminal.sendTerminalInput(sessionId, bytes).catch(() => {});
 }
 
@@ -70,9 +77,20 @@ export function SnippetsModal({ sessionId, paneLabel, onClose }: Props) {
                   className="flex items-center gap-2 rounded border border-border bg-muted/40 px-2.5 py-1.5"
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{s.name}</div>
+                    <div className="flex items-center gap-1.5 text-sm font-medium">
+                      <span className="truncate">{s.name}</span>
+                      {linesOf(s.command).length > 1 && (
+                        <span
+                          className="flex-none rounded border border-border px-1 text-[10px] font-semibold text-primary"
+                          title={t('snip.nCmds', { n: linesOf(s.command).length })}
+                        >
+                          {t('snip.nCmds', { n: linesOf(s.command).length })}
+                        </span>
+                      )}
+                    </div>
                     <code className="block truncate font-mono text-[11px] text-muted-foreground">
-                      {s.command}
+                      {linesOf(s.command)[0] ?? ''}
+                      {linesOf(s.command).length > 1 && ` +${linesOf(s.command).length - 1}`}
                     </code>
                   </div>
                   <button
@@ -115,12 +133,18 @@ export function SnippetsModal({ sessionId, paneLabel, onClose }: Props) {
               />
             </label>
             <label className="flex flex-1 flex-col gap-1 text-xs">
-              <span className="text-muted-foreground">{t('snip.command')}</span>
-              <input
+              <span className="text-muted-foreground">
+                {t('snip.command')}{' '}
+                <span className="font-normal">({t('snip.onePerLine')})</span>
+              </span>
+              <textarea
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
-                placeholder="tail -f /var/log/nginx/error.log"
-                className="w-full min-w-[180px] rounded border border-border bg-input px-2 py-1.5 font-mono text-sm"
+                rows={2}
+                spellCheck={false}
+                placeholder={'git pull\nnpm ci\nnpm run build'}
+                style={{ resize: 'vertical', minHeight: 44 }}
+                className="w-full min-w-[180px] rounded border border-border bg-input px-2 py-1.5 font-mono text-sm leading-relaxed"
               />
             </label>
             <button
