@@ -26,6 +26,16 @@
   .pst{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block;box-sizing:border-box}
   .jhop{display:inline-grid;place-items:center;color:var(--fg-dim);opacity:.75;flex:none}.jhop .icon{width:14px;height:14px}
   .ccard .tgt .jhop{display:inline-grid;vertical-align:-2px;margin-left:3px}
+  /* Port-forwarding panel */
+  .pf-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .pf-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card2)}
+  .pf-badge{font-size:11px;font-weight:700;color:var(--accent);border:1px solid var(--line);border-radius:5px;padding:1px 6px;flex:none}
+  .pf-route{flex:1;font-size:12.5px;font-family:var(--mono);display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pf-arrow{display:inline-grid;place-items:center;color:var(--fg-dim);flex:none}.pf-arrow .icon{width:15px;height:15px}
+  .pf-seg-row{display:flex;gap:6px;margin-bottom:10px}
+  .pf-seg{font-size:12px;padding:4px 10px;border:1px solid var(--line);border-radius:7px;color:var(--fg-dim);user-select:none}
+  .pf-seg.on{color:var(--accent);border-color:var(--accent)}
+  .pf-add{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
   .pst.up{background:var(--green);box-shadow:0 0 5px color-mix(in oklab,var(--green) 60%,transparent)}
   .pst.down{background:transparent;border:1.5px solid var(--muted)}
   .pst.seen{background:color-mix(in oklab,var(--muted) 55%,transparent)}
@@ -149,7 +159,7 @@
     </main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a> · <a href="#" onclick="demoDisconnect();return false">disconnect</a> · <a href="#" onclick="runPreconnect(false);return false">pre-connect ✓</a> · <a href="#" onclick="runPreconnect(true);return false">pre-connect ✕</a> · <a href="#" onclick="connectMachine('deploy@10.0.0.5','web-01');return false">jump host</a></div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a> · <a href="#" onclick="demoDisconnect();return false">disconnect</a> · <a href="#" onclick="runPreconnect(false);return false">pre-connect ✓</a> · <a href="#" onclick="runPreconnect(true);return false">pre-connect ✕</a> · <a href="#" onclick="connectMachine('deploy@10.0.0.5','web-01');return false">jump host</a> · <a href="#" onclick="dlgPortForward(machineByName('web-01'));return false">port-forward</a></div>
 <!-- Focus-mode hint: only shown in focus mode; fades but stays faintly so the user is never trapped. -->
 <div id="focusHint">Focus mode · <kbd>Esc</kbd> or <kbd>F11</kbd> to exit · hover the top edge to reveal the toolbar</div>
 
@@ -177,6 +187,8 @@ const M={
   refresh:'<svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5"/></svg>',
   // Jump host (ProxyJump): an arc hopping from one node, over, to another.
   jump:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 17c2.5-9 13.5-9 16 0"/><circle cx="4" cy="17" r="1.7"/><circle cx="20" cy="17" r="1.7"/></svg>',
+  // Port forwarding: two opposing arrows = a bidirectional tunnel.
+  forward:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 9h13l-3.5-3.5M20 15H7l3.5 3.5"/></svg>',
 };
 /* hosts "parsed" from ~/.ssh/config (mock) */
 const SSH_HOSTS=[
@@ -223,7 +235,7 @@ const LIB=[
         {name:'bastion',host:'bastion.acme.io',user:'alex',port:22,last:'10m ago'},
         {name:'lb-01',host:'10.0.0.4',user:'deploy',port:22,last:'1h ago'}],children:[
         {id:'cf-web',type:'folder',color:'#7c9cf5',name:'Web servers',open:true,conns:[
-           {name:'web-01',host:'10.0.0.5',user:'deploy',port:22,jump:'bastion',last:'5m ago'},
+           {name:'web-01',host:'10.0.0.5',user:'deploy',port:22,jump:'bastion',forwards:[{type:'local',localPort:'8080',remoteHost:'10.0.0.9',remotePort:'80',active:true}],last:'5m ago'},
            {name:'web-02',host:'10.0.0.6',user:'deploy',port:22,last:'12m ago'},
            {name:'web-03',host:'10.0.0.7',user:'deploy',port:22,last:'2h ago'}]},
         {id:'cf-cache',type:'folder',color:'#f0a35e',name:'Cache',open:true,conns:[
@@ -231,7 +243,7 @@ const LIB=[
      {id:'c-stg',type:'coll',color:'#bb9af7',name:'Staging',shared:true,members:['alex','carol','dan'],roles:{alex:'owner',carol:'editor',dan:'editor'},open:false,conns:[
         {name:'stg-web',host:'10.1.0.5',user:'deploy',port:22,last:'3h ago'}]} ]},
    {id:'c-db',type:'coll',color:'#f0a35e',name:'Databases',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
-      {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,jump:'bastion',last:'1h ago'},
+      {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,jump:'bastion',forwards:[{type:'local',localPort:'5432',remoteHost:'localhost',remotePort:'5432',active:false}],last:'1h ago'},
       {name:'redis',host:'cache.acme.io',user:'ops',port:22,last:'4h ago'}]} ]},
 ];
 function walk(list,fn){list.forEach(n=>{fn(n);if(n.children)walk(n.children,fn);});}
@@ -460,8 +472,52 @@ function nodeRow(n,depth,exp){const isColl=n.type==='coll';
       :`<button class="btn btn-ghost" title="New here" onclick="event.stopPropagation();folderMenu('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();folderMore('${n.id}',event)">${EXICON.more}</button>`}</span></div>`;}
 function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="toast('${cn.name} · double-click to open')">
     <span class="ca"></span><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
-    <span class="nm">${cn.name}</span>${cn.jump?`<span class="jhop" title="Reached through ${jumpChain(cn).join(' › ')} (ProxyJump)">${M.jump}</span>`:''}${pastille(cn)}
-    <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="Edit" onclick="event.stopPropagation();dlgNewConn('',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${EXICON.more}</button></span></div>`;}
+    <span class="nm">${cn.name}</span>${cn.jump?`<span class="jhop" title="Reached through ${jumpChain(cn).join(' › ')} (ProxyJump)">${M.jump}</span>`:''}${pfGlyph(cn)}${pastille(cn)}
+    <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();machineMenu('${cn.name}',event)">${EXICON.more}</button></span></div>`;}
+/* A small glyph on machines that have saved port forwards (accent when any is live). */
+function pfGlyph(cn){if(!cn.forwards||!cn.forwards.length)return '';const live=cn.forwards.filter(f=>f.active).length;
+  return `<span class="jhop" ${live?'style="color:var(--accent);opacity:1"':''} title="${cn.forwards.length} port forward${cn.forwards.length>1?'s':''}${live?` · ${live} live`:''}">${M.forward}</span>`;}
+/* Per-machine actions menu (name → the real LIB object, so edits/forwards persist). */
+function machineMenu(name,e){const cn=machineByName(name);if(!cn)return;floatMenu(e,[
+  {icon:ICON.play,label:'Connect',onclick:()=>connectMachine((cn.user||'user')+'@'+(cn.host||cn.name),cn.name)},
+  {icon:M.forward,label:'Port forwarding…',onclick:()=>dlgPortForward(cn)},
+  {icon:M.edit,label:'Edit machine',onclick:()=>dlgNewConn('',cn)},
+  {icon:M.move,label:'Move to folder…',onclick:()=>dlgMoveConn(cn.name,e)},
+]);}
+/* Port forwarding (Wave-1): saved per-machine tunnels, started/stopped live. MVP =
+   LOCAL forward (127.0.0.1:localPort → remoteHost:remotePort over SSH, as seen from
+   the host). Remote & dynamic (SOCKS) reserved in the UI, built later — all ride the
+   same direct-tcpip channel + a local TCP listener (the channel-generic transport). */
+function pfBody(cn){
+  const rows=(cn.forwards||[]).map((f,i)=>{const on=!!f.active;return `<div class="pf-row">
+    <span class="pf-badge">L</span>
+    <span class="pf-route">127.0.0.1:${f.localPort} <span class="pf-arrow">${M.forward}</span> ${f.remoteHost}:${f.remotePort}</span>
+    <span class="pst ${on?'up':'seen'}" title="${on?'Listening':'Stopped'}"></span>
+    <button class="btn btn-ghost btn-sm" data-pf-toggle="${i}">${on?'Stop':'Start'}</button>
+    <button class="btn btn-ghost btn-sm" data-pf-del="${i}" title="Remove">✕</button>
+  </div>`;}).join('')||`<p class="muted" style="font-size:13px;margin:2px 0 12px">No forwards yet — add one below.</p>`;
+  return `<div class="pf-list">${rows}</div>
+    <div class="pf-seg-row"><span class="pf-seg on">Local</span><span class="pf-seg" title="Coming soon">Remote</span><span class="pf-seg" title="Coming soon">Dynamic (SOCKS)</span></div>
+    <div class="pf-add">
+      <label class="field" style="width:96px"><span>Local port</span><input class="inp" id="pf-lp" placeholder="5432"></label>
+      <span class="pf-arrow" style="margin-top:20px">${M.forward}</span>
+      <label class="field" style="flex:1;min-width:150px"><span>Remote host</span><input class="inp" id="pf-rh" placeholder="db.internal or localhost"></label>
+      <label class="field" style="width:96px"><span>Remote port</span><input class="inp" id="pf-rp" placeholder="5432"></label>
+      <button class="btn btn-primary btn-sm" data-pf-add style="margin-top:18px">Add</button>
+    </div>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">A <b>local</b> forward: anything reaching <code style="font-family:ui-monospace,monospace">127.0.0.1:localport</code> on your machine is tunnelled over SSH to <code style="font-family:ui-monospace,monospace">remotehost:remoteport</code> as seen from <b>${cn.name}</b> (through its jump host too, if it has one). Remote &amp; dynamic (SOCKS) coming soon.</p>`;
+}
+function dlgPortForward(cn){cn.forwards=cn.forwards||[];
+  const bd=showModal({title:'Port forwarding',subtitle:`${cn.name} — ${cn.user||'user'}@${cn.host||cn.name}`,wide:true,confirm:'Done',body:pfBody(cn)});
+  const body=bd.querySelector('.body');
+  body.addEventListener('click',e=>{const t=e.target.closest('[data-pf-toggle],[data-pf-del],[data-pf-add]');if(!t)return;
+    if(t.dataset.pfToggle!==undefined){const f=cn.forwards[+t.dataset.pfToggle];f.active=!f.active;toast(f.active?`Forwarding <span class="accent">127.0.0.1:${f.localPort}</span> → ${f.remoteHost}:${f.remotePort}`:`Stopped forward on :${f.localPort}`);}
+    else if(t.dataset.pfDel!==undefined){cn.forwards.splice(+t.dataset.pfDel,1);}
+    else if(t.dataset.pfAdd!==undefined){const lp=(body.querySelector('#pf-lp').value||'').trim(),rh=(body.querySelector('#pf-rh').value||'').trim(),rp=(body.querySelector('#pf-rp').value||'').trim();
+      if(!lp||!rh||!rp){toast('Fill local port, remote host and remote port');return;}
+      cn.forwards.push({type:'local',localPort:lp,remoteHost:rh,remotePort:rp,active:true});toast(`Forwarding <span class="accent">127.0.0.1:${lp}</span> → ${rh}:${rp}`);}
+    body.innerHTML=pfBody(cn);renderSide();renderMain();});
+}
 function n_toggle(id){const n=find(id);n.open=!n.open;renderSide();}
 
 /* ================= main: terminal tabs + collection CARDS ================= */
@@ -485,9 +541,8 @@ function paneGrid(){if(STATE.ctx.type==='home')return `<div class="pane-wrap foc
 function cardsView(coll){
   const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
   const card=cn=>`<div class="ccard" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="toast('${cn.name} · double-click')">
-    <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span>${pastille(cn)}<span style="flex:1"></span>
-      <button class="btn btn-ghost btn-sm" title="Move to folder…" style="padding:3px" onclick="event.stopPropagation();dlgMoveConn('${cn.name}',event)">${M.move}</button>
-      <button class="btn btn-ghost btn-sm" title="Edit machine" style="padding:3px" onclick="event.stopPropagation();dlgNewConn('${coll.name}',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button>
+    <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span>${pfGlyph(cn)}${pastille(cn)}<span style="flex:1"></span>
+      <button class="btn btn-ghost btn-sm" title="More" style="padding:3px" onclick="event.stopPropagation();machineMenu('${cn.name}',event)">${EXICON.more}</button>
       <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button></div>
     <div class="tgt">${cn.user}@${cn.host}:${cn.port}${cn.jump?`<span class="jhop" title="Reached through ${jumpChain(cn).join(' › ')} (ProxyJump)">${M.jump}</span>`:''}</div>
     <div class="meta"><span>⏱ ${cn.last}</span><span>${cn.jump?'via '+cn.jump:'ssh'}</span></div></div>`;
