@@ -24,6 +24,8 @@
   .navtab{padding:8px 4px;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-weight:600;font-size:13px}.navtab.on{color:var(--fg);border-color:var(--accent)}
   /* Health-check pastille (ADR 0017) — down is a calm hollow ring, not red. */
   .pst{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block;box-sizing:border-box}
+  .jhop{display:inline-grid;place-items:center;color:var(--fg-dim);opacity:.75;flex:none}.jhop .icon{width:14px;height:14px}
+  .ccard .tgt .jhop{display:inline-grid;vertical-align:-2px;margin-left:3px}
   .pst.up{background:var(--green);box-shadow:0 0 5px color-mix(in oklab,var(--green) 60%,transparent)}
   .pst.down{background:transparent;border:1.5px solid var(--muted)}
   .pst.seen{background:color-mix(in oklab,var(--muted) 55%,transparent)}
@@ -147,7 +149,7 @@
     </main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a> · <a href="#" onclick="demoDisconnect();return false">disconnect</a> · <a href="#" onclick="runPreconnect(false);return false">pre-connect ✓</a> · <a href="#" onclick="runPreconnect(true);return false">pre-connect ✕</a></div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a> · <a href="#" onclick="demoDisconnect();return false">disconnect</a> · <a href="#" onclick="runPreconnect(false);return false">pre-connect ✓</a> · <a href="#" onclick="runPreconnect(true);return false">pre-connect ✕</a> · <a href="#" onclick="connectMachine('deploy@10.0.0.5','web-01');return false">jump host</a></div>
 <!-- Focus-mode hint: only shown in focus mode; fades but stays faintly so the user is never trapped. -->
 <div id="focusHint">Focus mode · <kbd>Esc</kbd> or <kbd>F11</kbd> to exit · hover the top edge to reveal the toolbar</div>
 
@@ -173,6 +175,8 @@ const M={
   compass:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>',
   bell:'<svg class="icon" viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>',
   refresh:'<svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5"/></svg>',
+  // Jump host (ProxyJump): an arc hopping from one node, over, to another.
+  jump:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 17c2.5-9 13.5-9 16 0"/><circle cx="4" cy="17" r="1.7"/><circle cx="20" cy="17" r="1.7"/></svg>',
 };
 /* hosts "parsed" from ~/.ssh/config (mock) */
 const SSH_HOSTS=[
@@ -216,9 +220,10 @@ const LIB=[
  {id:'f-acme',type:'folder',color:'#e5b567',name:'Acme',open:true,children:[
    {id:'f-infra',type:'folder',color:'#56c7c0',name:'Infrastructure',open:true,children:[
      {id:'c-prod',type:'coll',color:'#f7768e',name:'Production',shared:true,members:['alex','carol','erin'],roles:{alex:'owner',carol:'editor',erin:'viewer'},open:true,conns:[
+        {name:'bastion',host:'bastion.acme.io',user:'alex',port:22,last:'10m ago'},
         {name:'lb-01',host:'10.0.0.4',user:'deploy',port:22,last:'1h ago'}],children:[
         {id:'cf-web',type:'folder',color:'#7c9cf5',name:'Web servers',open:true,conns:[
-           {name:'web-01',host:'10.0.0.5',user:'deploy',port:22,last:'5m ago'},
+           {name:'web-01',host:'10.0.0.5',user:'deploy',port:22,jump:'bastion',last:'5m ago'},
            {name:'web-02',host:'10.0.0.6',user:'deploy',port:22,last:'12m ago'},
            {name:'web-03',host:'10.0.0.7',user:'deploy',port:22,last:'2h ago'}]},
         {id:'cf-cache',type:'folder',color:'#f0a35e',name:'Cache',open:true,conns:[
@@ -226,12 +231,17 @@ const LIB=[
      {id:'c-stg',type:'coll',color:'#bb9af7',name:'Staging',shared:true,members:['alex','carol','dan'],roles:{alex:'owner',carol:'editor',dan:'editor'},open:false,conns:[
         {name:'stg-web',host:'10.1.0.5',user:'deploy',port:22,last:'3h ago'}]} ]},
    {id:'c-db',type:'coll',color:'#f0a35e',name:'Databases',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
-      {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,last:'1h ago'},
+      {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,jump:'bastion',last:'1h ago'},
       {name:'redis',host:'cache.acme.io',user:'ops',port:22,last:'4h ago'}]} ]},
 ];
 function walk(list,fn){list.forEach(n=>{fn(n);if(n.children)walk(n.children,fn);});}
 function find(id){let r=null;walk(LIB,n=>{if(n.id===id)r=n;});return r;}
 function allColls(){const a=[];walk(LIB,n=>{if(n.type==='coll')a.push(n);});return a;}
+/* Find a saved machine by name (jump hosts are referenced by name in this mock). */
+function machineByName(name){let r=null;walk(LIB,n=>{(n.conns||[]).forEach(m=>{if(m.name===name)r=m;});});return r;}
+/* Resolve the ProxyJump chain (jump → jump-of-jump → …), cycle-guarded. Returns the
+   ordered list of hop names between you and the target (nearest jump first). */
+function jumpChain(cn){const out=[];const seen=new Set();let j=cn&&cn.jump;while(j&&!seen.has(j)){seen.add(j);out.push(j);const m=machineByName(j);j=m&&m.jump;}return out;}
 
 let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
 const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
@@ -450,7 +460,7 @@ function nodeRow(n,depth,exp){const isColl=n.type==='coll';
       :`<button class="btn btn-ghost" title="New here" onclick="event.stopPropagation();folderMenu('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();folderMore('${n.id}',event)">${EXICON.more}</button>`}</span></div>`;}
 function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="toast('${cn.name} · double-click to open')">
     <span class="ca"></span><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
-    <span class="nm">${cn.name}</span>${pastille(cn)}
+    <span class="nm">${cn.name}</span>${cn.jump?`<span class="jhop" title="Reached through ${jumpChain(cn).join(' › ')} (ProxyJump)">${M.jump}</span>`:''}${pastille(cn)}
     <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="Edit" onclick="event.stopPropagation();dlgNewConn('',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${EXICON.more}</button></span></div>`;}
 function n_toggle(id){const n=find(id);n.open=!n.open;renderSide();}
 
@@ -479,8 +489,8 @@ function cardsView(coll){
       <button class="btn btn-ghost btn-sm" title="Move to folder…" style="padding:3px" onclick="event.stopPropagation();dlgMoveConn('${cn.name}',event)">${M.move}</button>
       <button class="btn btn-ghost btn-sm" title="Edit machine" style="padding:3px" onclick="event.stopPropagation();dlgNewConn('${coll.name}',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button>
       <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button></div>
-    <div class="tgt">${cn.user}@${cn.host}:${cn.port}</div>
-    <div class="meta"><span>⏱ ${cn.last}</span><span>ssh</span></div></div>`;
+    <div class="tgt">${cn.user}@${cn.host}:${cn.port}${cn.jump?`<span class="jhop" title="Reached through ${jumpChain(cn).join(' › ')} (ProxyJump)">${M.jump}</span>`:''}</div>
+    <div class="meta"><span>⏱ ${cn.last}</span><span>${cn.jump?'via '+cn.jump:'ssh'}</span></div></div>`;
   const grid=list=>`<div class="cards ${STATE.layout}">${sortF(list).map(card).join('')}</div>`;
   const eyebrow=t=>`<div class="eyebrow" style="margin:2px 0 8px;color:var(--fg-dim)">${t}</div>`;
   // Drill-in: navigate the collection's curated FOLDERS one level at a time
@@ -674,6 +684,9 @@ function dlgNewConn(collName,existing){const e=existing||{};
     <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>User</span><input class="inp" id="nc-user" value="${e.user||''}" placeholder="deploy"></label>
       <label class="field" style="flex:1"><span>Authentication</span>${authSelect('nc',e)}</label></div>
     ${authPanels('nc',e)}
+    <label class="field"><span>Jump host <span class="muted" style="font-weight:400">(optional)</span></span>
+      <select class="inp" id="nc-jump"><option value="">Direct — no jump</option>${allColls().map(c=>{const opts=(c.conns||[]).filter(m=>m.name!==e.name).map(m=>`<option value="${m.name}" ${e.jump===m.name?'selected':''}>${m.name} — ${m.user?m.user+'@':''}${m.host}</option>`).join('');return opts?`<optgroup label="${c.name}">${opts}</optgroup>`:'';}).join('')}</select>
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">Reach this machine <b>through</b> another (a bastion). Rite opens the jump first, then tunnels the SSH session to the target — like OpenSSH <code style="font-family:ui-monospace,monospace">ProxyJump</code>. <b>Chainable</b>: if the jump itself has a jump, the whole path is built. Your key is never copied onto the bastion — auth happens end-to-end with the target.</span></label>
     ${swatchRow(e.color||'#56c7c0')}
     <div style="display:flex;gap:10px;align-items:flex-end"><label class="field" style="flex:1"><span>Keep-alive</span><select class="inp" id="nc-ka" onchange="document.getElementById('nc-kai').style.display=this.value==='on'?'':'none'"><option value="off" ${e.sshKeepAliveOverride==='enabled'?'':'selected'}>Disabled</option><option value="on" ${e.sshKeepAliveOverride==='enabled'?'selected':''}>Enabled</option></select></label>
       <label class="field" id="nc-kai" style="flex:1;${e.sshKeepAliveOverride==='enabled'?'':'display:none'}"><span>Interval (s)</span><input class="inp" value="${e.sshKeepAliveInterval||30}"></label></div>
@@ -686,7 +699,7 @@ function dlgNewConn(collName,existing){const e=existing||{};
     ${(()=>{const c=allColls().find(x=>x.name===collName);return c&&c.shared?`<p class="muted" style="font-size:12px;margin:6px 0 0">${EXICON.users} Shared collection — saving re-encrypts for all ${c.members.length} members (needs write access · RBAC).</p>`:'';})()}`,
   onConfirm:(m)=>{const g=s=>m.querySelector(s);
     const _aid=g('#nc-agent-id'),_afwd=g('#nc-agent-fwd'),_atype=g('#nc-auth').value;
-    const rec={name:(g('#nc-name').value||'').trim()||'machine',protocol:g('#nc-proto').value,host:(g('#nc-host').value||'').trim(),port:Number(g('#nc-port').value)||22,user:(g('#nc-user').value||'').trim(),authType:_atype,agentIdentity:_atype==='agent'&&_aid?_aid.value:undefined,agentForward:_atype==='agent'&&_afwd?_afwd.checked:undefined,color:__pickColor,notes:(g('#nc-notes').value||'').trim(),sshKeepAliveOverride:g('#nc-ka').value==='on'?'enabled':'disabled',sshKeepAliveInterval:Number((g('#nc-kai').querySelector('input')||{}).value)||30,hc:g('#nc-hc').value==='off'?false:undefined,preconnect:(g('#nc-preconnect').value||'').trim()||undefined};
+    const rec={name:(g('#nc-name').value||'').trim()||'machine',protocol:g('#nc-proto').value,host:(g('#nc-host').value||'').trim(),port:Number(g('#nc-port').value)||22,user:(g('#nc-user').value||'').trim(),authType:_atype,agentIdentity:_atype==='agent'&&_aid?_aid.value:undefined,agentForward:_atype==='agent'&&_afwd?_afwd.checked:undefined,color:__pickColor,notes:(g('#nc-notes').value||'').trim(),sshKeepAliveOverride:g('#nc-ka').value==='on'?'enabled':'disabled',sshKeepAliveInterval:Number((g('#nc-kai').querySelector('input')||{}).value)||30,hc:g('#nc-hc').value==='off'?false:undefined,jump:(g('#nc-jump').value||'')||undefined,preconnect:(g('#nc-preconnect').value||'').trim()||undefined};
     if(existing){Object.assign(existing,rec);}
     else{const cn=allColls().find(c=>c.name===g('#nc-coll').value);if(cn){if(!cn.conns)cn.conns=[];cn.conns.push({...rec,last:'just now'});}}
     renderAll();toast(existing?'Machine updated':`Machine saved to ${g('#nc-coll').value}`);}});}
@@ -763,11 +776,16 @@ function openKbdInteractive(ch){ch=ch||KBD_DEMO;
    the server asks for a second factor via keyboard-interactive — the real path
    by which the challenge modal appears. A stored/entered password is auto-
    answered, so only the OTP is asked here. */
-function connectMachine(host,name){toast(`▶ ${name} · authenticating…`);
+function connectMachine(host,name){
+  const cn=machineByName(name),chain=cn?jumpChain(cn):[];
+  // Jump host (ProxyJump): open the bastion(s) first, tunnel the SSH session to the
+  // target, then authenticate END-TO-END with the target (key never lands on a hop).
+  if(chain.length)toast(`▶ ${name} · via ${chain.join(' › ')} — opening jump, tunnelling the session…`);
+  else toast(`▶ ${name} · authenticating…`);
   setTimeout(()=>openKbdInteractive({host,name:'Two-factor authentication',
     note:'✓ Primary auth accepted — one more step.',
     instruction:'Enter the 6-digit code from your authenticator app.',
-    prompts:[{label:'Verification code:',echo:false}]}),650);}
+    prompts:[{label:'Verification code:',echo:false}]}),chain.length?950:650);}
 /* Reconnect (P2 UX): a dropped SSH session is NEVER force-reconnected — reconnecting
    opens a new shell (history + on-screen output + any running job are lost). If the
    user opted in (STATE.autoReconnect) we reconnect automatically and tell them; else
