@@ -14,6 +14,7 @@ import { terminalPool } from '../utils/terminalPool';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 import { useAutoReconnect } from '../store/autoReconnect';
+import { SnippetsModal } from './SnippetsModal';
 
 // Global cache to track if a terminal has already been initialized
 // This prevents re-writing initial content on remount
@@ -64,6 +65,8 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   const [error, setError] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  // The live session id captured when the snippets panel is opened (null = closed).
+  const [snippetSession, setSnippetSession] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Intelligent prompt detection state
@@ -692,6 +695,17 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             </button>
           )}
 
+          {/* Snippets button — run a saved command on this pane (or broadcast) */}
+          <button
+            onClick={() => setSnippetSession(sessionIdRef.current || existingSessionId || null)}
+            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Snippets"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12" />
+            </svg>
+          </button>
+
           {/* Search button */}
           <button
             onClick={() => setShowSearch(!showSearch)}
@@ -775,6 +789,14 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           pointerEvents: isDragging ? 'none' : 'auto',
         }}
       />
+
+      {snippetSession && (
+        <SnippetsModal
+          sessionId={snippetSession}
+          paneLabel={connectionName}
+          onClose={() => setSnippetSession(null)}
+        />
+      )}
     </div>
   );
 }

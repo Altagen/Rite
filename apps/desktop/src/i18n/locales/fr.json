@@ -171,6 +171,21 @@
     "custom": "Personnalisé",
     "customLabel": "Secondes"
   },
+  "snip": {
+    "title": "Snippets",
+    "subtitle": "Exécuter une commande enregistrée sur {pane}, ou ⇉ diffuser à tous les panneaux ouverts.",
+    "thisPane": "ce panneau",
+    "empty": "Aucun snippet — ajoutez-en un ci-dessous.",
+    "run": "Exécuter",
+    "runHere": "Exécuter sur ce panneau",
+    "broadcast": "Diffuser à tous les panneaux ouverts",
+    "remove": "Supprimer",
+    "name": "Nom",
+    "command": "Commande",
+    "add": "Ajouter",
+    "done": "Terminé",
+    "fillAll": "Donnez un nom et une commande au snippet."
+  },
   "pf": {
     "title": "Redirection de ports",
     "empty": "Aucune redirection — ajoutez-en une ci-dessous.",

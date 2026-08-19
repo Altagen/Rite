@@ -171,6 +171,21 @@
     "custom": "Custom",
     "customLabel": "Seconds"
   },
+  "snip": {
+    "title": "Snippets",
+    "subtitle": "Run a saved command on {pane}, or ⇉ broadcast to every open pane.",
+    "thisPane": "this pane",
+    "empty": "No snippets yet — add one below.",
+    "run": "Run",
+    "runHere": "Run on this pane",
+    "broadcast": "Broadcast to every open pane",
+    "remove": "Remove",
+    "name": "Name",
+    "command": "Command",
+    "add": "Add",
+    "done": "Done",
+    "fillAll": "Give the snippet a name and a command."
+  },
   "pf": {
     "title": "Port forwarding",
     "empty": "No forwards yet — add one below.",
