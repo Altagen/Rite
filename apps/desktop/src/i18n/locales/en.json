@@ -171,6 +171,13 @@
     "custom": "Custom",
     "customLabel": "Seconds"
   },
+  "jump": {
+    "label": "Jump host",
+    "optional": "optional",
+    "direct": "Direct — no jump",
+    "ungrouped": "Other",
+    "hint": "Reach this machine through another (a bastion). Rite opens the jump first, then tunnels the SSH session to the target — like OpenSSH ProxyJump. Chainable: if the jump itself has a jump, the whole path is built. Your key never lands on the bastion."
+  },
   "preconnect": {
     "label": "Pre-connect command",
     "placeholder": "wg-quick up wg0\n# one line, or a mini-script (fail-fast)",

@@ -237,8 +237,28 @@ export function CollectionView({
           <PlayIcon />
         </button>
       </div>
-      <div className="truncate font-mono text-xs text-muted-foreground">
-        {c.username}@{c.hostname}:{c.port}
+      <div className="flex items-center gap-1.5 truncate font-mono text-xs text-muted-foreground">
+        <span className="truncate">
+          {c.username}@{c.hostname}:{c.port}
+        </span>
+        {c.jump && (
+          <svg
+            viewBox="0 0 24 24"
+            width="13"
+            height="13"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className="flex-none opacity-75"
+            aria-label="Reached through a jump host"
+          >
+            <title>Reached through a jump host (ProxyJump)</title>
+            <path d="M4 17c2.5-9 13.5-9 16 0" />
+            <circle cx="4" cy="17" r="1.7" fill="currentColor" stroke="none" />
+            <circle cx="20" cy="17" r="1.7" fill="currentColor" stroke="none" />
+          </svg>
+        )}
       </div>
       <div className={`flex items-center gap-1 text-[11px] text-muted-foreground ${layout === 'list' ? '' : 'mt-1'}`}>
         <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

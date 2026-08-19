@@ -171,6 +171,13 @@
     "custom": "Personnalisé",
     "customLabel": "Secondes"
   },
+  "jump": {
+    "label": "Hôte de rebond",
+    "optional": "optionnel",
+    "direct": "Direct — sans rebond",
+    "ungrouped": "Autre",
+    "hint": "Atteindre cette machine à travers une autre (un bastion). Rite ouvre le rebond d'abord, puis tunnelise la session SSH vers la cible — comme ProxyJump d'OpenSSH. Chaînable : si le rebond a lui-même un rebond, tout le chemin est construit. Votre clé n'atterrit jamais sur le bastion."
+  },
   "preconnect": {
     "label": "Commande de pré-connexion",
     "placeholder": "wg-quick up wg0\n# une ligne, ou un mini-script (arrêt à la première erreur)",

@@ -1562,6 +1562,7 @@ export function Workspace({
           prefillData={connectionFormPrefill}
           create={conns.create}
           update={conns.update}
+          jumpCandidates={conns.connections}
           collectionTargets={conns.writableCollections}
           defaultCollectionId={formDefaultCollectionId}
           defaultFolder={formDefaultFolder}

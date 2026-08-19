@@ -425,6 +425,24 @@ function MachineRow({
       <div className="min-w-0 flex-1">
         <div className="m-nm flex items-center gap-1.5" title={connection.name}>
           <span className="truncate">{connection.name}</span>
+          {connection.jump && (
+            <svg
+              viewBox="0 0 24 24"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="flex-none text-muted-foreground opacity-75"
+              aria-label="Reached through a jump host"
+            >
+              <title>Reached through a jump host (ProxyJump)</title>
+              <path d="M4 17c2.5-9 13.5-9 16 0" />
+              <circle cx="4" cy="17" r="1.7" fill="currentColor" stroke="none" />
+              <circle cx="20" cy="17" r="1.7" fill="currentColor" stroke="none" />
+            </svg>
+          )}
           <StatusPastille lastUsedAt={connection.lastUsedAt} active={active} />
         </div>
         <div className="m-lsub">

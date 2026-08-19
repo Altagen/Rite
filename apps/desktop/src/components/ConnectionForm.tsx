@@ -20,6 +20,8 @@ interface ConnectionFormProps {
   // = browser-crypto over the per-user vault. The form is context-agnostic.
   create: (input: CreateConnectionInput) => Promise<void>;
   update: (input: UpdateConnectionInput) => Promise<void>;
+  // Other saved connections, offered as a jump host (ProxyJump) for this one.
+  jumpCandidates?: ConnectionInfo[];
   // ADR 0016: shared collections the caller may save into (owner/editor). When
   // present (accounts context), the form offers a "save to collection" target.
   collectionTargets?: { id: string; name: string }[];
@@ -39,6 +41,7 @@ export function ConnectionForm({
   onSuccess,
   create,
   update,
+  jumpCandidates,
   collectionTargets,
   defaultCollectionId,
   defaultFolder,
@@ -72,6 +75,7 @@ export function ConnectionForm({
   const [hcOptOut, setHcOptOut] = useState(connection?.hc === false);
   const [notes, setNotes] = useState(connection?.notes || '');
   const [preconnect, setPreconnect] = useState(connection?.preconnect || '');
+  const [jump, setJump] = useState(connection?.jump || '');
   const [sshKeepAliveOverride, setSshKeepAliveOverride] = useState<string | null>(
     connection?.sshKeepAliveOverride ?? null
   );
@@ -220,6 +224,7 @@ export function ConnectionForm({
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
           preconnect: preconnect.trim() || null, // always send so clearing it works
+          jump: jump || null, // always send so clearing it works
           hc: hcOptOut ? false : null, // always send so turning it back off clears the opt-out
         };
 
@@ -252,6 +257,7 @@ export function ConnectionForm({
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
           ...(preconnect.trim() && { preconnect: preconnect.trim() }),
+          ...(jump && { jump }),
           ...(hcOptOut && { hc: false }),
         };
 
@@ -407,6 +413,40 @@ export function ConnectionForm({
             isEdit={!!connection}
             errors={{ password: errors.password, keyPath: errors.keyPath }}
           />
+
+          {/* Jump host (ProxyJump): reach this machine through another saved one (a
+              bastion). Rite tunnels the SSH session end-to-end; the key never lands
+              on the bastion. Chainable when the jump itself has a jump. */}
+          <div>
+            <label className="mb-1 block text-sm font-medium">
+              {t('jump.label')} <span className="font-normal text-muted-foreground">({t('jump.optional')})</span>
+            </label>
+            <select
+              value={jump}
+              onChange={(e) => setJump(e.target.value)}
+              className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
+            >
+              <option value="">{t('jump.direct')}</option>
+              {(() => {
+                const candidates = (jumpCandidates ?? []).filter((c) => c.id !== connection?.id);
+                const groups = new Map<string, ConnectionInfo[]>();
+                for (const c of candidates) {
+                  const key = c.collectionName ?? c.folder ?? t('jump.ungrouped');
+                  (groups.get(key) ?? groups.set(key, []).get(key)!).push(c);
+                }
+                return Array.from(groups.entries()).map(([group, items]) => (
+                  <optgroup key={group} label={group}>
+                    {items.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} — {c.username}@{c.hostname}
+                      </option>
+                    ))}
+                  </optgroup>
+                ));
+              })()}
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">{t('jump.hint')}</p>
+          </div>
 
           {/* Colour */}
           <div>

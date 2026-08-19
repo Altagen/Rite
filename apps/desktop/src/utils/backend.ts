@@ -99,6 +99,7 @@ const ConnectionInfoSchema = z.object({
   sshKeepAliveOverride: z.string().nullable().optional(),
   sshKeepAliveInterval: z.number().nullable().optional(),
   preconnect: z.string().nullable().optional(),
+  jump: z.string().nullable().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
   lastUsedAt: z.number().nullable().optional(),
