@@ -881,6 +881,7 @@ impl SessionManager {
             ssh_keep_alive_override: row.ssh_keep_alive_override.clone(),
             ssh_keep_alive_interval: row.ssh_keep_alive_interval,
             preconnect: row.preconnect.clone(),
+            jump: row.jump.clone(),
             last_used_at: row.last_used_at,
             created_at: row.created_at,
             updated_at: row.updated_at,

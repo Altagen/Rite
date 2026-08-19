@@ -104,6 +104,7 @@ impl Database {
             ),
             (18, include_str!("../migrations/018_enrollment_tokens.sql")),
             (19, include_str!("../migrations/019_preconnect.sql")),
+            (20, include_str!("../migrations/020_jump.sql")),
             // Future migrations go here:
             // (19, include_str!("../migrations/019_another_feature.sql")),
         ];
@@ -406,6 +407,7 @@ impl Database {
         ssh_keep_alive_override: Option<&str>,
         ssh_keep_alive_interval: Option<i64>,
         preconnect: Option<&str>,
+        jump: Option<&str>,
         created_at: i64,
         updated_at: i64,
     ) -> Result<()> {
@@ -415,9 +417,9 @@ impl Database {
                 id, name, protocol, hostname, port, username,
                 encrypted_credentials, nonce,
                 color, icon, folder, notes,
-                ssh_keep_alive_override, ssh_keep_alive_interval, preconnect,
+                ssh_keep_alive_override, ssh_keep_alive_interval, preconnect, jump,
                 created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
             "#,
         )
         .bind(id)
@@ -435,6 +437,7 @@ impl Database {
         .bind(ssh_keep_alive_override)
         .bind(ssh_keep_alive_interval)
         .bind(preconnect)
+        .bind(jump)
         .bind(created_at)
         .bind(updated_at)
         .execute(&self.pool)
@@ -496,6 +499,7 @@ impl Database {
         ssh_keep_alive_override: Option<&str>,
         ssh_keep_alive_interval: Option<i64>,
         preconnect: Option<&str>,
+        jump: Option<&str>,
         updated_at: i64,
     ) -> Result<()> {
         sqlx::query(
@@ -515,7 +519,8 @@ impl Database {
                 ssh_keep_alive_override = ?13,
                 ssh_keep_alive_interval = ?14,
                 preconnect = ?15,
-                updated_at = ?16
+                jump = ?16,
+                updated_at = ?17
             WHERE id = ?1
             "#,
         )
@@ -534,6 +539,7 @@ impl Database {
         .bind(ssh_keep_alive_override)
         .bind(ssh_keep_alive_interval)
         .bind(preconnect)
+        .bind(jump)
         .bind(updated_at)
         .execute(&self.pool)
         .await?;
@@ -648,6 +654,7 @@ pub struct ConnectionRow {
     pub ssh_keep_alive_override: Option<String>,
     pub ssh_keep_alive_interval: Option<i64>,
     pub preconnect: Option<String>,
+    pub jump: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
     pub last_used_at: Option<i64>,
@@ -793,7 +800,7 @@ mod tests {
 
         // A fresh DB migrates all the way to the latest schema (each applied
         // migration records its version).
-        assert_eq!(db.get_schema_version().await.unwrap(), 19);
+        assert_eq!(db.get_schema_version().await.unwrap(), 20);
     }
 
     #[test]
@@ -850,14 +857,14 @@ mod tests {
 
         // First open runs every migration to the latest version.
         let db1 = Database::new(&db_path).await.unwrap();
-        assert_eq!(db1.get_schema_version().await.unwrap(), 19);
+        assert_eq!(db1.get_schema_version().await.unwrap(), 20);
         drop(db1);
 
         // Reopening the SAME vault must be a clean no-op: without the recorded
         // versions the runner would re-apply non-idempotent DDL (`ADD COLUMN` →
         // "duplicate column") and fail — the exact desktop second-launch bug.
         let db2 = Database::new(&db_path).await.unwrap();
-        assert_eq!(db2.get_schema_version().await.unwrap(), 19);
+        assert_eq!(db2.get_schema_version().await.unwrap(), 20);
     }
 
     #[tokio::test]

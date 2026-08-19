@@ -51,6 +51,7 @@ impl ConnectionsManager {
                 connection.ssh_keep_alive_override.as_deref(),
                 connection.ssh_keep_alive_interval,
                 connection.preconnect.as_deref(),
+                connection.jump.as_deref(),
                 connection.created_at,
                 connection.updated_at,
             )
@@ -128,6 +129,7 @@ impl ConnectionsManager {
                 connection.ssh_keep_alive_override.as_deref(),
                 connection.ssh_keep_alive_interval,
                 connection.preconnect.as_deref(),
+                connection.jump.as_deref(),
                 connection.updated_at,
             )
             .await?;
@@ -173,6 +175,7 @@ impl ConnectionsManager {
             ssh_keep_alive_override: row.ssh_keep_alive_override.clone(),
             ssh_keep_alive_interval: row.ssh_keep_alive_interval,
             preconnect: row.preconnect.clone(),
+            jump: row.jump.clone(),
             created_at: row.created_at,
             updated_at: row.updated_at,
             last_used_at: row.last_used_at,
@@ -201,6 +204,7 @@ impl ConnectionsManager {
             ssh_keep_alive_override: row.ssh_keep_alive_override.clone(),
             ssh_keep_alive_interval: row.ssh_keep_alive_interval,
             preconnect: row.preconnect.clone(),
+            jump: row.jump.clone(),
             created_at: row.created_at,
             updated_at: row.updated_at,
             last_used_at: row.last_used_at,

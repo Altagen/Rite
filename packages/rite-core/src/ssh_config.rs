@@ -68,6 +68,7 @@ impl SshConfigEntry {
             },
             ssh_keep_alive_interval,
             preconnect: None,
+            jump: None,
         }
     }
 }

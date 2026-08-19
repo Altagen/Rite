@@ -219,6 +219,7 @@ fn test_connection(port: u16) -> Connection {
         ssh_keep_alive_override: None,
         ssh_keep_alive_interval: None,
         preconnect: None,
+        jump: None,
         created_at: 0,
         updated_at: 0,
         last_used_at: None,
