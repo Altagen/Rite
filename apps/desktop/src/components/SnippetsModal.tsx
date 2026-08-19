@@ -122,40 +122,41 @@ export function SnippetsModal({ sessionId, paneLabel, onClose }: Props) {
             </ul>
           )}
 
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="flex w-40 flex-col gap-1 text-xs">
+          <div className="flex flex-col gap-2.5 border-t border-border pt-3">
+            <label className="flex flex-col gap-1 text-xs">
               <span className="text-muted-foreground">{t('snip.name')}</span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Tail nginx"
-                className="w-full rounded border border-border bg-input px-2 py-1.5 text-sm"
+                placeholder="Deploy check"
+                className="w-full rounded border border-border bg-input px-2.5 py-1.5 text-sm"
               />
             </label>
-            <label className="flex flex-1 flex-col gap-1 text-xs">
+            <label className="flex flex-col gap-1 text-xs">
               <span className="text-muted-foreground">
-                {t('snip.command')}{' '}
-                <span className="font-normal">({t('snip.onePerLine')})</span>
+                {t('snip.command')} <span className="font-normal">· {t('snip.onePerLine')}</span>
               </span>
               <textarea
                 value={command}
                 onChange={(e) => setCommand(e.target.value)}
-                rows={2}
+                rows={3}
                 spellCheck={false}
                 placeholder={'git pull\nnpm ci\nnpm run build'}
-                style={{ resize: 'vertical', minHeight: 44 }}
-                className="w-full min-w-[180px] rounded border border-border bg-input px-2 py-1.5 font-mono text-sm leading-relaxed"
+                style={{ resize: 'vertical', minHeight: 66 }}
+                className="w-full rounded border border-border bg-input px-2.5 py-1.5 font-mono text-sm leading-relaxed"
               />
             </label>
-            <button
-              type="button"
-              onClick={addSnippet}
-              className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
-            >
-              {t('snip.add')}
-            </button>
+            {error && <p className="text-xs text-red-500">{error}</p>}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={addSnippet}
+                className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90"
+              >
+                {t('snip.add')}
+              </button>
+            </div>
           </div>
-          {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
         </div>
 
         <div className="flex justify-end border-t border-border px-4 py-3">
