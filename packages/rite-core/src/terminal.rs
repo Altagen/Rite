@@ -573,6 +573,111 @@ async fn open_jump_tunnel(
     Ok((channel.into_stream(), handles))
 }
 
+/// Establish an authenticated SSH `Handle` to the target — directly over TCP or
+/// tunnelled through a jump-host chain — and authenticate it end-to-end. Returns
+/// the target handle plus the retained jump handles (kept alive to hold the tunnel
+/// open). Shared by interactive sessions (which then open a shell channel) and
+/// port forwards (which open direct-tcpip channels).
+#[allow(clippy::too_many_arguments)]
+async fn establish_authenticated_handle(
+    connection: &Connection,
+    auth_method: &AuthMethod,
+    events: SharedEvents,
+    db_pool: Arc<SqlitePool>,
+    keep_alive_interval: Option<u64>,
+    force_accept_host_key: bool,
+    interactive: Option<&SharedInteractive>,
+    jumps: &[(Connection, AuthMethod)],
+) -> Result<(
+    client::Handle<SshClientHandler>,
+    Vec<client::Handle<SshClientHandler>>,
+)> {
+    // Native SSH keepalive (keepalive@openssh.com), not an app-level heartbeat.
+    let mut config = client::Config::default();
+    if let Some(secs) = keep_alive_interval {
+        config.keepalive_interval = Some(std::time::Duration::from_secs(secs));
+        config.keepalive_max = 3;
+    }
+    let config = Arc::new(config);
+    // Host-key verification runs per hop in each handler.check_server_key().
+    let handler = SshClientHandler {
+        db: db_pool.clone(),
+        host: connection.hostname.clone(),
+        port: connection.port,
+        events: events.clone(),
+        force_accept_host_key,
+    };
+    let mut jump_handles: Vec<client::Handle<SshClientHandler>> = Vec::new();
+    let mut session = if jumps.is_empty() {
+        let addr = format!("{}:{}", connection.hostname, connection.port);
+        tracing::info!("[terminal.rs] Attempting TCP connection to {}...", addr);
+        match tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, &addr, handler)).await {
+            Ok(result) => result?,
+            Err(_) => {
+                return Err(anyhow!(
+                    "Connection to {} timed out after {}s",
+                    addr,
+                    CONNECT_TIMEOUT.as_secs()
+                ));
+            }
+        }
+    } else {
+        tracing::info!(
+            "[terminal.rs] Reaching {}:{} through {} jump host(s)",
+            connection.hostname,
+            connection.port,
+            jumps.len()
+        );
+        let (stream, handles) = open_jump_tunnel(
+            jumps,
+            &connection.hostname,
+            connection.port,
+            db_pool.clone(),
+            events.clone(),
+            force_accept_host_key,
+        )
+        .await?;
+        jump_handles = handles;
+        client::connect_stream(config, stream, handler).await?
+    };
+    tracing::info!("[terminal.rs] Transport to target established");
+
+    // Authenticate to the target end-to-end (through any tunnel — the target never
+    // sees a jump host's credentials, nor a jump the target's).
+    authenticate_session(&mut session, &connection.username, auth_method, interactive).await?;
+    tracing::info!("[terminal.rs] Authentication successful");
+    Ok((session, jump_handles))
+}
+
+/// Rebuild a `Connection` from its stored row plus the already-decrypted auth method.
+fn connection_from_row(
+    row: &crate::db::ConnectionRow,
+    auth_method: AuthMethod,
+) -> Result<Connection> {
+    Ok(Connection {
+        id: row.id.clone(),
+        name: row.name.clone(),
+        protocol: crate::connection::Protocol::from_str(&row.protocol)?,
+        hostname: row.hostname.clone(),
+        port: row.port as u16,
+        username: row.username.clone(),
+        auth_method,
+        metadata: crate::connection::ConnectionMetadata {
+            color: row.color.clone(),
+            icon: row.icon.clone(),
+            folder: row.folder.clone(),
+            notes: row.notes.clone(),
+        },
+        ssh_keep_alive_override: row.ssh_keep_alive_override.clone(),
+        ssh_keep_alive_interval: row.ssh_keep_alive_interval,
+        preconnect: row.preconnect.clone(),
+        jump: row.jump.clone(),
+        last_used_at: row.last_used_at,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    })
+}
+
 impl SshSession {
     /// Create a new SSH session by connecting to a remote server
     #[allow(clippy::too_many_arguments)]
@@ -598,75 +703,19 @@ impl SshSession {
             connection.username
         );
 
-        // Create SSH client configuration. Use russh's native SSH keepalive
-        // (keepalive@openssh.com) instead of an app-level heartbeat, so we never
-        // fight the real terminal size and the transport itself detects a dead peer.
-        let mut config = client::Config::default();
-        if let Some(secs) = keep_alive_interval {
-            config.keepalive_interval = Some(std::time::Duration::from_secs(secs));
-            config.keepalive_max = 3;
-        }
-        let config = Arc::new(config);
-        // Establish the transport to the target. Directly over TCP, or — when the
-        // connection names a jump host — tunnelled through a chain of bastions (each
-        // a direct-tcpip channel carrying the next hop's SSH, like OpenSSH ProxyJump).
-        // Host-key verification runs per hop in each handler.check_server_key().
-        let handler = SshClientHandler {
-            db: db_pool.clone(),
-            host: connection.hostname.clone(),
-            port: connection.port,
-            events: events.clone(),
-            force_accept_host_key,
-        };
+        // Establish the authenticated transport (direct or through a jump chain).
         // Jump handles are retained on the session so the tunnel stays up for its life.
-        let mut jump_handles: Vec<client::Handle<SshClientHandler>> = Vec::new();
-        let mut session = if jumps.is_empty() {
-            let addr = format!("{}:{}", connection.hostname, connection.port);
-            tracing::info!("[terminal.rs] Attempting TCP connection to {}...", addr);
-            match tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, &addr, handler))
-                .await
-            {
-                Ok(result) => result?,
-                Err(_) => {
-                    return Err(anyhow!(
-                        "Connection to {} timed out after {}s",
-                        addr,
-                        CONNECT_TIMEOUT.as_secs()
-                    ));
-                }
-            }
-        } else {
-            tracing::info!(
-                "[terminal.rs] Reaching {}:{} through {} jump host(s)",
-                connection.hostname,
-                connection.port,
-                jumps.len()
-            );
-            let (stream, handles) = open_jump_tunnel(
-                &jumps,
-                &connection.hostname,
-                connection.port,
-                db_pool.clone(),
-                events.clone(),
-                force_accept_host_key,
-            )
-            .await?;
-            jump_handles = handles;
-            client::connect_stream(config, stream, handler).await?
-        };
-        tracing::info!("[terminal.rs] Transport to target established");
-
-        // Authenticate to the target end-to-end (through any tunnel — the target
-        // never sees a jump host's credentials, nor a jump the target's).
-        tracing::info!("[terminal.rs] Authenticating...");
-        authenticate_session(
-            &mut session,
-            &connection.username,
+        let (mut session, jump_handles) = establish_authenticated_handle(
+            &connection,
             &auth_method,
+            events.clone(),
+            db_pool,
+            keep_alive_interval,
+            force_accept_host_key,
             interactive.as_ref(),
+            &jumps,
         )
         .await?;
-        tracing::info!("[terminal.rs] Authentication successful");
 
         // Open a channel with PTY
         tracing::info!("[terminal.rs] Opening channel...");
@@ -882,10 +931,38 @@ impl Session {
     }
 }
 
+/// A running local port forward: a bound TCP listener whose accepted connections
+/// are tunnelled over SSH (a direct-tcpip channel per connection) to
+/// `remote_host:remote_port` as seen from the SSH host — through the connection's
+/// jump chain too, if it has one.
+struct PortForward {
+    info: PortForwardInfo,
+    /// The accept loop; aborted on stop.
+    accept_task: tokio::task::JoinHandle<()>,
+    /// The SSH session carrying the tunnel, and its jump handles. Held here so the
+    /// tunnel stays up for the forward's life and closes when it's dropped.
+    _session: Arc<client::Handle<SshClientHandler>>,
+    _jump_handles: Vec<client::Handle<SshClientHandler>>,
+}
+
+/// Serializable description of a running port forward (for the frontend list).
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortForwardInfo {
+    pub id: String,
+    pub connection_id: String,
+    pub bind_host: String,
+    pub local_port: u16,
+    pub remote_host: String,
+    pub remote_port: u16,
+}
+
 /// Manages all active terminal sessions
 #[derive(Clone)]
 pub struct SessionManager {
     sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
+    /// Running local port forwards, keyed by forward id.
+    forwards: Arc<Mutex<HashMap<String, PortForward>>>,
     db: Database,
     auth: crate::auth::AuthManager,
 }
@@ -894,6 +971,7 @@ impl SessionManager {
     pub fn new(db: Database, auth: crate::auth::AuthManager) -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
+            forwards: Arc::new(Mutex::new(HashMap::new())),
             db,
             auth,
         }
@@ -1139,6 +1217,154 @@ impl SessionManager {
         // establishes the outermost (TCP-facing) hop first, so reverse into that order.
         hops.reverse();
         Ok(hops)
+    }
+
+    /// Start a local port forward for a saved connection: bind `bind_host:local_port`
+    /// and tunnel each accepted TCP connection over SSH to `remote_host:remote_port`
+    /// (through the connection's jump chain, if any). Establishes a dedicated headless
+    /// session — no PTY — so a forward works without a terminal open. Returns the info.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_local_forward(
+        &self,
+        connection_id: &str,
+        bind_host: &str,
+        local_port: u16,
+        remote_host: &str,
+        remote_port: u16,
+        events: SharedEvents,
+    ) -> Result<PortForwardInfo> {
+        // Load + decrypt the connection and resolve its jump chain, as for a terminal.
+        let row = self
+            .db
+            .get_connection(connection_id)
+            .await?
+            .ok_or_else(|| anyhow!("Connection not found"))?;
+        let master_key = self.auth.get_master_key().await?;
+        let auth_method =
+            Connection::decrypt_credentials(&row.encrypted_credentials, &row.nonce, &master_key)?;
+        let connection = connection_from_row(&row, auth_method.clone())?;
+        let jumps = self
+            .resolve_jump_chain(row.jump.as_deref(), &master_key)
+            .await?;
+
+        // A long-lived tunnel benefits from keepalive to notice a dead peer; default 30s.
+        let keep_alive = match row.ssh_keep_alive_override.as_deref() {
+            Some("enabled") => Some(row.ssh_keep_alive_interval.unwrap_or(30) as u64),
+            _ => Some(30),
+        };
+
+        // Headless authenticated session (no PTY). MVP forwards use non-interactive
+        // auth (key/agent/password) — there's no 2FA UI bridge on this path yet.
+        let (session, jump_handles) = establish_authenticated_handle(
+            &connection,
+            &auth_method,
+            events.clone(),
+            Arc::new(self.db.pool().clone()),
+            keep_alive,
+            false,
+            None,
+            &jumps,
+        )
+        .await?;
+        let session = Arc::new(session);
+
+        // Bind before reporting success, so a port clash is a clear immediate error.
+        let listener = tokio::net::TcpListener::bind((bind_host, local_port))
+            .await
+            .map_err(|e| anyhow!("Could not bind {}:{}: {}", bind_host, local_port, e))?;
+        // Resolve the actual port (in case local_port was 0 = "pick one").
+        let local_port = listener
+            .local_addr()
+            .map(|a| a.port())
+            .unwrap_or(local_port);
+
+        let forward_id = Uuid::new_v4().to_string();
+        let info = PortForwardInfo {
+            id: forward_id.clone(),
+            connection_id: connection_id.to_string(),
+            bind_host: bind_host.to_string(),
+            local_port,
+            remote_host: remote_host.to_string(),
+            remote_port,
+        };
+
+        // Accept loop: one direct-tcpip channel + byte pump per accepted connection.
+        let task_session = session.clone();
+        let remote_host_owned = remote_host.to_string();
+        let accept_task = tokio::spawn(async move {
+            loop {
+                match listener.accept().await {
+                    Ok((mut socket, _peer)) => {
+                        let s = task_session.clone();
+                        let rh = remote_host_owned.clone();
+                        tokio::spawn(async move {
+                            match s
+                                .channel_open_direct_tcpip(
+                                    rh.clone(),
+                                    remote_port as u32,
+                                    "127.0.0.1",
+                                    0,
+                                )
+                                .await
+                            {
+                                Ok(channel) => {
+                                    let mut stream = channel.into_stream();
+                                    let _ = tokio::io::copy_bidirectional(&mut socket, &mut stream)
+                                        .await;
+                                }
+                                Err(e) => tracing::warn!(
+                                    "[terminal.rs] forward: channel to {}:{} failed: {}",
+                                    rh,
+                                    remote_port,
+                                    e
+                                ),
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        tracing::warn!("[terminal.rs] forward: accept error: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+
+        self.forwards.lock().await.insert(
+            forward_id,
+            PortForward {
+                info: info.clone(),
+                accept_task,
+                _session: session,
+                _jump_handles: jump_handles,
+            },
+        );
+        tracing::info!(
+            "[terminal.rs] Local forward {}:{} → {}:{} started",
+            info.bind_host,
+            info.local_port,
+            info.remote_host,
+            info.remote_port
+        );
+        Ok(info)
+    }
+
+    /// Stop a running port forward (aborts the accept loop; the tunnel session drops).
+    pub async fn stop_forward(&self, forward_id: &str) -> Result<()> {
+        if let Some(fwd) = self.forwards.lock().await.remove(forward_id) {
+            fwd.accept_task.abort();
+            tracing::info!("[terminal.rs] Forward {} stopped", forward_id);
+        }
+        Ok(())
+    }
+
+    /// List all running port forwards.
+    pub async fn list_forwards(&self) -> Vec<PortForwardInfo> {
+        self.forwards
+            .lock()
+            .await
+            .values()
+            .map(|f| f.info.clone())
+            .collect()
     }
 
     /// Run a pre-connect hook: a one-shot local command executed (in a PTY) before

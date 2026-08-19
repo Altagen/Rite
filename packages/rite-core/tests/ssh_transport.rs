@@ -13,11 +13,15 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use rite_core::connection::{AuthMethod, Connection, ConnectionMetadata, Protocol};
+use rite_core::auth::AuthManager;
+use rite_core::connection::{
+    AuthMethod, Connection, ConnectionMetadata, CreateConnectionInput, Protocol,
+};
+use rite_core::connections_manager::ConnectionsManager;
 use rite_core::db::Database;
 use rite_core::events::{SessionEvents, SharedEvents};
 use rite_core::known_hosts;
-use rite_core::terminal::SshSession;
+use rite_core::terminal::{SessionManager, SshSession};
 
 use russh::server::{
     Auth, ChannelOpenHandle, Config as ServerConfig, Handler, Msg, Server, Session,
@@ -1006,4 +1010,100 @@ async fn ssh_session_connects_through_two_jump_hosts() {
     );
 
     session.close().await.expect("close should succeed");
+}
+
+/// Local port forwarding: bind a local port and tunnel accepted TCP connections
+/// over SSH (a direct-tcpip channel per connection) to a remote service. Stands up
+/// an echo TCP service, a forward-capable SSH host, and an unlocked vault holding a
+/// saved connection, then proves bytes round-trip through the forwarded local port
+/// and that start/stop bookkeeping is correct.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn local_port_forward_tunnels_tcp() {
+    // The "remote" service the forward targets: a TCP echo server.
+    let echo = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let echo_port = echo.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut sock, _)) = echo.accept().await {
+            tokio::spawn(async move {
+                let mut buf = [0u8; 1024];
+                loop {
+                    match sock.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if sock.write_all(&buf[..n]).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    // The SSH host the forward rides: a server that forwards direct-tcpip channels.
+    let ssh_port = spawn_bastion_server().await;
+
+    // Unlocked vault with a saved connection to that SSH host. TOFU the host key so
+    // the (unknown) key is accepted silently rather than prompting.
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::new(&dir.path().join("t.db")).await.unwrap();
+    sqlx::query(
+        "INSERT OR REPLACE INTO settings (key, value, updated_at) \
+         VALUES ('host_key_verification_mode', 'accept', strftime('%s','now'))",
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
+    let auth = AuthManager::new(db.clone());
+    auth.setup_master_password("Str0ng!P@ss1").await.unwrap();
+    auth.unlock("Str0ng!P@ss1").await.unwrap();
+    let conns = ConnectionsManager::new(db.clone(), auth.clone());
+    let info = conns
+        .create_connection(CreateConnectionInput {
+            name: "host".into(),
+            protocol: "SSH".into(),
+            hostname: "127.0.0.1".into(),
+            port: ssh_port,
+            username: USER.into(),
+            auth_method: AuthMethod::Password {
+                password: PASS.into(),
+            },
+            color: None,
+            icon: None,
+            folder: None,
+            notes: None,
+            ssh_keep_alive_override: None,
+            ssh_keep_alive_interval: None,
+            preconnect: None,
+            jump: None,
+        })
+        .await
+        .unwrap();
+
+    let mgr = SessionManager::new(db.clone(), auth.clone());
+    let events: SharedEvents = Arc::new(Spy::default());
+    let fwd = mgr
+        .start_local_forward(&info.id, "127.0.0.1", 0, "127.0.0.1", echo_port, events)
+        .await
+        .expect("forward should start");
+    assert_eq!(mgr.list_forwards().await.len(), 1);
+
+    // Connect through the forwarded local port and expect the echo service to answer.
+    let mut client = tokio::net::TcpStream::connect(("127.0.0.1", fwd.local_port))
+        .await
+        .expect("should connect to the forwarded local port");
+    client.write_all(b"tunnel-hello").await.unwrap();
+    let mut buf = [0u8; 64];
+    let n = tokio::time::timeout(Duration::from_secs(5), client.read(&mut buf))
+        .await
+        .expect("read should not time out")
+        .expect("read should succeed");
+    assert_eq!(
+        &buf[..n],
+        b"tunnel-hello",
+        "bytes should round-trip through the local forward"
+    );
+
+    mgr.stop_forward(&fwd.id).await.unwrap();
+    assert_eq!(mgr.list_forwards().await.len(), 0);
 }
