@@ -68,32 +68,37 @@ let SNIPPETS = [
   { id:'s2', name:'Disk usage',         command:'df -h' },
   { id:'s3', name:'Running containers', command:'docker ps' },
   { id:'s4', name:'Failed units',       command:'systemctl --failed' },
-  { id:'s5', name:'Update & upgrade',   command:'sudo apt update && sudo apt upgrade -y' },
+  // Multiline: each line runs after the previous one (no && needed).
+  { id:'s5', name:'Deploy check',       command:'git pull\nnpm ci\nnpm run build\nsystemctl restart app' },
 ];
+// Non-empty command lines of a snippet (the units run one after another).
+function snipLines(s){return (s.command||'').split('\n').map(x=>x.trim()).filter(Boolean);}
 function snipBody(host){
-  const rows = SNIPPETS.map((s,i)=>`<div class="snip-row">
-    <div class="snip-meta"><div class="snip-name">${s.name}</div><code class="snip-cmd">${s.command}</code></div>
+  const rows = SNIPPETS.map((s,i)=>{const L=snipLines(s);const preview=L[0]||'';const extra=L.length>1?` <span class="muted">+${L.length-1}</span>`:'';
+    return `<div class="snip-row">
+    <div class="snip-meta"><div class="snip-name">${s.name}${L.length>1?` <span class="snip-count" title="${L.length} commands, run one after another">${L.length} cmds</span>`:''}</div><code class="snip-cmd">${preview}${extra}</code></div>
     <button class="btn btn-ghost btn-sm" data-snip-run="${i}" title="Run on this pane">Run</button>
     <button class="btn btn-ghost btn-sm" data-snip-all="${i}" title="Broadcast to every open pane">${'⇉'}</button>
     <button class="btn btn-ghost btn-sm" data-snip-del="${i}" title="Delete">✕</button>
-  </div>`).join('') || `<p class="muted" style="font-size:13px;margin:2px 0 12px">No snippets yet — add one below.</p>`;
-  return `<p class="muted" style="font-size:12px;margin:0 0 10px">Run a saved command on <b>${host?host:'this pane'}</b> (Run) or on <b>every open pane</b> (⇉). Runs client-side — it's just typed into the session.</p>
+  </div>`;}).join('') || `<p class="muted" style="font-size:13px;margin:2px 0 12px">No snippets yet — add one below.</p>`;
+  return `<p class="muted" style="font-size:12px;margin:0 0 10px">Run a saved command on <b>${host?host:'this pane'}</b> (Run) or on <b>every open pane</b> (⇉). Multiple lines run <b>one after another</b> (no <code style="font-family:ui-monospace,monospace">&amp;&amp;</code> needed). Runs client-side — just typed into the session.</p>
     <div class="snip-list">${rows}</div>
     <div class="snip-add">
       <label class="field" style="width:150px"><span>Name</span><input class="inp" id="snip-name" placeholder="Tail nginx"></label>
-      <label class="field" style="flex:1;min-width:180px"><span>Command</span><input class="inp mono" id="snip-cmd" placeholder="tail -f /var/log/nginx/error.log"></label>
+      <label class="field" style="flex:1;min-width:200px"><span>Command <span class="muted" style="font-weight:400">(one per line)</span></span><textarea class="inp mono" id="snip-cmd" rows="2" spellcheck="false" style="resize:vertical;min-height:44px;line-height:1.5" placeholder="git pull&#10;npm ci&#10;npm run build"></textarea></label>
       <button class="btn btn-primary btn-sm" data-snip-add style="margin-top:18px">Add</button>
     </div>`;
 }
 function openSnippets(host){
   const bd=showModal({title:'Snippets',subtitle:host?('run on '+host):'run on this pane',wide:true,confirm:'Done',body:snipBody(host)});
   const body=bd.querySelector('.body');
+  const ran=(s,where)=>{const n=snipLines(s).length;return `Ran <span class="accent">${s.name}</span>${n>1?` (${n} commands)`:''} on ${where}`;};
   body.addEventListener('click',e=>{const t=e.target.closest('[data-snip-run],[data-snip-all],[data-snip-del],[data-snip-add]');if(!t)return;
-    if(t.dataset.snipRun!==undefined){const s=SNIPPETS[+t.dataset.snipRun];toast(`Ran <span class="accent">${s.name}</span> on ${host||'this pane'}`);}
-    else if(t.dataset.snipAll!==undefined){const s=SNIPPETS[+t.dataset.snipAll];toast(`Broadcast <span class="accent">${s.name}</span> to every open pane`);}
+    if(t.dataset.snipRun!==undefined){const s=SNIPPETS[+t.dataset.snipRun];toast(ran(s,host||'this pane'));}
+    else if(t.dataset.snipAll!==undefined){const s=SNIPPETS[+t.dataset.snipAll];toast(ran(s,'every open pane'));}
     else if(t.dataset.snipDel!==undefined){SNIPPETS.splice(+t.dataset.snipDel,1);body.innerHTML=snipBody(host);}
-    else if(t.dataset.snipAdd!==undefined){const n=(body.querySelector('#snip-name').value||'').trim(),c=(body.querySelector('#snip-cmd').value||'').trim();
-      if(!n||!c){toast('Give the snippet a name and a command');return;}
+    else if(t.dataset.snipAdd!==undefined){const n=(body.querySelector('#snip-name').value||'').trim(),c=(body.querySelector('#snip-cmd').value||'').replace(/\n+$/,'');
+      if(!n||!c.trim()){toast('Give the snippet a name and at least one command');return;}
       SNIPPETS.push({id:'s'+Math.random().toString(36).slice(2,7),name:n,command:c});body.innerHTML=snipBody(host);}
   });
 }
