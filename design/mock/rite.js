@@ -59,6 +59,45 @@ function showModal({title,subtitle,body,confirm='Confirm',onConfirm,wide}){
   return bd;
 }
 
+/* ================= Snippets (Wave-1) =================
+   Reusable commands you run in a session — on one pane, or broadcast to every
+   open pane. A personal library (cross-shell). Running = sending the command +
+   Enter to the session's stdin (no core needed: reuses send_terminal_input). */
+let SNIPPETS = [
+  { id:'s1', name:'Tail syslog',        command:'sudo tail -f /var/log/syslog' },
+  { id:'s2', name:'Disk usage',         command:'df -h' },
+  { id:'s3', name:'Running containers', command:'docker ps' },
+  { id:'s4', name:'Failed units',       command:'systemctl --failed' },
+  { id:'s5', name:'Update & upgrade',   command:'sudo apt update && sudo apt upgrade -y' },
+];
+function snipBody(host){
+  const rows = SNIPPETS.map((s,i)=>`<div class="snip-row">
+    <div class="snip-meta"><div class="snip-name">${s.name}</div><code class="snip-cmd">${s.command}</code></div>
+    <button class="btn btn-ghost btn-sm" data-snip-run="${i}" title="Run on this pane">Run</button>
+    <button class="btn btn-ghost btn-sm" data-snip-all="${i}" title="Broadcast to every open pane">${'⇉'}</button>
+    <button class="btn btn-ghost btn-sm" data-snip-del="${i}" title="Delete">✕</button>
+  </div>`).join('') || `<p class="muted" style="font-size:13px;margin:2px 0 12px">No snippets yet — add one below.</p>`;
+  return `<p class="muted" style="font-size:12px;margin:0 0 10px">Run a saved command on <b>${host?host:'this pane'}</b> (Run) or on <b>every open pane</b> (⇉). Runs client-side — it's just typed into the session.</p>
+    <div class="snip-list">${rows}</div>
+    <div class="snip-add">
+      <label class="field" style="width:150px"><span>Name</span><input class="inp" id="snip-name" placeholder="Tail nginx"></label>
+      <label class="field" style="flex:1;min-width:180px"><span>Command</span><input class="inp mono" id="snip-cmd" placeholder="tail -f /var/log/nginx/error.log"></label>
+      <button class="btn btn-primary btn-sm" data-snip-add style="margin-top:18px">Add</button>
+    </div>`;
+}
+function openSnippets(host){
+  const bd=showModal({title:'Snippets',subtitle:host?('run on '+host):'run on this pane',wide:true,confirm:'Done',body:snipBody(host)});
+  const body=bd.querySelector('.body');
+  body.addEventListener('click',e=>{const t=e.target.closest('[data-snip-run],[data-snip-all],[data-snip-del],[data-snip-add]');if(!t)return;
+    if(t.dataset.snipRun!==undefined){const s=SNIPPETS[+t.dataset.snipRun];toast(`Ran <span class="accent">${s.name}</span> on ${host||'this pane'}`);}
+    else if(t.dataset.snipAll!==undefined){const s=SNIPPETS[+t.dataset.snipAll];toast(`Broadcast <span class="accent">${s.name}</span> to every open pane`);}
+    else if(t.dataset.snipDel!==undefined){SNIPPETS.splice(+t.dataset.snipDel,1);body.innerHTML=snipBody(host);}
+    else if(t.dataset.snipAdd!==undefined){const n=(body.querySelector('#snip-name').value||'').trim(),c=(body.querySelector('#snip-cmd').value||'').trim();
+      if(!n||!c){toast('Give the snippet a name and a command');return;}
+      SNIPPETS.push({id:'s'+Math.random().toString(36).slice(2,7),name:n,command:c});body.innerHTML=snipBody(host);}
+  });
+}
+
 /* ---- shared dialogs (same across the 3 directions) ---- */
 function dlgUnlock(vault,done){
   showModal({title:`Unlock “${vault.name}”`,subtitle:vault.file,
@@ -133,6 +172,7 @@ function termHTML(host){
         <button title="Split horizontal (Ctrl+Shift+H)">${I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4')}</button>
         <button title="Split vertical (Ctrl+Shift+V)">${I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4',1)}</button>
         <button title="Detach to new tab">${I('M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14')}</button>
+        <button title="Snippets — run a saved command here" onclick="openSnippets(${host?`'${host}'`:'null'})">${I('M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12')}</button>
         <button title="Search in terminal (Ctrl+F)">${I('M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z')}</button>
         <button title="Close terminal">${I('M6 18L18 6M6 6l12 12')}</button>
       </div>

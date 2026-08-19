@@ -203,3 +203,11 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
 @media (max-width:960px){ .inst-url{display:none} }   /* clean-drop the server URL early, keep the name */
 @media (max-width:600px){ .profile .pmeta{display:none} .profile .chev{display:none} .profile{padding:3px} }
 @media (max-width:500px){ .appbar .inst{display:none} }   /* only on a truly tiny window (in the profile menu) */
+
+/* Snippets panel (Wave-1) */
+.snip-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+.snip-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--border);border-radius:8px;background:var(--card2)}
+.snip-meta{flex:1;min-width:0}
+.snip-name{font-weight:600;font-size:13px}
+.snip-cmd{display:block;font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.snip-add{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
