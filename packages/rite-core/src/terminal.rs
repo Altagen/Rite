@@ -672,6 +672,7 @@ fn connection_from_row(
         ssh_keep_alive_interval: row.ssh_keep_alive_interval,
         preconnect: row.preconnect.clone(),
         jump: row.jump.clone(),
+        forwards: Vec::new(),
         last_used_at: row.last_used_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -705,7 +706,7 @@ impl SshSession {
 
         // Establish the authenticated transport (direct or through a jump chain).
         // Jump handles are retained on the session so the tunnel stays up for its life.
-        let (mut session, jump_handles) = establish_authenticated_handle(
+        let (session, jump_handles) = establish_authenticated_handle(
             &connection,
             &auth_method,
             events.clone(),
@@ -1058,6 +1059,7 @@ impl SessionManager {
             ssh_keep_alive_interval: row.ssh_keep_alive_interval,
             preconnect: row.preconnect.clone(),
             jump: row.jump.clone(),
+            forwards: Vec::new(),
             last_used_at: row.last_used_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -1205,6 +1207,7 @@ impl SessionManager {
                 ssh_keep_alive_interval: row.ssh_keep_alive_interval,
                 preconnect: row.preconnect.clone(),
                 jump: row.jump.clone(),
+                forwards: Vec::new(),
                 last_used_at: row.last_used_at,
                 created_at: row.created_at,
                 updated_at: row.updated_at,

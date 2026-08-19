@@ -33,6 +33,9 @@ impl ConnectionsManager {
         // Encrypt credentials
         let (encrypted_credentials, nonce) = connection.encrypt_credentials(&master_key)?;
 
+        // Port forwards are non-secret metadata, stored as a JSON array.
+        let forwards_json = serde_json::to_string(&connection.forwards)?;
+
         // Store in database
         self.db
             .create_connection(
@@ -52,6 +55,7 @@ impl ConnectionsManager {
                 connection.ssh_keep_alive_interval,
                 connection.preconnect.as_deref(),
                 connection.jump.as_deref(),
+                Some(forwards_json.as_str()),
                 connection.created_at,
                 connection.updated_at,
             )
@@ -111,6 +115,9 @@ impl ConnectionsManager {
         let master_key = self.auth.get_master_key().await?;
         let (encrypted_credentials, nonce) = connection.encrypt_credentials(&master_key)?;
 
+        // Port forwards are non-secret metadata, stored as a JSON array.
+        let forwards_json = serde_json::to_string(&connection.forwards)?;
+
         // Update in database
         self.db
             .update_connection(
@@ -130,6 +137,7 @@ impl ConnectionsManager {
                 connection.ssh_keep_alive_interval,
                 connection.preconnect.as_deref(),
                 connection.jump.as_deref(),
+                Some(forwards_json.as_str()),
                 connection.updated_at,
             )
             .await?;
@@ -176,6 +184,7 @@ impl ConnectionsManager {
             ssh_keep_alive_interval: row.ssh_keep_alive_interval,
             preconnect: row.preconnect.clone(),
             jump: row.jump.clone(),
+            forwards: parse_forwards(row.forwards.as_deref()),
             created_at: row.created_at,
             updated_at: row.updated_at,
             last_used_at: row.last_used_at,
@@ -205,9 +214,17 @@ impl ConnectionsManager {
             ssh_keep_alive_interval: row.ssh_keep_alive_interval,
             preconnect: row.preconnect.clone(),
             jump: row.jump.clone(),
+            forwards: parse_forwards(row.forwards.as_deref()),
             created_at: row.created_at,
             updated_at: row.updated_at,
             last_used_at: row.last_used_at,
         }
     }
+}
+
+/// Parse the stored port-forwards JSON; a malformed/absent value yields an empty
+/// list rather than failing the whole connection load (graceful-handling).
+fn parse_forwards(json: Option<&str>) -> Vec<crate::connection::PortForwardConfig> {
+    json.and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default()
 }

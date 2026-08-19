@@ -322,6 +322,7 @@ fn test_connection(port: u16) -> Connection {
         ssh_keep_alive_interval: None,
         preconnect: None,
         jump: None,
+        forwards: Vec::new(),
         created_at: 0,
         updated_at: 0,
         last_used_at: None,
@@ -1076,6 +1077,7 @@ async fn local_port_forward_tunnels_tcp() {
             ssh_keep_alive_interval: None,
             preconnect: None,
             jump: None,
+            forwards: None,
         })
         .await
         .unwrap();

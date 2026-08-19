@@ -666,6 +666,8 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/terminal/quick-ssh", post(quick_ssh))
         .route("/api/terminal/local", post(create_local))
         .route("/api/terminal/preconnect", post(run_preconnect))
+        .route("/api/forwards", get(list_forwards).post(start_forward))
+        .route("/api/forwards/{id}", delete(stop_forward))
         .route("/api/terminal/{id}/input", post(send_input))
         .route("/api/terminal/{id}/claim", post(claim))
         .route("/api/terminal/{id}/resize", post(resize))
@@ -3820,6 +3822,50 @@ async fn create_local(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartForwardReq {
+    connection_id: String,
+    #[serde(default)]
+    bind_host: Option<String>,
+    local_port: u16,
+    remote_host: String,
+    remote_port: u16,
+}
+
+async fn start_forward(
+    State(state): State<ServerState>,
+    Json(req): Json<StartForwardReq>,
+) -> Result<Json<rite_core::terminal::PortForwardInfo>, AppError> {
+    let bind_host = req.bind_host.as_deref().unwrap_or("127.0.0.1");
+    let info = state
+        .sessions
+        .start_local_forward(
+            &req.connection_id,
+            bind_host,
+            req.local_port,
+            &req.remote_host,
+            req.remote_port,
+            state.events_sink(),
+        )
+        .await?;
+    Ok(Json(info))
+}
+
+async fn stop_forward(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    state.sessions.stop_forward(&id).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn list_forwards(
+    State(state): State<ServerState>,
+) -> Result<Json<Vec<rite_core::terminal::PortForwardInfo>>, AppError> {
+    Ok(Json(state.sessions.list_forwards().await))
+}
+
+#[derive(Deserialize)]
 struct PreconnectReq {
     command: String,
 }
@@ -3966,6 +4012,7 @@ async fn quick_ssh(
         ssh_keep_alive_interval: None,
         preconnect: None,
         jump: None,
+        forwards: Vec::new(),
         last_used_at: None,
         created_at: now,
         updated_at: now,
