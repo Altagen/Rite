@@ -68,6 +68,8 @@ export interface StoredRecord {
   preconnect?: string | null;
   // Jump host (ProxyJump): the id of another connection to reach this one through.
   jump?: string | null;
+  // Saved port forwards. Sealed inside the blob (non-secret metadata).
+  forwards?: import('./connectionsStore').PortForwardConfig[];
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   // Sealed inside the blob, so the opt-out is zero-knowledge like everything else.
   hc?: boolean | null;
@@ -183,6 +185,7 @@ function toInfo(
     sshKeepAliveInterval: r.sshKeepAliveInterval,
     preconnect: r.preconnect ?? null,
     jump: r.jump ?? null,
+    forwards: r.forwards ?? [],
     hc: r.hc ?? null,
     createdAt,
     updatedAt,
@@ -207,6 +210,7 @@ function recordFromCreate(input: CreateConnectionInput): StoredRecord {
     sshKeepAliveInterval: input.sshKeepAliveInterval ?? null,
     preconnect: input.preconnect ?? null,
     jump: input.jump ?? null,
+    forwards: input.forwards ?? [],
     hc: input.hc ?? null,
   };
 }
@@ -228,6 +232,7 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   if (input.sshKeepAliveInterval !== undefined) merged.sshKeepAliveInterval = input.sshKeepAliveInterval;
   if (input.preconnect !== undefined) merged.preconnect = input.preconnect;
   if (input.jump !== undefined) merged.jump = input.jump;
+  if (input.forwards !== undefined) merged.forwards = input.forwards;
   if (input.hc !== undefined) merged.hc = input.hc;
   return merged;
 }

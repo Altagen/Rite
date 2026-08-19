@@ -427,6 +427,19 @@ export async function mockInvoke(
     case 'run_preconnect':
     case 'quick_ssh_connect':
       return `mock-session-${Math.random().toString(36).slice(2, 8)}`;
+    case 'start_forward':
+      return {
+        id: `mock-fwd-${Math.random().toString(36).slice(2, 8)}`,
+        connectionId: (args?.connectionId as string) ?? '',
+        bindHost: (args?.bindHost as string) ?? '127.0.0.1',
+        localPort: (args?.localPort as number) ?? 0,
+        remoteHost: (args?.remoteHost as string) ?? '',
+        remotePort: (args?.remotePort as number) ?? 0,
+      };
+    case 'stop_forward':
+      return null;
+    case 'list_forwards':
+      return [];
     case 'claim_session_output':
       return '';
     case 'send_terminal_input':

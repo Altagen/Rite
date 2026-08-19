@@ -25,6 +25,15 @@ export type AuthMethodInput =
   | { type: 'publicKey'; keyPath: string; passphrase?: string }
   | { type: 'agent'; identity?: string; forward?: boolean };
 
+/** A saved port-forward config on a connection (started/stopped at runtime). */
+export interface PortForwardConfig {
+  forwardType?: string; // "local" (MVP); "remote"/"dynamic" reserved
+  bindHost?: string | null; // local bind host; null ⇒ 127.0.0.1
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+}
+
 export interface ConnectionInfo {
   id: string;
   name: string;
@@ -45,6 +54,8 @@ export interface ConnectionInfo {
   // Jump host (ProxyJump): the id of another connection to reach this one through
   // (a bastion). Chainable — the jump may itself have a jump. Empty/absent ⇒ direct.
   jump?: string | null;
+  // Saved port forwards (started/stopped at runtime from the forwarding panel).
+  forwards?: PortForwardConfig[];
   // Health-check opt-out (ADR 0017): false ⇒ this machine is never actively probed,
   // even where the server policy allows it. Absent/true ⇒ follow the policy. A machine
   // can opt out of probing but can't opt into more than the server permits.
@@ -77,6 +88,7 @@ export interface CreateConnectionInput {
   sshKeepAliveInterval?: number | null;
   preconnect?: string | null; // pre-connect hook (see ConnectionInfo.preconnect)
   jump?: string | null; // jump-host connection id (see ConnectionInfo.jump)
+  forwards?: PortForwardConfig[]; // saved port forwards (see ConnectionInfo.forwards)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
   // ADR 0016: save this machine into a shared collection (encrypted with the
   // collection key) instead of the personal vault. Absent ⇒ personal vault.
@@ -99,6 +111,7 @@ export interface UpdateConnectionInput {
   sshKeepAliveInterval?: number | null;
   preconnect?: string | null; // pre-connect hook (see ConnectionInfo.preconnect)
   jump?: string | null; // jump-host connection id (see ConnectionInfo.jump)
+  forwards?: PortForwardConfig[]; // saved port forwards (Some ⇒ replace the whole list)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
 }
 

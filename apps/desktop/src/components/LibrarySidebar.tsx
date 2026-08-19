@@ -25,6 +25,7 @@ interface LibrarySidebarProps {
   onEdit: (connection: ConnectionInfo) => void;
   onDelete: (connection: ConnectionInfo) => void;
   onConnect: (connection: ConnectionInfo) => void;
+  onForward?: (connection: ConnectionInfo) => void; // open the port-forwarding panel
   onMoveMachine?: (connection: ConnectionInfo) => void; // move to another folder (collection ctx)
   // ADR 0016: open a collection in the main area (accounts context only).
   onOpenCollection?: (collectionId: string) => void;
@@ -398,6 +399,7 @@ function MachineRow({
   onMove,
   onDelete,
   onConnect,
+  onForward,
 }: {
   connection: ConnectionInfo;
   isSelected: boolean;
@@ -407,6 +409,7 @@ function MachineRow({
   onMove?: () => void;
   onDelete: () => void;
   onConnect: () => void;
+  onForward?: () => void;
 }) {
   const { t } = useTranslation();
   const active = useHealth((s) =>
@@ -471,6 +474,20 @@ function MachineRow({
         >
           <IconEdit className="h-3.5 w-3.5" />
         </button>
+        {onForward && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onForward();
+            }}
+            aria-label="Port forwarding"
+            title={t('pf.title')}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <path d="M4 9h13l-3.5-3.5M20 15H7l3.5 3.5" />
+            </svg>
+          </button>
+        )}
         {onMove && (
           <button
             onClick={(e) => {
@@ -617,6 +634,7 @@ export function LibrarySidebar({
   onEdit,
   onDelete,
   onConnect,
+  onForward,
   onMoveMachine,
   onOpenCollection,
   openCollectionId,
@@ -662,6 +680,7 @@ export function LibrarySidebar({
       onMove={onMoveMachine ? () => onMoveMachine(c) : undefined}
       onDelete={() => onDelete(c)}
       onConnect={() => onConnect(c)}
+      onForward={onForward ? () => onForward(c) : undefined}
     />
   );
 

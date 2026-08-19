@@ -100,12 +100,35 @@ const ConnectionInfoSchema = z.object({
   sshKeepAliveInterval: z.number().nullable().optional(),
   preconnect: z.string().nullable().optional(),
   jump: z.string().nullable().optional(),
+  forwards: z
+    .array(
+      z.object({
+        forwardType: z.string().optional(),
+        bindHost: z.string().nullable().optional(),
+        localPort: z.number(),
+        remoteHost: z.string(),
+        remotePort: z.number(),
+      }),
+    )
+    .optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
   lastUsedAt: z.number().nullable().optional(),
 });
 
 const ConnectionInfoArraySchema = z.array(ConnectionInfoSchema);
+
+// A running port forward, as returned by the backend.
+const PortForwardInfoSchema = z.object({
+  id: z.string(),
+  connectionId: z.string(),
+  bindHost: z.string(),
+  localPort: z.number(),
+  remoteHost: z.string(),
+  remotePort: z.number(),
+});
+const PortForwardInfoArraySchema = z.array(PortForwardInfoSchema);
+export type PortForwardInfo = z.infer<typeof PortForwardInfoSchema>;
 
 // SSH Config schemas
 const SshConfigEntrySchema = z.object({
@@ -296,6 +319,24 @@ export const BackendTerminal = {
    */
   runPreconnect: (command: string) =>
     invokeWithValidation('run_preconnect', StringSchema, { command }),
+
+  /**
+   * Start a local port forward: bind `bindHost:localPort` and tunnel it over SSH
+   * to `remoteHost:remotePort`. Returns the running forward (with its id).
+   */
+  startForward: (args: {
+    connectionId: string;
+    bindHost?: string;
+    localPort: number;
+    remoteHost: string;
+    remotePort: number;
+  }) => invokeWithValidation('start_forward', PortForwardInfoSchema, args),
+
+  /** Stop a running port forward by id. */
+  stopForward: (id: string) => invokeWithValidation('stop_forward', z.null(), { id }),
+
+  /** List all running port forwards. */
+  listForwards: () => invokeWithValidation('list_forwards', PortForwardInfoArraySchema, {}),
 
   /**
    * Quick SSH connect (temporary connection)

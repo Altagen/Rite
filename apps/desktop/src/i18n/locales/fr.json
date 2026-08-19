@@ -171,6 +171,26 @@
     "custom": "Personnalisé",
     "customLabel": "Secondes"
   },
+  "pf": {
+    "title": "Redirection de ports",
+    "empty": "Aucune redirection — ajoutez-en une ci-dessous.",
+    "local": "Local",
+    "remote": "Distant",
+    "dynamic": "Dynamique (SOCKS)",
+    "soon": "Bientôt",
+    "localPort": "Port local",
+    "remoteHost": "Hôte distant",
+    "remotePort": "Port distant",
+    "add": "Ajouter",
+    "start": "Démarrer",
+    "stop": "Arrêter",
+    "remove": "Supprimer",
+    "listening": "À l'écoute",
+    "stopped": "Arrêté",
+    "done": "Terminé",
+    "fillAll": "Renseignez le port local, l'hôte distant et le port distant.",
+    "hint": "Une redirection locale : tout ce qui arrive sur 127.0.0.1:portlocal sur votre machine est tunnelisé via SSH vers hôtedistant:portdistant tel que vu depuis {name} (via son hôte de rebond aussi, le cas échéant). Distant & dynamique (SOCKS) bientôt."
+  },
   "jump": {
     "label": "Hôte de rebond",
     "optional": "optionnel",

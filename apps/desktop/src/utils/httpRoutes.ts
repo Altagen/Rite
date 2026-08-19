@@ -550,6 +550,20 @@ const routes: Record<string, Route> = {
     (await json<{ sessionId: string }>('/api/terminal/preconnect', post({ command: a.command })))
       .sessionId,
 
+  start_forward: (a) =>
+    json('/api/forwards', post({
+      connectionId: a.connectionId,
+      bindHost: a.bindHost,
+      localPort: a.localPort,
+      remoteHost: a.remoteHost,
+      remotePort: a.remotePort,
+    })),
+  stop_forward: async (a) => {
+    await json(`/api/forwards/${a.id}`, { method: 'DELETE' });
+    return null;
+  },
+  list_forwards: () => json('/api/forwards'),
+
   send_terminal_input: async (a) => {
     await json(`/api/terminal/${a.sessionId}/input`, post({ data: a.data }));
     return null;

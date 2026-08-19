@@ -38,6 +38,7 @@ import { ImportSSHPasteModal } from './ImportSSHPasteModal';
 import { HostKeyModal, type HostKeyPrompt } from './HostKeyModal';
 import { KbdInteractiveModal, type KbdChallenge } from './KbdInteractiveModal';
 import { PreconnectModal } from './PreconnectModal';
+import { PortForwardModal } from './PortForwardModal';
 import { ContextPill } from './ContextPill';
 import {
   isNativeShell,
@@ -225,6 +226,8 @@ export function Workspace({
   const lastConnectionRef = useRef<ConnectionInfo | null>(null);
   // Pre-connect hook: the connection whose hook is running before we open SSH.
   const [preconnectPrompt, setPreconnectPrompt] = useState<ConnectionInfo | null>(null);
+  // Port forwarding: the connection whose forwards panel is open.
+  const [forwardTarget, setForwardTarget] = useState<ConnectionInfo | null>(null);
 
   // Keyboard-interactive (2FA/PAM) challenge emitted by the backend during connect.
   const [kbdChallenge, setKbdChallenge] = useState<KbdChallenge | null>(null);
@@ -1373,6 +1376,7 @@ export function Workspace({
               onEdit={handleEditConnection}
               onDelete={handleDeleteConnection}
               onConnect={handleConnect}
+              onForward={setForwardTarget}
               onMoveMachine={setMoveMachineTarget}
               onOpenCollection={handleOpenCollection}
               openCollectionId={mainView === 'collection' ? openCollectionId : null}
@@ -1814,6 +1818,19 @@ export function Workspace({
           busy={kbdBusy}
           onSubmit={handleKbdSubmit}
           onCancel={handleKbdCancel}
+        />
+      )}
+
+      {/* Port forwarding panel for a machine */}
+      {forwardTarget && (
+        <PortForwardModal
+          connection={forwardTarget}
+          onPersist={async (forwards) => {
+            await conns.update({ id: forwardTarget.id, forwards });
+            setForwardTarget((prev) => (prev ? { ...prev, forwards } : prev));
+            fetchConnections();
+          }}
+          onClose={() => setForwardTarget(null)}
         />
       )}
 

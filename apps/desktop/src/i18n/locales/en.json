@@ -171,6 +171,26 @@
     "custom": "Custom",
     "customLabel": "Seconds"
   },
+  "pf": {
+    "title": "Port forwarding",
+    "empty": "No forwards yet — add one below.",
+    "local": "Local",
+    "remote": "Remote",
+    "dynamic": "Dynamic (SOCKS)",
+    "soon": "Coming soon",
+    "localPort": "Local port",
+    "remoteHost": "Remote host",
+    "remotePort": "Remote port",
+    "add": "Add",
+    "start": "Start",
+    "stop": "Stop",
+    "remove": "Remove",
+    "listening": "Listening",
+    "stopped": "Stopped",
+    "done": "Done",
+    "fillAll": "Fill local port, remote host and remote port.",
+    "hint": "A local forward: anything reaching 127.0.0.1:localport on your machine is tunnelled over SSH to remotehost:remoteport as seen from {name} (through its jump host too, if it has one). Remote & dynamic (SOCKS) coming soon."
+  },
   "jump": {
     "label": "Jump host",
     "optional": "optional",
