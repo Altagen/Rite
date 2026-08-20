@@ -63,6 +63,21 @@
   .bnote{font-size:12.5px;color:var(--fg-dim);line-height:1.55;margin-top:4px}
   .blive{display:flex;flex-direction:column;gap:5px;margin-top:8px}
   .blive-row{display:flex;align-items:center;gap:7px}
+  /* Machine dashboard (main area) */
+  .mdash{padding:16px 18px;height:100%;overflow:auto}
+  .mdash-hd{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .mdash-hd>span:first-child .icon{width:26px;height:26px}
+  .mdash-id{min-width:0}
+  .mdash-name{font-weight:700;font-size:17px;display:flex;align-items:center;gap:7px}
+  .mdash-sub{font-size:12.5px;color:var(--fg-dim)}
+  .dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;align-items:start}
+  .dcard{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:13px 14px}
+  .dcard-h{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .dcard-h .icon{width:17px;height:17px;color:var(--fg-dim)}
+  .dcard-t{font-weight:650;font-size:14px}
+  .ov{display:flex;flex-direction:column;gap:7px}
+  .ov-row{display:flex;justify-content:space-between;gap:12px;font-size:12.5px}
+  .ov-k{color:var(--muted)}.ov-v{color:var(--fg);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pst.up{background:var(--green);box-shadow:0 0 5px color-mix(in oklab,var(--green) 60%,transparent)}
   .pst.down{background:transparent;border:1.5px solid var(--muted)}
   .pst.seen{background:color-mix(in oklab,var(--muted) 55%,transparent)}
@@ -186,7 +201,7 @@
     </main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a> · <a href="#" onclick="demoDisconnect();return false">disconnect</a> · <a href="#" onclick="runPreconnect(false);return false">pre-connect ✓</a> · <a href="#" onclick="runPreconnect(true);return false">pre-connect ✕</a> · <a href="#" onclick="connectMachine('deploy@10.0.0.5','web-01');return false">jump host</a> · <a href="#" onclick="dlgPortForward(machineByName('web-01'));return false">port-forward</a> · <a href="#" onclick="openSnippets(null);return false">snippets</a> · <a href="#" onclick="dlgContainers(machineByName('web-01'));return false">containers</a> · <a href="#" onclick="dlgServices(machineByName('web-01'));return false">services</a> · <a href="#" onclick="dlgBoard(find('c-prod'));return false">board</a></div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>desktop</b> · context pill (vaults / servers) · local vault + multi-window · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openKbdInteractive();return false">2FA</a> · <a href="#" onclick="demoDisconnect();return false">disconnect</a> · <a href="#" onclick="runPreconnect(false);return false">pre-connect ✓</a> · <a href="#" onclick="runPreconnect(true);return false">pre-connect ✕</a> · <a href="#" onclick="connectMachine('deploy@10.0.0.5','web-01');return false">jump host</a> · <a href="#" onclick="dlgPortForward(machineByName('web-01'));return false">port-forward</a> · <a href="#" onclick="openSnippets(null);return false">snippets</a> · <a href="#" onclick="openMachine('web-01');return false">machine dashboard</a> · <a href="#" onclick="dlgBoard(find('c-prod'));return false">board</a></div>
 <!-- Focus-mode hint: only shown in focus mode; fades but stays faintly so the user is never trapped. -->
 <div id="focusHint">Focus mode · <kbd>Esc</kbd> or <kbd>F11</kbd> to exit · hover the top edge to reveal the toolbar</div>
 
@@ -296,7 +311,7 @@ function machineByName(name){let r=null;walk(LIB,n=>{(n.conns||[]).forEach(m=>{i
    ordered list of hop names between you and the target (nearest jump first). */
 function jumpChain(cn){const out=[];const seen=new Set();let j=cn&&cn.jump;while(j&&!seen.has(j)){seen.add(j);out.push(j);const m=machineByName(j);j=m&&m.jump;}return out;}
 
-let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
+let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
 const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
 // Quick SSH in a SERVER context follows the server policy (off by default — server
 // connections belong in collections). A local vault is self-governed → always available.
@@ -511,7 +526,7 @@ function nodeRow(n,depth,exp){const isColl=n.type==='coll';
     <span class="acts">${isColl
       ?`<button class="btn btn-ghost" title="Add" onclick="event.stopPropagation();collAdd('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();collMore('${n.id}',event)">${EXICON.more}</button>`
       :`<button class="btn btn-ghost" title="New here" onclick="event.stopPropagation();folderMenu('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();folderMore('${n.id}',event)">${EXICON.more}</button>`}</span></div>`;}
-function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="toast('${cn.name} · double-click to open')">
+function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="openMachine('${cn.name}')" title="Click: dashboard · double-click: connect">
     <span class="ca"></span><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
     <span class="nm">${cn.name}</span>${cn.jump?`<span class="jhop" title="Reached through ${jumpChain(cn).join(' › ')} (ProxyJump)">${M.jump}</span>`:''}${pfGlyph(cn)}${pastille(cn)}
     <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();machineMenu('${cn.name}',event)">${EXICON.more}</button></span></div>`;}
@@ -521,9 +536,7 @@ function pfGlyph(cn){if(!cn.forwards||!cn.forwards.length)return '';const live=c
 /* Per-machine actions menu (name → the real LIB object, so edits/forwards persist). */
 function machineMenu(name,e){const cn=machineByName(name);if(!cn)return;floatMenu(e,[
   {icon:ICON.play,label:'Connect',onclick:()=>connectMachine((cn.user||'user')+'@'+(cn.host||cn.name),cn.name)},
-  {icon:M.forward,label:'Port forwarding…',onclick:()=>dlgPortForward(cn)},
-  {icon:M.docker,label:'Containers…',onclick:()=>dlgContainers(cn)},
-  {icon:M.service,label:'Services…',onclick:()=>dlgServices(cn)},
+  {icon:M.board,label:'Open dashboard',onclick:()=>openMachine(cn.name)},
   {icon:M.edit,label:'Edit machine',onclick:()=>dlgNewConn('',cn)},
   {icon:M.move,label:'Move to folder…',onclick:()=>dlgMoveConn(cn.name,e)},
 ]);}
@@ -531,6 +544,111 @@ function machineMenu(name,e){const cn=machineByName(name);if(!cn)return;floatMen
    LOCAL forward (127.0.0.1:localPort → remoteHost:remotePort over SSH, as seen from
    the host). Remote & dynamic (SOCKS) reserved in the UI, built later — all ride the
    same direct-tcpip channel + a local TCP listener (the channel-generic transport). */
+/* ===== Machine dashboard (Wave-1, Control-Center encarts): selecting a machine
+   opens its OWN view in the main area — an overview plus contextual cards Rite
+   detects for that host (Containers, Services, Port forwards). One machine, one
+   place. Cards act inline (start/stop, exec-in, restart) — deep-dive later. ===== */
+const DEMO_CONTAINERS=[
+  {name:'web',     image:'nginx:1.27',     state:'running', ports:'0.0.0.0:80->80', pinned:true},
+  {name:'api',     image:'acme/api:2.4.1', state:'running', ports:'8080->8080',      pinned:true},
+  {name:'worker',  image:'acme/api:2.4.1', state:'running', ports:'',                pinned:false},
+  {name:'redis',   image:'redis:7-alpine', state:'running', ports:'6379->6379',      pinned:false},
+  {name:'migrate', image:'acme/api:2.4.1', state:'exited',  ports:'',                pinned:false},
+];
+const DEMO_SERVICES=[
+  {name:'nginx.service',       desc:'A high performance web server', active:'active',   sub:'running'},
+  {name:'app.service',         desc:'Acme API',                      active:'active',   sub:'running'},
+  {name:'postgresql.service',  desc:'PostgreSQL RDBMS',              active:'active',   sub:'running'},
+  {name:'certbot.timer',       desc:"Renew Let's Encrypt certs",     active:'active',   sub:'waiting'},
+  {name:'backup.service',      desc:'Nightly backup',                active:'failed',   sub:'failed'},
+  {name:'docker.service',      desc:'Docker Application Container',   active:'active',   sub:'running'},
+  {name:'ufw.service',         desc:'Uncomplicated firewall',        active:'inactive', sub:'dead'},
+];
+function svState(s){return s.active==='active'?'up':s.active==='failed'?'down':'seen';}
+function ctList(cn){return (cn.containers||DEMO_CONTAINERS).filter(c=>(cn.ctMode||'live')==='live'||c.pinned);}
+function svcList(cn){const all=cn.services||DEMO_SERVICES;const f=cn.svcFilter||'all';return all.filter(s=>f==='all'||(f==='failed'&&s.active==='failed')||(f==='active'&&s.active==='active'));}
+
+/* ---- dashboard cards (rendered inline in the machine view) ---- */
+function pfCard(cn){cn.forwards=cn.forwards||[];
+  const rows=cn.forwards.map((f,i)=>{const on=!!f.active;return `<div class="lrow">
+    <span class="pf-badge">L</span>
+    <span class="pf-route">127.0.0.1:${f.localPort} <span class="pf-arrow">${M.forward}</span> ${f.remoteHost}:${f.remotePort}</span>
+    <span class="pst ${on?'up':'seen'}" title="${on?'Listening':'Stopped'}"></span>
+    <button class="btn btn-ghost btn-sm" onclick="pfToggleFor('${cn.name}',${i})">${on?'Stop':'Start'}</button>
+    <button class="btn btn-ghost btn-sm" onclick="pfDelFor('${cn.name}',${i})" title="Remove">✕</button>
+  </div>`;}).join('')||`<p class="muted" style="font-size:12.5px">No forwards yet.</p>`;
+  const live=cn.forwards.filter(f=>f.active).length;
+  return `<div class="dcard">
+    <div class="dcard-h">${M.forward}<span class="dcard-t">Port forwarding</span>${live?`<span class="chip-sm">${live} live</span>`:''}<span style="flex:1"></span><button class="btn btn-ghost btn-sm" onclick="dlgPortForward(machineByName('${cn.name}'))">Manage…</button></div>
+    <div class="lrow-list">${rows}</div></div>`;}
+function ctCard(cn){cn.ctMode=cn.ctMode||'live';const rt=cn.runtime||'docker';const rows=ctList(cn).map((c,i)=>{const up=c.state==='running';
+  return `<div class="lrow">
+    <span class="pst ${up?'up':'seen'}" title="${c.state}"></span>
+    <div class="lmeta"><div class="lname">${c.name} ${c.pinned?'<span class="lpin" title="Pinned — 1-click">★</span>':''}</div><code class="lsub">${c.image}${c.ports?' · '+c.ports:''}</code></div>
+    <button class="btn btn-ghost btn-sm" ${up?'':'disabled'} onclick="ctExec('${cn.name}',${i})" title="Exec a shell inside">Shell</button>
+    <button class="btn btn-ghost btn-sm" onclick="ctLog('${cn.name}',${i})" title="Logs">Logs</button>
+    <button class="btn btn-ghost btn-sm" onclick="ctRestart('${cn.name}',${i})" title="Restart">↻</button>
+  </div>`;}).join('')||`<p class="muted" style="font-size:12.5px">No ${cn.ctMode==='live'?'containers':'pinned containers'}.</p>`;
+  return `<div class="dcard">
+    <div class="dcard-h">${M.docker}<span class="dcard-t">Containers</span><span class="chip-sm">${rt}</span><span style="flex:1"></span>
+      <div class="seg"><button class="seg-b ${cn.ctMode==='live'?'on':''}" onclick="ctSetMode('${cn.name}','live')">Live</button><button class="seg-b ${cn.ctMode==='pinned'?'on':''}" onclick="ctSetMode('${cn.name}','pinned')">Pinned</button></div></div>
+    <div class="lrow-list">${rows}</div>
+    <p class="muted" style="font-size:11.5px;margin:8px 0 0"><code style="font-family:ui-monospace,monospace">${rt} ps</code> over SSH · agentless. Shell = <code style="font-family:ui-monospace,monospace">${rt} exec -it &lt;name&gt; sh</code>.</p></div>`;}
+function svcCard(cn){cn.svcFilter=cn.svcFilter||'all';const all=cn.services||DEMO_SERVICES;const failed=all.filter(s=>s.active==='failed').length;
+  const rows=svcList(cn).map((s,i)=>{const on=s.active==='active';return `<div class="lrow">
+    <span class="pst ${svState(s)}" title="${s.active} · ${s.sub}"></span>
+    <div class="lmeta"><div class="lname">${s.name}</div><code class="lsub">${s.desc} · <span class="${s.active==='failed'?'accent-red':''}">${s.active} (${s.sub})</span></code></div>
+    <button class="btn btn-ghost btn-sm" onclick="svcAction('${cn.name}',${i},'restart')" title="Restart">↻</button>
+    <button class="btn btn-ghost btn-sm" onclick="svcAction('${cn.name}',${i},'toggle')">${on?'Stop':'Start'}</button>
+    <button class="btn btn-ghost btn-sm" onclick="svcAction('${cn.name}',${i},'journal')" title="Journal">Journal</button>
+  </div>`;}).join('')||`<p class="muted" style="font-size:12.5px">No matching units.</p>`;
+  return `<div class="dcard">
+    <div class="dcard-h">${M.service}<span class="dcard-t">Services</span>${failed?`<span class="chip-sm" style="color:var(--red);border-color:var(--red)">${failed} failed</span>`:''}<span style="flex:1"></span>
+      <div class="seg"><button class="seg-b ${cn.svcFilter==='all'?'on':''}" onclick="svcSetFilter('${cn.name}','all')">All</button><button class="seg-b ${cn.svcFilter==='active'?'on':''}" onclick="svcSetFilter('${cn.name}','active')">Active</button><button class="seg-b ${cn.svcFilter==='failed'?'on':''}" onclick="svcSetFilter('${cn.name}','failed')">Failed</button></div></div>
+    <div class="lrow-list">${rows}</div></div>`;}
+
+/* ---- inline card actions (mutate + re-render the dashboard) ---- */
+function ctSetMode(name,m){const cn=machineByName(name);if(cn){cn.ctMode=m;renderMain();}}
+function ctExec(name,i){const c=ctList(machineByName(name))[i];toast(`Opening a shell in <span class="accent">${c.name}</span> — docker exec -it ${c.name} sh`);}
+function ctLog(name,i){const c=ctList(machineByName(name))[i];toast(`Tailing logs of <span class="accent">${c.name}</span>`);}
+function ctRestart(name,i){const c=ctList(machineByName(name))[i];toast(`Restarting <span class="accent">${c.name}</span>…`);}
+function svcSetFilter(name,f){const cn=machineByName(name);if(cn){cn.svcFilter=f;renderMain();}}
+function svcAction(name,i,act){const cn=machineByName(name);const s=svcList(cn)[i];if(!s)return;
+  if(act==='restart')toast(`Restarting <span class="accent">${s.name}</span>…`);
+  else if(act==='journal')toast(`Tailing journal of <span class="accent">${s.name}</span>`);
+  else if(act==='toggle'){const wasOn=s.active==='active';s.active=wasOn?'inactive':'active';s.sub=wasOn?'dead':'running';toast(`${wasOn?'Stopped':'Started'} <span class="accent">${s.name}</span>`);renderMain();}}
+function pfToggleFor(name,i){const cn=machineByName(name);const f=(cn.forwards||[])[i];if(!f)return;f.active=!f.active;toast(f.active?`Forwarding <span class="accent">127.0.0.1:${f.localPort}</span> → ${f.remoteHost}:${f.remotePort}`:`Stopped forward on :${f.localPort}`);renderSide();renderMain();}
+function pfDelFor(name,i){const cn=machineByName(name);(cn.forwards||[]).splice(i,1);renderSide();renderMain();}
+
+/* ---- the machine dashboard (main area) ---- */
+function openMachine(name){STATE.machineView=name;STATE.mainTab='machine';renderSide();renderMain();}
+function overviewCard(cn){const chain=jumpChain(cn);
+  const rows=[
+    ['Address',`${cn.user||'user'}@${cn.host||cn.name}:${cn.port||22}`],
+    ['Auth',cn.authType?cn.authType:'password'],
+    chain.length?['Jump',chain.join(' › ')]:null,
+    ['Last used',cn.last||'—'],
+  ].filter(Boolean).map(([k,v])=>`<div class="ov-row"><span class="ov-k">${k}</span><span class="ov-v mono">${v}</span></div>`).join('');
+  return `<div class="dcard"><div class="dcard-h">${M.machine}<span class="dcard-t">Overview</span></div><div class="ov">${rows}</div></div>`;}
+function machineDashboard(cn){
+  return `<div class="mdash">
+    <div class="mdash-hd">
+      <span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
+      <div class="mdash-id"><div class="mdash-name">${cn.name}${cn.jump?`<span class="jhop" title="via ${jumpChain(cn).join(' › ')}">${M.jump}</span>`:''}</div><div class="mdash-sub mono">${cn.user||'user'}@${cn.host||cn.name}:${cn.port||22}</div></div>
+      ${pastille(cn)}
+      <span style="flex:1"></span>
+      <button class="btn btn-ghost btn-sm" onclick="dlgNewConn('',machineByName('${cn.name}'))">${M.edit} Edit</button>
+      <button class="btn btn-primary btn-sm" onclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play} Connect</button>
+    </div>
+    <div class="dgrid">
+      ${overviewCard(cn)}
+      ${pfCard(cn)}
+      ${ctCard(cn)}
+      ${svcCard(cn)}
+    </div>
+    <p class="muted" style="font-size:11.5px;margin:12px 2px 0">Cards are what Rite <b>detects</b> on this host — surfaced automatically, agentless (all over the SSH session, through the jump host if any).</p>
+  </div>`;}
+
 function pfBody(cn){
   const rows=(cn.forwards||[]).map((f,i)=>{const on=!!f.active;return `<div class="pf-row">
     <span class="pf-badge">L</span>
@@ -548,7 +666,7 @@ function pfBody(cn){
       <label class="field" style="width:96px"><span>Remote port</span><input class="inp" id="pf-rp" placeholder="5432"></label>
       <button class="btn btn-primary btn-sm" data-pf-add style="margin-top:18px">Add</button>
     </div>
-    <p class="muted" style="font-size:12px;margin:6px 0 0">A <b>local</b> forward: anything reaching <code style="font-family:ui-monospace,monospace">127.0.0.1:localport</code> on your machine is tunnelled over SSH to <code style="font-family:ui-monospace,monospace">remotehost:remoteport</code> as seen from <b>${cn.name}</b> (through its jump host too, if it has one). Remote &amp; dynamic (SOCKS) coming soon.</p>`;
+    <p class="muted" style="font-size:12px;margin:6px 0 0">A <b>local</b> forward: anything reaching <code style="font-family:ui-monospace,monospace">127.0.0.1:localport</code> is tunnelled over SSH to <code style="font-family:ui-monospace,monospace">remotehost:remoteport</code> as seen from <b>${cn.name}</b>. Remote &amp; dynamic (SOCKS) coming soon.</p>`;
 }
 function dlgPortForward(cn){cn.forwards=cn.forwards||[];
   const bd=showModal({title:'Port forwarding',subtitle:`${cn.name} — ${cn.user||'user'}@${cn.host||cn.name}`,wide:true,confirm:'Done',body:pfBody(cn)});
@@ -560,90 +678,6 @@ function dlgPortForward(cn){cn.forwards=cn.forwards||[];
       if(!lp||!rh||!rp){toast('Fill local port, remote host and remote port');return;}
       cn.forwards.push({type:'local',localPort:lp,remoteHost:rh,remotePort:rp,active:true});toast(`Forwarding <span class="accent">127.0.0.1:${lp}</span> → ${rh}:${rp}`);}
     body.innerHTML=pfBody(cn);renderSide();renderMain();});
-}
-/* ===== Container card (Wave-1): docker/podman ps over the existing SSH, agentless.
-   Detect the runtime → list containers → 1-click exec-in. Pinned = saved names
-   (docker-compose stable) · Live = the ps output. The "perms before acting" theme:
-   if the SSH user can't reach the socket, you see it here, not after failing. ===== */
-const DEMO_CONTAINERS=[
-  {name:'web',        image:'nginx:1.27',        state:'running', ports:'0.0.0.0:80->80', pinned:true},
-  {name:'api',        image:'acme/api:2.4.1',    state:'running', ports:'8080->8080',      pinned:true},
-  {name:'worker',     image:'acme/api:2.4.1',    state:'running', ports:'',                pinned:false},
-  {name:'redis',      image:'redis:7-alpine',    state:'running', ports:'6379->6379',      pinned:false},
-  {name:'migrate',    image:'acme/api:2.4.1',    state:'exited',  ports:'',                pinned:false},
-];
-function ctBody(cn){
-  cn.ctMode=cn.ctMode||'live'; const runtime=cn.runtime||'docker';
-  const list=(cn.containers||DEMO_CONTAINERS).filter(c=>cn.ctMode==='live'||c.pinned);
-  const rows=list.map((c,i)=>{const up=c.state==='running';
-    return `<div class="lrow">
-      <span class="pst ${up?'up':'seen'}" title="${c.state}"></span>
-      <div class="lmeta"><div class="lname">${c.name} ${c.pinned?'<span class="lpin" title="Pinned — 1-click">★</span>':''}</div><code class="lsub">${c.image}${c.ports?' · '+c.ports:''}</code></div>
-      <button class="btn btn-ghost btn-sm" ${up?'':'disabled'} data-ct-sh="${i}" title="Exec a shell inside">Shell</button>
-      <button class="btn btn-ghost btn-sm" data-ct-log="${i}" title="Logs">Logs</button>
-      <button class="btn btn-ghost btn-sm" data-ct-restart="${i}" title="Restart">↻</button>
-    </div>`;}).join('')||`<p class="muted" style="font-size:13px">No ${cn.ctMode==='live'?'containers':'pinned containers'}.</p>`;
-  return `<div class="card-head">
-      <span class="chip-sm">${runtime}</span><span class="muted" style="font-size:12px">detected over SSH — agentless</span>
-      <span style="flex:1"></span>
-      <div class="seg"><button class="seg-b ${cn.ctMode==='live'?'on':''}" data-ct-mode="live">Live (ps)</button><button class="seg-b ${cn.ctMode==='pinned'?'on':''}" data-ct-mode="pinned">Pinned</button></div>
-    </div>
-    <div class="lrow-list">${rows}</div>
-    <p class="muted" style="font-size:12px;margin:8px 0 0">Runs <code style="font-family:ui-monospace,monospace">${runtime} ps</code> over the SSH session (through the jump host too, if any). Entering a container = <code style="font-family:ui-monospace,monospace">${runtime} exec -it &lt;name&gt; sh</code> in a new pane. If the SSH user can't reach the socket you'd see it here — before acting.</p>`;
-}
-function dlgContainers(cn){
-  const bd=showModal({title:'Containers',subtitle:`${cn.name} — ${cn.user||'user'}@${cn.host||cn.name}`,wide:true,confirm:'Done',body:ctBody(cn)});
-  const body=bd.querySelector('.body');const list=()=>(cn.containers||DEMO_CONTAINERS).filter(c=>cn.ctMode==='live'||c.pinned);
-  body.addEventListener('click',e=>{const t=e.target.closest('[data-ct-mode],[data-ct-sh],[data-ct-log],[data-ct-restart]');if(!t)return;
-    if(t.dataset.ctMode){cn.ctMode=t.dataset.ctMode;body.innerHTML=ctBody(cn);}
-    else if(t.dataset.ctSh!==undefined){const c=list()[+t.dataset.ctSh];toast(`Opening a shell in <span class="accent">${c.name}</span> — ${cn.runtime||'docker'} exec -it ${c.name} sh`);}
-    else if(t.dataset.ctLog!==undefined){const c=list()[+t.dataset.ctLog];toast(`Tailing logs of <span class="accent">${c.name}</span>`);}
-    else if(t.dataset.ctRestart!==undefined){const c=list()[+t.dataset.ctRestart];toast(`Restarting <span class="accent">${c.name}</span>…`);}
-  });
-}
-/* ===== Services card (Wave-1): systemd units over SSH — status + start/stop/restart
-   + journal. The daily sysadmin win: see active/failed at a glance, act in 1 click. ===== */
-const DEMO_SERVICES=[
-  {name:'nginx.service',        desc:'A high performance web server', active:'active',   sub:'running'},
-  {name:'app.service',         desc:'Acme API',                      active:'active',   sub:'running'},
-  {name:'postgresql.service',  desc:'PostgreSQL RDBMS',              active:'active',   sub:'running'},
-  {name:'certbot.timer',       desc:'Renew Let\'s Encrypt certs',    active:'active',   sub:'waiting'},
-  {name:'backup.service',      desc:'Nightly backup',                active:'failed',   sub:'failed'},
-  {name:'docker.service',      desc:'Docker Application Container',   active:'active',   sub:'running'},
-  {name:'ufw.service',         desc:'Uncomplicated firewall',        active:'inactive', sub:'dead'},
-];
-function svState(s){return s.active==='active'?'up':s.active==='failed'?'down':'seen';}
-function svcBody(cn){
-  cn.svcFilter=cn.svcFilter||'all';
-  const all=cn.services||DEMO_SERVICES;
-  const list=all.filter(s=>cn.svcFilter==='all'||(cn.svcFilter==='failed'&&s.active==='failed')||(cn.svcFilter==='active'&&s.active==='active'));
-  const failed=all.filter(s=>s.active==='failed').length;
-  const rows=list.map((s,i)=>{const on=s.active==='active';
-    return `<div class="lrow">
-      <span class="pst ${svState(s)}" title="${s.active} · ${s.sub}"></span>
-      <div class="lmeta"><div class="lname">${s.name}</div><code class="lsub">${s.desc} · <span class="${s.active==='failed'?'accent-red':''}">${s.active} (${s.sub})</span></code></div>
-      <button class="btn btn-ghost btn-sm" data-sv-restart="${i}" title="Restart">↻ Restart</button>
-      <button class="btn btn-ghost btn-sm" data-sv-toggle="${i}" title="${on?'Stop':'Start'}">${on?'Stop':'Start'}</button>
-      <button class="btn btn-ghost btn-sm" data-sv-journal="${i}" title="Journal (tail)">Journal</button>
-    </div>`;}).join('')||`<p class="muted" style="font-size:13px">No matching units.</p>`;
-  return `<div class="card-head">
-      <span class="muted" style="font-size:12px">systemctl over SSH${failed?` · <span class="accent-red">${failed} failed</span>`:''}</span>
-      <span style="flex:1"></span>
-      <div class="seg"><button class="seg-b ${cn.svcFilter==='all'?'on':''}" data-sv-filter="all">All</button><button class="seg-b ${cn.svcFilter==='active'?'on':''}" data-sv-filter="active">Active</button><button class="seg-b ${cn.svcFilter==='failed'?'on':''}" data-sv-filter="failed">Failed</button></div>
-    </div>
-    <div class="lrow-list">${rows}</div>
-    <p class="muted" style="font-size:12px;margin:8px 0 0">Reads <code style="font-family:ui-monospace,monospace">systemctl</code> over the SSH session. Restart/Stop/Start map to one <code style="font-family:ui-monospace,monospace">systemctl</code> call; Journal tails <code style="font-family:ui-monospace,monospace">journalctl -u &lt;unit&gt; -f</code> in a pane.</p>`;
-}
-function dlgServices(cn){
-  const bd=showModal({title:'Services',subtitle:`${cn.name} — ${cn.user||'user'}@${cn.host||cn.name}`,wide:true,confirm:'Done',body:svcBody(cn)});
-  const body=bd.querySelector('.body');
-  const list=()=>{const all=cn.services||DEMO_SERVICES;return all.filter(s=>cn.svcFilter==='all'||(cn.svcFilter==='failed'&&s.active==='failed')||(cn.svcFilter==='active'&&s.active==='active'));};
-  body.addEventListener('click',e=>{const t=e.target.closest('[data-sv-filter],[data-sv-restart],[data-sv-toggle],[data-sv-journal]');if(!t)return;
-    if(t.dataset.svFilter){cn.svcFilter=t.dataset.svFilter;body.innerHTML=svcBody(cn);}
-    else if(t.dataset.svRestart!==undefined){toast(`Restarting <span class="accent">${list()[+t.dataset.svRestart].name}</span>…`);}
-    else if(t.dataset.svToggle!==undefined){const s=list()[+t.dataset.svToggle];const wasOn=s.active==='active';s.active=wasOn?'inactive':'active';s.sub=wasOn?'dead':'running';toast(`${wasOn?'Stopped':'Started'} <span class="accent">${s.name}</span>`);body.innerHTML=svcBody(cn);}
-    else if(t.dataset.svJournal!==undefined){toast(`Tailing journal of <span class="accent">${list()[+t.dataset.svJournal].name}</span>`);}
-  });
 }
 /* ===== Board (Wave-1): a shared, member-editable space per collection. Typed
    cards — Link (button → Grafana/runbook), Note (markdown), Action (run a snippet /
@@ -711,10 +745,13 @@ function renderMain(){
   const mt=document.getElementById('mtabs');
   const coll=STATE.selColl?find(STATE.selColl):null;
   const tabActs=`<button class="mtab-act" title="Rename tab" onclick="event.stopPropagation();toast('Rename tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button><button class="mtab-act mtab-close" title="Close tab" onclick="event.stopPropagation();toast('Close tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>`;
+  const mach=STATE.machineView?machineByName(STATE.machineView):null;
   mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Local Terminal (${STATE.defaultShell})</span>${tabActs}</div>
     ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
+    ${mach?`<div class="mtab ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
     <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
   const b=document.getElementById('mbody');
+  if(STATE.mainTab==='machine'&&mach){ b.innerHTML=machineDashboard(mach); return; }
   if(STATE.ctx.type==='home'||STATE.mainTab==='term'||!coll){ b.innerHTML=paneGrid(); return; }
   b.innerHTML=cardsView(coll);
 }
@@ -726,7 +763,7 @@ function paneGrid(){if(STATE.ctx.type==='home')return `<div class="pane-wrap foc
     <div class="pane-wrap" style="flex:1">${termHTML('deploy@10.0.0.4')}</div></div>`;}
 function cardsView(coll){
   const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
-  const card=cn=>`<div class="ccard" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="toast('${cn.name} · double-click')">
+  const card=cn=>`<div class="ccard" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="openMachine('${cn.name}')" title="Click: dashboard · double-click: connect">
     <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span>${pfGlyph(cn)}${pastille(cn)}<span style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" title="More" style="padding:3px" onclick="event.stopPropagation();machineMenu('${cn.name}',event)">${EXICON.more}</button>
       <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button></div>
