@@ -63,6 +63,40 @@
   .bnote{font-size:12.5px;color:var(--fg-dim);line-height:1.55;margin-top:4px}
   .blive{display:flex;flex-direction:column;gap:5px;margin-top:8px}
   .blive-row{display:flex;align-items:center;gap:7px}
+  /* Board — toolbar, category sections, gallery/list, detail modal */
+  .bbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .bchips{display:flex;gap:6px;flex-wrap:wrap}
+  .bchip{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+  .bchip:hover{border-color:var(--accent);color:var(--fg)}
+  .bchip.on{background:var(--accent);border-color:var(--accent);color:#0b0e14;font-weight:600}
+  .bsecs{display:flex;flex-direction:column;gap:16px}
+  .bsec-h{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .bsec-n{font-size:10px;font-weight:600;color:var(--fg-dim);border:1px solid var(--line);border-radius:999px;padding:0 6px;line-height:16px}
+  .bgal{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+  .btile{border:1px solid var(--line);border-radius:10px;background:var(--card2);padding:10px 11px;cursor:pointer;display:flex;flex-direction:column;min-height:96px;transition:border-color .12s}
+  .btile:hover{border-color:var(--accent)}
+  .btile-h{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+  .btile-h .bx{margin-left:auto;padding:1px 5px;opacity:0;transition:opacity .12s}
+  .btile:hover .bx{opacity:1}
+  .btile-b{display:flex;align-items:flex-start;gap:9px;min-width:0}
+  .btile-emoji{font-size:22px;line-height:1;flex:none}
+  .btile-meta{min-width:0}
+  .btile-prev{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:3px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .blist{display:flex;flex-direction:column;gap:4px}
+  .brow{display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card2);cursor:pointer}
+  .brow:hover{border-color:var(--accent)}
+  .brow-emoji{font-size:16px;line-height:1;flex:none}
+  .brow-title{font-weight:600;font-size:13px;flex:none;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brow-prev{font-size:12px;color:var(--muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brow .bx{flex:none;padding:1px 6px;opacity:0}.brow:hover .bx{opacity:1}
+  .bd-wrap{display:flex;flex-direction:column;gap:12px}
+  .bd-link{display:flex;align-items:center;gap:12px}.bd-emoji{font-size:30px;line-height:1;flex:none}
+  .bd-url-lbl{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
+  .bd-url{font-family:var(--mono);font-size:13px;color:var(--accent);word-break:break-all;text-decoration:none}.bd-url:hover{text-decoration:underline}
+  .bd-note{font-size:13.5px;color:var(--fg);line-height:1.65;white-space:normal}
+  .bd-desc{font-family:var(--mono);font-size:13px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;word-break:break-word}
+  .bd-actions{display:flex;gap:10px}
+  .bd-foot{display:flex;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
   /* Machine dashboard (main area) */
   .mdash{padding:16px 18px;height:100%;overflow:auto}
   .mdash-hd{display:flex;align-items:center;gap:12px;margin-bottom:16px}
@@ -281,11 +315,11 @@ const LIB=[
    {id:'f-infra',type:'folder',color:'#56c7c0',name:'Infrastructure',open:true,children:[
      {id:'c-prod',type:'coll',color:'#f7768e',name:'Production',shared:true,members:['alex','carol','erin'],roles:{alex:'owner',carol:'editor',erin:'viewer'},open:true,
       board:[
-        {id:'b1',type:'link',title:'Grafana',url:'https://grafana.acme.io/d/prod',emoji:'📊'},
-        {id:'b2',type:'link',title:'Runbook',url:'https://wiki.acme.io/prod/runbook',emoji:'📕'},
-        {id:'b3',type:'note',title:'Deploy window',text:'Deploys **Tue/Thu 14:00 UTC**. Freeze on Fridays. On-call: `#prod-oncall`.'},
-        {id:'b4',type:'action',title:'Restart API',label:'Restart',desc:'systemctl restart app on web-01'},
-        {id:'b5',type:'live',title:'Failed units (web-01)',rows:[{up:false,text:'backup.service — failed'},{up:true,text:'nginx.service — active'}]},
+        {id:'b1',type:'link',cat:'Monitoring',title:'Grafana',url:'https://grafana.acme.io/d/prod',emoji:'📊'},
+        {id:'b2',type:'link',cat:'Docs',title:'Runbook',url:'https://wiki.acme.io/prod/runbook',emoji:'📕'},
+        {id:'b3',type:'note',cat:'Ops',title:'Deploy window',text:'Deploys **Tue/Thu 14:00 UTC**. Freeze on Fridays. On-call: `#prod-oncall`.\n\nRollback: `kubectl rollout undo deploy/api`. Escalate to **@carol** if error rate > 2% for 5 min. Post-deploy smoke test lives in the runbook.'},
+        {id:'b4',type:'action',cat:'Ops',title:'Restart API',label:'Restart',desc:'systemctl restart app on web-01'},
+        {id:'b5',type:'live',cat:'Monitoring',title:'Failed units (web-01)',rows:[{up:false,text:'backup.service — failed'},{up:true,text:'nginx.service — active'}]},
       ],
       conns:[
         {name:'bastion',host:'bastion.acme.io',user:'alex',port:22,last:'10m ago'},
@@ -684,32 +718,75 @@ function dlgPortForward(cn){cn.forwards=cn.forwards||[];
    open a TUI / connect), Live (a small dynamic list). ZK: it's collection data,
    encrypted for members. Zero infra integration — one primitive, many uses. ===== */
 function mdMini(t){return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/`(.+?)`/g,'<code style="font-family:ui-monospace,monospace">$1</code>').replace(/\n/g,'<br>');}
-function boardCard(c,i){
-  const del=`<button class="btn btn-ghost btn-sm" data-b-del="${i}" title="Remove card">✕</button>`;
-  if(c.type==='link') return `<div class="bcard blink" data-b-open="${i}" title="Open ${c.url}"><div class="bcard-h"><span class="btype">Link</span>${del}</div>
-    <div class="blink-body"><span class="bemoji">${c.emoji||'🔗'}</span><div class="bmeta"><div class="btitle">${c.title}</div><div class="bsub">${c.url}</div></div></div></div>`;
-  if(c.type==='note') return `<div class="bcard"><div class="bcard-h"><span class="btype">Note</span>${del}</div><div class="btitle">${c.title}</div><div class="bnote">${mdMini(c.text)}</div></div>`;
-  if(c.type==='action') return `<div class="bcard"><div class="bcard-h"><span class="btype">Action</span>${del}</div><div class="btitle">${c.title}</div>${c.desc?`<div class="bsub">${c.desc}</div>`:''}<button class="btn btn-primary btn-sm" data-b-run="${i}" style="margin-top:9px">${c.label||'Run'}</button></div>`;
-  if(c.type==='live') return `<div class="bcard"><div class="bcard-h"><span class="btype">Live</span><button class="btn btn-ghost btn-sm" data-b-refresh="${i}" title="Refresh">↻</button>${del}</div><div class="btitle">${c.title}</div>
-    <div class="blive">${(c.rows||[]).map(r=>`<div class="blive-row"><span class="pst ${r.up?'up':'down'}"></span><span class="mono" style="font-size:11.5px">${r.text}</span></div>`).join('')||'<span class="muted" style="font-size:12px">—</span>'}</div></div>`;
+/* Categories offered in the add form (plus any already present on the board). */
+const BOARD_CATS=['Monitoring','Docs','Ops','Links','General'];
+const B_ICON={link:'🔗',note:'📝',action:'⚡',live:'📡'};
+const B_LABEL={link:'Link',note:'Note',action:'Action',live:'Live'};
+function catOf(c){return c.cat||'General';}
+function boardCats(coll){const s=new Set(BOARD_CATS);(coll.board||[]).forEach(c=>s.add(catOf(c)));return [...s];}
+/* One-line preview text used on tiles/rows (markdown stripped, links show the URL). */
+function boardPreview(c){
+  if(c.type==='link')return c.url||'';
+  if(c.type==='note')return (c.text||'').replace(/[*`]/g,'').replace(/\n+/g,' ');
+  if(c.type==='action')return c.desc||('Runs: '+(c.label||'action'));
+  if(c.type==='live')return (c.rows||[]).map(r=>r.text).join(' · ')||'—';
   return '';
 }
+/* Gallery tile — compact, clickable → detail modal. */
+function boardTile(c,i){const emoji=c.type==='link'?(c.emoji||'🔗'):B_ICON[c.type];
+  return `<div class="btile" data-b-open="${i}" title="Open">
+    <div class="btile-h"><span class="btype">${B_LABEL[c.type]}</span><button class="btn btn-ghost btn-sm bx" data-b-del="${i}" title="Remove card">✕</button></div>
+    <div class="btile-b"><span class="btile-emoji">${emoji}</span><div class="btile-meta"><div class="btitle">${c.title}</div><div class="btile-prev">${boardPreview(c)}</div></div></div>
+  </div>`;}
+/* List row — dense, clickable → detail modal. */
+function boardRow(c,i){const emoji=c.type==='link'?(c.emoji||'🔗'):B_ICON[c.type];
+  return `<div class="brow" data-b-open="${i}" title="Open">
+    <span class="brow-emoji">${emoji}</span><span class="btype">${B_LABEL[c.type]}</span>
+    <span class="brow-title">${c.title}</span><span class="brow-prev mono">${boardPreview(c)}</span>
+    <button class="btn btn-ghost btn-sm bx" data-b-del="${i}" title="Remove card">✕</button>
+  </div>`;}
 function boardBody(coll){coll.board=coll.board||[];
-  const cards=coll.board.map(boardCard).join('')||`<p class="muted" style="font-size:13px;grid-column:1/-1">No cards yet — add a Link, Note, Action or Live view.</p>`;
-  return `<p class="muted" style="font-size:12px;margin:0 0 12px">A shared space for <b>${coll.name}</b> — links, notes, one-click actions and live views. Encrypted, members-only; write access can edit.</p>
-    <div class="bgrid">${cards}</div>
-    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn btn-ghost btn-sm" data-b-add>+ Add card</button></div>`;
+  const view=coll.boardView||'gallery', filter=coll.boardCat||'all', cats=boardCats(coll);
+  const picked=coll.board.map((c,i)=>({c,i})).filter(x=>filter==='all'||catOf(x.c)===filter);
+  const groups={};picked.forEach(x=>{(groups[catOf(x.c)]=groups[catOf(x.c)]||[]).push(x);});
+  const sections=Object.keys(groups).map(name=>{
+    const items=groups[name].map(x=>view==='list'?boardRow(x.c,x.i):boardTile(x.c,x.i)).join('');
+    return `<div class="bsec"><div class="bsec-h">${name}<span class="bsec-n">${groups[name].length}</span></div>
+      <div class="${view==='list'?'blist':'bgal'}">${items}</div></div>`;
+  }).join('')||`<p class="muted" style="font-size:13px;padding:8px 2px">No cards${filter!=='all'?' in this category':' yet'} — add a Link, Note, Action or Live view.</p>`;
+  const chips=['all',...cats].map(cn=>`<button class="bchip ${filter===cn?'on':''}" data-b-cat="${cn}">${cn==='all'?'All':cn}</button>`).join('');
+  return `<p class="muted" style="font-size:12px;margin:0 0 12px">A shared space for <b>${coll.name}</b> — links, notes, one-click actions and live views. Encrypted, members-only; write access can edit. Click a card to open it.</p>
+    <div class="bbar">
+      <div class="bchips">${chips}</div><span style="flex:1"></span>
+      <div class="seg"><button class="seg-b ${view==='gallery'?'on':''}" data-b-view="gallery">Gallery</button><button class="seg-b ${view==='list'?'on':''}" data-b-view="list">List</button></div>
+      <button class="btn btn-ghost btn-sm" data-b-add>+ Add card</button>
+    </div>
+    <div class="bsecs">${sections}</div>`;
 }
-function dlgBoard(coll){coll.board=coll.board||[];
-  const bd=showModal({title:`${coll.name} · Board`,subtitle:coll.shared?`${coll.members.length} members`:'personal',wide:true,confirm:'Done',body:boardBody(coll)});
+function dlgBoard(coll){coll.board=coll.board||[];coll.boardView=coll.boardView||'gallery';coll.boardCat=coll.boardCat||'all';
+  const bd=showModal({title:`${coll.name} · Board`,subtitle:coll.shared?`${coll.members.length} members`:'personal',width:'min(940px,94vw)',confirm:'Done',body:boardBody(coll)});
   const body=bd.querySelector('.body');const refresh=()=>{body.innerHTML=boardBody(coll);};
-  body.addEventListener('click',e=>{const t=e.target.closest('[data-b-add],[data-b-del],[data-b-open],[data-b-run],[data-b-refresh]');if(!t)return;
-    if(t.dataset.bAdd!==undefined){boardAddMenu(coll,refresh,e);}
-    else if(t.dataset.bDel!==undefined){coll.board.splice(+t.dataset.bDel,1);refresh();}
-    else if(t.dataset.bOpen!==undefined){toast(`Opening <span class="accent">${coll.board[+t.dataset.bOpen].url}</span>`);}
-    else if(t.dataset.bRun!==undefined){toast(`Ran <span class="accent">${coll.board[+t.dataset.bRun].title}</span>`);}
-    else if(t.dataset.bRefresh!==undefined){toast('Refreshed');}
+  body.addEventListener('click',e=>{const t=e.target.closest('[data-b-add],[data-b-del],[data-b-open],[data-b-view],[data-b-cat]');if(!t)return;
+    if(t.dataset.bDel!==undefined){coll.board.splice(+t.dataset.bDel,1);refresh();}
+    else if(t.dataset.bAdd!==undefined){boardAddMenu(coll,refresh,e);}
+    else if(t.dataset.bView!==undefined){coll.boardView=t.dataset.bView;refresh();}
+    else if(t.dataset.bCat!==undefined){coll.boardCat=t.dataset.bCat;refresh();}
+    else if(t.dataset.bOpen!==undefined){dlgBoardCard(coll,+t.dataset.bOpen,refresh);}
   });
+}
+/* Detail modal — a card opened larger: full note, full URL before opening, etc. */
+function dlgBoardCard(coll,i,refreshParent){const c=coll.board[i];if(!c)return;
+  let inner='';
+  if(c.type==='link'){inner=`<div class="bd-link"><span class="bd-emoji">${c.emoji||'🔗'}</span><div style="min-width:0"><div class="bd-url-lbl muted">Link destination</div><a class="bd-url" href="${c.url}" target="_blank" rel="noopener">${c.url}</a></div></div>
+    <div class="bd-actions"><button class="btn btn-primary" data-b-go>${M.forward||''} Open link</button></div>`;}
+  else if(c.type==='note'){inner=`<div class="bd-note">${mdMini(c.text)||'<span class="muted">Empty note.</span>'}</div>`;}
+  else if(c.type==='action'){inner=`${c.desc?`<div class="bd-url-lbl muted">What it does</div><div class="bd-desc mono">${c.desc}</div>`:''}<div class="bd-actions"><button class="btn btn-primary" data-b-go>${c.label||'Run'}</button></div>`;}
+  else if(c.type==='live'){inner=`<div class="blive" style="margin-top:2px">${(c.rows||[]).map(r=>`<div class="blive-row"><span class="pst ${r.up?'up':'down'}"></span><span class="mono" style="font-size:12px">${r.text}</span></div>`).join('')||'<span class="muted">No rows.</span>'}</div>`;}
+  const body=`<div class="bd-wrap">${inner}</div>
+    <div class="bd-foot"><button class="btn btn-ghost btn-sm" data-b-rm style="color:var(--red)">Remove card</button></div>`;
+  const m=showModal({title:`${B_ICON[c.type]} ${c.title}`,subtitle:`${B_LABEL[c.type]} · ${catOf(c)}`,width:'min(560px,92vw)',confirm:'Done',body});
+  const go=m.querySelector('[data-b-go]');if(go)go.onclick=()=>{if(c.type==='link')toast(`Opening <span class="accent">${c.url}</span>`);else toast(`Ran <span class="accent">${c.title}</span>`);};
+  const rm=m.querySelector('[data-b-rm]');if(rm)rm.onclick=()=>{coll.board.splice(i,1);m.remove();refreshParent&&refreshParent();};
 }
 function boardAddMenu(coll,refresh,e){floatMenu(e,[
   {icon:'🔗',label:'Link — a styled button',onclick:()=>boardCardForm(coll,'link',refresh)},
@@ -718,20 +795,23 @@ function boardAddMenu(coll,refresh,e){floatMenu(e,[
   {icon:'📡',label:'Live — a small dynamic list',onclick:()=>boardCardForm(coll,'live',refresh)},
 ].map(x=>({icon:`<span style="font-size:15px">${x.icon}</span>`,label:x.label,onclick:x.onclick})));}
 function boardCardForm(coll,type,refresh){
+  const defCat=(coll.boardCat&&coll.boardCat!=='all')?coll.boardCat:'General';
+  const catList=boardCats(coll).map(c=>`<option value="${c}">`).join('');
+  const catField=`<label class="field"><span>Category</span><input class="inp" id="b-cat" list="b-cats" value="${defCat}" placeholder="Ops"><datalist id="b-cats">${catList}</datalist></label>`;
   const forms={
     link:`<label class="field"><span>Title</span><input class="inp" id="b-title" placeholder="Grafana"></label>
       <label class="field"><span>URL</span><input class="inp" id="b-url" placeholder="https://grafana.acme.io"></label>
-      <label class="field"><span>Emoji</span><input class="inp" id="b-emoji" placeholder="📊" style="width:80px"></label>`,
+      <div style="display:flex;gap:10px"><label class="field" style="width:90px"><span>Emoji</span><input class="inp" id="b-emoji" placeholder="📊"></label>${catField}</div>`,
     note:`<label class="field"><span>Title</span><input class="inp" id="b-title" placeholder="Deploy window"></label>
-      <label class="field"><span>Text <span class="muted" style="font-weight:400">· **bold**, \`code\`</span></span><textarea class="inp" id="b-text" rows="3" placeholder="Deploys **Tue/Thu 14:00**. Freeze on Fridays."></textarea></label>`,
+      <label class="field"><span>Text <span class="muted" style="font-weight:400">· **bold**, \`code\`</span></span><textarea class="inp" id="b-text" rows="4" placeholder="Deploys **Tue/Thu 14:00**. Freeze on Fridays."></textarea></label>${catField}`,
     action:`<label class="field"><span>Title</span><input class="inp" id="b-title" placeholder="Restart API"></label>
-      <label class="field"><span>Button label</span><input class="inp" id="b-label" placeholder="Restart"></label>
+      <div style="display:flex;gap:10px"><label class="field" style="width:130px"><span>Button label</span><input class="inp" id="b-label" placeholder="Restart"></label>${catField}</div>
       <label class="field"><span>What it does <span class="muted" style="font-weight:400">· run a snippet / open a TUI / connect</span></span><input class="inp mono" id="b-desc" placeholder="systemctl restart app on web-01"></label>`,
     live:`<label class="field"><span>Title</span><input class="inp" id="b-title" placeholder="Failed units (web-01)"></label>
-      <label class="field"><span>Source</span><select class="inp" id="b-src"><option value="failed">systemd — failed units</option><option value="containers">Containers — docker ps</option></select></label>`,
+      <label class="field"><span>Source</span><select class="inp" id="b-src"><option value="failed">systemd — failed units</option><option value="containers">Containers — docker ps</option></select></label>${catField}`,
   };
   showModal({title:`New ${type} card`,subtitle:`on ${coll.name}'s board`,confirm:'Add',body:forms[type],onConfirm:(m)=>{const g=s=>m.querySelector(s);const title=(g('#b-title').value||'').trim()||type;
-    let card={id:'b'+Math.random().toString(36).slice(2,6),type,title};
+    let card={id:'b'+Math.random().toString(36).slice(2,6),type,title,cat:(g('#b-cat')?.value||'').trim()||'General'};
     if(type==='link'){card.url=(g('#b-url').value||'').trim()||'https://example.com';card.emoji=(g('#b-emoji').value||'').trim()||'🔗';}
     else if(type==='note'){card.text=(g('#b-text').value||'').trim();}
     else if(type==='action'){card.label=(g('#b-label').value||'').trim()||'Run';card.desc=(g('#b-desc').value||'').trim();}

@@ -39,9 +39,10 @@ function toast(html){
   t.innerHTML=html; t.classList.add('show'); clearTimeout(t._to); t._to=setTimeout(()=>t.classList.remove('show'),2600);
 }
 
-function showModal({title,subtitle,body,confirm='Confirm',onConfirm,wide}){
+function showModal({title,subtitle,body,confirm='Confirm',onConfirm,wide,width}){
   const bd=document.createElement('div'); bd.className='backdrop show';
-  bd.innerHTML=`<div class="modal" ${wide?'style="max-width:520px"':''}>
+  const mw=width?`style="max-width:${width}"`:(wide?'style="max-width:520px"':'');
+  bd.innerHTML=`<div class="modal" ${mw}>
     <header><h3>${title}</h3>${subtitle?`<p>${subtitle}</p>`:''}</header>
     <div class="body">${body}</div>
     <div class="foot"><button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-ok>${confirm}</button></div>
