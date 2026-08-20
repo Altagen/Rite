@@ -667,6 +667,8 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/terminal", get(list_sessions))
         .route("/api/terminal/ssh", post(connect_ssh))
         .route("/api/terminal/quick-ssh", post(quick_ssh))
+        .route("/api/terminal/exec", post(machine_exec))
+        .route("/api/terminal/exec-quick", post(machine_exec_quick))
         .route("/api/terminal/local", post(create_local))
         .route("/api/terminal/preconnect", post(run_preconnect))
         .route("/api/forwards", get(list_forwards).post(start_forward))
@@ -883,7 +885,7 @@ async fn terminal_stays_local(state: &ServerState, path: &str) -> bool {
         return false;
     };
     match rest {
-        "/ssh" | "/quick-ssh" => true,
+        "/ssh" | "/quick-ssh" | "/exec" | "/exec-quick" => true,
         "" | "/" | "/local" => false,
         _ => {
             let id = rest.trim_start_matches('/').split('/').next().unwrap_or("");
@@ -4058,6 +4060,77 @@ async fn quick_ssh(
         .await?;
     state.record_session_owner(&id, as_user(&user));
     Ok(Json(json!({ "sessionId": id })))
+}
+
+/// Run a one-shot command on a saved connection (agentless dashboard detection) and
+/// return its captured output. Vault path — the server decrypts by id.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MachineExecReq {
+    connection_id: String,
+    command: String,
+}
+
+async fn machine_exec(
+    State(state): State<ServerState>,
+    Json(req): Json<MachineExecReq>,
+) -> Result<Json<rite_core::terminal::RemoteCommandOutput>, AppError> {
+    let out = state
+        .sessions
+        .run_remote_command(&req.connection_id, state.events_sink(), &req.command)
+        .await?;
+    Ok(Json(out))
+}
+
+/// Run a one-shot command on an ad-hoc target (accounts client-execute) and return
+/// its output. The browser already decrypted the target.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MachineExecQuickReq {
+    host: String,
+    port: u16,
+    username: String,
+    auth_method: QuickAuthMethod,
+    command: String,
+}
+
+async fn machine_exec_quick(
+    State(state): State<ServerState>,
+    Json(req): Json<MachineExecQuickReq>,
+) -> Result<Json<rite_core::terminal::RemoteCommandOutput>, AppError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let auth: AuthMethod = req.auth_method.into();
+    let connection = Connection {
+        id: format!("exec-{}", uuid::Uuid::new_v4()),
+        name: format!("{}@{}", req.username, req.host),
+        protocol: Protocol::SSH,
+        hostname: req.host,
+        port: req.port,
+        username: req.username,
+        auth_method: auth.clone(),
+        metadata: ConnectionMetadata {
+            color: None,
+            icon: None,
+            folder: None,
+            notes: None,
+        },
+        ssh_keep_alive_override: None,
+        ssh_keep_alive_interval: None,
+        preconnect: None,
+        jump: None,
+        forwards: Vec::new(),
+        last_used_at: None,
+        created_at: now,
+        updated_at: now,
+    };
+    let out = state
+        .sessions
+        .run_quick_remote_command(connection, auth, state.events_sink(), &req.command)
+        .await?;
+    Ok(Json(out))
 }
 
 #[derive(Deserialize)]

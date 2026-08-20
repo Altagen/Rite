@@ -958,6 +958,85 @@ pub struct PortForwardInfo {
     pub remote_port: u16,
 }
 
+/// Captured output of a one-shot remote command (agentless dashboard detection:
+/// `docker ps`, `systemctl list-units`, …). Ran over its own short-lived SSH exec
+/// channel — never touches an interactive session.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteCommandOutput {
+    pub stdout: String,
+    pub stderr: String,
+    /// The command's exit status, or `None` if the channel closed without one.
+    pub exit_status: Option<u32>,
+}
+
+/// A one-shot remote command has this long to run before we give up (dashboard
+/// probes are quick; a hang shouldn't wedge the UI).
+const REMOTE_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Establish an authenticated handle, run one command over an exec channel (no PTY),
+/// and collect its output. The handle + any jump tunnel are dropped on return.
+async fn exec_remote_command(
+    connection: &Connection,
+    auth_method: &AuthMethod,
+    events: SharedEvents,
+    db_pool: Arc<SqlitePool>,
+    jumps: &[(Connection, AuthMethod)],
+    force_accept_host_key: bool,
+    command: &str,
+) -> Result<RemoteCommandOutput> {
+    let (session, _jump_handles) = establish_authenticated_handle(
+        connection,
+        auth_method,
+        events,
+        db_pool,
+        None, // no keepalive for a one-shot exec
+        force_accept_host_key,
+        None, // no keyboard-interactive on the exec path
+        jumps,
+    )
+    .await?;
+
+    let mut channel = session.channel_open_session().await?;
+    channel.exec(true, command).await?;
+
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    let mut exit_status = None;
+    let collect = async {
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                ChannelMsg::Data { ref data } => stdout.extend_from_slice(data),
+                ChannelMsg::ExtendedData { ref data, ext } => {
+                    // ext == 1 is stderr; fold anything else into stdout.
+                    if ext == 1 {
+                        stderr.extend_from_slice(data);
+                    } else {
+                        stdout.extend_from_slice(data);
+                    }
+                }
+                ChannelMsg::ExitStatus { exit_status: code } => exit_status = Some(code),
+                ChannelMsg::Eof | ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+    };
+    tokio::time::timeout(REMOTE_COMMAND_TIMEOUT, collect)
+        .await
+        .map_err(|_| {
+            anyhow!(
+                "Command timed out after {}s",
+                REMOTE_COMMAND_TIMEOUT.as_secs()
+            )
+        })?;
+
+    Ok(RemoteCommandOutput {
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        exit_status,
+    })
+}
+
 /// Manages all active terminal sessions
 #[derive(Clone)]
 pub struct SessionManager {
@@ -1386,6 +1465,62 @@ impl SessionManager {
         sessions.insert(session_id.clone(), session);
 
         Ok(session_id)
+    }
+
+    /// Run a one-shot command on a saved connection (vault path) and return its output.
+    /// Agentless machine-dashboard detection (`docker ps`, `systemctl …`): decrypts the
+    /// connection like `create_session`, follows its jump chain, execs over its own
+    /// short-lived channel, and never registers an interactive session.
+    pub async fn run_remote_command(
+        &self,
+        connection_id: &str,
+        events: SharedEvents,
+        command: &str,
+    ) -> Result<RemoteCommandOutput> {
+        let row = self
+            .db
+            .get_connection(connection_id)
+            .await?
+            .ok_or_else(|| anyhow!("Connection not found"))?;
+        let master_key = self.auth.get_master_key().await?;
+        let auth_method =
+            Connection::decrypt_credentials(&row.encrypted_credentials, &row.nonce, &master_key)?;
+        let jumps = self
+            .resolve_jump_chain(row.jump.as_deref(), &master_key)
+            .await?;
+        let connection = connection_from_row(&row, auth_method.clone())?;
+        exec_remote_command(
+            &connection,
+            &auth_method,
+            events,
+            Arc::new(self.db.pool().clone()),
+            &jumps,
+            false, // saved connection → verify the host key
+            command,
+        )
+        .await
+    }
+
+    /// Run a one-shot command on an ad-hoc (accounts client-execute) target: the caller
+    /// already decrypted it in the browser. Host key is accepted (mirrors quick SSH);
+    /// jump chain is not carried on this path yet (deferred, like quick-ssh).
+    pub async fn run_quick_remote_command(
+        &self,
+        connection: Connection,
+        auth_method: AuthMethod,
+        events: SharedEvents,
+        command: &str,
+    ) -> Result<RemoteCommandOutput> {
+        exec_remote_command(
+            &connection,
+            &auth_method,
+            events,
+            Arc::new(self.db.pool().clone()),
+            &[],
+            true, // ad-hoc → accept the host key like quick SSH
+            command,
+        )
+        .await
     }
 
     /// Create a quick SSH session (no unlock required, credentials not saved)
