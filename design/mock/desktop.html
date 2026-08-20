@@ -69,7 +69,10 @@
   .bchip{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
   .bchip:hover{border-color:var(--accent);color:var(--fg)}
   .bchip.on{background:var(--accent);border-color:var(--accent);color:#0b0e14;font-weight:600}
+  .bmodal{display:flex;flex-direction:column;height:min(64vh,540px)}
   .bsecs{display:flex;flex-direction:column;gap:16px}
+  .bmodal>.bsecs{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;margin-right:-8px;padding-right:8px}
+  .blive-row.down .mono,.bd-live-down{color:var(--red)}
   .bsec-h{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
   .bsec-n{font-size:10px;font-weight:600;color:var(--fg-dim);border:1px solid var(--line);border-radius:999px;padding:0 6px;line-height:16px}
   .bgal{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
@@ -745,32 +748,47 @@ function boardRow(c,i){const emoji=c.type==='link'?(c.emoji||'🔗'):B_ICON[c.ty
     <span class="brow-title">${c.title}</span><span class="brow-prev mono">${boardPreview(c)}</span>
     <button class="btn btn-ghost btn-sm bx" data-b-del="${i}" title="Remove card">✕</button>
   </div>`;}
-function boardBody(coll){coll.board=coll.board||[];
-  const view=coll.boardView||'gallery', filter=coll.boardCat||'all', cats=boardCats(coll);
+/* Just the grouped sections (the part that redraws on filter/view change). */
+function boardSections(coll){
+  const view=coll.boardView||'gallery', filter=coll.boardCat||'all';
   const picked=coll.board.map((c,i)=>({c,i})).filter(x=>filter==='all'||catOf(x.c)===filter);
   const groups={};picked.forEach(x=>{(groups[catOf(x.c)]=groups[catOf(x.c)]||[]).push(x);});
-  const sections=Object.keys(groups).map(name=>{
+  return Object.keys(groups).map(name=>{
     const items=groups[name].map(x=>view==='list'?boardRow(x.c,x.i):boardTile(x.c,x.i)).join('');
     return `<div class="bsec"><div class="bsec-h">${name}<span class="bsec-n">${groups[name].length}</span></div>
       <div class="${view==='list'?'blist':'bgal'}">${items}</div></div>`;
   }).join('')||`<p class="muted" style="font-size:13px;padding:8px 2px">No cards${filter!=='all'?' in this category':' yet'} — add a Link, Note, Action or Live view.</p>`;
+}
+function boardBody(coll){coll.board=coll.board||[];
+  const view=coll.boardView||'gallery', filter=coll.boardCat||'all', cats=boardCats(coll);
+  const sections=boardSections(coll);
   const chips=['all',...cats].map(cn=>`<button class="bchip ${filter===cn?'on':''}" data-b-cat="${cn}">${cn==='all'?'All':cn}</button>`).join('');
-  return `<p class="muted" style="font-size:12px;margin:0 0 12px">A shared space for <b>${coll.name}</b> — links, notes, one-click actions and live views. Encrypted, members-only; write access can edit. Click a card to open it.</p>
+  // Fixed-height column: intro + toolbar stay put; only .bsecs scrolls/redraws on
+  // filter/view change, so the modal never resizes (feels like filtering, not a new view).
+  return `<div class="bmodal">
+    <p class="muted" style="font-size:12px;margin:0 0 12px">A shared space for <b>${coll.name}</b> — links, notes, one-click actions and live views. Encrypted, members-only; write access can edit. Click a card to open it.</p>
     <div class="bbar">
       <div class="bchips">${chips}</div><span style="flex:1"></span>
       <div class="seg"><button class="seg-b ${view==='gallery'?'on':''}" data-b-view="gallery">Gallery</button><button class="seg-b ${view==='list'?'on':''}" data-b-view="list">List</button></div>
       <button class="btn btn-ghost btn-sm" data-b-add>+ Add card</button>
     </div>
-    <div class="bsecs">${sections}</div>`;
+    <div class="bsecs">${sections}</div>
+  </div>`;
 }
 function dlgBoard(coll){coll.board=coll.board||[];coll.boardView=coll.boardView||'gallery';coll.boardCat=coll.boardCat||'all';
   const bd=showModal({title:`${coll.name} · Board`,subtitle:coll.shared?`${coll.members.length} members`:'personal',width:'min(940px,94vw)',confirm:'Done',body:boardBody(coll)});
-  const body=bd.querySelector('.body');const refresh=()=>{body.innerHTML=boardBody(coll);};
+  const body=bd.querySelector('.body');
+  const refresh=()=>{body.innerHTML=boardBody(coll);};       // full (chips/cats may change)
+  const redraw=()=>{                                          // inner-only: filter/view feel
+    const secs=body.querySelector('.bsecs');if(secs)secs.innerHTML=boardSections(coll);
+    body.querySelectorAll('.bchip').forEach(el=>el.classList.toggle('on',el.dataset.bCat===(coll.boardCat||'all')));
+    body.querySelectorAll('.seg-b[data-b-view]').forEach(el=>el.classList.toggle('on',el.dataset.bView===(coll.boardView||'gallery')));
+  };
   body.addEventListener('click',e=>{const t=e.target.closest('[data-b-add],[data-b-del],[data-b-open],[data-b-view],[data-b-cat]');if(!t)return;
     if(t.dataset.bDel!==undefined){coll.board.splice(+t.dataset.bDel,1);refresh();}
     else if(t.dataset.bAdd!==undefined){boardAddMenu(coll,refresh,e);}
-    else if(t.dataset.bView!==undefined){coll.boardView=t.dataset.bView;refresh();}
-    else if(t.dataset.bCat!==undefined){coll.boardCat=t.dataset.bCat;refresh();}
+    else if(t.dataset.bView!==undefined){coll.boardView=t.dataset.bView;redraw();}
+    else if(t.dataset.bCat!==undefined){coll.boardCat=t.dataset.bCat;redraw();}
     else if(t.dataset.bOpen!==undefined){dlgBoardCard(coll,+t.dataset.bOpen,refresh);}
   });
 }
@@ -781,7 +799,7 @@ function dlgBoardCard(coll,i,refreshParent){const c=coll.board[i];if(!c)return;
     <div class="bd-actions"><button class="btn btn-primary" data-b-go>${M.forward||''} Open link</button></div>`;}
   else if(c.type==='note'){inner=`<div class="bd-note">${mdMini(c.text)||'<span class="muted">Empty note.</span>'}</div>`;}
   else if(c.type==='action'){inner=`${c.desc?`<div class="bd-url-lbl muted">What it does</div><div class="bd-desc mono">${c.desc}</div>`:''}<div class="bd-actions"><button class="btn btn-primary" data-b-go>${c.label||'Run'}</button></div>`;}
-  else if(c.type==='live'){inner=`<div class="blive" style="margin-top:2px">${(c.rows||[]).map(r=>`<div class="blive-row"><span class="pst ${r.up?'up':'down'}"></span><span class="mono" style="font-size:12px">${r.text}</span></div>`).join('')||'<span class="muted">No rows.</span>'}</div>`;}
+  else if(c.type==='live'){inner=`<div class="blive" style="margin-top:2px">${(c.rows||[]).map(r=>`<div class="blive-row ${r.up?'':'down'}"><span class="pst ${r.up?'up':'down'}"></span><span class="mono" style="font-size:12px">${r.text}</span></div>`).join('')||'<span class="muted">No rows.</span>'}</div>`;}
   const body=`<div class="bd-wrap">${inner}</div>
     <div class="bd-foot"><button class="btn btn-ghost btn-sm" data-b-edit>${M.edit||''} Edit</button><span style="flex:1"></span><button class="btn btn-ghost btn-sm" data-b-rm style="color:var(--red)">Remove card</button></div>`;
   const m=showModal({title:`${B_ICON[c.type]} ${c.title}`,subtitle:`${B_LABEL[c.type]} · ${catOf(c)}`,width:'min(560px,92vw)',confirm:'Done',body});
