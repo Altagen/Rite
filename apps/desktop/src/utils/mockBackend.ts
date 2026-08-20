@@ -446,6 +446,34 @@ export async function mockInvoke(
       // Demo detection output so the dashboard's Containers/Services cards render
       // under the dev mock. Shape matches machineProbe's parsers.
       const cmd = String(args?.command ?? '');
+      if (cmd.includes(' stats ')) {
+        return {
+          stdout: [
+            'web|0.4%|82MiB / 2GiB',
+            'api|2.1%|318MiB / 2GiB',
+            'worker|1.3%|204MiB / 2GiB',
+            'redis|0.2%|12MiB / 2GiB',
+            'migrate|0.00%|0B / 2GiB',
+          ].join('\n'),
+          stderr: '',
+          exitStatus: 0,
+        };
+      }
+      if (cmd.includes('systemctl show')) {
+        const blk = (id: string, mem: string, ts: string) =>
+          `Id=${id}\nMemoryCurrent=${mem}\nActiveEnterTimestamp=${ts}`;
+        return {
+          stdout: [
+            blk('nginx.service', '14876672', 'Tue 2026-08-18 14:00:00 UTC'),
+            blk('app.service', '195493888', 'Tue 2026-08-18 14:02:00 UTC'),
+            blk('postgresql.service', '536870912', 'Mon 2026-08-11 09:00:00 UTC'),
+            blk('backup.service', '[not set]', ''),
+            blk('docker.service', '101457920', 'Mon 2026-08-11 09:00:00 UTC'),
+          ].join('\n\n'),
+          stderr: '',
+          exitStatus: 0,
+        };
+      }
       if (cmd.includes('systemctl')) {
         return {
           stdout: [

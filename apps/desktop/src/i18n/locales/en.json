@@ -270,7 +270,11 @@
     "colState": "State",
     "colCreated": "Created",
     "colUnit": "Unit",
-    "colDescription": "Description"
+    "colDescription": "Description",
+    "colCpu": "CPU",
+    "colMem": "Mem",
+    "colMemory": "Memory",
+    "colSince": "Since"
   },
   "board": {
     "title": "Board",

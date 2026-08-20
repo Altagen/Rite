@@ -21,6 +21,10 @@ import {
   type ServiceRow,
   parseContainers,
   parseServices,
+  statsCmd,
+  parseStats,
+  servicesShowCmd,
+  parseServicesShow,
   isRunning,
   containerShellCmd,
   containerLogsCmd,
@@ -521,6 +525,7 @@ function ContainersCard({
   const [loaded, setLoaded] = useState(false);
   const [mode, setMode] = useState<'live' | 'pinned'>('live');
   const [pins, setPins] = useState<Set<string>>(() => readPins(connection.id));
+  const [stats, setStats] = useState<Record<string, { cpu: string; mem: string }>>({});
 
   const refresh = useCallback(async () => {
     setBusy(true);
@@ -543,6 +548,22 @@ function ContainersCard({
     const t = setTimeout(() => void refresh(), 0);
     return () => clearTimeout(t);
   }, [refresh]);
+
+  // Live CPU/Mem is a second one-shot — fetched only when the card is expanded.
+  const fetchStats = useCallback(async () => {
+    if (runtime === 'none') return;
+    try {
+      const out = await execRemote(connection, statsCmd(runtime));
+      setStats(parseStats(out.stdout));
+    } catch {
+      // stats are best-effort — leave columns as "—".
+    }
+  }, [connection, execRemote, runtime]);
+  useEffect(() => {
+    if (!wide || !loaded || rows.length === 0) return;
+    const t = setTimeout(() => void fetchStats(), 0);
+    return () => clearTimeout(t);
+  }, [wide, loaded, rows.length, fetchStats]);
 
   const togglePin = (name: string) => {
     setPins((prev) => {
@@ -600,6 +621,8 @@ function ContainersCard({
                 <th className="px-2 py-1.5">{t('dash.colImage')}</th>
                 <th className="px-2 py-1.5">{t('dash.colPorts')}</th>
                 <th className="px-2 py-1.5">{t('dash.colState')}</th>
+                <th className="px-2 py-1.5">{t('dash.colCpu')}</th>
+                <th className="px-2 py-1.5">{t('dash.colMem')}</th>
                 <th className="px-2 py-1.5">{t('dash.colCreated')}</th>
                 <th className="px-2 py-1.5" />
               </tr>
@@ -619,6 +642,8 @@ function ContainersCard({
                     <td className="px-2 py-1.5 font-mono text-muted-foreground">{c.image}</td>
                     <td className="px-2 py-1.5 font-mono text-muted-foreground">{c.ports || '—'}</td>
                     <td className="px-2 py-1.5 font-mono text-muted-foreground">{c.state}</td>
+                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{stats[c.name]?.cpu ?? '—'}</td>
+                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{stats[c.name]?.mem ?? '—'}</td>
                     <td className="px-2 py-1.5 text-muted-foreground">{c.created || '—'}</td>
                     <td className="px-2 py-1.5">
                       <div className="flex justify-end gap-1.5">
@@ -690,6 +715,7 @@ function ServicesCard({
   const [err, setErr] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [filter, setFilter] = useState<'all' | 'active' | 'failed'>('all');
+  const [extra, setExtra] = useState<Record<string, { mem: string; since: string }>>({});
 
   const refresh = useCallback(async () => {
     setBusy(true);
@@ -710,6 +736,23 @@ function ServicesCard({
     const t = setTimeout(() => void refresh(), 0);
     return () => clearTimeout(t);
   }, [refresh]);
+
+  // Per-unit memory + since is a second one-shot — fetched only when expanded.
+  const fetchExtra = useCallback(async () => {
+    const names = rows.map((s) => s.name);
+    if (names.length === 0) return;
+    try {
+      const out = await execRemote(connection, servicesShowCmd(names));
+      setExtra(parseServicesShow(out.stdout));
+    } catch {
+      // best-effort — leave columns as "—".
+    }
+  }, [connection, execRemote, rows]);
+  useEffect(() => {
+    if (!wide || !loaded || rows.length === 0) return;
+    const t = setTimeout(() => void fetchExtra(), 0);
+    return () => clearTimeout(t);
+  }, [wide, loaded, rows.length, fetchExtra]);
 
   const failed = rows.filter((s) => s.active === 'failed').length;
   const visible = rows.filter(
@@ -756,6 +799,8 @@ function ServicesCard({
                 <th className="px-2 py-1.5">{t('dash.colUnit')}</th>
                 <th className="px-2 py-1.5">{t('dash.colDescription')}</th>
                 <th className="px-2 py-1.5">{t('dash.colState')}</th>
+                <th className="px-2 py-1.5">{t('dash.colMemory')}</th>
+                <th className="px-2 py-1.5">{t('dash.colSince')}</th>
                 <th className="px-2 py-1.5" />
               </tr>
             </thead>
@@ -768,6 +813,8 @@ function ServicesCard({
                     <td className="px-2 py-1.5 font-medium">{s.name}</td>
                     <td className="px-2 py-1.5 text-muted-foreground">{s.description}</td>
                     <td className={`px-2 py-1.5 font-mono ${s.active === 'failed' ? 'text-red-500' : 'text-muted-foreground'}`}>{s.active} ({s.sub})</td>
+                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{extra[s.name]?.mem ?? '—'}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{extra[s.name]?.since ?? '—'}</td>
                     <td className="px-2 py-1.5">
                       <div className="flex justify-end gap-1.5">
                         <RowBtn label="↻" title={serviceRestartCmd(s.name)} onClick={() => onRunInPane(connection, serviceRestartCmd(s.name))} />

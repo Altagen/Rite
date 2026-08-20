@@ -85,6 +85,66 @@ export function parseServices(stdout: string): ServiceRow[] {
 
 export const isRunning = (c: ContainerRow) => c.state === 'running' || c.state === 'up';
 
+// --- lazy enrichments (fetched only when a card is expanded) -----------------
+
+/** Live container CPU%/memory (`docker/podman stats --no-stream`). */
+export function statsCmd(rt: ContainerRuntime): string {
+  const r = rt === 'none' ? 'docker' : rt;
+  return `${r} stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}' 2>/dev/null`;
+}
+/** name → {cpu, mem}. `MemUsage` is "used / limit"; we keep the used part. */
+export function parseStats(stdout: string): Record<string, { cpu: string; mem: string }> {
+  const out: Record<string, { cpu: string; mem: string }> = {};
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const [name, cpu, mem] = line.split('|');
+    if (!name) continue;
+    out[name.trim()] = {
+      cpu: (cpu ?? '').trim() || '—',
+      mem: (mem ?? '').split('/')[0].trim() || '—',
+    };
+  }
+  return out;
+}
+
+/** Per-unit memory + active-since for systemd services (`systemctl show`). */
+export function servicesShowCmd(units: string[]): string {
+  const list = units.map((u) => u.replace(/[^a-zA-Z0-9._@-]/g, '')).join(' ');
+  return `systemctl show ${list} -p Id,MemoryCurrent,ActiveEnterTimestamp --no-pager 2>/dev/null`;
+}
+/** unit → {mem, since}. Blocks are `Key=Value` groups separated by blank lines. */
+export function parseServicesShow(stdout: string): Record<string, { mem: string; since: string }> {
+  const out: Record<string, { mem: string; since: string }> = {};
+  for (const block of stdout.split(/\n\s*\n/)) {
+    const props: Record<string, string> = {};
+    for (const line of block.split('\n')) {
+      const eq = line.indexOf('=');
+      if (eq > 0) props[line.slice(0, eq)] = line.slice(eq + 1).trim();
+    }
+    if (props.Id) out[props.Id] = { mem: fmtBytes(props.MemoryCurrent), since: fmtSince(props.ActiveEnterTimestamp) };
+  }
+  return out;
+}
+function fmtBytes(v?: string): string {
+  const n = Number(v);
+  if (!v || !Number.isFinite(n) || n <= 0) return '—';
+  const units = ['B', 'K', 'M', 'G', 'T'];
+  let x = n;
+  let i = 0;
+  while (x >= 1024 && i < units.length - 1) {
+    x /= 1024;
+    i++;
+  }
+  return `${x.toFixed(i > 0 && x < 10 ? 1 : 0)} ${units[i]}`;
+}
+function fmtSince(v?: string): string {
+  if (!v) return '—';
+  // ActiveEnterTimestamp e.g. "Tue 2026-08-18 14:00:00 UTC" → "2026-08-18 14:00".
+  const m = v.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/);
+  return m ? m[0] : '—';
+}
+
 /** A shell-quoted-safe unit/name is assumed (systemd/container names have no spaces). */
 export const containerShellCmd = (rt: ContainerRuntime, name: string) =>
   `${rt === 'none' ? 'docker' : rt} exec -it ${name} sh`;
