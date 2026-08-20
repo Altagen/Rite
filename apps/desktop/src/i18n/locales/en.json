@@ -215,6 +215,26 @@
     "ungrouped": "Other",
     "hint": "Reach this machine through another (a bastion). Rite opens the jump first, then tunnels the SSH session to the target — like OpenSSH ProxyJump. Chainable: if the jump itself has a jump, the whole path is built. Your key never lands on the bastion."
   },
+  "dash": {
+    "connect": "Connect",
+    "edit": "Edit",
+    "overview": "Overview",
+    "address": "Address",
+    "auth": "Auth",
+    "jump": "Jump",
+    "lastUsed": "Last used",
+    "never": "—",
+    "justNow": "just now",
+    "portForwarding": "Port forwarding",
+    "manage": "Manage…",
+    "live": "{n} live",
+    "noForwards": "No forwards yet.",
+    "listening": "Listening",
+    "stopped": "Stopped",
+    "detectNote": "Cards are what Rite detects on this host — surfaced automatically, agentless (over the SSH session, through the jump host if any).",
+    "soonNote": "Containers & services appear here once detected over SSH — coming next.",
+    "close": "Close dashboard"
+  },
   "board": {
     "title": "Board",
     "personal": "personal",

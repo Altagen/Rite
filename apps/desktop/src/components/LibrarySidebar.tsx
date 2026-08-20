@@ -22,6 +22,8 @@ interface LibrarySidebarProps {
   connections: ConnectionInfo[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  // Single-click a machine opens its dashboard in the main area (double-click connects).
+  onOpenMachine?: (connection: ConnectionInfo) => void;
   onEdit: (connection: ConnectionInfo) => void;
   onDelete: (connection: ConnectionInfo) => void;
   onConnect: (connection: ConnectionInfo) => void;
@@ -408,6 +410,7 @@ function MachineRow({
   isSelected,
   depth,
   onSelect,
+  onOpenMachine,
   onEdit,
   onMove,
   onDelete,
@@ -418,6 +421,7 @@ function MachineRow({
   isSelected: boolean;
   depth: number;
   onSelect: () => void;
+  onOpenMachine?: () => void;
   onEdit: () => void;
   onMove?: () => void;
   onDelete: () => void;
@@ -433,7 +437,8 @@ function MachineRow({
     <div
       className={`m-tnode leaf select-none ${isSelected ? 'sel' : ''}`}
       style={{ paddingLeft: `${6 + depth * 15}px` }}
-      onClick={onSelect}
+      title="Click: dashboard · double-click: connect"
+      onClick={onOpenMachine ?? onSelect}
       onDoubleClick={onConnect}
     >
       <span className="m-ca" />
@@ -644,6 +649,7 @@ export function LibrarySidebar({
   connections,
   selectedId,
   onSelect,
+  onOpenMachine,
   onEdit,
   onDelete,
   onConnect,
@@ -690,6 +696,7 @@ export function LibrarySidebar({
       isSelected={selectedId === c.id}
       depth={depth}
       onSelect={() => onSelect(c.id)}
+      onOpenMachine={onOpenMachine ? () => onOpenMachine(c) : undefined}
       onEdit={() => onEdit(c)}
       onMove={onMoveMachine ? () => onMoveMachine(c) : undefined}
       onDelete={() => onDelete(c)}

@@ -21,6 +21,7 @@ import { useSettingsModal } from '../store/settingsModal';
 import { ConnectionForm } from './ConnectionForm';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
+import { MachineDashboard } from './MachineDashboard';
 import { MemberPicker } from './MemberPicker';
 import { BoardModal } from './BoardModal';
 import { CollectionEditDialog } from './CollectionEditDialog';
@@ -186,7 +187,8 @@ export function Workspace({
   // showing (terminal is kept mounted underneath). Plus the members dialog target
   // and the create-into-collection default for the machine form.
   const [openCollectionId, setOpenCollectionId] = useState<string | null>(null);
-  const [mainView, setMainView] = useState<'terminal' | 'collection'>('terminal');
+  const [openMachineId, setOpenMachineId] = useState<string | null>(null);
+  const [mainView, setMainView] = useState<'terminal' | 'collection' | 'machine'>('terminal');
   const [membersCollectionId, setMembersCollectionId] = useState<string | null>(null);
   const [boardCollectionId, setBoardCollectionId] = useState<string | null>(null);
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
@@ -1071,6 +1073,18 @@ export function Workspace({
     setMainView('terminal');
   };
 
+  // Open a machine's dashboard in the main area (single-click). Selecting it too keeps the
+  // sidebar highlight in sync; double-click on a row connects instead (handleConnect).
+  const handleOpenMachine = (connection: ConnectionInfo) => {
+    selectConnection(connection.id);
+    setOpenMachineId(connection.id);
+    setMainView('machine');
+  };
+  const handleCloseMachine = () => {
+    setOpenMachineId(null);
+    setMainView(openCollectionId ? 'collection' : 'terminal');
+  };
+
   // Sidebar collection actions (accounts context).
   const isAccountsContext = conns.writableCollections !== undefined;
   const handleNewMachineInCollection = (collectionId: string, folder: string | null = null) => {
@@ -1100,6 +1114,7 @@ export function Workspace({
     : [];
   const openCollectionMeta = openCollectionMachines[0];
   const openCol = conns.collections?.find((c) => c.id === openCollectionId);
+  const openMachine = openMachineId ? conns.connections.find((c) => c.id === openMachineId) : undefined;
   const openCollectionName = openCol?.name ?? openCollectionMeta?.collectionName ?? 'Collection';
   const openCollectionColor = openCol?.color ?? openCollectionMeta?.collectionColor ?? null;
   const openCollectionRole = openCol?.role ?? openCollectionMeta?.collectionRole ?? null;
@@ -1375,6 +1390,7 @@ export function Workspace({
               connections={connections}
               selectedId={selectedConnectionId}
               onSelect={selectConnection}
+              onOpenMachine={handleOpenMachine}
               onEdit={handleEditConnection}
               onDelete={handleDeleteConnection}
               onConnect={handleConnect}
@@ -1463,7 +1479,7 @@ export function Workspace({
             is open), then the terminal manager (kept mounted so sessions survive)
             with the collection view overlaid when its tab is active. */}
         <div className="relative flex min-w-0 flex-1 flex-col">
-          {openCollectionId && (
+          {(openCollectionId || openMachine) && (
             <div className="flex items-center gap-1 border-b border-border bg-card px-2 py-1">
               <button
                 onClick={() => setMainView('terminal')}
@@ -1476,28 +1492,55 @@ export function Workspace({
                 </svg>
                 {t('main.terminal') !== 'main.terminal' ? t('main.terminal') : 'Terminal'}
               </button>
-              <div
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
-                  mainView === 'collection' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
-                }`}
-              >
-                <button onClick={() => setMainView('collection')} className="flex items-center gap-1.5">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
-                  </svg>
-                  <span className="max-w-[160px] truncate">{openCollectionName}</span>
-                </button>
-                <button
-                  onClick={handleCloseCollection}
-                  className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-                  aria-label="Close collection"
+              {openCollectionId && (
+                <div
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+                    mainView === 'collection' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
+                  }`}
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
+                  <button onClick={() => setMainView('collection')} className="flex items-center gap-1.5">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
+                    </svg>
+                    <span className="max-w-[160px] truncate">{openCollectionName}</span>
+                  </button>
+                  <button
+                    onClick={handleCloseCollection}
+                    className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+                    aria-label="Close collection"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              {openMachine && (
+                <div
+                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+                    mainView === 'machine' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
+                  }`}
+                >
+                  <button onClick={() => setMainView('machine')} className="flex items-center gap-1.5">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <rect x="3" y="5" width="18" height="6" rx="1.5" />
+                      <rect x="3" y="13" width="18" height="6" rx="1.5" />
+                      <path strokeLinecap="round" d="M6.5 8h.01M6.5 16h.01" />
+                    </svg>
+                    <span className="max-w-[160px] truncate">{openMachine.name}</span>
+                  </button>
+                  <button
+                    onClick={handleCloseMachine}
+                    className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+                    aria-label={t('dash.close')}
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -1538,6 +1581,20 @@ export function Workspace({
                       ? () => setBoardCollectionId(openCollectionId)
                       : undefined
                   }
+                />
+              </div>
+            )}
+
+            {/* Machine dashboard overlay (its own view when a machine tab is active) */}
+            {openMachine && mainView === 'machine' && (
+              <div className="absolute inset-0 z-10 overflow-hidden bg-background">
+                <MachineDashboard
+                  key={openMachine.id}
+                  connection={openMachine}
+                  connections={conns.connections}
+                  onConnect={handleConnect}
+                  onEdit={handleEditConnection}
+                  onForward={setForwardTarget}
                 />
               </div>
             )}

@@ -215,6 +215,26 @@
     "ungrouped": "Autre",
     "hint": "Atteindre cette machine à travers une autre (un bastion). Rite ouvre le rebond d'abord, puis tunnelise la session SSH vers la cible — comme ProxyJump d'OpenSSH. Chaînable : si le rebond a lui-même un rebond, tout le chemin est construit. Votre clé n'atterrit jamais sur le bastion."
   },
+  "dash": {
+    "connect": "Connecter",
+    "edit": "Modifier",
+    "overview": "Aperçu",
+    "address": "Adresse",
+    "auth": "Auth",
+    "jump": "Rebond",
+    "lastUsed": "Dernier accès",
+    "never": "—",
+    "justNow": "à l'instant",
+    "portForwarding": "Redirection de ports",
+    "manage": "Gérer…",
+    "live": "{n} actifs",
+    "noForwards": "Aucune redirection.",
+    "listening": "À l'écoute",
+    "stopped": "Arrêté",
+    "detectNote": "Les cartes sont ce que Rite détecte sur cet hôte — affichées automatiquement, sans agent (via la session SSH, à travers le rebond le cas échéant).",
+    "soonNote": "Les conteneurs et services apparaîtront ici une fois détectés via SSH — bientôt.",
+    "close": "Fermer le tableau de bord"
+  },
   "board": {
     "title": "Tableau",
     "personal": "personnel",
