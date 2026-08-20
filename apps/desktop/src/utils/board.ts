@@ -14,6 +14,7 @@ export interface LinkCard {
   title: string;
   url: string;
   emoji: string;
+  cat?: string;
 }
 
 /** A short markdown note (**bold**, `code`). */
@@ -22,6 +23,7 @@ export interface NoteCard {
   type: 'note';
   title: string;
   text: string;
+  cat?: string;
 }
 
 /** A one-click action — a command to copy/run (a snippet, a TUI, a connect). */
@@ -31,6 +33,7 @@ export interface ActionCard {
   title: string;
   label: string;
   desc: string;
+  cat?: string;
 }
 
 /**
@@ -44,9 +47,31 @@ export interface LiveCard {
   title: string;
   source: 'failed' | 'containers';
   rows?: { up: boolean; text: string }[];
+  cat?: string;
 }
 
 export type BoardCard = LinkCard | NoteCard | ActionCard | LiveCard;
+export type CardType = BoardCard['type'];
+
+/** Default categories offered in the add form (plus any already on the board). */
+export const BOARD_CATS = ['Monitoring', 'Docs', 'Ops', 'Links', 'General'];
+/** A card's category, defaulting to "General". */
+export function catOf(c: BoardCard): string {
+  return c.cat?.trim() || 'General';
+}
+/** Every category present on a board, unioned with the defaults (stable order). */
+export function boardCats(cards: BoardCard[]): string[] {
+  const set = new Set(BOARD_CATS);
+  for (const c of cards) set.add(catOf(c));
+  return [...set];
+}
+/** One-line preview text for a card (markdown stripped; links show the URL). */
+export function boardPreview(c: BoardCard): string {
+  if (c.type === 'link') return c.url || '';
+  if (c.type === 'note') return (c.text || '').replace(/[*`]/g, '').replace(/\n+/g, ' ');
+  if (c.type === 'action') return c.desc || `Runs: ${c.label || 'action'}`;
+  return (c.rows ?? []).map((r) => r.text).join(' · ') || '—';
+}
 
 /** A short, collision-resistant id for a new card. */
 export function newCardId(): string {
