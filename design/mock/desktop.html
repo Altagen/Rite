@@ -109,11 +109,32 @@
   .mdash-sub{font-size:12.5px;color:var(--fg-dim)}
   .dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;align-items:start}
   .dcard{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:13px 14px}
+  .dcard.wide{grid-column:1/-1}
   .dcard-h{display:flex;align-items:center;gap:8px;margin-bottom:10px}
   .dcard-h .icon{width:17px;height:17px;color:var(--fg-dim)}
   .dcard-t{font-weight:650;font-size:14px}
+  .dcard-x{display:grid;place-items:center;width:24px;height:24px;border-radius:6px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer;flex:none}
+  .dcard-x:hover{color:var(--fg);border-color:var(--accent)}
+  /* wide card → a proper table with extra columns (more info at a glance) */
+  .dtwrap{overflow-x:auto}
+  .dtable{width:100%;border-collapse:collapse;font-size:12.5px}
+  .dtable th{text-align:left;font-weight:600;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:5px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .dtable td{padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .dtable tr:last-child td{border-bottom:none}
+  .dtable tr:hover td{background:var(--card2)}
+  .dtable .u-name{font-weight:600}
+  .dtable .u-desc{color:var(--muted)}
+  .dtable .u-num{font-family:var(--mono);color:var(--fg-dim);white-space:nowrap}
+  .dtable .u-act{display:flex;gap:5px;justify-content:flex-end}
+  .dtable td.right{text-align:right}
+  .mdash-foot{display:flex;align-items:flex-start;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:11.5px;line-height:1.5}
+  .mdash-foot .icon{width:14px;height:14px;flex:none;margin-top:1px;color:var(--fg-dim)}
   .ov{display:flex;flex-direction:column;gap:7px}
+  .ov.ov2{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px}
   .ov-row{display:flex;justify-content:space-between;gap:12px;font-size:12.5px}
+  .dcust{display:flex;flex-direction:column}
+  .dcust-row{display:flex;align-items:center;justify-content:space-between;padding:10px 2px;font-size:13.5px;font-weight:550;border-bottom:1px solid var(--line);cursor:pointer}
+  .dcust-row:last-child{border-bottom:none}
   .ov-k{color:var(--muted)}.ov-v{color:var(--fg);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pst.up{background:var(--green);box-shadow:0 0 5px color-mix(in oklab,var(--green) 60%,transparent)}
   .pst.down{background:transparent;border:1.5px solid var(--muted)}
@@ -586,26 +607,35 @@ function machineMenu(name,e){const cn=machineByName(name);if(!cn)return;floatMen
    detects for that host (Containers, Services, Port forwards). One machine, one
    place. Cards act inline (start/stop, exec-in, restart) — deep-dive later. ===== */
 const DEMO_CONTAINERS=[
-  {name:'web',     image:'nginx:1.27',     state:'running', ports:'0.0.0.0:80->80', pinned:true},
-  {name:'api',     image:'acme/api:2.4.1', state:'running', ports:'8080->8080',      pinned:true},
-  {name:'worker',  image:'acme/api:2.4.1', state:'running', ports:'',                pinned:false},
-  {name:'redis',   image:'redis:7-alpine', state:'running', ports:'6379->6379',      pinned:false},
-  {name:'migrate', image:'acme/api:2.4.1', state:'exited',  ports:'',                pinned:false},
+  {name:'web',     image:'nginx:1.27',     state:'running', ports:'0.0.0.0:80->80', pinned:true,  cpu:'0.4%', mem:'82 MiB',  created:'3 days ago'},
+  {name:'api',     image:'acme/api:2.4.1', state:'running', ports:'8080->8080',      pinned:true,  cpu:'2.1%', mem:'318 MiB', created:'3 days ago'},
+  {name:'worker',  image:'acme/api:2.4.1', state:'running', ports:'',                pinned:false, cpu:'1.3%', mem:'204 MiB', created:'3 days ago'},
+  {name:'redis',   image:'redis:7-alpine', state:'running', ports:'6379->6379',      pinned:false, cpu:'0.2%', mem:'12 MiB',  created:'8 days ago'},
+  {name:'migrate', image:'acme/api:2.4.1', state:'exited',  ports:'',                pinned:false, cpu:'—',    mem:'—',       created:'3 days ago'},
 ];
 const DEMO_SERVICES=[
-  {name:'nginx.service',       desc:'A high performance web server', active:'active',   sub:'running'},
-  {name:'app.service',         desc:'Acme API',                      active:'active',   sub:'running'},
-  {name:'postgresql.service',  desc:'PostgreSQL RDBMS',              active:'active',   sub:'running'},
-  {name:'certbot.timer',       desc:"Renew Let's Encrypt certs",     active:'active',   sub:'waiting'},
-  {name:'backup.service',      desc:'Nightly backup',                active:'failed',   sub:'failed'},
-  {name:'docker.service',      desc:'Docker Application Container',   active:'active',   sub:'running'},
-  {name:'ufw.service',         desc:'Uncomplicated firewall',        active:'inactive', sub:'dead'},
+  {name:'nginx.service',       desc:'A high performance web server', active:'active',   sub:'running', mem:'14.2 M',  since:'3 days ago'},
+  {name:'app.service',         desc:'Acme API',                      active:'active',   sub:'running', mem:'186.4 M', since:'3 days ago'},
+  {name:'postgresql.service',  desc:'PostgreSQL RDBMS',              active:'active',   sub:'running', mem:'512.0 M', since:'8 days ago'},
+  {name:'certbot.timer',       desc:"Renew Let's Encrypt certs",     active:'active',   sub:'waiting', mem:'—',       since:'8 days ago'},
+  {name:'backup.service',      desc:'Nightly backup',                active:'failed',   sub:'failed',  mem:'—',       since:'2h ago'},
+  {name:'docker.service',      desc:'Docker Application Container',   active:'active',   sub:'running', mem:'96.8 M',  since:'8 days ago'},
+  {name:'ufw.service',         desc:'Uncomplicated firewall',        active:'inactive', sub:'dead',    mem:'—',       since:'—'},
 ];
 function svState(s){return s.active==='active'?'up':s.active==='failed'?'down':'seen';}
 function ctList(cn){return (cn.containers||DEMO_CONTAINERS).filter(c=>(cn.ctMode||'live')==='live'||c.pinned);}
 function svcList(cn){const all=cn.services||DEMO_SERVICES;const f=cn.svcFilter||'all';return all.filter(s=>f==='all'||(f==='failed'&&s.active==='failed')||(f==='active'&&s.active==='active'));}
 
-/* ---- dashboard cards (rendered inline in the machine view) ---- */
+/* ---- dashboard cards (rendered inline in the machine view) ----
+   Each card can be Expanded (⤢) to span the full width and show a richer table with
+   extra columns; and the whole set is configurable (Customize → show/hide). ---- */
+const IC_EXP='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+const IC_COL='<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4v2a2 2 0 0 1-2 2H4M20 8h-2a2 2 0 0 1-2-2V4M4 16h2a2 2 0 0 1 2 2v2M16 20v-2a2 2 0 0 1 2-2h2"/></svg>';
+const IC_INFO='<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>';
+function dashWide(cn,id){return (cn.dashWide||[]).includes(id);}
+function dashToggleWide(name,id){const cn=machineByName(name);cn.dashWide=cn.dashWide||[];const i=cn.dashWide.indexOf(id);if(i<0)cn.dashWide.push(id);else cn.dashWide.splice(i,1);renderMain();}
+function dcExp(cn,id){const w=dashWide(cn,id);return `<button class="dcard-x" onclick="dashToggleWide('${cn.name}','${id}')" title="${w?'Collapse':'Expand for more detail'}">${w?IC_COL:IC_EXP}</button>`;}
+
 function pfCard(cn){cn.forwards=cn.forwards||[];
   const rows=cn.forwards.map((f,i)=>{const on=!!f.active;return `<div class="lrow">
     <span class="pf-badge">L</span>
@@ -615,34 +645,60 @@ function pfCard(cn){cn.forwards=cn.forwards||[];
     <button class="btn btn-ghost btn-sm" onclick="pfDelFor('${cn.name}',${i})" title="Remove">✕</button>
   </div>`;}).join('')||`<p class="muted" style="font-size:12.5px">No forwards yet.</p>`;
   const live=cn.forwards.filter(f=>f.active).length;
-  return `<div class="dcard">
-    <div class="dcard-h">${M.forward}<span class="dcard-t">Port forwarding</span>${live?`<span class="chip-sm">${live} live</span>`:''}<span style="flex:1"></span><button class="btn btn-ghost btn-sm" onclick="dlgPortForward(machineByName('${cn.name}'))">Manage…</button></div>
+  return `<div class="dcard ${dashWide(cn,'forwards')?'wide':''}">
+    <div class="dcard-h">${M.forward}<span class="dcard-t">Port forwarding</span>${live?`<span class="chip-sm">${live} live</span>`:''}<span style="flex:1"></span><button class="btn btn-ghost btn-sm" onclick="dlgPortForward(machineByName('${cn.name}'))">Manage…</button>${dcExp(cn,'forwards')}</div>
     <div class="lrow-list">${rows}</div></div>`;}
-function ctCard(cn){cn.ctMode=cn.ctMode||'live';const rt=cn.runtime||'docker';const rows=ctList(cn).map((c,i)=>{const up=c.state==='running';
-  return `<div class="lrow">
+
+/* Containers — compact list (normal) or a full table with CPU/Mem/Created (wide). */
+function ctTable(cn){const rows=ctList(cn).map((c,i)=>{const up=c.state==='running';return `<tr>
+    <td><span class="pst ${up?'up':'seen'}" title="${c.state}"></span></td>
+    <td class="u-name">${c.name} ${c.pinned?'<span class="lpin" title="Pinned">★</span>':''}</td>
+    <td class="u-desc mono">${c.image}</td>
+    <td class="u-num">${c.ports||'—'}</td>
+    <td class="u-num">${c.state}</td>
+    <td class="u-num">${c.cpu||'—'}</td>
+    <td class="u-num">${c.mem||'—'}</td>
+    <td class="u-desc">${c.created||'—'}</td>
+    <td class="right"><div class="u-act"><button class="btn btn-ghost btn-sm" ${up?'':'disabled'} onclick="ctExec('${cn.name}',${i})">Shell</button><button class="btn btn-ghost btn-sm" onclick="ctLog('${cn.name}',${i})">Logs</button><button class="btn btn-ghost btn-sm" onclick="ctRestart('${cn.name}',${i})" title="Restart">↻</button></div></td></tr>`;}).join('');
+  return `<div class="dtwrap"><table class="dtable"><thead><tr><th></th><th>Name</th><th>Image</th><th>Ports</th><th>State</th><th>CPU</th><th>Mem</th><th>Created</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;}
+function ctCard(cn){cn.ctMode=cn.ctMode||'live';const rt=cn.runtime||'docker';const wide=dashWide(cn,'containers');
+  const list=ctList(cn).map((c,i)=>{const up=c.state==='running';return `<div class="lrow">
     <span class="pst ${up?'up':'seen'}" title="${c.state}"></span>
     <div class="lmeta"><div class="lname">${c.name} ${c.pinned?'<span class="lpin" title="Pinned — 1-click">★</span>':''}</div><code class="lsub">${c.image}${c.ports?' · '+c.ports:''}</code></div>
     <button class="btn btn-ghost btn-sm" ${up?'':'disabled'} onclick="ctExec('${cn.name}',${i})" title="Exec a shell inside">Shell</button>
     <button class="btn btn-ghost btn-sm" onclick="ctLog('${cn.name}',${i})" title="Logs">Logs</button>
     <button class="btn btn-ghost btn-sm" onclick="ctRestart('${cn.name}',${i})" title="Restart">↻</button>
   </div>`;}).join('')||`<p class="muted" style="font-size:12.5px">No ${cn.ctMode==='live'?'containers':'pinned containers'}.</p>`;
-  return `<div class="dcard">
+  const body=ctList(cn).length&&wide?ctTable(cn):list;
+  return `<div class="dcard ${wide?'wide':''}">
     <div class="dcard-h">${M.docker}<span class="dcard-t">Containers</span><span class="chip-sm">${rt}</span><span style="flex:1"></span>
-      <div class="seg"><button class="seg-b ${cn.ctMode==='live'?'on':''}" onclick="ctSetMode('${cn.name}','live')">Live</button><button class="seg-b ${cn.ctMode==='pinned'?'on':''}" onclick="ctSetMode('${cn.name}','pinned')">Pinned</button></div></div>
-    <div class="lrow-list">${rows}</div>
+      <div class="seg"><button class="seg-b ${cn.ctMode==='live'?'on':''}" onclick="ctSetMode('${cn.name}','live')">Live</button><button class="seg-b ${cn.ctMode==='pinned'?'on':''}" onclick="ctSetMode('${cn.name}','pinned')">Pinned</button></div>${dcExp(cn,'containers')}</div>
+    <div class="lrow-list">${body}</div>
     <p class="muted" style="font-size:11.5px;margin:8px 0 0"><code style="font-family:ui-monospace,monospace">${rt} ps</code> over SSH · agentless. Shell = <code style="font-family:ui-monospace,monospace">${rt} exec -it &lt;name&gt; sh</code>.</p></div>`;}
-function svcCard(cn){cn.svcFilter=cn.svcFilter||'all';const all=cn.services||DEMO_SERVICES;const failed=all.filter(s=>s.active==='failed').length;
-  const rows=svcList(cn).map((s,i)=>{const on=s.active==='active';return `<div class="lrow">
+
+/* Services — compact list (normal) or a full table with State/Memory/Since (wide). */
+function svcTable(cn){const rows=svcList(cn).map((s,i)=>{const on=s.active==='active';return `<tr>
+    <td><span class="pst ${svState(s)}" title="${s.active} · ${s.sub}"></span></td>
+    <td class="u-name">${s.name}</td>
+    <td class="u-desc">${s.desc}</td>
+    <td><span class="${s.active==='failed'?'accent-red':''}">${s.active} (${s.sub})</span></td>
+    <td class="u-num">${s.mem||'—'}</td>
+    <td class="u-desc">${s.since||'—'}</td>
+    <td class="right"><div class="u-act"><button class="btn btn-ghost btn-sm" onclick="svcAction('${cn.name}',${i},'restart')" title="Restart">↻</button><button class="btn btn-ghost btn-sm" onclick="svcAction('${cn.name}',${i},'toggle')">${on?'Stop':'Start'}</button><button class="btn btn-ghost btn-sm" onclick="svcAction('${cn.name}',${i},'journal')">Journal</button></div></td></tr>`;}).join('');
+  return `<div class="dtwrap"><table class="dtable"><thead><tr><th></th><th>Unit</th><th>Description</th><th>State</th><th>Memory</th><th>Since</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;}
+function svcCard(cn){cn.svcFilter=cn.svcFilter||'all';const all=cn.services||DEMO_SERVICES;const failed=all.filter(s=>s.active==='failed').length;const wide=dashWide(cn,'services');
+  const list=svcList(cn).map((s,i)=>{const on=s.active==='active';return `<div class="lrow">
     <span class="pst ${svState(s)}" title="${s.active} · ${s.sub}"></span>
     <div class="lmeta"><div class="lname">${s.name}</div><code class="lsub">${s.desc} · <span class="${s.active==='failed'?'accent-red':''}">${s.active} (${s.sub})</span></code></div>
     <button class="btn btn-ghost btn-sm" onclick="svcAction('${cn.name}',${i},'restart')" title="Restart">↻</button>
     <button class="btn btn-ghost btn-sm" onclick="svcAction('${cn.name}',${i},'toggle')">${on?'Stop':'Start'}</button>
     <button class="btn btn-ghost btn-sm" onclick="svcAction('${cn.name}',${i},'journal')" title="Journal">Journal</button>
   </div>`;}).join('')||`<p class="muted" style="font-size:12.5px">No matching units.</p>`;
-  return `<div class="dcard">
+  const body=svcList(cn).length&&wide?svcTable(cn):list;
+  return `<div class="dcard ${wide?'wide':''}">
     <div class="dcard-h">${M.service}<span class="dcard-t">Services</span>${failed?`<span class="chip-sm" style="color:var(--red);border-color:var(--red)">${failed} failed</span>`:''}<span style="flex:1"></span>
-      <div class="seg"><button class="seg-b ${cn.svcFilter==='all'?'on':''}" onclick="svcSetFilter('${cn.name}','all')">All</button><button class="seg-b ${cn.svcFilter==='active'?'on':''}" onclick="svcSetFilter('${cn.name}','active')">Active</button><button class="seg-b ${cn.svcFilter==='failed'?'on':''}" onclick="svcSetFilter('${cn.name}','failed')">Failed</button></div></div>
-    <div class="lrow-list">${rows}</div></div>`;}
+      <div class="seg"><button class="seg-b ${cn.svcFilter==='all'?'on':''}" onclick="svcSetFilter('${cn.name}','all')">All</button><button class="seg-b ${cn.svcFilter==='active'?'on':''}" onclick="svcSetFilter('${cn.name}','active')">Active</button><button class="seg-b ${cn.svcFilter==='failed'?'on':''}" onclick="svcSetFilter('${cn.name}','failed')">Failed</button></div>${dcExp(cn,'services')}</div>
+    <div class="lrow-list">${body}</div></div>`;}
 
 /* ---- inline card actions (mutate + re-render the dashboard) ---- */
 function ctSetMode(name,m){const cn=machineByName(name);if(cn){cn.ctMode=m;renderMain();}}
@@ -659,32 +715,41 @@ function pfDelFor(name,i){const cn=machineByName(name);(cn.forwards||[]).splice(
 
 /* ---- the machine dashboard (main area) ---- */
 function openMachine(name){STATE.machineView=name;STATE.mainTab='machine';renderSide();renderMain();}
-function overviewCard(cn){const chain=jumpChain(cn);
+function overviewCard(cn){const chain=jumpChain(cn);const wide=dashWide(cn,'overview');
   const rows=[
     ['Address',`${cn.user||'user'}@${cn.host||cn.name}:${cn.port||22}`],
     ['Auth',cn.authType?cn.authType:'password'],
     chain.length?['Jump',chain.join(' › ')]:null,
     ['Last used',cn.last||'—'],
   ].filter(Boolean).map(([k,v])=>`<div class="ov-row"><span class="ov-k">${k}</span><span class="ov-v mono">${v}</span></div>`).join('');
-  return `<div class="dcard"><div class="dcard-h">${M.machine}<span class="dcard-t">Overview</span></div><div class="ov">${rows}</div></div>`;}
+  return `<div class="dcard ${wide?'wide':''}"><div class="dcard-h">${M.machine}<span class="dcard-t">Overview</span><span style="flex:1"></span>${dcExp(cn,'overview')}</div><div class="ov ${wide?'ov2':''}">${rows}</div></div>`;}
+
+/* Which cards show + in what order (Customize). Auto-detected cards can be hidden. */
+const DASH_CARDS=[['overview','Overview'],['forwards','Port forwarding'],['containers','Containers'],['services','Services']];
+const DASH_FN={overview:overviewCard,forwards:pfCard,containers:ctCard,services:svcCard};
+function dashVisible(cn){return DASH_CARDS.map(([id])=>id).filter(id=>!((cn.dashHidden||[]).includes(id)));}
 function machineDashboard(cn){
+  const cards=dashVisible(cn).map(id=>DASH_FN[id](cn)).join('')||`<p class="muted" style="font-size:13px;grid-column:1/-1;padding:8px 2px">All cards hidden — use <b>Customize</b> to add some.</p>`;
   return `<div class="mdash">
     <div class="mdash-hd">
       <span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
       <div class="mdash-id"><div class="mdash-name">${cn.name}${cn.jump?`<span class="jhop" title="via ${jumpChain(cn).join(' › ')}">${M.jump}</span>`:''}</div><div class="mdash-sub mono">${cn.user||'user'}@${cn.host||cn.name}:${cn.port||22}</div></div>
       ${pastille(cn)}
       <span style="flex:1"></span>
+      <button class="btn btn-ghost btn-sm" onclick="dlgDashCustomize(machineByName('${cn.name}'))" title="Choose which cards appear"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="15" cy="6" r="2" fill="var(--card)"/><circle cx="7" cy="12" r="2" fill="var(--card)"/><circle cx="12" cy="18" r="2" fill="var(--card)"/></svg> Customize</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgNewConn('',machineByName('${cn.name}'))">${M.edit} Edit</button>
       <button class="btn btn-primary btn-sm" onclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play} Connect</button>
     </div>
-    <div class="dgrid">
-      ${overviewCard(cn)}
-      ${pfCard(cn)}
-      ${ctCard(cn)}
-      ${svcCard(cn)}
-    </div>
-    <p class="muted" style="font-size:11.5px;margin:12px 2px 0">Cards are what Rite <b>detects</b> on this host — surfaced automatically, agentless (all over the SSH session, through the jump host if any).</p>
+    <div class="dgrid">${cards}</div>
+    <div class="mdash-foot">${IC_INFO}<span>Cards are what Rite <b>detects</b> on this host — surfaced automatically, agentless (over the SSH session, through the jump host if any). Use <b>Customize</b> to choose cards, and the <b>expand</b> icon on a card for a fuller, wider view.</span></div>
   </div>`;}
+/* Customize which cards appear on this machine's dashboard (per-machine, persisted on cn). */
+function dlgDashCustomize(cn){cn.dashHidden=cn.dashHidden||[];
+  const body=`<p class="muted" style="font-size:12px;margin:0 0 12px">Choose which cards appear on <b>${cn.name}</b>'s dashboard. Containers & Services are detected live over SSH; hide what you don't need.</p>
+    <div class="dcust">${DASH_CARDS.map(([id,label])=>`<label class="dcust-row"><span>${label}</span><span class="toggle ${cn.dashHidden.includes(id)?'':'on'}" data-card="${id}"><i></i></span></label>`).join('')}</div>`;
+  const m=showModal({title:'Customize dashboard',subtitle:cn.name,confirm:'Done',body});
+  m.querySelectorAll('[data-card]').forEach(t=>t.onclick=()=>{const id=t.dataset.card;t.classList.toggle('on');const i=cn.dashHidden.indexOf(id);
+    if(t.classList.contains('on')){if(i>=0)cn.dashHidden.splice(i,1);}else if(i<0)cn.dashHidden.push(id);renderMain();});}
 
 function pfBody(cn){
   const rows=(cn.forwards||[]).map((f,i)=>{const on=!!f.active;return `<div class="pf-row">
