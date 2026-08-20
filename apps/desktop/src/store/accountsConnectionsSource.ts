@@ -443,6 +443,23 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     [refresh],
   );
 
+  // Accounts path: the browser holds the decrypted target, so it hands it to the
+  // server to exec (client-execute, like connect). Jump chain isn't carried yet.
+  const execRemote = useCallback(async (conn: ConnectionInfo, command: string) => {
+    const entry = entries.current.get(conn.id);
+    if (!entry) throw new Error('connection is not available');
+    const { record } = entry;
+    return Backend.Terminal.machineExecQuick(
+      {
+        host: record.hostname,
+        port: record.port,
+        username: record.username,
+        authMethod: record.authMethod,
+      },
+      command,
+    );
+  }, []);
+
   return {
     connections,
     selectedConnectionId,
@@ -456,5 +473,6 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     collections: collectionList,
     readBoard,
     saveBoard,
+    execRemote,
   };
 }

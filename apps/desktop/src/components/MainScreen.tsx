@@ -41,6 +41,8 @@ function useLocalConnectionsSource(): ConnectionsSource {
     update: async (input) => {
       await updateConnection(input);
     },
+    // Vault path: the core decrypts the saved connection by id and execs over SSH.
+    execRemote: (c, command) => Backend.Terminal.machineExec(c.id, command),
   };
 }
 

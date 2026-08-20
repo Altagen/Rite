@@ -558,6 +558,17 @@ const routes: Record<string, Route> = {
     (await json<{ sessionId: string }>('/api/terminal/preconnect', post({ command: a.command })))
       .sessionId,
 
+  machine_exec: (a) =>
+    json('/api/terminal/exec', post({ connectionId: a.connectionId, command: a.command })),
+  machine_exec_quick: (a) =>
+    json('/api/terminal/exec-quick', post({
+      host: a.host,
+      port: a.port,
+      username: a.username,
+      authMethod: a.authMethod,
+      command: a.command,
+    })),
+
   start_forward: (a) =>
     json('/api/forwards', post({
       connectionId: a.connectionId,

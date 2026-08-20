@@ -441,6 +441,38 @@ export async function mockInvoke(
       return null;
     case 'list_forwards':
       return [];
+    case 'machine_exec':
+    case 'machine_exec_quick': {
+      // Demo detection output so the dashboard's Containers/Services cards render
+      // under the dev mock. Shape matches machineProbe's parsers.
+      const cmd = String(args?.command ?? '');
+      if (cmd.includes('systemctl')) {
+        return {
+          stdout: [
+            'nginx.service loaded active running A high performance web server',
+            'app.service loaded active running Acme API',
+            'postgresql.service loaded active running PostgreSQL RDBMS',
+            'docker.service loaded active running Docker Application Container',
+            'backup.service loaded failed failed Nightly backup',
+            'ufw.service loaded inactive dead Uncomplicated firewall',
+          ].join('\n'),
+          stderr: '',
+          exitStatus: 0,
+        };
+      }
+      return {
+        stdout: [
+          '__rt__ docker',
+          'web|nginx:1.27|running|0.0.0.0:80->80/tcp',
+          'api|acme/api:2.4.1|running|8080->8080',
+          'worker|acme/api:2.4.1|running|',
+          'redis|redis:7-alpine|running|6379->6379',
+          'migrate|acme/api:2.4.1|exited|',
+        ].join('\n'),
+        stderr: '',
+        exitStatus: 0,
+      };
+    }
     case 'claim_session_output':
       return '';
     case 'send_terminal_input':

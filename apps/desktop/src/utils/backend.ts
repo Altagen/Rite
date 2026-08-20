@@ -130,6 +130,25 @@ const PortForwardInfoSchema = z.object({
 const PortForwardInfoArraySchema = z.array(PortForwardInfoSchema);
 export type PortForwardInfo = z.infer<typeof PortForwardInfoSchema>;
 
+// Captured output of a one-shot remote command (agentless dashboard detection).
+const RemoteCommandOutputSchema = z.object({
+  stdout: z.string(),
+  stderr: z.string(),
+  exitStatus: z.number().nullable(),
+});
+export type RemoteCommandOutput = z.infer<typeof RemoteCommandOutputSchema>;
+
+/** The decrypted target for an ad-hoc (accounts client-execute) remote exec. */
+export interface QuickExecTarget {
+  host: string;
+  port: number;
+  username: string;
+  authMethod:
+    | { type: 'password'; password: string }
+    | { type: 'publicKey'; keyPath: string; passphrase?: string }
+    | { type: 'agent'; identity?: string; forward?: boolean };
+}
+
 // SSH Config schemas
 const SshConfigEntrySchema = z.object({
   host: z.string(),
@@ -337,6 +356,27 @@ export const BackendTerminal = {
 
   /** List all running port forwards. */
   listForwards: () => invokeWithValidation('list_forwards', PortForwardInfoArraySchema, {}),
+
+  /**
+   * Run a one-shot command on a saved connection (vault path) and capture its
+   * output — agentless machine-dashboard detection (`docker ps`, `systemctl …`).
+   * Runs over its own short-lived SSH exec channel; never touches a live session.
+   */
+  machineExec: (connectionId: string, command: string) =>
+    invokeWithValidation('machine_exec', RemoteCommandOutputSchema, { connectionId, command }),
+
+  /**
+   * Run a one-shot command on an ad-hoc target (accounts client-execute): the
+   * browser passes the already-decrypted target. Jump chain is not carried here yet.
+   */
+  machineExecQuick: (target: QuickExecTarget, command: string) =>
+    invokeWithValidation('machine_exec_quick', RemoteCommandOutputSchema, {
+      host: target.host,
+      port: target.port,
+      username: target.username,
+      authMethod: target.authMethod,
+      command,
+    }),
 
   /**
    * Quick SSH connect (temporary connection)

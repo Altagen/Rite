@@ -157,6 +157,13 @@ export interface ConnectionsSource {
   // vault context, where there are no shared collections.
   readBoard?: (collectionId: string) => Promise<import('../utils/board').BoardCard[]>;
   saveBoard?: (collectionId: string, cards: import('../utils/board').BoardCard[]) => Promise<void>;
+  // Run a one-shot command on a machine and capture its output — agentless dashboard
+  // detection (docker ps / systemctl). Routes to the right execute path per source
+  // (vault by id, accounts by decrypted target).
+  execRemote?: (
+    connection: ConnectionInfo,
+    command: string,
+  ) => Promise<import('../utils/backend').RemoteCommandOutput>;
 }
 
 interface ConnectionsState {

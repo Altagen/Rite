@@ -659,6 +659,27 @@ export function Workspace({
     }
   };
 
+  // Open a terminal pane for a machine and run a command in it (dashboard actions:
+  // exec into a container, tail logs/journal, restart a unit). The user sees it run
+  // and stays in control — nothing executes silently. Switches to the terminal view.
+  const handleRunInPane = async (connection: ConnectionInfo, command: string) => {
+    try {
+      const sessionId = await conns.connect(connection);
+      addTerminalToTree({ id: sessionId, connectionId: connection.id, connectionName: connection.name });
+      setMainView('terminal');
+      // Let the remote shell come up, then type the command (+ Enter).
+      setTimeout(() => {
+        const bytes = Array.from(new TextEncoder().encode(`${command}\n`));
+        void Backend.Terminal.sendTerminalInput(sessionId, bytes).catch(() => {});
+      }, 700);
+    } catch (error) {
+      const msg = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Failed to connect';
+      if (msg.includes('Disconnect')) return; // host-key modal handles it
+      setToastType('error');
+      setToastMessage(msg);
+    }
+  };
+
   // Trust the pending host key, then retry the connection that triggered it.
   const handleAcceptHostKey = async () => {
     if (!hostKeyPrompt) return;
@@ -1595,6 +1616,8 @@ export function Workspace({
                   onConnect={handleConnect}
                   onEdit={handleEditConnection}
                   onForward={setForwardTarget}
+                  execRemote={conns.execRemote}
+                  onRunInPane={handleRunInPane}
                 />
               </div>
             )}
