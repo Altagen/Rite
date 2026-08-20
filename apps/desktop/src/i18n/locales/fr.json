@@ -258,7 +258,19 @@
     "noSystemd": "Pas de systemd sur cet hôte.",
     "probeError": "Détection impossible — {err}",
     "containersHint": "docker/podman ps via SSH · sans agent. Shell ouvre un pane qui lance exec -it.",
-    "unavailable": "La détection n'est pas disponible dans ce contexte."
+    "unavailable": "La détection n'est pas disponible dans ce contexte.",
+    "customize": "Personnaliser",
+    "customizeTitle": "Personnaliser le tableau de bord",
+    "customizeHint": "Choisissez les cartes affichées sur le tableau de bord de {name}. Conteneurs & Services sont détectés en direct via SSH ; masquez ce dont vous n'avez pas besoin.",
+    "expand": "Agrandir pour plus de détails",
+    "collapse": "Réduire",
+    "colName": "Nom",
+    "colImage": "Image",
+    "colPorts": "Ports",
+    "colState": "État",
+    "colCreated": "Créé",
+    "colUnit": "Unité",
+    "colDescription": "Description"
   },
   "board": {
     "title": "Tableau",

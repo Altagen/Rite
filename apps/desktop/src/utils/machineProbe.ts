@@ -16,6 +16,8 @@ export interface ContainerRow {
   /** Raw docker/podman state — "running", "exited", "created", … */
   state: string;
   ports: string;
+  /** Human "created/uptime" (docker `{{.RunningFor}}`), e.g. "3 days ago". */
+  created: string;
 }
 
 export interface ServiceRow {
@@ -31,9 +33,9 @@ export interface ServiceRow {
 // The leading `__rt__` line names the runtime so the parser can drive actions.
 export const CONTAINERS_CMD =
   "if command -v docker >/dev/null 2>&1; then echo '__rt__ docker'; " +
-  "docker ps -a --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Ports}}'; " +
+  "docker ps -a --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Ports}}|{{.RunningFor}}'; " +
   "elif command -v podman >/dev/null 2>&1; then echo '__rt__ podman'; " +
-  "podman ps -a --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Ports}}'; " +
+  "podman ps -a --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Ports}}|{{.RunningFor}}'; " +
   "else echo '__rt__ none'; fi";
 
 // List all systemd service units, plain (no legend/pager/colour) so columns are stable.
@@ -59,6 +61,7 @@ export function parseContainers(stdout: string): { runtime: ContainerRuntime; ro
       image: parts[1].trim(),
       state: parts[2].trim().toLowerCase(),
       ports: (parts[3] ?? '').trim(),
+      created: (parts[4] ?? '').trim(),
     });
   }
   return { runtime, rows };

@@ -64,6 +64,52 @@ function writePins(connId: string, pins: Set<string>): void {
   }
 }
 
+// Per-machine dashboard layout: which cards are expanded (wide) and which are
+// hidden. Per-device localStorage, like pins — no server involvement.
+type DashCardId = 'overview' | 'forwards' | 'containers' | 'services';
+const DASH_KEY = 'rite.dashPrefs';
+interface DashPrefs {
+  wide: DashCardId[];
+  hidden: DashCardId[];
+}
+function readDashPrefs(connId: string): DashPrefs {
+  try {
+    const all = JSON.parse(localStorage.getItem(DASH_KEY) || '{}') as Record<string, DashPrefs>;
+    return { wide: all[connId]?.wide ?? [], hidden: all[connId]?.hidden ?? [] };
+  } catch {
+    return { wide: [], hidden: [] };
+  }
+}
+function writeDashPrefs(connId: string, prefs: DashPrefs): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(DASH_KEY) || '{}') as Record<string, DashPrefs>;
+    all[connId] = prefs;
+    localStorage.setItem(DASH_KEY, JSON.stringify(all));
+  } catch {
+    // storage unavailable — layout just won't persist; not fatal.
+  }
+}
+
+/** The expand/collapse toggle shown on each card header. */
+function ExpandBtn({ wide, onClick, expandLabel, collapseLabel }: { wide: boolean; onClick: () => void; expandLabel: string; collapseLabel: string }) {
+  return (
+    <button
+      onClick={onClick}
+      title={wide ? collapseLabel : expandLabel}
+      aria-label={wide ? collapseLabel : expandLabel}
+      className="flex-none rounded border border-border p-1 text-muted-foreground hover:border-primary hover:text-foreground"
+    >
+      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+        {wide ? (
+          <path d="M9 4v3a2 2 0 01-2 2H4M20 9h-3a2 2 0 01-2-2V4M4 15h3a2 2 0 012 2v3M15 20v-3a2 2 0 012-2h3" />
+        ) : (
+          <path d="M8 4H5a2 2 0 00-2 2v3M16 4h3a2 2 0 012 2v3M8 20H5a2 2 0 01-2-2v-3M16 20h3a2 2 0 002-2v-3" />
+        )}
+      </svg>
+    </button>
+  );
+}
+
 /** Compact relative time for last use ("2h ago"), or "—" when never used. lastUsedAt is epoch seconds. */
 function relTime(ts: number | null | undefined, justNow: string, never: string): string {
   if (!ts) return never;
@@ -147,6 +193,18 @@ export function MachineDashboard({
     [t('dash.lastUsed'), relTime(connection.lastUsedAt, t('dash.justNow'), t('dash.never'))],
   ];
 
+  const [prefs, setPrefs] = useState<DashPrefs>(() => readDashPrefs(connection.id));
+  const [customize, setCustomize] = useState(false);
+  const isWide = (id: DashCardId) => prefs.wide.includes(id);
+  const isHidden = (id: DashCardId) => prefs.hidden.includes(id);
+  const toggle = (key: 'wide' | 'hidden', id: DashCardId) =>
+    setPrefs((p) => {
+      const cur = p[key];
+      const next = { ...p, [key]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
+      writeDashPrefs(connection.id, next);
+      return next;
+    });
+
   return (
     <div className="h-full overflow-y-auto bg-background px-5 py-4">
       {/* Header — identity, status, and the primary actions. */}
@@ -168,6 +226,18 @@ export function MachineDashboard({
         <StatusPastille lastUsedAt={connection.lastUsedAt} active={active} />
         <div className="flex-1" />
         <button
+          onClick={() => setCustomize(true)}
+          className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5" />
+            <circle cx="15" cy="6" r="2" />
+            <circle cx="7" cy="12" r="2" />
+            <circle cx="12" cy="18" r="2" />
+          </svg>
+          {t('dash.customize')}
+        </button>
+        <button
           onClick={() => onEdit(connection)}
           className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
         >
@@ -187,67 +257,140 @@ export function MachineDashboard({
         </button>
       </div>
 
-      {/* Card grid — Overview + Port forwarding + detected Containers/Services. */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Overview */}
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-            <MachineIcon />
-            {t('dash.overview')}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            {overviewRows.map(([k, v]) => (
-              <div key={k} className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="flex-none text-muted-foreground">{k}</span>
-                <span className="truncate font-mono text-right">{v}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Port forwarding */}
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-              <path d="M4 9h13l-3.5-3.5M20 15H7l3.5 3.5" />
-            </svg>
-            {t('dash.portForwarding')}
-            <div className="flex-1" />
-            <button
-              onClick={() => onForward(connection)}
-              className="rounded border border-border px-2.5 py-1 text-xs hover:bg-muted"
-            >
-              {t('dash.manage')}
-            </button>
-          </div>
-          {forwards.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{t('dash.noForwards')}</p>
-          ) : (
-            <div className="flex flex-col gap-1.5">
-              {forwards.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm">
-                  <span className="flex-none rounded border border-border px-1 text-[10px] font-semibold text-muted-foreground">
-                    L
-                  </span>
-                  <span className="truncate font-mono text-xs">
-                    127.0.0.1:{f.localPort} → {f.remoteHost}:{f.remotePort}
-                  </span>
+      {/* Card grid — a card spans full width when expanded (lg:col-span-2). */}
+      <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        {!isHidden('overview') && (
+          <CardShell
+            icon={<MachineIcon />}
+            title={t('dash.overview')}
+            wide={isWide('overview')}
+            onToggleWide={() => toggle('wide', 'overview')}
+          >
+            <div className={`grid gap-1.5 ${isWide('overview') ? 'grid-cols-2 gap-x-8' : 'grid-cols-1'}`}>
+              {overviewRows.map(([k, v]) => (
+                <div key={k} className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="flex-none text-muted-foreground">{k}</span>
+                  <span className="truncate text-right font-mono">{v}</span>
                 </div>
               ))}
             </div>
-          )}
-        </div>
+          </CardShell>
+        )}
 
-        {/* Containers + Services — agentless detection over SSH */}
-        {execRemote && (
-          <>
-            <ContainersCard connection={connection} execRemote={execRemote} onRunInPane={onRunInPane} />
-            <ServicesCard connection={connection} execRemote={execRemote} onRunInPane={onRunInPane} />
-          </>
+        {!isHidden('forwards') && (
+          <CardShell
+            icon={
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <path d="M4 9h13l-3.5-3.5M20 15H7l3.5 3.5" />
+              </svg>
+            }
+            title={t('dash.portForwarding')}
+            wide={isWide('forwards')}
+            onToggleWide={() => toggle('wide', 'forwards')}
+            actions={
+              <button onClick={() => onForward(connection)} className="rounded border border-border px-2.5 py-1 text-xs hover:bg-muted">
+                {t('dash.manage')}
+              </button>
+            }
+          >
+            {forwards.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{t('dash.noForwards')}</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {forwards.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <span className="flex-none rounded border border-border px-1 text-[10px] font-semibold text-muted-foreground">L</span>
+                    <span className="truncate font-mono text-xs">
+                      127.0.0.1:{f.localPort} → {f.remoteHost}:{f.remotePort}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardShell>
+        )}
+
+        {execRemote && !isHidden('containers') && (
+          <ContainersCard
+            connection={connection}
+            execRemote={execRemote}
+            onRunInPane={onRunInPane}
+            wide={isWide('containers')}
+            onToggleWide={() => toggle('wide', 'containers')}
+          />
+        )}
+        {execRemote && !isHidden('services') && (
+          <ServicesCard
+            connection={connection}
+            execRemote={execRemote}
+            onRunInPane={onRunInPane}
+            wide={isWide('services')}
+            onToggleWide={() => toggle('wide', 'services')}
+          />
         )}
       </div>
 
-      <p className="mt-4 text-[11px] text-muted-foreground">{t('dash.detectNote')}</p>
+      <div className="mt-4 flex items-start gap-2 border-t border-border pt-3 text-[11px] text-muted-foreground">
+        <svg className="mt-0.5 h-3.5 w-3.5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v5M12 7.5v.01" />
+        </svg>
+        <span>{t('dash.detectNote')}</span>
+      </div>
+
+      {customize && (
+        <CustomizeModal
+          name={connection.name}
+          isHidden={isHidden}
+          onToggle={(id) => toggle('hidden', id)}
+          onClose={() => setCustomize(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Choose which cards appear on this machine's dashboard (per-machine, localStorage). */
+function CustomizeModal({
+  name,
+  isHidden,
+  onToggle,
+  onClose,
+}: {
+  name: string;
+  isHidden: (id: DashCardId) => boolean;
+  onToggle: (id: DashCardId) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const cards: [DashCardId, string][] = [
+    ['overview', t('dash.overview')],
+    ['forwards', t('dash.portForwarding')],
+    ['containers', t('dash.containers')],
+    ['services', t('dash.services')],
+  ];
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm overflow-hidden rounded-lg border border-border bg-background shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-border px-4 py-3">
+          <div className="text-sm font-medium">{t('dash.customizeTitle')}</div>
+          <div className="text-xs text-muted-foreground">{name}</div>
+        </div>
+        <div className="px-4 py-2">
+          <p className="mb-2 text-xs text-muted-foreground">{t('dash.customizeHint', { name })}</p>
+          {cards.map(([id, label]) => (
+            <label key={id} className="flex cursor-pointer items-center justify-between border-b border-border py-2.5 text-sm font-medium last:border-none">
+              <span>{label}</span>
+              <input type="checkbox" checked={!isHidden(id)} onChange={() => onToggle(id)} className="h-4 w-4 accent-primary" />
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end border-t border-border px-4 py-3">
+          <button onClick={onClose} className="rounded border border-border px-3 py-1.5 text-sm hover:bg-muted">
+            {t('board.done')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -259,22 +402,30 @@ function CardShell({
   title,
   badge,
   actions,
+  wide,
+  onToggleWide,
   children,
 }: {
   icon: ReactNode;
   title: string;
   badge?: ReactNode;
   actions?: ReactNode;
+  wide?: boolean;
+  onToggleWide?: () => void;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className={`rounded-lg border border-border bg-card p-4 ${wide ? 'lg:col-span-2' : ''}`}>
       <div className="mb-3 flex items-center gap-2 text-sm font-medium">
         {icon}
         {title}
         {badge}
         <div className="flex-1" />
         {actions}
+        {onToggleWide && (
+          <ExpandBtn wide={!!wide} onClick={onToggleWide} expandLabel={t('dash.expand')} collapseLabel={t('dash.collapse')} />
+        )}
       </div>
       {children}
     </div>
@@ -353,10 +504,14 @@ function ContainersCard({
   connection,
   execRemote,
   onRunInPane,
+  wide,
+  onToggleWide,
 }: {
   connection: ConnectionInfo;
   execRemote: (c: ConnectionInfo, command: string) => Promise<RemoteCommandOutput>;
   onRunInPane: (c: ConnectionInfo, command: string) => void;
+  wide: boolean;
+  onToggleWide: () => void;
 }) {
   const { t } = useTranslation();
   const [rows, setRows] = useState<ContainerRow[]>([]);
@@ -413,6 +568,8 @@ function ContainersCard({
         </svg>
       }
       title={t('dash.containers')}
+      wide={wide}
+      onToggleWide={onToggleWide}
       badge={runtime !== 'none' ? <span className="rounded border border-border px-1 text-[10px] uppercase text-muted-foreground">{runtime}</span> : undefined}
       actions={
         <div className="flex items-center gap-1.5">
@@ -433,6 +590,49 @@ function ContainersCard({
         <p className="text-xs text-muted-foreground">{t('dash.noRuntime')}</p>
       ) : visible.length === 0 ? (
         <p className="text-xs text-muted-foreground">{mode === 'live' ? t('dash.noContainers') : t('dash.noPinned')}</p>
+      ) : wide ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                <th className="px-2 py-1.5" />
+                <th className="px-2 py-1.5">{t('dash.colName')}</th>
+                <th className="px-2 py-1.5">{t('dash.colImage')}</th>
+                <th className="px-2 py-1.5">{t('dash.colPorts')}</th>
+                <th className="px-2 py-1.5">{t('dash.colState')}</th>
+                <th className="px-2 py-1.5">{t('dash.colCreated')}</th>
+                <th className="px-2 py-1.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((c) => {
+                const up = isRunning(c);
+                return (
+                  <tr key={c.name} className="border-t border-border">
+                    <td className="px-2 py-1.5"><Dot up={up} /></td>
+                    <td className="px-2 py-1.5 font-medium">
+                      <span className="inline-flex items-center gap-1">
+                        {c.name}
+                        <button onClick={() => togglePin(c.name)} title={pins.has(c.name) ? t('dash.unpin') : t('dash.pin')} className={pins.has(c.name) ? 'text-yellow-500' : 'text-muted-foreground/40 hover:text-muted-foreground'}>★</button>
+                      </span>
+                    </td>
+                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{c.image}</td>
+                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{c.ports || '—'}</td>
+                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{c.state}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{c.created || '—'}</td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex justify-end gap-1.5">
+                        <RowBtn label={t('dash.shell')} disabled={!up} title={containerShellCmd(runtime, c.name)} onClick={() => onRunInPane(connection, containerShellCmd(runtime, c.name))} />
+                        <RowBtn label={t('dash.logs')} title={containerLogsCmd(runtime, c.name)} onClick={() => onRunInPane(connection, containerLogsCmd(runtime, c.name))} />
+                        <RowBtn label="↻" title={containerRestartCmd(runtime, c.name)} onClick={() => onRunInPane(connection, containerRestartCmd(runtime, c.name))} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="flex flex-col gap-1.5">
           {visible.map((c) => {
@@ -475,10 +675,14 @@ function ServicesCard({
   connection,
   execRemote,
   onRunInPane,
+  wide,
+  onToggleWide,
 }: {
   connection: ConnectionInfo;
   execRemote: (c: ConnectionInfo, command: string) => Promise<RemoteCommandOutput>;
   onRunInPane: (c: ConnectionInfo, command: string) => void;
+  wide: boolean;
+  onToggleWide: () => void;
 }) {
   const { t } = useTranslation();
   const [rows, setRows] = useState<ServiceRow[]>([]);
@@ -521,6 +725,8 @@ function ServicesCard({
         </svg>
       }
       title={t('dash.services')}
+      wide={wide}
+      onToggleWide={onToggleWide}
       badge={failed > 0 ? <span className="rounded border border-red-500 px-1 text-[10px] text-red-500">{t('dash.nFailed', { n: failed })}</span> : undefined}
       actions={
         <div className="flex items-center gap-1.5">
@@ -541,6 +747,40 @@ function ServicesCard({
         <p className="text-xs text-muted-foreground">{t('dash.noSystemd')}</p>
       ) : visible.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t('dash.noServices')}</p>
+      ) : wide ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                <th className="px-2 py-1.5" />
+                <th className="px-2 py-1.5">{t('dash.colUnit')}</th>
+                <th className="px-2 py-1.5">{t('dash.colDescription')}</th>
+                <th className="px-2 py-1.5">{t('dash.colState')}</th>
+                <th className="px-2 py-1.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((s) => {
+                const on = s.active === 'active';
+                return (
+                  <tr key={s.name} className="border-t border-border">
+                    <td className="px-2 py-1.5"><Dot up={on} /></td>
+                    <td className="px-2 py-1.5 font-medium">{s.name}</td>
+                    <td className="px-2 py-1.5 text-muted-foreground">{s.description}</td>
+                    <td className={`px-2 py-1.5 font-mono ${s.active === 'failed' ? 'text-red-500' : 'text-muted-foreground'}`}>{s.active} ({s.sub})</td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex justify-end gap-1.5">
+                        <RowBtn label="↻" title={serviceRestartCmd(s.name)} onClick={() => onRunInPane(connection, serviceRestartCmd(s.name))} />
+                        <RowBtn label={on ? t('dash.stop') : t('dash.start')} title={serviceToggleCmd(s.name, on)} onClick={() => onRunInPane(connection, serviceToggleCmd(s.name, on))} />
+                        <RowBtn label={t('dash.journal')} title={serviceJournalCmd(s.name)} onClick={() => onRunInPane(connection, serviceJournalCmd(s.name))} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="flex flex-col gap-1.5">
           {visible.map((s) => {

@@ -463,11 +463,11 @@ export async function mockInvoke(
       return {
         stdout: [
           '__rt__ docker',
-          'web|nginx:1.27|running|0.0.0.0:80->80/tcp',
-          'api|acme/api:2.4.1|running|8080->8080',
-          'worker|acme/api:2.4.1|running|',
-          'redis|redis:7-alpine|running|6379->6379',
-          'migrate|acme/api:2.4.1|exited|',
+          'web|nginx:1.27|running|0.0.0.0:80->80/tcp|3 days ago',
+          'api|acme/api:2.4.1|running|8080->8080|3 days ago',
+          'worker|acme/api:2.4.1|running||3 days ago',
+          'redis|redis:7-alpine|running|6379->6379|8 days ago',
+          'migrate|acme/api:2.4.1|exited||3 days ago',
         ].join('\n'),
         stderr: '',
         exitStatus: 0,

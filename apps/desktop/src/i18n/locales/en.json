@@ -258,7 +258,19 @@
     "noSystemd": "No systemd on this host.",
     "probeError": "Couldn't detect — {err}",
     "containersHint": "docker/podman ps over SSH · agentless. Shell opens a pane running exec -it.",
-    "unavailable": "Detection isn't available in this context."
+    "unavailable": "Detection isn't available in this context.",
+    "customize": "Customize",
+    "customizeTitle": "Customize dashboard",
+    "customizeHint": "Choose which cards appear on {name}'s dashboard. Containers & Services are detected live over SSH; hide what you don't need.",
+    "expand": "Expand for more detail",
+    "collapse": "Collapse",
+    "colName": "Name",
+    "colImage": "Image",
+    "colPorts": "Ports",
+    "colState": "State",
+    "colCreated": "Created",
+    "colUnit": "Unit",
+    "colDescription": "Description"
   },
   "board": {
     "title": "Board",
