@@ -54,6 +54,7 @@ interface LibrarySidebarProps {
   onRenameFolder?: (collectionId: string, path: string, color: string | null) => void;
   onDeleteFolder?: (collectionId: string, path: string) => void;
   onOpenMembers?: (collectionId: string) => void;
+  onOpenBoard?: (collectionId: string) => void;
   onRenameCollection?: (collectionId: string, name: string, color: string | null) => void;
   onDeleteCollection?: (collectionId: string, name: string) => void;
   // Top-level personal folders that organise collections (ADR 0016 view hierarchy).
@@ -192,6 +193,7 @@ function CollectionNode({
   onNewFolder,
   onImport,
   onOpenMembers,
+  onOpenBoard,
   onRename,
   onDelete,
   onMove,
@@ -214,6 +216,7 @@ function CollectionNode({
   onNewFolder?: (id: string) => void;
   onImport?: (id: string) => void;
   onOpenMembers?: (id: string) => void;
+  onOpenBoard?: (id: string) => void;
   onRename?: (id: string) => void;
   onDelete?: (id: string) => void;
   onMove?: (id: string) => void;
@@ -300,6 +303,16 @@ function CollectionNode({
               <>
                 <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }} />
                 <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded border border-border bg-background shadow-lg">
+                  {/* Board — a members-only space of cards. Every member can open it
+                      (viewers read-only); editors can add/remove cards. */}
+                  {onOpenBoard && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onOpenBoard(cid); }}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                    >
+                      Board…
+                    </button>
+                  )}
                   {/* Personal can't be shared, moved or deleted — rename only. */}
                   {!isPersonal && (
                     <button
@@ -648,6 +661,7 @@ export function LibrarySidebar({
   onRenameFolder,
   onDeleteFolder,
   onOpenMembers,
+  onOpenBoard,
   onRenameCollection,
   onDeleteCollection,
   libraryFolders,
@@ -829,6 +843,7 @@ export function LibrarySidebar({
         onNewFolder={onNewFolderInCollection}
         onImport={onImportToCollection}
         onOpenMembers={onOpenMembers}
+        onOpenBoard={onOpenBoard}
         onRename={onRenameCollection ? () => onRenameCollection(cid, node.name, node.color) : undefined}
         onDelete={onDeleteCollection ? () => onDeleteCollection(cid, node.name) : undefined}
         onMove={canMove ? () => onMoveCollection!(cid, node.name) : undefined}

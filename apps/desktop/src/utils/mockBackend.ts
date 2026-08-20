@@ -373,6 +373,7 @@ export async function mockInvoke(
     case 'collection_remove_member':
     case 'collection_item_update':
     case 'collection_item_delete':
+    case 'collection_set_board':
     case 'collection_set_offer':
     case 'collection_clear_offer':
     case 'collection_request_access':

@@ -477,6 +477,14 @@ const routes: Record<string, Route> = {
     );
     return null;
   },
+  collection_set_board: async (a) => {
+    await json(`/api/collections/${encodeURIComponent(String(a.id))}/board`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ boardEnc: a.boardEnc ?? null }),
+    });
+    return null;
+  },
   // Offer-to-team discovery (ADR 0016).
   collections_offered: () => json('/api/collections/offered'),
   collection_set_offer: async (a) => {

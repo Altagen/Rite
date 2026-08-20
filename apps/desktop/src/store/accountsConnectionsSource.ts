@@ -34,6 +34,7 @@ import {
 } from '../utils/collectionCrypto';
 import type { CollectionRole } from '../utils/backend';
 import type { CollectionHeader, CollectionFolder } from '../utils/collectionHeader';
+import { type BoardCard, parseBoard } from '../utils/board';
 
 /**
  * Synthetic id for the personal vault surfaced as a "Personal" collection (ADR 0016
@@ -85,6 +86,9 @@ interface Entry {
 interface CollectionCtx {
   key: Uint8Array;
   role: CollectionRole;
+  // The collection's Board blob (opaque, itemsKey-encrypted), or null. Kept alongside
+  // the key so the Board can be decrypted on demand without another round-trip.
+  boardEnc: string | null;
 }
 
 function canWrite(role: CollectionRole): boolean {
@@ -248,7 +252,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
   const [writableCollections, setWritableCollections] = useState<{ id: string; name: string }[]>([]);
   const [collectionList, setCollectionList] = useState<
-    { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean; hc: boolean | null }[]
+    { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean; hc: boolean | null; hasBoard: boolean }[]
   >([]);
   const entries = useRef<Map<string, Entry>>(new Map());
   const collections = useRef<Map<string, CollectionCtx>>(new Map());
@@ -273,7 +277,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       const writable: { id: string; name: string; isPersonal: boolean }[] = [];
       // Every readable collection (including empty ones), so the tree can show a
       // node before it has any machine. Personal is one of them (marked).
-      const list: { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean; hc: boolean | null }[] = [];
+      const list: { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean; hc: boolean | null; hasBoard: boolean }[] = [];
       for (const col of cols) {
         if (!col.protectedMetaKey) continue;
         try {
@@ -285,7 +289,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
           // The context holds the itemsKey for item reads/writes (ADR 0016 split). A
           // roster-only member (admin meta-add) has no itemsKey → the collection shows
           // its name in the tree but carries no machines until a member seals access.
-          if (itemsKey) ctx.set(col.id, { key: itemsKey, role: col.role });
+          if (itemsKey) ctx.set(col.id, { key: itemsKey, role: col.role, boardEnc: col.boardEnc ?? null });
           const memberCount = (await Backend.Collections.members(col.id).catch(() => [])).length;
           list.push({
             id: col.id,
@@ -296,6 +300,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
             memberCount,
             isPersonal,
             hc: header.hc ?? null,
+            hasBoard: !!col.boardEnc,
           });
           if (canWrite(col.role)) writable.push({ id: col.id, name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name, isPersonal });
           if (itemsKey)
@@ -409,6 +414,35 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     [userKey, refresh],
   );
 
+  // Read a collection's Board: decrypt its stored blob with the itemsKey I hold. No
+  // blob (or no key) → an empty board. Malformed content is dropped defensively.
+  const readBoard = useCallback(async (collectionId: string): Promise<BoardCard[]> => {
+    const ctx = collections.current.get(collectionId);
+    if (!ctx || !ctx.boardEnc) return [];
+    try {
+      return parseBoard(await decryptCollectionField<unknown>(ctx.key, ctx.boardEnc));
+    } catch {
+      return [];
+    }
+  }, []);
+
+  // Save a collection's Board: re-encrypt the whole board with the itemsKey and
+  // persist it (editor+). An empty board clears the stored blob. Refreshes after.
+  const saveBoard = useCallback(
+    async (collectionId: string, cards: BoardCard[]) => {
+      const ctx = collections.current.get(collectionId);
+      if (!ctx) throw new Error('collection is not available');
+      if (!canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
+      const blob = cards.length ? await encryptCollectionField(ctx.key, cards) : null;
+      await Backend.Collections.setBoard(collectionId, blob);
+      // Keep the in-RAM copy in sync so an immediate re-open shows the change even
+      // before the async refresh completes.
+      ctx.boardEnc = blob;
+      await refresh();
+    },
+    [refresh],
+  );
+
   return {
     connections,
     selectedConnectionId,
@@ -420,5 +454,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     update,
     writableCollections,
     collections: collectionList,
+    readBoard,
+    saveBoard,
   };
 }

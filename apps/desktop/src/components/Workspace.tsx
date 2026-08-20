@@ -22,6 +22,7 @@ import { ConnectionForm } from './ConnectionForm';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
 import { MemberPicker } from './MemberPicker';
+import { BoardModal } from './BoardModal';
 import { CollectionEditDialog } from './CollectionEditDialog';
 import { CollectionFolderDialog } from './CollectionFolderDialog';
 import { IconTerminal, IconBolt, IconGear, IconLock, IconChevronDown } from './icons';
@@ -187,6 +188,7 @@ export function Workspace({
   const [openCollectionId, setOpenCollectionId] = useState<string | null>(null);
   const [mainView, setMainView] = useState<'terminal' | 'collection'>('terminal');
   const [membersCollectionId, setMembersCollectionId] = useState<string | null>(null);
+  const [boardCollectionId, setBoardCollectionId] = useState<string | null>(null);
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
   const [formDefaultFolder, setFormDefaultFolder] = useState<string | null>(null);
   const [collectionEdit, setCollectionEdit] = useState<{ id?: string; name?: string; color?: string | null; hc?: boolean | null } | null>(null);
@@ -1412,6 +1414,7 @@ export function Workspace({
                   : undefined
               }
               onOpenMembers={isAccountsContext ? (id) => setMembersCollectionId(id) : undefined}
+              onOpenBoard={isAccountsContext && conns.readBoard ? (id) => setBoardCollectionId(id) : undefined}
               onRenameCollection={
                 isAccountsContext
                   ? (id, name, color) =>
@@ -1530,6 +1533,11 @@ export function Workspace({
                   }}
                   isPersonal={openCol?.isPersonal}
                   onOpenMembers={openCol?.isPersonal ? undefined : () => setMembersCollectionId(openCollectionId)}
+                  onOpenBoard={
+                    isAccountsContext && conns.readBoard && openCollectionId
+                      ? () => setBoardCollectionId(openCollectionId)
+                      : undefined
+                  }
                 />
               </div>
             )}
@@ -1598,6 +1606,21 @@ export function Workspace({
           onSaved={fetchConnections}
         />
       )}
+      {boardCollectionId && conns.readBoard && conns.saveBoard && (() => {
+        const col = conns.collections?.find((c) => c.id === boardCollectionId);
+        return (
+          <BoardModal
+            collectionId={boardCollectionId}
+            collectionName={col?.name ?? ''}
+            memberCount={col?.memberCount ?? 1}
+            isPersonal={col?.isPersonal ?? false}
+            canWrite={col?.role === 'owner' || col?.role === 'editor'}
+            readBoard={conns.readBoard}
+            saveBoard={conns.saveBoard}
+            onClose={() => setBoardCollectionId(null)}
+          />
+        );
+      })()}
       {showNewCollection && (
         <MemberPicker
           mode="create"

@@ -147,7 +147,16 @@ export interface ConnectionsSource {
     isPersonal: boolean;
     // Collection-wide active-probe opt-out (ADR 0017): false ⇒ never probe its machines.
     hc?: boolean | null;
+    // Whether this collection has a Board (an itemsKey-encrypted blob of cards). The
+    // blob itself is read via readBoard; this flag lets the UI show an indicator.
+    hasBoard?: boolean;
   }[];
+  // The collection Board (ADR 0016) — members-only cards, itemsKey-encrypted. Present
+  // only in the accounts source (collections live there). readBoard decrypts the
+  // stored blob; saveBoard re-encrypts and persists (editor+). Undefined in the local
+  // vault context, where there are no shared collections.
+  readBoard?: (collectionId: string) => Promise<import('../utils/board').BoardCard[]>;
+  saveBoard?: (collectionId: string, cards: import('../utils/board').BoardCard[]) => Promise<void>;
 }
 
 interface ConnectionsState {

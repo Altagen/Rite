@@ -71,6 +71,7 @@ export function CollectionView({
   onNewFolder,
   onImport,
   onOpenMembers,
+  onOpenBoard,
 }: {
   name: string;
   color?: string | null;
@@ -87,6 +88,7 @@ export function CollectionView({
   onNewFolder?: (parentPath?: string) => void; // creates a sub-folder of the current path
   onImport: () => void;
   onOpenMembers?: () => void; // absent when membership isn't editable from here
+  onOpenBoard?: () => void; // open the collection Board (members-only card space)
 }) {
   const { t } = useTranslation();
   const { mode } = useServerSession();
@@ -391,6 +393,20 @@ export function CollectionView({
               <path strokeLinecap="round" strokeLinejoin="round" d="M20 9a8 8 0 00-14.3-3.3L4 9m0 6a8 8 0 0014.3 3.3L20 15" />
             </svg>
             {checkingHere ? 'Checking…' : 'Check'}
+          </button>
+        )}
+        {onOpenBoard && (
+          <button
+            onClick={onOpenBoard}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <rect x="3" y="4" width="7" height="7" rx="1.5" />
+              <rect x="14" y="4" width="7" height="5" rx="1.5" />
+              <rect x="3" y="15" width="7" height="5" rx="1.5" />
+              <rect x="14" y="12" width="7" height="8" rx="1.5" />
+            </svg>
+            {t('board.title')}
           </button>
         )}
         {onOpenMembers && (

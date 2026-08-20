@@ -868,6 +868,9 @@ const UserCollectionSchema = z.object({
   // Offer-to-team discovery (ADR 0016): the team it's offered to + a plaintext label, or null.
   teamId: z.string().nullable().optional(),
   discoveryLabel: z.string().nullable().optional(),
+  // The collection Board — an opaque itemsKey-encrypted blob of cards, or null. Read
+  // comes inline here; writes go through setBoard.
+  boardEnc: z.string().nullable().optional(),
 });
 // A collection offered to a team I belong to (discovery). Only the plaintext label is exposed.
 const OfferedCollectionSchema = z.object({
@@ -961,6 +964,9 @@ export const BackendCollections = {
     invokeWithValidation('collection_item_update', z.null(), { id, itemId, blob }),
   deleteItem: (id: string, itemId: string) =>
     invokeWithValidation('collection_item_delete', z.null(), { id, itemId }),
+  /** Set (or clear, with null) the collection Board blob (itemsKey-encrypted; editor+). */
+  setBoard: (id: string, boardEnc: string | null) =>
+    invokeWithValidation('collection_set_board', z.null(), { id, boardEnc }),
   /** Collections offered to teams I'm in (opt-in discovery). */
   offered: () => invokeWithValidation('collections_offered', z.array(OfferedCollectionSchema)),
   /** Offer a collection to a team for discovery (owner). */
