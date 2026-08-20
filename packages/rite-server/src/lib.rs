@@ -589,6 +589,9 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/collections/{id}/items/{itemId}",
             put(update_collection_item_ep).delete(delete_collection_item_ep),
         )
+        // The collection Board (ADR 0016): one members-only blob of cards. Read comes
+        // inline with `mine()`; this write endpoint sets/clears it (editor+).
+        .route("/api/collections/{id}/board", put(set_collection_board_ep))
         // Offer-to-team discovery (ADR 0016): owner offers a collection to a team; members
         // of that team see the plaintext label and can request access.
         .route("/api/collections/offered", get(offered_collections_ep))
@@ -2756,6 +2759,33 @@ async fn update_collection_ep(
     }
     Ok(
         if coll::set_name_enc(state.db.pool(), &id, &req.name_enc).await? {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            StatusCode::NOT_FOUND.into_response()
+        },
+    )
+}
+
+/// Set (or clear) a collection's Board blob. `boardEnc: null` clears it. The blob is
+/// itemsKey-encrypted client-side; the server stores it opaquely. Editor+ only.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SetBoardReq {
+    board_enc: Option<String>,
+}
+
+async fn set_collection_board_ep(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Path(id): Path<String>,
+    Json(req): Json<SetBoardReq>,
+) -> Result<Response, AppError> {
+    match coll_role(&state, &user, &id).await? {
+        Some(r) if r.can_write() => {}
+        _ => return Ok((StatusCode::FORBIDDEN, "need write access").into_response()),
+    }
+    Ok(
+        if coll::set_board_enc(state.db.pool(), &id, req.board_enc.as_deref()).await? {
             StatusCode::NO_CONTENT.into_response()
         } else {
             StatusCode::NOT_FOUND.into_response()

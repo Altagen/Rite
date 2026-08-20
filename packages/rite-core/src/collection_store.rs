@@ -70,6 +70,10 @@ pub struct UserCollection {
     /// plaintext discovery label (both `None` when not offered). Neither is cryptographic.
     pub team_id: Option<String>,
     pub discovery_label: Option<String>,
+    /// The collection's Board — an opaque blob encrypted with the itemsKey (cards:
+    /// links/notes/actions/live views). `None` until a member creates one. Bundled here
+    /// so reading a collection carries its board without an extra round-trip.
+    pub board_enc: Option<String>,
 }
 
 /// A member of a collection (for the member list / manage UI). Carries the user's
@@ -171,6 +175,30 @@ pub async fn set_name_enc(db: &SqlitePool, id: &str, name_enc: &str) -> Result<b
         .await?
         .rows_affected();
     Ok(n > 0)
+}
+
+/// Set (or clear) a collection's Board blob — an editor/owner action. The blob is
+/// encrypted client-side with the itemsKey; the server stores it opaquely. Passing
+/// `None` clears the board. Returns false if the collection doesn't exist.
+pub async fn set_board_enc(db: &SqlitePool, id: &str, board_enc: Option<&str>) -> Result<bool> {
+    let n = sqlx::query("UPDATE collections SET board_enc = ? WHERE id = ?")
+        .bind(board_enc)
+        .bind(id)
+        .execute(db)
+        .await?
+        .rows_affected();
+    Ok(n > 0)
+}
+
+/// A collection's Board blob (opaque), or `None` if it has none. Reading is also
+/// available inline via `list_collections_for_user`; this is the point read.
+pub async fn get_board_enc(db: &SqlitePool, id: &str) -> Result<Option<String>> {
+    let row: Option<(Option<String>,)> =
+        sqlx::query_as("SELECT board_enc FROM collections WHERE id = ?")
+            .bind(id)
+            .fetch_optional(db)
+            .await?;
+    Ok(row.and_then(|(b,)| b))
 }
 
 pub async fn delete_collection(db: &SqlitePool, id: &str) -> Result<bool> {
@@ -346,9 +374,10 @@ pub async fn list_collections_for_user(
         i64,
         Option<String>,
         Option<String>,
+        Option<String>,
     )> = sqlx::query_as(
         "SELECT c.id, c.name_enc, cm.role, cm.protected_meta_key, cm.protected_items_key,
-                c.created_at, c.team_id, c.discovery_label
+                c.created_at, c.team_id, c.discovery_label, c.board_enc
          FROM collection_members cm JOIN collections c ON c.id = cm.collection_id
          WHERE cm.user_id = ? ORDER BY c.created_at",
     )
@@ -367,6 +396,7 @@ pub async fn list_collections_for_user(
                 created_at,
                 team_id,
                 discovery_label,
+                board_enc,
             )| {
                 UserCollection {
                     id,
@@ -377,6 +407,7 @@ pub async fn list_collections_for_user(
                     created_at,
                     team_id,
                     discovery_label,
+                    board_enc,
                 }
             },
         )
@@ -910,6 +941,31 @@ mod tests {
         assert!(!update_item(pool, "other", &item.id, "x").await.unwrap());
         assert!(delete_item(pool, &cid, &item.id).await.unwrap());
         assert_eq!(list_items(pool, &cid).await.unwrap().len(), 0);
+
+        // Board blob round-trips (opaque): none by default, set then read then clear.
+        assert_eq!(get_board_enc(pool, &cid).await.unwrap(), None);
+        assert!(
+            list_collections_for_user(pool, &alice).await.unwrap()[0]
+                .board_enc
+                .is_none()
+        );
+        assert!(
+            set_board_enc(pool, &cid, Some("v1.board.ct"))
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            get_board_enc(pool, &cid).await.unwrap().as_deref(),
+            Some("v1.board.ct")
+        );
+        assert_eq!(
+            list_collections_for_user(pool, &alice).await.unwrap()[0]
+                .board_enc
+                .as_deref(),
+            Some("v1.board.ct")
+        );
+        assert!(set_board_enc(pool, &cid, None).await.unwrap());
+        assert_eq!(get_board_enc(pool, &cid).await.unwrap(), None);
 
         // Role change (promote Bob to owner) → two owners; demote Alice is then safe.
         assert!(
