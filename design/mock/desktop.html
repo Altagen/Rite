@@ -16,7 +16,7 @@
   .mc{font-size:10px;font-weight:700;color:var(--purple);display:flex;align-items:center;gap:2px}
   .avs{display:flex}.av{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:700;color:#0a0e1a;margin-left:-6px;border:2px solid var(--bg)}.av:first-child{margin-left:0}
   .collapsebar{display:flex;flex-direction:column;align-items:center;padding-top:10px}
-  .menu{position:fixed;background:var(--card);border:1px solid var(--border2);border-radius:11px;box-shadow:var(--shadow);padding:6px;z-index:60;min-width:200px}.menu .row{padding:8px 10px}
+  .menu{position:fixed;background:var(--card);border:1px solid var(--border2);border-radius:11px;box-shadow:var(--shadow);padding:6px;z-index:130;min-width:200px}.menu .row{padding:8px 10px}
   .chk{width:17px;height:17px;border:1.5px solid var(--border2);border-radius:5px;display:grid;place-items:center;flex:none}.chk.on{background:var(--accent);border-color:var(--accent);color:#0a0e1a}
   .mrow{display:flex;align-items:center;gap:11px;padding:8px 6px;border-radius:8px;cursor:pointer}.mrow:hover{background:var(--card2)}
   .settings-row{display:flex;align-items:center;justify-content:space-between;padding:12px 2px;border-bottom:1px solid var(--border)}
@@ -783,9 +783,10 @@ function dlgBoardCard(coll,i,refreshParent){const c=coll.board[i];if(!c)return;
   else if(c.type==='action'){inner=`${c.desc?`<div class="bd-url-lbl muted">What it does</div><div class="bd-desc mono">${c.desc}</div>`:''}<div class="bd-actions"><button class="btn btn-primary" data-b-go>${c.label||'Run'}</button></div>`;}
   else if(c.type==='live'){inner=`<div class="blive" style="margin-top:2px">${(c.rows||[]).map(r=>`<div class="blive-row"><span class="pst ${r.up?'up':'down'}"></span><span class="mono" style="font-size:12px">${r.text}</span></div>`).join('')||'<span class="muted">No rows.</span>'}</div>`;}
   const body=`<div class="bd-wrap">${inner}</div>
-    <div class="bd-foot"><button class="btn btn-ghost btn-sm" data-b-rm style="color:var(--red)">Remove card</button></div>`;
+    <div class="bd-foot"><button class="btn btn-ghost btn-sm" data-b-edit>${M.edit||''} Edit</button><span style="flex:1"></span><button class="btn btn-ghost btn-sm" data-b-rm style="color:var(--red)">Remove card</button></div>`;
   const m=showModal({title:`${B_ICON[c.type]} ${c.title}`,subtitle:`${B_LABEL[c.type]} · ${catOf(c)}`,width:'min(560px,92vw)',confirm:'Done',body});
   const go=m.querySelector('[data-b-go]');if(go)go.onclick=()=>{if(c.type==='link')toast(`Opening <span class="accent">${c.url}</span>`);else toast(`Ran <span class="accent">${c.title}</span>`);};
+  const ed=m.querySelector('[data-b-edit]');if(ed)ed.onclick=()=>{m.remove();boardCardForm(coll,c.type,refreshParent,i);};
   const rm=m.querySelector('[data-b-rm]');if(rm)rm.onclick=()=>{coll.board.splice(i,1);m.remove();refreshParent&&refreshParent();};
 }
 function boardAddMenu(coll,refresh,e){floatMenu(e,[
@@ -794,29 +795,34 @@ function boardAddMenu(coll,refresh,e){floatMenu(e,[
   {icon:'⚡',label:'Action — run / open / connect',onclick:()=>boardCardForm(coll,'action',refresh)},
   {icon:'📡',label:'Live — a small dynamic list',onclick:()=>boardCardForm(coll,'live',refresh)},
 ].map(x=>({icon:`<span style="font-size:15px">${x.icon}</span>`,label:x.label,onclick:x.onclick})));}
-function boardCardForm(coll,type,refresh){
-  const defCat=(coll.boardCat&&coll.boardCat!=='all')?coll.boardCat:'General';
-  const catList=boardCats(coll).map(c=>`<option value="${c}">`).join('');
-  const catField=`<label class="field"><span>Category</span><input class="inp" id="b-cat" list="b-cats" value="${defCat}" placeholder="Ops"><datalist id="b-cats">${catList}</datalist></label>`;
+/* Create OR edit a card. editIdx (a board index) ⇒ prefill + replace in place;
+   this is how you re-title, re-categorise or move a card between categories. */
+function boardCardForm(coll,type,refresh,editIdx){
+  const ex=(editIdx!=null)?coll.board[editIdx]:null;
+  const A=s=>(s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); // attribute-safe
+  const T=s=>(s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); // textarea-safe
+  const defCat=ex?catOf(ex):((coll.boardCat&&coll.boardCat!=='all')?coll.boardCat:'General');
+  const catList=boardCats(coll).map(c=>`<option value="${A(c)}">`).join('');
+  const catField=`<label class="field"><span>Category</span><input class="inp" id="b-cat" list="b-cats" value="${A(defCat)}" placeholder="Ops"><datalist id="b-cats">${catList}</datalist></label>`;
   const forms={
-    link:`<label class="field"><span>Title</span><input class="inp" id="b-title" placeholder="Grafana"></label>
-      <label class="field"><span>URL</span><input class="inp" id="b-url" placeholder="https://grafana.acme.io"></label>
-      <div style="display:flex;gap:10px"><label class="field" style="width:90px"><span>Emoji</span><input class="inp" id="b-emoji" placeholder="📊"></label>${catField}</div>`,
-    note:`<label class="field"><span>Title</span><input class="inp" id="b-title" placeholder="Deploy window"></label>
-      <label class="field"><span>Text <span class="muted" style="font-weight:400">· **bold**, \`code\`</span></span><textarea class="inp" id="b-text" rows="4" placeholder="Deploys **Tue/Thu 14:00**. Freeze on Fridays."></textarea></label>${catField}`,
-    action:`<label class="field"><span>Title</span><input class="inp" id="b-title" placeholder="Restart API"></label>
-      <div style="display:flex;gap:10px"><label class="field" style="width:130px"><span>Button label</span><input class="inp" id="b-label" placeholder="Restart"></label>${catField}</div>
-      <label class="field"><span>What it does <span class="muted" style="font-weight:400">· run a snippet / open a TUI / connect</span></span><input class="inp mono" id="b-desc" placeholder="systemctl restart app on web-01"></label>`,
-    live:`<label class="field"><span>Title</span><input class="inp" id="b-title" placeholder="Failed units (web-01)"></label>
+    link:`<label class="field"><span>Title</span><input class="inp" id="b-title" value="${A(ex?.title)}" placeholder="Grafana"></label>
+      <label class="field"><span>URL</span><input class="inp" id="b-url" value="${A(ex?.url)}" placeholder="https://grafana.acme.io"></label>
+      <div style="display:flex;gap:10px"><label class="field" style="width:90px"><span>Emoji</span><input class="inp" id="b-emoji" value="${A(ex?.emoji)}" placeholder="📊"></label>${catField}</div>`,
+    note:`<label class="field"><span>Title</span><input class="inp" id="b-title" value="${A(ex?.title)}" placeholder="Deploy window"></label>
+      <label class="field"><span>Text <span class="muted" style="font-weight:400">· **bold**, \`code\`</span></span><textarea class="inp" id="b-text" rows="4" placeholder="Deploys **Tue/Thu 14:00**. Freeze on Fridays.">${T(ex?.text)}</textarea></label>${catField}`,
+    action:`<label class="field"><span>Title</span><input class="inp" id="b-title" value="${A(ex?.title)}" placeholder="Restart API"></label>
+      <div style="display:flex;gap:10px"><label class="field" style="width:130px"><span>Button label</span><input class="inp" id="b-label" value="${A(ex?.label)}" placeholder="Restart"></label>${catField}</div>
+      <label class="field"><span>What it does <span class="muted" style="font-weight:400">· run a snippet / open a TUI / connect</span></span><input class="inp mono" id="b-desc" value="${A(ex?.desc)}" placeholder="systemctl restart app on web-01"></label>`,
+    live:`<label class="field"><span>Title</span><input class="inp" id="b-title" value="${A(ex?.title)}" placeholder="Failed units (web-01)"></label>
       <label class="field"><span>Source</span><select class="inp" id="b-src"><option value="failed">systemd — failed units</option><option value="containers">Containers — docker ps</option></select></label>${catField}`,
   };
-  showModal({title:`New ${type} card`,subtitle:`on ${coll.name}'s board`,confirm:'Add',body:forms[type],onConfirm:(m)=>{const g=s=>m.querySelector(s);const title=(g('#b-title').value||'').trim()||type;
-    let card={id:'b'+Math.random().toString(36).slice(2,6),type,title,cat:(g('#b-cat')?.value||'').trim()||'General'};
+  showModal({title:ex?`Edit ${type} card`:`New ${type} card`,subtitle:`on ${coll.name}'s board`,confirm:ex?'Save':'Add',body:forms[type],onConfirm:(m)=>{const g=s=>m.querySelector(s);const title=(g('#b-title').value||'').trim()||type;
+    let card={id:ex?ex.id:'b'+Math.random().toString(36).slice(2,6),type,title,cat:(g('#b-cat')?.value||'').trim()||'General'};
     if(type==='link'){card.url=(g('#b-url').value||'').trim()||'https://example.com';card.emoji=(g('#b-emoji').value||'').trim()||'🔗';}
     else if(type==='note'){card.text=(g('#b-text').value||'').trim();}
     else if(type==='action'){card.label=(g('#b-label').value||'').trim()||'Run';card.desc=(g('#b-desc').value||'').trim();}
-    else if(type==='live'){card.rows=g('#b-src').value==='containers'?[{up:true,text:'web · nginx:1.27'},{up:true,text:'api · acme/api:2.4.1'},{up:false,text:'migrate · exited'}]:[{up:false,text:'backup.service — failed'},{up:true,text:'nginx.service — active'}];}
-    coll.board.push(card);refresh();}});
+    else if(type==='live'){card.rows=ex?.rows||(g('#b-src').value==='containers'?[{up:true,text:'web · nginx:1.27'},{up:true,text:'api · acme/api:2.4.1'},{up:false,text:'migrate · exited'}]:[{up:false,text:'backup.service — failed'},{up:true,text:'nginx.service — active'}]);}
+    if(editIdx!=null)coll.board[editIdx]=card;else coll.board.push(card);refresh&&refresh();}});
 }
 function n_toggle(id){const n=find(id);n.open=!n.open;renderSide();}
 
