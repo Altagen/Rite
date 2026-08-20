@@ -711,7 +711,13 @@ function svcAction(name,i,act){const cn=machineByName(name);const s=svcList(cn)[
   else if(act==='journal')toast(`Tailing journal of <span class="accent">${s.name}</span>`);
   else if(act==='toggle'){const wasOn=s.active==='active';s.active=wasOn?'inactive':'active';s.sub=wasOn?'dead':'running';toast(`${wasOn?'Stopped':'Started'} <span class="accent">${s.name}</span>`);renderMain();}}
 function pfToggleFor(name,i){const cn=machineByName(name);const f=(cn.forwards||[])[i];if(!f)return;f.active=!f.active;toast(f.active?`Forwarding <span class="accent">127.0.0.1:${f.localPort}</span> → ${f.remoteHost}:${f.remotePort}`:`Stopped forward on :${f.localPort}`);renderSide();renderMain();}
-function pfDelFor(name,i){const cn=machineByName(name);(cn.forwards||[]).splice(i,1);renderSide();renderMain();}
+/* Confirm before removing a forward — the ✕ is small and easy to hit by accident. */
+function pfConfirmDel(cn,i,after){const f=(cn.forwards||[])[i];if(!f)return;
+  const route=`127.0.0.1:${f.localPort} → ${f.remoteHost}:${f.remotePort}`;
+  showModal({title:'Remove this forward?',subtitle:route,confirm:'Remove',
+    body:`<p style="font-size:13px;margin:0">This stops and removes the port forward <span class="mono">${route}</span>${f.active?' — it is <b>active</b> right now':''}. You can add it again anytime.</p>`,
+    onConfirm:()=>{(cn.forwards||[]).splice(i,1);after&&after();}});}
+function pfDelFor(name,i){const cn=machineByName(name);pfConfirmDel(cn,i,()=>{renderSide();renderMain();});}
 
 /* ---- the machine dashboard (main area) ---- */
 function openMachine(name){STATE.machineView=name;STATE.mainTab='machine';renderSide();renderMain();}
@@ -774,8 +780,8 @@ function dlgPortForward(cn){cn.forwards=cn.forwards||[];
   const bd=showModal({title:'Port forwarding',subtitle:`${cn.name} — ${cn.user||'user'}@${cn.host||cn.name}`,wide:true,confirm:'Done',body:pfBody(cn)});
   const body=bd.querySelector('.body');
   body.addEventListener('click',e=>{const t=e.target.closest('[data-pf-toggle],[data-pf-del],[data-pf-add]');if(!t)return;
+    if(t.dataset.pfDel!==undefined){pfConfirmDel(cn,+t.dataset.pfDel,()=>{body.innerHTML=pfBody(cn);renderSide();renderMain();});return;}
     if(t.dataset.pfToggle!==undefined){const f=cn.forwards[+t.dataset.pfToggle];f.active=!f.active;toast(f.active?`Forwarding <span class="accent">127.0.0.1:${f.localPort}</span> → ${f.remoteHost}:${f.remotePort}`:`Stopped forward on :${f.localPort}`);}
-    else if(t.dataset.pfDel!==undefined){cn.forwards.splice(+t.dataset.pfDel,1);}
     else if(t.dataset.pfAdd!==undefined){const lp=(body.querySelector('#pf-lp').value||'').trim(),rh=(body.querySelector('#pf-rh').value||'').trim(),rp=(body.querySelector('#pf-rp').value||'').trim();
       if(!lp||!rh||!rp){toast('Fill local port, remote host and remote port');return;}
       cn.forwards.push({type:'local',localPort:lp,remoteHost:rh,remotePort:rp,active:true});toast(`Forwarding <span class="accent">127.0.0.1:${lp}</span> → ${rh}:${rp}`);}
