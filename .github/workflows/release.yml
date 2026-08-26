@@ -35,7 +35,7 @@ jobs:
 
       - name: Create draft release
         id: create_release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: RITE ${{ steps.version.outputs.version }}
@@ -182,7 +182,7 @@ jobs:
           path: checksums-${{ matrix.platform.target }}.txt
 
       - name: Upload artifacts to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: dist/*
@@ -229,7 +229,7 @@ jobs:
           cat "rite-${VERSION}-checksums.txt"
 
       - name: Upload SBOM and checksums
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: |
