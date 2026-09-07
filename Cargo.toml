@@ -33,7 +33,7 @@ age = "0.11"
 zeroize = { version = "1.8", features = ["derive"] }
 
 # SSH
-russh = "0.62"
+russh = "0.63"
 
 # FTP (for future use)
 suppaftp = "10.0"
