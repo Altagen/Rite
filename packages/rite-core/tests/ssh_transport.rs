@@ -10,6 +10,7 @@
 //! guards *our* logic, not cross-implementation interop.
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -131,6 +132,26 @@ impl Handler for TestHandler {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
+
+    /// One-shot `exec` (the agentless dashboard probe path). Answers with the command
+    /// on stdout and a fixed marker on stderr, then an exit status: the command
+    /// "fail" exits 3, anything else exits 0 — so both branches are observable.
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        let command = String::from_utf8_lossy(data).to_string();
+        session.data(channel, format!("ran:{command}").into_bytes())?;
+        session.extended_data(channel, 1, b"on-stderr".to_vec())?;
+        let code = if command == "fail" { 3 } else { 0 };
+        session.exit_status_request(channel, code)?;
+        session.eof(channel)?;
+        session.close(channel)?;
+        Ok(())
+    }
 }
 
 /// Bind an ephemeral loopback port and run the test SSH server on it.
@@ -163,16 +184,25 @@ async fn spawn_test_server() -> u16 {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone)]
-struct BastionServer;
+struct BastionServer {
+    /// direct-tcpip channels this bastion has relayed. Lets a test assert the hop
+    /// was really traversed — reaching the target proves nothing on loopback, where
+    /// a direct connection would succeed too.
+    relayed: Arc<AtomicUsize>,
+}
 
 impl Server for BastionServer {
     type Handler = BastionHandler;
     fn new_client(&mut self, _peer: Option<SocketAddr>) -> BastionHandler {
-        BastionHandler
+        BastionHandler {
+            relayed: self.relayed.clone(),
+        }
     }
 }
 
-struct BastionHandler;
+struct BastionHandler {
+    relayed: Arc<AtomicUsize>,
+}
 
 impl Handler for BastionHandler {
     type Error = russh::Error;
@@ -198,6 +228,7 @@ impl Handler for BastionHandler {
         let addr = format!("{}:{}", host_to_connect, port_to_connect);
         // Dropping `reply` without accepting auto-rejects, so only accept on success.
         if let Ok(mut tcp) = tokio::net::TcpStream::connect(&addr).await {
+            self.relayed.fetch_add(1, Ordering::SeqCst);
             reply.accept().await;
             // Splice the SSH channel ↔ the forwarded TCP socket (the manual pump
             // from russh's own direct-tcpip example — reliable across versions).
@@ -226,8 +257,20 @@ impl Handler for BastionHandler {
     }
 }
 
+/// Bind an ephemeral loopback port and run a forwarding bastion on it, returning
+/// its port and the counter of direct-tcpip channels it relayed.
+async fn spawn_counted_bastion_server() -> (u16, Arc<AtomicUsize>) {
+    let relayed = Arc::new(AtomicUsize::new(0));
+    let port = spawn_bastion_with(relayed.clone()).await;
+    (port, relayed)
+}
+
 /// Bind an ephemeral loopback port and run a forwarding bastion on it.
 async fn spawn_bastion_server() -> u16 {
+    spawn_bastion_with(Arc::new(AtomicUsize::new(0))).await
+}
+
+async fn spawn_bastion_with(relayed: Arc<AtomicUsize>) -> u16 {
     let key =
         russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519).unwrap();
     let config = Arc::new(ServerConfig {
@@ -238,7 +281,7 @@ async fn spawn_bastion_server() -> u16 {
     let socket = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
     let port = socket.local_addr().unwrap().port();
     tokio::spawn(async move {
-        let mut server = BastionServer;
+        let mut server = BastionServer { relayed };
         let _ = server.run_on_socket(config, &socket).await;
     });
     port
@@ -260,6 +303,17 @@ fn jump_connection(port: u16) -> Connection {
 struct Spy {
     out: Arc<Mutex<Vec<u8>>>,
     host_key_changed: Arc<Mutex<bool>>,
+}
+
+/// A target/hop pair as the ad-hoc (accounts client-execute) paths take them: the
+/// caller decrypted them, so they arrive as values rather than vault ids.
+fn hop(port: u16) -> (Connection, AuthMethod) {
+    (
+        jump_connection(port),
+        AuthMethod::Password {
+            password: PASS.into(),
+        },
+    )
 }
 
 impl SessionEvents for Spy {
@@ -1108,4 +1162,219 @@ async fn local_port_forward_tunnels_tcp() {
 
     mgr.stop_forward(&fwd.id).await.unwrap();
     assert_eq!(mgr.list_forwards().await.len(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Ad-hoc ("quick") paths — accounts / collections client-execute
+// ---------------------------------------------------------------------------
+//
+// A collection machine is ciphertext to the server, so the browser decrypts it and
+// hands over the target *and its resolved jump chain*. These tests pin that the
+// chain is honoured: before, every quick path hardcoded "no jumps", so a jump host
+// configured on a collection machine was silently ignored and the client connected
+// direct. They drive the same SessionManager entry points rite-server calls.
+
+/// One-shot exec over its own channel: output, stderr and exit status all captured.
+/// This is what the machine dashboard's `docker ps` / `systemctl` probes ride on.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn quick_remote_command_captures_output_and_exit_status() {
+    let port = spawn_test_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::new(&dir.path().join("t.db")).await.unwrap();
+    let auth = AuthManager::new(db.clone());
+    let mgr = SessionManager::new(db.clone(), auth);
+    let events: SharedEvents = Arc::new(Spy::default());
+
+    let out = mgr
+        .run_quick_remote_command(
+            test_connection(port),
+            AuthMethod::Password {
+                password: PASS.into(),
+            },
+            events.clone(),
+            "docker ps",
+            &[],
+        )
+        .await
+        .expect("exec should succeed");
+
+    assert_eq!(out.stdout, "ran:docker ps");
+    assert_eq!(out.stderr, "on-stderr");
+    assert_eq!(out.exit_status, Some(0));
+
+    // A non-zero exit is reported rather than swallowed — the dashboard needs it to
+    // tell "docker is absent" from "docker said no".
+    let failed = mgr
+        .run_quick_remote_command(
+            test_connection(port),
+            AuthMethod::Password {
+                password: PASS.into(),
+            },
+            events,
+            "fail",
+            &[],
+        )
+        .await
+        .expect("a failing command is still a successful exec");
+    assert_eq!(failed.exit_status, Some(3));
+}
+
+/// The same exec, reached through a bastion: the hops the caller resolved are used.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn quick_remote_command_runs_through_a_jump_host() {
+    let target_port = spawn_test_server().await;
+    let (bastion_port, relayed) = spawn_counted_bastion_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::new(&dir.path().join("t.db")).await.unwrap();
+    let auth = AuthManager::new(db.clone());
+    let mgr = SessionManager::new(db.clone(), auth);
+    let events: SharedEvents = Arc::new(Spy::default());
+
+    let out = mgr
+        .run_quick_remote_command(
+            test_connection(target_port),
+            AuthMethod::Password {
+                password: PASS.into(),
+            },
+            events,
+            "systemctl list-units",
+            &[hop(bastion_port)],
+        )
+        .await
+        .expect("exec should reach the target through the bastion");
+
+    assert_eq!(out.stdout, "ran:systemctl list-units");
+    assert_eq!(out.exit_status, Some(0));
+    assert_eq!(
+        relayed.load(Ordering::SeqCst),
+        1,
+        "the exec must ride the bastion, not connect direct"
+    );
+}
+
+/// Opening a terminal on a collection machine that sits behind a bastion. The
+/// bastion-only server has no shell, so reaching the banner proves the session
+/// really terminated on the target and not on the hop.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn quick_session_connects_through_a_jump_host() {
+    let target_port = spawn_test_server().await;
+    let (bastion_port, relayed) = spawn_counted_bastion_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::new(&dir.path().join("t.db")).await.unwrap();
+    let auth = AuthManager::new(db.clone());
+    let mgr = SessionManager::new(db.clone(), auth);
+
+    let spy = Arc::new(Spy::default());
+    let out = spy.out.clone();
+    let events: SharedEvents = spy;
+
+    let session_id = mgr
+        .create_quick_ssh_session(
+            test_connection(target_port),
+            AuthMethod::Password {
+                password: PASS.into(),
+            },
+            events,
+            None,
+            vec![hop(bastion_port)],
+        )
+        .await
+        .expect("quick session should connect through the jump host");
+
+    let buffered = mgr.claim_session_output(&session_id).await;
+    out.lock().unwrap().extend_from_slice(&buffered);
+    assert!(
+        wait_for(&out, BANNER, Duration::from_secs(5)).await,
+        "should reach the target shell through the bastion"
+    );
+
+    mgr.send_input(&session_id, b"ping\n".to_vec())
+        .await
+        .expect("input should reach the target through the tunnel");
+    assert!(
+        wait_for(&out, b"echo:ping", Duration::from_secs(5)).await,
+        "input should round-trip through the tunnel"
+    );
+    // The target is reachable directly on loopback, so only the bastion's own
+    // relay count proves the jump chain was honoured rather than ignored.
+    assert_eq!(
+        relayed.load(Ordering::SeqCst),
+        1,
+        "the session must ride the bastion, not connect direct"
+    );
+}
+
+/// A port forward on a collection machine, through a bastion: bytes must reach the
+/// echo service that only the target's network position can see.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn quick_local_forward_tunnels_tcp_through_a_jump_host() {
+    let echo = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+    let echo_port = echo.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut sock, _)) = echo.accept().await {
+            tokio::spawn(async move {
+                let mut buf = [0u8; 1024];
+                loop {
+                    match sock.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if sock.write_all(&buf[..n]).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    });
+
+    // Both the forward host and the hop must relay direct-tcpip channels.
+    let ssh_port = spawn_bastion_server().await;
+    let (bastion_port, relayed) = spawn_counted_bastion_server().await;
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::new(&dir.path().join("t.db")).await.unwrap();
+    let auth = AuthManager::new(db.clone());
+    let mgr = SessionManager::new(db.clone(), auth);
+    let events: SharedEvents = Arc::new(Spy::default());
+
+    let fwd = mgr
+        .start_quick_local_forward(
+            test_connection(ssh_port),
+            AuthMethod::Password {
+                password: PASS.into(),
+            },
+            vec![hop(bastion_port)],
+            "127.0.0.1",
+            0,
+            "127.0.0.1",
+            echo_port,
+            events,
+        )
+        .await
+        .expect("quick forward should start through the jump host");
+
+    // The caller's machine id is stamped on the running forward, so the UI can pair
+    // it with the saved row instead of showing a started forward as stopped.
+    assert_eq!(fwd.connection_id, test_connection(ssh_port).id);
+    assert_eq!(mgr.list_forwards().await.len(), 1);
+
+    let mut client = tokio::net::TcpStream::connect(("127.0.0.1", fwd.local_port))
+        .await
+        .expect("should connect to the forwarded local port");
+    client.write_all(b"quick-tunnel").await.unwrap();
+    let mut buf = [0u8; 64];
+    let n = tokio::time::timeout(Duration::from_secs(5), client.read(&mut buf))
+        .await
+        .expect("echo should answer through the tunnel")
+        .expect("read should succeed");
+    assert_eq!(&buf[..n], b"quick-tunnel");
+    assert_eq!(
+        relayed.load(Ordering::SeqCst),
+        1,
+        "the forward's SSH session must ride the bastion, not connect direct"
+    );
+
+    mgr.stop_forward(&fwd.id).await.unwrap();
+    assert!(mgr.list_forwards().await.is_empty());
 }
