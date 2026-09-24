@@ -429,8 +429,10 @@ export async function mockInvoke(
     case 'quick_ssh_connect':
       return `mock-session-${Math.random().toString(36).slice(2, 8)}`;
     case 'start_forward':
+    case 'start_quick_forward':
       return {
         id: `mock-fwd-${Math.random().toString(36).slice(2, 8)}`,
+        // The quick variant has no connection id — the target travels on the request.
         connectionId: (args?.connectionId as string) ?? '',
         bindHost: (args?.bindHost as string) ?? '127.0.0.1',
         localPort: (args?.localPort as number) ?? 0,

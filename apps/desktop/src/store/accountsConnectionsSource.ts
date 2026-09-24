@@ -32,7 +32,7 @@ import {
   generateCollectionKeys,
   sealCollectionKey,
 } from '../utils/collectionCrypto';
-import type { CollectionRole } from '../utils/backend';
+import type { CollectionRole, QuickEndpoint } from '../utils/backend';
 import type { CollectionHeader, CollectionFolder } from '../utils/collectionHeader';
 import { type BoardCard, parseBoard } from '../utils/board';
 
@@ -241,6 +241,46 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   return merged;
 }
 
+/** The endpoint shape the server takes for an ad-hoc target or hop. */
+function endpointOf(record: StoredRecord): QuickEndpoint {
+  return {
+    host: record.hostname,
+    port: record.port,
+    username: record.username,
+    authMethod: record.authMethod,
+  };
+}
+
+/**
+ * Walk a connection's ProxyJump chain and return the hops as decrypted endpoints,
+ * outermost-first — the order the transport establishes them in.
+ *
+ * The vault path resolves this in rite-core, which can decrypt its own rows. Here
+ * the server only holds opaque blobs, so the browser — the only side with the keys
+ * — has to resolve the chain and hand over the hops. Cycle-guarded and depth-capped
+ * like the core resolver; a hop that points at a connection this user can't read is
+ * an error rather than a silent direct connection.
+ */
+function resolveJumpChain(entries: Map<string, Entry>, record: StoredRecord): QuickEndpoint[] {
+  const MAX_HOPS = 10;
+  const hops: QuickEndpoint[] = [];
+  const seen = new Set<string>();
+  let next = record.jump?.trim() || null;
+
+  while (next) {
+    if (seen.has(next)) throw new Error(`jump-host chain has a cycle at ${next}`);
+    seen.add(next);
+    if (hops.length >= MAX_HOPS) throw new Error(`jump-host chain too deep (> ${MAX_HOPS} hops)`);
+    const hop = entries.get(next);
+    if (!hop) throw new Error('a jump host on this connection is not available to you');
+    hops.push(endpointOf(hop.record));
+    next = hop.record.jump?.trim() || null;
+  }
+
+  // Nearest-jump-first → outermost first.
+  return hops.reverse();
+}
+
 /**
  * The browser-crypto connection source for an accounts session. Merges the
  * per-user vault with every team the user holds a key for; keeps the decrypted
@@ -344,12 +384,14 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     if (!entry) throw new Error('connection is not available');
     const { record } = entry;
     // Server-execute: the decrypted target is handed to the server to run SSH; it
-    // is never persisted server-side (ADR 0011 / 0012 client-execute).
+    // is never persisted server-side (ADR 0011 / 0012 client-execute). The jump
+    // chain travels with it — the server can't resolve hops it can't decrypt.
     const sessionId = await Backend.Terminal.quickSshConnect(
       record.hostname,
       record.username,
       record.port,
       record.authMethod,
+      resolveJumpChain(entries.current, record),
     );
     // Record this user's own "last connected" locally (passive status, ADR 0017).
     recordLastUsed(conn.id);
@@ -450,15 +492,29 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     if (!entry) throw new Error('connection is not available');
     const { record } = entry;
     return Backend.Terminal.machineExecQuick(
-      {
-        host: record.hostname,
-        port: record.port,
-        username: record.username,
-        authMethod: record.authMethod,
-      },
+      { ...endpointOf(record), jumps: resolveJumpChain(entries.current, record) },
       command,
     );
   }, []);
+
+  // Port forwards on an accounts connection: same client-execute shape as connect —
+  // the target and its hops are only readable here, so they travel on the request.
+  const startForward = useCallback<NonNullable<ConnectionsSource['startForward']>>(
+    async (conn, forward) => {
+      const entry = entries.current.get(conn.id);
+      if (!entry) throw new Error('connection is not available');
+      const { record } = entry;
+      return Backend.Terminal.startQuickForward({
+        connectionId: conn.id,
+        target: { ...endpointOf(record), jumps: resolveJumpChain(entries.current, record) },
+        bindHost: forward.bindHost ?? undefined,
+        localPort: forward.localPort,
+        remoteHost: forward.remoteHost,
+        remotePort: forward.remotePort,
+      });
+    },
+    [],
+  );
 
   return {
     connections,
@@ -474,5 +530,6 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     readBoard,
     saveBoard,
     execRemote,
+    startForward,
   };
 }

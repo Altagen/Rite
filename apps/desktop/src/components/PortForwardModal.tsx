@@ -17,6 +17,9 @@ interface Props {
   connection: ConnectionInfo;
   // Persist the updated forward list on the connection.
   onPersist: (forwards: PortForwardConfig[]) => Promise<void>;
+  // Start a forward through the active connection source (vault by id, accounts by
+  // decrypted target). Absent ⇒ this source can't run forwards; rows stay read-only.
+  onStart?: (forward: PortForwardConfig) => Promise<PortForwardInfo>;
   onClose: () => void;
 }
 
@@ -24,7 +27,7 @@ interface Props {
 const keyOf = (f: { localPort: number; remoteHost: string; remotePort: number }) =>
   `${f.localPort}|${f.remoteHost}|${f.remotePort}`;
 
-export function PortForwardModal({ connection, onPersist, onClose }: Props) {
+export function PortForwardModal({ connection, onPersist, onStart, onClose }: Props) {
   const { t } = useTranslation();
   const [forwards, setForwards] = useState<PortForwardConfig[]>(connection.forwards ?? []);
   // configKey → running forward id (present ⇒ live).
@@ -87,16 +90,11 @@ export function PortForwardModal({ connection, onPersist, onClose }: Props) {
   };
 
   const start = async (f: PortForwardConfig) => {
+    if (!onStart) return;
     setBusy(keyOf(f));
     setError(null);
     try {
-      const info = await Backend.Terminal.startForward({
-        connectionId: connection.id,
-        bindHost: f.bindHost ?? undefined,
-        localPort: f.localPort,
-        remoteHost: f.remoteHost,
-        remotePort: f.remotePort,
-      });
+      const info = await onStart(f);
       setRunning((m) => new Map(m).set(keyOf(f), info.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -158,7 +156,8 @@ export function PortForwardModal({ connection, onPersist, onClose }: Props) {
                     />
                     <button
                       type="button"
-                      disabled={isBusy}
+                      disabled={isBusy || (!live && !onStart)}
+                      title={!live && !onStart ? t('pf.unsupportedHere') : undefined}
                       onClick={() => (live ? stop(f) : start(f))}
                       className="rounded border border-border px-2 py-0.5 text-xs hover:bg-muted disabled:opacity-50"
                     >

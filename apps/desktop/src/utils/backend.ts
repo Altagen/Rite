@@ -138,8 +138,8 @@ const RemoteCommandOutputSchema = z.object({
 });
 export type RemoteCommandOutput = z.infer<typeof RemoteCommandOutputSchema>;
 
-/** The decrypted target for an ad-hoc (accounts client-execute) remote exec. */
-export interface QuickExecTarget {
+/** An SSH endpoint the caller already decrypted (host + credentials). */
+export interface QuickEndpoint {
   host: string;
   port: number;
   username: string;
@@ -147,6 +147,16 @@ export interface QuickExecTarget {
     | { type: 'password'; password: string }
     | { type: 'publicKey'; keyPath: string; passphrase?: string }
     | { type: 'agent'; identity?: string; forward?: boolean };
+}
+
+/**
+ * The decrypted target for an ad-hoc (accounts client-execute) operation, plus its
+ * ProxyJump chain. The server can't read the collection blobs, so the browser
+ * resolves the chain itself and sends the hops in outermost-first order — the order
+ * the transport establishes them in.
+ */
+export interface QuickExecTarget extends QuickEndpoint {
+  jumps?: QuickEndpoint[];
 }
 
 // SSH Config schemas
@@ -351,6 +361,32 @@ export const BackendTerminal = {
     remotePort: number;
   }) => invokeWithValidation('start_forward', PortForwardInfoSchema, args),
 
+  /**
+   * Start a local port forward on an ad-hoc target (accounts client-execute). The
+   * vault variant resolves the connection by id; here the browser holds the only
+   * plaintext, so it sends the target and its jump chain.
+   */
+  startQuickForward: (args: {
+    connectionId: string;
+    target: QuickExecTarget;
+    bindHost?: string;
+    localPort: number;
+    remoteHost: string;
+    remotePort: number;
+  }) =>
+    invokeWithValidation('start_quick_forward', PortForwardInfoSchema, {
+      connectionId: args.connectionId,
+      host: args.target.host,
+      port: args.target.port,
+      username: args.target.username,
+      authMethod: args.target.authMethod,
+      jumps: args.target.jumps ?? [],
+      bindHost: args.bindHost,
+      localPort: args.localPort,
+      remoteHost: args.remoteHost,
+      remotePort: args.remotePort,
+    }),
+
   /** Stop a running port forward by id. */
   stopForward: (id: string) => invokeWithValidation('stop_forward', z.null(), { id }),
 
@@ -367,7 +403,7 @@ export const BackendTerminal = {
 
   /**
    * Run a one-shot command on an ad-hoc target (accounts client-execute): the
-   * browser passes the already-decrypted target. Jump chain is not carried here yet.
+   * browser passes the already-decrypted target and its resolved jump chain.
    */
   machineExecQuick: (target: QuickExecTarget, command: string) =>
     invokeWithValidation('machine_exec_quick', RemoteCommandOutputSchema, {
@@ -375,6 +411,7 @@ export const BackendTerminal = {
       port: target.port,
       username: target.username,
       authMethod: target.authMethod,
+      jumps: target.jumps ?? [],
       command,
     }),
 
@@ -396,13 +433,17 @@ export const BackendTerminal = {
       type: 'agent';
       identity?: string;
       forward?: boolean;
-    }
+    },
+    // Resolved ProxyJump chain, outermost-first. Quick SSH proper has none; the
+    // accounts source passes the hops it decrypted client-side.
+    jumps: QuickEndpoint[] = []
   ) =>
     invokeWithValidation('quick_ssh_connect', StringSchema, {
       host,
       username,
       port,
       authMethod,
+      jumps,
     }),
 
   /**

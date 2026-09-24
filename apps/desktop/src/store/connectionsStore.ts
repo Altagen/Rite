@@ -164,6 +164,13 @@ export interface ConnectionsSource {
     connection: ConnectionInfo,
     command: string,
   ) => Promise<import('../utils/backend').RemoteCommandOutput>;
+  // Start a local port forward on a machine. Routes per source like execRemote: the
+  // vault path names the connection by id (the core decrypts it), the accounts path
+  // sends the decrypted target and its jump chain, since the server can't read them.
+  startForward?: (
+    connection: ConnectionInfo,
+    forward: PortForwardConfig,
+  ) => Promise<import('../utils/backend').PortForwardInfo>;
 }
 
 interface ConnectionsState {

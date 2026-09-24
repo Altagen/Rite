@@ -206,7 +206,8 @@
     "stopped": "Arrêté",
     "done": "Terminé",
     "fillAll": "Renseignez le port local, l'hôte distant et le port distant.",
-    "hint": "Une redirection locale : tout ce qui arrive sur 127.0.0.1:portlocal sur votre machine est tunnelisé via SSH vers hôtedistant:portdistant tel que vu depuis {name} (via son hôte de rebond aussi, le cas échéant). Distant & dynamique (SOCKS) bientôt."
+    "hint": "Une redirection locale : tout ce qui arrive sur 127.0.0.1:portlocal sur votre machine est tunnelisé via SSH vers hôtedistant:portdistant tel que vu depuis {name} (via son hôte de rebond aussi, le cas échéant). Distant & dynamique (SOCKS) bientôt.",
+    "unsupportedHere": "Les redirections de ports ne sont pas disponibles dans ce contexte"
   },
   "jump": {
     "label": "Hôte de rebond",

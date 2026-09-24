@@ -43,6 +43,15 @@ function useLocalConnectionsSource(): ConnectionsSource {
     },
     // Vault path: the core decrypts the saved connection by id and execs over SSH.
     execRemote: (c, command) => Backend.Terminal.machineExec(c.id, command),
+    // Vault path again: the id is enough, the core resolves creds and jump chain.
+    startForward: (c, f) =>
+      Backend.Terminal.startForward({
+        connectionId: c.id,
+        bindHost: f.bindHost ?? undefined,
+        localPort: f.localPort,
+        remoteHost: f.remoteHost,
+        remotePort: f.remotePort,
+      }),
   };
 }
 

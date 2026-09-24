@@ -1933,6 +1933,9 @@ export function Workspace({
             setForwardTarget((prev) => (prev ? { ...prev, forwards } : prev));
             fetchConnections();
           }}
+          onStart={
+            conns.startForward && ((f) => conns.startForward!(forwardTarget, f))
+          }
           onClose={() => setForwardTarget(null)}
         />
       )}

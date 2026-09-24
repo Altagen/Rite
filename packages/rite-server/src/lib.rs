@@ -672,6 +672,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/terminal/local", post(create_local))
         .route("/api/terminal/preconnect", post(run_preconnect))
         .route("/api/forwards", get(list_forwards).post(start_forward))
+        .route("/api/forwards/quick", post(start_quick_forward))
         .route("/api/forwards/{id}", delete(stop_forward))
         .route("/api/terminal/{id}/input", post(send_input))
         .route("/api/terminal/{id}/claim", post(claim))
@@ -3883,6 +3884,53 @@ async fn start_forward(
     Ok(Json(info))
 }
 
+/// Start a local forward on an ad-hoc target the browser already decrypted
+/// (accounts/collections). The vault path looks the connection up by id; here there
+/// is nothing to look up, so the target and its jump chain come in on the request.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartQuickForwardReq {
+    /// The caller's own id for this machine (a collection item id). Echoed back on
+    /// the running forward so the UI can pair it with the saved row; the server
+    /// already stores these ids, so carrying it leaks nothing it can't see.
+    connection_id: String,
+    host: String,
+    port: u16,
+    username: String,
+    auth_method: QuickAuthMethod,
+    #[serde(default)]
+    jumps: Vec<QuickHop>,
+    #[serde(default)]
+    bind_host: Option<String>,
+    local_port: u16,
+    remote_host: String,
+    remote_port: u16,
+}
+
+async fn start_quick_forward(
+    State(state): State<ServerState>,
+    Json(req): Json<StartQuickForwardReq>,
+) -> Result<Json<rite_core::terminal::PortForwardInfo>, AppError> {
+    let bind_host = req.bind_host.as_deref().unwrap_or("127.0.0.1");
+    let auth: AuthMethod = req.auth_method.into();
+    let mut connection = quick_connection("fwd", &req.host, req.port, &req.username, auth.clone());
+    connection.id = req.connection_id;
+    let info = state
+        .sessions
+        .start_quick_local_forward(
+            connection,
+            auth,
+            quick_hops(req.jumps),
+            bind_host,
+            req.local_port,
+            &req.remote_host,
+            req.remote_port,
+            state.events_sink(),
+        )
+        .await?;
+    Ok(Json(info))
+}
+
 async fn stop_forward(
     State(state): State<ServerState>,
     Path(id): Path<String>,
@@ -3937,6 +3985,11 @@ async fn connect_ssh(
             .await?
             .ok_or_else(|| AppError(anyhow::anyhow!("connection not found")))?;
         let (connection, auth) = vault_conn::to_connection(&req.connection_id, input)?;
+        // The hops are saved connections too, so resolve them from the same remote
+        // vault — otherwise a jump host configured on the connection is ignored.
+        let jumps =
+            vault_conn::resolve_jump_chain(&state, &server, &key, connection.jump.as_deref())
+                .await?;
         let id = state
             .sessions
             .create_quick_ssh_session(
@@ -3944,6 +3997,7 @@ async fn connect_ssh(
                 auth,
                 state.events_sink(),
                 state.interactive_provider(as_user(&user)),
+                jumps,
             )
             .await?;
         state.record_session_owner(&id, as_user(&user));
@@ -4006,39 +4060,56 @@ impl From<QuickAuthMethod> for AuthMethod {
     }
 }
 
-#[derive(Deserialize)]
+/// One already-decrypted jump hop, as the browser sends it. The accounts/collections
+/// source holds the whole chain in plaintext client-side (the server can't read the
+/// blobs), so it resolves the chain itself and hands over the hops in outermost-first
+/// order — the same order rite-core's vault-side resolver produces.
+#[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct QuickSshReq {
+struct QuickHop {
     host: String,
     port: u16,
     username: String,
     auth_method: QuickAuthMethod,
 }
 
-async fn quick_ssh(
-    State(state): State<ServerState>,
-    user: Option<Extension<Arc<User>>>,
-    Json(req): Json<QuickSshReq>,
-) -> Result<Json<Value>, AppError> {
-    // Ad-hoc connection, never persisted (mirrors the desktop quick_ssh_connect).
+/// Build the in-memory hop chain the transport takes. Hops are ad-hoc like the target:
+/// never persisted, never written to the vault.
+fn quick_hops(hops: Vec<QuickHop>) -> Vec<(Connection, AuthMethod)> {
+    hops.into_iter()
+        .map(|h| {
+            let auth: AuthMethod = h.auth_method.into();
+            let conn = quick_connection("jump", &h.host, h.port, &h.username, auth.clone());
+            (conn, auth)
+        })
+        .collect()
+}
+
+/// An ad-hoc `Connection` for a target the caller already decrypted. Not persisted.
+fn quick_connection(
+    prefix: &str,
+    host: &str,
+    port: u16,
+    username: &str,
+    auth: AuthMethod,
+) -> Connection {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let auth: AuthMethod = req.auth_method.clone().into();
-    let connection = Connection {
-        id: format!("quick-{}", uuid::Uuid::new_v4()),
-        name: format!("{}@{}", req.username, req.host),
+    Connection {
+        id: format!("{}-{}", prefix, uuid::Uuid::new_v4()),
+        name: format!("{}@{}", username, host),
         protocol: Protocol::SSH,
-        hostname: req.host,
-        port: req.port,
-        username: req.username,
-        auth_method: auth.clone(),
+        hostname: host.to_string(),
+        port,
+        username: username.to_string(),
+        auth_method: auth,
         metadata: ConnectionMetadata {
             color: None,
-            icon: Some("⚡".to_string()),
+            icon: None,
             folder: None,
-            notes: Some("Quick connect (not saved)".to_string()),
+            notes: None,
         },
         ssh_keep_alive_override: None,
         ssh_keep_alive_interval: None,
@@ -4048,7 +4119,32 @@ async fn quick_ssh(
         last_used_at: None,
         created_at: now,
         updated_at: now,
-    };
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct QuickSshReq {
+    host: String,
+    port: u16,
+    username: String,
+    auth_method: QuickAuthMethod,
+    /// Resolved jump chain, outermost-first. Absent/empty ⇒ direct.
+    #[serde(default)]
+    jumps: Vec<QuickHop>,
+}
+
+async fn quick_ssh(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<QuickSshReq>,
+) -> Result<Json<Value>, AppError> {
+    // Ad-hoc connection, never persisted (mirrors the desktop quick_ssh_connect).
+    let auth: AuthMethod = req.auth_method.clone().into();
+    let mut connection =
+        quick_connection("quick", &req.host, req.port, &req.username, auth.clone());
+    connection.metadata.icon = Some("⚡".to_string());
+    connection.metadata.notes = Some("Quick connect (not saved)".to_string());
     let id = state
         .sessions
         .create_quick_ssh_session(
@@ -4056,6 +4152,7 @@ async fn quick_ssh(
             auth,
             state.events_sink(),
             state.interactive_provider(as_user(&user)),
+            quick_hops(req.jumps),
         )
         .await?;
     state.record_session_owner(&id, as_user(&user));
@@ -4092,43 +4189,26 @@ struct MachineExecQuickReq {
     username: String,
     auth_method: QuickAuthMethod,
     command: String,
+    /// Resolved jump chain, outermost-first. Absent/empty ⇒ direct.
+    #[serde(default)]
+    jumps: Vec<QuickHop>,
 }
 
 async fn machine_exec_quick(
     State(state): State<ServerState>,
     Json(req): Json<MachineExecQuickReq>,
 ) -> Result<Json<rite_core::terminal::RemoteCommandOutput>, AppError> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
     let auth: AuthMethod = req.auth_method.into();
-    let connection = Connection {
-        id: format!("exec-{}", uuid::Uuid::new_v4()),
-        name: format!("{}@{}", req.username, req.host),
-        protocol: Protocol::SSH,
-        hostname: req.host,
-        port: req.port,
-        username: req.username,
-        auth_method: auth.clone(),
-        metadata: ConnectionMetadata {
-            color: None,
-            icon: None,
-            folder: None,
-            notes: None,
-        },
-        ssh_keep_alive_override: None,
-        ssh_keep_alive_interval: None,
-        preconnect: None,
-        jump: None,
-        forwards: Vec::new(),
-        last_used_at: None,
-        created_at: now,
-        updated_at: now,
-    };
+    let connection = quick_connection("exec", &req.host, req.port, &req.username, auth.clone());
     let out = state
         .sessions
-        .run_quick_remote_command(connection, auth, state.events_sink(), &req.command)
+        .run_quick_remote_command(
+            connection,
+            auth,
+            state.events_sink(),
+            &req.command,
+            &quick_hops(req.jumps),
+        )
         .await?;
     Ok(Json(out))
 }

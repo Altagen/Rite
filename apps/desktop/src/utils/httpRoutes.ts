@@ -539,7 +539,13 @@ const routes: Record<string, Route> = {
     (
       await json<{ sessionId: string }>(
         '/api/terminal/quick-ssh',
-        post({ host: a.host, port: a.port, username: a.username, authMethod: a.authMethod }),
+        post({
+          host: a.host,
+          port: a.port,
+          username: a.username,
+          authMethod: a.authMethod,
+          jumps: a.jumps ?? [],
+        }),
       )
     ).sessionId,
 
@@ -566,12 +572,26 @@ const routes: Record<string, Route> = {
       port: a.port,
       username: a.username,
       authMethod: a.authMethod,
+      jumps: a.jumps ?? [],
       command: a.command,
     })),
 
   start_forward: (a) =>
     json('/api/forwards', post({
       connectionId: a.connectionId,
+      bindHost: a.bindHost,
+      localPort: a.localPort,
+      remoteHost: a.remoteHost,
+      remotePort: a.remotePort,
+    })),
+  start_quick_forward: (a) =>
+    json('/api/forwards/quick', post({
+      connectionId: a.connectionId,
+      host: a.host,
+      port: a.port,
+      username: a.username,
+      authMethod: a.authMethod,
+      jumps: a.jumps ?? [],
       bindHost: a.bindHost,
       localPort: a.localPort,
       remoteHost: a.remoteHost,

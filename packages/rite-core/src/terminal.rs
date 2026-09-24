@@ -1335,17 +1335,88 @@ impl SessionManager {
             _ => Some(30),
         };
 
+        self.spawn_local_forward(
+            connection_id,
+            &connection,
+            &auth_method,
+            &jumps,
+            keep_alive,
+            false,
+            bind_host,
+            local_port,
+            remote_host,
+            remote_port,
+            events,
+        )
+        .await
+    }
+
+    /// Start a local port forward for an ad-hoc target the caller already decrypted
+    /// (accounts/collections client-execute — the server holds no record of it, so
+    /// there is nothing to look up by id). `jumps` is the already-resolved chain in
+    /// outermost-first order; the host key is accepted like Quick SSH.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn start_quick_local_forward(
+        &self,
+        connection: Connection,
+        auth_method: AuthMethod,
+        jumps: Vec<(Connection, AuthMethod)>,
+        bind_host: &str,
+        local_port: u16,
+        remote_host: &str,
+        remote_port: u16,
+        events: SharedEvents,
+    ) -> Result<PortForwardInfo> {
+        let connection_id = connection.id.clone();
+        let keep_alive = match connection.ssh_keep_alive_override.as_deref() {
+            Some("enabled") => Some(connection.ssh_keep_alive_interval.unwrap_or(30) as u64),
+            _ => Some(30),
+        };
+        self.spawn_local_forward(
+            &connection_id,
+            &connection,
+            &auth_method,
+            &jumps,
+            keep_alive,
+            true, // ad-hoc target → accept the host key like quick SSH
+            bind_host,
+            local_port,
+            remote_host,
+            remote_port,
+            events,
+        )
+        .await
+    }
+
+    /// Bind the local port and pump accepted TCP connections over SSH. Shared by the
+    /// vault path (`start_local_forward`) and the ad-hoc one (`start_quick_local_forward`),
+    /// which differ only in how they obtain the connection, its auth and its jump chain.
+    #[allow(clippy::too_many_arguments)]
+    async fn spawn_local_forward(
+        &self,
+        connection_id: &str,
+        connection: &Connection,
+        auth_method: &AuthMethod,
+        jumps: &[(Connection, AuthMethod)],
+        keep_alive: Option<u64>,
+        force_accept_host_key: bool,
+        bind_host: &str,
+        local_port: u16,
+        remote_host: &str,
+        remote_port: u16,
+        events: SharedEvents,
+    ) -> Result<PortForwardInfo> {
         // Headless authenticated session (no PTY). MVP forwards use non-interactive
         // auth (key/agent/password) — there's no 2FA UI bridge on this path yet.
         let (session, jump_handles) = establish_authenticated_handle(
-            &connection,
-            &auth_method,
+            connection,
+            auth_method,
             events.clone(),
             Arc::new(self.db.pool().clone()),
             keep_alive,
-            false,
+            force_accept_host_key,
             None,
-            &jumps,
+            jumps,
         )
         .await?;
         let session = Arc::new(session);
@@ -1510,13 +1581,14 @@ impl SessionManager {
         auth_method: AuthMethod,
         events: SharedEvents,
         command: &str,
+        jumps: &[(Connection, AuthMethod)],
     ) -> Result<RemoteCommandOutput> {
         exec_remote_command(
             &connection,
             &auth_method,
             events,
             Arc::new(self.db.pool().clone()),
-            &[],
+            jumps,
             true, // ad-hoc → accept the host key like quick SSH
             command,
         )
@@ -1532,6 +1604,7 @@ impl SessionManager {
         auth_method: AuthMethod,
         events: SharedEvents,
         interactive: Option<SharedInteractive>,
+        jumps: Vec<(Connection, AuthMethod)>,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_quick_ssh_session called for {}",
@@ -1568,7 +1641,9 @@ impl SessionManager {
             keep_alive_interval,
             true,
             interactive,
-            Vec::new(), // Quick SSH is ad-hoc — no saved jump chain
+            // Quick SSH proper passes an empty chain; the accounts path passes the
+            // hops it decrypted client-side, since the server holds no record of them.
+            jumps,
         )
         .await?;
         let session_id = ssh_session.id.clone();

@@ -201,6 +201,48 @@ pub async fn get_input(
         .map(|(_, input, ..)| input))
 }
 
+/// Resolve a connection's jump chain (ProxyJump) from the remote vault, in the
+/// outermost-first order the transport establishes hops in. Mirrors rite-core's
+/// vault-side resolver: each hop is another saved connection referenced by id, the
+/// walk is cycle-guarded and depth-capped. Fetches the blob list once.
+pub async fn resolve_jump_chain(
+    state: &ServerState,
+    server: &RemoteServer,
+    key: &[u8; 32],
+    first_jump: Option<&str>,
+) -> Result<Vec<(Connection, AuthMethod)>> {
+    const MAX_HOPS: usize = 10;
+    let Some(first) = first_jump.filter(|s| !s.trim().is_empty()) else {
+        return Ok(Vec::new());
+    };
+
+    let rows = list_raw(state, server, key).await?;
+    let mut hops: Vec<(Connection, AuthMethod)> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut next = Some(first.to_string());
+
+    while let Some(id) = next {
+        if !seen.insert(id.clone()) {
+            return Err(anyhow!("Jump-host chain has a cycle at connection {}", id));
+        }
+        if hops.len() >= MAX_HOPS {
+            return Err(anyhow!("Jump-host chain too deep (> {} hops)", MAX_HOPS));
+        }
+        let input = rows
+            .iter()
+            .find(|(cid, ..)| *cid == id)
+            .map(|(_, input, ..)| input.clone())
+            .ok_or_else(|| anyhow!("Jump-host connection {} not found", id))?;
+        let (conn, auth) = to_connection(&id, input)?;
+        next = conn.jump.clone();
+        hops.push((conn, auth));
+    }
+
+    // Nearest-jump-first → outermost (TCP-facing) first, as the transport expects.
+    hops.reverse();
+    Ok(hops)
+}
+
 /// GET the user's blobs and decrypt them to frontend-safe `ConnectionInfo`.
 pub async fn list(
     state: &ServerState,
