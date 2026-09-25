@@ -188,6 +188,33 @@ User Password
     SQLite DB      Encrypted Blob
 ```
 
+### Collections — the sharing model (ADR 0016)
+
+A **collection** is the unit of sharing: it holds machines and its own nested
+folders, and carries members with per-member roles (owner / editor / viewer).
+There are no loose machines — every machine lives in a collection, and
+**Personal is a real 1-member collection**.
+
+On a server this is zero-knowledge. The client generates a `metaKey` (collection
+name, folder tree) and an `itemsKey` (machines, board), and seals a copy of each
+to every member's X25519 public key. The server stores only opaque `v1.…` blobs
+plus the membership graph it needs for access control — it never holds a key, so
+it cannot read a collection's name, its machines or its board.
+
+```
+        collection keys (metaKey, itemsKey)
+                 │
+                 ├─ sealed to member A's public key ─┐
+                 ├─ sealed to member B's public key ─┤→ server stores sealed copies
+                 └─ used client-side to encrypt ─────┘   + opaque item blobs
+```
+
+Where the decryption happens depends on the shell: a **local vault** and a
+**native client attached to a remote server** decrypt in Rust (rite-core, or the
+local trusted rite-server via the ADR 0012 multiplexer), so credentials never
+reach the webview. The **browser UI** has no local Rust to delegate to, so it
+decrypts client-side in JS.
+
 ### Data at Rest
 - **Vault DB**: `~/.local/share/rite/vault.db`
   - Sensitive fields encrypted with ChaCha20-Poly1305
@@ -449,7 +476,7 @@ pnpm dev
 pnpm build
 
 # Output (Linux)
-apps/desktop/src-tauri/target/release/rite
+target/release/rite
 
 # Package
 # Creates tar.gz with binary + assets

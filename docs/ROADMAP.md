@@ -8,6 +8,33 @@ This document outlines the planned features for RITE, organized by development p
 
 ---
 
+## Shipped in 0.2.0
+
+The release is much wider than the phase list below, which predates it:
+
+- **One Rust core, many shells** — `rite-core` + `rite-server` (Axum) behind a wry
+  desktop client and a browser UI; Tauri removed (ADR 0004/0009).
+- **Server accounts** — login, sessions, roles, admin console (ADR 0010), plus
+  registration & enrollment (ADR 0015).
+- **Zero-knowledge sharing** — **collections** are the sharing unit, with members
+  and per-member roles; the server stores only ciphertext it cannot read
+  (ADR 0011/0013/0016). Personal is a real 1-member collection.
+- **Native client ↔ remote server** — the context multiplexer, cert TOFU and
+  client-execute (ADR 0012).
+- **SSH hardening** — rsa-sha2 negotiation, connect timeout, SSH-agent auth,
+  keyboard-interactive (2FA/PAM), native keepalive, bounded buffers.
+- **Wave 1** — pre-connect hook · jump hosts · local port forwarding · snippets ·
+  collection **Board** · per-machine **dashboard** (containers/services, agentless
+  over SSH).
+- **Health-check governance** — passive last-seen plus a server-governed active
+  probe (ADR 0017).
+
+Known gaps at 0.2.0: port forwards are local-only; the dashboard's port-forward
+card is read-only (start/stop lives in its modal); a local vault has no folder
+creation of its own; Board is server-context only.
+
+---
+
 ## ✅ Completed (MVP Foundation)
 
 ### Security & Encryption
@@ -95,7 +122,7 @@ This document outlines the planned features for RITE, organized by development p
 ### 🖥️ Terminal Improvements (Priority: HIGH)
 - ✅ Search in terminal (Ctrl+F with xterm-addon-search)
 - ✅ Quick SSH connect (connect without saving credentials)
-- [ ] Manual reconnection button for SSH
+- ✅ Manual reconnection button for SSH
 - ✅ Keep-alive configuration (per-connection: 15s, 30s, 60s, or custom)
 - [ ] Connection timeout configuration
 - [ ] Copy/paste improvements (context menu, smart paste)
@@ -103,7 +130,7 @@ This document outlines the planned features for RITE, organized by development p
 - [ ] Broadcast mode (type in multiple terminals simultaneously)
 
 ### 📦 Connection Management (Priority: MEDIUM)
-- [ ] Import from ~/.ssh/config
+- ✅ Import from ~/.ssh/config (file path on desktop, paste on web)
 - [ ] Export connections (encrypted backup)
 - [ ] Import connections
 - [ ] Host tags (in addition to collections)
@@ -138,11 +165,11 @@ This document outlines the planned features for RITE, organized by development p
 **Goal:** Enhanced SSH features and basic SFTP support.
 
 ### 🔐 Advanced SSH (Priority: HIGH)
-- [ ] SSH agent support
-- [ ] Jump hosts / bastion support
-- [ ] Port forwarding (local -L and remote -R)
-- [ ] SSH agent forwarding
-- [ ] Auto-reconnect on network failure
+- ✅ SSH agent support (agent auth + live identity picker + opt-in forwarding)
+- ✅ Jump hosts / bastion support (ProxyJump, chainable; local vault path)
+- ✅ Port forwarding — local `-L` *(remote `-R` and dynamic SOCKS still open)*
+- ✅ SSH agent forwarding (opt-in per connection)
+- ✅ Auto-reconnect on network failure (opt-in setting; off by default — a reconnect is a new shell)
 
 ### 📁 SFTP Core (Priority: MEDIUM)
 - [ ] SFTP client implementation
@@ -182,7 +209,7 @@ This document outlines the planned features for RITE, organized by development p
 ### ⚡ Terminal Enhancements (Priority: MEDIUM)
 - ✅ Split-view terminal (horizontal/vertical) *(moved to Phase 1)*
 - ✅ Broadcast input to multiple terminals *(moved to Phase 1)*
-- [ ] Snippets / command favorites
+- ✅ Snippets / command favorites (library, run per-pane or broadcast, multi-line)
   - [ ] Snippet library
   - [ ] Variables in snippets (${VAR})
   - [ ] Quick insert palette
