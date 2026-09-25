@@ -14,12 +14,12 @@ const SSH = {
   password: 'ritepass123',
 };
 
-async function createSshConnection(api: APIRequestContext, name: string) {
+async function createSshConnection(api: APIRequestContext, name: string, hostname = SSH.hostname) {
   const res = await api.post('/api/connections', {
     data: {
       name,
       protocol: 'ssh',
-      hostname: SSH.hostname,
+      hostname,
       port: SSH.port,
       username: SSH.username,
       authMethod: { type: 'password', password: SSH.password },
@@ -39,8 +39,13 @@ test('saved SSH connection: strict host-key prompt, trust, then run a command', 
   request,
 }) => {
   // Strict mode (default): an unknown host must be confirmed via the modal.
+  //
+  // known_hosts is keyed by host:port and the whole suite shares one vault, so any
+  // earlier spec that connects to 127.0.0.1:2222 would leave it trusted and this
+  // prompt would never appear. Reach the same sshd by a name nothing else uses, so
+  // the "unknown host" precondition holds whatever ran before.
   await request.put('/api/settings/host_key_verification_mode', { data: { value: 'strict' } });
-  await createSshConnection(request, 'e2e-ssh-saved');
+  await createSshConnection(request, 'e2e-ssh-saved', 'localhost');
 
   await page.goto('/');
   const item = page.getByText('e2e-ssh-saved');
@@ -50,7 +55,7 @@ test('saved SSH connection: strict host-key prompt, trust, then run a command', 
   // Unknown host → the confirmation modal appears (connection was refused).
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByText('Unknown host key')).toBeVisible({ timeout: 20_000 });
-  await expect(dialog.getByText('127.0.0.1:2222')).toBeVisible();
+  await expect(dialog.getByText('localhost:2222')).toBeVisible();
 
   // Trusting it promotes the pending key and retries the connection.
   await dialog.getByRole('button', { name: /trust & connect/i }).click();
