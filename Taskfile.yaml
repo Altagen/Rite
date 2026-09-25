@@ -22,8 +22,13 @@ tasks:
   # Development
   dev:
     desc: Run the native desktop client (wry) with rite-server in-process
+    # Build the frontend and serve it from disk. Without RITE_WEB_DIR the binary
+    # falls back to the copy embedded at compile time, which only `task build`
+    # refreshes — so a plain `cargo run` silently serves whatever frontend was
+    # last released, however old.
     cmds:
-      - cargo run -p rite-desktop
+      - pnpm --filter desktop build:frontend
+      - RITE_WEB_DIR="$PWD/apps/desktop/dist" cargo run -p rite-desktop
 
   dev:frontend:
     desc: Run the Vite dev server only (mock backend)
@@ -32,9 +37,10 @@ tasks:
       - pnpm dev:frontend
 
   dev:server:
-    desc: Run rite-server standalone (serves the embedded frontend + API)
+    desc: Run rite-server standalone (serves the freshly built frontend + API)
     cmds:
-      - cargo run -p rite-server
+      - pnpm --filter desktop build:frontend
+      - RITE_WEB_DIR="$PWD/apps/desktop/dist" cargo run -p rite-server
 
   # Testing
   test:
