@@ -123,7 +123,12 @@ export function PortForwardModal({ connection, onPersist, onStart, onClose }: Pr
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('pf.title')}
+        className="w-full max-w-2xl overflow-hidden rounded-lg border border-border bg-background shadow-xl"
+      >
         <div className="border-b border-border px-4 py-3">
           <div className="text-sm font-medium">{t('pf.title')}</div>
           <div className="truncate text-xs text-muted-foreground">

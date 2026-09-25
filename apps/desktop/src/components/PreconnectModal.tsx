@@ -161,7 +161,12 @@ export function PreconnectModal({ command, connectionName, onSuccess, onCancel }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('preconnect.title')}
+        className="w-full max-w-2xl overflow-hidden rounded-lg border border-border bg-background shadow-xl"
+      >
         <div className="flex items-center gap-3 border-b border-border px-4 py-3">
           <span className={`h-2.5 w-2.5 rounded-full ${dotClass}`} />
           <div className="min-w-0">

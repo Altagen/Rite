@@ -107,7 +107,12 @@ export function BoardModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex h-[min(78vh,640px)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('board.title')}
+        className="flex h-[min(78vh,640px)] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl"
+      >
         <div className="border-b border-border px-4 py-3">
           <div className="text-sm font-medium">
             {collectionName} · {t('board.title')}
