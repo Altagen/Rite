@@ -43,6 +43,11 @@ export function PreconnectModal({ command, connectionName, onSuccess, onCancel }
   const unlistenersRef = useRef<Unlisten[]>([]);
   const [phase, setPhase] = useState<Phase>('running');
   const [exitCode, setExitCode] = useState<number | null>(null);
+  // Exit statuses seen before we knew our own session id. A short hook (`echo`,
+  // an already-up VPN) can exit before `runPreconnect`'s reply carries the id
+  // back, and an exit we can't attribute yet would otherwise be dropped — leaving
+  // the modal spinning on a command that already finished.
+  const seenExitsRef = useRef<Map<string, number>>(new Map());
 
   // Detach listeners and close the current pre-connect session (best-effort).
   const teardownSession = () => {
@@ -59,6 +64,7 @@ export function PreconnectModal({ command, connectionName, onSuccess, onCancel }
 
     teardownSession(); // clear any previous attempt's session/listeners
     term.clear();
+    seenExitsRef.current.clear();
     setPhase('running');
     setExitCode(null);
 
@@ -68,27 +74,36 @@ export function PreconnectModal({ command, connectionName, onSuccess, onCancel }
         termRef.current.write(new TextDecoder('utf-8', { fatal: false }).decode(bytes));
       }
     });
-    const unlistenExit = await transport().listen<TerminalExitEvent>('terminal-exit', (p) => {
-      if (p.sessionId !== sessionIdRef.current) return;
-      setExitCode(p.exitStatus);
-      if (p.exitStatus === 0) {
+    const applyExit = (code: number) => {
+      setExitCode(code);
+      if (code === 0) {
         setPhase('success');
         // Give the eye a beat to register the green dot, then proceed.
         window.setTimeout(() => onSuccess(), 550);
       } else {
         setPhase('failed');
       }
+    };
+    const unlistenExit = await transport().listen<TerminalExitEvent>('terminal-exit', (p) => {
+      // Record every exit, then act on it if it is ours. The run below reconciles
+      // anything that landed before the id was known.
+      seenExitsRef.current.set(p.sessionId, p.exitStatus);
+      if (p.sessionId === sessionIdRef.current) applyExit(p.exitStatus);
     });
     unlistenersRef.current = [unlistenData, unlistenExit];
 
     try {
       const sessionId = await Backend.Terminal.runPreconnect(command);
       sessionIdRef.current = sessionId;
+      const alreadyExited = seenExitsRef.current.get(sessionId);
       const buffered = await Backend.Terminal.claimSessionOutput(sessionId).catch(() => '');
       if (buffered && termRef.current) {
         const bytes = Uint8Array.from(atob(buffered), (c) => c.charCodeAt(0));
         termRef.current.write(new TextDecoder('utf-8', { fatal: false }).decode(bytes));
       }
+      // Settle an exit that beat the id back to us — after the buffered output is
+      // on screen, so the hook's last words are visible either way.
+      if (alreadyExited !== undefined) applyExit(alreadyExited);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       termRef.current?.write(`\r\n\x1b[31m${msg}\x1b[0m\r\n`);
