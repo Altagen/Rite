@@ -69,13 +69,16 @@ test('quick SSH connect runs a command over a real session', async ({ page }) =>
 
   await page.getByText('Quick SSH').click();
 
-  // Fill the Quick SSH modal (password auth is the default) and connect.
-  await page.getByPlaceholder('example.com').fill(SSH.hostname);
-  await page.locator('input[type="number"]').fill(String(SSH.port));
-  await page.getByPlaceholder('user').fill(SSH.username);
-  await page.getByPlaceholder('Enter password').fill(SSH.password);
+  // Fill the Quick SSH modal (password auth is the default) and connect. Scope to
+  // the dialog: every machine row in the sidebar carries its own Connect button.
+  const dialog = page.getByRole('dialog', { name: 'Quick SSH Connect' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByPlaceholder('example.com').fill(SSH.hostname);
+  await dialog.locator('input[type="number"]').fill(String(SSH.port));
+  await dialog.getByPlaceholder('user').fill(SSH.username);
+  await dialog.getByPlaceholder('Enter password').fill(SSH.password);
 
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
 
   const screen = page.locator('.xterm-screen').first();
   await expect(screen).toBeVisible({ timeout: 20_000 });
