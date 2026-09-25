@@ -262,7 +262,10 @@ export function MachineDashboard({
       </div>
 
       {/* Card grid — a card spans full width when expanded (lg:col-span-2). */}
-      <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+      {/* Cards fill as many ~320px columns as the window allows, like the mock's
+          `repeat(auto-fill, minmax(320px, 1fr))` — a fixed two-column cap wasted
+          half a wide screen. An expanded card spans the whole row. */}
+      <div className="mt-4 grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] items-start gap-4">
         {!isHidden('overview') && (
           <CardShell
             icon={<MachineIcon />}
@@ -420,7 +423,7 @@ function CardShell({
 }) {
   const { t } = useTranslation();
   return (
-    <div className={`rounded-lg border border-border bg-card p-4 ${wide ? 'lg:col-span-2' : ''}`}>
+    <div className={`rounded-lg border border-border bg-card p-4 ${wide ? 'col-span-full' : ''}`}>
       <div className="mb-3 flex items-center gap-2 text-sm font-medium">
         {icon}
         {title}
