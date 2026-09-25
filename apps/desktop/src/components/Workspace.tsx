@@ -597,6 +597,11 @@ export function Workspace({
 
     setTabGroups(prev => [...prev, newTab]);
     setActiveTabId(newTab.id);
+    // Always surface the terminal that was just opened. A machine dashboard or a
+    // collection covers the workspace, and double-clicking a machine row fires the
+    // single-click (open dashboard) first — without this the new session would open
+    // behind the dashboard and connecting would look like it did nothing.
+    setMainView('terminal');
   };
 
   // Handle connect - open terminal (allows multiple tabs for same connection).
@@ -666,7 +671,6 @@ export function Workspace({
     try {
       const sessionId = await conns.connect(connection);
       addTerminalToTree({ id: sessionId, connectionId: connection.id, connectionName: connection.name });
-      setMainView('terminal');
       // Let the remote shell come up, then type the command (+ Enter).
       setTimeout(() => {
         const bytes = Array.from(new TextEncoder().encode(`${command}\n`));
