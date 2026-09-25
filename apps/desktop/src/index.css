@@ -31,6 +31,12 @@
   /* Palette aligned with the design mock (design/mock/rite.css): a bluish dark
      ground, cards a touch lighter for depth, and a periwinkle accent. */
   :root {
+    /* Rite ships a single dark palette. Declaring it tells the engine to render
+       everything the UA draws itself — native <select> popups, scrollbars, form
+       controls — in dark too. Without it WebKitGTK paints the dropdown list on a
+       white sheet while our CSS colours the text near-white: unreadable. */
+    color-scheme: dark;
+
     --background: 226.7 24.3% 7.3%;
     --foreground: 223.6 29.7% 92.7%;
     --card: 224 24.6% 12%;
