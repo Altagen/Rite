@@ -21,6 +21,12 @@ async function expectWorkspace(page: Page): Promise<void> {
   await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
+/** Sign out through the profile pastille menu in the header. */
+async function signOut(page: Page): Promise<void> {
+  await page.getByRole('button', { name: /^AD / }).click();
+  await page.getByRole('button', { name: /sign out/i }).click();
+}
+
 /** Open the org-admin management surface (users/teams/connections) from the header. */
 async function openAdmin(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Admin', exact: true }).click();
@@ -153,8 +159,9 @@ test('sign out then sign back in with the same credentials', async ({ page }) =>
   expect(body.vault?.protectedPrivateKey).toMatch(/^v1\./);
   await expectWorkspace(page);
 
-  // Wrong password is rejected.
-  await page.getByRole('button', { name: /sign out/i }).click();
+  // Wrong password is rejected. Sign out lives in the profile pastille's menu now
+  // (ProfilePastille replaced the standalone gear + sign-out in a server session).
+  await signOut(page);
   await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
   await page.locator('#username').fill(ADMIN.username);
   await page.locator('#password').fill('WrongPassword!');
@@ -470,4 +477,172 @@ test('active health-check UI: Check marks an unreachable machine down (ADR 0017)
 
   // The server probes the machine's host (unresolvable) → the pastille resolves to "No response".
   await expect(page.locator('[title*="No response"]').first()).toBeVisible({ timeout: 20_000 });
+});
+
+// ---------------------------------------------------------------------------
+// Wave-1 features on the accounts path (collections)
+// ---------------------------------------------------------------------------
+//
+// A collection machine is ciphertext to the server, so it is opened through the
+// ad-hoc ("quick") endpoints with the browser handing over the decrypted target.
+// Those endpoints used to carry the target and nothing else, so a jump host set
+// on such a machine was saved, displayed, then silently dropped at connect time,
+// and a port forward had no endpoint to call at all. What matters here is the
+// request that leaves the browser: it must carry the hops the user configured.
+
+/** Sign carol into the workspace (her password is CAROL_NEW by this point). */
+async function signInCarol(page: Page): Promise<void> {
+  await page.goto('/');
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#username').fill('carol');
+  await page.locator('#password').fill(CAROL_NEW);
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expectWorkspace(page);
+}
+
+/** Add a machine to Personal through the UI (no loose machines, ADR 0016). */
+async function addMachine(
+  page: Page,
+  opts: {
+    name: string;
+    host: string;
+    user: string;
+    password: string;
+    jump?: { name: string; user: string; host: string };
+  },
+): Promise<void> {
+  await page.getByRole('button', { name: 'Add to collection' }).first().click();
+  await page.getByRole('button', { name: 'New machine here' }).click();
+  await expect(page.getByRole('heading', { name: 'New Connection' })).toBeVisible();
+  await page.getByPlaceholder('My Server').fill(opts.name);
+  await page.getByPlaceholder('example.com or 192.168.1.1').fill(opts.host);
+  await page.getByPlaceholder('user').fill(opts.user);
+  await page.getByPlaceholder('Enter password...').fill(opts.password);
+  if (opts.jump) {
+    // The picker lists every other readable machine, grouped by collection, and
+    // labels each one "<name> — <user>@<host>".
+    const { name, user, host } = opts.jump;
+    await page.getByLabel(/Jump host/).selectOption({ label: `${name} — ${user}@${host}` });
+  }
+  await page.getByRole('button', { name: 'Save Connection' }).click();
+  await expect(page.getByText(opts.name)).toBeVisible({ timeout: 15_000 });
+}
+
+test('a jump host on a collection machine travels with the connect request', async ({ page }) => {
+  await signInCarol(page);
+
+  await addMachine(page, {
+    name: 'zk-bastion',
+    host: 'bastion-secret-host',
+    user: 'jumper',
+    password: 'bastion-secret-pw',
+  });
+  await addMachine(page, {
+    name: 'zk-behind-jump',
+    host: 'target-secret-host',
+    user: 'deployer',
+    password: 'target-secret-pw',
+    jump: { name: 'zk-bastion', user: 'jumper', host: 'bastion-secret-host' },
+  });
+
+  const quickSsh = page.waitForRequest(
+    (r) => r.url().endsWith('/api/terminal/quick-ssh') && r.method() === 'POST',
+  );
+  await page.getByText('zk-behind-jump').dblclick();
+  const body = (await quickSsh).postDataJSON() as {
+    host: string;
+    jumps: { host: string; username: string; authMethod: { type: string; password?: string } }[];
+  };
+
+  // The target as before…
+  expect(body.host).toBe('target-secret-host');
+  // …and the hop the server cannot resolve for itself, decrypted by the browser.
+  expect(body.jumps).toHaveLength(1);
+  expect(body.jumps[0].host).toBe('bastion-secret-host');
+  expect(body.jumps[0].username).toBe('jumper');
+  expect(body.jumps[0].authMethod.password).toBe('bastion-secret-pw');
+});
+
+test('a port forward on a collection machine carries its target and hops', async ({ page }) => {
+  await signInCarol(page);
+
+  // Single click opens the machine's dashboard; forwards are managed from there.
+  await page.getByText('zk-behind-jump').first().click();
+  await page.getByRole('button', { name: /manage/i }).click();
+  const dialog = page.getByRole('dialog', { name: 'Port forwarding' });
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByLabel('Local port').fill('15999');
+  await dialog.getByLabel('Remote host').fill('db.internal');
+  await dialog.getByLabel('Remote port').fill('5432');
+  await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+
+  const quickFwd = page.waitForRequest(
+    (r) => r.url().endsWith('/api/forwards/quick') && r.method() === 'POST',
+  );
+  await dialog.getByRole('button', { name: 'Start', exact: true }).click();
+  const body = (await quickFwd).postDataJSON() as {
+    host: string;
+    remoteHost: string;
+    remotePort: number;
+    jumps: { host: string }[];
+  };
+
+  // The vault path would send only a connection id; here the whole target travels,
+  // because the server holds nothing but ciphertext for this machine.
+  expect(body.host).toBe('target-secret-host');
+  expect(body.remoteHost).toBe('db.internal');
+  expect(body.remotePort).toBe(5432);
+  expect(body.jumps[0].host).toBe('bastion-secret-host');
+});
+
+/** Open the Personal collection's Board from its row menu in the library. */
+async function openPersonalBoard(page: Page): Promise<void> {
+  const row = page.locator('[class*="m-nm"]', { hasText: 'Personal' }).first();
+  await row.hover();
+  await page.getByRole('button', { name: 'Collection menu' }).first().click();
+  await page.getByRole('button', { name: /Board/ }).click();
+}
+
+test('a collection Board round-trips its cards, and the server only sees ciphertext', async ({
+  page,
+  request,
+}) => {
+  await signInCarol(page);
+
+  // The Board hangs off the collection's ⋯ menu in the library.
+  await openPersonalBoard(page);
+
+  const board = page.getByRole('dialog', { name: 'Board' });
+  await expect(board).toBeVisible({ timeout: 15_000 });
+  await expect(board.getByText('No cards yet — add a Link, Note, Action or Live view.')).toBeVisible();
+
+  await board.getByRole('button', { name: /Add card/ }).click();
+  // Menu entries spell out what each card type is ("Link — a styled button").
+  await board.getByRole('button', { name: /Link — / }).click();
+  // The card form is its own overlay stacked above the board, not a child of it.
+  await page.getByLabel('Title').fill('Runbook');
+  await page.getByLabel('URL').fill('https://runbook.secret.example/deploy');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(board.getByText('Runbook', { exact: true })).toBeVisible();
+
+  // Re-opening decrypts it back — the card really persisted, it isn't local state.
+  await board.getByRole('button', { name: 'Done' }).click();
+  await page.reload();
+  await expectWorkspace(page);
+  await openPersonalBoard(page);
+  await expect(
+    page.getByRole('dialog', { name: 'Board' }).getByText('Runbook', { exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // Zero-knowledge: the stored board is a ciphertext blob, not the URL.
+  const token = await login(request, 'carol', CAROL_NEW);
+  const cols = (await (await request.get(`${BASE}/api/collections`, { headers: auth(token) })).json()) as {
+    id: string;
+    boardEnc?: string | null;
+  }[];
+  const withBoard = cols.find((c) => c.boardEnc);
+  expect(withBoard, 'the board should be stored on the collection').toBeTruthy();
+  expect(withBoard!.boardEnc!).toMatch(/^v1\./);
+  expect(withBoard!.boardEnc!).not.toContain('runbook.secret.example');
 });
