@@ -4062,6 +4062,13 @@ struct LibraryCollectionReq {
     name: String,
     #[serde(default)]
     color: Option<String>,
+    /// Declared folders, including empty ones. Absent ⇒ keep what is stored, so a
+    /// plain rename cannot drop them.
+    #[serde(default)]
+    folders: Option<Vec<rite_core::local_collections::CollectionFolder>>,
+    /// Collection-wide health-check opt-out. Absent ⇒ keep what is stored.
+    #[serde(default)]
+    hc: Option<Option<bool>>,
 }
 
 async fn library_list_collections(
@@ -4101,6 +4108,8 @@ async fn library_update_collection(
         &id,
         &req.name,
         req.color.as_deref(),
+        req.folders,
+        req.hc,
     )
     .await?;
     Ok(Json(json!({ "ok": ok })))

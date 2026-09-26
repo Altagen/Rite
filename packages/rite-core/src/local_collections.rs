@@ -31,12 +31,32 @@ use crate::collection_store::{self, CollectionRole};
 use crate::connection::{AuthMethod, PortForwardConfig};
 use crate::local_user::{self, LOCAL_USER_ID};
 
-/// The encrypted `{name, color}` header. Field order matters — it is part of the
-/// cross-implementation contract with the browser (see `collection_crypto`).
+/// A folder declared inside a collection. Machines reference one by name via their
+/// own `folder` field; declaring it here is what lets an *empty* folder survive.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CollectionFolder {
+    pub name: String,
+    pub color: Option<String>,
+}
+
+/// The collection's encrypted header — the browser's `CollectionHeader`
+/// (utils/collectionHeader.ts) field for field, for the same reason `MachineRecord`
+/// mirrors `StoredRecord`: both sides must read the same blob. Optional fields are
+/// omitted rather than written as null, matching JSON.stringify.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct Header {
     name: String,
     color: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    folders: Option<Vec<CollectionFolder>>,
+    /// Collection-wide active health-check opt-out (ADR 0017).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hc: Option<bool>,
+    /// Marks the auto-provisioned server "Personal" collection. Never set locally —
+    /// a local vault has no Personal (ADR 0018) — but carried so a header written by
+    /// the browser survives a round-trip here unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    personal: Option<bool>,
 }
 
 /// A machine as it is stored inside a collection item.
@@ -93,6 +113,10 @@ pub struct LocalCollection {
     pub name: String,
     pub color: Option<String>,
     pub created_at: i64,
+    /// Declared folders, including empty ones (machines point at them by name).
+    pub folders: Vec<CollectionFolder>,
+    /// Collection-wide active health-check opt-out (ADR 0017).
+    pub hc: Option<bool>,
     /// Whether this collection has a board stored (the blob itself is read separately).
     pub has_board: bool,
 }
@@ -111,6 +135,9 @@ pub async fn create(
     let header = Header {
         name: name.to_string(),
         color: color.map(str::to_string),
+        folders: None,
+        hc: None,
+        personal: None,
     };
     let id = collection_store::create_collection(
         db,
@@ -126,6 +153,8 @@ pub async fn create(
         name: header.name,
         color: header.color,
         created_at: chrono::Utc::now().timestamp(),
+        folders: Vec::new(),
+        hc: None,
         has_board: false,
     })
 }
@@ -142,6 +171,8 @@ pub async fn list(db: &SqlitePool, master_key: &[u8; KEY_LEN]) -> Result<Vec<Loc
             name: header.name,
             color: header.color,
             created_at: row.created_at,
+            folders: header.folders.unwrap_or_default(),
+            hc: header.hc,
             has_board: row.board_enc.is_some(),
         });
     }
@@ -156,11 +187,22 @@ pub async fn update(
     id: &str,
     name: &str,
     color: Option<&str>,
+    folders: Option<Vec<CollectionFolder>>,
+    hc: Option<Option<bool>>,
 ) -> Result<bool> {
     let meta_key = meta_key_of(db, master_key, id).await?;
+    // Read-modify-write: a rename must not silently drop folders or the
+    // health-check opt-out, which live in the same header blob.
+    let current: Header = decrypt_field(&meta_key, &row_of(db, id).await?.name_enc)?;
     let header = Header {
         name: name.to_string(),
         color: color.map(str::to_string),
+        folders: folders.or(current.folders),
+        hc: match hc {
+            Some(v) => v,
+            None => current.hc,
+        },
+        personal: current.personal,
     };
     collection_store::set_name_enc(db, id, &encrypt_field(&meta_key, &header)?).await
 }
@@ -358,7 +400,7 @@ mod tests {
         let (_d, db, mk) = vault_db().await;
         let c = create(db.pool(), &mk, "Old", None).await.unwrap();
         assert!(
-            update(db.pool(), &mk, &c.id, "New", Some("#f7768e"))
+            update(db.pool(), &mk, &c.id, "New", Some("#f7768e"), None, None)
                 .await
                 .unwrap()
         );
@@ -513,6 +555,61 @@ mod tests {
         .unwrap();
         let other = vault::generate_user_key();
         assert!(read_board(db.pool(), &other, &c.id).await.is_err());
+    }
+
+    /// The header is a shared blob too, so it gets the same treatment as the
+    /// machine record: a header the browser wrote must survive a round-trip here.
+    #[test]
+    fn header_matches_the_browser() {
+        // r##"…"## because a hex colour contains `"#`, which would end an r#"…"# literal.
+        const FROM_BROWSER: &str = r##"{"name":"Production","color":"#f7768e","folders":[{"name":"Web servers","color":"#7c9cf5"},{"name":"Cache","color":null}],"hc":false}"##;
+        let parsed: Header = serde_json::from_str(FROM_BROWSER).expect("browser header must load");
+        assert_eq!(parsed.name, "Production");
+        assert_eq!(parsed.folders.as_ref().unwrap().len(), 2);
+        assert_eq!(parsed.hc, Some(false));
+        let ours = serde_json::to_value(&parsed).unwrap();
+        let theirs: serde_json::Value = serde_json::from_str(FROM_BROWSER).unwrap();
+        assert_eq!(ours, theirs, "header must round-trip field for field");
+    }
+
+    /// A rename must not quietly discard the folders stored in the same blob.
+    #[tokio::test]
+    async fn renaming_keeps_folders_and_the_health_check_opt_out() {
+        let (_d, db, mk) = vault_db().await;
+        let c = create(db.pool(), &mk, "Home lab", None).await.unwrap();
+        let folders = vec![
+            CollectionFolder {
+                name: "Hypervisors".into(),
+                color: Some("#7c9cf5".into()),
+            },
+            CollectionFolder {
+                name: "Empty".into(),
+                color: None,
+            },
+        ];
+        update(
+            db.pool(),
+            &mk,
+            &c.id,
+            "Home lab",
+            None,
+            Some(folders.clone()),
+            Some(Some(false)),
+        )
+        .await
+        .unwrap();
+
+        // Rename only — folders and hc are untouched.
+        update(db.pool(), &mk, &c.id, "Lab", None, None, None)
+            .await
+            .unwrap();
+        let got = &list(db.pool(), &mk).await.unwrap()[0];
+        assert_eq!(got.name, "Lab");
+        assert_eq!(
+            got.folders, folders,
+            "an empty folder must survive a rename"
+        );
+        assert_eq!(got.hc, Some(false));
     }
 
     /// Deleting must take the items with it — the blobs are the machines, and a
