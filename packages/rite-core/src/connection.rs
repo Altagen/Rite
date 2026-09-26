@@ -44,7 +44,7 @@ impl Protocol {
 }
 
 /// Authentication method for SSH
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AuthMethod {
     Password {
@@ -56,6 +56,10 @@ pub enum AuthMethod {
         /// credentials already stored under the snake_case spelling readable.
         #[serde(rename = "keyPath", alias = "key_path")]
         key_path: String,
+        /// Omitted when absent, as the browser does — `passphrase?: string` simply
+        /// disappears from JSON.stringify, so skipping it keeps a record written on
+        /// either side byte-identical rather than merely equivalent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         passphrase: Option<String>,
     },
     /// Authenticate via a running SSH agent (`SSH_AUTH_SOCK`). The private key
@@ -86,7 +90,7 @@ fn default_forward_type() -> String {
 
 /// A saved port-forward config on a connection. Started/stopped at runtime by the
 /// session manager; persisted as JSON (non-secret metadata). MVP = "local".
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PortForwardConfig {
     /// Forward kind — "local" for the MVP ("remote"/"dynamic" reserved for later).

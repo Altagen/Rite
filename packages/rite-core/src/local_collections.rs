@@ -28,6 +28,7 @@ use crate::collection_crypto::{
     decrypt_field, encrypt_field, generate_collection_keys, unwrap_key_local, wrap_key_local,
 };
 use crate::collection_store::{self, CollectionRole};
+use crate::connection::{AuthMethod, PortForwardConfig};
 use crate::local_user::{self, LOCAL_USER_ID};
 
 /// The encrypted `{name, color}` header. Field order matters — it is part of the
@@ -36,6 +37,52 @@ use crate::local_user::{self, LOCAL_USER_ID};
 struct Header {
     name: String,
     color: Option<String>,
+}
+
+/// A machine as it is stored inside a collection item.
+///
+/// This is the browser's `StoredRecord` (accountsConnectionsSource.ts) field for
+/// field. The whole point of ADR 0018 is one storage model, so a blob written by
+/// rite-core must be readable by the web shell and the other way round — the shape
+/// is a contract, not an internal detail, and `machine_record_matches_the_browser`
+/// pins it against JSON the browser produced.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MachineRecord {
+    pub name: String,
+    pub protocol: String,
+    pub hostname: String,
+    pub port: u16,
+    pub username: String,
+    pub auth_method: AuthMethod,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub folder: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub ssh_keep_alive_override: Option<String>,
+    #[serde(default)]
+    pub ssh_keep_alive_interval: Option<i64>,
+    #[serde(default)]
+    pub preconnect: Option<String>,
+    #[serde(default)]
+    pub jump: Option<String>,
+    #[serde(default)]
+    pub forwards: Vec<PortForwardConfig>,
+    /// Health-check opt-out (ADR 0017): `Some(false)` ⇒ never actively probe.
+    #[serde(default)]
+    pub hc: Option<bool>,
+}
+
+/// A machine read back out of a collection, with the item id that addresses it.
+#[derive(Debug, Clone)]
+pub struct StoredMachine {
+    pub id: String,
+    pub record: MachineRecord,
 }
 
 /// A collection as the local UI sees it: decrypted, no membership, no role.
@@ -158,6 +205,59 @@ pub async fn role(db: &SqlitePool, id: &str) -> Result<Option<CollectionRole>> {
     collection_store::collection_role(db, id, LOCAL_USER_ID).await
 }
 
+/// Every machine in a collection, decrypted.
+pub async fn list_machines(
+    db: &SqlitePool,
+    master_key: &[u8; KEY_LEN],
+    collection_id: &str,
+) -> Result<Vec<StoredMachine>> {
+    let key = items_key(db, master_key, collection_id).await?;
+    let mut out = Vec::new();
+    for item in collection_store::list_items(db, collection_id).await? {
+        // One unreadable item must not take the whole collection down with it.
+        match decrypt_field::<MachineRecord>(&key, &item.blob) {
+            Ok(record) => out.push(StoredMachine {
+                id: item.id,
+                record,
+            }),
+            Err(e) => tracing::warn!("skipping unreadable item {}: {}", item.id, e),
+        }
+    }
+    Ok(out)
+}
+
+/// Add a machine to a collection. Returns its item id.
+pub async fn create_machine(
+    db: &SqlitePool,
+    master_key: &[u8; KEY_LEN],
+    collection_id: &str,
+    record: &MachineRecord,
+) -> Result<String> {
+    let key = items_key(db, master_key, collection_id).await?;
+    Ok(
+        collection_store::create_item(db, collection_id, &encrypt_field(&key, record)?)
+            .await?
+            .id,
+    )
+}
+
+/// Replace a machine's record wholesale.
+pub async fn update_machine(
+    db: &SqlitePool,
+    master_key: &[u8; KEY_LEN],
+    collection_id: &str,
+    item_id: &str,
+    record: &MachineRecord,
+) -> Result<bool> {
+    let key = items_key(db, master_key, collection_id).await?;
+    collection_store::update_item(db, collection_id, item_id, &encrypt_field(&key, record)?).await
+}
+
+/// Remove a machine from a collection.
+pub async fn delete_machine(db: &SqlitePool, collection_id: &str, item_id: &str) -> Result<bool> {
+    collection_store::delete_item(db, collection_id, item_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -233,6 +333,95 @@ mod tests {
         );
         assert!(delete(db.pool(), &c.id).await.unwrap());
         assert!(list(db.pool(), &mk).await.unwrap().is_empty());
+    }
+
+    fn a_machine() -> MachineRecord {
+        MachineRecord {
+            name: "web-01".into(),
+            protocol: "ssh".into(),
+            hostname: "10.0.0.5".into(),
+            port: 22,
+            username: "deploy".into(),
+            auth_method: AuthMethod::PublicKey {
+                key_path: "/home/u/.ssh/id_ed25519".into(),
+                passphrase: None,
+            },
+            color: None,
+            icon: None,
+            folder: Some("Web servers".into()),
+            notes: None,
+            ssh_keep_alive_override: None,
+            ssh_keep_alive_interval: None,
+            preconnect: None,
+            jump: Some("bastion".into()),
+            forwards: vec![PortForwardConfig {
+                forward_type: "local".into(),
+                bind_host: None,
+                local_port: 8080,
+                remote_host: "10.0.0.9".into(),
+                remote_port: 80,
+            }],
+            hc: None,
+        }
+    }
+
+    /// The contract that makes one storage model real: a record the browser wrote
+    /// must load here unchanged, and ours must go back in the same spelling.
+    /// Captured from `StoredRecord` in accountsConnectionsSource.ts.
+    #[test]
+    fn machine_record_matches_the_browser() {
+        const FROM_BROWSER: &str = r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,"username":"deploy","authMethod":{"type":"publicKey","keyPath":"/home/u/.ssh/id_ed25519"},"color":null,"icon":null,"folder":"Web servers","notes":null,"sshKeepAliveOverride":null,"sshKeepAliveInterval":null,"preconnect":null,"jump":"bastion","forwards":[{"forwardType":"local","bindHost":null,"localPort":8080,"remoteHost":"10.0.0.9","remotePort":80}],"hc":null}"#;
+        let parsed: MachineRecord =
+            serde_json::from_str(FROM_BROWSER).expect("a browser record must load");
+        assert_eq!(parsed, a_machine());
+
+        let ours = serde_json::to_value(&parsed).unwrap();
+        let theirs: serde_json::Value = serde_json::from_str(FROM_BROWSER).unwrap();
+        assert_eq!(ours, theirs, "core and browser must agree field for field");
+    }
+
+    #[tokio::test]
+    async fn machines_round_trip_inside_a_collection() {
+        let (_d, db, mk) = vault_db().await;
+        let c = create(db.pool(), &mk, "Home lab", None).await.unwrap();
+
+        let id = create_machine(db.pool(), &mk, &c.id, &a_machine())
+            .await
+            .unwrap();
+        let all = list_machines(db.pool(), &mk, &c.id).await.unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].record, a_machine());
+
+        // Unlike the legacy connections table, the hostname is not on disk in clear.
+        let blob: (String,) = sqlx::query_as("SELECT blob FROM collection_items WHERE id = ?")
+            .bind(&id)
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert!(!blob.0.contains("10.0.0.5"));
+        assert!(!blob.0.contains("web-01"));
+
+        let mut edited = a_machine();
+        edited.name = "web-02".into();
+        assert!(
+            update_machine(db.pool(), &mk, &c.id, &id, &edited)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            list_machines(db.pool(), &mk, &c.id).await.unwrap()[0]
+                .record
+                .name,
+            "web-02"
+        );
+
+        assert!(delete_machine(db.pool(), &c.id, &id).await.unwrap());
+        assert!(
+            list_machines(db.pool(), &mk, &c.id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     /// Deleting must take the items with it — the blobs are the machines, and a
