@@ -518,6 +518,35 @@ pub async fn last_used(
     Ok(rows.into_iter().collect())
 }
 
+/// Re-wrap every local collection key for a new master key.
+///
+/// A local collection's keys are wrapped with the master key, so changing the
+/// master password must re-wrap them or the whole vault becomes unreadable — the
+/// items would still be there, encrypted with keys nobody can unwrap any more.
+/// This only computes the new values; the caller writes them in the same
+/// transaction as the password change, so a crash in between cannot leave the two
+/// out of step.
+pub async fn rewrapped_keys(
+    db: &SqlitePool,
+    old_master: &[u8; KEY_LEN],
+    new_master: &[u8; KEY_LEN],
+) -> Result<Vec<(String, String, Option<String>)>> {
+    let mut out = Vec::new();
+    for row in collection_store::list_collections_for_user(db, LOCAL_USER_ID).await? {
+        let meta = unwrap_key_local(old_master, &row.protected_meta_key)?;
+        let items = match &row.protected_items_key {
+            Some(p) => Some(unwrap_key_local(old_master, p)?),
+            None => None,
+        };
+        out.push((
+            row.id,
+            wrap_key_local(new_master, &meta)?,
+            items.map(|k| wrap_key_local(new_master, &k)).transpose()?,
+        ));
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -953,6 +982,45 @@ mod tests {
                 .jump,
             None
         );
+    }
+
+    /// The vault must survive a master-password change. Without re-wrapping, the
+    /// collection keys stay wrapped under the old key and everything becomes
+    /// permanently unreadable — silently, since the ciphertext is all still there.
+    #[tokio::test]
+    async fn keys_can_be_rewrapped_for_a_new_master_key() {
+        let (_d, db, old) = vault_db().await;
+        let c = create(db.pool(), &old, "Home lab", Some("#9ece6a"))
+            .await
+            .unwrap();
+        let id = create_machine(db.pool(), &old, &c.id, &a_machine())
+            .await
+            .unwrap();
+
+        let new = vault::generate_user_key();
+        // Before re-wrapping, the new key opens nothing.
+        assert!(list(db.pool(), &new).await.is_err());
+
+        for (coll, meta, items) in rewrapped_keys(db.pool(), &old, &new).await.unwrap() {
+            collection_store::add_member(
+                db.pool(),
+                &coll,
+                LOCAL_USER_ID,
+                CollectionRole::Owner,
+                &meta,
+                items.as_deref().unwrap_or_default(),
+            )
+            .await
+            .unwrap();
+        }
+
+        // After, everything reads exactly as before — name, colour and machines.
+        let all = list(db.pool(), &new).await.unwrap();
+        assert_eq!(all[0].name, "Home lab");
+        assert_eq!(all[0].color.as_deref(), Some("#9ece6a"));
+        let machines = list_machines(db.pool(), &new, &c.id).await.unwrap();
+        assert_eq!(machines[0].id, id);
+        assert_eq!(machines[0].record, a_machine());
     }
 
     /// Deleting must take the items with it — the blobs are the machines, and a

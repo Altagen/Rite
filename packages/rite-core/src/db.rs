@@ -593,14 +593,34 @@ impl Database {
     /// Atomically re-key the vault (ADR 0014): replace each connection's re-encrypted credentials
     /// AND the master-password hash/salt in ONE transaction, so a mid-way failure can never leave a
     /// mixed-key vault (some connections under the old key, some the new).
+    /// Apply a master-password change atomically.
+    ///
+    /// `conns` are legacy credential blobs re-encrypted with the new key, and
+    /// `collection_keys` are `(collection_id, protected_meta_key,
+    /// protected_items_key)` re-wrapped for it (ADR 0018). Both must land in the
+    /// same transaction as the new password: if the password changed and the keys
+    /// did not, every collection would be permanently unreadable.
     pub async fn rekey_vault(
         &self,
         conns: &[(String, Vec<u8>, Vec<u8>)],
+        collection_keys: &[(String, String, Option<String>)],
         new_hash: &str,
         new_salt: &[u8],
     ) -> Result<()> {
         let now = chrono::Utc::now().timestamp_millis();
         let mut tx = self.pool.begin().await?;
+        for (collection_id, meta, items) in collection_keys {
+            sqlx::query(
+                "UPDATE collection_members SET protected_meta_key = ?1, protected_items_key = ?2 \
+                 WHERE collection_id = ?3 AND user_id = ?4",
+            )
+            .bind(meta)
+            .bind(items)
+            .bind(collection_id)
+            .bind(crate::local_user::LOCAL_USER_ID)
+            .execute(&mut *tx)
+            .await?;
+        }
         for (id, blob, nonce) in conns {
             sqlx::query(
                 "UPDATE connections SET encrypted_credentials = ?1, nonce = ?2, updated_at = ?3 WHERE id = ?4",

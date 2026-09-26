@@ -199,11 +199,25 @@ impl AuthManager {
             )
             .map_err(|e| anyhow!("hash new password: {e}"))?
             .to_string();
-        self.db.rekey_vault(&updates, &new_hash, &new_salt).await?;
+        // Local collections are wrapped with the master key, so they must be
+        // re-wrapped in the same breath (ADR 0018) — otherwise the password change
+        // succeeds and the vault silently becomes unreadable.
+        let collection_keys = crate::local_collections::rewrapped_keys(
+            self.db.pool(),
+            old_key.as_bytes(),
+            new_key.as_bytes(),
+        )
+        .await
+        .context("re-wrap collection keys")?;
+
+        self.db
+            .rekey_vault(&updates, &collection_keys, &new_hash, &new_salt)
+            .await?;
         *self.master_key.write().await = Some(Arc::new(new_key));
         info!(
-            "Master password changed ({} connections re-keyed)",
-            updates.len()
+            "Master password changed ({} connections re-keyed, {} collections re-wrapped)",
+            updates.len(),
+            collection_keys.len()
         );
         Ok(ChangeMasterOutcome::Success)
     }
@@ -314,17 +328,62 @@ mod tests {
     use tempfile::TempDir;
 
     async fn create_test_auth() -> (AuthManager, TempDir) {
+        let (auth, _db, tmp) = create_test_auth_with_db().await;
+        (auth, tmp)
+    }
+
+    /// Same, but keeps the Database handle for tests that also touch collections.
+    async fn create_test_auth_with_db() -> (AuthManager, Database, TempDir) {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let db = Database::new(&db_path).await.unwrap();
-        let auth = AuthManager::new(db);
-        (auth, temp_dir)
+        let auth = AuthManager::new(db.clone());
+        (auth, db, temp_dir)
     }
 
     #[tokio::test]
     async fn test_first_run() {
         let (auth, _temp) = create_test_auth().await;
         assert!(auth.is_first_run().await.unwrap());
+    }
+
+    /// A password change must carry local collections with it. Without re-wrapping
+    /// their keys the ciphertext survives but nothing can unwrap it again — the
+    /// vault looks intact and is permanently unreadable.
+    #[tokio::test]
+    async fn change_master_password_rewraps_collections() {
+        let (auth, db, _tmp) = create_test_auth_with_db().await;
+        auth.setup_master_password("Old-Str0ng!P@ss1")
+            .await
+            .unwrap();
+        auth.unlock("Old-Str0ng!P@ss1").await.unwrap();
+
+        let key = *auth.get_master_key().await.unwrap().as_bytes();
+        let c = crate::local_collections::create(db.pool(), &key, "Home lab", None)
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            auth.change_master_password("Old-Str0ng!P@ss1", "New-Str0ng!P@ss2")
+                .await
+                .unwrap(),
+            ChangeMasterOutcome::Success
+        ));
+
+        // Re-derive from the NEW password and read the collection back.
+        auth.lock().await.unwrap();
+        auth.unlock("New-Str0ng!P@ss2").await.unwrap();
+        let new_key = *auth.get_master_key().await.unwrap().as_bytes();
+        let all = crate::local_collections::list(db.pool(), &new_key)
+            .await
+            .unwrap();
+        assert_eq!(
+            all.len(),
+            1,
+            "the collection must survive the password change"
+        );
+        assert_eq!(all[0].id, c.id);
+        assert_eq!(all[0].name, "Home lab");
     }
 
     #[tokio::test]
