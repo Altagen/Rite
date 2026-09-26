@@ -25,6 +25,7 @@ import {
   sendVaultCommand,
   onVaultsChanged,
   openCreateVault,
+  shortenVaultPath,
   type NativeVault,
 } from '../utils/nativeShell';
 import { CertTrustModal } from './CertTrustModal';
@@ -39,6 +40,8 @@ export interface HubProps {
   onOpenLocalInPlace?: () => void;
   /** Overlay only: dismiss the picker (also used when picking the current context). */
   onClose?: () => void;
+  /** Open straight on the add-a-server form (the menu entry that promises it). */
+  startAdding?: boolean;
 }
 
 const VAULT_EMOJI = ['🔒', '🚀', '🏠', '🖥️', '☁️', '🐳', '🗄️', '🔧', '🧪', '🌐', '🛡️', '📦'];
@@ -76,9 +79,9 @@ function fileToIconDataUri(file: File): Promise<string> {
   });
 }
 
-export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
+export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubProps) {
   const [ctx, setCtx] = useState<ContextState | null>(null);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(startAdding === true);
   const [url, setUrl] = useState('');
   const [label, setLabel] = useState('');
   const [busy, setBusy] = useState(false);
@@ -359,7 +362,9 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                           <span className="truncate font-semibold">{v.label}</span>
                           {isCurrent && <CurrentMark />}
                         </div>
-                        <div className="truncate text-xs text-muted-foreground">{v.path}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {shortenVaultPath(v.path)}
+                        </div>
                       </div>
                       <ContextTag state={isCurrent && !isLocked ? 'open' : 'locked'} />
                       <button

@@ -19,13 +19,14 @@ import {
   requestSwitchContext,
   nativeVaults,
   nativeContext,
+  shortenVaultPath,
   sendVaultCommand,
   onVaultsChanged,
   openCreateVault,
   type NativeVault,
 } from '../utils/nativeShell';
 import { Hub } from './Hub';
-import { ContextDot, ContextTag, type ContextTagState } from './ContextTag';
+import { ContextBadge, ContextDot, ContextTag, CurrentMark, type ContextTagState } from './ContextTag';
 import { useAuthStore } from '../store/authStore';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 
@@ -33,9 +34,11 @@ export function ContextPill() {
   const [ctx, setCtx] = useState<ContextState | null>(null);
   const [open, setOpen] = useState(false);
   const [showManager, setShowManager] = useState(false);
+  const [addServer, setAddServer] = useState(false);
   const [removeVault, setRemoveVault] = useState<NativeVault | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const isLocked = useAuthStore((s) => s.isLocked);
+  const lockCurrent = useAuthStore((s) => s.lock);
 
   const refresh = useCallback(async () => {
     try {
@@ -105,19 +108,61 @@ export function ContextPill() {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
   );
+  const gridIcon = (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </svg>
+  );
+  const plusIcon = (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+    </svg>
+  );
+  const folderIcon = (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+    </svg>
+  );
+  const shieldIcon = (
+    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z" />
+    </svg>
+  );
+  const footerRow = (icon: React.ReactNode, label: string, onClick: () => void) => (
+    <button
+      onClick={() => {
+        setOpen(false);
+        onClick();
+      }}
+      className="flex w-full items-center gap-3 rounded-md border border-transparent px-3 py-2.5 text-left text-sm font-semibold text-muted-foreground transition hover:border-border hover:bg-muted hover:text-foreground"
+    >
+      <span className="flex-none">{icon}</span>
+      {label}
+    </button>
+  );
   const splitIcon = (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
     </svg>
   );
-  // A row = a wide "switch this window" button + a visible "open in new window" action (kept
-  // discoverable, not hover-only) and a hover-only remove.
+  // A row = a wide "switch this window" button, then its actions. Like the mock's menu they
+  // appear on hover: at rest the row is the name, the path and the state — and the path is
+  // what loses the width when a button sits there permanently.
+  const rowClass = (isCurrent: boolean) =>
+    `group flex items-center gap-2 rounded-md border px-3 py-2.5 transition ${
+      isCurrent
+        ? 'border-transparent bg-primary/10 shadow-[inset_3px_0_0_hsl(var(--primary))]'
+        : 'border-transparent hover:border-border hover:bg-muted'
+    }`;
   const newWindowBtn = (label: string, onClick: () => void) => (
     <button
       onClick={onClick}
       title="Open in a new window"
       aria-label={`Open ${label} in a new window`}
-      className="flex-none rounded p-1.5 text-muted-foreground opacity-70 transition hover:bg-background hover:text-foreground hover:opacity-100"
+      className="hidden flex-none rounded p-1.5 text-muted-foreground transition hover:bg-background hover:text-foreground group-hover:block"
     >
       {splitIcon}
     </button>
@@ -134,7 +179,7 @@ export function ContextPill() {
       }}
       title={current ? 'Reset vault' : 'Remove from list'}
       aria-label={current ? `Reset ${v.label}` : `Remove ${v.label}`}
-      className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
+      className="hidden flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500 group-hover:block"
     >
       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
@@ -156,31 +201,47 @@ export function ContextPill() {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-md border border-border bg-card p-1 shadow-lg">
-          <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Local vaults
-          </p>
+        <div className="absolute left-0 top-full z-30 mt-2 w-80 rounded-[14px] border border-border bg-card p-2 shadow-lg">
+          <p className="m-eyebrow px-2.5 pb-1 pt-2">Local vaults</p>
           {vaults.length > 0 ? (
             vaults.map((v) => {
               const isCurrent = isLocalActive && currentVaultPath === v.path;
               return (
-                <div
-                  key={v.path}
-                  className={`group flex items-center gap-1 rounded ${isCurrent ? 'bg-primary/10' : 'hover:bg-muted'}`}
-                >
+                <div key={v.path} className={rowClass(isCurrent)}>
                   <button
                     onClick={() => openVault(v.path)}
-                    className="flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
                   >
-                    {v.icon?.startsWith('data:') ? (
-                      <img src={v.icon} alt="" className="h-4 w-4 flex-none rounded object-cover" />
-                    ) : (
-                      <span className="flex-none text-sm leading-none">{v.icon || '🔒'}</span>
-                    )}
-                    <span className="min-w-0 flex-1 truncate">{v.label}</span>
-                    {isCurrent && <span className="flex-none text-xs text-primary">current</span>}
+                    <ContextBadge icon={v.icon} name={v.label} small />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center">
+                        <span className="truncate text-sm font-semibold">{v.label}</span>
+                        {isCurrent && <CurrentMark />}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {shortenVaultPath(v.path)}
+                      </span>
+                    </span>
                     <ContextTag state={vaultState(v.path)} />
                   </button>
+                  {/* Only this window's vault can be locked from here — the others live in
+                      their own windows, each with its own server holding its own key. */}
+                  {isCurrent && !isLocked && (
+                    <button
+                      onClick={() => {
+                        setOpen(false);
+                        void lockCurrent();
+                      }}
+                      title="Lock"
+                      aria-label={`Lock ${v.label}`}
+                      className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <rect x="5" y="11" width="14" height="10" rx="2" />
+                        <path strokeLinecap="round" d="M8 11V7a4 4 0 118 0v4" />
+                      </svg>
+                    </button>
+                  )}
                   {!isCurrent && newWindowBtn(v.label, () => newWindowVault(v.path))}
                   {removeVaultBtn(v)}
                 </div>
@@ -194,25 +255,23 @@ export function ContextPill() {
 
           {ctx && ctx.roster.length > 0 && (
             <>
-              <p className="px-2 py-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Servers
-              </p>
+              <p className="m-eyebrow px-2.5 pb-1 pt-2.5">Servers</p>
               {ctx.roster.map((s) => {
                 const isCurrent = !isLocalActive && active.id === s.id;
                 return (
-                  <div
-                    key={s.id}
-                    className={`group flex items-center gap-1 rounded ${isCurrent ? 'bg-primary/10' : 'hover:bg-muted'}`}
-                  >
+                  <div key={s.id} className={rowClass(isCurrent)}>
                     <button
                       onClick={() => openServer(s)}
-                      className="flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
+                      className="flex min-w-0 flex-1 items-center gap-2 text-left"
                     >
+                      <ContextBadge icon={s.icon} name={s.label || s.url} small />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate">{s.label || s.url}</span>
+                        <span className="flex items-center">
+                          <span className="truncate text-sm font-semibold">{s.label || s.url}</span>
+                          {isCurrent && <CurrentMark />}
+                        </span>
                         <span className="block truncate text-xs text-muted-foreground">{s.url}</span>
                       </span>
-                      {isCurrent && <span className="text-xs text-primary">current</span>}
                       <ContextTag state="server" />
                     </button>
                     {!isCurrent && newWindowBtn(s.label || s.url, () => newWindowServer(s))}
@@ -222,54 +281,24 @@ export function ContextPill() {
             </>
           )}
 
-          <div className="my-1 border-t border-border" />
-          {!isLocalActive && (
-            <button
-              onClick={() => {
-                setOpen(false);
-                requestOpenContext({ kind: 'local' });
-              }}
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-              title="Open your local vault in a separate window, alongside this one"
-            >
-              {splitIcon} Open a local window
-            </button>
-          )}
-          <button
-            onClick={() => {
-              setOpen(false);
-              openCreateVault();
-            }}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <span aria-hidden>＋</span> New local vault…
-          </button>
-          <button
-            onClick={() => {
-              setOpen(false);
-              sendVaultCommand({ type: 'vault-open-file' });
-            }}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            <span aria-hidden>📂</span> Open a vault file…
-          </button>
-          <button
-            onClick={() => {
-              setOpen(false);
-              setShowManager(true);
-            }}
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
-          >
-            Manage contexts…
-          </button>
+          <div className="my-2 h-px bg-border" />
+          {footerRow(gridIcon, 'Card view — manage all…', () => setShowManager(true))}
+          {footerRow(plusIcon, 'New local vault…', openCreateVault)}
+          {footerRow(folderIcon, 'Open a vault file…', () => sendVaultCommand({ type: 'vault-open-file' }))}
+          {footerRow(shieldIcon, 'Add a server…', () => {
+            setShowManager(true);
+            setAddServer(true);
+          })}
         </div>
       )}
 
       {showManager && (
         <Hub
           current={isLocalActive ? { kind: 'local' } : { kind: 'server', id: active.id }}
+          startAdding={addServer}
           onClose={() => {
             setShowManager(false);
+            setAddServer(false);
             void refresh();
           }}
         />

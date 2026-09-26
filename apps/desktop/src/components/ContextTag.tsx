@@ -48,14 +48,25 @@ const BADGES = [
  * a gradient square with its initial — the mock's default, which tells two vaults
  * apart at a glance where one generic glyph for all of them would not.
  */
-export function ContextBadge({ icon, name }: { icon?: string; name: string }) {
-  const base = 'grid h-[34px] w-[34px] flex-none place-items-center rounded-[10px]';
+export function ContextBadge({
+  icon,
+  name,
+  small,
+}: {
+  icon?: string;
+  name: string;
+  /** The context menu's denser 28px badge (the mock shrinks it there). */
+  small?: boolean;
+}) {
+  const base = small
+    ? 'grid h-7 w-7 flex-none place-items-center rounded-lg'
+    : 'grid h-[34px] w-[34px] flex-none place-items-center rounded-[10px]';
   if (icon?.startsWith('data:')) {
     return <img src={icon} alt="" className={`${base} object-cover`} />;
   }
   if (icon) {
     return (
-      <span className={`${base} text-lg leading-none`} aria-hidden>
+      <span className={`${base} ${small ? 'text-base' : 'text-lg'} leading-none`} aria-hidden>
         {icon}
       </span>
     );
@@ -64,7 +75,7 @@ export function ContextBadge({ icon, name }: { icon?: string; name: string }) {
   for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
   return (
     <span
-      className={`${base} text-sm font-bold text-[#0a0e1a]`}
+      className={`${base} ${small ? 'text-xs' : 'text-sm'} font-bold text-[#0a0e1a]`}
       style={{ backgroundImage: BADGES[hash % BADGES.length] }}
       aria-hidden
     >

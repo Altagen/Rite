@@ -92,6 +92,22 @@ export function suggestedVaultPath(): string | undefined {
 }
 
 /**
+ * A vault path as the mock writes it: `~/work/acme-vault.db` rather than the whole
+ * absolute path, which in a 320px menu row is ellipsised down to nothing useful.
+ *
+ * The home directory is derived from the path the shell already injects for the
+ * create dialog — no new plumbing, and no guess: if it doesn't look like a home
+ * path the path is left exactly as it is.
+ */
+export function shortenVaultPath(path: string): string {
+  const suggested = suggestedVaultPath();
+  const home =
+    suggested?.match(/^(\/.+?)\/\.local\/share\/rite\//)?.[1] ??
+    suggested?.match(/^(\/(?:home|Users)\/[^/]+)\//)?.[1];
+  return home && path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
+}
+
+/**
  * Open the create-vault dialog. Decoupled via a DOM event so any surface (header, pill, hub,
  * picker) can trigger the single dialog mounted in the workspace, without prop-drilling.
  */
