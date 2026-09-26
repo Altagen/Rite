@@ -25,6 +25,8 @@ import {
   type NativeVault,
 } from '../utils/nativeShell';
 import { Hub } from './Hub';
+import { ContextDot, ContextTag, type ContextTagState } from './ContextTag';
+import { useAuthStore } from '../store/authStore';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 
 export function ContextPill() {
@@ -33,6 +35,7 @@ export function ContextPill() {
   const [showManager, setShowManager] = useState(false);
   const [removeVault, setRemoveVault] = useState<NativeVault | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const isLocked = useAuthStore((s) => s.isLocked);
 
   const refresh = useCallback(async () => {
     try {
@@ -65,6 +68,11 @@ export function ContextPill() {
   const isLocalActive = !active || active === 'local';
   const vaults = nativeVaults();
   const currentVaultPath = nativeContext()?.path ?? null;
+  // This window's vault is the only one whose lock state we can know (ADR 0014: one
+  // window, one vault). Any other roster entry has no server running, so it is locked
+  // — see ContextTag.
+  const vaultState = (path: string | null): ContextTagState =>
+    isLocalActive && path !== null && path === currentVaultPath && !isLocked ? 'open' : 'locked';
   const currentVault = vaults.find((v) => v.path === currentVaultPath);
   // No registered vault under this window yet (fresh install, register-after-password) ⇒ don't
   // pretend there's a "Local vault"; show it's not set up.
@@ -142,7 +150,7 @@ export function ContextPill() {
         className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm font-medium hover:bg-muted"
         title="Switch context"
       >
-        <span className={`h-2 w-2 flex-none rounded-full ${isLocalActive ? 'bg-amber-400' : 'bg-purple-400'}`} />
+        <ContextDot state={isLocalActive ? vaultState(currentVaultPath) : 'server'} />
         <span className="max-w-[180px] truncate">{currentLabel}</span>
         {chevron}
       </button>
@@ -171,6 +179,7 @@ export function ContextPill() {
                     )}
                     <span className="min-w-0 flex-1 truncate">{v.label}</span>
                     {isCurrent && <span className="flex-none text-xs text-primary">current</span>}
+                    <ContextTag state={vaultState(v.path)} />
                   </button>
                   {!isCurrent && newWindowBtn(v.label, () => newWindowVault(v.path))}
                   {removeVaultBtn(v)}
@@ -199,12 +208,12 @@ export function ContextPill() {
                       onClick={() => openServer(s)}
                       className="flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5 text-left text-sm"
                     >
-                      <span className="h-2 w-2 flex-none rounded-full bg-purple-400" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate">{s.label || s.url}</span>
                         <span className="block truncate text-xs text-muted-foreground">{s.url}</span>
                       </span>
                       {isCurrent && <span className="text-xs text-primary">current</span>}
+                      <ContextTag state="server" />
                     </button>
                     {!isCurrent && newWindowBtn(s.label || s.url, () => newWindowServer(s))}
                   </div>

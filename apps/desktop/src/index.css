@@ -160,6 +160,39 @@
     background: hsl(var(--muted));
     color: hsl(var(--muted-foreground));
   }
+  /* Context state, from the mock's palette (amber/green/purple): a vault with no window
+     is locked — its master key lives only in a running server's memory. */
+  .m-tag-locked,
+  .m-dot-locked {
+    background: rgba(229, 181, 103, 0.14);
+    color: #e5b567;
+    border: 1px solid rgba(229, 181, 103, 0.3);
+  }
+  .m-tag-open,
+  .m-dot-open {
+    background: rgba(158, 206, 106, 0.14);
+    color: #9ece6a;
+    border: 1px solid rgba(158, 206, 106, 0.3);
+  }
+  .m-tag-server,
+  .m-dot-server {
+    background: rgba(187, 154, 247, 0.14);
+    color: #bb9af7;
+    border: 1px solid rgba(187, 154, 247, 0.3);
+  }
+  /* The pill's dot is a filled disc, not a bordered chip. */
+  .m-dot-locked {
+    background: #e5b567;
+    border-color: #e5b567;
+  }
+  .m-dot-open {
+    background: #9ece6a;
+    border-color: #9ece6a;
+  }
+  .m-dot-server {
+    background: #bb9af7;
+    border-color: #bb9af7;
+  }
 
   /* header bar */
   .m-appbar {

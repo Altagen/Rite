@@ -28,6 +28,7 @@ import {
   type NativeVault,
 } from '../utils/nativeShell';
 import { CertTrustModal } from './CertTrustModal';
+import { ContextBadge, ContextTag, CurrentMark } from './ContextTag';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 import riteLandscape from '../assets/rite.png';
 
@@ -42,14 +43,13 @@ export interface HubProps {
 
 const VAULT_EMOJI = ['🔒', '🚀', '🏠', '🖥️', '☁️', '🐳', '🗄️', '🔧', '🧪', '🌐', '🛡️', '📦'];
 
-/** Render a context icon: a `data:` image, an emoji, or a fallback glyph. */
-function IconGlyph({ icon, fallback }: { icon?: string; fallback: string }) {
-  if (icon?.startsWith('data:'))
-    return <img src={icon} alt="" className="h-7 w-7 flex-none rounded object-cover" />;
+/** A section heading with the mock's rule running to the right of it. */
+function Section({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-2xl leading-none" aria-hidden>
-      {icon || fallback}
-    </span>
+    <div className="mt-[18px] flex items-center gap-2.5 first:mt-0">
+      <span className="m-eyebrow">{children}</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
   );
 }
 
@@ -266,6 +266,9 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
   // Lock the current window's vault (in-session; re-requires the master password). Only the
   // current vault can be locked from here — other vaults live in their own windows.
   const lockCurrent = useAuthStore((s) => s.lock);
+  // Only this window's vault has a running server, so it is the only one that can read
+  // "Open"; the rest are locked on disk (see ContextTag).
+  const isLocked = useAuthStore((s) => s.isLocked);
   const lockVault = () => {
     void lockCurrent();
     onClose?.();
@@ -286,24 +289,26 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
   };
 
   return (
-    <div className={onClose ? 'fixed inset-0 z-50 overflow-y-auto bg-background/95 backdrop-blur-sm' : 'min-h-screen overflow-y-auto bg-background'}>
-      <div className="mx-auto flex min-h-screen w-full max-w-xl flex-col justify-center gap-6 px-6 py-12 text-foreground">
-        <div className="flex items-center justify-between">
-          <img src={riteLandscape} alt="RITE" className="h-10 rounded-md" />
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-            >
-              Close
-            </button>
-          )}
-        </div>
+    <div className={`overflow-y-auto bg-background ${onClose ? 'fixed inset-0 z-50' : 'min-h-screen'}`}>
+      <div className="mx-auto flex w-full max-w-[820px] flex-col gap-4 px-[26px] pb-[70px] pt-10 text-foreground">
+        {!onClose && <img src={riteLandscape} alt="RITE" className="h-10 rounded-md" />}
 
         <div>
-          <h1 className="text-2xl font-semibold">Contexts</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-[22px] font-semibold">Contexts</h1>
+            <div className="flex-1" />
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="flex-none rounded-md px-2 py-1 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                ✕ Close
+              </button>
+            )}
+          </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Open your local vault or a server. Each opens in its own window.
+            Manage your local vaults and saved servers. Each opens in its own window. Removing a
+            server only forgets it here — your remote account stays.
           </p>
         </div>
 
@@ -313,7 +318,8 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
           </div>
         )}
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2.5">
+          <Section>Local vaults</Section>
           {/* Local vaults (multi-vault, ADR 0014). Fall back to a single card when the shell
               injected no roster (older shell / web build). */}
           {vaults.length > 0 ? (
@@ -323,13 +329,15 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
               return (
                 <div
                   key={v.path}
-                  className="group flex items-center gap-2 rounded-lg border border-border bg-card p-2 pr-3 transition-colors hover:border-primary"
+                  className={`flex flex-wrap items-center gap-[13px] rounded-xl border bg-card px-[15px] py-[13px] transition-colors ${
+                    isCurrent
+                      ? 'border-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]'
+                      : 'border-border hover:border-primary'
+                  }`}
                 >
                   {renaming ? (
                     <div className="flex flex-1 items-center gap-3 p-2">
-                      <span className="text-2xl" aria-hidden>
-                        🔒
-                      </span>
+                      <ContextBadge icon={v.icon} name={v.label} />
                       <input
                         autoFocus
                         value={renameLabel}
@@ -345,25 +353,50 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                     </div>
                   ) : (
                     <>
+                      <ContextBadge icon={v.icon} name={v.label} />
+                      <div className="min-w-[140px] flex-1">
+                        <div className="flex items-center">
+                          <span className="truncate font-semibold">{v.label}</span>
+                          {isCurrent && <CurrentMark />}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">{v.path}</div>
+                      </div>
+                      <ContextTag state={isCurrent && !isLocked ? 'open' : 'locked'} />
                       <button
                         onClick={() => openVault(v)}
-                        className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-2 text-left hover:bg-muted"
+                        className="flex-none rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                       >
-                        <IconGlyph icon={v.icon} fallback="🔒" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate font-medium">{v.label}</span>
-                          <span className="block truncate text-xs text-muted-foreground">{v.path}</span>
-                        </span>
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {isCurrent ? 'Current' : 'Open'}
-                        </span>
+                        Open
+                      </button>
+                      {isCurrent && (
+                        <button
+                          onClick={lockVault}
+                          title="Lock"
+                          aria-label={`Lock ${v.label}`}
+                          className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <rect x="5" y="11" width="14" height="10" rx="2" />
+                            <path strokeLinecap="round" d="M8 11V7a4 4 0 118 0v4" />
+                          </svg>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => startRename(v)}
+                        title="Rename"
+                        aria-label={`Rename ${v.label}`}
+                        className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
+                        </svg>
                       </button>
                       <div className="relative flex-none">
                         <button
                           onClick={() => setIconMenuPath(iconMenuPath === v.path ? null : v.path)}
                           title="Change icon"
                           aria-label={`Change icon for ${v.label}`}
-                          className="rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                          className="rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                         >
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -401,25 +434,12 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                           </>
                         )}
                       </div>
-                      {isCurrent && (
-                        <button
-                          onClick={lockVault}
-                          title="Lock"
-                          aria-label={`Lock ${v.label}`}
-                          className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                        >
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <rect x="5" y="11" width="14" height="10" rx="2" />
-                            <path strokeLinecap="round" d="M8 11V7a4 4 0 118 0v4" />
-                          </svg>
-                        </button>
-                      )}
                       {!isCurrent && (
                         <button
                           onClick={() => openVaultNewWindow(v)}
                           title="Open in new window"
                           aria-label={`Open ${v.label} in a new window`}
-                          className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                          className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                         >
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
@@ -427,20 +447,10 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                         </button>
                       )}
                       <button
-                        onClick={() => startRename(v)}
-                        title="Rename"
-                        aria-label={`Rename ${v.label}`}
-                        className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                      >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
-                        </svg>
-                      </button>
-                      <button
                         onClick={() => setConfirmRemoveVault(v)}
                         title="Remove from list"
                         aria-label={`Remove ${v.label} from the list`}
-                        className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
+                        className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
@@ -456,15 +466,14 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
               onClick={openLocal}
               className="group flex items-center gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-primary hover:bg-muted"
             >
-              <span className="text-2xl" aria-hidden>
-                🔒
-              </span>
+              <ContextBadge name="Local vault" />
               <span className="flex-1">
-                <span className="block font-medium">Local vault</span>
+                <span className="block font-semibold">Local vault</span>
                 <span className="block text-xs text-muted-foreground">
                   On this machine · unlocked with your master password
                 </span>
               </span>
+              <ContextTag state={isCurrentLocal && !isLocked ? 'open' : 'locked'} />
               <span className="text-xs font-medium text-muted-foreground group-hover:text-primary">
                 {isCurrentLocal ? 'Current' : 'Open'}
               </span>
@@ -477,7 +486,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
             <div className="flex gap-2">
               <button
                 onClick={newVault}
-                className="flex flex-1 items-center gap-2 rounded-lg border border-dashed border-border p-3 text-left text-sm text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-border p-3.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
               >
                 <span className="text-lg leading-none" aria-hidden>
                   ＋
@@ -486,7 +495,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
               </button>
               <button
                 onClick={openVaultFile}
-                className="flex flex-1 items-center gap-2 rounded-lg border border-dashed border-border p-3 text-left text-sm text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-border p-3.5 text-sm font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
               >
                 <span className="text-lg leading-none" aria-hidden>
                   📂
@@ -496,33 +505,50 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
             </div>
           )}
 
+          <Section>Servers</Section>
           {/* Registered servers */}
           {ctx?.roster.map((s) => {
             const isCurrent = current?.kind === 'server' && current.id === s.id;
             return (
               <div
                 key={s.id}
-                className="group flex items-center gap-2 rounded-lg border border-border bg-card p-2 pr-3 transition-colors hover:border-primary"
+                className={`flex flex-wrap items-center gap-[13px] rounded-xl border bg-card px-[15px] py-[13px] transition-colors ${
+                  isCurrent
+                    ? 'border-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]'
+                    : 'border-border hover:border-primary'
+                }`}
               >
+                <ContextBadge icon={s.icon} name={s.label || s.url} />
+                <div className="min-w-[140px] flex-1">
+                  <div className="flex items-center">
+                    <span className="truncate font-semibold">{s.label || s.url}</span>
+                    {isCurrent && <CurrentMark />}
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">{s.url}</div>
+                </div>
+                <ContextTag state="server" />
                 <button
                   onClick={() => openServer(s)}
-                  className="flex min-w-0 flex-1 items-center gap-3 rounded-md p-2 text-left hover:bg-muted"
+                  className="flex-none rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  <IconGlyph icon={s.icon} fallback="🖧" />
-                  <span className="min-w-0 flex-1 truncate">
-                    <span className="block truncate font-medium">{s.label || s.url}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{s.url}</span>
-                  </span>
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {isCurrent ? 'Current' : 'Open'}
-                  </span>
+                  Open
+                </button>
+                <button
+                  onClick={() => startEditServer(s)}
+                  title="Edit URL / label"
+                  aria-label={`Edit ${s.label || s.url}`}
+                  className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
+                  </svg>
                 </button>
                 <div className="relative flex-none">
                   <button
                     onClick={() => setServerIconMenu(serverIconMenu === s.id ? null : s.id)}
                     title="Change icon"
                     aria-label={`Change icon for ${s.label || s.url}`}
-                    className="rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                    className="rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <rect x="3" y="3" width="18" height="18" rx="2" />
@@ -565,7 +591,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                     onClick={() => openServerNewWindow(s)}
                     title="Open in new window"
                     aria-label={`Open ${s.label || s.url} in a new window`}
-                    className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
+                    className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
@@ -573,20 +599,10 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
                   </button>
                 )}
                 <button
-                  onClick={() => startEditServer(s)}
-                  title="Edit URL / label"
-                  aria-label={`Edit ${s.label || s.url}`}
-                  className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
-                  </svg>
-                </button>
-                <button
                   onClick={() => setConfirmRemove(s.id)}
                   title="Remove from this device"
                   aria-label={`Remove ${s.label || s.url}`}
-                  className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
+                  className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
@@ -635,7 +651,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose }: HubProps) {
         ) : (
           <button
             onClick={() => setAdding(true)}
-            className="rounded-lg border border-dashed border-border px-4 py-3 text-sm font-medium text-muted-foreground hover:border-primary hover:text-foreground"
+            className="rounded-xl border border-dashed border-border px-4 py-3.5 text-sm font-semibold text-muted-foreground hover:border-primary hover:text-foreground"
           >
             ＋ Add a server
           </button>
