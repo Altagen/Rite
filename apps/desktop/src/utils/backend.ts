@@ -286,11 +286,6 @@ export const BackendConnections = {
   parseSshConfig: (configPath: string) =>
     invokeWithValidation('parse_ssh_config', SshConfigEntryArraySchema, { configPath }),
 
-  /**
-   * Import selected SSH config entries as connections
-   */
-  importSshConfigEntries: (entries: unknown[]) =>
-    invokeWithValidation('import_ssh_config_entries', ConnectionInfoArraySchema, { entries }),
 } as const;
 
 // SSH host-key confirmation

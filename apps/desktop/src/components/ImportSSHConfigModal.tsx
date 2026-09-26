@@ -1,15 +1,24 @@
 /**
- * Import SSH Config Modal
+ * Import SSH Config Modal (desktop)
  *
- * Allows users to import connections from their SSH config file
+ * Reads ~/.ssh/config from disk — which only a local shell can do — and imports
+ * the chosen hosts into a collection. Parsing stays server-side because the file
+ * lives there; creating goes through the connection source like any other machine,
+ * so imported hosts land in the same store as hand-made ones (ADR 0018). The web
+ * shell has no file access and uses ImportSSHPasteModal instead.
  */
 
 import { useState, useEffect } from 'react';
 import { Backend, type SshConfigEntry } from '../utils/backend';
+import type { CreateConnectionInput } from '../store/connectionsStore';
 
 interface ImportSSHConfigModalProps {
   onClose: () => void;
   onImported: (count: number) => void;
+  /** Collections the machines may be imported into (no loose machines, ADR 0016). */
+  collectionTargets: { id: string; name: string }[];
+  defaultCollectionId?: string | null;
+  create: (input: CreateConnectionInput) => Promise<void>;
 }
 
 interface SelectableSshConfigEntry extends SshConfigEntry {
@@ -17,7 +26,16 @@ interface SelectableSshConfigEntry extends SshConfigEntry {
   preview: string;
 }
 
-export function ImportSSHConfigModal({ onClose, onImported }: ImportSSHConfigModalProps) {
+export function ImportSSHConfigModal({
+  onClose,
+  onImported,
+  collectionTargets,
+  defaultCollectionId,
+  create,
+}: ImportSSHConfigModalProps) {
+  const [collectionId, setCollectionId] = useState(
+    defaultCollectionId ?? collectionTargets[0]?.id ?? '',
+  );
   const [configPath, setConfigPath] = useState('');
   const [entries, setEntries] = useState<SelectableSshConfigEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -109,16 +127,25 @@ export function ImportSSHConfigModal({ onClose, onImported }: ImportSSHConfigMod
     setImporting(true);
 
     try {
-      console.log('[ImportSSH] Importing', selectedEntries.length, 'entries');
+      // Create through the source, so an imported host is stored exactly like one
+      // added by hand — same collection, same encryption, one code path.
+      let count = 0;
+      for (const e of selectedEntries) {
+        await create({
+          name: e.host,
+          protocol: 'SSH',
+          hostname: e.hostname ?? e.host,
+          port: e.port ?? 22,
+          username: e.user ?? '',
+          authMethod: e.identityFile
+            ? { type: 'publicKey', keyPath: e.identityFile }
+            : { type: 'password', password: '' },
+          collectionId,
+        });
+        count += 1;
+      }
 
-      // Strip the 'selected' and 'preview' fields before sending to backend
-      const entriesToImport = selectedEntries.map(({ selected, preview, ...entry }) => entry);
-
-      const imported = await Backend.Connections.importSshConfigEntries(entriesToImport);
-
-      console.log('[ImportSSH] Successfully imported', imported.length, 'connections');
-
-      onImported(imported.length);
+      onImported(count);
       onClose();
     } catch (err) {
       console.error('[ImportSSH] Import failed:', err);
@@ -235,7 +262,27 @@ export function ImportSSHConfigModal({ onClose, onImported }: ImportSSHConfigMod
         )}
 
         {/* Actions */}
-        <div className="flex justify-end gap-3">
+        <div className="flex items-end justify-end gap-3">
+          {/* No loose machines (ADR 0016): imported hosts land in a collection. */}
+          <div className="mr-auto">
+            <label htmlFor="import-file-coll" className="mb-1 block text-xs text-muted-foreground">
+              Import into
+            </label>
+            <select
+              id="import-file-coll"
+              value={collectionId}
+              onChange={(e) => setCollectionId(e.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+              disabled={loading || importing}
+            >
+              {collectionTargets.length === 0 && <option value="">No collection yet</option>}
+              {collectionTargets.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={onClose}
             className="rounded bg-secondary px-4 py-2 font-medium text-secondary-foreground hover:bg-secondary/80"
@@ -246,7 +293,7 @@ export function ImportSSHConfigModal({ onClose, onImported }: ImportSSHConfigMod
           <button
             onClick={handleImport}
             className="rounded bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
-            disabled={loading || importing || selectedCount === 0}
+            disabled={loading || importing || selectedCount === 0 || !collectionId}
           >
             {importing && (
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent" />

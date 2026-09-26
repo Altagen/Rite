@@ -170,8 +170,6 @@ export async function mockInvoke(
       return '~/.ssh/config';
     case 'parse_ssh_config':
       return [];
-    case 'import_ssh_config_entries':
-      return [];
     case 'accept_host_key':
     case 'reject_host_key':
       return null;

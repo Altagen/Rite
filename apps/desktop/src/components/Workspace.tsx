@@ -1973,9 +1973,12 @@ export function Workspace({
           />
         ) : (
           <ImportSSHConfigModal
+            collectionTargets={conns.writableCollections ?? []}
+            defaultCollectionId={importCollectionId}
+            create={conns.create}
             onClose={() => setShowImportSSH(false)}
             onImported={(count) => {
-              fetchConnections();
+              void conns.refresh();
               setToastType('success');
               setToastMessage(`Successfully imported ${count} connection${count !== 1 ? 's' : ''}`);
             }}

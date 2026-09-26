@@ -90,7 +90,6 @@ const routes: Record<string, Route> = {
   list_agent_identities: () => json('/api/ssh/agent-identities'),
   get_default_ssh_config_path: () => json('/api/ssh-config/default-path'),
   parse_ssh_config: (a) => json('/api/ssh-config/parse', post({ configPath: a.configPath })),
-  import_ssh_config_entries: (a) => json('/api/ssh-config/import', post({ entries: a.entries })),
 
   server_mode: () => json('/api/server/mode'),
   server_prelogin: (a) => json('/api/server/prelogin', post({ username: a.username })),

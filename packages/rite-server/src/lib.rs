@@ -20,7 +20,7 @@ use axum::{Extension, Json, Router};
 use base64::Engine as _;
 use rite_core::auth::{AuthManager, ChangeMasterOutcome, UnlockResult};
 use rite_core::connection::{
-    AuthMethod, Connection, ConnectionInfo, ConnectionMetadata, CreateConnectionInput, Protocol,
+    AuthMethod, Connection, ConnectionMetadata, CreateConnectionInput, Protocol,
     UpdateConnectionInput,
 };
 use rite_core::connections_manager::ConnectionsManager;
@@ -433,6 +433,18 @@ fn as_user(ext: &Option<Extension<Arc<User>>>) -> Option<&User> {
     ext.as_ref().map(|e| e.0.as_ref())
 }
 
+/// `/api/connections` now serves only a remote context (the ADR 0012 multiplexer).
+/// A local vault keeps its machines in collections and uses `/api/local/*`
+/// instead (ADR 0018), so reaching this branch means a caller is on the retired
+/// path — say so plainly rather than half-working against a store nothing writes.
+fn local_only() -> Response {
+    (
+        StatusCode::GONE,
+        "local vaults use /api/local/collections (ADR 0018)",
+    )
+        .into_response()
+}
+
 /// A 403 response for a session the caller does not own.
 fn not_your_session() -> Response {
     (StatusCode::FORBIDDEN, "not your session").into_response()
@@ -680,7 +692,6 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/user/library", get(get_library).put(set_library))
         .route("/api/ssh-config/default-path", get(default_ssh_config_path))
         .route("/api/ssh-config/parse", post(parse_ssh_config))
-        .route("/api/ssh-config/import", post(import_ssh_config))
         .route("/api/ssh/host-key/accept", post(accept_host_key))
         .route("/api/ssh/host-key/reject", post(reject_host_key))
         .route("/api/ssh/agent-identities", get(agent_identities))
@@ -3223,7 +3234,7 @@ async fn get_connections(State(state): State<ServerState>) -> Result<Response, A
         };
         return Ok(Json(vault_conn::list(&state, &server, &key).await?).into_response());
     }
-    Ok(Json(state.connections.get_all_connections().await?).into_response())
+    Ok(local_only())
 }
 
 async fn create_connection(
@@ -3236,7 +3247,7 @@ async fn create_connection(
         };
         return Ok(Json(vault_conn::create(&state, &server, &key, &input).await?).into_response());
     }
-    Ok(Json(state.connections.create_connection(input).await?).into_response())
+    Ok(local_only())
 }
 
 async fn update_connection(
@@ -3261,7 +3272,7 @@ async fn update_connection(
         vault_conn::update(&state, &server, &key, &id, &merged).await?;
         return Ok(Json(vault_conn::info_for(id, &merged, created_at)).into_response());
     }
-    Ok(Json(state.connections.update_connection(input).await?).into_response())
+    Ok(local_only())
 }
 
 async fn delete_connection(
@@ -3275,8 +3286,7 @@ async fn delete_connection(
         vault_conn::delete(&state, &server, &id).await?;
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
-    state.connections.delete_connection(&id).await?;
-    Ok(StatusCode::NO_CONTENT.into_response())
+    Ok(local_only())
 }
 
 // --- per-user vault connections (ADR 0011) ----------------------------------
@@ -3393,34 +3403,6 @@ async fn kbd_interactive_respond(
         let _ = p.tx.send(req.responses);
     }
     Ok(Json(json!({ "ok": true })))
-}
-
-#[derive(Deserialize)]
-struct ImportEntriesReq {
-    entries: Vec<SshConfigEntry>,
-}
-
-async fn import_ssh_config(
-    State(state): State<ServerState>,
-    Json(req): Json<ImportEntriesReq>,
-) -> Result<Json<Vec<ConnectionInfo>>, AppError> {
-    // Best-effort like the desktop command: skip entries that fail, import the rest.
-    let mut imported = Vec::new();
-    for entry in req.entries {
-        match state
-            .connections
-            .create_connection(entry.to_connection_input())
-            .await
-        {
-            Ok(info) => imported.push(info),
-            Err(e) => tracing::warn!(
-                "[rite-server] skipped ssh-config entry '{}': {}",
-                entry.host,
-                e
-            ),
-        }
-    }
-    Ok(Json(imported))
 }
 
 // --- context multiplexer (ADR 0012, native client roster) -------------------
