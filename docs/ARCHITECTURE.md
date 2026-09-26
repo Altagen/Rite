@@ -215,6 +215,28 @@ local trusted rite-server via the ADR 0012 multiplexer), so credentials never
 reach the webview. The **browser UI** has no local Rust to delegate to, so it
 decrypts client-side in JS.
 
+### A local vault is a collection too (ADR 0018)
+
+A vault uses the same tables and the same blob format as a server — one storage
+model, not two — but nothing is shareable there, so the differences are about
+keys rather than structure:
+
+- **No members to seal to.** A collection's `metaKey`/`itemsKey` are *wrapped*
+  with the vault's master key instead of sealed to an X25519 public key. The
+  master key never encrypts your data directly; it only protects those two keys.
+  That is why changing the master password re-wraps 128 bytes rather than
+  re-encrypting every machine — and why it must do so in the same transaction as
+  the password change, or the vault would still be there and unreadable.
+- **No Personal.** It exists on a server only because *other* collections can be
+  shared and it is the one that cannot. With nothing shareable it has no
+  distinguishing property, so a fresh vault simply starts empty.
+- **One implicit owner.** `collection_members.user_id` is a real foreign key, so
+  a vault materialises a single `users` row to own its collections. It is not an
+  account: no login path reads it.
+- **Everything is encrypted at rest.** A machine is one AES-GCM blob, so the
+  hostname, username, folder and notes that the legacy `connections` table kept
+  in plaintext columns no longer are.
+
 ### Data at Rest
 - **Vault DB**: `~/.local/share/rite/vault.db`
   - Sensitive fields encrypted with ChaCha20-Poly1305

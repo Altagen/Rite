@@ -91,3 +91,60 @@ test('a created machine shows up in the sidebar list', async ({ page, request })
   await expect(page.getByText('e2e-visible')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('root@example.com:22')).toBeVisible();
 });
+
+/**
+ * Folders and a Board in a local vault — the two things collections were supposed
+ * to bring locally (ADR 0018), and the reason a vault has collections at all
+ * rather than one flat list. Folders live in the collection's encrypted header, so
+ * an empty one survives; the Board rides the itemsKey like the machines do.
+ */
+test('a local collection carries folders and a board', async ({ request }) => {
+  const collectionId = await createCollection(request, 'e2e-structure');
+
+  // Declare two folders, one of them empty — the point of storing them in the
+  // header rather than deriving them from the machines that reference them.
+  const named = await request.put(`/api/local/collections/${collectionId}`, {
+    data: {
+      name: 'e2e-structure',
+      folders: [
+        { name: 'Hypervisors', color: '#7c9cf5' },
+        { name: 'Empty', color: null },
+      ],
+    },
+  });
+  expect(named.ok()).toBeTruthy();
+
+  await createMachine(request, collectionId, { name: 'e2e-in-folder', folder: 'Hypervisors' });
+
+  const cols = await (await request.get('/api/local/collections')).json();
+  const mine = cols.find((c: { id: string }) => c.id === collectionId);
+  expect(mine.folders.map((f: { name: string }) => f.name)).toEqual(['Hypervisors', 'Empty']);
+  expect((await listMachines(request, collectionId))[0].folder).toBe('Hypervisors');
+
+  // A rename must not quietly drop the folders living in the same header blob.
+  await request.put(`/api/local/collections/${collectionId}`, { data: { name: 'e2e-renamed' } });
+  const after = (await (await request.get('/api/local/collections')).json()).find(
+    (c: { id: string }) => c.id === collectionId,
+  );
+  expect(after.name).toBe('e2e-renamed');
+  expect(after.folders).toHaveLength(2);
+
+  // Board: empty to begin with, round-trips, and the stored blob is ciphertext.
+  expect(await (await request.get(`/api/local/collections/${collectionId}/board`)).json()).toEqual([]);
+  const cards = [
+    { id: 'b1', type: 'link', title: 'Grafana', url: 'https://grafana.secret.example' },
+    { id: 'b2', type: 'note', title: 'Scrub', text: 'sunday 03:00' },
+  ];
+  const saved = await request.put(`/api/local/collections/${collectionId}/board`, { data: cards });
+  expect(saved.ok()).toBeTruthy();
+  expect(await (await request.get(`/api/local/collections/${collectionId}/board`)).json()).toEqual(cards);
+  // hasBoard is what the sidebar uses to show the indicator.
+  const withBoard = (await (await request.get('/api/local/collections')).json()).find(
+    (c: { id: string }) => c.id === collectionId,
+  );
+  expect(withBoard.hasBoard).toBe(true);
+
+  // An empty array clears it, matching the browser — one state, not two.
+  await request.put(`/api/local/collections/${collectionId}/board`, { data: [] });
+  expect(await (await request.get(`/api/local/collections/${collectionId}/board`)).json()).toEqual([]);
+});

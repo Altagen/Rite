@@ -19,6 +19,14 @@ The release is much wider than the phase list below, which predates it:
 - **Zero-knowledge sharing** — **collections** are the sharing unit, with members
   and per-member roles; the server stores only ciphertext it cannot read
   (ADR 0011/0013/0016). Personal is a real 1-member collection.
+- **One storage model, and the desktop decrypts in Rust** (ADR 0018) — a local
+  vault holds collections too, with folders and a Board, so there is one model
+  rather than two. It has no Personal: that exists on a server only because
+  *other* collections can be shared. Locally the keys are wrapped with the master
+  key and rite-core does the decrypting, so credentials never reach the webview —
+  a machine arrives saying *how* it authenticates, never with what. Hostnames,
+  usernames and folder names are encrypted at rest now, which the old
+  `connections` table left in plaintext columns.
 - **Native client ↔ remote server** — the context multiplexer, cert TOFU and
   client-execute (ADR 0012).
 - **SSH hardening** — rsa-sha2 negotiation, connect timeout, SSH-agent auth,
@@ -29,9 +37,11 @@ The release is much wider than the phase list below, which predates it:
 - **Health-check governance** — passive last-seen plus a server-governed active
   probe (ADR 0017).
 
-Known gaps at 0.2.0: port forwards are local-only; the dashboard's port-forward
-card is read-only (start/stop lives in its modal); a local vault has no folder
-creation of its own; Board is server-context only.
+Known gaps at 0.2.0: port forwards are **local (`-L`) only** — remote (`-R`) and
+dynamic (SOCKS) are not built. Snippets are per-device (browser storage), not
+synced. A local vault is a **new** vault: ADR 0018 changed where machines are
+stored and nothing migrates from a pre-0.2.0 one, which is deliberate — Rite has
+had no released version to be compatible with.
 
 ---
 
