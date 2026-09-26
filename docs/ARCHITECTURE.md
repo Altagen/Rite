@@ -236,6 +236,13 @@ keys rather than structure:
 - **Everything is encrypted at rest.** A machine is one AES-GCM blob, so the
   hostname, username, folder and notes that the legacy `connections` table kept
   in plaintext columns no longer are.
+- **No collaborative surface.** Members, roles and sharing are gated on
+  `isServerContext`, not on "has collections" — a vault shows no member list, no
+  role pill and no sharing entry, not even a disabled one. The collection and
+  folder dialogs are shared with the server context and take an optional
+  `onPersist` from the connections source: without it they seal to members here,
+  with it they hand the plaintext to rite-core. One form, two crypto loci, no
+  duplicated components.
 
 ### Data at Rest
 - **Vault DB**: `~/.local/share/rite/vault.db`
