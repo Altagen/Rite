@@ -109,8 +109,17 @@ try {
 
   step = 'set-role';
   assert.equal((await patch(`/api/admin/users/${mgr.id}/role`, { role: 'user' }, admin.token)).status, 204, 'admin demotes manager to user');
-  assert.equal((await patch(`/api/admin/users/${mgr.id}/role`, { role: 'admin' }, admin.token)).status, 400, 'admin cannot assign admin here');
-  ok('admin flips user<->manager but cannot assign admin via set-role');
+  // An admin may promote (the role flip is metadata). The promoted admin is
+  // fail-closed until an existing admin seals the Admin-group private key to them
+  // via /api/admin/collections/group-key — the server holds no key and cannot do
+  // it, so the title arrives before the escrow, never the other way round.
+  assert.equal((await patch(`/api/admin/users/${mgr.id}/role`, { role: 'admin' }, admin.token)).status, 204, 'admin may promote a user to admin');
+  // But an EXISTING admin's role is not flipped here: demotion has to go through
+  // the escrow-rotating disable/delete paths, or the group key would outlive the
+  // grant. This is the guard that actually protects the escrow.
+  assert.equal((await patch(`/api/admin/users/${mgr.id}/role`, { role: 'user' }, admin.token)).status, 400, "an admin's role can't be changed here");
+  assert.equal((await patch(`/api/admin/users/${mgr.id}/role`, { role: 'manager' }, admin.token)).status, 400, 'not even sideways');
+  ok('admin promotes to admin, but an existing admin must be disabled/deleted, not demoted');
 
   console.log('\n✅ MANAGER ROLE OK — org management (teams + invite users) without instance admin (ADR 0010)');
   cleanup();

@@ -3,7 +3,11 @@
 // token for fixed inputs and asserts they byte-match the vectors pinned in the
 // Rust unit test `rite_crypto::vault::tests::cross_impl_vectors`. Run from
 // apps/desktop (so hash-wasm resolves): `node ../../e2e/vault-check.mjs`.
-import { argon2id } from 'hash-wasm';
+import { createRequire } from 'node:module';
+
+// Resolved from the desktop package: a bare ESM import would look next to this
+// file instead of the cwd, so the script only ran from one directory.
+const { argon2id } = createRequire(new URL('../apps/desktop/index.html', import.meta.url))('hash-wasm');
 import assert from 'node:assert/strict';
 
 const MASTER = 'e55975c388c8b9fc9109cab6d6911195edc0b11ae937efcdebbc599f189be4df';

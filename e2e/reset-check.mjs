@@ -5,7 +5,7 @@
 // one logs in with must-change set. Run: node ../../e2e/reset-check.mjs
 import { createRequire } from 'node:module';
 import assert from 'node:assert/strict';
-const require = createRequire(new URL('/home/ange/Dev/projects/Rite/apps/desktop/index.html', import.meta.url));
+const require = createRequire(new URL('../apps/desktop/index.html', import.meta.url));
 const { argon2id } = require('hash-wasm');
 const sodium = require('libsodium-wrappers'); await sodium.ready;
 
