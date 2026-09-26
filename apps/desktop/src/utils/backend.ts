@@ -1072,6 +1072,78 @@ export const BackendLibrary = {
   set: (blob: string) => invokeWithValidation('library_set', z.null(), { blob }),
 } as const;
 
+/** A collection in a local vault (ADR 0018) — no members, no roles, no sharing. */
+const LocalCollectionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: z.string().nullable().optional(),
+  createdAt: z.number(),
+  folders: z
+    .array(z.object({ name: z.string(), color: z.string().nullable().optional() }))
+    .default([]),
+  hc: z.boolean().nullable().optional(),
+  hasBoard: z.boolean().default(false),
+});
+export type LocalCollection = z.infer<typeof LocalCollectionSchema>;
+
+/** A machine in a local collection: credential-free, like every other read path. */
+const LocalMachineSchema = ConnectionInfoSchema.extend({
+  collectionId: z.string(),
+  hc: z.boolean().nullable().optional(),
+});
+export type LocalMachine = z.infer<typeof LocalMachineSchema>;
+
+/**
+ * A local vault's collections, machines and boards (ADR 0018).
+ *
+ * The mirror image of `BackendCollections`: same storage and same blob format, but
+ * rite-core decrypts with the master key and answers in plaintext, so nothing here
+ * carries credentials and no key ever reaches this process. The zero-knowledge
+ * endpoints are the other ones — there the client holds the keys.
+ */
+export const BackendLocal = {
+  collections: () =>
+    invokeWithValidation('local_collections', z.array(LocalCollectionSchema), {}),
+  createCollection: (name: string, color?: string | null) =>
+    invokeWithValidation('local_create_collection', LocalCollectionSchema, { name, color }),
+  updateCollection: (args: {
+    id: string;
+    name: string;
+    color?: string | null;
+    folders?: { name: string; color: string | null }[];
+    hc?: boolean | null;
+  }) => invokeWithValidation('local_update_collection', z.object({ ok: z.boolean() }), args),
+  deleteCollection: (id: string) =>
+    invokeWithValidation('local_delete_collection', z.object({ ok: z.boolean() }), { id }),
+
+  machines: (collectionId: string) =>
+    invokeWithValidation('local_machines', z.array(LocalMachineSchema), { collectionId }),
+  createMachine: (collectionId: string, record: unknown) =>
+    invokeWithValidation('local_create_machine', z.object({ id: z.string() }), {
+      collectionId,
+      record,
+    }),
+  updateMachine: (collectionId: string, itemId: string, record: unknown) =>
+    invokeWithValidation('local_update_machine', z.object({ ok: z.boolean() }), {
+      collectionId,
+      itemId,
+      record,
+    }),
+  deleteMachine: (collectionId: string, itemId: string) =>
+    invokeWithValidation('local_delete_machine', z.object({ ok: z.boolean() }), {
+      collectionId,
+      itemId,
+    }),
+
+  board: (collectionId: string) =>
+    invokeWithValidation('local_board', z.array(z.unknown()), { collectionId }),
+  setBoard: (collectionId: string, cards: unknown[]) =>
+    invokeWithValidation('local_set_board', z.object({ ok: z.boolean() }), {
+      collectionId,
+      cards,
+    }),
+} as const;
+
 export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
@@ -1085,6 +1157,7 @@ export const Backend = {
   Vault: BackendVault,
   Collections: BackendCollections,
   Library: BackendLibrary,
+  Local: BackendLocal,
 } as const;
 
 // Export types for external use

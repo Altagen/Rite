@@ -4159,15 +4159,16 @@ async fn local_create_machine(
     Ok(Json(json!({ "id": item })))
 }
 
+/// A partial edit: the UI never receives credentials, so it cannot send a whole
+/// record back. Absent fields keep what is stored (see `MachinePatch`).
 async fn local_update_machine(
     State(state): State<ServerState>,
     Path((id, item)): Path<(String, String)>,
-    Json(record): Json<rite_core::local_collections::MachineRecord>,
+    Json(patch): Json<rite_core::local_collections::MachinePatch>,
 ) -> Result<Json<Value>, AppError> {
     let key = master_key(&state).await?;
-    let ok =
-        rite_core::local_collections::update_machine(state.db.pool(), &key, &id, &item, &record)
-            .await?;
+    let ok = rite_core::local_collections::patch_machine(state.db.pool(), &key, &id, &item, patch)
+        .await?;
     Ok(Json(json!({ "ok": ok })))
 }
 

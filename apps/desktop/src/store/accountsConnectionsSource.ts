@@ -531,5 +531,6 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     saveBoard,
     execRemote,
     startForward,
+    isServerContext: true,
   };
 }

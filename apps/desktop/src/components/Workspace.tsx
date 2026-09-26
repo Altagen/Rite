@@ -553,12 +553,6 @@ export function Workspace({
     };
   }, [settings.clipboardClearEnabled, settings.clipboardClearTimeout]);
 
-  // Handle new connection
-  const handleNewConnection = () => {
-    setEditingConnection(null);
-    setShowForm(true);
-  };
-
   // Handle edit connection
   const handleEditConnection = (connection: ConnectionInfo) => {
     setEditingConnection(connection);
@@ -1111,7 +1105,11 @@ export function Workspace({
   };
 
   // Sidebar collection actions (accounts context).
-  const isAccountsContext = conns.writableCollections !== undefined;
+  // Two different questions that used to share one answer (ADR 0018). A local
+  // vault now has collections as well, so structure is gated on having them, and
+  // only genuinely collaborative surfaces are gated on being a server.
+  const hasCollections = conns.writableCollections !== undefined;
+  const isServerContext = conns.isServerContext === true;
   const handleNewMachineInCollection = (collectionId: string, folder: string | null = null) => {
     setFormDefaultCollectionId(collectionId);
     setFormDefaultFolder(folder);
@@ -1368,11 +1366,13 @@ export function Workspace({
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
                   <div className="m-menu absolute right-0 top-full z-20 mt-1">
-                    {isAccountsContext ? (
-                      // No loose machines (ADR 0016): machines & import are
-                      // collection-scoped — the library + creates folders & collections.
-                      <>
-                        <button onClick={() => { setShowNewMenu(false); setLibraryFolderEdit({}); }}>
+                    {/* No loose machines (ADR 0016): machines & import are
+                        collection-scoped, so the library + creates folders and
+                        collections in both contexts. Since ADR 0018 a local vault
+                        has collections too, so there is no longer a second branch
+                        offering a machine with nowhere to put it. */}
+                    <>
+                      <button onClick={() => { setShowNewMenu(false); setLibraryFolderEdit({}); }}>
                           <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
                           </svg>
@@ -1383,15 +1383,9 @@ export function Workspace({
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
                             <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
                           </svg>
-                          New collection…
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button onClick={() => { setShowNewMenu(false); handleNewConnection(); }}>New machine…</button>
-                        <button onClick={() => { setShowNewMenu(false); setShowImportSSH(true); }}>Import from SSH config…</button>
-                      </>
-                    )}
+                        New collection…
+                      </button>
+                    </>
                   </div>
                 </>
               )}
@@ -1424,18 +1418,18 @@ export function Workspace({
               onOpenCollection={handleOpenCollection}
               openCollectionId={mainView === 'collection' ? openCollectionId : null}
               collections={conns.collections}
-              onNewMachineInCollection={isAccountsContext ? handleNewMachineInCollection : undefined}
-              onNewFolderInCollection={isAccountsContext ? (id) => setFolderDialog({ collectionId: id }) : undefined}
+              onNewMachineInCollection={hasCollections ? handleNewMachineInCollection : undefined}
+              onNewFolderInCollection={hasCollections ? (id) => setFolderDialog({ collectionId: id }) : undefined}
               onNewSubfolder={
-                isAccountsContext
+                hasCollections
                   ? (id, parentPath) => setFolderDialog({ collectionId: id, parentPath })
                   : undefined
               }
               onNewMachineInFolder={
-                isAccountsContext ? (id, folderPath) => handleNewMachineInCollection(id, folderPath) : undefined
+                hasCollections ? (id, folderPath) => handleNewMachineInCollection(id, folderPath) : undefined
               }
               onRenameFolder={
-                isAccountsContext
+                hasCollections
                   ? (id, path, color) =>
                       setFolderDialog({
                         collectionId: id,
@@ -1445,29 +1439,29 @@ export function Workspace({
                       })
                   : undefined
               }
-              onDeleteFolder={isAccountsContext ? (id, path) => setDeleteSubfolder({ collectionId: id, path }) : undefined}
+              onDeleteFolder={hasCollections ? (id, path) => setDeleteSubfolder({ collectionId: id, path }) : undefined}
               onImportToCollection={
-                isAccountsContext
+                hasCollections
                   ? (id) => {
                       setImportCollectionId(id);
                       setShowImportSSH(true);
                     }
                   : undefined
               }
-              onOpenMembers={isAccountsContext ? (id) => setMembersCollectionId(id) : undefined}
-              onOpenBoard={isAccountsContext && conns.readBoard ? (id) => setBoardCollectionId(id) : undefined}
+              onOpenMembers={isServerContext ? (id) => setMembersCollectionId(id) : undefined}
+              onOpenBoard={hasCollections && conns.readBoard ? (id) => setBoardCollectionId(id) : undefined}
               onRenameCollection={
-                isAccountsContext
+                hasCollections
                   ? (id, name, color) =>
                       setCollectionEdit({ id, name, color, hc: conns.collections?.find((c) => c.id === id)?.hc })
                   : undefined
               }
-              onDeleteCollection={isAccountsContext ? (id, name) => setDeleteCollectionTarget({ id, name }) : undefined}
-              libraryFolders={isAccountsContext ? tree.folders : undefined}
-              collectionPlacement={isAccountsContext ? tree.placement : undefined}
-              onNewLibrarySubfolder={isAccountsContext ? (parent) => setLibraryFolderEdit({ parent }) : undefined}
+              onDeleteCollection={hasCollections ? (id, name) => setDeleteCollectionTarget({ id, name }) : undefined}
+              libraryFolders={hasCollections ? tree.folders : undefined}
+              collectionPlacement={hasCollections ? tree.placement : undefined}
+              onNewLibrarySubfolder={hasCollections ? (parent) => setLibraryFolderEdit({ parent }) : undefined}
               onNewCollectionInFolder={
-                isAccountsContext
+                hasCollections
                   ? (folderId) => {
                       setPendingCollectionFolder(folderId);
                       setShowNewCollection(true);
@@ -1475,10 +1469,10 @@ export function Workspace({
                   : undefined
               }
               onRenameLibraryFolder={
-                isAccountsContext ? (id, name, color) => setLibraryFolderEdit({ id, name, color }) : undefined
+                hasCollections ? (id, name, color) => setLibraryFolderEdit({ id, name, color }) : undefined
               }
-              onDeleteLibraryFolder={isAccountsContext ? (id, name) => setDeleteFolderTarget({ id, name }) : undefined}
-              onMoveCollection={isAccountsContext ? (id, name) => setMoveCollectionTarget({ id, name }) : undefined}
+              onDeleteLibraryFolder={hasCollections ? (id, name) => setDeleteFolderTarget({ id, name }) : undefined}
+              onMoveCollection={hasCollections ? (id, name) => setMoveCollectionTarget({ id, name }) : undefined}
             />
           </div>
           </>
@@ -1602,7 +1596,7 @@ export function Workspace({
                   isPersonal={openCol?.isPersonal}
                   onOpenMembers={openCol?.isPersonal ? undefined : () => setMembersCollectionId(openCollectionId)}
                   onOpenBoard={
-                    isAccountsContext && conns.readBoard && openCollectionId
+                    hasCollections && conns.readBoard && openCollectionId
                       ? () => setBoardCollectionId(openCollectionId)
                       : undefined
                   }
@@ -1960,7 +1954,7 @@ export function Workspace({
 
       {/* Import SSH Config Modal */}
       {showImportSSH &&
-        (isAccountsContext ? (
+        (isServerContext ? (
           // Server context: no server-side file paths — paste the config, parse it
           // in the browser, and import the chosen hosts into a collection (ADR 0016).
           <ImportSSHPasteModal

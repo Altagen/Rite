@@ -584,6 +584,40 @@ const routes: Record<string, Route> = {
       remoteHost: a.remoteHost,
       remotePort: a.remotePort,
     })),
+  // Local-vault collections (ADR 0018). Plaintext over loopback: rite-core holds
+  // the master key and decrypts, so these never carry credentials or key material.
+  local_collections: () => json('/api/local/collections'),
+  local_create_collection: (a) =>
+    json('/api/local/collections', post({ name: a.name, color: a.color ?? null })),
+  local_update_collection: (a) =>
+    json(`/api/local/collections/${a.id}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: a.name, color: a.color ?? null, folders: a.folders, hc: a.hc }),
+    }),
+  local_delete_collection: async (a) =>
+    json(`/api/local/collections/${a.id}`, { method: 'DELETE' }),
+
+  local_machines: (a) => json(`/api/local/collections/${a.collectionId}/machines`),
+  local_create_machine: (a) =>
+    json(`/api/local/collections/${a.collectionId}/machines`, post(a.record)),
+  local_update_machine: (a) =>
+    json(`/api/local/collections/${a.collectionId}/machines/${a.itemId}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(a.record),
+    }),
+  local_delete_machine: async (a) =>
+    json(`/api/local/collections/${a.collectionId}/machines/${a.itemId}`, { method: 'DELETE' }),
+
+  local_board: (a) => json(`/api/local/collections/${a.collectionId}/board`),
+  local_set_board: (a) =>
+    json(`/api/local/collections/${a.collectionId}/board`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(a.cards),
+    }),
+
   start_quick_forward: (a) =>
     json('/api/forwards/quick', post({
       connectionId: a.connectionId,

@@ -295,6 +295,101 @@ pub async fn update_machine(
     collection_store::update_item(db, collection_id, item_id, &encrypt_field(&key, record)?).await
 }
 
+/// A partial edit of a machine.
+///
+/// The UI never receives credentials — a machine comes back with `authType` and
+/// nothing else — so it cannot send a whole record back. Every field is optional
+/// and absent means "leave what is stored", which is the only way an edit that
+/// does not touch the password can keep it.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MachinePatch {
+    pub name: Option<String>,
+    pub protocol: Option<String>,
+    pub hostname: Option<String>,
+    pub port: Option<u16>,
+    pub username: Option<String>,
+    pub auth_method: Option<AuthMethod>,
+    pub color: Option<Option<String>>,
+    pub icon: Option<Option<String>>,
+    pub folder: Option<Option<String>>,
+    pub notes: Option<Option<String>>,
+    pub ssh_keep_alive_override: Option<Option<String>>,
+    pub ssh_keep_alive_interval: Option<Option<i64>>,
+    pub preconnect: Option<Option<String>>,
+    pub jump: Option<Option<String>>,
+    pub forwards: Option<Vec<PortForwardConfig>>,
+    pub hc: Option<Option<bool>>,
+}
+
+/// Apply a partial edit to a machine, keeping everything the caller left out.
+pub async fn patch_machine(
+    db: &SqlitePool,
+    master_key: &[u8; KEY_LEN],
+    collection_id: &str,
+    item_id: &str,
+    patch: MachinePatch,
+) -> Result<bool> {
+    let key = items_key(db, master_key, collection_id).await?;
+    let item = collection_store::list_items(db, collection_id)
+        .await?
+        .into_iter()
+        .find(|i| i.id == item_id)
+        .ok_or_else(|| anyhow!("machine {item_id} not found"))?;
+    let mut record: MachineRecord = decrypt_field(&key, &item.blob)?;
+
+    if let Some(v) = patch.name {
+        record.name = v;
+    }
+    if let Some(v) = patch.protocol {
+        record.protocol = v;
+    }
+    if let Some(v) = patch.hostname {
+        record.hostname = v;
+    }
+    if let Some(v) = patch.port {
+        record.port = v;
+    }
+    if let Some(v) = patch.username {
+        record.username = v;
+    }
+    if let Some(v) = patch.auth_method {
+        record.auth_method = v;
+    }
+    if let Some(v) = patch.color {
+        record.color = v;
+    }
+    if let Some(v) = patch.icon {
+        record.icon = v;
+    }
+    if let Some(v) = patch.folder {
+        record.folder = v;
+    }
+    if let Some(v) = patch.notes {
+        record.notes = v;
+    }
+    if let Some(v) = patch.ssh_keep_alive_override {
+        record.ssh_keep_alive_override = v;
+    }
+    if let Some(v) = patch.ssh_keep_alive_interval {
+        record.ssh_keep_alive_interval = v;
+    }
+    if let Some(v) = patch.preconnect {
+        record.preconnect = v;
+    }
+    if let Some(v) = patch.jump {
+        record.jump = v;
+    }
+    if let Some(v) = patch.forwards {
+        record.forwards = v;
+    }
+    if let Some(v) = patch.hc {
+        record.hc = v;
+    }
+
+    update_machine(db, master_key, collection_id, item_id, &record).await
+}
+
 /// Remove a machine from a collection.
 pub async fn delete_machine(db: &SqlitePool, collection_id: &str, item_id: &str) -> Result<bool> {
     collection_store::delete_item(db, collection_id, item_id).await
@@ -789,6 +884,75 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(left.0, 0);
+    }
+
+    /// The edit that matters: renaming a machine must not lose its password, since
+    /// the UI never had it to send back.
+    #[tokio::test]
+    async fn a_patch_keeps_the_credentials_it_was_not_given() {
+        let (_d, db, mk) = vault_db().await;
+        let c = create(db.pool(), &mk, "Home lab", None).await.unwrap();
+        let mut original = a_machine();
+        original.auth_method = AuthMethod::Password {
+            password: "s3cret".into(),
+        };
+        let id = create_machine(db.pool(), &mk, &c.id, &original)
+            .await
+            .unwrap();
+
+        let patch = MachinePatch {
+            name: Some("renamed".into()),
+            ..Default::default()
+        };
+        assert!(
+            patch_machine(db.pool(), &mk, &c.id, &id, patch)
+                .await
+                .unwrap()
+        );
+
+        let got = &list_machines(db.pool(), &mk, &c.id).await.unwrap()[0].record;
+        assert_eq!(got.name, "renamed");
+        assert_eq!(
+            got.auth_method,
+            AuthMethod::Password {
+                password: "s3cret".into()
+            },
+            "an edit that never saw the password must not erase it"
+        );
+        assert_eq!(
+            got.jump.as_deref(),
+            Some("bastion"),
+            "and must keep the rest"
+        );
+    }
+
+    /// A nested Option means "set it to nothing" is expressible, not just "leave it".
+    #[tokio::test]
+    async fn a_patch_can_clear_a_field() {
+        let (_d, db, mk) = vault_db().await;
+        let c = create(db.pool(), &mk, "Home lab", None).await.unwrap();
+        let id = create_machine(db.pool(), &mk, &c.id, &a_machine())
+            .await
+            .unwrap();
+
+        patch_machine(
+            db.pool(),
+            &mk,
+            &c.id,
+            &id,
+            MachinePatch {
+                jump: Some(None),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            list_machines(db.pool(), &mk, &c.id).await.unwrap()[0]
+                .record
+                .jump,
+            None
+        );
     }
 
     /// Deleting must take the items with it — the blobs are the machines, and a

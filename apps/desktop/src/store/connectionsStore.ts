@@ -171,6 +171,11 @@ export interface ConnectionsSource {
     connection: ConnectionInfo,
     forward: PortForwardConfig,
   ) => Promise<import('../utils/backend').PortForwardInfo>;
+  // True on a server context. Since ADR 0018 a local vault has collections too, so
+  // "has collections" no longer means "is a server" — that one flag used to do both
+  // jobs. This one gates what only a server can do: members, roles and sharing, and
+  // the paste-only SSH import (a remote server has no access to your file paths).
+  isServerContext?: boolean;
 }
 
 interface ConnectionsState {
