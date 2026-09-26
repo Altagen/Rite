@@ -4034,6 +4034,7 @@ enum QuickAuthMethod {
         password: String,
     },
     PublicKey {
+        #[serde(rename = "keyPath", alias = "key_path")]
         key_path: String,
         passphrase: Option<String>,
     },

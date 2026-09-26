@@ -51,6 +51,10 @@ pub enum AuthMethod {
         password: String,
     },
     PublicKey {
+        /// The browser sends `keyPath`; `rename_all` on an enum renames variants,
+        /// not their fields, so this has to be spelled out. `alias` keeps any
+        /// credentials already stored under the snake_case spelling readable.
+        #[serde(rename = "keyPath", alias = "key_path")]
         key_path: String,
         passphrase: Option<String>,
     },
