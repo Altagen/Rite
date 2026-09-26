@@ -14,7 +14,9 @@ prototype is split per shell (shared CSS/JS/data, one HTML entry each):
   (Users / Teams / Instance) and the session-persistence setting. No local vault,
   no multi-window. Import is **paste-only** (the server never sees a file path).
 - **`desktop.html`** — the **desktop/binary** shell. Multi-context: a **context
-  pill** switches between local **vault(s)** and **server(s)**; master-password/lock,
+  pill** switches between local **vault(s)** and **server(s)**, and the library
+  itself follows the context — `VLIB` (a vault: collections without any
+  collaboration) vs `SLIB` (a server: collections with members and roles); master-password/lock,
   multi-window, native local terminals. On a server context it shows the same
   *usage* UX as the web (connections, collections, terminals) but **not** the admin
   console — server management is web-only (open the server URL in a browser).
@@ -75,9 +77,20 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
   own **nested sub-folders** (path names like `Web servers/EU`, part of its encrypted
   payload — recipients see the curated structure). Personal **organiser folders**
   (never shared, view-only) can group collections above them.
-- **Personal = a real 1-member collection** (auto-provisioned, sorted first). It holds
-  machines and nested folders like any collection, but it **can't be shared or deleted**
-  — its ⋯ menu is *Rename* only. To share, you create a **new** collection and add members.
+- **Personal = a real 1-member collection** (auto-provisioned, sorted first) — **on a
+  server**. It holds machines and nested folders like any collection, but it **can't be
+  shared or deleted** — its ⋯ menu is *Rename* only. To share, you create a **new**
+  collection and add members.
+- **A local vault has collections too, and no Personal.** Same structure (collections →
+  folders → machines) so a large local estate can be split up and each collection gets
+  its own Board — one Board for an entire estate would be unmanageable. But nothing is
+  shareable, so there are **no members, no roles, no sharing UI**, and every collection
+  is equal: all renamable, all deletable. Personal exists on a server only because
+  *other* collections can be shared; with nothing shareable a 1-member Personal is
+  indistinguishable from any other local collection, so it doesn't exist. The **vault**
+  plays the role the **server** plays remotely: it is what holds the collections.
+  A fresh vault starts **empty** — the library `+` creates the first collection, and
+  machines are always created inside one.
 - **No loose machines**: a machine always lives in a collection. You can't nest a
   collection in a collection — inside a collection you create **folders**. Import
   `~/.ssh/config` targets a collection.

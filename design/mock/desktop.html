@@ -328,7 +328,20 @@ function pastille(cn){
 function hcCheckNow(){CHECKING=true;renderSide();renderMain();setTimeout(()=>{CHECKING=false;renderSide();renderMain();toast('Status checked');},850);}
 
 /* ---- library: personal FOLDERS (your org) hold COLLECTIONS (shareable) hold CONNECTIONS ---- */
-const LIB=[
+/* Two libraries, because the two contexts genuinely differ (see README).
+
+   SLIB — a SERVER: collections are the sharing unit, so they carry members and
+   per-member roles, and "Personal" is the auto-provisioned 1-member collection
+   that can't be shared or deleted (ADR 0016).
+
+   VLIB — a LOCAL VAULT: the same structure (collections → folders → machines) so
+   a big local estate can be split up and each collection gets its own Board, but
+   nothing is shareable: no members, no roles, no Personal. A 1-member Personal
+   would be indistinguishable from any other local collection, so it doesn't
+   exist — the vault itself plays the role the server plays remotely. A fresh
+   vault starts empty; the library + creates the first collection, and machines
+   are always created inside one. */
+const SLIB=[
  {id:'f-perso',type:'folder',color:'#7c9cf5',name:'Personal',open:true,children:[
    {id:'c-home',type:'coll',color:'#9ece6a',name:'Home lab',shared:false,members:['alex'],roles:{alex:'owner'},open:false,conns:[
       {name:'Homelab',host:'192.168.1.10',user:'alex',port:22,last:'2h ago'},
@@ -360,11 +373,38 @@ const LIB=[
       {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,jump:'bastion',forwards:[{type:'local',localPort:'5432',remoteHost:'localhost',remotePort:'5432',active:false}],last:'1h ago'},
       {name:'redis',host:'cache.acme.io',user:'ops',port:22,last:'4h ago'}]} ]},
 ];
+
+/* A local vault: same shape, zero collaboration. Flip VLIB to [] to see the
+   empty-vault state a fresh vault starts in. */
+const VLIB=[
+ {id:'v-home',type:'coll',color:'#9ece6a',name:'Home lab',open:true,
+  board:[
+    {id:'vb1',type:'link',cat:'Monitoring',title:'Grafana',url:'http://192.168.1.10:3000',emoji:'📊'},
+    {id:'vb2',type:'note',cat:'Ops',title:'Disks',text:'NAS pool scrub runs **Sunday 03:00**. Replace a drive before it hits 5 reallocated sectors.'},
+  ],
+  conns:[
+    {name:'nas',host:'192.168.1.20',user:'admin',port:22,last:'2h ago'},
+    {name:'router',host:'192.168.1.1',user:'admin',port:22,last:'3d ago'}],
+  children:[
+    {id:'vf-hyp',type:'folder',color:'#7c9cf5',name:'Hypervisors',open:true,conns:[
+       {name:'pve-01',host:'192.168.1.30',user:'root',port:22,forwards:[{type:'local',localPort:'8006',remoteHost:'localhost',remotePort:'8006',active:true}],last:'20m ago'},
+       {name:'pve-02',host:'192.168.1.31',user:'root',port:22,last:'1d ago'}]}]},
+ {id:'v-edge',type:'coll',color:'#f0a35e',name:'Edge sites',open:false,conns:[
+    {name:'edge-lyon',host:'10.20.0.2',user:'ops',port:22,jump:'router',last:'5h ago'},
+    {name:'edge-lille',host:'10.21.0.2',user:'ops',port:22,last:'2d ago'}]},
+];
+
+/* The active library follows the context: a vault has no collaborative data. */
+function isLocal(){return STATE.ctx.type==='vault';}
+function lib(){return isLocal()?VLIB:SLIB;}
 function walk(list,fn){list.forEach(n=>{fn(n);if(n.children)walk(n.children,fn);});}
-function find(id){let r=null;walk(LIB,n=>{if(n.id===id)r=n;});return r;}
-function allColls(){const a=[];walk(LIB,n=>{if(n.type==='coll')a.push(n);});return a;}
+/* Lookups span both libraries so the demo links at the bottom of the page keep
+   working whichever context you're in; everything that MUTATES uses lib(). */
+function walkBoth(fn){walk(SLIB,fn);walk(VLIB,fn);}
+function find(id){let r=null;walk(lib(),n=>{if(n.id===id)r=n;});if(!r)walkBoth(n=>{if(n.id===id)r=n;});return r;}
+function allColls(){const a=[];walk(lib(),n=>{if(n.type==='coll')a.push(n);});return a;}
 /* Find a saved machine by name (jump hosts are referenced by name in this mock). */
-function machineByName(name){let r=null;walk(LIB,n=>{(n.conns||[]).forEach(m=>{if(m.name===name)r=m;});});return r;}
+function machineByName(name){let r=null;walk(lib(),n=>{(n.conns||[]).forEach(m=>{if(m.name===name)r=m;});});if(!r)walkBoth(n=>{(n.conns||[]).forEach(m=>{if(m.name===name&&!r)r=m;});});return r;}
 /* Resolve the ProxyJump chain (jump → jump-of-jump → …), cycle-guarded. Returns the
    ordered list of hop names between you and the target (nearest jump first). */
 function jumpChain(cn){const out=[];const seen=new Set();let j=cn&&cn.jump;while(j&&!seen.has(j)){seen.add(j);out.push(j);const m=machineByName(j);j=m&&m.jump;}return out;}
@@ -568,7 +608,9 @@ function renderSide(){const s=document.getElementById('side'),c=STATE.ctx;
     <div class="side-hdr"><span class="eyebrow">Library</span>
       <button class="btn btn-ghost btn-sm" style="margin-left:auto;padding:4px" title="New…" onclick="newMenu(event)">${ICON.plus}</button>
       <button class="btn btn-ghost btn-sm" style="padding:4px" title="Hide panel" onclick="STATE.sideCollapsed=true;renderAll()"><svg class="icon" viewBox="0 0 24 24"><path d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg></button></div>
-    <div class="scroll" style="flex:1;padding:0 8px 12px">${tree(LIB,0)}</div>`;}
+    <div class="scroll" style="flex:1;padding:0 8px 12px">${lib().length
+      ? tree(lib(),0)
+      : `<p class="muted" style="font-size:12.5px;padding:10px 6px;line-height:1.55">Nothing here yet — use <b>+</b> above to create a collection. Machines live inside a collection.</p>`}</div>`;}
 function tree(list,depth){let h='';list.forEach(n=>{
   if(n.type==='conn'){h+=connRow(n,depth);return;}
   const exp=n.open;
@@ -580,7 +622,7 @@ function nodeRow(n,depth,exp){const isColl=n.type==='coll';
     <span class="ca" onclick="event.stopPropagation();n_toggle('${n.id}')">${exp?EXICON.chevD:EXICON.chevR}</span>
     <span style="color:${n.color||(isColl?(n.shared?'var(--purple)':'var(--accent)'):'var(--muted)')};display:grid;place-items:center">${isColl?M.coll:M.folder}</span>
     <span class="nm">${n.name}</span>
-    ${isColl&&n.shared?`<span class="mc" title="${n.members.length} members">${EXICON.users}${STATE.showMemberCount?n.members.length:''}</span>`:''}
+    ${isColl&&!isLocal()&&n.shared?`<span class="mc" title="${n.members.length} members">${EXICON.users}${STATE.showMemberCount?n.members.length:''}</span>`:''}
     <span class="acts">${isColl
       ?`<button class="btn btn-ghost" title="Add" onclick="event.stopPropagation();collAdd('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();collMore('${n.id}',event)">${EXICON.more}</button>`
       :`<button class="btn btn-ghost" title="New here" onclick="event.stopPropagation();folderMenu('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();folderMore('${n.id}',event)">${EXICON.more}</button>`}</span></div>`;}
@@ -591,7 +633,7 @@ function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:$
 /* A small glyph on machines that have saved port forwards (accent when any is live). */
 function pfGlyph(cn){if(!cn.forwards||!cn.forwards.length)return '';const live=cn.forwards.filter(f=>f.active).length;
   return `<span class="jhop" ${live?'style="color:var(--accent);opacity:1"':''} title="${cn.forwards.length} port forward${cn.forwards.length>1?'s':''}${live?` · ${live} live`:''}">${M.forward}</span>`;}
-/* Per-machine actions menu (name → the real LIB object, so edits/forwards persist). */
+/* Per-machine actions menu (name → the real library object, so edits/forwards persist). */
 function machineMenu(name,e){const cn=machineByName(name);if(!cn)return;floatMenu(e,[
   {icon:ICON.play,label:'Connect',onclick:()=>connectMachine((cn.user||'user')+'@'+(cn.host||cn.name),cn.name)},
   {icon:M.board,label:'Open dashboard',onclick:()=>openMachine(cn.name)},
@@ -837,7 +879,9 @@ function boardBody(coll){coll.board=coll.board||[];
   // Fixed-height column: intro + toolbar stay put; only .bsecs scrolls/redraws on
   // filter/view change, so the modal never resizes (feels like filtering, not a new view).
   return `<div class="bmodal">
-    <p class="muted" style="font-size:12px;margin:0 0 12px">A shared space for <b>${coll.name}</b> — links, notes, one-click actions and live views. Encrypted, members-only; write access can edit. Click a card to open it.</p>
+    <p class="muted" style="font-size:12px;margin:0 0 12px">${isLocal()
+      ? `A space for <b>${coll.name}</b> — links, notes, one-click actions and live views. Encrypted in your vault. Click a card to open it.`
+      : `A shared space for <b>${coll.name}</b> — links, notes, one-click actions and live views. Encrypted, members-only; write access can edit. Click a card to open it.`}</p>
     <div class="bbar">
       <div class="bchips">${chips}</div><span style="flex:1"></span>
       <div class="seg"><button class="seg-b ${view==='gallery'?'on':''}" data-b-view="gallery">Gallery</button><button class="seg-b ${view==='list'?'on':''}" data-b-view="list">List</button></div>
@@ -847,7 +891,7 @@ function boardBody(coll){coll.board=coll.board||[];
   </div>`;
 }
 function dlgBoard(coll){coll.board=coll.board||[];coll.boardView=coll.boardView||'gallery';coll.boardCat=coll.boardCat||'all';
-  const bd=showModal({title:`${coll.name} · Board`,subtitle:coll.shared?`${coll.members.length} members`:'personal',width:'min(940px,94vw)',confirm:'Done',body:boardBody(coll)});
+  const bd=showModal({title:`${coll.name} · Board`,subtitle:isLocal()?'local vault':(coll.shared?`${coll.members.length} members`:'personal'),width:'min(940px,94vw)',confirm:'Done',body:boardBody(coll)});
   const body=bd.querySelector('.body');
   const refresh=()=>{body.innerHTML=boardBody(coll);};       // full (chips/cats may change)
   const redraw=()=>{                                          // inner-only: filter/view feel
@@ -965,9 +1009,9 @@ function cardsView(coll){
   return `<div style="height:100%;display:flex;flex-direction:column;padding:12px">
     <div style="display:flex;align-items:center;gap:12px;padding-bottom:6px;min-height:38px">
       <span style="color:${coll.color||(coll.shared?'var(--purple)':'var(--accent)')}">${M.coll}</span><h2 style="font-size:18px">${coll.name}</h2>
-      ${coll.shared?`<div class="avs">${coll.members.slice(0,4).map(av).join('')}</div>${STATE.showMemberCount?`<span class="muted" style="font-size:12px">${coll.members.length} members</span>`:''}`:'<span class="tag" style="background:var(--card2);color:var(--muted);border:1px solid var(--border)">Personal</span>'}
+      ${isLocal()?'':(coll.shared?`<div class="avs">${coll.members.slice(0,4).map(av).join('')}</div>${STATE.showMemberCount?`<span class="muted" style="font-size:12px">${coll.members.length} members</span>`:''}`:'<span class="tag" style="background:var(--card2);color:var(--muted);border:1px solid var(--border)">Personal</span>')}
       <div style="flex:1"></div>
-      <button class="btn btn-sm" onclick="openMemberPicker('${coll.id}')">${EXICON.users} ${coll.shared?'Members':'Share'}</button></div>
+      ${isLocal()?'':`<button class="btn btn-sm" onclick="openMemberPicker('${coll.id}')">${EXICON.users} ${coll.shared?'Members':'Share'}</button>`}</div>
     <div class="toolbar">
       <div class="search" style="margin:0;flex:1;max-width:240px">${EXICON.search}<input placeholder="Filter…"></div>
       <div class="sel-input">${M.sort}<select onchange="STATE.sort=this.value;renderMain()"><option value="name" ${STATE.sort==='name'?'selected':''}>Name</option><option value="host" ${STATE.sort==='host'?'selected':''}>Host</option><option>Last used</option></select></div>
@@ -975,12 +1019,12 @@ function cardsView(coll){
       <button class="btn btn-ghost btn-sm" title="List" onclick="STATE.layout='list';renderMain()" style="${STATE.layout==='list'?'color:var(--accent)':''}">${M.list}</button>
       ${(STATE.hcMode==='on-demand'||STATE.hcMode==='full')?`<button class="btn btn-sm" title="Check machine status now" onclick="hcCheckNow()">${M.refresh} Check</button>`:''}
       <button class="btn btn-sm" title="Import ~/.ssh/config" onclick="dlgImportSSH('${coll.name}')">${M.import} Import</button>
-      <button class="btn btn-sm" title="${cur.id===coll.id?'New shared folder':'New sub-folder in “'+cur.name+'”'}" onclick="dlgNewFolder('${cur.id}')">${M.folder} Folder</button>
+      <button class="btn btn-sm" title="${cur.id===coll.id?(isLocal()?'New folder':'New shared folder'):'New sub-folder in “'+cur.name+'”'}" onclick="dlgNewFolder('${cur.id}')">${M.folder} Folder</button>
       <button class="btn btn-primary btn-sm" onclick="dlgNewConn('${coll.name}')">${ICON.plus} Machine</button></div>
     <div class="scroll" style="flex:1">${body}</div></div>`;}
 function openColl(id){STATE.selColl=id;STATE.collPath=null;STATE.mainTab='coll';renderSide();renderMain();}
 function collGo(fid){STATE.collPath=fid;renderMain();}
-function parentOf(id){let p=null;walk(LIB,n=>{(n.children||[]).forEach(c=>{if(c.id===id)p=n;});});return p;}
+function parentOf(id){let p=null;walk(lib(),n=>{(n.children||[]).forEach(c=>{if(c.id===id)p=n;});});return p;}
 // Move a machine between folders of the open collection — pick a destination folder
 // (or the collection root); it just re-parents the connection, no re-creation.
 function dlgMoveConn(name,e){
@@ -1022,24 +1066,35 @@ function swatchRow(initial){__pickColor=initial||COLORS[0];
   return `<label class="field"><span>Colour</span><div class="swatches">${COLORS.map(c=>`<button type="button" class="sw ${c===__pickColor?'sel':''}" style="background:${c}" onclick="pickColor(this,'${c}')"></button>`).join('')}</div></label>`;}
 function pickColor(el,c){__pickColor=c;el.parentNode.querySelectorAll('.sw').forEach(s=>s.classList.remove('sel'));el.classList.add('sel');}
 /* is a node inside a collection? (→ its folders are SHARED with the collection) */
-function underColl(id){let res=false;(function rec(list,inColl){for(const n of list){if(n.id===id){res=inColl;return;}if(n.children)rec(n.children,inColl||n.type==='coll');}})(LIB,false);return res;}
+function underColl(id){let res=false;(function rec(list,inColl){for(const n of list){if(n.id===id){res=inColl;return;}if(n.children)rec(n.children,inColl||n.type==='coll');}})(lib(),false);return res;}
 function collectMachines(node){let out=[...(node.conns||[])];(node.children||[]).forEach(c=>out=out.concat(collectMachines(c)));return out;}
 function dlgNewFolder(parentId){const parent=parentId?find(parentId):null;
   const shared=!!parent&&(parent.type==='coll'||underColl(parentId));
-  showModal({title:shared?'New folder in collection':'New folder',
-    subtitle:parent?`inside “${parent.name}”${shared?' · shared with the collection':''}`:'Your personal organiser — colour it to spot it fast.',confirm:'Create',
+  showModal({title:shared&&!isLocal()?'New folder in collection':'New folder',
+    subtitle:parent?`inside “${parent.name}”${shared&&!isLocal()?' · shared with the collection':''}`:'Your personal organiser — colour it to spot it fast.',confirm:'Create',
     body:`<label class="field"><span>Name</span><input class="inp" id="fname" placeholder="${shared?'e.g. Web servers':'e.g. Client Beta'}"></label>${swatchRow(COLORS[0])}
       ${shared?`<p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.users} Part of the collection — everyone who has it sees this folder. Owners &amp; editors can change it (re-encrypts).</p>`:''}`,
     onConfirm:(m)=>{const name=(m.querySelector('#fname').value||'').trim()||'New folder';
       const node={id:'f-'+Math.random().toString(36).slice(2,7),type:'folder',color:__pickColor,name,open:true,children:[],conns:[]};
-      if(parent){if(!parent.children)parent.children=[];parent.open=true;parent.children.unshift(node);}else LIB.unshift(node);
+      if(parent){if(!parent.children)parent.children=[];parent.open=true;parent.children.unshift(node);}else lib().unshift(node);
       renderSide();renderMain();toast(`Folder <span class="accent">${name}</span> created`);}});}
 function newMenu(e){e.stopPropagation();floatMenu(e,[
   {icon:M.folder,label:'New folder',onclick:()=>dlgNewFolder(null)},
-  {icon:M.coll,label:'New collection',onclick:()=>openMemberPicker(null,true)}]);}
+  // A vault collection has nobody to share with, so it's just a name + colour.
+  {icon:M.coll,label:'New collection',onclick:()=>isLocal()?dlgNewLocalColl():openMemberPicker(null,true)}]);}
+/* New collection in a local vault — no members, no roles, no sharing. */
+function dlgNewLocalColl(){
+  __pickColor=COLORS[0];
+  showModal({title:'New collection',subtitle:'A group of machines with its own folders and board.',confirm:'Create',
+    body:`<label class="field"><span>Name</span><input class="inp" id="lc-name" placeholder="Home lab" autofocus></label>
+      ${swatchRow(COLORS[1])}
+      <p class="muted" style="font-size:12px;margin:10px 0 0">Local vault — collections organise your machines. Sharing needs a server.</p>`,
+    onConfirm:m=>{const name=(m.querySelector('#lc-name').value||'').trim()||'New collection';
+      lib().unshift({id:'c-'+Math.random().toString(36).slice(2,7),type:'coll',color:__pickColor,name,open:true,conns:[]});
+      renderAll();toast(`Collection <span class="accent">${name}</span> created`);}});}
 function collAdd(id,e){const c=find(id);floatMenu(e,[
   {icon:ICON.play,label:`New machine in “${c.name}”`,onclick:()=>dlgNewConn(c.name)},
-  {icon:M.folder,label:'New folder (shared with the collection)',onclick:()=>dlgNewFolder(id)},
+  {icon:M.folder,label:isLocal()?'New folder':'New folder (shared with the collection)',onclick:()=>dlgNewFolder(id)},
   {icon:M.import,label:'Import from ~/.ssh/config…',onclick:()=>dlgImportSSH(c.name)}]);}
 /* Import ~/.ssh/config INTO a collection (machines always live in a collection). */
 function dlgImportSSH(collName){
@@ -1066,12 +1121,14 @@ function folderMore(id,e){const f=find(id);floatMenu(e,[
   {icon:EXICON.trash,label:'Delete folder (keeps collections)',onclick:()=>toast(`Delete “${f.name}”…`)}]);}
 // Rename / delete / health-check are OWNER-only settings (a rename hits every member's
 // shared name); non-owners just get the members view. Colour is a personal tint elsewhere.
-function collMore(id,e){const c=find(id);const owner=(c.roles&&c.roles[ORG.me])==='owner';
-  const items=[{icon:M.board,label:'Board…',onclick:()=>dlgBoard(c)},
-    {icon:EXICON.users,label:owner?'Members & sharing…':'Members…',onclick:()=>openMemberPicker(id)}];
+function collMore(id,e){const c=find(id);const local=isLocal();
+  // A local collection has no roles, so you own everything you can see.
+  const owner=local||(c.roles&&c.roles[ORG.me])==='owner';
+  const items=[{icon:M.board,label:'Board…',onclick:()=>dlgBoard(c)}];
+  if(!local)items.push({icon:EXICON.users,label:owner?'Members & sharing…':'Members…',onclick:()=>openMemberPicker(id)});
   if(owner)items.push(
     {icon:M.refresh,label:c.hc===false?'Active health-check: off ✓ (turn on)':'Active health-check: on (turn off)',onclick:()=>{c.hc=c.hc===false?undefined:false;renderMain();toast(`Health-check for “${c.name}” ${c.hc===false?'off (opted out)':'follows the policy'}`);}},
-    {icon:M.coll,label:'Rename… (all members)',onclick:()=>toast(`Rename “${c.name}” — every member sees the new name`)},
+    {icon:M.coll,label:local?'Rename…':'Rename… (all members)',onclick:()=>toast(local?`Rename “${c.name}”`:`Rename “${c.name}” — every member sees the new name`)},
     {icon:EXICON.trash,label:'Delete collection',onclick:()=>toast(`Delete “${c.name}”…`)});
   floatMenu(e,items);}
 /* SSH agent (native only): the client asks a running ssh-agent to sign the
@@ -1174,7 +1231,7 @@ function roleSel(u,role,locked){return `<select class="inp" style="width:auto;pa
   ${['owner','editor','viewer'].map(r=>`<option value="${r}" ${r===role?'selected':''}>${r[0].toUpperCase()+r.slice(1)}</option>`).join('')}</select>`;}
 function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',members:[ORG.me]};const chosen=new Set(coll.members);
   const roles=Object.assign({},coll.roles||{});chosen.forEach(u=>{if(!roles[u])roles[u]=u===ORG.me?'owner':'viewer';});if(!roles[ORG.me])roles[ORG.me]='owner';
-  const folders=[];walk(LIB,n=>{if(n.type==='folder')folders.push(n.name);});
+  const folders=[];walk(lib(),n=>{if(n.type==='folder')folders.push(n.name);});
   const body=`${isNew?`<label class="field"><span>Name</span><input class="inp" placeholder="e.g. Production DBs"></label>${swatchRow(COLORS[4])}`:''}
     <div class="eyebrow" style="margin:2px 0 6px;color:var(--fg-dim)">Members · <span id="mpcount"></span></div>
     <div id="mpmembers" class="scroll" style="max-height:210px;overflow:auto;margin-bottom:12px"></div>
@@ -1186,7 +1243,7 @@ function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',
     <p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.key} Members hold the collection key. <b style="color:var(--fg-dim)">Owner</b> manages sharing &amp; settings (rename/delete/transfer) · <b style="color:var(--fg-dim)">Editor</b> adds/edits machines (re-encrypts) · <b style="color:var(--fg-dim)">Viewer</b> can only connect.</p>`;
   const bd=showModal({title:isNew?'New collection':`Share · ${coll.name}`,subtitle:`${chosen.size} member${chosen.size>1?'s':''}`,wide:true,body,confirm:isNew?'Create':'Save',
     onConfirm:()=>{if(isNew){const name=(bd.querySelector('input')?.value||'').trim()||'New collection';
-        LIB.unshift({id:'c-'+Math.random().toString(36).slice(2,7),type:'coll',color:__pickColor,name,shared:chosen.size>1,members:[...chosen],roles:{...roles},open:false,conns:[]});
+        lib().unshift({id:'c-'+Math.random().toString(36).slice(2,7),type:'coll',color:__pickColor,name,shared:chosen.size>1,members:[...chosen],roles:{...roles},open:false,conns:[]});
         renderSide();toast(`Collection <span class="accent">${name}</span> created · ${chosen.size} member${chosen.size>1?'s':''}`);}
       else{coll.members=[...chosen];coll.roles={...roles};renderSide();renderMain();toast('Sharing updated');}}});
   window.__mp={bd,chosen,roles};mpRenderMembers();}
