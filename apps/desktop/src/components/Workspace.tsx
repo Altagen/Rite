@@ -1121,7 +1121,9 @@ export function Workspace({
     if (!deleteCollectionTarget) return;
     const { id } = deleteCollectionTarget;
     try {
-      await Backend.Collections.remove(id);
+      // A vault deletes through the core; a server through the zero-knowledge API.
+      if (conns.deleteCollection) await conns.deleteCollection(id);
+      else await Backend.Collections.remove(id);
       if (openCollectionId === id) handleCloseCollection();
       await conns.refresh();
     } catch (err) {
@@ -1571,7 +1573,7 @@ export function Workspace({
                   key={openCollectionId}
                   name={openCollectionName}
                   color={openCollectionColor}
-                  role={openCollectionRole}
+                  role={isServerContext ? openCollectionRole : null}
                   hc={openCol?.hc}
                   machines={openCollectionMachines}
                   folders={openCol?.folders}
@@ -1594,7 +1596,13 @@ export function Workspace({
                     setShowImportSSH(true);
                   }}
                   isPersonal={openCol?.isPersonal}
-                  onOpenMembers={openCol?.isPersonal ? undefined : () => setMembersCollectionId(openCollectionId)}
+                  // A vault has one member by definition, so there is nothing to
+                  // manage and no role worth showing (ADR 0018).
+                  onOpenMembers={
+                    isServerContext && !openCol?.isPersonal
+                      ? () => setMembersCollectionId(openCollectionId)
+                      : undefined
+                  }
                   onOpenBoard={
                     hasCollections && conns.readBoard && openCollectionId
                       ? () => setBoardCollectionId(openCollectionId)
@@ -1697,6 +1705,7 @@ export function Workspace({
             collectionName={col?.name ?? ''}
             memberCount={col?.memberCount ?? 1}
             isPersonal={col?.isPersonal ?? false}
+            shared={isServerContext}
             canWrite={col?.role === 'owner' || col?.role === 'editor'}
             readBoard={conns.readBoard}
             saveBoard={conns.saveBoard}
@@ -1704,19 +1713,34 @@ export function Workspace({
           />
         );
       })()}
-      {showNewCollection && (
-        <MemberPicker
-          mode="create"
-          onClose={() => {
-            setShowNewCollection(false);
-            setPendingCollectionFolder(null);
-          }}
-          onSaved={fetchConnections}
-          onCreated={(id) => {
-            if (pendingCollectionFolder) tree.moveCollection(id, pendingCollectionFolder);
-          }}
-        />
-      )}
+      {/* Creating a collection: on a server it starts with members (MemberPicker, which
+          seals the keys to them); in a vault there is nobody to add, so it is the plain
+          name/colour form and the core wraps the keys with the master key (ADR 0018). */}
+      {showNewCollection && (() => {
+        const close = () => {
+          setShowNewCollection(false);
+          setPendingCollectionFolder(null);
+        };
+        const placeInFolder = (id: string) => {
+          if (pendingCollectionFolder) tree.moveCollection(id, pendingCollectionFolder);
+        };
+        if (isServerContext) {
+          return (
+            <MemberPicker mode="create" onClose={close} onSaved={fetchConnections} onCreated={placeInFolder} />
+          );
+        }
+        const create = conns.createCollection;
+        if (!create) return null;
+        return (
+          <CollectionEditDialog
+            onClose={close}
+            onSaved={fetchConnections}
+            onPersist={async (name, color, hc) => {
+              placeInFolder(await create(name, color, hc));
+            }}
+          />
+        );
+      })()}
       {folderDialog && (
         <CollectionFolderDialog
           collectionId={folderDialog.collectionId}
@@ -1727,6 +1751,7 @@ export function Workspace({
           initialColor={folderDialog.initialColor}
           onClose={() => setFolderDialog(null)}
           onSaved={fetchConnections}
+          onPersist={conns.saveFolder}
         />
       )}
       {deleteSubfolder && (
@@ -1734,8 +1759,8 @@ export function Workspace({
           <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-2 text-lg font-semibold">Delete folder “{deleteSubfolder.path.split('/').pop()}”?</h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              The folder and its sub-folders are removed for everyone in the collection. Machines inside move up to the
-              parent folder — nothing is deleted.
+              The folder and its sub-folders are removed{isServerContext ? ' for everyone in the collection' : ''}.
+              Machines inside move up to the parent folder — nothing is deleted.
             </p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setDeleteSubfolder(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
@@ -1745,9 +1770,13 @@ export function Workspace({
                 onClick={async () => {
                   const target = deleteSubfolder;
                   setDeleteSubfolder(null);
-                  if (!serverKeys.publicKey || !serverKeys.privateKey) return;
                   try {
-                    await deleteCollectionFolder(target.collectionId, serverKeys.publicKey, serverKeys.privateKey, target.path);
+                    if (conns.deleteFolder) {
+                      await conns.deleteFolder(target.collectionId, target.path);
+                    } else {
+                      if (!serverKeys.publicKey || !serverKeys.privateKey) return;
+                      await deleteCollectionFolder(target.collectionId, serverKeys.publicKey, serverKeys.privateKey, target.path);
+                    }
                     await fetchConnections();
                   } catch (err) {
                     console.error('Failed to delete folder:', err);
@@ -1832,6 +1861,11 @@ export function Workspace({
           initialHc={collectionEdit.hc}
           onClose={() => setCollectionEdit(null)}
           onSaved={fetchConnections}
+          onPersist={
+            conns.renameCollection && collectionEdit.id
+              ? (name, color, hc) => conns.renameCollection!(collectionEdit.id!, name, color, hc)
+              : undefined
+          }
         />
       )}
 
@@ -1841,8 +1875,8 @@ export function Workspace({
           <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-2 text-lg font-semibold">Delete “{deleteCollectionTarget.name}”?</h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              This permanently deletes the collection and its machines for everyone. Members lose access. This cannot be
-              undone.
+              This permanently deletes the collection and its machines{isServerContext ? ' for everyone. Members lose access.' : '.'} This
+              cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
               <button

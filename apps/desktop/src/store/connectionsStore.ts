@@ -176,6 +176,28 @@ export interface ConnectionsSource {
   // jobs. This one gates what only a server can do: members, roles and sharing, and
   // the paste-only SSH import (a remote server has no access to your file paths).
   isServerContext?: boolean;
+  // Collection + folder writes. A server context seals to members and a local
+  // vault wraps with the master key, so the dialogs delegate instead of doing
+  // crypto themselves — the same form serves both, and neither reaches for
+  // session keys that may not exist.
+  /** Returns the new collection's id, so the caller can place it in a folder. */
+  createCollection?: (name: string, color: string | null, hc: boolean | null) => Promise<string>;
+  renameCollection?: (
+    id: string,
+    name: string,
+    color: string | null,
+    hc: boolean | null,
+  ) => Promise<void>;
+  /** Add or rename a folder inside a collection. `from` absent ⇒ create. */
+  saveFolder?: (args: {
+    collectionId: string;
+    path: string;
+    color: string | null;
+    from?: string;
+  }) => Promise<void>;
+  /** Drop a folder; whatever was inside moves up to its parent, nothing is deleted. */
+  deleteFolder?: (collectionId: string, path: string) => Promise<void>;
+  deleteCollection?: (id: string) => Promise<void>;
 }
 
 interface ConnectionsState {

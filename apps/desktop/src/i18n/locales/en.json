@@ -282,6 +282,7 @@
     "personal": "personal",
     "members": "{n} members",
     "intro": "A members-only space for {name} — links, notes, one-click actions and live views. Encrypted; write access can edit. Click a card to open it.",
+    "introLocal": "A space of cards for {name} — links, notes, one-click actions and live views. Encrypted in your vault. Click a card to open it.",
     "empty": "No cards yet — add a Link, Note, Action or Live view.",
     "emptyFiltered": "No cards in this category — add one.",
     "add": "Add card",

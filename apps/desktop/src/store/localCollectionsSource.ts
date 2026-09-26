@@ -22,6 +22,11 @@ import {
 } from './connectionsStore';
 import { type BoardCard, parseBoard } from '../utils/board';
 
+/** True for `path` itself and anything nested under it. */
+function underPath(folder: string | null | undefined, path: string): boolean {
+  return folder === path || (folder?.startsWith(`${path}/`) ?? false);
+}
+
 /** The record shape stored inside a collection item — the browser's StoredRecord. */
 function recordFromInput(input: CreateConnectionInput) {
   return {
@@ -114,6 +119,117 @@ export function useLocalCollectionsSource(): ConnectionsSource {
     [refresh],
   );
 
+  const createCollection = useCallback(
+    async (name: string, color: string | null, hc: boolean | null) => {
+      const created = await Backend.Local.createCollection(name, color);
+      // A fresh collection health-checks like the rest; only the opt-out has to be
+      // written, and the header it lives in exists only once the collection does.
+      if (hc === false) await Backend.Local.updateCollection({ id: created.id, name, color, hc });
+      await refresh();
+      return created.id;
+    },
+    [refresh],
+  );
+
+  const renameCollection = useCallback(
+    async (id: string, name: string, color: string | null, hc: boolean | null) => {
+      await Backend.Local.updateCollection({ id, name, color, hc });
+      await refresh();
+    },
+    [refresh],
+  );
+
+  /**
+   * Add or rename a folder. Folders live in the collection's encrypted header, which
+   * the core rewrites — and a rename has to re-tag the machines under the old path
+   * too, or they would keep pointing at a folder that no longer exists.
+   */
+  const saveFolder = useCallback(
+    async ({
+      collectionId,
+      path,
+      color,
+      from,
+    }: {
+      collectionId: string;
+      path: string;
+      color: string | null;
+      from?: string;
+    }) => {
+      const current = collectionList.find((c) => c.id === collectionId);
+      if (!current) throw new Error('collection is not available');
+      const folders = (current.folders ?? []).map((f) => ({
+        name: f.name,
+        color: f.color ?? null,
+      }));
+      const rewrite = (folder: string) =>
+        folder === from ? path : `${path}${folder.slice(from!.length)}`;
+      const next = from
+        ? // Rename: move the folder and anything nested under it.
+          folders.map((f) =>
+            underPath(f.name, from) ? { name: rewrite(f.name), color: f.name === from ? color : f.color } : f,
+          )
+        : [...folders.filter((f) => f.name !== path), { name: path, color }];
+      await Backend.Local.updateCollection({
+        id: collectionId,
+        name: current.name,
+        color: current.color ?? null,
+        folders: next,
+      });
+      if (from) {
+        for (const c of connections) {
+          if (c.collectionId === collectionId && underPath(c.folder, from)) {
+            await Backend.Local.updateMachine(collectionId, c.id, { folder: rewrite(c.folder!) });
+          }
+        }
+      }
+      await refresh();
+    },
+    [collectionList, connections, refresh],
+  );
+
+  /**
+   * Delete a folder. It leaves the header and everything that lived under it moves
+   * up to its parent — the same rule as the accounts path, so a folder is never a
+   * way to lose machines.
+   */
+  const deleteFolder = useCallback(
+    async (collectionId: string, path: string) => {
+      const current = collectionList.find((c) => c.id === collectionId);
+      if (!current) throw new Error('collection is not available');
+      const cut = path.lastIndexOf('/');
+      const parent = cut === -1 ? null : path.slice(0, cut);
+      const reparent = (folder: string) => {
+        if (folder === path) return parent;
+        const rest = folder.slice(path.length + 1);
+        return parent ? `${parent}/${rest}` : rest;
+      };
+      await Backend.Local.updateCollection({
+        id: collectionId,
+        name: current.name,
+        color: current.color ?? null,
+        folders: (current.folders ?? [])
+          .filter((f) => !underPath(f.name, path))
+          .map((f) => ({ name: f.name, color: f.color ?? null })),
+      });
+      for (const c of connections) {
+        if (c.collectionId === collectionId && underPath(c.folder, path)) {
+          await Backend.Local.updateMachine(collectionId, c.id, { folder: reparent(c.folder!) });
+        }
+      }
+      await refresh();
+    },
+    [collectionList, connections, refresh],
+  );
+
+  const deleteCollection = useCallback(
+    async (id: string) => {
+      await Backend.Local.deleteCollection(id);
+      await refresh();
+    },
+    [refresh],
+  );
+
   const readBoard = useCallback(async (collectionId: string): Promise<BoardCard[]> => {
     return parseBoard(await Backend.Local.board(collectionId));
   }, []);
@@ -149,6 +265,11 @@ export function useLocalCollectionsSource(): ConnectionsSource {
       hc: c.hc ?? null,
       hasBoard: c.hasBoard,
     })),
+    createCollection,
+    renameCollection,
+    saveFolder,
+    deleteFolder,
+    deleteCollection,
     readBoard,
     saveBoard,
     execRemote: (c, command) => Backend.Terminal.machineExec(c.id, command),

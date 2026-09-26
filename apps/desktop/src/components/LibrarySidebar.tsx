@@ -315,10 +315,11 @@ function CollectionNode({
                       Board…
                     </button>
                   )}
-                  {/* Personal can't be shared, moved or deleted — rename only. */}
-                  {!isPersonal && (
+                  {/* Personal can't be shared, moved or deleted — rename only. A vault
+                      has no members at all, so the entry is absent there (ADR 0018). */}
+                  {!isPersonal && onOpenMembers && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onOpenMembers?.(cid); }}
+                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onOpenMembers(cid); }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                     >
                       Members &amp; sharing…
@@ -386,7 +387,6 @@ function CollectionIcon({ color }: { color?: string | null }) {
   );
 }
 
-/** A collection member's role, as a small pill. */
 function MachineIcon({ color }: { color?: string | null }) {
   return (
     <svg className="h-4 w-4 flex-none" style={{ color: color || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

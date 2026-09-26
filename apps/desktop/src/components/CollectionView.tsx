@@ -494,7 +494,7 @@ export function CollectionView({
           <button
             onClick={() => onNewFolder(cur || undefined)}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-            title={cur ? `New sub-folder in “${cur.split('/').pop()}”` : 'New shared folder'}
+            title={cur ? `New sub-folder in “${cur.split('/').pop()}”` : 'New folder'}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />

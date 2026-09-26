@@ -1,9 +1,11 @@
 /**
- * Create or rename a collection (ADR 0016). Self-contained crypto: creating
- * generates a collection key sealed to myself (I become the first owner) and
- * encrypts the {name, colour} header; renaming re-encrypts the header with the
- * collection's existing key (fetched from `mine()` and unwrapped). Only rendered
- * in the accounts context, where the session keys are in memory.
+ * Create or rename a collection (ADR 0016). The form is the same everywhere; only
+ * where the crypto happens differs. Without `onPersist` it does it here, in the
+ * accounts context: creating generates a collection key sealed to myself (I become
+ * the first owner) and encrypts the {name, colour} header, renaming re-encrypts
+ * that header with the existing key. With `onPersist` — a local vault (ADR 0018) —
+ * it hands the plaintext to the source and rite-core wraps it with the master key,
+ * so this never reaches for session keys a vault does not have.
  */
 
 import { useState } from 'react';
@@ -22,6 +24,7 @@ export function CollectionEditDialog({
   initialHc,
   onClose,
   onSaved,
+  onPersist,
 }: {
   collectionId?: string; // present ⇒ rename; absent ⇒ create
   initialName?: string;
@@ -29,6 +32,13 @@ export function CollectionEditDialog({
   initialHc?: boolean | null; // false ⇒ this collection opts out of active health-checks (ADR 0017)
   onClose: () => void;
   onSaved: () => void;
+  /**
+   * How to persist. A local vault passes this and the core wraps the collection
+   * keys with the master key; a server context leaves it out and the keys are
+   * sealed to me with the session keypair. Same form, different crypto locus.
+   * `hc` is the health-check opt-out as it is stored: `false` ⇒ opted out.
+   */
+  onPersist?: (name: string, color: string | null, hc: boolean | null) => Promise<void>;
 }) {
   const { publicKey, privateKey } = useServerSession();
   const [name, setName] = useState(initialName ?? '');
@@ -45,7 +55,9 @@ export function CollectionEditDialog({
     setBusy(true);
     setError(null);
     try {
-      if (editing) {
+      if (onPersist) {
+        await onPersist(name.trim(), color, hcOn ? null : false);
+      } else if (editing) {
         // Rename: re-encrypt the header (metaKey), preserving the collection's folders.
         if (!publicKey || !privateKey) throw new Error('session keys unavailable');
         const { metaKey, header } = await readCollectionHeader(collectionId!, publicKey, privateKey);
@@ -84,7 +96,13 @@ export function CollectionEditDialog({
         className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-3 text-lg font-semibold">{editing ? 'Rename collection' : 'New collection'}</h3>
+        <h3 className="mb-1 text-lg font-semibold">{editing ? 'Rename collection' : 'New collection'}</h3>
+        {/* Say why there is nobody to add here — the mock's local dialog does the same. */}
+        <p className="mb-3 text-xs text-muted-foreground">
+          {onPersist
+            ? 'A group of machines with its own folders and board. Sharing needs a server.'
+            : 'A group of machines with its own folders and board.'}
+        </p>
 
         {error && (
           <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">{error}</div>
@@ -127,8 +145,10 @@ export function CollectionEditDialog({
           <span>
             <span className="block text-sm font-medium">Active health-check for this collection</span>
             <span className="block text-xs text-muted-foreground">
-              When off, members never actively probe this collection&apos;s machines. Passive &ldquo;last
-              seen&rdquo; still shows.
+              {onPersist
+                ? "When off, this collection's machines are never actively probed."
+                : "When off, members never actively probe this collection's machines."}{' '}
+              Passive &ldquo;last seen&rdquo; still shows.
             </span>
           </span>
         </label>

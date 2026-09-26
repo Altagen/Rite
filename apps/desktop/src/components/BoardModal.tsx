@@ -1,5 +1,6 @@
 /**
- * Collection Board (ADR 0016) — a members-only space of cards.
+ * Collection Board (ADR 0016) — a space of cards scoped to one collection, shared
+ * with its members on a server and private to the vault locally (ADR 0018).
  *
  * Cards are links, short markdown notes, one-click actions and live-view descriptors,
  * grouped into categories and viewable as a gallery or a list. The whole board is one
@@ -25,6 +26,8 @@ interface Props {
   collectionName: string;
   memberCount: number;
   isPersonal: boolean;
+  /** False in a local vault: no members, so nothing here talks about sharing. */
+  shared: boolean;
   canWrite: boolean;
   readBoard: (collectionId: string) => Promise<BoardCard[]>;
   saveBoard: (collectionId: string, cards: BoardCard[]) => Promise<void>;
@@ -38,6 +41,7 @@ export function BoardModal({
   collectionName,
   memberCount,
   isPersonal,
+  shared,
   canWrite,
   readBoard,
   saveBoard,
@@ -97,11 +101,11 @@ export function BoardModal({
     return [...g.entries()];
   }, [shown]);
 
-  const subtitle = isPersonal
-    ? t('board.personal')
-    : memberCount > 1
-      ? t('board.members', { n: memberCount })
-      : t('board.personal');
+  const subtitle = !shared
+    ? null
+    : isPersonal || memberCount <= 1
+      ? t('board.personal')
+      : t('board.members', { n: memberCount });
 
   const detailCard = detailId ? cards.find((c) => c.id === detailId) : null;
 
@@ -117,13 +121,13 @@ export function BoardModal({
           <div className="text-sm font-medium">
             {collectionName} · {t('board.title')}
           </div>
-          <div className="text-xs text-muted-foreground">{subtitle}</div>
+          {subtitle && <div className="text-xs text-muted-foreground">{subtitle}</div>}
         </div>
 
         {/* Toolbar (pinned) — category filter, view toggle, add. */}
         <div className="border-b border-border px-4 py-2">
           <p className="mb-2 text-xs text-muted-foreground">
-            {t('board.intro', { name: collectionName })}
+            {t(shared ? 'board.intro' : 'board.introLocal', { name: collectionName })}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex flex-wrap gap-1.5">

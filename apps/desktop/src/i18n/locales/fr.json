@@ -282,6 +282,7 @@
     "personal": "personnel",
     "members": "{n} membres",
     "intro": "Un espace réservé aux membres de {name} — liens, notes, actions en un clic et vues live. Chiffré ; l'accès en écriture peut modifier. Cliquez une carte pour l'ouvrir.",
+    "introLocal": "Un espace de cartes pour {name} — liens, notes, actions en un clic et vues live. Chiffré dans votre coffre. Cliquez une carte pour l'ouvrir.",
     "empty": "Aucune carte — ajoutez un Lien, une Note, une Action ou une vue Live.",
     "emptyFiltered": "Aucune carte dans cette catégorie — ajoutez-en une.",
     "add": "Ajouter une carte",

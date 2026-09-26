@@ -2,7 +2,8 @@
  * Create or rename a folder inside a collection (ADR 0016). Folders are stored in
  * the collection's encrypted header (path names for nesting), so every member sees
  * them, owners/editors can change them (re-encrypts), and empty ones survive.
- * Machines join a folder by setting their `folder` field to its path.
+ * Machines join a folder by setting their `folder` field to its path. In a vault the
+ * header is the same, only rite-core rewrites it — see `onPersist`.
  *
  * Modes: create a top-level folder (no `parentPath`, no `renamePath`); create a
  * sub-folder under `parentPath`; or rename the folder at `renamePath`.
@@ -29,6 +30,7 @@ export function CollectionFolderDialog({
   initialColor,
   onClose,
   onSaved,
+  onPersist,
 }: {
   collectionId: string;
   collectionName?: string;
@@ -38,6 +40,12 @@ export function CollectionFolderDialog({
   initialColor?: string | null;
   onClose: () => void;
   onSaved: () => void;
+  /**
+   * How to persist. A local vault passes this so the core rewrites the header
+   * with the master key; a server context leaves it out and the folder is sealed
+   * with the session keys below. The form is identical either way.
+   */
+  onPersist?: (args: { collectionId: string; path: string; color: string | null; from?: string }) => Promise<void>;
 }) {
   const { publicKey, privateKey } = useServerSession();
   const editing = !!renamePath;
@@ -53,14 +61,24 @@ export function CollectionFolderDialog({
     setBusy(true);
     setError(null);
     try {
-      if (!publicKey || !privateKey) throw new Error('session keys unavailable');
-      if (editing) {
-        const parent = parentOf(renamePath!);
-        const newPath = parent ? `${parent}/${trimmed}` : trimmed;
-        await renameCollectionFolder(collectionId, publicKey, privateKey, renamePath!, newPath, color);
+      const path = editing
+        ? (() => {
+            const parent = parentOf(renamePath!);
+            return parent ? `${parent}/${trimmed}` : trimmed;
+          })()
+        : parentPath
+          ? `${parentPath}/${trimmed}`
+          : trimmed;
+
+      if (onPersist) {
+        await onPersist({ collectionId, path, color, from: editing ? renamePath! : undefined });
       } else {
-        const fullPath = parentPath ? `${parentPath}/${trimmed}` : trimmed;
-        await addCollectionFolder(collectionId, publicKey, privateKey, { name: fullPath, color });
+        if (!publicKey || !privateKey) throw new Error('session keys unavailable');
+        if (editing) {
+          await renameCollectionFolder(collectionId, publicKey, privateKey, renamePath!, path, color);
+        } else {
+          await addCollectionFolder(collectionId, publicKey, privateKey, { name: path, color });
+        }
       }
       onSaved();
       onClose();
