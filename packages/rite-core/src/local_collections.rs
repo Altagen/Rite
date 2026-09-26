@@ -258,6 +258,45 @@ pub async fn delete_machine(db: &SqlitePool, collection_id: &str, item_id: &str)
     collection_store::delete_item(db, collection_id, item_id).await
 }
 
+/// A collection's Board, decrypted.
+///
+/// The core deliberately does not model the cards. A board is a list of typed
+/// cards whose shape belongs to the UI (`utils/board.ts`); re-declaring it here
+/// would duplicate a frontend concern and give two places to keep in step for no
+/// gain. What matters at this layer is that the document is encrypted with the
+/// collection's itemsKey and that the key never leaves Rust — so it travels as an
+/// opaque JSON value.
+///
+/// `None` when the collection has no board yet.
+pub async fn read_board(
+    db: &SqlitePool,
+    master_key: &[u8; KEY_LEN],
+    collection_id: &str,
+) -> Result<Option<serde_json::Value>> {
+    let Some(blob) = collection_store::get_board_enc(db, collection_id).await? else {
+        return Ok(None);
+    };
+    let key = items_key(db, master_key, collection_id).await?;
+    Ok(Some(decrypt_field(&key, &blob)?))
+}
+
+/// Replace a collection's Board. An empty array clears it, matching the browser,
+/// so "no cards" and "no board" stay the same state on both sides.
+pub async fn write_board(
+    db: &SqlitePool,
+    master_key: &[u8; KEY_LEN],
+    collection_id: &str,
+    cards: &serde_json::Value,
+) -> Result<bool> {
+    let empty = cards.as_array().map(|a| a.is_empty()).unwrap_or(false);
+    if cards.is_null() || empty {
+        return collection_store::set_board_enc(db, collection_id, None).await;
+    }
+    let key = items_key(db, master_key, collection_id).await?;
+    let blob = encrypt_field(&key, cards)?;
+    collection_store::set_board_enc(db, collection_id, Some(&blob)).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -422,6 +461,58 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[tokio::test]
+    async fn a_board_round_trips_and_clears() {
+        let (_d, db, mk) = vault_db().await;
+        let c = create(db.pool(), &mk, "Home lab", None).await.unwrap();
+        assert!(read_board(db.pool(), &mk, &c.id).await.unwrap().is_none());
+
+        let cards = serde_json::json!([
+            {"id": "b1", "type": "link", "title": "Grafana", "url": "http://192.168.1.10:3000"},
+            {"id": "b2", "type": "note", "title": "Disks", "text": "scrub on sunday"},
+        ]);
+        assert!(write_board(db.pool(), &mk, &c.id, &cards).await.unwrap());
+        assert_eq!(
+            read_board(db.pool(), &mk, &c.id).await.unwrap(),
+            Some(cards)
+        );
+
+        // The board is a member-readable document, not server-readable data.
+        let stored: (Option<String>,) =
+            sqlx::query_as("SELECT board_enc FROM collections WHERE id = ?")
+                .bind(&c.id)
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+        let blob = stored.0.unwrap();
+        assert!(blob.starts_with("v1."));
+        assert!(!blob.contains("Grafana"));
+
+        // An empty array clears it, as it does in the browser.
+        write_board(db.pool(), &mk, &c.id, &serde_json::json!([]))
+            .await
+            .unwrap();
+        assert!(read_board(db.pool(), &mk, &c.id).await.unwrap().is_none());
+    }
+
+    /// The board rides the itemsKey, so it follows the machines: a collection whose
+    /// items you cannot read has no readable board either.
+    #[tokio::test]
+    async fn a_board_needs_this_vaults_key() {
+        let (_d, db, mk) = vault_db().await;
+        let c = create(db.pool(), &mk, "Home lab", None).await.unwrap();
+        write_board(
+            db.pool(),
+            &mk,
+            &c.id,
+            &serde_json::json!([{"id":"b1","type":"note"}]),
+        )
+        .await
+        .unwrap();
+        let other = vault::generate_user_key();
+        assert!(read_board(db.pool(), &other, &c.id).await.is_err());
     }
 
     /// Deleting must take the items with it — the blobs are the machines, and a
