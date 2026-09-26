@@ -1614,6 +1614,11 @@ export function Workspace({
                   onConnect={handleConnect}
                   onEdit={handleEditConnection}
                   onForward={setForwardTarget}
+                  startForward={conns.startForward}
+                  onPersistForwards={async (c, forwards) => {
+                    await conns.update({ id: c.id, forwards });
+                    await conns.refresh();
+                  }}
                   execRemote={conns.execRemote}
                   onRunInPane={handleRunInPane}
                 />

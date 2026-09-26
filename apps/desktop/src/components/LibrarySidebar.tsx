@@ -464,6 +464,25 @@ function MachineRow({
               <circle cx="20" cy="17" r="1.7" fill="currentColor" stroke="none" />
             </svg>
           )}
+          {(connection.forwards?.length ?? 0) > 0 && (
+            <svg
+              viewBox="0 0 24 24"
+              width="13"
+              height="13"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="flex-none text-muted-foreground opacity-75"
+              aria-label="Has saved port forwards"
+            >
+              <title>
+                {connection.forwards!.length} saved port forward
+                {connection.forwards!.length > 1 ? 's' : ''}
+              </title>
+              <path d="M4 9h13l-3.5-3.5M20 15H7l3.5 3.5" />
+            </svg>
+          )}
           <StatusPastille lastUsedAt={connection.lastUsedAt} active={active} />
         </div>
         <div className="m-lsub">

@@ -9,10 +9,11 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from '../i18n/i18n';
+import { forwardKey, useRunningForwards } from '../utils/forwards';
 import { StatusPastille } from './StatusPastille';
 import { useHealth } from '../store/healthStore';
-import type { ConnectionInfo } from '../store/connectionsStore';
-import type { RemoteCommandOutput } from '../utils/backend';
+import type { ConnectionInfo, PortForwardConfig } from '../store/connectionsStore';
+import type { PortForwardInfo, RemoteCommandOutput } from '../utils/backend';
 import {
   CONTAINERS_CMD,
   SERVICES_CMD,
@@ -41,6 +42,10 @@ interface Props {
   onConnect: (c: ConnectionInfo) => void;
   onEdit: (c: ConnectionInfo) => void;
   onForward: (c: ConnectionInfo) => void;
+  /** Start a forward through the active source (absent ⇒ this source can't). */
+  startForward?: (c: ConnectionInfo, f: PortForwardConfig) => Promise<PortForwardInfo>;
+  /** Persist the machine's forward list after a removal. */
+  onPersistForwards?: (c: ConnectionInfo, forwards: PortForwardConfig[]) => Promise<void>;
   // Run a one-shot detection command over SSH (agentless). Absent ⇒ cards hide.
   execRemote?: (c: ConnectionInfo, command: string) => Promise<RemoteCommandOutput>;
   // Open a terminal pane and run a command in it (Shell/Logs/Restart/Journal).
@@ -179,6 +184,8 @@ export function MachineDashboard({
   onConnect,
   onEdit,
   onForward,
+  startForward,
+  onPersistForwards,
   execRemote,
   onRunInPane,
 }: Props) {
@@ -188,6 +195,34 @@ export function MachineDashboard({
   );
   const chain = jumpChain(connection, connections);
   const forwards = connection.forwards ?? [];
+  // Saved forwards say what is configured; the core says what is actually
+  // listening. The card shows both and can act on them, as the mock does.
+  const fwd = useRunningForwards(connection.id);
+  const liveCount = forwards.filter((f) => fwd.isLive(f)).length;
+  const [fwdBusy, setFwdBusy] = useState<string | null>(null);
+
+  const toggleForward = async (f: PortForwardConfig) => {
+    setFwdBusy(forwardKey(f));
+    try {
+      if (fwd.isLive(f)) await fwd.stop(f);
+      else if (startForward) await fwd.start(f, (x) => startForward(connection, x));
+    } catch {
+      // Surfaced by the manage modal, which owns the error copy; the card just
+      // stays honest about what is running.
+      await fwd.reconcile();
+    } finally {
+      setFwdBusy(null);
+    }
+  };
+
+  const removeForward = async (f: PortForwardConfig) => {
+    if (!onPersistForwards) return;
+    if (fwd.isLive(f)) await fwd.stop(f); // never leave a listener behind
+    await onPersistForwards(
+      connection,
+      forwards.filter((x) => forwardKey(x) !== forwardKey(f)),
+    );
+  };
   const addr = `${connection.username}@${connection.hostname}:${connection.port}`;
 
   const overviewRows: [string, string][] = [
@@ -294,6 +329,13 @@ export function MachineDashboard({
             title={t('dash.portForwarding')}
             wide={isWide('forwards')}
             onToggleWide={() => toggle('wide', 'forwards')}
+            badge={
+              liveCount > 0 ? (
+                <span className="rounded border border-border px-1 text-[10px] text-primary">
+                  {t('dash.live', { n: liveCount })}
+                </span>
+              ) : undefined
+            }
             actions={
               <button onClick={() => onForward(connection)} className="rounded border border-border px-2.5 py-1 text-xs hover:bg-muted">
                 {t('dash.manage')}
@@ -304,14 +346,36 @@ export function MachineDashboard({
               <p className="text-xs text-muted-foreground">{t('dash.noForwards')}</p>
             ) : (
               <div className="flex flex-col gap-1.5">
-                {forwards.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <span className="flex-none rounded border border-border px-1 text-[10px] font-semibold text-muted-foreground">L</span>
-                    <span className="truncate font-mono text-xs">
-                      127.0.0.1:{f.localPort} → {f.remoteHost}:{f.remotePort}
-                    </span>
-                  </div>
-                ))}
+                {forwards.map((f, i) => {
+                  const live = fwd.isLive(f);
+                  const busy = fwdBusy === forwardKey(f);
+                  return (
+                    <div key={i} className="flex items-center gap-2 text-sm">
+                      <span className="flex-none rounded border border-border px-1 text-[10px] font-semibold text-muted-foreground">L</span>
+                      <span className="flex-1 truncate font-mono text-xs">
+                        127.0.0.1:{f.localPort} → {f.remoteHost}:{f.remotePort}
+                      </span>
+                      <span
+                        className={`h-2 w-2 flex-none rounded-full ${live ? 'bg-green-500' : 'bg-muted-foreground/40'}`}
+                        title={live ? t('dash.listening') : t('dash.stopped')}
+                      />
+                      <RowBtn
+                        label={live ? t('pf.stop') : t('pf.start')}
+                        disabled={busy || (!live && !startForward)}
+                        onClick={() => void toggleForward(f)}
+                      />
+                      {onPersistForwards && (
+                        <button
+                          onClick={() => void removeForward(f)}
+                          title={t('pf.remove')}
+                          className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </CardShell>

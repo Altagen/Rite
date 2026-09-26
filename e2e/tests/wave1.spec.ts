@@ -151,6 +151,42 @@ test('a saved port forward starts and is reported as listening', async ({ page, 
   });
 });
 
+test('the dashboard card starts and stops a forward inline', async ({ page, request }) => {
+  // The mock lets you act on a forward from the card itself — status, Start/Stop,
+  // remove — rather than only from the manage modal. This pins that behaviour.
+  await machine(request, {
+    name: 'e2e-fwd-card',
+    forwards: [
+      { forwardType: 'local', localPort: 15987, remoteHost: '127.0.0.1', remotePort: 2222 },
+    ],
+  });
+
+  await page.goto('/');
+  await page.getByText('e2e-fwd-card').click();
+  await expect(page.getByText('Port forwarding')).toBeVisible({ timeout: 20_000 });
+
+  const card = page.locator('div').filter({ hasText: /^Port forwarding/ }).first();
+  await expect(card.getByText('127.0.0.1:15987 → 127.0.0.1:2222')).toBeVisible();
+
+  // Start it from the card, without opening Manage…
+  await card.getByRole('button', { name: 'Start', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Stop', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  // The header counts what is live.
+  await expect(page.getByText('1 live')).toBeVisible();
+
+  // It really is listening, not just relabelled.
+  const running = await (await request.get('/api/forwards')).json();
+  expect(running.some((f: { remotePort: number }) => f.remotePort === 2222)).toBeTruthy();
+
+  await card.getByRole('button', { name: 'Stop', exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Start', exact: true })).toBeVisible({
+    timeout: 20_000,
+  });
+  await expect(page.getByText('1 live')).toBeHidden();
+});
+
 test('a snippet runs in the focused pane', async ({ page, request }) => {
   await machine(request, { name: 'e2e-snippets' });
 
