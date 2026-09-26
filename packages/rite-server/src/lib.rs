@@ -27,7 +27,7 @@ use rite_core::connections_manager::ConnectionsManager;
 use rite_core::db::Database;
 use rite_core::ssh_config::SshConfigEntry;
 use rite_core::terminal::SessionManager;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
 

@@ -28,7 +28,7 @@ use crate::collection_crypto::{
     decrypt_field, encrypt_field, generate_collection_keys, unwrap_key_local, wrap_key_local,
 };
 use crate::collection_store::{self, CollectionRole};
-use crate::connection::{AuthMethod, PortForwardConfig};
+use crate::connection::{AuthMethod, Connection, PortForwardConfig};
 use crate::local_user::{self, LOCAL_USER_ID};
 
 /// A folder declared inside a collection. Machines reference one by name via their
@@ -339,6 +339,61 @@ pub async fn write_board(
     collection_store::set_board_enc(db, collection_id, Some(&blob)).await
 }
 
+impl MachineRecord {
+    /// Build the in-memory connection the transport takes. `id` is the collection
+    /// item's id, which is what the UI addresses a machine by.
+    pub fn to_connection(&self, id: &str) -> Result<Connection> {
+        Ok(Connection {
+            id: id.to_string(),
+            name: self.name.clone(),
+            protocol: crate::connection::Protocol::from_str(&self.protocol)?,
+            hostname: self.hostname.clone(),
+            port: self.port,
+            username: self.username.clone(),
+            auth_method: self.auth_method.clone(),
+            metadata: crate::connection::ConnectionMetadata {
+                color: self.color.clone(),
+                icon: self.icon.clone(),
+                folder: self.folder.clone(),
+                notes: self.notes.clone(),
+            },
+            ssh_keep_alive_override: self.ssh_keep_alive_override.clone(),
+            ssh_keep_alive_interval: self.ssh_keep_alive_interval,
+            preconnect: self.preconnect.clone(),
+            jump: self.jump.clone(),
+            forwards: self.forwards.clone(),
+            last_used_at: None,
+            created_at: 0,
+            updated_at: 0,
+        })
+    }
+}
+
+/// Find a machine anywhere in the vault by its item id.
+///
+/// Item ids are UUIDs and unique across collections, so the UI can address a
+/// machine by id alone — it does not have to know which collection holds it, and
+/// neither does the transport when it resolves a jump host.
+pub async fn find_machine(
+    db: &SqlitePool,
+    master_key: &[u8; KEY_LEN],
+    item_id: &str,
+) -> Result<Option<(String, MachineRecord)>> {
+    for c in list(db, master_key).await? {
+        let key = items_key(db, master_key, &c.id).await?;
+        for item in collection_store::list_items(db, &c.id).await? {
+            if item.id != item_id {
+                continue;
+            }
+            return Ok(Some((
+                c.id,
+                decrypt_field::<MachineRecord>(&key, &item.blob)?,
+            )));
+        }
+    }
+    Ok(None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -610,6 +665,48 @@ mod tests {
             "an empty folder must survive a rename"
         );
         assert_eq!(got.hc, Some(false));
+    }
+
+    #[tokio::test]
+    async fn a_machine_is_findable_by_item_id_alone() {
+        let (_d, db, mk) = vault_db().await;
+        let a = create(db.pool(), &mk, "Home lab", None).await.unwrap();
+        let b = create(db.pool(), &mk, "Edge sites", None).await.unwrap();
+        create_machine(db.pool(), &mk, &a.id, &a_machine())
+            .await
+            .unwrap();
+        let wanted = create_machine(db.pool(), &mk, &b.id, &a_machine())
+            .await
+            .unwrap();
+
+        let (coll, rec) = find_machine(db.pool(), &mk, &wanted)
+            .await
+            .unwrap()
+            .expect("the machine must be found without naming its collection");
+        assert_eq!(coll, b.id, "and it must report which collection holds it");
+        assert_eq!(rec, a_machine());
+
+        assert!(
+            find_machine(db.pool(), &mk, "no-such-id")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_found_machine_becomes_a_connection() {
+        let (_d, db, mk) = vault_db().await;
+        let c = create(db.pool(), &mk, "Home lab", None).await.unwrap();
+        let id = create_machine(db.pool(), &mk, &c.id, &a_machine())
+            .await
+            .unwrap();
+        let (_, rec) = find_machine(db.pool(), &mk, &id).await.unwrap().unwrap();
+        let conn = rec.to_connection(&id).unwrap();
+        assert_eq!(conn.id, id);
+        assert_eq!(conn.hostname, "10.0.0.5");
+        assert_eq!(conn.jump.as_deref(), Some("bastion"));
+        assert_eq!(conn.forwards.len(), 1);
     }
 
     /// Deleting must take the items with it — the blobs are the machines, and a

@@ -224,7 +224,9 @@ impl ConnectionsManager {
 
 /// Parse the stored port-forwards JSON; a malformed/absent value yields an empty
 /// list rather than failing the whole connection load (graceful-handling).
-fn parse_forwards(json: Option<&str>) -> Vec<crate::connection::PortForwardConfig> {
+/// Saved forwards are stored as a JSON array on the connection row. Malformed JSON
+/// reads as "no forwards" rather than failing the whole connection.
+pub(crate) fn parse_forwards(json: Option<&str>) -> Vec<crate::connection::PortForwardConfig> {
     json.and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or_default()
 }

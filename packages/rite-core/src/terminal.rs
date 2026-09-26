@@ -1057,6 +1057,40 @@ impl SessionManager {
         }
     }
 
+    /// Resolve a saved machine by id, from either local store.
+    ///
+    /// A vault keeps machines two ways during the ADR 0018 transition: the legacy
+    /// `connections` table, and — the model going forward — encrypted items inside
+    /// collections. Item ids are UUIDs, so an id alone is unambiguous and callers
+    /// (connect, jump-chain resolution, one-shot exec, port forwards) need not know
+    /// which store holds a machine. Decryption happens here, in Rust, with the
+    /// master key; credentials never travel to the webview.
+    async fn resolve_saved(&self, id: &str) -> Result<(Connection, AuthMethod)> {
+        let master_key = self.auth.get_master_key().await?;
+
+        if let Some(row) = self.db.get_connection(id).await? {
+            let auth = Connection::decrypt_credentials(
+                &row.encrypted_credentials,
+                &row.nonce,
+                &master_key,
+            )?;
+            let mut connection = connection_from_row(&row, auth.clone())?;
+            connection.forwards =
+                crate::connections_manager::parse_forwards(row.forwards.as_deref());
+            return Ok((connection, auth));
+        }
+
+        let key = *master_key.as_bytes();
+        if let Some((_, record)) =
+            crate::local_collections::find_machine(self.db.pool(), &key, id).await?
+        {
+            let auth = record.auth_method.clone();
+            return Ok((record.to_connection(id)?, auth));
+        }
+
+        Err(anyhow!("Connection not found"))
+    }
+
     /// Create a new SSH session
     pub async fn create_session(
         &self,
@@ -1069,30 +1103,26 @@ impl SessionManager {
             connection_id
         );
 
-        // Load connection from database
-        tracing::debug!("[terminal.rs] Loading connection from database...");
-        let row = self
-            .db
-            .get_connection(&connection_id)
-            .await?
-            .ok_or_else(|| anyhow!("Connection not found"))?;
+        // Resolve the machine from whichever local store holds it (ADR 0018): the
+        // legacy connections table, or an encrypted item inside a collection.
+        let (connection, auth_method) = self.resolve_saved(&connection_id).await?;
         tracing::info!(
             "[terminal.rs] Connection loaded: {} ({}:{})",
-            row.name,
-            row.hostname,
-            row.port
+            connection.name,
+            connection.hostname,
+            connection.port
         );
 
         // Determine keep-alive settings (per-connection only, no global fallback)
         tracing::debug!("[terminal.rs] Determining keep-alive settings...");
-        let keep_alive_interval = match row.ssh_keep_alive_override.as_deref() {
+        let keep_alive_interval = match connection.ssh_keep_alive_override.as_deref() {
             Some("disabled") | None => {
                 tracing::info!("[terminal.rs] Keep-alive disabled");
                 None
             }
             Some("enabled") => {
                 // Use connection-specific interval, default to 30 seconds
-                let interval = row.ssh_keep_alive_interval.unwrap_or(30) as u64;
+                let interval = connection.ssh_keep_alive_interval.unwrap_or(30) as u64;
                 tracing::info!(
                     "[terminal.rs] Keep-alive enabled with interval: {} seconds",
                     interval
@@ -1108,48 +1138,10 @@ impl SessionManager {
             }
         };
 
-        // Get master key (requires application to be unlocked)
-        tracing::debug!("[terminal.rs] Getting master key...");
-        let master_key = self.auth.get_master_key().await?;
-        tracing::debug!("[terminal.rs] Master key obtained");
-
-        // Decrypt auth method
-        tracing::debug!("[terminal.rs] Decrypting credentials...");
-        let auth_method =
-            Connection::decrypt_credentials(&row.encrypted_credentials, &row.nonce, &master_key)?;
-        tracing::info!("[terminal.rs] Credentials decrypted successfully");
-
-        // Build Connection object
-        let connection = Connection {
-            id: row.id.clone(),
-            name: row.name.clone(),
-            protocol: crate::connection::Protocol::from_str(&row.protocol)?,
-            hostname: row.hostname.clone(),
-            port: row.port as u16,
-            username: row.username.clone(),
-            auth_method: auth_method.clone(),
-            metadata: crate::connection::ConnectionMetadata {
-                color: row.color.clone(),
-                icon: row.icon.clone(),
-                folder: row.folder.clone(),
-                notes: row.notes.clone(),
-            },
-            ssh_keep_alive_override: row.ssh_keep_alive_override.clone(),
-            ssh_keep_alive_interval: row.ssh_keep_alive_interval,
-            preconnect: row.preconnect.clone(),
-            jump: row.jump.clone(),
-            forwards: Vec::new(),
-            last_used_at: row.last_used_at,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        };
-
         // Resolve the jump-host chain (ProxyJump): follow this connection's `jump`
         // reference, decrypting each bastion's credentials, until a direct one — so
         // the transport can tunnel through them. Cycle- and depth-guarded.
-        let jumps = self
-            .resolve_jump_chain(row.jump.as_deref(), &master_key)
-            .await?;
+        let jumps = self.resolve_jump_chain(connection.jump.as_deref()).await?;
 
         // Create SSH session
         tracing::info!(
@@ -1244,7 +1236,6 @@ impl SessionManager {
     async fn resolve_jump_chain(
         &self,
         first_jump: Option<&str>,
-        master_key: &crate::auth::MasterKey,
     ) -> Result<Vec<(Connection, AuthMethod)>> {
         const MAX_HOPS: usize = 10;
         let mut hops: Vec<(Connection, AuthMethod)> = Vec::new();
@@ -1258,40 +1249,13 @@ impl SessionManager {
             if hops.len() >= MAX_HOPS {
                 return Err(anyhow!("Jump-host chain too deep (> {} hops)", MAX_HOPS));
             }
-            let row = self
-                .db
-                .get_connection(&id)
-                .await?
-                .ok_or_else(|| anyhow!("Jump-host connection {} not found", id))?;
-            let auth = Connection::decrypt_credentials(
-                &row.encrypted_credentials,
-                &row.nonce,
-                master_key,
-            )?;
-            let conn = Connection {
-                id: row.id.clone(),
-                name: row.name.clone(),
-                protocol: crate::connection::Protocol::from_str(&row.protocol)?,
-                hostname: row.hostname.clone(),
-                port: row.port as u16,
-                username: row.username.clone(),
-                auth_method: auth.clone(),
-                metadata: crate::connection::ConnectionMetadata {
-                    color: row.color.clone(),
-                    icon: row.icon.clone(),
-                    folder: row.folder.clone(),
-                    notes: row.notes.clone(),
-                },
-                ssh_keep_alive_override: row.ssh_keep_alive_override.clone(),
-                ssh_keep_alive_interval: row.ssh_keep_alive_interval,
-                preconnect: row.preconnect.clone(),
-                jump: row.jump.clone(),
-                forwards: Vec::new(),
-                last_used_at: row.last_used_at,
-                created_at: row.created_at,
-                updated_at: row.updated_at,
-            };
-            next = row.jump.clone();
+            // A hop is just another saved machine, so it resolves from whichever
+            // store holds it — a bastion may be a collection item like any other.
+            let (conn, auth) = self
+                .resolve_saved(&id)
+                .await
+                .map_err(|_| anyhow!("Jump-host connection {} not found", id))?;
+            next = conn.jump.clone();
             hops.push((conn, auth));
         }
 
@@ -1315,23 +1279,14 @@ impl SessionManager {
         remote_port: u16,
         events: SharedEvents,
     ) -> Result<PortForwardInfo> {
-        // Load + decrypt the connection and resolve its jump chain, as for a terminal.
-        let row = self
-            .db
-            .get_connection(connection_id)
-            .await?
-            .ok_or_else(|| anyhow!("Connection not found"))?;
-        let master_key = self.auth.get_master_key().await?;
-        let auth_method =
-            Connection::decrypt_credentials(&row.encrypted_credentials, &row.nonce, &master_key)?;
-        let connection = connection_from_row(&row, auth_method.clone())?;
-        let jumps = self
-            .resolve_jump_chain(row.jump.as_deref(), &master_key)
-            .await?;
+        // Resolve + decrypt the machine and its jump chain, as for a terminal, from
+        // whichever local store holds it.
+        let (connection, auth_method) = self.resolve_saved(connection_id).await?;
+        let jumps = self.resolve_jump_chain(connection.jump.as_deref()).await?;
 
         // A long-lived tunnel benefits from keepalive to notice a dead peer; default 30s.
-        let keep_alive = match row.ssh_keep_alive_override.as_deref() {
-            Some("enabled") => Some(row.ssh_keep_alive_interval.unwrap_or(30) as u64),
+        let keep_alive = match connection.ssh_keep_alive_override.as_deref() {
+            Some("enabled") => Some(connection.ssh_keep_alive_interval.unwrap_or(30) as u64),
             _ => Some(30),
         };
 
@@ -1548,18 +1503,8 @@ impl SessionManager {
         events: SharedEvents,
         command: &str,
     ) -> Result<RemoteCommandOutput> {
-        let row = self
-            .db
-            .get_connection(connection_id)
-            .await?
-            .ok_or_else(|| anyhow!("Connection not found"))?;
-        let master_key = self.auth.get_master_key().await?;
-        let auth_method =
-            Connection::decrypt_credentials(&row.encrypted_credentials, &row.nonce, &master_key)?;
-        let jumps = self
-            .resolve_jump_chain(row.jump.as_deref(), &master_key)
-            .await?;
-        let connection = connection_from_row(&row, auth_method.clone())?;
+        let (connection, auth_method) = self.resolve_saved(connection_id).await?;
+        let jumps = self.resolve_jump_chain(connection.jump.as_deref()).await?;
         exec_remote_command(
             &connection,
             &auth_method,
