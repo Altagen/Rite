@@ -11,13 +11,19 @@ vars:
 tasks:
   # Pre-push check — mirrors CI exactly
   check:
-    desc: "Run all CI checks locally before pushing (fmt, clippy, tests, audit, typecheck)"
+    desc: "Run all CI checks locally before pushing (fmt, clippy, tests, audits, typecheck, lint)"
     cmds:
       - cargo fmt --all -- --check
       - cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
-      - cargo test --workspace --lib --all-features
+      # --lib skips the integration tests in tests/, which is where the SSH
+      # transport and the pre-connect hook are covered. Run the lot.
+      - cargo test --workspace --all-features
       - cargo audit
+      # The JS side was never audited: four high advisories had accumulated in a
+      # transitive dev dependency without anything reporting them.
+      - pnpm audit --audit-level=high
       - pnpm --filter desktop typecheck
+      - pnpm --filter desktop exec eslint src
 
   # Development
   dev:

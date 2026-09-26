@@ -63,7 +63,10 @@ jobs:
           workspaces: .
 
       - name: Run Rust tests
-        run: cargo test --workspace --lib --all-features
+        # Not --lib: that skips everything in tests/, which is where the SSH
+        # transport, the pre-connect hook and the auth-method wire format are
+        # covered. Those ran nowhere in CI until now.
+        run: cargo test --workspace --all-features
 
   # Rust linting
   lint-rust:
