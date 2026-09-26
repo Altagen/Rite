@@ -99,10 +99,14 @@ pub struct MachineRecord {
 }
 
 /// A machine read back out of a collection, with the item id that addresses it.
+/// The timestamps come from the row, not the blob — they are not secret and do
+/// not belong inside ciphertext that would then be rewritten on every edit.
 #[derive(Debug, Clone)]
 pub struct StoredMachine {
     pub id: String,
     pub record: MachineRecord,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 /// A collection as the local UI sees it: decrypted, no membership, no role.
@@ -261,6 +265,8 @@ pub async fn list_machines(
             Ok(record) => out.push(StoredMachine {
                 id: item.id,
                 record,
+                created_at: item.created_at,
+                updated_at: item.updated_at,
             }),
             Err(e) => tracing::warn!("skipping unreadable item {}: {}", item.id, e),
         }

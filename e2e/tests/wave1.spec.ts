@@ -11,45 +11,23 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
  * Requires e2e/sshd-setup.sh to be running (127.0.0.1:2222, riteuser/ritepass123).
  */
 
-const SSH = {
-  hostname: '127.0.0.1',
-  port: 2222,
-  username: 'riteuser',
-  password: 'ritepass123',
-};
+import {
+  createCollection,
+  createMachine,
+  SSH,
+  type MachineOpts,
+} from './support/localVault';
 
-interface ConnOverrides {
-  name: string;
-  preconnect?: string | null;
-  jump?: string | null;
-  forwards?: { forwardType: string; localPort: number; remoteHost: string; remotePort: number }[];
+/** A collection for wave-1 machines; created once, reused by every test here. */
+async function machine(api: APIRequestContext, o: MachineOpts): Promise<string> {
+  const collectionId = await ensureWave1Collection(api);
+  return createMachine(api, collectionId, o);
 }
 
-/** Create a saved connection to the harness sshd and return its id. */
-async function createConnection(api: APIRequestContext, o: ConnOverrides): Promise<string> {
-  const res = await api.post('/api/connections', {
-    data: {
-      name: o.name,
-      protocol: 'ssh',
-      hostname: SSH.hostname,
-      port: SSH.port,
-      username: SSH.username,
-      authMethod: { type: 'password', password: SSH.password },
-      color: null,
-      icon: null,
-      folder: null,
-      notes: null,
-      sshKeepAliveOverride: null,
-      sshKeepAliveInterval: null,
-      preconnect: o.preconnect ?? null,
-      jump: o.jump ?? null,
-      forwards: o.forwards ?? [],
-    },
-  });
-  expect(res.ok(), `creating ${o.name} should succeed`).toBeTruthy();
-  const body = await res.json();
-  expect(body.id, 'the created connection should carry an id').toBeTruthy();
-  return body.id as string;
+let wave1Collection: string | null = null;
+async function ensureWave1Collection(api: APIRequestContext): Promise<string> {
+  wave1Collection ??= await createCollection(api, 'e2e-wave1');
+  return wave1Collection;
 }
 
 /** Trust the harness host key up front so tests don't each fight the modal. */
@@ -61,10 +39,7 @@ test('pre-connect hook runs before SSH and its output reaches the modal', async 
   page,
   request,
 }) => {
-  await createConnection(request, {
-    name: 'e2e-preconnect-ok',
-    preconnect: 'echo PRECONNECT_RAN_OK',
-  });
+  await machine(request, { name: 'e2e-preconnect-ok', preconnect: 'echo PRECONNECT_RAN_OK' });
 
   await page.goto('/');
   await page.getByText('e2e-preconnect-ok').dblclick();
@@ -94,9 +69,9 @@ test('pre-connect hook runs before SSH and its output reaches the modal', async 
 });
 
 test('a failing pre-connect hook cancels the connection', async ({ page, request }) => {
-  await createConnection(request, {
+  // Fail-fast: the second line must never run, and SSH must not open.
+  await machine(request, {
     name: 'e2e-preconnect-fail',
-    // Fail-fast: the second line must never run, and SSH must not open.
     preconnect: 'echo HOOK_FIRST_LINE\nexit 3\necho HOOK_SHOULD_NOT_RUN',
   });
 
@@ -125,8 +100,8 @@ test('a failing pre-connect hook cancels the connection', async ({ page, request
 test('a connection reaches its target through a jump host', async ({ page, request }) => {
   // The harness sshd plays both roles: the bastion relays a direct-tcpip channel
   // back to itself, which is exactly the hop a real ProxyJump performs.
-  const bastionId = await createConnection(request, { name: 'e2e-bastion' });
-  await createConnection(request, { name: 'e2e-behind-jump', jump: bastionId });
+  const bastionId = await machine(request, { name: 'e2e-bastion' });
+  await machine(request, { name: 'e2e-behind-jump', jump: bastionId });
 
   await page.goto('/');
   await page.getByText('e2e-behind-jump').dblclick();
@@ -143,9 +118,9 @@ test('a connection reaches its target through a jump host', async ({ page, reque
 });
 
 test('a saved port forward starts and is reported as listening', async ({ page, request }) => {
-  await createConnection(request, {
+  // Forward to the sshd itself: a port we know answers from the target's side.
+  await machine(request, {
     name: 'e2e-forward',
-    // Forward to the sshd itself: a port we know answers from the target's side.
     forwards: [
       { forwardType: 'local', localPort: 15432, remoteHost: '127.0.0.1', remotePort: 2222 },
     ],
@@ -177,7 +152,7 @@ test('a saved port forward starts and is reported as listening', async ({ page, 
 });
 
 test('a snippet runs in the focused pane', async ({ page, request }) => {
-  await createConnection(request, { name: 'e2e-snippets' });
+  await machine(request, { name: 'e2e-snippets' });
 
   await page.goto('/');
   await page.getByText('e2e-snippets').dblclick();
@@ -204,7 +179,7 @@ test('a snippet runs in the focused pane', async ({ page, request }) => {
 });
 
 test('the machine dashboard probes the host and degrades gracefully', async ({ page, request }) => {
-  await createConnection(request, { name: 'e2e-dashboard' });
+  await machine(request, { name: 'e2e-dashboard' });
 
   await page.goto('/');
   await page.getByText('e2e-dashboard').click();

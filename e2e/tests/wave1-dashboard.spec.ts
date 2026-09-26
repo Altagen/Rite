@@ -14,20 +14,12 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
 // Connection names are deliberately card-name-free ("e2e-dash-a", not
 // "e2e-dash-containers"): the suite shares one vault, so a row named after a card
 // would make a locator for that card's title ambiguous.
-const SSH = { hostname: '127.0.0.1', port: 2222, username: 'riteuser', password: 'ritepass123' };
+import { createCollection, createMachine, SSH } from './support/localVault';
 
+let dashCollection: string | null = null;
 async function createConnection(api: APIRequestContext, name: string): Promise<string> {
-  const res = await api.post('/api/connections', {
-    data: {
-      name, protocol: 'ssh', hostname: SSH.hostname, port: SSH.port, username: SSH.username,
-      authMethod: { type: 'password', password: SSH.password },
-      color: null, icon: null, folder: null, notes: null,
-      sshKeepAliveOverride: null, sshKeepAliveInterval: null,
-      preconnect: null, jump: null, forwards: [],
-    },
-  });
-  expect(res.ok()).toBeTruthy();
-  return (await res.json()).id as string;
+  dashCollection ??= await createCollection(api, 'e2e-dash');
+  return createMachine(api, dashCollection, { name });
 }
 
 test.beforeEach(async ({ request }) => {

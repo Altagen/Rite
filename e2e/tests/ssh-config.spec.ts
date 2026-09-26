@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createCollection, createMachine, listMachines } from './support/localVault';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,7 +21,7 @@ Host db-e2e
     User admin
 `;
 
-test('parse then import an ssh config', async ({ request }) => {
+test('parse an ssh config, then import its hosts into a collection', async ({ request }) => {
   const dir = mkdtempSync(join(tmpdir(), 'rite-e2e-ssh-'));
   const configPath = join(dir, 'config');
   writeFileSync(configPath, CONFIG);
@@ -37,16 +38,26 @@ test('parse then import an ssh config', async ({ request }) => {
   expect(web.user).toBe('deploy');
   expect(web.port).toBe(2222);
 
-  // Import
-  const imported = await request.post('/api/ssh-config/import', { data: { entries } });
-  expect(imported.ok()).toBeTruthy();
-  const conns = await imported.json();
-  expect(conns.length).toBe(2);
+  // Import. Parsing is server-side because the file lives there, but creating goes
+  // through the ordinary machine path now (ADR 0018) — an imported host is stored
+  // exactly like a hand-made one, inside a collection the user picks.
+  const collectionId = await createCollection(request, 'e2e-ssh-config');
+  for (const e of entries as { host: string; hostname: string | null; user: string | null; port: number | null }[]) {
+    await createMachine(request, collectionId, {
+      name: e.host,
+      hostname: e.hostname ?? e.host,
+      port: e.port ?? 22,
+      username: e.user ?? '',
+    });
+  }
 
-  // The imported connections are now listed.
-  const listed = await (await request.get('/api/connections')).json();
-  const listedNames: string[] = listed.map((c: { name: string }) => c.name);
+  const listed = await listMachines(request, collectionId);
+  const listedNames = listed.map((c) => c.name);
   expect(listedNames).toEqual(expect.arrayContaining(['web-e2e', 'db-e2e']));
+  // Parsed detail survives into the stored machine.
+  const stored = listed.find((c) => c.name === 'web-e2e')!;
+  expect(stored.hostname).toBe('10.0.0.5');
+  expect(stored.port).toBe(2222);
 });
 
 test('default ssh config path is exposed', async ({ request }) => {

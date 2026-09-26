@@ -1,4 +1,4 @@
-import { test, expect, type APIRequestContext } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 /**
  * Real SSH parity: rite-server opens an actual SSH session (client-execute) to
@@ -7,32 +7,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
  * (quick_ssh_connect). Requires e2e/sshd-setup.sh to be running.
  */
 
-const SSH = {
-  hostname: '127.0.0.1',
-  port: 2222,
-  username: 'riteuser',
-  password: 'ritepass123',
-};
-
-async function createSshConnection(api: APIRequestContext, name: string, hostname = SSH.hostname) {
-  const res = await api.post('/api/connections', {
-    data: {
-      name,
-      protocol: 'ssh',
-      hostname,
-      port: SSH.port,
-      username: SSH.username,
-      authMethod: { type: 'password', password: SSH.password },
-      color: null,
-      icon: null,
-      folder: null,
-      notes: null,
-      sshKeepAliveOverride: null,
-      sshKeepAliveInterval: null,
-    },
-  });
-  expect(res.ok()).toBeTruthy();
-}
+import { createCollection, createMachine, SSH } from './support/localVault';
 
 test('saved SSH connection: strict host-key prompt, trust, then run a command', async ({
   page,
@@ -45,7 +20,8 @@ test('saved SSH connection: strict host-key prompt, trust, then run a command', 
   // prompt would never appear. Reach the same sshd by a name nothing else uses, so
   // the "unknown host" precondition holds whatever ran before.
   await request.put('/api/settings/host_key_verification_mode', { data: { value: 'strict' } });
-  await createSshConnection(request, 'e2e-ssh-saved', 'localhost');
+  const collectionId = await createCollection(request, 'e2e-ssh');
+  await createMachine(request, collectionId, { name: 'e2e-ssh-saved', hostname: 'localhost' });
 
   await page.goto('/');
   const item = page.getByText('e2e-ssh-saved');

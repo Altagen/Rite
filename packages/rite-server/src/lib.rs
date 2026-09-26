@@ -4001,6 +4001,8 @@ struct LocalMachine {
     hc: Option<bool>,
     /// Passive "last seen" (ADR 0017), from the side table — never inside the blob.
     last_used_at: Option<i64>,
+    created_at: i64,
+    updated_at: i64,
 }
 
 impl LocalMachine {
@@ -4009,6 +4011,7 @@ impl LocalMachine {
         m: rite_core::local_collections::StoredMachine,
         last_used_at: Option<i64>,
     ) -> Self {
+        let (created_at, updated_at) = (m.created_at, m.updated_at);
         let r = m.record;
         Self {
             id: m.id,
@@ -4035,6 +4038,8 @@ impl LocalMachine {
             forwards: r.forwards,
             hc: r.hc,
             last_used_at,
+            created_at,
+            updated_at,
         }
     }
 }
