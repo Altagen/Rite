@@ -634,30 +634,30 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/auth/validate-password", post(validate_password))
         .route("/api/settings", get(settings))
         .route("/api/settings/{key}", get(get_setting).put(set_setting))
-        // Local-vault library (ADR 0018): collections, their machines and their
+        // Local-vault collections (ADR 0018): collections, their machines and their
         // boards, all decrypted in rite-core with the master key. Plaintext over
         // loopback to the local webview, which never receives credentials — the
         // server-side `/api/collections/*` routes are the zero-knowledge ones,
         // where the client holds the keys and these blobs stay opaque.
         .route(
-            "/api/library/collections",
-            get(library_list_collections).post(library_create_collection),
+            "/api/local/collections",
+            get(local_list_collections).post(local_create_collection),
         )
         .route(
-            "/api/library/collections/{id}",
-            put(library_update_collection).delete(library_delete_collection),
+            "/api/local/collections/{id}",
+            put(local_update_collection).delete(local_delete_collection),
         )
         .route(
-            "/api/library/collections/{id}/machines",
-            get(library_list_machines).post(library_create_machine),
+            "/api/local/collections/{id}/machines",
+            get(local_list_machines).post(local_create_machine),
         )
         .route(
-            "/api/library/collections/{id}/machines/{item}",
-            put(library_update_machine).delete(library_delete_machine),
+            "/api/local/collections/{id}/machines/{item}",
+            put(local_update_machine).delete(local_delete_machine),
         )
         .route(
-            "/api/library/collections/{id}/board",
-            get(library_get_board).put(library_set_board),
+            "/api/local/collections/{id}/board",
+            get(local_get_board).put(local_set_board),
         )
         .route(
             "/api/connections",
@@ -3988,7 +3988,7 @@ async fn run_preconnect(
     Ok(Json(json!({ "sessionId": id })))
 }
 
-// --- Local-vault library (ADR 0018) --------------------------------------------
+// --- Local-vault collections (ADR 0018) --------------------------------------------
 //
 // A local vault holds collections exactly as a server does, but rite-core is the
 // crypto boundary: it decrypts with the master key and hands the webview plaintext
@@ -3998,7 +3998,7 @@ async fn run_preconnect(
 /// A machine in a local collection, as the UI sees it: no credentials.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct LibraryMachine {
+struct LocalMachine {
     id: String,
     collection_id: String,
     name: String,
@@ -4021,7 +4021,7 @@ struct LibraryMachine {
     last_used_at: Option<i64>,
 }
 
-impl LibraryMachine {
+impl LocalMachine {
     fn from_stored(
         collection_id: &str,
         m: rite_core::local_collections::StoredMachine,
@@ -4065,7 +4065,7 @@ async fn master_key(state: &ServerState) -> Result<[u8; 32], AppError> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct LibraryCollectionReq {
+struct LocalCollectionReq {
     name: String,
     #[serde(default)]
     color: Option<String>,
@@ -4078,7 +4078,7 @@ struct LibraryCollectionReq {
     hc: Option<Option<bool>>,
 }
 
-async fn library_list_collections(
+async fn local_list_collections(
     State(state): State<ServerState>,
 ) -> Result<Json<Vec<rite_core::local_collections::LocalCollection>>, AppError> {
     let key = master_key(&state).await?;
@@ -4087,9 +4087,9 @@ async fn library_list_collections(
     ))
 }
 
-async fn library_create_collection(
+async fn local_create_collection(
     State(state): State<ServerState>,
-    Json(req): Json<LibraryCollectionReq>,
+    Json(req): Json<LocalCollectionReq>,
 ) -> Result<Json<rite_core::local_collections::LocalCollection>, AppError> {
     let key = master_key(&state).await?;
     Ok(Json(
@@ -4103,10 +4103,10 @@ async fn library_create_collection(
     ))
 }
 
-async fn library_update_collection(
+async fn local_update_collection(
     State(state): State<ServerState>,
     Path(id): Path<String>,
-    Json(req): Json<LibraryCollectionReq>,
+    Json(req): Json<LocalCollectionReq>,
 ) -> Result<Json<Value>, AppError> {
     let key = master_key(&state).await?;
     let ok = rite_core::local_collections::update(
@@ -4122,7 +4122,7 @@ async fn library_update_collection(
     Ok(Json(json!({ "ok": ok })))
 }
 
-async fn library_delete_collection(
+async fn local_delete_collection(
     State(state): State<ServerState>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
@@ -4130,10 +4130,10 @@ async fn library_delete_collection(
     Ok(Json(json!({ "ok": ok })))
 }
 
-async fn library_list_machines(
+async fn local_list_machines(
     State(state): State<ServerState>,
     Path(id): Path<String>,
-) -> Result<Json<Vec<LibraryMachine>>, AppError> {
+) -> Result<Json<Vec<LocalMachine>>, AppError> {
     let key = master_key(&state).await?;
     let machines = rite_core::local_collections::list_machines(state.db.pool(), &key, &id).await?;
     let seen = rite_core::local_collections::last_used(state.db.pool(), &id).await?;
@@ -4142,13 +4142,13 @@ async fn library_list_machines(
             .into_iter()
             .map(|m| {
                 let at = seen.get(&m.id).copied();
-                LibraryMachine::from_stored(&id, m, at)
+                LocalMachine::from_stored(&id, m, at)
             })
             .collect(),
     ))
 }
 
-async fn library_create_machine(
+async fn local_create_machine(
     State(state): State<ServerState>,
     Path(id): Path<String>,
     Json(record): Json<rite_core::local_collections::MachineRecord>,
@@ -4159,7 +4159,7 @@ async fn library_create_machine(
     Ok(Json(json!({ "id": item })))
 }
 
-async fn library_update_machine(
+async fn local_update_machine(
     State(state): State<ServerState>,
     Path((id, item)): Path<(String, String)>,
     Json(record): Json<rite_core::local_collections::MachineRecord>,
@@ -4171,7 +4171,7 @@ async fn library_update_machine(
     Ok(Json(json!({ "ok": ok })))
 }
 
-async fn library_delete_machine(
+async fn local_delete_machine(
     State(state): State<ServerState>,
     Path((id, item)): Path<(String, String)>,
 ) -> Result<Json<Value>, AppError> {
@@ -4179,7 +4179,7 @@ async fn library_delete_machine(
     Ok(Json(json!({ "ok": ok })))
 }
 
-async fn library_get_board(
+async fn local_get_board(
     State(state): State<ServerState>,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, AppError> {
@@ -4189,7 +4189,7 @@ async fn library_get_board(
     Ok(Json(board.unwrap_or_else(|| json!([]))))
 }
 
-async fn library_set_board(
+async fn local_set_board(
     State(state): State<ServerState>,
     Path(id): Path<String>,
     Json(cards): Json<Value>,
