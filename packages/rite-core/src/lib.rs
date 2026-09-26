@@ -6,6 +6,7 @@
 //! depend on this crate and provide the transport/UI on top.
 
 pub mod auth;
+pub mod collection_crypto;
 pub mod collection_store;
 pub mod connection;
 pub mod connections_manager;
