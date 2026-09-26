@@ -1171,25 +1171,28 @@ impl SessionManager {
             .unwrap()
             .as_secs() as i64;
 
-        match self
+        // Stamp "last used" in whichever store holds this machine. A legacy row has
+        // the column; a collection item has a row beside it (migration 023), so the
+        // encrypted blob is not rewritten just to record a connect. Never fatal —
+        // a timestamp is not worth failing a working session over.
+        let stamped = match self
             .db
             .update_connection_last_used(&connection_id, now)
             .await
         {
-            Err(e) => {
-                tracing::warn!(
-                    "[terminal.rs] Failed to update last_used_at for connection {}: {}",
-                    connection_id,
-                    e
-                );
-                // Don't fail the connection if we can't update the timestamp
+            Ok(true) => Ok(()),
+            // No legacy row matched, so this is a collection machine.
+            Ok(false) => {
+                crate::local_collections::touch_machine(self.db.pool(), &connection_id, now).await
             }
-            _ => {
-                tracing::debug!(
-                    "[terminal.rs] Updated last_used_at timestamp for connection {}",
-                    connection_id
-                );
-            }
+            Err(e) => Err(e),
+        };
+        if let Err(e) = stamped {
+            tracing::warn!(
+                "[terminal.rs] Failed to update last_used_at for {}: {}",
+                connection_id,
+                e
+            );
         }
 
         // Store session

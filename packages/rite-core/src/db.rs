@@ -107,6 +107,7 @@ impl Database {
             (20, include_str!("../migrations/020_jump.sql")),
             (21, include_str!("../migrations/021_forwards.sql")),
             (22, include_str!("../migrations/022_collection_board.sql")),
+            (23, include_str!("../migrations/023_machine_last_used.sql")),
             // Future migrations go here:
             // (19, include_str!("../migrations/019_another_feature.sql")),
         ];
@@ -555,15 +556,20 @@ impl Database {
     }
 
     /// Update connection last used timestamp
-    pub async fn update_connection_last_used(&self, id: &str, last_used_at: i64) -> Result<()> {
-        sqlx::query("UPDATE connections SET last_used_at = ?1, updated_at = ?2 WHERE id = ?3")
-            .bind(last_used_at)
-            .bind(last_used_at)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+    /// Stamp a legacy connection row as just used. Returns false when no such row
+    /// exists — the id may belong to a collection item instead (ADR 0018), which
+    /// records this beside the item rather than in a column.
+    pub async fn update_connection_last_used(&self, id: &str, last_used_at: i64) -> Result<bool> {
+        let n =
+            sqlx::query("UPDATE connections SET last_used_at = ?1, updated_at = ?2 WHERE id = ?3")
+                .bind(last_used_at)
+                .bind(last_used_at)
+                .bind(id)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
 
-        Ok(())
+        Ok(n > 0)
     }
 
     /// Every connection's stored credential blob: (id, encrypted_credentials, nonce). Used to
@@ -808,7 +814,7 @@ mod tests {
 
         // A fresh DB migrates all the way to the latest schema (each applied
         // migration records its version).
-        assert_eq!(db.get_schema_version().await.unwrap(), 22);
+        assert_eq!(db.get_schema_version().await.unwrap(), 23);
     }
 
     #[test]
@@ -865,14 +871,14 @@ mod tests {
 
         // First open runs every migration to the latest version.
         let db1 = Database::new(&db_path).await.unwrap();
-        assert_eq!(db1.get_schema_version().await.unwrap(), 22);
+        assert_eq!(db1.get_schema_version().await.unwrap(), 23);
         drop(db1);
 
         // Reopening the SAME vault must be a clean no-op: without the recorded
         // versions the runner would re-apply non-idempotent DDL (`ADD COLUMN` →
         // "duplicate column") and fail — the exact desktop second-launch bug.
         let db2 = Database::new(&db_path).await.unwrap();
-        assert_eq!(db2.get_schema_version().await.unwrap(), 22);
+        assert_eq!(db2.get_schema_version().await.unwrap(), 23);
     }
 
     #[tokio::test]

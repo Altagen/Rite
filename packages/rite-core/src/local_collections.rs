@@ -394,6 +394,35 @@ pub async fn find_machine(
     Ok(None)
 }
 
+/// Stamp a machine as just used. Beside the item rather than inside it — see
+/// migration 023 for why the blob is not rewritten for this.
+pub async fn touch_machine(db: &SqlitePool, item_id: &str, at: i64) -> Result<()> {
+    sqlx::query(
+        "INSERT INTO machine_last_used (item_id, last_used_at) VALUES (?, ?) \
+         ON CONFLICT(item_id) DO UPDATE SET last_used_at = excluded.last_used_at",
+    )
+    .bind(item_id)
+    .bind(at)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Last-used timestamps for a collection's machines, keyed by item id.
+pub async fn last_used(
+    db: &SqlitePool,
+    collection_id: &str,
+) -> Result<std::collections::HashMap<String, i64>> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT l.item_id, l.last_used_at FROM machine_last_used l \
+         JOIN collection_items i ON i.id = l.item_id WHERE i.collection_id = ?",
+    )
+    .bind(collection_id)
+    .fetch_all(db)
+    .await?;
+    Ok(rows.into_iter().collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -707,6 +736,59 @@ mod tests {
         assert_eq!(conn.hostname, "10.0.0.5");
         assert_eq!(conn.jump.as_deref(), Some("bastion"));
         assert_eq!(conn.forwards.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn last_used_is_recorded_beside_the_item() {
+        let (_d, db, mk) = vault_db().await;
+        let c = create(db.pool(), &mk, "Home lab", None).await.unwrap();
+        let id = create_machine(db.pool(), &mk, &c.id, &a_machine())
+            .await
+            .unwrap();
+
+        let before: (String,) = sqlx::query_as("SELECT blob FROM collection_items WHERE id = ?")
+            .bind(&id)
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+
+        touch_machine(db.pool(), &id, 1_700_000_000).await.unwrap();
+        touch_machine(db.pool(), &id, 1_700_000_500).await.unwrap();
+        assert_eq!(
+            last_used(db.pool(), &c.id).await.unwrap().get(&id),
+            Some(&1_700_000_500)
+        );
+
+        // The point of the side table: the ciphertext is untouched by a connect.
+        let after: (String,) = sqlx::query_as("SELECT blob FROM collection_items WHERE id = ?")
+            .bind(&id)
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(
+            before.0, after.0,
+            "connecting must not rewrite the machine blob"
+        );
+    }
+
+    /// A deleted machine must not leave a timestamp behind pointing at nothing.
+    #[tokio::test]
+    async fn last_used_goes_with_the_machine() {
+        let (_d, db, mk) = vault_db().await;
+        let c = create(db.pool(), &mk, "Home lab", None).await.unwrap();
+        let id = create_machine(db.pool(), &mk, &c.id, &a_machine())
+            .await
+            .unwrap();
+        touch_machine(db.pool(), &id, 1_700_000_000).await.unwrap();
+
+        delete_machine(db.pool(), &c.id, &id).await.unwrap();
+        let left: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM machine_last_used WHERE item_id = ?")
+                .bind(&id)
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+        assert_eq!(left.0, 0);
     }
 
     /// Deleting must take the items with it — the blobs are the machines, and a

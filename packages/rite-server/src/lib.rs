@@ -4017,10 +4017,16 @@ struct LibraryMachine {
     jump: Option<String>,
     forwards: Vec<rite_core::connection::PortForwardConfig>,
     hc: Option<bool>,
+    /// Passive "last seen" (ADR 0017), from the side table — never inside the blob.
+    last_used_at: Option<i64>,
 }
 
 impl LibraryMachine {
-    fn from_stored(collection_id: &str, m: rite_core::local_collections::StoredMachine) -> Self {
+    fn from_stored(
+        collection_id: &str,
+        m: rite_core::local_collections::StoredMachine,
+        last_used_at: Option<i64>,
+    ) -> Self {
         let r = m.record;
         Self {
             id: m.id,
@@ -4046,6 +4052,7 @@ impl LibraryMachine {
             jump: r.jump,
             forwards: r.forwards,
             hc: r.hc,
+            last_used_at,
         }
     }
 }
@@ -4129,10 +4136,14 @@ async fn library_list_machines(
 ) -> Result<Json<Vec<LibraryMachine>>, AppError> {
     let key = master_key(&state).await?;
     let machines = rite_core::local_collections::list_machines(state.db.pool(), &key, &id).await?;
+    let seen = rite_core::local_collections::last_used(state.db.pool(), &id).await?;
     Ok(Json(
         machines
             .into_iter()
-            .map(|m| LibraryMachine::from_stored(&id, m))
+            .map(|m| {
+                let at = seen.get(&m.id).copied();
+                LibraryMachine::from_stored(&id, m, at)
+            })
             .collect(),
     ))
 }
