@@ -634,6 +634,31 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/auth/validate-password", post(validate_password))
         .route("/api/settings", get(settings))
         .route("/api/settings/{key}", get(get_setting).put(set_setting))
+        // Local-vault library (ADR 0018): collections, their machines and their
+        // boards, all decrypted in rite-core with the master key. Plaintext over
+        // loopback to the local webview, which never receives credentials — the
+        // server-side `/api/collections/*` routes are the zero-knowledge ones,
+        // where the client holds the keys and these blobs stay opaque.
+        .route(
+            "/api/library/collections",
+            get(library_list_collections).post(library_create_collection),
+        )
+        .route(
+            "/api/library/collections/{id}",
+            put(library_update_collection).delete(library_delete_collection),
+        )
+        .route(
+            "/api/library/collections/{id}/machines",
+            get(library_list_machines).post(library_create_machine),
+        )
+        .route(
+            "/api/library/collections/{id}/machines/{item}",
+            put(library_update_machine).delete(library_delete_machine),
+        )
+        .route(
+            "/api/library/collections/{id}/board",
+            get(library_get_board).put(library_set_board),
+        )
         .route(
             "/api/connections",
             get(get_connections).post(create_connection),
@@ -3961,6 +3986,197 @@ async fn run_preconnect(
         .await?;
     state.record_session_owner(&id, as_user(&user));
     Ok(Json(json!({ "sessionId": id })))
+}
+
+// --- Local-vault library (ADR 0018) --------------------------------------------
+//
+// A local vault holds collections exactly as a server does, but rite-core is the
+// crypto boundary: it decrypts with the master key and hands the webview plaintext
+// metadata. Machines come back credential-free (`authType` only), like everywhere
+// else on this path — connecting stays "by id" so the password never leaves Rust.
+
+/// A machine in a local collection, as the UI sees it: no credentials.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryMachine {
+    id: String,
+    collection_id: String,
+    name: String,
+    protocol: String,
+    hostname: String,
+    port: u16,
+    username: String,
+    auth_type: String,
+    color: Option<String>,
+    icon: Option<String>,
+    folder: Option<String>,
+    notes: Option<String>,
+    ssh_keep_alive_override: Option<String>,
+    ssh_keep_alive_interval: Option<i64>,
+    preconnect: Option<String>,
+    jump: Option<String>,
+    forwards: Vec<rite_core::connection::PortForwardConfig>,
+    hc: Option<bool>,
+}
+
+impl LibraryMachine {
+    fn from_stored(collection_id: &str, m: rite_core::local_collections::StoredMachine) -> Self {
+        let r = m.record;
+        Self {
+            id: m.id,
+            collection_id: collection_id.to_string(),
+            auth_type: match r.auth_method {
+                AuthMethod::Password { .. } => "password",
+                AuthMethod::PublicKey { .. } => "publicKey",
+                AuthMethod::Agent { .. } => "agent",
+            }
+            .to_string(),
+            name: r.name,
+            protocol: r.protocol,
+            hostname: r.hostname,
+            port: r.port,
+            username: r.username,
+            color: r.color,
+            icon: r.icon,
+            folder: r.folder,
+            notes: r.notes,
+            ssh_keep_alive_override: r.ssh_keep_alive_override,
+            ssh_keep_alive_interval: r.ssh_keep_alive_interval,
+            preconnect: r.preconnect,
+            jump: r.jump,
+            forwards: r.forwards,
+            hc: r.hc,
+        }
+    }
+}
+
+/// The vault must be unlocked for any of this — the master key is the only way in.
+async fn master_key(state: &ServerState) -> Result<[u8; 32], AppError> {
+    let key = state.auth.get_master_key().await?;
+    Ok(*key.as_bytes())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LibraryCollectionReq {
+    name: String,
+    #[serde(default)]
+    color: Option<String>,
+}
+
+async fn library_list_collections(
+    State(state): State<ServerState>,
+) -> Result<Json<Vec<rite_core::local_collections::LocalCollection>>, AppError> {
+    let key = master_key(&state).await?;
+    Ok(Json(
+        rite_core::local_collections::list(state.db.pool(), &key).await?,
+    ))
+}
+
+async fn library_create_collection(
+    State(state): State<ServerState>,
+    Json(req): Json<LibraryCollectionReq>,
+) -> Result<Json<rite_core::local_collections::LocalCollection>, AppError> {
+    let key = master_key(&state).await?;
+    Ok(Json(
+        rite_core::local_collections::create(
+            state.db.pool(),
+            &key,
+            &req.name,
+            req.color.as_deref(),
+        )
+        .await?,
+    ))
+}
+
+async fn library_update_collection(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Json(req): Json<LibraryCollectionReq>,
+) -> Result<Json<Value>, AppError> {
+    let key = master_key(&state).await?;
+    let ok = rite_core::local_collections::update(
+        state.db.pool(),
+        &key,
+        &id,
+        &req.name,
+        req.color.as_deref(),
+    )
+    .await?;
+    Ok(Json(json!({ "ok": ok })))
+}
+
+async fn library_delete_collection(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    let ok = rite_core::local_collections::delete(state.db.pool(), &id).await?;
+    Ok(Json(json!({ "ok": ok })))
+}
+
+async fn library_list_machines(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<LibraryMachine>>, AppError> {
+    let key = master_key(&state).await?;
+    let machines = rite_core::local_collections::list_machines(state.db.pool(), &key, &id).await?;
+    Ok(Json(
+        machines
+            .into_iter()
+            .map(|m| LibraryMachine::from_stored(&id, m))
+            .collect(),
+    ))
+}
+
+async fn library_create_machine(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Json(record): Json<rite_core::local_collections::MachineRecord>,
+) -> Result<Json<Value>, AppError> {
+    let key = master_key(&state).await?;
+    let item =
+        rite_core::local_collections::create_machine(state.db.pool(), &key, &id, &record).await?;
+    Ok(Json(json!({ "id": item })))
+}
+
+async fn library_update_machine(
+    State(state): State<ServerState>,
+    Path((id, item)): Path<(String, String)>,
+    Json(record): Json<rite_core::local_collections::MachineRecord>,
+) -> Result<Json<Value>, AppError> {
+    let key = master_key(&state).await?;
+    let ok =
+        rite_core::local_collections::update_machine(state.db.pool(), &key, &id, &item, &record)
+            .await?;
+    Ok(Json(json!({ "ok": ok })))
+}
+
+async fn library_delete_machine(
+    State(state): State<ServerState>,
+    Path((id, item)): Path<(String, String)>,
+) -> Result<Json<Value>, AppError> {
+    let ok = rite_core::local_collections::delete_machine(state.db.pool(), &id, &item).await?;
+    Ok(Json(json!({ "ok": ok })))
+}
+
+async fn library_get_board(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, AppError> {
+    let key = master_key(&state).await?;
+    let board = rite_core::local_collections::read_board(state.db.pool(), &key, &id).await?;
+    // No board yet reads as an empty board, so the UI has one shape to handle.
+    Ok(Json(board.unwrap_or_else(|| json!([]))))
+}
+
+async fn library_set_board(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Json(cards): Json<Value>,
+) -> Result<Json<Value>, AppError> {
+    let key = master_key(&state).await?;
+    let ok = rite_core::local_collections::write_board(state.db.pool(), &key, &id, &cards).await?;
+    Ok(Json(json!({ "ok": ok })))
 }
 
 #[derive(Deserialize)]
