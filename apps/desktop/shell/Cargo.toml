@@ -22,7 +22,7 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-dirs = "6.0"
+dirs = "7.0"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 base64 = "0.23"
 fslock = "0.2"
