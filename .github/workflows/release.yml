@@ -209,8 +209,9 @@ jobs:
       - name: Install cargo-cyclonedx
         run: cargo install cargo-cyclonedx
 
+      # cargo-cyclonedx dropped `-p/--package`; the crate is selected by its manifest.
       - name: Generate SBOM (client)
-        run: cargo cyclonedx --format json -p rite-desktop
+        run: cargo cyclonedx --format json --manifest-path apps/desktop/shell/Cargo.toml
 
       - name: Rename SBOM
         run: |
