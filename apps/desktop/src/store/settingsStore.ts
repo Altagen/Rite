@@ -8,7 +8,7 @@
  */
 
 import { create } from 'zustand';
-import { Tauri } from '../utils/tauri';
+import { Backend } from '../utils/backend';
 
 export interface Settings {
   autoLockEnabled: boolean;
@@ -55,7 +55,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   fetchSettings: async () => {
     try {
       set({ isLoading: true, error: null });
-      const backendSettings = await Tauri.Settings.getAllSettings();
+      const backendSettings = await Backend.Settings.getAllSettings();
 
       const settings: Settings = {
         autoLockEnabled: backendSettings.auto_lock_enabled === 'true',
@@ -85,28 +85,28 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
       // Update each setting in backend
       if (newSettings.autoLockEnabled !== undefined) {
-        await Tauri.Settings.setSetting('auto_lock_enabled', String(newSettings.autoLockEnabled));
+        await Backend.Settings.setSetting('auto_lock_enabled', String(newSettings.autoLockEnabled));
       }
       if (newSettings.autoLockTimeout !== undefined) {
-        await Tauri.Settings.setSetting('auto_lock_timeout', String(newSettings.autoLockTimeout));
+        await Backend.Settings.setSetting('auto_lock_timeout', String(newSettings.autoLockTimeout));
       }
       if (newSettings.clipboardClearEnabled !== undefined) {
-        await Tauri.Settings.setSetting('clipboard_clear_enabled', String(newSettings.clipboardClearEnabled));
+        await Backend.Settings.setSetting('clipboard_clear_enabled', String(newSettings.clipboardClearEnabled));
       }
       if (newSettings.clipboardClearTimeout !== undefined) {
-        await Tauri.Settings.setSetting('clipboard_clear_timeout', String(newSettings.clipboardClearTimeout));
+        await Backend.Settings.setSetting('clipboard_clear_timeout', String(newSettings.clipboardClearTimeout));
       }
       if (newSettings.sshKeepAliveEnabled !== undefined) {
-        await Tauri.Settings.setSetting('ssh_keep_alive_enabled', String(newSettings.sshKeepAliveEnabled));
+        await Backend.Settings.setSetting('ssh_keep_alive_enabled', String(newSettings.sshKeepAliveEnabled));
       }
       if (newSettings.sshKeepAliveInterval !== undefined) {
-        await Tauri.Settings.setSetting('ssh_keep_alive_interval', String(newSettings.sshKeepAliveInterval));
+        await Backend.Settings.setSetting('ssh_keep_alive_interval', String(newSettings.sshKeepAliveInterval));
       }
       if (newSettings.hostKeyVerificationMode !== undefined) {
-        await Tauri.Settings.setSetting('host_key_verification_mode', newSettings.hostKeyVerificationMode);
+        await Backend.Settings.setSetting('host_key_verification_mode', newSettings.hostKeyVerificationMode);
       }
       if (newSettings.defaultShell !== undefined) {
-        await Tauri.Settings.setSetting('default_shell', newSettings.defaultShell);
+        await Backend.Settings.setSetting('default_shell', newSettings.defaultShell);
       }
 
       set({ settings: updated, isLoading: false });
@@ -119,7 +119,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   // Get a single setting
   getSetting: async (key: string) => {
     try {
-      const value = await Tauri.Settings.getSetting(key);
+      const value = await Backend.Settings.getSetting(key);
       return value;
     } catch (error) {
       console.error(`Failed to get setting ${key}:`, error);
@@ -130,7 +130,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   // Set a single setting
   setSetting: async (key: string, value: string) => {
     try {
-      await Tauri.Settings.setSetting(key, value);
+      await Backend.Settings.setSetting(key, value);
     } catch (error) {
       console.error(`Failed to set setting ${key}:`, error);
       throw error;

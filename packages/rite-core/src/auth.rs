@@ -8,13 +8,22 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
 };
-use rite_crypto::{generate_salt, validate_password_strength};
+use rite_crypto::{EncryptedData, decrypt, encrypt, generate_salt, validate_password_strength};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
 // Re-export MasterKey for use in other modules
 pub use rite_crypto::MasterKey;
+
+/// Outcome of a master-password change (ADR 0014).
+pub enum ChangeMasterOutcome {
+    Success,
+    /// The supplied current password didn't match.
+    WrongPassword,
+    /// The new password failed the strength check; carries a human message.
+    TooWeak(String),
+}
 
 /// Authentication manager
 #[derive(Clone)]
@@ -132,6 +141,87 @@ impl AuthManager {
         Ok(UnlockResult::Success)
     }
 
+    /// Change the local-vault master password (ADR 0014). Verifies the current password, then
+    /// re-encrypts every connection's credentials under a key derived from the new password and
+    /// updates the stored hash/salt — all atomically (see `Database::rekey_vault`), so a failure
+    /// can't corrupt the vault. On success the in-memory key is swapped to the new one.
+    pub async fn change_master_password(
+        &self,
+        old: &str,
+        new: &str,
+    ) -> Result<ChangeMasterOutcome> {
+        let (stored_hash, old_salt) = self
+            .db
+            .get_master_password()
+            .await?
+            .ok_or_else(|| anyhow!("No master password set"))?;
+        let parsed =
+            PasswordHash::new(&stored_hash).map_err(|e| anyhow!("bad stored hash: {e}"))?;
+        if Argon2::default()
+            .verify_password(old.as_bytes(), &parsed)
+            .is_err()
+        {
+            return Ok(ChangeMasterOutcome::WrongPassword);
+        }
+        let (is_valid, score, feedback) = validate_password_strength(new);
+        if !is_valid {
+            return Ok(ChangeMasterOutcome::TooWeak(format!(
+                "score {score}/7: {}",
+                feedback.join(", ")
+            )));
+        }
+        let old_key = MasterKey::derive(old, &old_salt).context("derive old key")?;
+        let new_salt = generate_salt();
+        let new_key = MasterKey::derive(new, &new_salt).context("derive new key")?;
+        // Re-encrypt each connection's credential blob (decrypt with old, encrypt with new).
+        let mut updates = Vec::new();
+        for (id, blob, nonce) in self.db.all_connection_crypto().await? {
+            let nonce_arr: [u8; 12] = nonce
+                .as_slice()
+                .try_into()
+                .map_err(|_| anyhow!("invalid nonce for {id}"))?;
+            let plain = decrypt(
+                &old_key,
+                &EncryptedData {
+                    data: blob,
+                    nonce: nonce_arr,
+                    salt: None,
+                },
+            )
+            .context("decrypt with old key")?;
+            let enc = encrypt(&new_key, &plain).context("encrypt with new key")?;
+            updates.push((id, enc.data, enc.nonce.to_vec()));
+        }
+        let new_hash = Argon2::default()
+            .hash_password(
+                new.as_bytes(),
+                &SaltString::encode_b64(&new_salt).map_err(|e| anyhow!("encode salt: {e}"))?,
+            )
+            .map_err(|e| anyhow!("hash new password: {e}"))?
+            .to_string();
+        // Local collections are wrapped with the master key, so they must be
+        // re-wrapped in the same breath (ADR 0018) — otherwise the password change
+        // succeeds and the vault silently becomes unreadable.
+        let collection_keys = crate::local_collections::rewrapped_keys(
+            self.db.pool(),
+            old_key.as_bytes(),
+            new_key.as_bytes(),
+        )
+        .await
+        .context("re-wrap collection keys")?;
+
+        self.db
+            .rekey_vault(&updates, &collection_keys, &new_hash, &new_salt)
+            .await?;
+        *self.master_key.write().await = Some(Arc::new(new_key));
+        info!(
+            "Master password changed ({} connections re-keyed, {} collections re-wrapped)",
+            updates.len(),
+            collection_keys.len()
+        );
+        Ok(ChangeMasterOutcome::Success)
+    }
+
     /// Lock the application (zeroize master key)
     pub async fn lock(&self) -> Result<()> {
         info!("Locking application");
@@ -238,17 +328,131 @@ mod tests {
     use tempfile::TempDir;
 
     async fn create_test_auth() -> (AuthManager, TempDir) {
+        let (auth, _db, tmp) = create_test_auth_with_db().await;
+        (auth, tmp)
+    }
+
+    /// Same, but keeps the Database handle for tests that also touch collections.
+    async fn create_test_auth_with_db() -> (AuthManager, Database, TempDir) {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let db = Database::new(&db_path).await.unwrap();
-        let auth = AuthManager::new(db);
-        (auth, temp_dir)
+        let auth = AuthManager::new(db.clone());
+        (auth, db, temp_dir)
     }
 
     #[tokio::test]
     async fn test_first_run() {
         let (auth, _temp) = create_test_auth().await;
         assert!(auth.is_first_run().await.unwrap());
+    }
+
+    /// A password change must carry local collections with it. Without re-wrapping
+    /// their keys the ciphertext survives but nothing can unwrap it again — the
+    /// vault looks intact and is permanently unreadable.
+    #[tokio::test]
+    async fn change_master_password_rewraps_collections() {
+        let (auth, db, _tmp) = create_test_auth_with_db().await;
+        auth.setup_master_password("Old-Str0ng!P@ss1")
+            .await
+            .unwrap();
+        auth.unlock("Old-Str0ng!P@ss1").await.unwrap();
+
+        let key = *auth.get_master_key().await.unwrap().as_bytes();
+        let c = crate::local_collections::create(db.pool(), &key, "Home lab", None)
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            auth.change_master_password("Old-Str0ng!P@ss1", "New-Str0ng!P@ss2")
+                .await
+                .unwrap(),
+            ChangeMasterOutcome::Success
+        ));
+
+        // Re-derive from the NEW password and read the collection back.
+        auth.lock().await.unwrap();
+        auth.unlock("New-Str0ng!P@ss2").await.unwrap();
+        let new_key = *auth.get_master_key().await.unwrap().as_bytes();
+        let all = crate::local_collections::list(db.pool(), &new_key)
+            .await
+            .unwrap();
+        assert_eq!(
+            all.len(),
+            1,
+            "the collection must survive the password change"
+        );
+        assert_eq!(all[0].id, c.id);
+        assert_eq!(all[0].name, "Home lab");
+    }
+
+    #[tokio::test]
+    async fn change_master_password_rekeys_connections() {
+        use crate::connection::{AuthMethod, CreateConnectionInput};
+        use crate::connections_manager::ConnectionsManager;
+        let temp = TempDir::new().unwrap();
+        let db = Database::new(&temp.path().join("v.db")).await.unwrap();
+        let auth = AuthManager::new(db.clone());
+        auth.setup_master_password("Old-Str0ng!P@ss1")
+            .await
+            .unwrap();
+        let conns = ConnectionsManager::new(db.clone(), auth.clone());
+        conns
+            .create_connection(CreateConnectionInput {
+                name: "box".into(),
+                protocol: "SSH".into(),
+                hostname: "h".into(),
+                port: 22,
+                username: "u".into(),
+                auth_method: AuthMethod::Password {
+                    password: "s3cret-pw".into(),
+                },
+                color: None,
+                icon: None,
+                folder: None,
+                notes: None,
+                ssh_keep_alive_override: None,
+                ssh_keep_alive_interval: None,
+                preconnect: None,
+                jump: None,
+                forwards: None,
+            })
+            .await
+            .unwrap();
+
+        // Wrong current password is rejected.
+        assert!(matches!(
+            auth.change_master_password("nope", "New-Str0ng!P@ss2")
+                .await
+                .unwrap(),
+            ChangeMasterOutcome::WrongPassword
+        ));
+        // Change succeeds with the right current password.
+        assert!(matches!(
+            auth.change_master_password("Old-Str0ng!P@ss1", "New-Str0ng!P@ss2")
+                .await
+                .unwrap(),
+            ChangeMasterOutcome::Success
+        ));
+
+        // The old password no longer unlocks; the new one does.
+        auth.lock().await.unwrap();
+        assert!(matches!(
+            auth.unlock("Old-Str0ng!P@ss1").await.unwrap(),
+            UnlockResult::InvalidPassword
+        ));
+        assert!(matches!(
+            auth.unlock("New-Str0ng!P@ss2").await.unwrap(),
+            UnlockResult::Success
+        ));
+
+        // The connection's credentials survived the re-key (decrypt under the new key).
+        let all = conns.get_all_connections().await.unwrap();
+        let one = conns.get_connection(&all[0].id).await.unwrap().unwrap();
+        match one.auth_method {
+            AuthMethod::Password { password } => assert_eq!(password, "s3cret-pw"),
+            _ => panic!("wrong auth method after re-key"),
+        }
     }
 
     #[tokio::test]

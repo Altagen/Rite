@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rite · Error states (mock)</title>
+<link rel="stylesheet" href="rite.css">
+<style>
+  /* Every failure path gets a clear message + a safe recovery — never a crash or a raw
+     stack (owner bar: graceful handling). This gallery is the canonical set; the real
+     app renders the same states (full-page when it can't boot, a banner mid-session). */
+  .err-body{min-height:100vh;display:flex;flex-direction:column;
+    background:radial-gradient(1100px 720px at 50% -12%,color-mix(in oklab,var(--accent) 10%,transparent),transparent 60%),var(--bg)}
+  .switch{display:flex;flex-wrap:wrap;gap:6px;padding:14px 18px;border-bottom:1px solid var(--border);background:color-mix(in oklab,var(--bg2) 82%,transparent);position:sticky;top:0;z-index:10}
+  .switch .lead{width:100%;font-size:12px;color:var(--muted);margin-bottom:2px}
+  .sw{padding:5px 11px;border:1px solid var(--border2);background:var(--card);border-radius:999px;color:var(--fg-dim);cursor:pointer;font-size:12.5px;font-family:inherit}
+  .sw:hover{border-color:var(--accent);color:var(--fg)}
+  .sw.on{background:color-mix(in oklab,var(--accent) 20%,transparent);border-color:var(--accent);color:var(--accent);font-weight:600}
+  .stage{flex:1;display:grid;place-items:center;padding:32px 20px}
+  .card{width:100%;max-width:460px;background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);padding:34px 34px 28px;text-align:center}
+  .ic{width:60px;height:60px;border-radius:16px;display:grid;place-items:center;margin:0 auto 18px}
+  .ic svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .ic.warn{background:color-mix(in oklab,var(--amber) 15%,transparent);color:var(--amber)}
+  .ic.error{background:color-mix(in oklab,var(--red) 15%,transparent);color:var(--red)}
+  .ic.info{background:color-mix(in oklab,var(--accent) 15%,transparent);color:var(--accent)}
+  .ic.muted{background:var(--card2);color:var(--muted)}
+  h1{font-size:21px;font-weight:750;letter-spacing:-.01em;margin-bottom:9px;text-wrap:balance}
+  .msg{color:var(--fg-dim);font-size:14px;line-height:1.6;margin-bottom:16px}
+  .msg b{color:var(--fg)}
+  .detail{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--muted);font-family:var(--mono);background:var(--bg2);border:1px solid var(--border);border-radius:9px;padding:7px 12px;margin-bottom:20px}
+  .actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  .actions .btn{padding:9px 16px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .spin{width:16px;height:16px;border:2px solid color-mix(in oklab,var(--fg) 22%,transparent);border-top-color:currentColor;border-radius:50%;animation:spin .8s linear infinite;display:inline-block}
+  .ic .spin{width:30px;height:30px;border-width:3px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .foot{padding:12px 18px;text-align:center;color:var(--muted);font-size:12px}
+  /* In-app banner variant (mid-session): the app dims, a non-blocking banner appears on top. */
+  .appmock{position:relative;width:100%;max-width:940px;height:420px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--bg2)}
+  .appmock .fake{position:absolute;inset:0;padding:16px;filter:blur(1px);opacity:.5;pointer-events:none}
+  .appmock .fk-bar{height:34px;background:var(--card);border-radius:8px;margin-bottom:12px}
+  .appmock .fk-row{height:22px;background:var(--card2);border-radius:6px;margin-bottom:9px}
+  .appmock .fk-row:nth-child(3){width:70%}.appmock .fk-row:nth-child(4){width:55%}.appmock .fk-row:nth-child(5){width:80%}
+  .banner{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid color-mix(in oklab,var(--amber) 40%,transparent);border-radius:12px;box-shadow:var(--shadow);padding:11px 15px;max-width:92%}
+  .banner .spin{color:var(--amber)}
+  .banner .bt{font-size:13.5px;font-weight:600}
+  .banner .bs{font-size:12px;color:var(--muted)}
+  .banner .btn{padding:6px 12px}
+  .note{max-width:940px;margin:14px auto 0;font-size:12.5px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body class="err-body">
+  <div class="switch" id="switch"><span class="lead">Error &amp; connection states — every failure path shows a clear message and a safe way forward (never a crash).</span></div>
+  <div class="stage" id="stage"></div>
+  <div class="foot">Rite · <b>error states</b> · full-page when the app can't boot · a non-blocking banner mid-session</div>
+
+<script>
+const INST='Acme Corp', HOST='rite.acme.io';
+const I={
+  cloud:'<svg viewBox="0 0 24 24"><path d="M17.5 19a4.5 4.5 0 000-9 6 6 0 00-11.3-1.5A4 4 0 006 19zM3 3l18 18"/></svg>',
+  wifiOff:'<svg viewBox="0 0 24 24"><path d="M1 1l22 22M8.5 16.5a5 5 0 017 0M5 12.9a10 10 0 0114-.1M2 8.8A15 15 0 0110 6.3m5 .7a15 15 0 016.9 4M12 20h.01"/></svg>',
+  key:'<svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L21 2M17 6l2 2M14 9l2 2"/></svg>',
+  shield:'<svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>',
+  noentry:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>',
+  compass:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>',
+  alert:'<svg viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 9v5M12 17.5h.01"/></svg>',
+  clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  lockx:'<svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 018 0M9.5 14.5l5 3M14.5 14.5l-5 3"/></svg>',
+  refresh:'<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5"/></svg>',
+  wrench:'<svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 00-5.4 5.2L3 18l3 3 6.5-6.3a4 4 0 005.2-5.4l-2.8 2.8-2.3-2.3z"/></svg>',
+  spin:'<span class="spin"></span>',
+};
+// sev: warn (transient/retry) · error (hard, needs care) · info (action) · muted (neutral)
+const STATES=[
+ ['starting',{sev:'warn',icon:I.spin,title:`${INST} is starting up`,msg:`The server isn't ready yet <span style="opacity:.7">(HTTP 503)</span>. This usually clears in a few seconds — we'll keep trying on our own.`,detail:'spin|Retrying automatically…',actions:[['Retry now','btn-primary']]}],
+ ['unreachable',{sev:'warn',icon:I.cloud,title:"Can't reach the server",msg:`We couldn't connect to <b>${INST}</b>. Check your internet connection, or that the server address is correct.`,detail:`${HOST} · connection failed`,actions:[['Try again','btn-primary'],['Edit server URL','']],retry:'unreachable'}],
+ ['lost',{sev:'warn',icon:I.spin,title:'Connection lost',msg:`You've lost contact with <b>${INST}</b>. Your open terminals will pick up right where they were once you're back — nothing is lost.`,detail:'spin|Reconnecting…',actions:[['Reconnect now','btn-primary'],['See the banner version','','banner']]}],
+ ['offline',{sev:'warn',icon:I.wifiOff,title:"You're offline",msg:`Your device isn't connected to the internet. Rite will reconnect on its own the moment you're back online.`,detail:'spin|Waiting for a connection…',actions:[['Try again','btn-primary']]}],
+ ['session',{sev:'info',icon:I.key,title:'Your session expired',msg:`For your security you were signed out after a spell of inactivity. Sign in again to carry on — your saved connections stay safe and encrypted.`,actions:[['Sign in','btn-primary','signin.html']]}],
+ ['denied',{sev:'error',icon:I.shield,title:"You don't have access",msg:`This area is for administrators of <b>${INST}</b>. If you think you should have access, ask an admin.`,detail:'HTTP 403 · forbidden',actions:[['Back to app','btn-primary','web.html']]}],
+ ['notfound',{sev:'muted',icon:I.compass,title:"This page doesn't exist",msg:`The link may be broken, or what you're looking for was moved or deleted.`,detail:'HTTP 404 · not found',actions:[['Back to app','btn-primary','web.html']]}],
+ ['server',{sev:'error',icon:I.alert,title:'Something went wrong',msg:`The server hit an unexpected error <span style="opacity:.7">(HTTP 500)</span> — it's not you. Try again in a moment; if it keeps happening, share the reference below with an admin.`,detail:'Reference: 7f3a-be21-c4',actions:[['Try again','btn-primary'],['Copy reference','']]}],
+ ['ratelimited',{sev:'warn',icon:I.clock,title:'Too many attempts',msg:`You've tried too many times in a row. Wait a moment before trying again — this protects your account from password guessing.`,detail:'cd|Try again in',actions:[['Try again','btn-primary',null,'cd']]}],
+ ['tls',{sev:'error',icon:I.lockx,title:"Couldn't secure the connection",msg:`Rite couldn't establish a verified secure (TLS) connection to <b>${INST}</b>. The certificate may be invalid, expired, or intercepted — so, to keep you safe, we didn't connect.`,detail:'certificate verification failed',actions:[['Retry','btn-primary'],['What does this mean?','']]}],
+ ['version',{sev:'info',icon:I.refresh,title:'Update needed',msg:`This server needs a newer version of the Rite client than the one you're running. Update to connect.`,detail:'client 1.4 · server needs ≥ 1.7',actions:[['How to update','btn-primary'],['Back','','web.html']]}],
+ ['maintenance',{sev:'muted',icon:I.wrench,title:`${INST} is under maintenance`,msg:`An admin has taken the server down for planned maintenance. It'll be back shortly — no action needed on your side.`,detail:'spin|Checking every 30s…',actions:[['Check now','btn-primary']]}],
+];
+const MAP=Object.fromEntries(STATES);
+let SEL='starting', timers=[];
+
+function clearTimers(){timers.forEach(clearInterval);timers=[];}
+function renderSwitch(){
+  const sw=document.getElementById('switch');
+  sw.querySelectorAll('.sw').forEach(n=>n.remove());
+  STATES.forEach(([k,s])=>{const b=document.createElement('button');b.className='sw'+(k===SEL?' on':'');b.textContent=s.title.replace(INST,INST).length>26?k:s.title.replace(`${INST} `,'');b.textContent=labelFor(k,s);b.onclick=()=>{SEL=k;render();};sw.appendChild(b);});
+  const bn=document.createElement('button');bn.className='sw'+('banner'===SEL?' on':'');bn.textContent='· in-app banner';bn.onclick=()=>{SEL='banner';render();};sw.appendChild(bn);
+}
+function labelFor(k,s){return ({starting:'503 starting',unreachable:'unreachable',lost:'connection lost',offline:'offline',session:'session expired (401)',denied:'access denied (403)',notfound:'not found (404)',server:'server error (500)',ratelimited:'rate limited (429)',tls:'TLS error',version:'version mismatch',maintenance:'maintenance'})[k]||k;}
+
+function detailHTML(d){
+  if(!d)return '';
+  if(d.startsWith('spin|'))return `<div class="detail"><span class="spin" style="width:14px;height:14px;border-top-color:var(--amber)"></span>${d.slice(5)}</div>`;
+  if(d.startsWith('cd|'))return `<div class="detail" id="cd">${d.slice(3)} <b id="cdn">42</b>s</div>`;
+  return `<div class="detail">${d}</div>`;
+}
+function render(){
+  clearTimers();renderSwitch();
+  const stage=document.getElementById('stage');
+  if(SEL==='banner'){stage.innerHTML=bannerView();return;}
+  const s=MAP[SEL];
+  const acts=s.actions.map(([label,cls,href,special])=>{
+    const dis=special==='cd'?'disabled':'';
+    const on=href?`onclick="location.href='${href}'"`:(special==='banner'?`onclick="SEL='banner';render()"`:`onclick="toast('${label}')"`);
+    return `<button class="btn ${cls}" ${dis} ${on} ${special==='cd'?'id="cdbtn"':''}>${label}</button>`;}).join('');
+  stage.innerHTML=`<div><div class="card">
+    <div class="ic ${s.sev}">${s.icon}</div>
+    <h1>${s.title}</h1>
+    <p class="msg">${s.msg}</p>
+    ${detailHTML(s.detail)}
+    <div class="actions">${acts}</div>
+  </div></div>`;
+  // live countdowns for the retry-style states
+  if(SEL==='ratelimited'){let n=42;const el=document.getElementById('cdn'),btn=document.getElementById('cdbtn');
+    timers.push(setInterval(()=>{n--;if(el)el.textContent=n;if(n<=0){clearTimers();if(btn){btn.disabled=false;}if(el&&el.parentElement)el.parentElement.innerHTML='You can try again now';}},1000));}
+}
+function bannerView(){
+  return `<div><div class="appmock">
+      <div class="fake"><div class="fk-bar"></div><div class="fk-row"></div><div class="fk-row"></div><div class="fk-row"></div><div class="fk-row"></div></div>
+      <div class="banner"><span class="spin"></span><div><div class="bt">Reconnecting to ${INST}…</div><div class="bs">Your terminals resume automatically — nothing is lost.</div></div><button class="btn btn-sm" onclick="toast('Retrying…')">Retry now</button></div>
+    </div>
+    <div class="note">Mid-session, a dropped connection is a <b>non-blocking banner</b> over the dimmed app — not a full-page takeover — because your work is still there waiting to resume.</div></div>`;
+}
+function toast(m){let t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);}t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1600);}
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+[package]
+name = "rite-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "rite"
+path = "src/main.rs"
+
+[dependencies]
+rite-server = { path = "../../../packages/rite-server" }
+
+tao = "0.35"
+wry = "0.55"
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+dirs = "6.0"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+base64 = "0.23"
+fslock = "0.2"
+rfd = { version = "0.15", default-features = false, features = ["gtk3"] }

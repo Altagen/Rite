@@ -6,26 +6,47 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
-import { useConnectionsStore, type CreateConnectionInput, type UpdateConnectionInput, type ConnectionInfo, type Protocol } from '../store/connectionsStore';
-import { useCollectionsStore } from '../store/collectionsStore';
+import { type CreateConnectionInput, type UpdateConnectionInput, type ConnectionInfo, type Protocol } from '../store/connectionsStore';
 import type { QuickSSHConnectionInfo } from './QuickSSHModal';
+import { AuthSection } from './AuthSection';
+import { makeAuthState, toAuthMethodInput, type AuthState } from '../utils/authMethod';
 
 interface ConnectionFormProps {
   connection?: ConnectionInfo | null;
   prefillData?: QuickSSHConnectionInfo | null;
   onClose: () => void;
   onSuccess?: () => void;
+  // The active context's connection source (ADR 0014): local = the store; accounts
+  // = browser-crypto over the per-user vault. The form is context-agnostic.
+  create: (input: CreateConnectionInput) => Promise<void>;
+  update: (input: UpdateConnectionInput) => Promise<void>;
+  // Other saved connections, offered as a jump host (ProxyJump) for this one.
+  jumpCandidates?: ConnectionInfo[];
+  // ADR 0016: shared collections the caller may save into (owner/editor). When
+  // present (accounts context), the form offers a "save to collection" target.
+  collectionTargets?: { id: string; name: string }[];
+  // Preselect this collection as the save target (e.g. opening the form from a
+  // collection view). Only applies when creating.
+  defaultCollectionId?: string | null;
+  // Preselect this sub-folder path (e.g. opening the form from a folder's ＋).
+  defaultFolder?: string | null;
 }
 
-export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: ConnectionFormProps) {
-  const { t } = useTranslation();
-  const { createConnection, updateConnection } = useConnectionsStore();
-  const { collections, fetchCollections, createCollection } = useCollectionsStore();
+const MACHINE_COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#8b93a7'];
 
-  // Load collections on mount
-  useEffect(() => {
-    fetchCollections();
-  }, [fetchCollections]);
+export function ConnectionForm({
+  connection,
+  prefillData,
+  onClose,
+  onSuccess,
+  create,
+  update,
+  jumpCandidates,
+  collectionTargets,
+  defaultCollectionId,
+  defaultFolder,
+}: ConnectionFormProps) {
+  const { t } = useTranslation();
 
   // Form state - use prefillData if provided, otherwise use connection data
   const [name, setName] = useState(connection?.name || (prefillData ? `${prefillData.username}@${prefillData.host}` : ''));
@@ -33,14 +54,28 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
   const [hostname, setHostname] = useState(connection?.hostname || prefillData?.host || '');
   const [port, setPort] = useState(connection?.port || prefillData?.port || 22);
   const [username, setUsername] = useState(connection?.username || prefillData?.username || '');
-  const [authMethod, setAuthMethod] = useState<'password' | 'publicKey'>(prefillData?.authType || 'password');
-  const [password, setPassword] = useState(prefillData?.password || '');
-  const [keyPath, setKeyPath] = useState(prefillData?.keyPath || '');
-  const [keyPassphrase, setKeyPassphrase] = useState(prefillData?.passphrase || '');
-  const [collection, setCollection] = useState(connection?.folder || '');
-  const color = connection?.color || ''; // TODO: Implement color picker UI
+  // Authentication state — shared shape with Quick SSH via <AuthSection>.
+  const [auth, setAuth] = useState<AuthState>(
+    makeAuthState({
+      authType: prefillData?.authType ?? 'password',
+      password: prefillData?.password ?? '',
+      keyPath: prefillData?.keyPath ?? '',
+      passphrase: prefillData?.passphrase ?? '',
+    }),
+  );
+  const [folder, setFolder] = useState(connection?.folder || defaultFolder || '');
+  // ADR 0016 save target (accounts context): a collection id. "Personal" (the
+  // vault-backed collection) is always the first target, the default.
+  const [collectionTargetId, setCollectionTargetId] = useState<string>(
+    connection?.collectionId ?? defaultCollectionId ?? collectionTargets?.[0]?.id ?? '',
+  );
+  const [color, setColor] = useState(connection?.color || '');
   const icon = connection?.icon || ''; // TODO: Implement icon picker UI
+  // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
+  const [hcOptOut, setHcOptOut] = useState(connection?.hc === false);
   const [notes, setNotes] = useState(connection?.notes || '');
+  const [preconnect, setPreconnect] = useState(connection?.preconnect || '');
+  const [jump, setJump] = useState(connection?.jump || '');
   const [sshKeepAliveOverride, setSshKeepAliveOverride] = useState<string | null>(
     connection?.sshKeepAliveOverride ?? null
   );
@@ -55,14 +90,8 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
   const keepAliveDropdownRef = useRef<HTMLDivElement>(null);
 
   // UI state
-  const [showPassword, setShowPassword] = useState(false);
-  const [showKeyPassphrase, setShowKeyPassphrase] = useState(false);
   const [showProtocolDropdown, setShowProtocolDropdown] = useState(false);
-  const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
-  const [showNewCollectionInput, setShowNewCollectionInput] = useState(false);
-  const [newCollectionName, setNewCollectionName] = useState('');
   const protocolDropdownRef = useRef<HTMLDivElement>(null);
-  const collectionDropdownRef = useRef<HTMLDivElement>(null);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -96,10 +125,6 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
       if (protocolDropdownRef.current && !protocolDropdownRef.current.contains(event.target as Node)) {
         setShowProtocolDropdown(false);
       }
-      if (collectionDropdownRef.current && !collectionDropdownRef.current.contains(event.target as Node)) {
-        setShowCollectionDropdown(false);
-        setShowNewCollectionInput(false);
-      }
       if (keepAliveDropdownRef.current && !keepAliveDropdownRef.current.contains(event.target as Node)) {
         setShowKeepAliveDropdown(false);
       }
@@ -129,31 +154,16 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
       newErrors.username = t('connections.validation.usernameRequired');
     }
 
-    if (authMethod === 'password' && !password && !connection) {
+    if (auth.authType === 'password' && !auth.password && !connection) {
       newErrors.password = t('connections.validation.passwordRequired');
     }
 
-    if (authMethod === 'publicKey' && !keyPath.trim()) {
+    if (auth.authType === 'publicKey' && !auth.keyPath.trim()) {
       newErrors.keyPath = t('connections.validation.keyPathRequired');
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
-
-  // Handle new collection creation
-  const handleCreateCollection = async () => {
-    if (!newCollectionName.trim()) return;
-
-    try {
-      const newColl = await createCollection(newCollectionName.trim());
-      setCollection(newColl.name);
-      setNewCollectionName('');
-      setShowNewCollectionInput(false);
-      setShowCollectionDropdown(false);
-    } catch (error) {
-      console.error('Failed to create collection:', error);
-    }
   };
 
   // Keep-alive dropdown helpers
@@ -207,26 +217,29 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
           hostname,
           port,
           username,
-          ...(collection && { folder: collection }),
+          ...(folder && { folder }),
           ...(color && { color }),
           ...(icon && { icon }),
           ...(notes && { notes }),
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
+          preconnect: preconnect.trim() || null, // always send so clearing it works
+          jump: jump || null, // always send so clearing it works
+          hc: hcOptOut ? false : null, // always send so turning it back off clears the opt-out
         };
 
-        // Only include auth method if password or key path is provided
-        if (authMethod === 'password' && password) {
-          input.authMethod = { type: 'password', password };
-        } else if (authMethod === 'publicKey' && keyPath) {
-          input.authMethod = {
-            type: 'publicKey',
-            keyPath,
-            ...(keyPassphrase && { passphrase: keyPassphrase }),
-          };
+        // Only include auth method when there's something to change: for password
+        // keep the existing one if left blank; key-file needs a path; agent has no
+        // secret so it's always safe to (re)apply.
+        if (auth.authType === 'password') {
+          if (auth.password) input.authMethod = { type: 'password', password: auth.password };
+        } else if (auth.authType === 'publicKey') {
+          if (auth.keyPath) input.authMethod = toAuthMethodInput(auth);
+        } else {
+          input.authMethod = toAuthMethodInput(auth);
         }
 
-        await updateConnection(input);
+        await update(input);
       } else {
         // Create new connection
         const input: CreateConnectionInput = {
@@ -235,23 +248,20 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
           hostname,
           port,
           username,
-          authMethod:
-            authMethod === 'password'
-              ? { type: 'password', password }
-              : {
-                  type: 'publicKey',
-                  keyPath,
-                  ...(keyPassphrase && { passphrase: keyPassphrase }),
-                },
-          ...(collection && { folder: collection }),
+          authMethod: toAuthMethodInput(auth),
+          ...(folder && { folder }),
+          ...(collectionTargetId && { collectionId: collectionTargetId }),
           ...(color && { color }),
           ...(icon && { icon }),
           ...(notes && { notes }),
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
+          ...(preconnect.trim() && { preconnect: preconnect.trim() }),
+          ...(jump && { jump }),
+          ...(hcOptOut && { hc: false }),
         };
 
-        await createConnection(input);
+        await create(input);
       }
 
       onSuccess?.();
@@ -264,19 +274,26 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 w-full max-w-2xl rounded-lg bg-background p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+    <div className="m-backdrop" onClick={onClose}>
+      <div className="m-modal max-w-2xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-2xl font-bold">
-            {connection ? t('connections.titleEdit') : t('connections.titleNew')}
-          </h2>
+        <div className="mb-5 flex items-start justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">
+              {connection ? t('connections.titleEdit') : t('connections.titleNew')}
+            </h2>
+            {defaultCollectionId && collectionTargets?.find((c) => c.id === (connection?.collectionId ?? defaultCollectionId)) && (
+              <p className="mt-1 text-sm text-muted-foreground">
+                in “{collectionTargets.find((c) => c.id === (connection?.collectionId ?? defaultCollectionId))?.name}”
+              </p>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground"
             aria-label={t('connections.cancel')}
           >
-            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -389,116 +406,101 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
             {errors.username && <p className="mt-1 text-sm text-red-500">{errors.username}</p>}
           </div>
 
-          {/* Authentication Method */}
+          {/* Authentication — shared with Quick SSH (password / key file / agent) */}
+          <AuthSection
+            value={auth}
+            onChange={setAuth}
+            isEdit={!!connection}
+            errors={{ password: errors.password, keyPath: errors.keyPath }}
+          />
+
+          {/* Jump host (ProxyJump): reach this machine through another saved one (a
+              bastion). Rite tunnels the SSH session end-to-end; the key never lands
+              on the bastion. Chainable when the jump itself has a jump. */}
           <div>
-            <label className="mb-2 block text-sm font-medium">{t('connections.authMethod')}</label>
-            <div className="flex gap-4">
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  value="password"
-                  checked={authMethod === 'password'}
-                  onChange={(e) => setAuthMethod(e.target.value as 'password' | 'publicKey')}
-                  className="mr-2"
+            <label htmlFor="jump-host" className="mb-1 block text-sm font-medium">
+              {t('jump.label')} <span className="font-normal text-muted-foreground">({t('jump.optional')})</span>
+            </label>
+            <select
+              id="jump-host"
+              value={jump}
+              onChange={(e) => setJump(e.target.value)}
+              className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
+            >
+              <option value="">{t('jump.direct')}</option>
+              {(() => {
+                const candidates = (jumpCandidates ?? []).filter((c) => c.id !== connection?.id);
+                const groups = new Map<string, ConnectionInfo[]>();
+                for (const c of candidates) {
+                  const key = c.collectionName ?? c.folder ?? t('jump.ungrouped');
+                  (groups.get(key) ?? groups.set(key, []).get(key)!).push(c);
+                }
+                return Array.from(groups.entries()).map(([group, items]) => (
+                  <optgroup key={group} label={group}>
+                    {items.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} — {c.username}@{c.hostname}
+                      </option>
+                    ))}
+                  </optgroup>
+                ));
+              })()}
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">{t('jump.hint')}</p>
+          </div>
+
+          {/* Colour */}
+          <div>
+            <label className="mb-1 block text-sm font-medium">{t('connections.color')}</label>
+            <div className="m-swatches">
+              {MACHINE_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  className={`m-sw ${color === c ? 'sel' : ''}`}
+                  style={{ backgroundColor: c }}
+                  aria-label={`colour ${c}`}
                 />
-                {t('connections.authPassword')}
-              </label>
-              <label className="flex items-center">
-                <input
-                  type="radio"
-                  value="publicKey"
-                  checked={authMethod === 'publicKey'}
-                  onChange={(e) => setAuthMethod(e.target.value as 'password' | 'publicKey')}
-                  className="mr-2"
-                />
-                {t('connections.authPublicKey')}
-              </label>
+              ))}
             </div>
           </div>
 
-          {/* Password or Key Path */}
-          {authMethod === 'password' ? (
+          {/* Health-check (ADR 0017): a machine can opt out of active probing. */}
+          <div>
+            <label className="mb-1 block text-sm font-medium">Health-check</label>
+            <select
+              value={hcOptOut ? 'off' : 'inherit'}
+              onChange={(e) => setHcOptOut(e.target.value === 'off')}
+              className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
+            >
+              <option value="inherit">Follow the collection / server policy</option>
+              <option value="off">Never probe this machine</option>
+            </select>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              A machine can opt out of active probing; it can&apos;t opt into more than the server allows.
+            </p>
+          </div>
+
+          {/* Save-to-collection target (ADR 0016) — accounts context only */}
+          {collectionTargets && collectionTargets.length > 0 && (
             <div>
-              <label className="mb-1 block text-sm font-medium">
-                {t('connections.password')} {!connection && <span className="text-red-500">*</span>}
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder={connection ? '••••••••' : t('connections.passwordPlaceholder')}
-                  className="w-full rounded border border-border bg-input px-3 py-2 pr-10 text-foreground focus:border-primary focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  title={showPassword ? t('connections.hidePassword') : t('connections.showPassword')}
-                >
-                  {showPassword ? (
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                    </svg>
-                  ) : (
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-              {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
+              <label className="mb-1 block text-sm font-medium">{t('connections.saveToCollection')}</label>
+              <select
+                value={collectionTargetId}
+                onChange={(e) => setCollectionTargetId(e.target.value)}
+                disabled={!!connection}
+                className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none disabled:opacity-60"
+              >
+                {collectionTargets.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
               {connection && (
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Leave empty to keep current password
-                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{t('connections.collectionMoveUnsupported')}</p>
               )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  {t('connections.keyPath')} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={keyPath}
-                  onChange={(e) => setKeyPath(e.target.value)}
-                  placeholder={t('connections.keyPathPlaceholder')}
-                  className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
-                />
-                {errors.keyPath && <p className="mt-1 text-sm text-red-500">{errors.keyPath}</p>}
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">{t('connections.keyPassphrase')}</label>
-                <div className="relative">
-                  <input
-                    type={showKeyPassphrase ? 'text' : 'password'}
-                    value={keyPassphrase}
-                    onChange={(e) => setKeyPassphrase(e.target.value)}
-                    placeholder={t('connections.keyPassphrasePlaceholder')}
-                    className="w-full rounded border border-border bg-input px-3 py-2 pr-10 text-foreground focus:border-primary focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKeyPassphrase(!showKeyPassphrase)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    title={showKeyPassphrase ? t('connections.hidePassword') : t('connections.showPassword')}
-                  >
-                    {showKeyPassphrase ? (
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                      </svg>
-                    ) : (
-                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
             </div>
           )}
 
@@ -506,100 +508,16 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
           <details className="rounded border border-border p-4">
             <summary className="cursor-pointer font-medium">{t('common.advancedOptions')}</summary>
             <div className="mt-4 space-y-4">
-              {/* Collection Selector */}
-              <div ref={collectionDropdownRef}>
-                <label className="mb-1 block text-sm font-medium">{t('connections.collection')}</label>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowCollectionDropdown(!showCollectionDropdown)}
-                    className="w-full rounded border border-border bg-input px-3 py-2 text-left text-foreground focus:border-primary focus:outline-none flex justify-between items-center"
-                  >
-                    <span>{collection || t('connections.collectionNone')}</span>
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  {/* Dropdown Menu */}
-                  {showCollectionDropdown && (
-                    <div className="absolute z-10 mt-1 w-full rounded border border-border bg-background shadow-lg max-h-60 overflow-y-auto divide-y divide-border">
-                      {/* No collection option */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCollection('');
-                          setShowCollectionDropdown(false);
-                        }}
-                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                      >
-                        {t('connections.collectionNone')}
-                      </button>
-
-                      {/* Existing collections */}
-                      {collections.map((coll) => (
-                        <button
-                          key={coll.id}
-                          type="button"
-                          onClick={() => {
-                            setCollection(coll.name);
-                            setShowCollectionDropdown(false);
-                          }}
-                          className="w-full px-3 py-2 text-left hover:bg-muted flex items-center gap-2 transition-colors"
-                        >
-                          {coll.color && (
-                            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: coll.color }} />
-                          )}
-                          {coll.name}
-                        </button>
-                      ))}
-
-                      {/* Create new collection */}
-                      <div className="border-t border-border">
-                        {showNewCollectionInput ? (
-                          <div className="p-2">
-                            <input
-                              type="text"
-                              value={newCollectionName}
-                              onChange={(e) => setNewCollectionName(e.target.value)}
-                              onKeyPress={(e) => e.key === 'Enter' && handleCreateCollection()}
-                              placeholder={t('connections.collectionNamePlaceholder')}
-                              className="w-full rounded border border-border bg-input px-2 py-1 text-sm"
-                              autoFocus
-                            />
-                            <div className="mt-2 flex gap-2">
-                              <button
-                                type="button"
-                                onClick={handleCreateCollection}
-                                className="flex-1 rounded bg-primary px-2 py-1 text-xs text-primary-foreground hover:bg-primary/90"
-                              >
-                                {t('connections.collectionCreate')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setShowNewCollectionInput(false);
-                                  setNewCollectionName('');
-                                }}
-                                className="flex-1 rounded bg-secondary px-2 py-1 text-xs hover:bg-secondary/80"
-                              >
-                                {t('connections.cancel')}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setShowNewCollectionInput(true)}
-                            className="w-full px-3 py-2 text-left text-primary hover:bg-muted"
-                          >
-                            {t('connections.collectionNew')}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+              {/* Folder — a personal organiser label (not sharing; that's a collection) */}
+              <div>
+                <label className="mb-1 block text-sm font-medium">{t('connections.folder')}</label>
+                <input
+                  type="text"
+                  value={folder}
+                  onChange={(e) => setFolder(e.target.value)}
+                  placeholder={t('connections.folderPlaceholder')}
+                  className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
+                />
               </div>
 
               {/* Notes */}
@@ -612,6 +530,28 @@ export function ConnectionForm({ connection, prefillData, onClose, onSuccess }: 
                   rows={3}
                   className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
                 />
+              </div>
+
+              {/* Pre-connect hook: a local command run before the SSH session opens
+                  (e.g. bring up a VPN, refresh an SSO token). Runs in a PTY so
+                  interactive helpers work; a non-zero exit aborts the connection. */}
+              <div>
+                <label className="mb-1 block text-sm font-medium">{t('preconnect.label')}</label>
+                <textarea
+                  value={preconnect}
+                  onChange={(e) => setPreconnect(e.target.value)}
+                  onInput={(e) => {
+                    const el = e.currentTarget;
+                    el.style.height = 'auto';
+                    el.style.height = `${Math.min(el.scrollHeight, 180)}px`;
+                  }}
+                  placeholder={t('preconnect.placeholder')}
+                  rows={2}
+                  spellCheck={false}
+                  style={{ resize: 'vertical', minHeight: 52 }}
+                  className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm text-foreground focus:border-primary focus:outline-none"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">{t('preconnect.hint')}</p>
               </div>
 
               {/* SSH Keep-Alive Settings */}

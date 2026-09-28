@@ -44,15 +44,34 @@ impl Protocol {
 }
 
 /// Authentication method for SSH
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AuthMethod {
     Password {
         password: String,
     },
     PublicKey {
+        /// The browser sends `keyPath`; `rename_all` on an enum renames variants,
+        /// not their fields, so this has to be spelled out. `alias` keeps any
+        /// credentials already stored under the snake_case spelling readable.
+        #[serde(rename = "keyPath", alias = "key_path")]
         key_path: String,
+        /// Omitted when absent, as the browser does — `passphrase?: string` simply
+        /// disappears from JSON.stringify, so skipping it keeps a record written on
+        /// either side byte-identical rather than merely equivalent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         passphrase: Option<String>,
+    },
+    /// Authenticate via a running SSH agent (`SSH_AUTH_SOCK`). The private key
+    /// never leaves the agent — this is also the only way to use hardware keys
+    /// (FIDO/PIV). Nothing secret is stored by Rite.
+    Agent {
+        /// SHA256 fingerprint of a specific agent identity to offer; `None`
+        /// offers every identity the agent holds, like `ssh`.
+        identity: Option<String>,
+        /// Request agent forwarding so the remote host can reuse the agent.
+        #[serde(default)]
+        forward: bool,
     },
 }
 
@@ -63,6 +82,26 @@ pub struct ConnectionMetadata {
     pub icon: Option<String>,
     pub folder: Option<String>,
     pub notes: Option<String>,
+}
+
+fn default_forward_type() -> String {
+    "local".to_string()
+}
+
+/// A saved port-forward config on a connection. Started/stopped at runtime by the
+/// session manager; persisted as JSON (non-secret metadata). MVP = "local".
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PortForwardConfig {
+    /// Forward kind — "local" for the MVP ("remote"/"dynamic" reserved for later).
+    #[serde(default = "default_forward_type")]
+    pub forward_type: String,
+    /// Local bind host; `None` ⇒ 127.0.0.1.
+    #[serde(default)]
+    pub bind_host: Option<String>,
+    pub local_port: u16,
+    pub remote_host: String,
+    pub remote_port: u16,
 }
 
 /// Full connection data (for database storage)
@@ -78,6 +117,9 @@ pub struct Connection {
     pub metadata: ConnectionMetadata,
     pub ssh_keep_alive_override: Option<String>, // NULL, "disabled", or "enabled"
     pub ssh_keep_alive_interval: Option<i64>,    // Interval in seconds, NULL = use global
+    pub preconnect: Option<String>,              // pre-connect hook: local command, NULL = none
+    pub jump: Option<String>, // jump host: id of another connection, NULL = direct
+    pub forwards: Vec<PortForwardConfig>, // saved port forwards (JSON-persisted)
     pub created_at: i64,
     pub updated_at: i64,
     pub last_used_at: Option<i64>,
@@ -100,6 +142,10 @@ pub struct ConnectionInfo {
     pub notes: Option<String>,
     pub ssh_keep_alive_override: Option<String>, // NULL, "disabled", or "enabled"
     pub ssh_keep_alive_interval: Option<i64>,    // Interval in seconds
+    pub preconnect: Option<String>,              // pre-connect hook: local command, NULL = none
+    pub jump: Option<String>, // jump host: id of another connection, NULL = direct
+    #[serde(default)]
+    pub forwards: Vec<PortForwardConfig>, // saved port forwards
     pub created_at: i64,
     pub updated_at: i64,
     pub last_used_at: Option<i64>,
@@ -121,6 +167,10 @@ pub struct CreateConnectionInput {
     pub notes: Option<String>,
     pub ssh_keep_alive_override: Option<String>, // NULL, "disabled", or "enabled"
     pub ssh_keep_alive_interval: Option<i64>,    // Interval in seconds
+    pub preconnect: Option<String>,              // pre-connect hook: local command
+    pub jump: Option<String>,                    // jump host: id of another connection
+    #[serde(default)]
+    pub forwards: Option<Vec<PortForwardConfig>>, // saved port forwards
 }
 
 /// Input for updating a connection
@@ -140,6 +190,10 @@ pub struct UpdateConnectionInput {
     pub notes: Option<String>,
     pub ssh_keep_alive_override: Option<Option<String>>, // Nested Option to allow setting to NULL
     pub ssh_keep_alive_interval: Option<Option<i64>>,    // Nested Option to allow setting to NULL
+    pub preconnect: Option<Option<String>>,              // Nested Option to allow clearing
+    pub jump: Option<Option<String>>,                    // Nested Option to allow clearing
+    #[serde(default)]
+    pub forwards: Option<Vec<PortForwardConfig>>, // Some ⇒ replace the whole list
 }
 
 impl Connection {
@@ -164,6 +218,9 @@ impl Connection {
             },
             ssh_keep_alive_override: input.ssh_keep_alive_override,
             ssh_keep_alive_interval: input.ssh_keep_alive_interval,
+            preconnect: input.preconnect.filter(|s| !s.trim().is_empty()),
+            jump: input.jump.filter(|s| !s.trim().is_empty()),
+            forwards: input.forwards.unwrap_or_default(),
             created_at: now,
             updated_at: now,
             last_used_at: None,
@@ -202,6 +259,7 @@ impl Connection {
         let auth_type = match &self.auth_method {
             AuthMethod::Password { .. } => "password".to_string(),
             AuthMethod::PublicKey { .. } => "publicKey".to_string(),
+            AuthMethod::Agent { .. } => "agent".to_string(),
         };
 
         ConnectionInfo {
@@ -218,6 +276,9 @@ impl Connection {
             notes: self.metadata.notes.clone(),
             ssh_keep_alive_override: self.ssh_keep_alive_override.clone(),
             ssh_keep_alive_interval: self.ssh_keep_alive_interval,
+            preconnect: self.preconnect.clone(),
+            jump: self.jump.clone(),
+            forwards: self.forwards.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
             last_used_at: self.last_used_at,
@@ -261,6 +322,15 @@ impl Connection {
         }
         if let Some(ssh_keep_alive_interval) = input.ssh_keep_alive_interval {
             self.ssh_keep_alive_interval = ssh_keep_alive_interval;
+        }
+        if let Some(preconnect) = input.preconnect {
+            self.preconnect = preconnect.filter(|s| !s.trim().is_empty());
+        }
+        if let Some(jump) = input.jump {
+            self.jump = jump.filter(|s| !s.trim().is_empty());
+        }
+        if let Some(forwards) = input.forwards {
+            self.forwards = forwards;
         }
 
         self.updated_at = Utc::now().timestamp_millis();

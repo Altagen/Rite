@@ -1,6 +1,6 @@
 {
   "name": "rite",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Rust & TypeScript Interface for Terminal Environment",
   "repository": "https://github.com/Altagen/Rite",
@@ -15,12 +15,14 @@
     "lint": "pnpm -r lint",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "typecheck": "pnpm -r typecheck",
+    "e2e": "playwright test",
     "prepare": "husky"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.5.3",
-    "@commitlint/config-conventional": "^20.0.0",
-    "@types/node": "^24.0.0",
+    "@commitlint/cli": "^21.2.1",
+    "@commitlint/config-conventional": "^21.2.0",
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^24.13.3",
     "husky": "^9.1.7",
     "prettier": "^3.9.9",
     "typescript": "^5.9.3"

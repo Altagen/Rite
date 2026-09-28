@@ -4,7 +4,9 @@
 
 use anyhow::{Context, Result};
 use sqlx::Row;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::{
+    SqliteConnectOptions, SqliteJournalMode, SqlitePool, SqlitePoolOptions, SqliteSynchronous,
+};
 use std::path::Path;
 use tracing::{info, warn};
 
@@ -29,10 +31,17 @@ impl Database {
 
         info!("Connecting to database at: {}", db_path.display());
 
-        // Set up connection options
+        // Set up connection options. WAL + a busy timeout let the vault survive brief overlaps
+        // where two single-context servers hold the same file at once — e.g. an in-place context
+        // switch or a reset+reload (ADR 0014), where the outgoing server is still shutting down as
+        // the new one writes. Without these, that write hit an immediate "database is locked"
+        // ("Failed to store master password"). WAL also allows concurrent readers + one writer.
         let options = SqliteConnectOptions::new()
             .filename(db_path)
-            .create_if_missing(true);
+            .create_if_missing(true)
+            .journal_mode(SqliteJournalMode::Wal)
+            .synchronous(SqliteSynchronous::Normal)
+            .busy_timeout(std::time::Duration::from_secs(5));
 
         // Create connection pool
         let pool = SqlitePoolOptions::new()
@@ -68,9 +77,39 @@ impl Database {
         // Define all migrations with their SQL and version number
         let migrations = vec![
             (1, include_str!("../migrations/001_initial_schema.sql")),
+            (2, include_str!("../migrations/002_pending_host_keys.sql")),
+            (3, include_str!("../migrations/003_server_accounts.sql")),
+            (4, include_str!("../migrations/004_user_vault_keys.sql")),
+            (5, include_str!("../migrations/005_vault_connections.sql")),
+            (6, include_str!("../migrations/006_teams.sql")),
+            (7, include_str!("../migrations/007_user_keypair.sql")),
+            (8, include_str!("../migrations/008_team_keys.sql")),
+            (9, include_str!("../migrations/009_team_connections.sql")),
+            (10, include_str!("../migrations/010_collections.sql")),
+            (11, include_str!("../migrations/011_user_library.sql")),
+            (
+                12,
+                include_str!("../migrations/012_collection_split_keys.sql"),
+            ),
+            (
+                13,
+                include_str!("../migrations/013_drop_legacy_collection_key.sql"),
+            ),
+            (14, include_str!("../migrations/014_drop_team_keys.sql")),
+            (15, include_str!("../migrations/015_collection_offer.sql")),
+            (16, include_str!("../migrations/016_access_requests.sql")),
+            (
+                17,
+                include_str!("../migrations/017_must_change_password.sql"),
+            ),
+            (18, include_str!("../migrations/018_enrollment_tokens.sql")),
+            (19, include_str!("../migrations/019_preconnect.sql")),
+            (20, include_str!("../migrations/020_jump.sql")),
+            (21, include_str!("../migrations/021_forwards.sql")),
+            (22, include_str!("../migrations/022_collection_board.sql")),
+            (23, include_str!("../migrations/023_machine_last_used.sql")),
             // Future migrations go here:
-            // (2, include_str!("../migrations/002_new_feature.sql")),
-            // (3, include_str!("../migrations/003_another_feature.sql")),
+            // (19, include_str!("../migrations/019_another_feature.sql")),
         ];
 
         // Expected latest version
@@ -94,7 +133,7 @@ impl Database {
                 // Backup before migration (only if not initial setup)
                 if current_version > 0 {
                     info!("Creating backup before migration {}...", version);
-                    if let Err(e) = self.create_migration_backup().await {
+                    if let Err(e) = self.create_migration_backup(version).await {
                         warn!(
                             "Failed to create backup: {}. Continuing with migration...",
                             e
@@ -105,10 +144,44 @@ impl Database {
 
                 let mut conn = self.pool.acquire().await?;
 
-                sqlx::raw_sql(sql)
-                    .execute(&mut *conn)
-                    .await
-                    .with_context(|| format!("Failed to run migration {}", version))?;
+                // Normal path: run the whole migration file. On a *drifted* vault (schema
+                // objects already present but schema_version behind — e.g. an old dev vault
+                // whose columns predate the migration that adds them), a non-idempotent
+                // `ADD COLUMN`/`CREATE` errors; reconcile by re-running statement-by-statement
+                // and skipping the parts already applied, so the vault converges instead of
+                // bricking (graceful-handling bar). Non-benign errors still abort.
+                if let Err(e) = sqlx::raw_sql(sql).execute(&mut *conn).await {
+                    if is_benign_ddl_conflict(&e) {
+                        warn!(
+                            "Migration {} meets an already-present schema object ({}); \
+                             reconciling statement-by-statement",
+                            version,
+                            e.as_database_error()
+                                .map(|d| d.message())
+                                .unwrap_or_default()
+                        );
+                        apply_migration_tolerant(&mut conn, sql)
+                            .await
+                            .with_context(|| format!("Failed to run migration {}", version))?;
+                    } else {
+                        return Err(e)
+                            .with_context(|| format!("Failed to run migration {}", version));
+                    }
+                }
+
+                // Record the applied version so it is never re-run. The runner owns
+                // this (not each migration file) so it can't be forgotten — a missed
+                // record leaves the DB half-migrated and the next launch re-applies
+                // non-idempotent DDL (`ADD COLUMN` → "duplicate column"), which is
+                // exactly what happened before this was centralized here.
+                sqlx::query(
+                    "INSERT OR IGNORE INTO schema_version (version, applied_at) \
+                     VALUES (?1, strftime('%s', 'now'))",
+                )
+                .bind(version)
+                .execute(&mut *conn)
+                .await
+                .with_context(|| format!("Failed to record schema version {}", version))?;
 
                 info!("Migration {} completed successfully", version);
             }
@@ -298,10 +371,12 @@ impl Database {
         Ok(())
     }
 
-    /// Create automatic migration backup with timestamp
-    async fn create_migration_backup(&self) -> Result<()> {
+    /// Create automatic migration backup with timestamp. The version is part of the name so
+    /// several migrations applied in the same second don't collide on one filename (which made
+    /// `VACUUM INTO` fail — "database already exists" — and lost all but the first backup).
+    async fn create_migration_backup(&self, version: i64) -> Result<()> {
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
-        let backup_filename = format!("vault_pre_migration_{}.db", timestamp);
+        let backup_filename = format!("vault_pre_migration_{}_v{}.db", timestamp, version);
 
         let backup_dir = self
             .db_path
@@ -334,6 +409,9 @@ impl Database {
         notes: Option<&str>,
         ssh_keep_alive_override: Option<&str>,
         ssh_keep_alive_interval: Option<i64>,
+        preconnect: Option<&str>,
+        jump: Option<&str>,
+        forwards: Option<&str>,
         created_at: i64,
         updated_at: i64,
     ) -> Result<()> {
@@ -343,9 +421,9 @@ impl Database {
                 id, name, protocol, hostname, port, username,
                 encrypted_credentials, nonce,
                 color, icon, folder, notes,
-                ssh_keep_alive_override, ssh_keep_alive_interval,
+                ssh_keep_alive_override, ssh_keep_alive_interval, preconnect, jump, forwards,
                 created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)
             "#,
         )
         .bind(id)
@@ -362,6 +440,9 @@ impl Database {
         .bind(notes)
         .bind(ssh_keep_alive_override)
         .bind(ssh_keep_alive_interval)
+        .bind(preconnect)
+        .bind(jump)
+        .bind(forwards)
         .bind(created_at)
         .bind(updated_at)
         .execute(&self.pool)
@@ -422,6 +503,9 @@ impl Database {
         notes: Option<&str>,
         ssh_keep_alive_override: Option<&str>,
         ssh_keep_alive_interval: Option<i64>,
+        preconnect: Option<&str>,
+        jump: Option<&str>,
+        forwards: Option<&str>,
         updated_at: i64,
     ) -> Result<()> {
         sqlx::query(
@@ -440,7 +524,10 @@ impl Database {
                 notes = ?12,
                 ssh_keep_alive_override = ?13,
                 ssh_keep_alive_interval = ?14,
-                updated_at = ?15
+                preconnect = ?15,
+                jump = ?16,
+                forwards = ?17,
+                updated_at = ?18
             WHERE id = ?1
             "#,
         )
@@ -458,6 +545,9 @@ impl Database {
         .bind(notes)
         .bind(ssh_keep_alive_override)
         .bind(ssh_keep_alive_interval)
+        .bind(preconnect)
+        .bind(jump)
+        .bind(forwards)
         .bind(updated_at)
         .execute(&self.pool)
         .await?;
@@ -466,14 +556,92 @@ impl Database {
     }
 
     /// Update connection last used timestamp
-    pub async fn update_connection_last_used(&self, id: &str, last_used_at: i64) -> Result<()> {
-        sqlx::query("UPDATE connections SET last_used_at = ?1, updated_at = ?2 WHERE id = ?3")
-            .bind(last_used_at)
-            .bind(last_used_at)
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+    /// Stamp a legacy connection row as just used. Returns false when no such row
+    /// exists — the id may belong to a collection item instead (ADR 0018), which
+    /// records this beside the item rather than in a column.
+    pub async fn update_connection_last_used(&self, id: &str, last_used_at: i64) -> Result<bool> {
+        let n =
+            sqlx::query("UPDATE connections SET last_used_at = ?1, updated_at = ?2 WHERE id = ?3")
+                .bind(last_used_at)
+                .bind(last_used_at)
+                .bind(id)
+                .execute(&self.pool)
+                .await?
+                .rows_affected();
 
+        Ok(n > 0)
+    }
+
+    /// Every connection's stored credential blob: (id, encrypted_credentials, nonce). Used to
+    /// re-encrypt them when the master password changes.
+    pub async fn all_connection_crypto(&self) -> Result<Vec<(String, Vec<u8>, Vec<u8>)>> {
+        let rows = sqlx::query("SELECT id, encrypted_credentials, nonce FROM connections")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows
+            .iter()
+            .map(|r| {
+                (
+                    r.get::<String, _>("id"),
+                    r.get::<Vec<u8>, _>("encrypted_credentials"),
+                    r.get::<Vec<u8>, _>("nonce"),
+                )
+            })
+            .collect())
+    }
+
+    /// Atomically re-key the vault (ADR 0014): replace each connection's re-encrypted credentials
+    /// AND the master-password hash/salt in ONE transaction, so a mid-way failure can never leave a
+    /// mixed-key vault (some connections under the old key, some the new).
+    /// Apply a master-password change atomically.
+    ///
+    /// `conns` are legacy credential blobs re-encrypted with the new key, and
+    /// `collection_keys` are `(collection_id, protected_meta_key,
+    /// protected_items_key)` re-wrapped for it (ADR 0018). Both must land in the
+    /// same transaction as the new password: if the password changed and the keys
+    /// did not, every collection would be permanently unreadable.
+    pub async fn rekey_vault(
+        &self,
+        conns: &[(String, Vec<u8>, Vec<u8>)],
+        collection_keys: &[(String, String, Option<String>)],
+        new_hash: &str,
+        new_salt: &[u8],
+    ) -> Result<()> {
+        let now = chrono::Utc::now().timestamp_millis();
+        let mut tx = self.pool.begin().await?;
+        for (collection_id, meta, items) in collection_keys {
+            sqlx::query(
+                "UPDATE collection_members SET protected_meta_key = ?1, protected_items_key = ?2 \
+                 WHERE collection_id = ?3 AND user_id = ?4",
+            )
+            .bind(meta)
+            .bind(items)
+            .bind(collection_id)
+            .bind(crate::local_user::LOCAL_USER_ID)
+            .execute(&mut *tx)
+            .await?;
+        }
+        for (id, blob, nonce) in conns {
+            sqlx::query(
+                "UPDATE connections SET encrypted_credentials = ?1, nonce = ?2, updated_at = ?3 WHERE id = ?4",
+            )
+            .bind(blob)
+            .bind(nonce)
+            .bind(now)
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+        }
+        sqlx::query(
+            "INSERT INTO master_password (id, hash, salt, created_at, updated_at) VALUES (1, ?1, ?2, ?3, ?3) \
+             ON CONFLICT(id) DO UPDATE SET hash = excluded.hash, salt = excluded.salt, updated_at = excluded.updated_at",
+        )
+        .bind(new_hash)
+        .bind(new_salt)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -518,6 +686,9 @@ pub struct ConnectionRow {
     pub notes: Option<String>,
     pub ssh_keep_alive_override: Option<String>,
     pub ssh_keep_alive_interval: Option<i64>,
+    pub preconnect: Option<String>,
+    pub jump: Option<String>,
+    pub forwards: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
     pub last_used_at: Option<i64>,
@@ -574,6 +745,51 @@ impl Database {
     }
 }
 
+/// A SQLite error that means "this DDL was already applied" — safe to skip on a drifted vault
+/// (adding a column that exists, or creating a table/index that exists). Idempotent by intent.
+fn is_benign_ddl_conflict(e: &sqlx::Error) -> bool {
+    e.as_database_error().is_some_and(|db| {
+        let m = db.message().to_ascii_lowercase();
+        m.contains("duplicate column name") || m.contains("already exists")
+    })
+}
+
+/// Re-run a migration one statement at a time, skipping statements that hit a benign DDL
+/// conflict (the object already exists). Only used as a fallback after the whole-file run hit
+/// such a conflict, so a drifted vault converges. Non-benign errors abort.
+async fn apply_migration_tolerant(conn: &mut sqlx::SqliteConnection, sql: &str) -> Result<()> {
+    for stmt in split_sql_statements(sql) {
+        if let Err(e) = sqlx::raw_sql(&stmt).execute(&mut *conn).await {
+            if is_benign_ddl_conflict(&e) {
+                continue; // already applied on this vault — skip
+            }
+            let detail = e.as_database_error().map(|d| d.message().to_string());
+            warn!("reconcile: non-benign failure ({detail:?}) on statement: {stmt}");
+            return Err(e).context("statement failed while reconciling a drifted migration");
+        }
+    }
+    Ok(())
+}
+
+/// Split a migration file into individual statements on `;`. Comments are stripped FIRST so a
+/// `;` inside a `-- …` comment (e.g. "a team key; it is sealed") isn't mistaken for a statement
+/// separator. The migrations are simple DDL/DML with no triggers or `BEGIN…END` blocks and no
+/// `--`/`;` inside string literals, so this is safe. Only ever used on the tolerant fallback path.
+fn split_sql_statements(sql: &str) -> Vec<String> {
+    let code: String = sql
+        .lines()
+        .map(|line| match line.find("--") {
+            Some(i) => &line[..i], // keep only the code before the line comment
+            None => line,
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    code.split(';')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -586,6 +802,29 @@ mod tests {
         (db, temp_dir)
     }
 
+    // Two single-context servers briefly hold the same vault file during a reset+reload / switch
+    // (ADR 0014). With WAL + a busy timeout, a write from one succeeds while the other is still
+    // open — before, this raced to an immediate "database is locked" ("Failed to store master
+    // password"). This opens a second pool on the same file and writes through both.
+    #[tokio::test]
+    async fn concurrent_writers_on_the_same_file_dont_deadlock() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("shared.db");
+        let outgoing = Database::new(&db_path).await.unwrap();
+        // The "new" server opens the same file while the outgoing one is still alive.
+        let incoming = Database::new(&db_path).await.unwrap();
+        incoming
+            .store_master_password("hash-a", b"salt-a")
+            .await
+            .expect("write from the incoming server should not be locked out");
+        // The outgoing server can still read + write too (WAL: readers + one writer).
+        assert!(outgoing.get_master_password().await.unwrap().is_some());
+        outgoing
+            .store_master_password("hash-b", b"salt-b")
+            .await
+            .unwrap();
+    }
+
     #[tokio::test]
     async fn test_database_initialization() {
         let (db, _temp) = create_test_db().await;
@@ -593,8 +832,73 @@ mod tests {
         // Should be first run
         assert!(db.is_first_run().await.unwrap());
 
-        // Schema version should be 1
-        assert_eq!(db.get_schema_version().await.unwrap(), 1);
+        // A fresh DB migrates all the way to the latest schema (each applied
+        // migration records its version).
+        assert_eq!(db.get_schema_version().await.unwrap(), 23);
+    }
+
+    #[test]
+    fn split_sql_statements_drops_comments_and_blanks() {
+        let sql =
+            "-- a comment\nALTER TABLE t ADD COLUMN a TEXT; -- trailing\n\nCREATE INDEX i ON t(a);";
+        let stmts = super::split_sql_statements(sql);
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "ALTER TABLE t ADD COLUMN a TEXT");
+        assert_eq!(stmts[1], "CREATE INDEX i ON t(a)");
+    }
+
+    #[test]
+    fn split_sql_statements_ignores_semicolons_inside_comments() {
+        // Regression (migration 008): a ';' inside a comment must not split a statement.
+        let sql = "-- a team key; it is sealed per member\nALTER TABLE t ADD COLUMN k TEXT;";
+        assert_eq!(
+            super::split_sql_statements(sql),
+            vec!["ALTER TABLE t ADD COLUMN k TEXT"]
+        );
+    }
+
+    #[tokio::test]
+    async fn migration_runner_tolerates_a_preexisting_column() {
+        // Reproduces the drifted-vault case (schema object already present, version behind):
+        // a migration that adds an existing column plus a new one must skip the dup and still
+        // apply the new column — converge, not brick.
+        let (db, _temp) = create_test_db().await;
+        let mut conn = db.pool().acquire().await.unwrap();
+        super::apply_migration_tolerant(
+            &mut conn,
+            "ALTER TABLE users ADD COLUMN kdf_master_salt BLOB;\n\
+             ALTER TABLE users ADD COLUMN drift_probe_col TEXT;",
+        )
+        .await
+        .expect("tolerant migration should converge on a drifted vault");
+        let cols: Vec<String> = sqlx::query("PRAGMA table_info(users)")
+            .fetch_all(&mut *conn)
+            .await
+            .unwrap()
+            .iter()
+            .map(|r| r.get::<String, _>("name"))
+            .collect();
+        assert!(
+            cols.contains(&"drift_probe_col".to_string()),
+            "new column applied"
+        );
+    }
+
+    #[tokio::test]
+    async fn migrations_are_not_reapplied_on_reopen() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+
+        // First open runs every migration to the latest version.
+        let db1 = Database::new(&db_path).await.unwrap();
+        assert_eq!(db1.get_schema_version().await.unwrap(), 23);
+        drop(db1);
+
+        // Reopening the SAME vault must be a clean no-op: without the recorded
+        // versions the runner would re-apply non-idempotent DDL (`ADD COLUMN` →
+        // "duplicate column") and fail — the exact desktop second-launch bug.
+        let db2 = Database::new(&db_path).await.unwrap();
+        assert_eq!(db2.get_schema_version().await.unwrap(), 23);
     }
 
     #[tokio::test]

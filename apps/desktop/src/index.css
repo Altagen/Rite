@@ -28,27 +28,38 @@
 }
 
 @layer base {
+  /* Palette aligned with the design mock (design/mock/rite.css): a bluish dark
+     ground, cards a touch lighter for depth, and a periwinkle accent. */
   :root {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    --radius: 0.5rem;
+    /* Rite ships a single dark palette. Declaring it tells the engine to render
+       everything the UA draws itself — native <select> popups, scrollbars, form
+       controls — in dark too. Without it WebKitGTK paints the dropdown list on a
+       white sheet while our CSS colours the text near-white: unreadable. */
+    color-scheme: dark;
+
+    --background: 226.7 24.3% 7.3%;
+    --foreground: 223.6 29.7% 92.7%;
+    --card: 224 24.6% 12%;
+    --card-foreground: 223.6 29.7% 92.7%;
+    --popover: 224 24.6% 12%;
+    --popover-foreground: 223.6 29.7% 92.7%;
+    --primary: 224.1 85.8% 72.4%;
+    --primary-foreground: 225 44.4% 7.1%;
+    --secondary: 224.3 29.1% 15.5%;
+    --secondary-foreground: 223.6 29.7% 92.7%;
+    --muted: 224.3 29.1% 15.5%;
+    --muted-foreground: 223.6 15.6% 58.6%;
+    --accent: 224.3 29.1% 15.5%;
+    --accent-foreground: 223.6 29.7% 92.7%;
+    --destructive: 348.8 89% 71.6%;
+    --destructive-foreground: 225 44.4% 7.1%;
+    --border: 221.7 22.8% 19.8%;
+    /* The mock's lighter --border2 (#333c50): a brighter 1px edge that gives the
+       interactive chrome (search, buttons, pill) a subtle raised look. */
+    --border2: 221.7 22.8% 25.7%;
+    --input: 225 28.6% 11%;
+    --ring: 224.1 85.8% 72.4%;
+    --radius: 0.75rem;
   }
 }
 
@@ -58,8 +69,364 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Match the design mock's base density (design/mock/rite.css body). Chrome
+       elements inherit this; Tailwind text-* utilities set their own size. */
+    font-size: 14px;
+    line-height: 1.45;
   }
   button:not([disabled]) {
     cursor: pointer;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Design-mock component classes (design/mock/rite.css), mapped onto the app's
+   theme tokens so the chrome matches the mock. Used by the workspace header and
+   the library sidebar. Dark, terminal-forward.
+   --------------------------------------------------------------------------- */
+@layer components {
+  /* buttons */
+  .m-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid hsl(var(--border2));
+    background: hsl(var(--secondary));
+    color: hsl(var(--foreground));
+    padding: 8px 13px;
+    border-radius: 8px;
+    font-weight: 550;
+    font-size: 13px;
+    white-space: nowrap;
+    transition: 0.14s;
+  }
+  .m-btn:hover {
+    border-color: hsl(var(--primary));
+    background: hsl(var(--muted));
+  }
+  .m-btn-primary {
+    background: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+  }
+  .m-btn-primary:hover {
+    filter: brightness(1.08);
+    background: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+  }
+  .m-btn-ghost {
+    background: transparent;
+    border-color: transparent;
+  }
+  .m-btn-ghost:hover {
+    background: hsl(var(--secondary));
+    border-color: hsl(var(--border));
+  }
+  .m-btn-sm {
+    padding: 5px 10px;
+    font-size: 13px;
+    border-radius: 7px;
+  }
+
+  /* pill / chip + status dot + tag */
+  .m-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid hsl(var(--border2));
+    background: hsl(var(--secondary));
+    padding: 5px 12px;
+    border-radius: 10px;
+    font-weight: 650;
+    font-size: 14px;
+  }
+  .m-chip:hover {
+    border-color: hsl(var(--primary));
+  }
+  .m-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+    background: #9ece6a;
+  }
+  .m-tag {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    background: hsl(var(--muted));
+    color: hsl(var(--muted-foreground));
+  }
+  /* Context state, from the mock's palette (amber/green/purple): a vault with no window
+     is locked — its master key lives only in a running server's memory. */
+  .m-tag-locked,
+  .m-dot-locked {
+    background: rgba(229, 181, 103, 0.14);
+    color: #e5b567;
+    border: 1px solid rgba(229, 181, 103, 0.3);
+  }
+  .m-tag-open,
+  .m-dot-open {
+    background: rgba(158, 206, 106, 0.14);
+    color: #9ece6a;
+    border: 1px solid rgba(158, 206, 106, 0.3);
+  }
+  .m-tag-server,
+  .m-dot-server {
+    background: rgba(187, 154, 247, 0.14);
+    color: #bb9af7;
+    border: 1px solid rgba(187, 154, 247, 0.3);
+  }
+  /* The pill's dot is a filled disc, not a bordered chip. */
+  .m-dot-locked {
+    background: #e5b567;
+    border-color: #e5b567;
+  }
+  .m-dot-open {
+    background: #9ece6a;
+    border-color: #9ece6a;
+  }
+  .m-dot-server {
+    background: #bb9af7;
+    border-color: #bb9af7;
+  }
+
+  /* header bar */
+  .m-appbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 16px;
+    border-bottom: 1px solid hsl(var(--border));
+    background: linear-gradient(180deg, hsl(var(--card)), hsl(var(--background)));
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .m-brand {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .m-spacer {
+    flex: 1;
+  }
+  /* Accounts header (Workspace with navActions): one row, and children that keep their natural
+     width instead of shrinking — so OverflowNav can detect real overflow (scrollWidth) and fold
+     the nav into "⋯". The spacer still absorbs slack. */
+  .m-appbar-fit {
+    flex-wrap: nowrap;
+  }
+  .m-appbar-fit > * {
+    flex-shrink: 0;
+  }
+  .m-appbar-fit > .m-spacer {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  /* sidebar chrome */
+  .m-side-hdr {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 6px 14px;
+  }
+  .m-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+  }
+  .m-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px;
+    padding: 8px 11px;
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border2));
+    border-radius: 9px;
+    color: hsl(var(--muted-foreground));
+  }
+  .m-search input {
+    background: none;
+    border: none;
+    outline: none;
+    color: hsl(var(--foreground));
+    width: 100%;
+    font-size: 13px;
+    /* Fixed line-height so the field height (and the whole tree below it) is
+       deterministic regardless of the resolved font's metrics — matches the mock. */
+    line-height: 18px;
+  }
+  .m-cnt {
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    background: hsl(var(--secondary));
+    border-radius: 999px;
+    padding: 1px 7px;
+  }
+  .m-mc {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #bb9af7;
+  }
+
+  /* sidebar tree rows (the mock's .tnode) */
+  .m-side {
+    background: hsl(var(--input)); /* the mock's --bg2, a touch off the ground */
+  }
+  .m-tnode {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .m-tnode:hover {
+    background: hsl(var(--secondary));
+  }
+  .m-tnode.sel {
+    background: color-mix(in srgb, hsl(var(--primary)) 15%, transparent);
+    border-color: color-mix(in srgb, hsl(var(--primary)) 30%, transparent);
+  }
+  .m-ca {
+    width: 15px;
+    opacity: 0.55;
+    display: grid;
+    place-items: center;
+    flex: none;
+  }
+  .m-nm {
+    flex: 1;
+    font-weight: 550;
+    font-size: 13.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .m-tnode.leaf .m-nm {
+    font-weight: 500;
+  }
+  .m-acts {
+    display: flex;
+    gap: 0;
+    opacity: 0;
+    transition: 0.1s;
+  }
+  .m-tnode:hover .m-acts {
+    opacity: 1;
+  }
+  .m-acts button {
+    padding: 3px;
+    border-radius: 6px;
+    color: hsl(var(--muted-foreground));
+  }
+  .m-acts button:hover {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+  }
+  .m-lsub {
+    font-size: 11px;
+    color: hsl(var(--muted-foreground));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* modal ("shadow box") — the mock's .backdrop + .modal */
+  .m-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(6, 8, 14, 0.66);
+    backdrop-filter: blur(3px);
+    display: grid;
+    place-items: center;
+    z-index: 50;
+    padding: 20px;
+  }
+  .m-modal {
+    width: 100%;
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 16px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+    animation: m-pop 0.16s ease;
+  }
+  @keyframes m-pop {
+    from {
+      transform: translateY(6px) scale(0.98);
+      opacity: 0;
+    }
+  }
+
+  /* colour swatches */
+  .m-swatches {
+    display: flex;
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+  .m-sw {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    transition: 0.1s;
+  }
+  .m-sw:hover {
+    transform: scale(1.08);
+  }
+  .m-sw.sel {
+    outline: 2px solid hsl(var(--foreground));
+    outline-offset: 2px;
+  }
+  .m-sw.sel::after {
+    content: '✓';
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    color: #0a0e1a;
+    font-weight: 800;
+    font-size: 13px;
+  }
+
+  /* floating menu (the + / ⋯ menus) */
+  .m-menu {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: 11px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    padding: 6px;
+    min-width: 200px;
+  }
+  .m-menu button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 550;
+    color: hsl(var(--foreground));
+  }
+  .m-menu button:hover {
+    background: hsl(var(--secondary));
   }
 }

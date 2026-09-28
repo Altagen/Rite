@@ -1,15 +1,14 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/desktop/src-tauri",
+    "apps/desktop/shell",
     "packages/crypto",
-    "packages/protocols",
     "packages/rite-core",
     "packages/rite-server",
 ]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Ange Cesari"]
@@ -48,10 +47,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Error handling
 anyhow = "1.0"
 thiserror = "2.0"
-
-# Tauri
-tauri = { version = "2.11", features = [] }
-tauri-plugin-shell = "2.3"
 
 # Utilities
 uuid = { version = "1.23", features = ["v4", "serde"] }

@@ -16,8 +16,10 @@ This document describes the technical architecture and design decisions for RITE
 
 ## Overview
 
-RITE is a desktop terminal client built with:
-- **Backend**: Rust (via Tauri) for system operations, crypto, and protocol handling
+RITE is a terminal client built around one Rust core with multiple shells:
+- **Core**: Rust (`rite-core`) — UI-agnostic auth, connections, terminals, crypto
+- **Shells**: `rite-server` (Axum HTTP/WebSocket) and a wry desktop client that
+  embeds it; the frontend talks to either over HTTP + WebSocket (no IPC)
 - **Frontend**: React + TypeScript for UI
 - **Terminal**: xterm.js for terminal emulation
 
@@ -32,15 +34,10 @@ RITE is a desktop terminal client built with:
 ```
 rite/
 ├── apps/
-│   └── desktop/              # Tauri desktop application
-│       ├── src-tauri/        # Rust backend
-│       │   ├── src/
-│       │   │   ├── main.rs          # Tauri entry point
-│       │   │   ├── commands.rs      # Tauri commands (IPC)
-│       │   │   ├── state.rs         # App state management
-│       │   │   └── theme.rs         # Theme loader
-│       │   ├── Cargo.toml
-│       │   └── tauri.conf.json
+│   └── desktop/              # Desktop client
+│       ├── shell/            # wry native shell (binary `rite`)
+│       │   └── src/main.rs   #   generates a token, runs rite-server in-process,
+│       │                     #   opens a webview over loopback HTTP/WS
 │       └── src/              # React frontend
 │           ├── main.tsx
 │           ├── App.tsx
@@ -71,7 +68,8 @@ rite/
 ### Backend (Rust)
 | Purpose | Library | Version | Notes |
 |---------|---------|---------|-------|
-| Framework | `tauri` | 2.x | Desktop app framework |
+| HTTP/WS server | `axum` | 0.8 | rite-server transport |
+| Desktop webview | `wry` / `tao` | 0.55 / 0.35 | Native client window |
 | Async Runtime | `tokio` | 1.x | Async I/O |
 | KDF | `argon2` | 0.5.x | Password hashing |
 | Encryption | `chacha20poly1305` | 0.10.x | AEAD cipher |
@@ -101,9 +99,9 @@ rite/
 │  │Components│ (xterm)  │  System  │(Zustand) │  │
 │  └─────────┴──────────┴──────────┴──────────┘  │
 └────────────────────┬────────────────────────────┘
-                     │ IPC (Tauri Commands)
+                     │ HTTP + WebSocket
 ┌────────────────────▼────────────────────────────┐
-│             Backend (Rust + Tauri)              │
+│           Shell (Rust: rite-server)             │
 │  ┌─────────┬──────────┬──────────┬──────────┐  │
 │  │Commands │  State   │  Theme   │   DB     │  │
 │  │  (IPC)  │Management│  Loader  │ (SQLite) │  │
@@ -189,6 +187,62 @@ User Password
          ↓               ↓
     SQLite DB      Encrypted Blob
 ```
+
+### Collections — the sharing model (ADR 0016)
+
+A **collection** is the unit of sharing: it holds machines and its own nested
+folders, and carries members with per-member roles (owner / editor / viewer).
+There are no loose machines — every machine lives in a collection, and
+**Personal is a real 1-member collection**.
+
+On a server this is zero-knowledge. The client generates a `metaKey` (collection
+name, folder tree) and an `itemsKey` (machines, board), and seals a copy of each
+to every member's X25519 public key. The server stores only opaque `v1.…` blobs
+plus the membership graph it needs for access control — it never holds a key, so
+it cannot read a collection's name, its machines or its board.
+
+```
+        collection keys (metaKey, itemsKey)
+                 │
+                 ├─ sealed to member A's public key ─┐
+                 ├─ sealed to member B's public key ─┤→ server stores sealed copies
+                 └─ used client-side to encrypt ─────┘   + opaque item blobs
+```
+
+Where the decryption happens depends on the shell: a **local vault** and a
+**native client attached to a remote server** decrypt in Rust (rite-core, or the
+local trusted rite-server via the ADR 0012 multiplexer), so credentials never
+reach the webview. The **browser UI** has no local Rust to delegate to, so it
+decrypts client-side in JS.
+
+### A local vault is a collection too (ADR 0018)
+
+A vault uses the same tables and the same blob format as a server — one storage
+model, not two — but nothing is shareable there, so the differences are about
+keys rather than structure:
+
+- **No members to seal to.** A collection's `metaKey`/`itemsKey` are *wrapped*
+  with the vault's master key instead of sealed to an X25519 public key. The
+  master key never encrypts your data directly; it only protects those two keys.
+  That is why changing the master password re-wraps 128 bytes rather than
+  re-encrypting every machine — and why it must do so in the same transaction as
+  the password change, or the vault would still be there and unreadable.
+- **No Personal.** It exists on a server only because *other* collections can be
+  shared and it is the one that cannot. With nothing shareable it has no
+  distinguishing property, so a fresh vault simply starts empty.
+- **One implicit owner.** `collection_members.user_id` is a real foreign key, so
+  a vault materialises a single `users` row to own its collections. It is not an
+  account: no login path reads it.
+- **Everything is encrypted at rest.** A machine is one AES-GCM blob, so the
+  hostname, username, folder and notes that the legacy `connections` table kept
+  in plaintext columns no longer are.
+- **No collaborative surface.** Members, roles and sharing are gated on
+  `isServerContext`, not on "has collections" — a vault shows no member list, no
+  role pill and no sharing entry, not even a disabled one. The collection and
+  folder dialogs are shared with the server context and take an optional
+  `onPersist` from the connections source: without it they seal to members here,
+  with it they hand the plaintext to rite-core. One form, two crypto loci, no
+  duplicated components.
 
 ### Data at Rest
 - **Vault DB**: `~/.local/share/rite/vault.db`
@@ -451,7 +505,7 @@ pnpm dev
 pnpm build
 
 # Output (Linux)
-apps/desktop/src-tauri/target/release/rite
+target/release/rite
 
 # Package
 # Creates tar.gz with binary + assets
@@ -489,7 +543,7 @@ No auto-updater (by design - user manages updates).
 - Profile parsing
 
 ### Integration Tests
-- Tauri commands (invoke from test)
+- API endpoints (HTTP request from test)
 - Database operations
 - End-to-end crypto (encrypt → decrypt)
 
@@ -524,7 +578,6 @@ No auto-updater (by design - user manages updates).
 
 ## References
 
-- [Tauri Architecture](https://tauri.app/concepts/architecture/)
 - [russh Documentation](https://docs.rs/russh)
 - [xterm.js Documentation](https://xtermjs.org/)
 - [age Specification](https://age-encryption.org/v1)

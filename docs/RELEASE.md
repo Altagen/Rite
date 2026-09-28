@@ -40,7 +40,7 @@ RITE uses [Conventional Commits](https://www.conventionalcommits.org/) to automa
 git commit -m "feat(ssh): add SSH config import support"
 git commit -m "fix(terminal): resolve focus issue on tab switch"
 git commit -m "docs: update installation instructions"
-git commit -m "chore(deps): update tauri to 2.9.4"
+git commit -m "chore(deps): update axum to 0.8.1"
 ```
 
 ## Local Build
@@ -159,17 +159,14 @@ task lint
 
 ### 2. Update Version
 
-Edit `apps/desktop/src-tauri/tauri.conf.json`:
-```json
-{
-  "version": "0.1.0"
-}
-```
+Bump the version in `Cargo.toml` (`[workspace.package] version`) and the two
+`package.json` files (root + `apps/desktop`). Regenerate `Cargo.lock` with
+`cargo check`.
 
 Commit:
 ```bash
-git add apps/desktop/src-tauri/tauri.conf.json
-git commit -m "chore(release): bump version to 0.1.0"
+git add Cargo.toml Cargo.lock package.json apps/desktop/package.json
+git commit -m "chore(release): bump version to 0.2.0"
 git push origin main
 ```
 
@@ -241,9 +238,8 @@ Reference build times on a standard development machine:
 ### SBOM Generation Fails
 If `task sbom` fails:
 ```bash
-cd apps/desktop/src-tauri
-cargo cyclonedx --format json
-mv rite.cdx.json ../../../dist/sbom.json
+cargo cyclonedx --format json -p rite-desktop
+mv rite-desktop*.cdx.json dist/sbom.json
 ```
 
 ### Build Fails on macOS

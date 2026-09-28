@@ -23,9 +23,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH=/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin
 
 # --- System dependencies -----------------------------------------------------
-# Tauri on Linux needs the GTK3 / WebKit2GTK 4.1 dev headers; patchelf is used
-# by the bundler / build check. build-essential + pkg-config + libssl-dev cover
-# the Rust native builds.
+# The wry desktop client on Linux needs the GTK3 / WebKit2GTK 4.1 dev headers.
+# build-essential + pkg-config + libssl-dev cover the Rust native builds.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
@@ -60,6 +59,22 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
 # --- go-task -----------------------------------------------------------------
 RUN sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin \
     && task --version
+
+# --- Playwright browser runtime deps -----------------------------------------
+# The e2e harness (local only — not part of GitHub CI) runs chromium headless.
+# GTK/WebKit above pull most of chromium's deps; these are the ones it doesn't
+# (NSS/NSPR crypto libs + ALSA). Keeps the e2e run reproducible in the image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libnss3 \
+        libnspr4 \
+        libasound2t64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Mirror GitHub Actions' environment: `CI=true` is set on every runner. pnpm 11 checks it before
+# running scripts (verifyDepsBeforeRun) and, without it, aborts a non-interactive node_modules
+# reconcile ("no TTY") — so `task check` would fail locally but pass in CI. Setting it here keeps
+# the ISO-CI image faithful: a local `task check` passes iff CI passes.
+ENV CI=true
 
 WORKDIR /workspace
 CMD ["bash"]

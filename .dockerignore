@@ -1,0 +1,11 @@
+# Build context excludes — keep the image build fast and reproducible.
+.git
+target
+node_modules
+**/node_modules
+.pnpm-store
+apps/desktop/dist
+packages/rite-server/web/assets
+packages/rite-server/web/index.html
+packages/rite-server/web/favicon.svg
+**/*.log

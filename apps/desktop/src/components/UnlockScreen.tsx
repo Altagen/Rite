@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react';
-import { Tauri } from '../utils/tauri';
+import { Backend } from '../utils/backend';
 import { useAuthStore } from '../store/authStore';
 import { useTranslation } from '../i18n/i18n';
 
@@ -42,7 +42,7 @@ export function UnlockScreen({ asModal = false, onClose }: UnlockScreenProps = {
     }
 
     try {
-      await Tauri.Auth.resetDatabase();
+      await Backend.Auth.resetDatabase();
       // Reload the page to restart from first run
       window.location.reload();
     } catch (error) {

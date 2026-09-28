@@ -60,10 +60,13 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: .
 
       - name: Run Rust tests
-        run: cargo test --workspace --lib --all-features
+        # Not --lib: that skips everything in tests/, which is where the SSH
+        # transport, the pre-connect hook and the auth-method wire format are
+        # covered. Those ran nowhere in CI until now.
+        run: cargo test --workspace --all-features
 
   # Rust linting
   lint-rust:
@@ -89,7 +92,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: .
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
@@ -225,7 +228,6 @@ jobs:
         run: cargo install cargo-cyclonedx
 
       - name: Generate Cargo SBOM
-        working-directory: apps/desktop/src-tauri
         run: cargo cyclonedx --format json
 
       - name: Upload SBOM
@@ -268,7 +270,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: .
 
       - name: Rust build check
         run: cargo check --workspace
