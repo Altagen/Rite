@@ -206,8 +206,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # Pinned: an unpinned `cargo install` is what broke the 0.2.0 release — the
+      # newest cargo-cyclonedx that day had dropped the flag this job was using.
+      # A build tool in the release path has no business floating.
       - name: Install cargo-cyclonedx
-        run: cargo install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx@0.5.9 --locked
 
       # cargo-cyclonedx dropped `-p/--package`; the crate is selected by its manifest.
       - name: Generate SBOM (client)
