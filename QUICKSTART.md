@@ -30,21 +30,18 @@ pnpm install
 
 # This will:
 # - Install npm dependencies for all packages
-# - Prepare Tauri
 # - Take 2-5 minutes depending on your connection
 ```
 
 ## Running in Development
 
 ```bash
-# Start the app in development mode
+# Native desktop client (rite-server in-process + wry webview)
 task dev
 
-# This will:
-# - Start Vite dev server on http://localhost:5173
-# - Compile Rust backend
-# - Launch the Tauri window
-# - Enable hot-reload for both frontend and backend
+# Or run the pieces separately:
+task dev:server     # rite-server standalone (API + embedded frontend)
+task dev:frontend   # Vite dev server on http://localhost:5173 (mock backend)
 ```
 
 **First launch might take a few minutes** to compile all Rust dependencies.
@@ -132,7 +129,7 @@ lsof -ti:5173 | xargs kill -9
 # Or change the port in apps/desktop/vite.config.ts
 ```
 
-### Tauri dependencies missing (Linux)
+### Desktop client (wry) dependencies missing (Linux)
 
 #### Debian/Ubuntu
 ```bash
@@ -179,9 +176,9 @@ sudo pacman -S \
 - Changes auto-reload (hot module replacement)
 
 **Backend (Rust)**:
-- Edit files in `apps/desktop/src-tauri/src/`
-- Tauri automatically recompiles on save
-- Takes 5-30 seconds depending on changes
+- Edit `packages/rite-core/` (core logic), `packages/rite-server/` (HTTP/WS),
+  or `apps/desktop/shell/` (the wry client)
+- Rebuilds on the next `task dev` / `cargo run`
 
 **Shared packages**:
 - Edit `packages/crypto/` or `packages/protocols/`
@@ -241,7 +238,7 @@ RITE uses [Conventional Commits](https://www.conventionalcommits.org/) for autom
 git commit -m "feat(ssh): add SSH config import"
 git commit -m "fix(terminal): resolve focus bug"
 git commit -m "docs: update quickstart guide"
-git commit -m "chore(deps): update tauri to 2.9.4"
+git commit -m "chore(deps): update axum to 0.8.1"
 ```
 
 See [RELEASE.md](./RELEASE.md) for complete commit format documentation.
@@ -257,7 +254,8 @@ See [RELEASE.md](./RELEASE.md) for complete commit format documentation.
 
 2. **Explore the code**:
    - Start with `apps/desktop/src/App.tsx` (frontend entry)
-   - Then `apps/desktop/src-tauri/src/main.rs` (backend entry)
+   - Then `packages/rite-server/src/lib.rs` (HTTP/WS API) and
+     `apps/desktop/shell/src/main.rs` (the wry client entry)
    - Check `packages/crypto/src/lib.rs` for crypto implementation
 
 3. **Join the community** (coming soon):

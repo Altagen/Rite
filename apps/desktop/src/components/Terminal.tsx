@@ -8,11 +8,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { transport, Unlisten } from '../utils/transport';
 import '@xterm/xterm/css/xterm.css';
 import { terminalPool } from '../utils/terminalPool';
-import { Tauri } from '../utils/tauri';
+import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
+import { useAutoReconnect } from '../store/autoReconnect';
+import { SnippetsModal } from './SnippetsModal';
 
 // Global cache to track if a terminal has already been initialized
 // This prevents re-writing initial content on remount
@@ -63,6 +65,8 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   const [error, setError] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  // The live session id captured when the snippets panel is opened (null = closed).
+  const [snippetSession, setSnippetSession] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Intelligent prompt detection state
@@ -76,6 +80,10 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
   // Track if terminal was explicitly closed by user
   const isClosedByUserRef = useRef(false);
+
+  // Latest reconnect handler, so the connection-dead listener (set up in an
+  // effect) can trigger auto-reconnect without a use-before-define cycle.
+  const reconnectRef = useRef<(auto?: boolean) => void>(() => {});
 
   // Update refs when props change (without triggering terminal recreation)
   useEffect(() => {
@@ -106,7 +114,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
     try {
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
-      await Tauri.Terminal.sendTerminalInput(sessionIdRef.current, bytes);
+      await Backend.Terminal.sendTerminalInput(sessionIdRef.current, bytes);
     } catch (err) {
       errorHandler.handle('Failed to send terminal input', {
         severity: ErrorSeverity.ERROR,
@@ -133,10 +141,10 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   }, [isFocused, existingSessionId]);
 
   useEffect(() => {
-    let unlistenData: UnlistenFn | null = null;
-    let unlistenExit: UnlistenFn | null = null;
-    let unlistenClosed: UnlistenFn | null = null;
-    let unlistenDead: UnlistenFn | null = null;
+    let unlistenData: Unlisten | null = null;
+    let unlistenExit: Unlisten | null = null;
+    let unlistenClosed: Unlisten | null = null;
+    let unlistenDead: Unlisten | null = null;
 
     async function initializeTerminal() {
       if (!terminalRef.current || !existingSessionId) return;
@@ -241,7 +249,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
       const onResizeDisposable = term.onResize(async ({ cols, rows }) => {
         if (sessionIdRef.current) {
           try {
-            await Tauri.Terminal.resizeTerminal(sessionIdRef.current, cols, rows);
+            await Backend.Terminal.resizeTerminal(sessionIdRef.current, cols, rows);
           } catch (err) {
             errorHandler.handle('Failed to resize terminal', {
               severity: ErrorSeverity.WARNING,
@@ -267,11 +275,11 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
       // Set up event listeners for terminal data
       // This must be done on EVERY mount to receive backend output
-      unlistenData = await listen<TerminalDataEvent>('terminal-data', (event) => {
-        if (event.payload.sessionId === sessionIdRef.current && xtermRef.current) {
+      unlistenData = await transport().listen<TerminalDataEvent>('terminal-data', (payload) => {
+        if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
           // Decode base64 to get raw bytes, then decode bytes to UTF-8 string
           // This preserves terminal control sequences that would be lost with from_utf8_lossy
-          const dataBase64 = event.payload.data;
+          const dataBase64 = payload.data;
           const dataBytes = Uint8Array.from(atob(dataBase64), c => c.charCodeAt(0));
           const decoder = new TextDecoder('utf-8', { fatal: false });
           const dataString = decoder.decode(dataBytes);
@@ -298,29 +306,38 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         }
       });
 
-      unlistenExit = await listen<TerminalExitEvent>('terminal-exit', (event) => {
-        if (event.payload.sessionId === sessionIdRef.current && xtermRef.current) {
-          xtermRef.current.write(`\r\n\nSession ended with exit status ${event.payload.exitStatus}\r\n`);
+      unlistenExit = await transport().listen<TerminalExitEvent>('terminal-exit', (payload) => {
+        if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
+          xtermRef.current.write(`\r\n\nSession ended with exit status ${payload.exitStatus}\r\n`);
           setStatus('disconnected');
           makeTerminalReadOnly(xtermRef.current);
         }
       });
 
-      unlistenClosed = await listen<TerminalClosedEvent>('terminal-closed', (event) => {
-        if (event.payload.sessionId === sessionIdRef.current && xtermRef.current) {
+      unlistenClosed = await transport().listen<TerminalClosedEvent>('terminal-closed', (payload) => {
+        if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
           xtermRef.current.write('\r\n\nConnection closed\r\n');
           setStatus('disconnected');
           makeTerminalReadOnly(xtermRef.current);
         }
       });
 
-      unlistenDead = await listen<ConnectionDeadEvent>('connection-dead', (event) => {
-        if (event.payload.sessionId === sessionIdRef.current && xtermRef.current) {
-          xtermRef.current.write(`\r\n\n\x1b[31mConnection lost: ${event.payload.reason}\x1b[0m\r\n`);
-          xtermRef.current.write('\x1b[33mThe connection appears to be dead. You can try to reconnect.\x1b[0m\r\n');
-          setError(`Connection dead: ${event.payload.reason}`);
-          setStatus('error');
-          makeTerminalReadOnly(xtermRef.current);
+      unlistenDead = await transport().listen<ConnectionDeadEvent>('connection-dead', (payload) => {
+        if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
+          // Auto-reconnect is opt-in (off by default): reconnecting opens a NEW
+          // shell, losing history and on-screen output — so we never force it.
+          if (!isLocalTerminal && useAutoReconnect.getState().enabled) {
+            xtermRef.current.write('\r\n\n\x1b[33mConnection lost — reconnecting automatically…\x1b[0m\r\n');
+            reconnectRef.current(true);
+          } else {
+            xtermRef.current.write(`\r\n\n\x1b[31mConnection lost: ${payload.reason}\x1b[0m\r\n`);
+            xtermRef.current.write(
+              '\x1b[33mReconnecting opens a new shell (history and on-screen output are lost). Use Reconnect when you\'re ready.\x1b[0m\r\n',
+            );
+            setError(`Connection lost: ${payload.reason}`);
+            setStatus('error');
+            makeTerminalReadOnly(xtermRef.current);
+          }
         }
       });
 
@@ -345,7 +362,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         // no timing hacks needed.
         promptDetectedRef.current = false;
         try {
-          const bufferedBase64 = await Tauri.Terminal.claimSessionOutput(existingSessionId);
+          const bufferedBase64 = await Backend.Terminal.claimSessionOutput(existingSessionId);
           if (bufferedBase64 && bufferedBase64.length > 0 && xtermRef.current) {
             const dataBytes = Uint8Array.from(atob(bufferedBase64), c => c.charCodeAt(0));
             const decoder = new TextDecoder('utf-8', { fatal: false });
@@ -428,7 +445,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
     if (sessionIdRef.current) {
       try {
-        await Tauri.Terminal.disconnectTerminal(sessionIdRef.current);
+        await Backend.Terminal.disconnectTerminal(sessionIdRef.current);
       } catch (err) {
         errorHandler.handle('Failed to disconnect terminal', {
           severity: ErrorSeverity.WARNING,
@@ -442,7 +459,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
     onClose();
   };
 
-  const handleReconnect = async () => {
+  const handleReconnect = async (auto = false) => {
     if (!xtermRef.current) return;
 
     setIsReconnecting(true);
@@ -455,16 +472,37 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
     term.options.cursorBlink = true;
     term.options.disableStdin = false;
 
-    // Clear terminal and show reconnecting message
-    term.clear();
-    term.write(`Reconnecting to ${connectionName}...\r\n`);
+    if (!auto) {
+      // Manual reconnect: clear the (frozen) old output and show progress.
+      term.clear();
+      term.write(`Reconnecting to ${connectionName}...\r\n`);
+    }
 
     try {
-      const sessionId = await Tauri.Terminal.connectTerminal(connectionId);
+      const sessionId = await Backend.Terminal.connectTerminal(connectionId);
 
       sessionIdRef.current = sessionId;
       setStatus('connected');
-      term.write('Connected!\r\n\n');
+
+      // Claim the fresh session's buffered output so the new shell shows up
+      // (the listeners above already match on the new sessionId).
+      try {
+        const bufferedBase64 = await Backend.Terminal.claimSessionOutput(sessionId);
+        if (bufferedBase64 && bufferedBase64.length > 0 && xtermRef.current) {
+          const bytes = Uint8Array.from(atob(bufferedBase64), (c) => c.charCodeAt(0));
+          xtermRef.current.write(new TextDecoder('utf-8', { fatal: false }).decode(bytes));
+        }
+      } catch {
+        // best-effort; streaming mode still activates on claim error
+      }
+
+      if (auto) {
+        term.write(
+          '\r\n\x1b[33m⚠ Connection lost — automatically reconnected. This is a new shell: your previous history, on-screen output and any running job were lost.\x1b[0m\r\n\n',
+        );
+      } else {
+        term.write('Connected!\r\n\n');
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       errorHandler.handle('Terminal reconnection failed', {
@@ -484,6 +522,11 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
       setIsReconnecting(false);
     }
   };
+  // Keep the ref pointing at the latest reconnect handler so the connection-dead
+  // listener can call it (updated after render, not during).
+  useEffect(() => {
+    reconnectRef.current = handleReconnect;
+  });
 
   // Handle Ctrl+F for search
   useEffect(() => {
@@ -519,7 +562,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
   return (
     <div
-      className="flex flex-1 flex-col bg-[#1e1e1e] overflow-hidden w-full"
+      className="flex flex-1 flex-col bg-background overflow-hidden w-full rounded-xl border border-border"
       onClick={handleTerminalClick}
       onDragOver={onDragOver}
       onDrop={onDrop}
@@ -601,7 +644,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           {/* Reconnect button - shown when disconnected or error (not for local terminals) */}
           {!isLocalTerminal && (status === 'disconnected' || status === 'error') && (
             <button
-              onClick={handleReconnect}
+              onClick={() => handleReconnect()}
               disabled={isReconnecting}
               className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
               title="Reconnect to server"
@@ -651,6 +694,17 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
               </svg>
             </button>
           )}
+
+          {/* Snippets button — run a saved command on this pane (or broadcast) */}
+          <button
+            onClick={() => setSnippetSession(sessionIdRef.current || existingSessionId || null)}
+            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            title="Snippets"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12" />
+            </svg>
+          </button>
 
           {/* Search button */}
           <button
@@ -735,6 +789,14 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           pointerEvents: isDragging ? 'none' : 'auto',
         }}
       />
+
+      {snippetSession && (
+        <SnippetsModal
+          sessionId={snippetSession}
+          paneLabel={connectionName}
+          onClose={() => setSnippetSession(null)}
+        />
+      )}
     </div>
   );
 }

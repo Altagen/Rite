@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rite · Set your password (mock)</title>
+<link rel="stylesheet" href="rite.css">
+<style>
+  /* Pre-auth "choose your password" screen. ONE mechanism, two entry points:
+     first login (admin-provisioned account, must set your own password) and
+     after an admin reset (lost password → fresh key). The server never sees the
+     password — it derives the vault key client-side. See rite-account-reset memory. */
+  .setup-body{min-height:100vh;display:grid;place-items:center;padding:24px;
+    background:radial-gradient(1100px 700px at 50% -10%,color-mix(in oklab,var(--accent) 12%,transparent),transparent 60%),var(--bg)}
+  .card{width:100%;max-width:460px;background:var(--card);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);padding:28px 30px 26px}
+  .brand-row{display:flex;align-items:center;gap:11px;margin-bottom:22px}
+  .glyph{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#4d6fd0);display:grid;place-items:center;color:#0a0e1a;flex-shrink:0}
+  .glyph svg{width:20px;height:20px;stroke:#0a0e1a;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  .brand-row .nm{font-weight:750;font-size:15px;line-height:1.2}
+  .brand-row .sub{color:var(--muted);font-size:12px}
+  h1{font-size:21px;font-weight:750;letter-spacing:-.01em;margin-bottom:8px;text-wrap:balance}
+  .lead{color:var(--fg-dim);font-size:13.5px;line-height:1.55;margin-bottom:18px}
+  .note{font-size:12.5px;border-radius:11px;padding:11px 13px;margin-bottom:18px;line-height:1.55;border:1px solid var(--border)}
+  .note.keep{background:color-mix(in oklab,var(--green) 9%,transparent);border-color:color-mix(in oklab,var(--green) 28%,transparent)}
+  .note.lose{background:color-mix(in oklab,var(--amber) 9%,transparent);border-color:color-mix(in oklab,var(--amber) 30%,transparent)}
+  .note b{color:var(--fg)}
+  label.field{display:block;margin:0 0 14px}
+  label.field span{display:block;font-size:12px;font-weight:600;color:var(--fg-dim);margin-bottom:6px}
+  .pw-wrap{position:relative}
+  .pw-wrap .inp{padding-right:44px}
+  .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;padding:6px;display:grid;place-items:center}
+  .eye:hover{color:var(--fg)}
+  .meter{display:flex;gap:5px;margin:-6px 0 6px}
+  .meter i{height:4px;flex:1;border-radius:2px;background:var(--border2);transition:.2s}
+  .meter-lab{font-size:12px;color:var(--muted);margin-bottom:14px;min-height:16px}
+  .mismatch{font-size:12px;color:var(--red);margin:-8px 0 12px;min-height:15px}
+  .zk{display:flex;align-items:flex-start;gap:9px;background:color-mix(in oklab,var(--accent) 8%,transparent);border:1px solid color-mix(in oklab,var(--accent) 24%,transparent);border-radius:11px;padding:11px 13px;margin:2px 0 18px;font-size:12.5px;color:var(--fg-dim);line-height:1.5}
+  .zk svg{width:18px;height:18px;stroke:var(--accent);fill:none;stroke-width:1.8;flex-shrink:0;margin-top:1px}
+  .go{width:100%;justify-content:center;padding:11px;font-size:14px;font-weight:650}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn-primary:disabled:hover{background:var(--accent);border-color:var(--accent)}
+  .after{font-size:12.5px;color:var(--muted);margin-top:14px;line-height:1.55;text-align:center}
+  .demo{margin-top:20px;text-align:center;font-size:12px;color:var(--muted)}
+  .demo a{cursor:pointer}
+</style>
+</head>
+<body class="setup-body">
+  <div class="card">
+    <div class="brand-row">
+      <div class="glyph"><svg viewBox="0 0 24 24"><path d="M4 6l6 6-6 6"/><path d="M13 18h7"/></svg></div>
+      <div><div class="nm">Acme Corp</div><div class="sub">rite.acme.io</div></div>
+    </div>
+    <h1 id="h"></h1>
+    <p class="lead" id="lead"></p>
+    <div id="note"></div>
+
+    <label class="field"><span id="pwLab">New password</span>
+      <div class="pw-wrap"><input class="inp" id="pw" type="password" autocomplete="new-password" placeholder="A password only you know" oninput="upd()">
+        <button class="eye" id="eye" title="Show password" onclick="toggleEye()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+    </label>
+    <div class="meter" id="meter"><i></i><i></i><i></i><i></i></div>
+    <div class="meter-lab" id="meterLab"></div>
+
+    <label class="field"><span>Confirm password</span>
+      <input class="inp" id="pw2" type="password" autocomplete="new-password" placeholder="Type it again" oninput="upd()">
+    </label>
+    <div class="mismatch" id="mismatch"></div>
+
+    <div class="zk"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>
+      <div>Your password encrypts everything you store and <b>never leaves this device</b> — the server only ever sees ciphertext. That's also why it can't be recovered: keep it safe.</div></div>
+
+    <button class="btn btn-primary go" id="go" disabled onclick="submit()"></button>
+    <div class="after" id="after"></div>
+
+    <div class="demo">Preview: <a onclick="location.search='?mode=first&u=frank'">first login</a> · <a onclick="location.search='?mode=reset&u=frank'">after a reset</a></div>
+  </div>
+
+<script>
+const P=new URLSearchParams(location.search);
+const MODE=P.get('mode')==='reset'?'reset':'first';
+const USER=P.get('u')||'frank';
+const $=id=>document.getElementById(id);
+
+// Copy differs by entry point, but the mechanism (mint a fresh vault key from a
+// password the server never sees) is identical.
+if(MODE==='first'){
+  $('h').textContent=`Welcome, ${USER} — set your password`;
+  $('lead').innerHTML=`An admin created your account. Choose a password <b>only you know</b>: until you do, the initial password an admin set could unlock your data. This one is yours alone.`;
+  $('after').textContent='';
+  $('go').textContent='Set password & continue';
+}else{
+  $('h').textContent='Set a new password';
+  $('lead').innerHTML=`Your access was reset because the old password was lost. A new password gives you a fresh private key.`;
+  $('note').innerHTML=`<div class="note keep"><b>Kept:</b> your username <b>${USER}</b> and every team you're in.</div>
+    <div class="note lose"><b>Gone for good:</b> anything encrypted under your old password — personal connections and any solo collection. End-to-end encryption means no one could recover them, not even an admin.</div>`;
+  $('after').innerHTML=`Next: you'll see the collections offered to your teams — <b>request access</b> and a member grants you back in.`;
+  $('go').textContent='Set new password & continue';
+}
+
+// Length-first (NIST 800-63B): 12 chars is the floor (Fair), not the top. Only longer passwords
+// climb to Good/Strong; char variety demotes a long low-variety one but never lifts a short one.
+function strength(p){
+  if(!p)return 0;
+  const len=p.length;
+  const variety=(/[a-z]/.test(p)?1:0)+(/[A-Z]/.test(p)?1:0)+(/\d/.test(p)?1:0)+(/[^A-Za-z0-9]/.test(p)?1:0);
+  if(len<12)return 1;                         // below the 12-char floor
+  if(len>=20&&variety>=3)return 4;            // strong
+  if(len>=16&&variety>=2)return 3;            // good
+  return 2;                                   // fair (valid, but minimal)
+}
+const LAB=['','Too weak','Fair','Good','Strong'];
+const COL=['','var(--red)','var(--amber)','var(--green)','var(--green)'];
+
+function upd(){
+  const p=$('pw').value, p2=$('pw2').value;
+  const s=strength(p);
+  const bars=[...$('meter').children];
+  bars.forEach((b,i)=>b.style.background=i<s?COL[s]:'var(--border2)');
+  $('meterLab').textContent=p?`Password strength: ${LAB[s]}`:'';
+  $('meterLab').style.color=p?COL[s]:'var(--muted)';
+  const mm=p2&&p!==p2;
+  $('mismatch').textContent=mm?'Passwords don’t match.':'';
+  $('go').disabled=!(s>=2 && p && p===p2);
+}
+function toggleEye(){
+  const pw=$('pw');const show=pw.type==='password';
+  pw.type=$('pw2').type=show?'text':'password';
+  $('eye').style.color=show?'var(--accent)':'';
+}
+function submit(){
+  // Mock: the real client derives the vault key + a fresh keypair here, uploads the
+  // wrapped keys + auth verifier, then lands in the app.
+  const t=document.createElement('div');t.className='toast show';
+  t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);padding:11px 16px;border-radius:10px;box-shadow:var(--shadow);font-size:13px;z-index:80';
+  t.textContent=MODE==='reset'?'Password set — taking you to your teams…':'Password set — welcome to Rite…';
+  document.body.appendChild(t);
+  setTimeout(()=>location.href='web.html',900);
+}
+upd();
+</script>
+</body>
+</html>

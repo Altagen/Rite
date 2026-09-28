@@ -6,18 +6,22 @@
 //! - KDF: Argon2id (RFC 9106 recommended parameters)
 //! - Encryption: ChaCha20-Poly1305 (AEAD)
 //! - File encryption: age (for sync/export)
+//! - Per-user zero-knowledge vault (ADR 0011): AES-256-GCM, see [`vault`].
 
-use anyhow::{anyhow, Result};
+pub mod sealbox;
+pub mod vault;
+
+use anyhow::{Result, anyhow};
 use argon2::{
-    password_hash::{PasswordHasher, SaltString},
     Argon2, PasswordHash, PasswordVerifier,
+    password_hash::{PasswordHasher, SaltString},
 };
+use chacha20poly1305::aead::rand_core::RngCore;
 #[allow(deprecated)]
 use chacha20poly1305::{
-    aead::{generic_array::GenericArray, Aead, KeyInit, OsRng},
     ChaCha20Poly1305,
+    aead::{Aead, KeyInit, OsRng, generic_array::GenericArray},
 };
-use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 

@@ -5,11 +5,16 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Tauri, type PasswordStrength } from '../utils/tauri';
+import { Backend, type PasswordStrength } from '../utils/backend';
 import { useAuthStore } from '../store/authStore';
 import { useTranslation } from '../i18n/i18n';
 
-export function SetupScreen() {
+interface SetupScreenProps {
+  asModal?: boolean;
+  onClose?: () => void;
+}
+
+export function SetupScreen({ asModal = false, onClose }: SetupScreenProps = {}) {
   const { setupMasterPassword, isLoading, error, clearError } = useAuthStore();
   const { t } = useTranslation();
 
@@ -28,7 +33,7 @@ export function SetupScreen() {
       }
 
       try {
-        const result = await Tauri.Auth.validatePassword(password);
+        const result = await Backend.Auth.validatePassword(password);
         setStrength(result);
       } catch (error) {
         console.error('Failed to validate password:', error);
@@ -42,18 +47,15 @@ export function SetupScreen() {
     return () => clearTimeout(timer);
   }, [password]);
 
-  const getStrengthColor = (score: number): string => {
-    if (score <= 2) return 'bg-red-500';
-    if (score <= 4) return 'bg-orange-500';
-    if (score <= 5) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
-
-  const getStrengthLabel = (score: number): string => {
-    if (score <= 2) return t('setup.strengthWeak');
-    if (score <= 4) return t('setup.strengthFair');
-    if (score <= 5) return t('setup.strengthGood');
-    return t('setup.strengthExcellent');
+  // Length-first strength (NIST 800-63B): 12 chars is the *floor*, not "excellent". Tiers go by
+  // length so a barely-12 password reads as minimal (orange), and only long ones read as strong.
+  // `score` (char variety) only demotes a long-but-low-variety password, never promotes a short one.
+  const getStrength = (pw: string, valid: boolean, score: number) => {
+    const len = pw.length;
+    if (!valid) return { label: t('setup.strengthWeak'), bar: 'bg-red-500', text: 'text-red-600', pct: Math.max(8, Math.min(len / 12, 1) * 30) };
+    if (len >= 20 && score >= 5) return { label: t('setup.strengthExcellent'), bar: 'bg-green-500', text: 'text-green-600', pct: 100 };
+    if (len >= 16 && score >= 4) return { label: t('setup.strengthGood'), bar: 'bg-yellow-500', text: 'text-yellow-600', pct: 74 };
+    return { label: t('setup.strengthFair'), bar: 'bg-orange-500', text: 'text-orange-600', pct: 48 };
   };
 
   const passwordsMatch = password && confirmPassword && password === confirmPassword;
@@ -66,16 +68,30 @@ export function SetupScreen() {
     clearError();
     try {
       await setupMasterPassword(password, confirmPassword);
-      // Success - the store will update and trigger re-render
+      // Success - the store will update and trigger re-render.
+      onClose?.();
     } catch (error) {
       // Error is already set in the store
       console.error('Setup failed:', error);
     }
   };
 
-  return (
-    <div className="flex h-screen items-center justify-center bg-background text-foreground">
-      <div className="w-full max-w-md space-y-8 p-8">
+  const content = (
+    <div className="relative w-full max-w-md space-y-8 p-8">
+        {asModal && onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isLoading}
+            aria-label={t('common.close')}
+            title={t('common.close')}
+            className="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
         <div className="text-center">
           <h1 className="text-4xl font-bold">{t('setup.title')}</h1>
           <p className="mt-2 text-muted-foreground">
@@ -127,23 +143,27 @@ export function SetupScreen() {
                 </button>
               </div>
 
-              {/* Password strength bar */}
-              {password && strength && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{t('setup.passwordStrength')}</span>
-                    <span className={`font-medium ${strength.is_valid ? 'text-green-600' : 'text-red-600'}`}>
-                      {getStrengthLabel(strength.score)}
-                    </span>
+              {/* Password strength bar (length-first) */}
+              {password && strength && (() => {
+                const s = getStrength(password, strength.is_valid, strength.score);
+                return (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{t('setup.passwordStrength')}</span>
+                      <span className={`font-medium ${s.text}`}>{s.label}</span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full transition-all duration-300 ${s.bar}`}
+                        style={{ width: `${s.pct}%` }}
+                      />
+                    </div>
+                    {strength.is_valid && password.length < 16 && (
+                      <p className="text-[11px] text-muted-foreground">Aim for 16+ characters for a stronger vault.</p>
+                    )}
                   </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={`h-full transition-all duration-300 ${getStrengthColor(strength.score)}`}
-                      style={{ width: `${(strength.score / 7) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             {/* Confirm password field */}
@@ -221,7 +241,13 @@ export function SetupScreen() {
         <p className="text-center text-xs text-muted-foreground">
           {t('setup.warning')}
         </p>
-      </div>
+    </div>
+  );
+
+  if (asModal) return content;
+  return (
+    <div className="flex h-screen items-center justify-center bg-background text-foreground">
+      {content}
     </div>
   );
 }

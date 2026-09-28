@@ -1,21 +1,23 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/desktop/src-tauri",
+    "apps/desktop/shell",
     "packages/crypto",
-    "packages/protocols",
+    "packages/rite-core",
+    "packages/rite-server",
 ]
 
 [workspace.package]
-version = "0.1.2"
-edition = "2021"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.85"
 authors = ["Ange Cesari"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Altagen/Rite"
 
 [workspace.dependencies]
 # Async runtime
-tokio = { version = "1.41", features = ["full"] }
+tokio = { version = "1.50", features = ["full"] }
 async-trait = "0.1"
 
 # Serialization
@@ -26,16 +28,14 @@ toml = "0.9"
 # Crypto
 argon2 = "0.5"
 chacha20poly1305 = "0.10"
-age = "0.10"
+age = "0.11"
 zeroize = { version = "1.8", features = ["derive"] }
-rand = "0.8"
 
 # SSH
-russh = "0.57"
-russh-keys = "0.49"
+russh = "0.62"
 
 # FTP (for future use)
-suppaftp = "6.0"
+suppaftp = "10.0"
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
@@ -48,12 +48,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
 thiserror = "2.0"
 
-# Tauri
-tauri = { version = "2.9", features = [] }
-tauri-plugin-shell = "2.3"
-
 # Utilities
-uuid = { version = "1.21", features = ["v4", "serde"] }
+uuid = { version = "1.23", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 [profile.release]

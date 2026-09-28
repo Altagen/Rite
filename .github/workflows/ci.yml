@@ -30,7 +30,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install commitlint
         run: npm install -g @commitlint/cli @commitlint/config-conventional
@@ -60,10 +60,13 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: .
 
       - name: Run Rust tests
-        run: cargo test --workspace --lib --all-features
+        # Not --lib: that skips everything in tests/, which is where the SSH
+        # transport, the pre-connect hook and the auth-method wire format are
+        # covered. Those ran nowhere in CI until now.
+        run: cargo test --workspace --all-features
 
   # Rust linting
   lint-rust:
@@ -89,7 +92,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: .
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
@@ -107,12 +110,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v6
         with:
-          version: 8
+          version: 11
 
       - name: Get pnpm store directory
         id: pnpm-cache
@@ -144,12 +147,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v6
         with:
-          version: 8
+          version: 11
 
       - name: Install dependencies
         run: pnpm install
@@ -190,12 +193,12 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v6
         with:
-          version: 8
+          version: 11
 
       - name: Install dependencies
         run: pnpm install
@@ -225,11 +228,10 @@ jobs:
         run: cargo install cargo-cyclonedx
 
       - name: Generate Cargo SBOM
-        working-directory: apps/desktop/src-tauri
         run: cargo cyclonedx --format json
 
       - name: Upload SBOM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ github.sha }}
           path: "**/*.cdx.json"
@@ -256,11 +258,11 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
-          version: 8
+          version: 11
 
       - name: Install dependencies
         run: pnpm install
@@ -268,7 +270,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri
+          workspaces: .
 
       - name: Rust build check
         run: cargo check --workspace

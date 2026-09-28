@@ -6,14 +6,19 @@
  */
 
 import { useState } from 'react';
-import { Tauri } from '../utils/tauri';
+import { Backend } from '../utils/backend';
+import { type CreateConnectionInput, type AuthType } from '../store/connectionsStore';
+import { AuthSection } from './AuthSection';
+import { makeAuthState, toAuthMethodInput, type AuthState } from '../utils/authMethod';
 
 interface QuickSSHModalProps {
   onClose: () => void;
   onConnected: (sessionId: string, connectionInfo: QuickSSHConnectionInfo) => void;
+  // ADR 0016: shared collections the caller may save into. When present, the
+  // modal offers "save to collection" so a one-off connect can be kept.
+  collectionTargets?: { id: string; name: string }[];
+  onSaveToCollection?: (input: CreateConnectionInput) => Promise<void>;
 }
-
-type AuthType = 'password' | 'publicKey';
 
 export interface QuickSSHConnectionInfo {
   host: string;
@@ -25,14 +30,12 @@ export interface QuickSSHConnectionInfo {
   passphrase?: string;
 }
 
-export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
+export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveToCollection }: QuickSSHModalProps) {
   const [host, setHost] = useState('');
   const [port, setPort] = useState(22);
   const [username, setUsername] = useState('');
-  const [authType, setAuthType] = useState<AuthType>('password');
-  const [password, setPassword] = useState('');
-  const [keyPath, setKeyPath] = useState('');
-  const [passphrase, setPassphrase] = useState('');
+  const [auth, setAuth] = useState<AuthState>(makeAuthState());
+  const [saveCollectionId, setSaveCollectionId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -42,13 +45,11 @@ export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
     setLoading(true);
 
     try {
-      // Build auth method for quick_ssh_connect
-      const authMethod = authType === 'password'
-        ? { type: 'password' as const, password }
-        : { type: 'publicKey' as const, keyPath, passphrase: passphrase || undefined };
+      // Build auth method for quick_ssh_connect (shared shape with the form)
+      const authMethod = toAuthMethodInput(auth);
 
       console.log('[QuickSSH] Connecting via quick_ssh_connect...');
-      const sessionId = await Tauri.Terminal.quickSshConnect(
+      const sessionId = await Backend.Terminal.quickSshConnect(
         host,
         username,
         port,
@@ -62,11 +63,29 @@ export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
         host,
         port,
         username,
-        authType,
-        password: authType === 'password' ? password : undefined,
-        keyPath: authType === 'publicKey' ? keyPath : undefined,
-        passphrase: authType === 'publicKey' && passphrase ? passphrase : undefined,
+        authType: auth.authType,
+        password: auth.authType === 'password' ? auth.password : undefined,
+        keyPath: auth.authType === 'publicKey' ? auth.keyPath : undefined,
+        passphrase: auth.authType === 'publicKey' && auth.passphrase ? auth.passphrase : undefined,
       };
+
+      // Optionally persist this one-off into a shared collection (ADR 0016). Saving
+      // is best-effort — the session is already up; a save failure doesn't unwind it.
+      if (saveCollectionId && onSaveToCollection) {
+        try {
+          await onSaveToCollection({
+            name: `${username}@${host}`,
+            protocol: 'SSH',
+            hostname: host,
+            port,
+            username,
+            authMethod,
+            collectionId: saveCollectionId,
+          });
+        } catch (saveErr) {
+          console.error('[QuickSSH] Saved connection failed (session still open):', saveErr);
+        }
+      }
 
       onConnected(sessionId, connectionInfo);
       onClose();
@@ -80,7 +99,12 @@ export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="mx-4 w-full max-w-md rounded-lg bg-background p-6 shadow-xl border border-border">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Quick SSH Connect"
+        className="mx-4 w-full max-w-md rounded-lg bg-background p-6 shadow-xl border border-border"
+      >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <span className="text-2xl">⚡</span>
@@ -159,88 +183,27 @@ export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
             </div>
           </div>
 
-          {/* Auth Type */}
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Authentication
-            </label>
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="authType"
-                  value="password"
-                  checked={authType === 'password'}
-                  onChange={(e) => setAuthType(e.target.value as AuthType)}
-                  className="h-4 w-4 text-primary focus:ring-primary"
-                  disabled={loading}
-                />
-                <span className="text-sm">Password</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="authType"
-                  value="publicKey"
-                  checked={authType === 'publicKey'}
-                  onChange={(e) => setAuthType(e.target.value as AuthType)}
-                  className="h-4 w-4 text-primary focus:ring-primary"
-                  disabled={loading}
-                />
-                <span className="text-sm">SSH Key</span>
-              </label>
-            </div>
-          </div>
+          {/* Authentication — shared with the connection form (password / key / agent) */}
+          <AuthSection value={auth} onChange={setAuth} />
 
-          {/* Password Auth */}
-          {authType === 'password' && (
+          {/* Save to collection (ADR 0016) — optional */}
+          {collectionTargets && collectionTargets.length > 0 && (
             <div>
-              <label className="mb-1 block text-sm font-medium">
-                Password <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
+              <label className="mb-1 block text-sm font-medium">Save to collection (optional)</label>
+              <select
+                value={saveCollectionId}
+                onChange={(e) => setSaveCollectionId(e.target.value)}
                 className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                required
                 disabled={loading}
-              />
+              >
+                <option value="">Don't save — connect once</option>
+                {collectionTargets.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          )}
-
-          {/* Public Key Auth */}
-          {authType === 'publicKey' && (
-            <>
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Private Key Path <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={keyPath}
-                  onChange={(e) => setKeyPath(e.target.value)}
-                  placeholder="~/.ssh/id_rsa"
-                  className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  required
-                  disabled={loading}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Passphrase (optional)
-                </label>
-                <input
-                  type="password"
-                  value={passphrase}
-                  onChange={(e) => setPassphrase(e.target.value)}
-                  placeholder="Enter passphrase if needed"
-                  className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-                  disabled={loading}
-                />
-              </div>
-            </>
           )}
 
           {/* Actions */}
@@ -256,7 +219,7 @@ export function QuickSSHModal({ onClose, onConnected }: QuickSSHModalProps) {
             <button
               type="submit"
               className="rounded bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
-              disabled={loading || !host || !username || (authType === 'password' && !password) || (authType === 'publicKey' && !keyPath)}
+              disabled={loading || !host || !username || (auth.authType === 'password' && !auth.password) || (auth.authType === 'publicKey' && !auth.keyPath)}
             >
               {loading && (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent" />

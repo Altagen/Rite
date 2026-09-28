@@ -201,7 +201,7 @@ All backends support E2E encryption:
 - [ ] Crypto implementation reviewed
 - [ ] No hardcoded secrets or test credentials
 - [ ] Proper zeroization of sensitive data
-- [ ] Input validation on all Tauri commands
+- [ ] Input validation on all API endpoints
 - [ ] SQL injection prevention (parameterized queries)
 - [ ] XSS prevention in frontend
 - [ ] CSP headers configured

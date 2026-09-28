@@ -324,29 +324,6 @@ export function updateSplitRatio(tree: LayoutTree, splitId: string, newRatio: nu
 }
 
 /**
- * Navigate to next/previous pane
- */
-export function getAdjacentPane(
-  tree: LayoutTree,
-  currentPaneId: string,
-  direction: 'next' | 'previous'
-): string | null {
-  const allPanes = getAllPanes(tree);
-  if (allPanes.length <= 1) return null;
-
-  const currentIndex = allPanes.findIndex((p) => p.id === currentPaneId);
-  if (currentIndex === -1) return null;
-
-  if (direction === 'next') {
-    const nextIndex = (currentIndex + 1) % allPanes.length;
-    return allPanes[nextIndex].id;
-  } else {
-    const prevIndex = currentIndex === 0 ? allPanes.length - 1 : currentIndex - 1;
-    return allPanes[prevIndex].id;
-  }
-}
-
-/**
  * Replace a session in the tree (used when updating session data)
  */
 export function updateSession(

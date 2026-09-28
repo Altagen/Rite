@@ -7,9 +7,7 @@ target/
 node_modules/
 dist/
 .pnpm-debug.log*
-
-# Tauri
-apps/desktop/src-tauri/target/
+.pnpm-store/
 
 # Build outputs
 *.tar.gz
@@ -48,3 +46,12 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# rite-server embedded frontend (copied from apps/desktop/dist at build time)
+/packages/rite-server/web/*
+!/packages/rite-server/web/.gitkeep
+
+# Playwright e2e artifacts
+/e2e/report/
+/test-results/
+/playwright-report/
