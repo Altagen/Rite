@@ -57,7 +57,11 @@ commit_parsers = [
   # Dependency work is shipped content, not noise: 0.2.1 was ENTIRELY dependency
   # updates and its generated notes came out with three lines in them, none of
   # which were the release. Grouped rather than skipped.
-  { message = "^chore\\(deps.*\\)", group = "<!-- 7 -->📦 Dependencies" },
+  #
+  # Every prefix dependabot uses, not just `chore`: it raises GitHub Actions bumps
+  # as `ci(deps)` and some ecosystems as `build(deps)`, and matched only on `chore`
+  # those land in Miscellaneous — which is where the reader is not looking for them.
+  { message = "^(chore|ci|build)\\(deps", group = "<!-- 7 -->📦 Dependencies" },
   { message = "^chore\\(pr\\)", skip = true },
   { message = "^chore\\(pull\\)", skip = true },
   { message = "^chore|^ci", group = "<!-- 7 -->⚙️ Miscellaneous" },
