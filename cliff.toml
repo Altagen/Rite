@@ -54,7 +54,10 @@ commit_parsers = [
   { message = "^style", group = "<!-- 5 -->🎨 Styling" },
   { message = "^test", group = "<!-- 6 -->✅ Testing" },
   { message = "^chore\\(release\\): prepare for", skip = true },
-  { message = "^chore\\(deps.*\\)", skip = true },
+  # Dependency work is shipped content, not noise: 0.2.1 was ENTIRELY dependency
+  # updates and its generated notes came out with three lines in them, none of
+  # which were the release. Grouped rather than skipped.
+  { message = "^chore\\(deps.*\\)", group = "<!-- 7 -->📦 Dependencies" },
   { message = "^chore\\(pr\\)", skip = true },
   { message = "^chore\\(pull\\)", skip = true },
   { message = "^chore|^ci", group = "<!-- 7 -->⚙️ Miscellaneous" },
