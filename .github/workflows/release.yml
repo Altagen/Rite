@@ -35,6 +35,44 @@ jobs:
         env:
           OUTPUT: changelog.md
 
+      # What ships is not only what the changelog lists. The server image goes to
+      # GHCR, which is not a release asset and so appears nowhere on this page
+      # unless we say so, and the checksums are worth nothing if nobody is told
+      # how to use them. Prepended, so it survives however the changelog turns out.
+      - name: Prepend the install header to the notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          IMAGE="ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/rite-server"
+          {
+            echo "## Install"
+            echo
+            echo "**Desktop client** — download the tarball for your platform below, then:"
+            echo
+            echo '```bash'
+            echo "tar -xzf rite-${VERSION}-linux-x86_64.tar.gz && ./rite"
+            echo '```'
+            echo
+            echo "**Server** — a multi-arch image (linux/amd64, linux/arm64):"
+            echo
+            echo '```bash'
+            echo "podman pull ${IMAGE}:${VERSION}"
+            echo '```'
+            echo
+            echo "**Verify a download** against \`rite-${VERSION}-checksums.txt\`:"
+            echo
+            echo '```bash'
+            echo "sha256sum -c --ignore-missing rite-${VERSION}-checksums.txt"
+            echo '```'
+            echo
+            echo "\`sbom-${VERSION}.json\` is the CycloneDX bill of materials for the client."
+            echo
+            echo "---"
+            echo
+            cat changelog.md
+          } > notes.md
+          mv notes.md changelog.md
+          cat changelog.md
+
       - name: Create draft release
         id: create_release
         uses: softprops/action-gh-release@v2
@@ -146,11 +184,17 @@ jobs:
           name: checksums-${{ matrix.platform.target }}
           path: checksums-${{ matrix.platform.target }}.txt
 
+      # draft: true or this step republishes the release as public the moment the
+      # first platform finishes. That is how 0.2.0 went out while its Finalize job
+      # was still to fail — published, with no SBOM and no checksums, and the
+      # publish job skipped behind the failure. The release stays a draft until
+      # the publish job says otherwise.
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: dist/*
+          draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -206,11 +250,15 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      # Pinned: an unpinned `cargo install` is what broke the 0.2.0 release — the
+      # newest cargo-cyclonedx that day had dropped the flag this job was using.
+      # A build tool in the release path has no business floating.
       - name: Install cargo-cyclonedx
-        run: cargo install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx@0.5.9 --locked
 
+      # cargo-cyclonedx dropped `-p/--package`; the crate is selected by its manifest.
       - name: Generate SBOM (client)
-        run: cargo cyclonedx --format json -p rite-desktop
+        run: cargo cyclonedx --format json --manifest-path apps/desktop/shell/Cargo.toml
 
       - name: Rename SBOM
         run: |
@@ -237,6 +285,7 @@ jobs:
           files: |
             sbom-${{ needs.create-release.outputs.version }}.json
             rite-${{ needs.create-release.outputs.version }}-checksums.txt
+          draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
