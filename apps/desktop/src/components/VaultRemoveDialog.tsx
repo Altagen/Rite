@@ -1,25 +1,26 @@
 /**
- * Remove / reset a local vault (ADR 0014). Two cases, decided by whether the target is the vault
- * THIS window currently holds:
+ * Remove a local vault from the roster (ADR 0014). Forgetting drops it from the list and
+ * keeps the file; an explicit, irreversible opt-in also deletes the `.db` (+ sidecars, via
+ * the shell) and asks for the vault's name first.
  *
- * - Another vault → mirrors the mock's `removeVault`: forgetting drops it from the roster but keeps
- *   the file; an explicit, irreversible opt-in also deletes the `.db` (+ sidecars, via the shell).
- * - The current vault → you can't "remove it from the list" while you're in it (and it may be the
- *   only one), so instead offer **Reset**: wipe its master password + all connections to start from
- *   scratch (`reset_database`, works even while locked), then return to the base workspace.
+ * It does NOT reset the vault you are in. It used to: the same trash icon meant "forget
+ * this one" on any other vault and "erase this one's master password and contents" on the
+ * current one — same glyph, same place in the row, opposite consequences, and the guard
+ * for the destructive reading was retyping a name printed two lines above it. A user
+ * reaching for "take this off my list" could wipe the vault instead, and only find out at
+ * the next unlock, because after a reset the app sets a new password and holds the key in
+ * memory: the session carries on as if nothing happened.
  *
- * The irreversible actions (reset, and delete-the-file) require typing the vault's name to confirm,
- * as a guard against an accidental click. Forget keeps the file, so it needs no name.
+ * Resetting a vault lives where a destructive action belongs — Settings ▸ danger zone, and
+ * the unlock screen for when you are locked out — both behind typing DELETE ALL DATA.
  *
  * Shared by every surface that lists vaults — the hub, the context pill, and the locked-state picker.
  */
 
 import { useState } from 'react';
-import { Backend } from '../utils/backend';
 import {
   isNativeShell,
   nativeContext,
-  requestReloadContext,
   sendVaultCommand,
   type NativeVault,
 } from '../utils/nativeShell';
@@ -33,7 +34,6 @@ export function VaultRemoveDialog({
 }) {
   const [deleteFile, setDeleteFile] = useState(false);
   const [confirmName, setConfirmName] = useState('');
-  const [busy, setBusy] = useState(false);
   // The vault this window is on: it can't be forgotten/switched-away here, so reset it instead.
   const isCurrent = isNativeShell() && nativeContext()?.path === vault.path;
   const nameOk = confirmName.trim() === vault.label;
@@ -53,40 +53,22 @@ export function VaultRemoveDialog({
     </div>
   );
 
+  // The vault this window is on cannot be forgotten — you are in it. It used to offer a
+  // reset here instead; that is the trap this dialog no longer sets. Settings ▸ danger zone
+  // resets it, behind the DELETE ALL DATA phrase.
   if (isCurrent) {
     return (
       <Shell onClose={onClose}>
-        <h3 className="font-semibold">Reset “{vault.label}”?</h3>
+        <h3 className="font-semibold">“{vault.label}” is the vault you are in</h3>
         <p className="mt-1 truncate text-xs text-muted-foreground">{vault.path}</p>
         <p className="mt-3 text-sm text-muted-foreground">
-          This vault is open in this window. Resetting <strong>erases its master password, every
-          connection, and its name/icon</strong> so you can start from scratch.
+          It can't be removed from the list while this window holds it. Switch to another
+          context first, or open <strong>Settings ▸ Reset vault</strong> to erase this one and
+          start from scratch.
         </p>
-        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-xs text-muted-foreground">
-          Irreversible — there’s no recovery (zero-knowledge).
-        </div>
-        {nameConfirmField}
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} disabled={busy} className="rounded-md px-3 py-1.5 text-sm hover:bg-muted">
-            Cancel
-          </button>
-          <button
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await Backend.Auth.resetDatabase(); // wipe the master password + connections
-                // Drop the stale roster entry (name/icon) and rebuild the window via the shell so
-                // __RITE_VAULTS__ is regenerated — a plain page reload would re-inject the old list.
-                sendVaultCommand({ type: 'vault-forget', path: vault.path });
-                if (!requestReloadContext()) window.location.reload();
-              } catch {
-                setBusy(false);
-              }
-            }}
-            disabled={busy || !nameOk}
-            className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
-          >
-            {busy ? 'Resetting…' : 'Reset & start fresh'}
+        <div className="mt-4 flex justify-end">
+          <button onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted">
+            Close
           </button>
         </div>
       </Shell>

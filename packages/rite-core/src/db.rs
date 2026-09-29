@@ -321,28 +321,55 @@ impl Database {
         Ok(())
     }
 
-    /// Reset the database (delete master password and all connections)
-    /// WARNING: This will permanently delete all data!
+    /// Tables a reset leaves alone: the migration ledger, and the settings, which are
+    /// preferences rather than content — the reset dialog promises to erase the master
+    /// password, the connections and the vault's name/icon, not your auto-lock timeout.
+    const RESET_KEEPS: [&'static str; 2] = ["schema_version", "settings"];
+
+    /// Reset the vault: erase everything it holds, keep the file and its schema.
+    ///
+    /// Enumerated from `sqlite_master` rather than from a hand-written list, because a
+    /// hand-written list is a trap that only springs later. It listed `connections`,
+    /// `master_password` and `unlock_attempts`, and then ADR 0018 added collections —
+    /// so a reset wiped the master key and left every collection behind, sealed with a
+    /// key that no longer existed anywhere. The next launch did not merely show a stale
+    /// collection: `local_collections::list` tries to unwrap those keys and fails, so
+    /// the whole sidebar answered HTTP 500 and the vault was unusable rather than fresh.
+    ///
+    /// WARNING: This permanently deletes all data in the vault.
     pub async fn reset(&self) -> Result<()> {
         warn!("Resetting database - all data will be lost!");
 
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master \
+             WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query("DELETE FROM connections")
+        // Rows reference each other (a collection member points at a user, an item at a
+        // collection), and sqlx has foreign keys on. Deferring the checks to commit time
+        // means the order of the DELETEs stops mattering.
+        sqlx::query("PRAGMA defer_foreign_keys = ON")
             .execute(&mut *tx)
             .await?;
 
-        sqlx::query("DELETE FROM master_password")
-            .execute(&mut *tx)
-            .await?;
-
-        sqlx::query("DELETE FROM unlock_attempts")
-            .execute(&mut *tx)
-            .await?;
+        for table in &tables {
+            if Self::RESET_KEEPS.contains(&table.as_str()) {
+                continue;
+            }
+            // The name comes from sqlite_master, not from a caller.
+            sqlx::query(&format!("DELETE FROM \"{table}\""))
+                .execute(&mut *tx)
+                .await
+                .with_context(|| format!("Failed to clear {table} during reset"))?;
+        }
 
         tx.commit().await?;
 
-        info!("Database reset completed");
+        info!("Database reset completed ({} tables cleared)", tables.len());
         Ok(())
     }
 
@@ -793,6 +820,7 @@ fn split_sql_statements(sql: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rite_crypto::vault::KEY_LEN;
     use tempfile::TempDir;
 
     async fn create_test_db() -> (Database, TempDir) {
@@ -918,6 +946,71 @@ mod tests {
         let (retrieved_hash, retrieved_salt) = db.get_master_password().await.unwrap().unwrap();
         assert_eq!(retrieved_hash, hash);
         assert_eq!(retrieved_salt, salt);
+    }
+
+    /// A reset must leave the vault indistinguishable from a fresh one.
+    ///
+    /// Enumerated from `sqlite_master` on purpose: the point is to fail when someone
+    /// adds a table and forgets the reset, which is exactly what happened when ADR 0018
+    /// brought collections in. Asserting a hand-written list here would have passed
+    /// happily while the bug shipped.
+    #[tokio::test]
+    async fn reset_leaves_nothing_behind() {
+        let (db, _temp) = create_test_db().await;
+        let key = [7u8; KEY_LEN];
+
+        db.store_master_password("hash", &[1, 2, 3]).await.unwrap();
+        db.record_unlock_attempt(false).await.unwrap();
+
+        // Content that only exists since ADR 0018 — a collection, its member row and an
+        // encrypted machine inside it. This is what the old reset walked straight past.
+        crate::local_user::ensure(db.pool()).await.unwrap();
+        let coll = crate::local_collections::create(db.pool(), &key, "Prod", None)
+            .await
+            .unwrap();
+        let record: crate::local_collections::MachineRecord = serde_json::from_str(
+            r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,
+                "username":"deploy","authMethod":{"type":"password","password":"s3cret"}}"#,
+        )
+        .unwrap();
+        crate::local_collections::create_machine(db.pool(), &key, &coll.id, &record)
+            .await
+            .unwrap();
+
+        db.reset().await.unwrap();
+
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        )
+        .fetch_all(db.pool())
+        .await
+        .unwrap();
+        assert!(
+            tables.len() > 15,
+            "expected the full schema, got {tables:?}"
+        );
+
+        for table in tables {
+            let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM \"{table}\""))
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+            if Database::RESET_KEEPS.contains(&table.as_str()) {
+                continue; // the migration ledger and the preferences survive, by design
+            }
+            assert_eq!(
+                count, 0,
+                "`{table}` still holds {count} row(s) after a reset — a reset that leaves \
+                 content behind leaves it sealed with a master key that no longer exists"
+            );
+        }
+
+        // And the vault is usable again rather than 500ing on its own leftovers.
+        assert!(db.is_first_run().await.unwrap());
+        let listed = crate::local_collections::list(db.pool(), &[9u8; KEY_LEN])
+            .await
+            .expect("a reset vault lists collections instead of failing to decrypt");
+        assert!(listed.is_empty());
     }
 
     #[tokio::test]
