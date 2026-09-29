@@ -31,6 +31,26 @@ impl Database {
 
         info!("Connecting to database at: {}", db_path.display());
 
+        // Opening a vault is serialized across processes by a lock file beside it.
+        // Two things race otherwise, and both are real: several connections setting
+        // `journal_mode = WAL` on a fresh file (one gets "database is locked" and the
+        // process never starts), and the migration runner (both read version 0, both
+        // apply, the loser meets tables that exist and dies on a column a later
+        // migration drops — the vault then opens in one window and refuses in another).
+        //
+        // A SQLite transaction cannot serve as this lock: held open, it is what makes
+        // the other process's `journal_mode` pragma fail, and that pragma does not wait
+        // for busy_timeout. A file lock leaves SQLite alone.
+        let lock_path = std::path::PathBuf::from(format!("{}.lock", db_path.display()));
+        let mut open_lock = tokio::task::spawn_blocking(move || -> Result<fslock::LockFile> {
+            let mut lock = fslock::LockFile::open(&lock_path)
+                .with_context(|| format!("Failed to open the vault lock at {lock_path:?}"))?;
+            lock.lock().context("Failed to take the vault lock")?;
+            Ok(lock)
+        })
+        .await
+        .context("Vault lock task failed")??;
+
         // Set up connection options. WAL + a busy timeout let the vault survive brief overlaps
         // where two single-context servers hold the same file at once — e.g. an in-place context
         // switch or a reset+reload (ADR 0014), where the outgoing server is still shutting down as
@@ -56,7 +76,10 @@ impl Database {
         };
 
         // Run migrations
-        db.run_migrations().await?;
+        let migrated = db.run_migrations().await;
+
+        let _ = tokio::task::spawn_blocking(move || open_lock.unlock()).await;
+        migrated?;
 
         Ok(db)
     }
@@ -66,12 +89,34 @@ impl Database {
         &self.pool
     }
 
-    /// Run database migrations
+    /// Run database migrations.
+    ///
+    /// Serialized across processes. Two servers opening the same vault at once — a
+    /// context switch or a reset+reload, where the outgoing one is still shutting
+    /// down, or simply two `rite-server` instances on one data dir — both read
+    /// version 0 and both start applying. One wins; the other then meets tables that
+    /// already exist, drops into the tolerant path, and dies on a statement naming a
+    /// column a later migration removed:
+    ///
+    /// ```text
+    /// statement failed while reconciling a drifted migration
+    /// no such column: protected_collection_key
+    /// ```
+    ///
+    /// The vault opens in one window and refuses to open in the other. Taking the
+    /// write lock first and re-reading the version underneath it means the loser
+    /// waits, then finds the work already done and has nothing to do.
     async fn run_migrations(&self) -> Result<()> {
         info!("Running database migrations");
+        self.apply_migrations().await
+    }
 
-        // Get current schema version (0 if fresh DB)
-        let current_version = self.get_current_schema_version().await?;
+    /// The migration sequence itself, under the lock `Database::new` holds.
+    async fn apply_migrations(&self) -> Result<()> {
+        // Read the version *under the lock*: read before it and a concurrent starter
+        // sees a version that was true a moment ago and re-applies what just landed.
+        let mut guard = self.pool.acquire().await?;
+        let current_version = self.schema_version_of(&mut guard).await?;
         info!("Current schema version: {}", current_version);
 
         // Define all migrations with their SQL and version number
@@ -142,7 +187,7 @@ impl Database {
                     }
                 }
 
-                let mut conn = self.pool.acquire().await?;
+                let conn = &mut *guard;
 
                 // Normal path: run the whole migration file. On a *drifted* vault (schema
                 // objects already present but schema_version behind — e.g. an old dev vault
@@ -160,7 +205,7 @@ impl Database {
                                 .map(|d| d.message())
                                 .unwrap_or_default()
                         );
-                        apply_migration_tolerant(&mut conn, sql)
+                        apply_migration_tolerant(conn, sql)
                             .await
                             .with_context(|| format!("Failed to run migration {}", version))?;
                     } else {
@@ -202,7 +247,29 @@ impl Database {
         Ok(())
     }
 
+    /// The schema version as seen on one specific connection — used under the
+    /// migration lock, where reading through the pool would defeat the point.
+    async fn schema_version_of(
+        &self,
+        conn: &mut sqlx::pool::PoolConnection<sqlx::Sqlite>,
+    ) -> Result<i64> {
+        let table_exists: bool = sqlx::query_scalar(
+            "SELECT COUNT(*) > 0 FROM sqlite_master \
+             WHERE type='table' AND name='schema_version'",
+        )
+        .fetch_one(&mut **conn)
+        .await?;
+        if !table_exists {
+            return Ok(0);
+        }
+        let version: Option<i64> = sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+            .fetch_one(&mut **conn)
+            .await?;
+        Ok(version.unwrap_or(0))
+    }
+
     /// Get current schema version (returns 0 if schema_version table doesn't exist)
+    #[allow(dead_code)]
     async fn get_current_schema_version(&self) -> Result<i64> {
         // Check if schema_version table exists
         let table_exists: bool = sqlx::query_scalar(
@@ -946,6 +1013,46 @@ mod tests {
         let (retrieved_hash, retrieved_salt) = db.get_master_password().await.unwrap().unwrap();
         assert_eq!(retrieved_hash, hash);
         assert_eq!(retrieved_salt, salt);
+    }
+
+    /// Two processes opening the same vault at once must both end up with a usable
+    /// vault. Before the migration lock, they both read version 0 and both applied:
+    /// one won, the other met tables that already existed, fell into the tolerant
+    /// path and died on `no such column: protected_collection_key` — a column
+    /// migration 013 drops. The vault opened in one window and refused in the other.
+    #[test]
+    fn concurrent_opens_do_not_race_the_migrations() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("contended.db");
+
+        // Real threads with their own runtimes, not tasks: the lock being tested is
+        // held by a connection, and two connections contending for it is the whole
+        // point. Four at once on a fresh file, which is the case that actually raced —
+        // an already-migrated vault has nothing to apply and never collided.
+        let openers: Vec<_> = (0..4)
+            .map(|_| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    tokio::runtime::Runtime::new()
+                        .unwrap()
+                        .block_on(async { Database::new(&path).await.map(|db| db.pool().clone()) })
+                })
+            })
+            .collect();
+
+        for (i, opener) in openers.into_iter().enumerate() {
+            let pool = opener
+                .join()
+                .expect("opener panicked")
+                .unwrap_or_else(|e| panic!("opener {i} failed to open the vault: {e:#}"));
+            let version: i64 = tokio::runtime::Runtime::new().unwrap().block_on(async {
+                sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap()
+            });
+            assert_eq!(version, 23, "opener {i} left the schema at {version}");
+        }
     }
 
     /// A reset must leave the vault indistinguishable from a fresh one.

@@ -35,6 +35,9 @@ portable-pty = "0.9"
 # Utilities
 uuid = { workspace = true }
 chrono = { workspace = true }
+# Cross-process lock around the migration run. A SQLite transaction cannot serve as
+# that lock: held open, it makes another process's connection setup fail outright.
+fslock = "0.2"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
