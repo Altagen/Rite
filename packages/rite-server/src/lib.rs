@@ -521,6 +521,7 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/collection-policy", patch(set_collection_policy))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
+        .route("/api/admin/dashboard-policy", patch(set_dashboard_policy))
         .route("/api/healthcheck/probe", post(healthcheck_probe))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
         // guard-gated to admin); team management is per-team authorized in-handler.
@@ -1247,6 +1248,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "confirmRoleChange": confirm_role_change,
         "healthcheck": healthcheck,
         "collectionPolicy": collection_policy(&state).await?,
+        "dashboardPolicy": dashboard_policy(&state).await?,
         "hostKey": state.host_key.as_deref(),
     })))
 }
@@ -1267,6 +1269,30 @@ async fn healthcheck_policy(state: &ServerState) -> Result<Value, AppError> {
             "methods": ["tcp-connect"],   // subset of tcp-connect | icmp | ssh-handshake
             "restrictUsers": [],          // usernames allowed to actively probe (empty = all)
             "minInterval": 60,
+        })
+    }))
+}
+
+/// The machine-dashboard policy (ADR 0019), stored as one JSON setting. Governs only the
+/// cards that execute something on a host — containers and services. Overview reads what
+/// Rite already holds and is never gated; the Board touches no host at all.
+///
+/// Defaults on/on: this is what ships today, and disabling a working feature on upgrade
+/// would be a worse surprise than the traffic it saves. `webui` is enforcement (the server
+/// runs the exec, so refusing it stops the request); `clients` is policy the official
+/// client honours — an attached client execs from its own network and the server never
+/// sees it. Said plainly here because the admin copy has to say it too.
+async fn dashboard_policy(state: &ServerState) -> Result<Value, AppError> {
+    let stored = state
+        .db
+        .get_setting("dashboard_policy")
+        .await?
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok());
+    Ok(stored.unwrap_or_else(|| {
+        json!({
+            "webui": true,        // may a browser against this server run the probing cards
+            "clients": true,      // may an attached desktop client run them
+            "minInterval": 30,    // floor between automatic refreshes, seconds
         })
     }))
 }
@@ -1459,6 +1485,46 @@ async fn set_healthcheck(
     // Live distribution (ADR 0017): nudge every connected client to re-pull the
     // policy now instead of waiting for its next throttled poll. A payload-less,
     // session-less event broadcasts to all sockets (see `event_visible_to`).
+    let _ = state
+        .events_tx
+        .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Admin: set the dashboard policy (ADR 0019). Validated rather than stored as given —
+/// a malformed blob here silently disables a feature for a whole organisation, and the
+/// admin would have no way to tell that from "it is off because I turned it off".
+async fn set_dashboard_policy(
+    State(state): State<ServerState>,
+    Json(policy): Json<Value>,
+) -> Result<Response, AppError> {
+    for key in ["webui", "clients"] {
+        if policy.get(key).is_some_and(|v| !v.is_boolean()) {
+            return Ok(
+                (StatusCode::BAD_REQUEST, format!("{key} must be a boolean")).into_response(),
+            );
+        }
+    }
+    // A floor of zero means "poll as fast as you like", which is the self-DoS this exists
+    // to prevent. An hour is past any plausible dashboard.
+    if let Some(interval) = policy.get("minInterval") {
+        match interval.as_u64() {
+            Some(n) if (1..=3600).contains(&n) => {}
+            _ => {
+                return Ok((
+                    StatusCode::BAD_REQUEST,
+                    "minInterval must be 1..=3600 seconds",
+                )
+                    .into_response());
+            }
+        }
+    }
+    state
+        .db
+        .set_setting("dashboard_policy", &policy.to_string())
+        .await?;
+    // Same live distribution as ADR 0017: clients re-pull now rather than at their next
+    // poll, so turning the cards off takes effect while the admin is still watching.
     let _ = state
         .events_tx
         .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
