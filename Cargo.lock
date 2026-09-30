@@ -4142,6 +4142,7 @@ dependencies = [
  "argon2 0.5.3",
  "async-trait",
  "chrono",
+ "fslock",
  "portable-pty",
  "rand 0.10.2",
  "rite-crypto",

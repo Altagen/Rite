@@ -31,6 +31,26 @@ impl Database {
 
         info!("Connecting to database at: {}", db_path.display());
 
+        // Opening a vault is serialized across processes by a lock file beside it.
+        // Two things race otherwise, and both are real: several connections setting
+        // `journal_mode = WAL` on a fresh file (one gets "database is locked" and the
+        // process never starts), and the migration runner (both read version 0, both
+        // apply, the loser meets tables that exist and dies on a column a later
+        // migration drops — the vault then opens in one window and refuses in another).
+        //
+        // A SQLite transaction cannot serve as this lock: held open, it is what makes
+        // the other process's `journal_mode` pragma fail, and that pragma does not wait
+        // for busy_timeout. A file lock leaves SQLite alone.
+        let lock_path = std::path::PathBuf::from(format!("{}.lock", db_path.display()));
+        let mut open_lock = tokio::task::spawn_blocking(move || -> Result<fslock::LockFile> {
+            let mut lock = fslock::LockFile::open(&lock_path)
+                .with_context(|| format!("Failed to open the vault lock at {lock_path:?}"))?;
+            lock.lock().context("Failed to take the vault lock")?;
+            Ok(lock)
+        })
+        .await
+        .context("Vault lock task failed")??;
+
         // Set up connection options. WAL + a busy timeout let the vault survive brief overlaps
         // where two single-context servers hold the same file at once — e.g. an in-place context
         // switch or a reset+reload (ADR 0014), where the outgoing server is still shutting down as
@@ -56,7 +76,10 @@ impl Database {
         };
 
         // Run migrations
-        db.run_migrations().await?;
+        let migrated = db.run_migrations().await;
+
+        let _ = tokio::task::spawn_blocking(move || open_lock.unlock()).await;
+        migrated?;
 
         Ok(db)
     }
@@ -66,12 +89,34 @@ impl Database {
         &self.pool
     }
 
-    /// Run database migrations
+    /// Run database migrations.
+    ///
+    /// Serialized across processes. Two servers opening the same vault at once — a
+    /// context switch or a reset+reload, where the outgoing one is still shutting
+    /// down, or simply two `rite-server` instances on one data dir — both read
+    /// version 0 and both start applying. One wins; the other then meets tables that
+    /// already exist, drops into the tolerant path, and dies on a statement naming a
+    /// column a later migration removed:
+    ///
+    /// ```text
+    /// statement failed while reconciling a drifted migration
+    /// no such column: protected_collection_key
+    /// ```
+    ///
+    /// The vault opens in one window and refuses to open in the other. Taking the
+    /// write lock first and re-reading the version underneath it means the loser
+    /// waits, then finds the work already done and has nothing to do.
     async fn run_migrations(&self) -> Result<()> {
         info!("Running database migrations");
+        self.apply_migrations().await
+    }
 
-        // Get current schema version (0 if fresh DB)
-        let current_version = self.get_current_schema_version().await?;
+    /// The migration sequence itself, under the lock `Database::new` holds.
+    async fn apply_migrations(&self) -> Result<()> {
+        // Read the version *under the lock*: read before it and a concurrent starter
+        // sees a version that was true a moment ago and re-applies what just landed.
+        let mut guard = self.pool.acquire().await?;
+        let current_version = self.schema_version_of(&mut guard).await?;
         info!("Current schema version: {}", current_version);
 
         // Define all migrations with their SQL and version number
@@ -142,7 +187,7 @@ impl Database {
                     }
                 }
 
-                let mut conn = self.pool.acquire().await?;
+                let conn = &mut *guard;
 
                 // Normal path: run the whole migration file. On a *drifted* vault (schema
                 // objects already present but schema_version behind — e.g. an old dev vault
@@ -160,7 +205,7 @@ impl Database {
                                 .map(|d| d.message())
                                 .unwrap_or_default()
                         );
-                        apply_migration_tolerant(&mut conn, sql)
+                        apply_migration_tolerant(conn, sql)
                             .await
                             .with_context(|| format!("Failed to run migration {}", version))?;
                     } else {
@@ -202,7 +247,29 @@ impl Database {
         Ok(())
     }
 
+    /// The schema version as seen on one specific connection — used under the
+    /// migration lock, where reading through the pool would defeat the point.
+    async fn schema_version_of(
+        &self,
+        conn: &mut sqlx::pool::PoolConnection<sqlx::Sqlite>,
+    ) -> Result<i64> {
+        let table_exists: bool = sqlx::query_scalar(
+            "SELECT COUNT(*) > 0 FROM sqlite_master \
+             WHERE type='table' AND name='schema_version'",
+        )
+        .fetch_one(&mut **conn)
+        .await?;
+        if !table_exists {
+            return Ok(0);
+        }
+        let version: Option<i64> = sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+            .fetch_one(&mut **conn)
+            .await?;
+        Ok(version.unwrap_or(0))
+    }
+
     /// Get current schema version (returns 0 if schema_version table doesn't exist)
+    #[allow(dead_code)]
     async fn get_current_schema_version(&self) -> Result<i64> {
         // Check if schema_version table exists
         let table_exists: bool = sqlx::query_scalar(
@@ -321,28 +388,55 @@ impl Database {
         Ok(())
     }
 
-    /// Reset the database (delete master password and all connections)
-    /// WARNING: This will permanently delete all data!
+    /// Tables a reset leaves alone: the migration ledger, and the settings, which are
+    /// preferences rather than content — the reset dialog promises to erase the master
+    /// password, the connections and the vault's name/icon, not your auto-lock timeout.
+    const RESET_KEEPS: [&'static str; 2] = ["schema_version", "settings"];
+
+    /// Reset the vault: erase everything it holds, keep the file and its schema.
+    ///
+    /// Enumerated from `sqlite_master` rather than from a hand-written list, because a
+    /// hand-written list is a trap that only springs later. It listed `connections`,
+    /// `master_password` and `unlock_attempts`, and then ADR 0018 added collections —
+    /// so a reset wiped the master key and left every collection behind, sealed with a
+    /// key that no longer existed anywhere. The next launch did not merely show a stale
+    /// collection: `local_collections::list` tries to unwrap those keys and fails, so
+    /// the whole sidebar answered HTTP 500 and the vault was unusable rather than fresh.
+    ///
+    /// WARNING: This permanently deletes all data in the vault.
     pub async fn reset(&self) -> Result<()> {
         warn!("Resetting database - all data will be lost!");
 
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master \
+             WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query("DELETE FROM connections")
+        // Rows reference each other (a collection member points at a user, an item at a
+        // collection), and sqlx has foreign keys on. Deferring the checks to commit time
+        // means the order of the DELETEs stops mattering.
+        sqlx::query("PRAGMA defer_foreign_keys = ON")
             .execute(&mut *tx)
             .await?;
 
-        sqlx::query("DELETE FROM master_password")
-            .execute(&mut *tx)
-            .await?;
-
-        sqlx::query("DELETE FROM unlock_attempts")
-            .execute(&mut *tx)
-            .await?;
+        for table in &tables {
+            if Self::RESET_KEEPS.contains(&table.as_str()) {
+                continue;
+            }
+            // The name comes from sqlite_master, not from a caller.
+            sqlx::query(&format!("DELETE FROM \"{table}\""))
+                .execute(&mut *tx)
+                .await
+                .with_context(|| format!("Failed to clear {table} during reset"))?;
+        }
 
         tx.commit().await?;
 
-        info!("Database reset completed");
+        info!("Database reset completed ({} tables cleared)", tables.len());
         Ok(())
     }
 
@@ -793,6 +887,7 @@ fn split_sql_statements(sql: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rite_crypto::vault::KEY_LEN;
     use tempfile::TempDir;
 
     async fn create_test_db() -> (Database, TempDir) {
@@ -918,6 +1013,111 @@ mod tests {
         let (retrieved_hash, retrieved_salt) = db.get_master_password().await.unwrap().unwrap();
         assert_eq!(retrieved_hash, hash);
         assert_eq!(retrieved_salt, salt);
+    }
+
+    /// Two processes opening the same vault at once must both end up with a usable
+    /// vault. Before the migration lock, they both read version 0 and both applied:
+    /// one won, the other met tables that already existed, fell into the tolerant
+    /// path and died on `no such column: protected_collection_key` — a column
+    /// migration 013 drops. The vault opened in one window and refused in the other.
+    #[test]
+    fn concurrent_opens_do_not_race_the_migrations() {
+        let temp = TempDir::new().unwrap();
+        let path = temp.path().join("contended.db");
+
+        // Real threads with their own runtimes, not tasks: the lock being tested is
+        // held by a connection, and two connections contending for it is the whole
+        // point. Four at once on a fresh file, which is the case that actually raced —
+        // an already-migrated vault has nothing to apply and never collided.
+        let openers: Vec<_> = (0..4)
+            .map(|_| {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    tokio::runtime::Runtime::new()
+                        .unwrap()
+                        .block_on(async { Database::new(&path).await.map(|db| db.pool().clone()) })
+                })
+            })
+            .collect();
+
+        for (i, opener) in openers.into_iter().enumerate() {
+            let pool = opener
+                .join()
+                .expect("opener panicked")
+                .unwrap_or_else(|e| panic!("opener {i} failed to open the vault: {e:#}"));
+            let version: i64 = tokio::runtime::Runtime::new().unwrap().block_on(async {
+                sqlx::query_scalar("SELECT MAX(version) FROM schema_version")
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap()
+            });
+            assert_eq!(version, 23, "opener {i} left the schema at {version}");
+        }
+    }
+
+    /// A reset must leave the vault indistinguishable from a fresh one.
+    ///
+    /// Enumerated from `sqlite_master` on purpose: the point is to fail when someone
+    /// adds a table and forgets the reset, which is exactly what happened when ADR 0018
+    /// brought collections in. Asserting a hand-written list here would have passed
+    /// happily while the bug shipped.
+    #[tokio::test]
+    async fn reset_leaves_nothing_behind() {
+        let (db, _temp) = create_test_db().await;
+        let key = [7u8; KEY_LEN];
+
+        db.store_master_password("hash", &[1, 2, 3]).await.unwrap();
+        db.record_unlock_attempt(false).await.unwrap();
+
+        // Content that only exists since ADR 0018 — a collection, its member row and an
+        // encrypted machine inside it. This is what the old reset walked straight past.
+        crate::local_user::ensure(db.pool()).await.unwrap();
+        let coll = crate::local_collections::create(db.pool(), &key, "Prod", None)
+            .await
+            .unwrap();
+        let record: crate::local_collections::MachineRecord = serde_json::from_str(
+            r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,
+                "username":"deploy","authMethod":{"type":"password","password":"s3cret"}}"#,
+        )
+        .unwrap();
+        crate::local_collections::create_machine(db.pool(), &key, &coll.id, &record)
+            .await
+            .unwrap();
+
+        db.reset().await.unwrap();
+
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        )
+        .fetch_all(db.pool())
+        .await
+        .unwrap();
+        assert!(
+            tables.len() > 15,
+            "expected the full schema, got {tables:?}"
+        );
+
+        for table in tables {
+            let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM \"{table}\""))
+                .fetch_one(db.pool())
+                .await
+                .unwrap();
+            if Database::RESET_KEEPS.contains(&table.as_str()) {
+                continue; // the migration ledger and the preferences survive, by design
+            }
+            assert_eq!(
+                count, 0,
+                "`{table}` still holds {count} row(s) after a reset — a reset that leaves \
+                 content behind leaves it sealed with a master key that no longer exists"
+            );
+        }
+
+        // And the vault is usable again rather than 500ing on its own leftovers.
+        assert!(db.is_first_run().await.unwrap());
+        let listed = crate::local_collections::list(db.pool(), &[9u8; KEY_LEN])
+            .await
+            .expect("a reset vault lists collections instead of failing to decrypt");
+        assert!(listed.is_empty());
     }
 
     #[tokio::test]

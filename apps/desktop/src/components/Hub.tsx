@@ -451,6 +451,12 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                           </svg>
                         </button>
                       )}
+                      {/* Never on the current vault: this trash forgets a vault, and the one
+                          you are in cannot be forgotten. It used to open a Reset instead —
+                          one click from Open, guarded only by retyping the name printed
+                          above it — and this card view is where that button became
+                          permanently visible. Resetting lives in Settings ▸ danger zone. */}
+                      {!isCurrent && (
                       <button
                         onClick={() => setConfirmRemoveVault(v)}
                         title="Remove from list"
@@ -461,6 +467,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
                         </svg>
                       </button>
+                      )}
                     </>
                   )}
                 </div>
