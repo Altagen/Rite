@@ -12,6 +12,9 @@ import { useTranslation } from '../i18n/i18n';
 import { forwardKey, useRunningForwards } from '../utils/forwards';
 import { StatusPastille } from './StatusPastille';
 import { useHealth } from '../store/healthStore';
+import { useServerSession } from '../store/serverSessionStore';
+import { useDisplayPrefs } from '../store/displayPrefs';
+import { probeBlockedReason, probeVerdict, type ProbeVerdict } from '../utils/dashboardProbes';
 import type { ConnectionInfo, PortForwardConfig } from '../store/connectionsStore';
 import type { PortForwardInfo, RemoteCommandOutput } from '../utils/backend';
 import {
@@ -236,6 +239,13 @@ export function MachineDashboard({
   const [customize, setCustomize] = useState(false);
   const isWide = (id: DashCardId) => prefs.wide.includes(id);
   const isHidden = (id: DashCardId) => prefs.hidden.includes(id);
+
+  // The cards that execute on a host are governed (ADR 0019): the server may refuse them
+  // for this shell, and the user may refuse them for this device. Overview, forwards and
+  // the Board are untouched — refusing to probe is not refusing the dashboard.
+  const mode = useServerSession((s) => s.mode);
+  const userWantsProbes = useDisplayPrefs((s) => s.machineProbes);
+  const probes = probeVerdict({ mode, userWants: userWantsProbes });
   const toggle = (key: 'wide' | 'hidden', id: DashCardId) =>
     setPrefs((p) => {
       const cur = p[key];
@@ -381,7 +391,7 @@ export function MachineDashboard({
           </CardShell>
         )}
 
-        {execRemote && !isHidden('containers') && (
+        {execRemote && probes.allowed && !isHidden('containers') && (
           <ContainersCard
             connection={connection}
             execRemote={execRemote}
@@ -390,7 +400,7 @@ export function MachineDashboard({
             onToggleWide={() => toggle('wide', 'containers')}
           />
         )}
-        {execRemote && !isHidden('services') && (
+        {execRemote && probes.allowed && !isHidden('services') && (
           <ServicesCard
             connection={connection}
             execRemote={execRemote}
@@ -398,6 +408,17 @@ export function MachineDashboard({
             wide={isWide('services')}
             onToggleWide={() => toggle('wide', 'services')}
           />
+        )}
+        {execRemote && !probes.allowed && (
+          <div className="col-span-full rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">Containers and services are not being checked</p>
+            <p className="mt-1">{probeBlockedReason(probes)}</p>
+            {probes.by === 'you' && (
+              <p className="mt-1">
+                Turn them back on in Settings. Everything else on this dashboard is unaffected.
+              </p>
+            )}
+          </div>
         )}
       </div>
 
@@ -413,6 +434,7 @@ export function MachineDashboard({
         <CustomizeModal
           name={connection.name}
           isHidden={isHidden}
+          probes={probes}
           onToggle={(id) => toggle('hidden', id)}
           onClose={() => setCustomize(false)}
         />
@@ -425,11 +447,14 @@ export function MachineDashboard({
 function CustomizeModal({
   name,
   isHidden,
+  probes,
   onToggle,
   onClose,
 }: {
   name: string;
   isHidden: (id: DashCardId) => boolean;
+  /** The ADR 0019 verdict: a switch that cannot take effect says so instead of lying. */
+  probes: ProbeVerdict;
   onToggle: (id: DashCardId) => void;
   onClose: () => void;
 }) {
@@ -449,12 +474,25 @@ function CustomizeModal({
         </div>
         <div className="px-4 py-2">
           <p className="mb-2 text-xs text-muted-foreground">{t('dash.customizeHint', { name })}</p>
-          {cards.map(([id, label]) => (
-            <label key={id} className="flex cursor-pointer items-center justify-between border-b border-border py-2.5 text-sm font-medium last:border-none">
-              <span>{label}</span>
-              <input type="checkbox" checked={!isHidden(id)} onChange={() => onToggle(id)} className="h-4 w-4 accent-primary" />
-            </label>
-          ))}
+          {cards.map(([id, label]) => {
+            const governed = !probes.allowed && (id === 'containers' || id === 'services');
+            return (
+              <label
+                key={id}
+                className={`flex cursor-pointer items-center justify-between border-b border-border py-2.5 text-sm font-medium last:border-none ${governed ? 'opacity-60' : ''}`}
+              >
+                <span>
+                  {label}
+                  {governed && (
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      {probes.by === 'server' ? 'not allowed here' : 'off in your settings'}
+                    </span>
+                  )}
+                </span>
+                <input type="checkbox" checked={!isHidden(id)} onChange={() => onToggle(id)} className="h-4 w-4 accent-primary" />
+              </label>
+            );
+          })}
         </div>
         <div className="flex justify-end border-t border-border px-4 py-3">
           <button onClick={onClose} className="rounded border border-border px-3 py-1.5 text-sm hover:bg-muted">
@@ -490,7 +528,9 @@ function CardShell({
     <div className={`rounded-lg border border-border bg-card p-4 ${wide ? 'col-span-full' : ''}`}>
       <div className="mb-3 flex items-center gap-2 text-sm font-medium">
         {icon}
-        {title}
+        {/* A heading, not a bare text node: the card title is the only thing that names this
+            panel, so it should be reachable as one — by a screen reader and by a test. */}
+        <h3 className="text-sm font-medium">{title}</h3>
         {badge}
         <div className="flex-1" />
         {actions}

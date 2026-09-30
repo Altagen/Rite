@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Backend, type HealthcheckPolicy } from '../utils/backend';
+import { Backend, type DashboardPolicy, type HealthcheckPolicy } from '../utils/backend';
 
 const DEFAULT_HC: HealthcheckPolicy = {
   passiveStatus: true,
@@ -14,6 +14,9 @@ const DEFAULT_HC: HealthcheckPolicy = {
   restrictUsers: [],
   minInterval: 60,
 };
+/** ADR 0019 defaults: both shells allowed. A server that has never been configured has
+ *  not said no, and reading silence as a refusal would disable a shipped feature. */
+const DEFAULT_DASH: DashboardPolicy = { webui: true, clients: true, minInterval: 30 };
 const HC_METHODS: { id: string; label: string }[] = [
   { id: 'tcp-connect', label: 'TCP-connect' },
   { id: 'icmp', label: 'ICMP' },
@@ -32,6 +35,7 @@ export function InstanceSettingsPanel() {
   const [allowInv, setAllowInv] = useState(true);
   const [confirmRole, setConfirmRole] = useState(false);
   const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
+  const [dash, setDash] = useState<DashboardPolicy>(DEFAULT_DASH);
   const [userInput, setUserInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -50,6 +54,7 @@ export function InstanceSettingsPanel() {
       setAllowInv(mode.allowInvitations !== false);
       setConfirmRole(mode.confirmRoleChange === true);
       setHc(mode.healthcheck ?? DEFAULT_HC);
+      setDash(mode.dashboardPolicy ?? DEFAULT_DASH);
     } catch {
       setError('Failed to load instance settings');
     }
@@ -63,6 +68,18 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setHealthcheck(next);
     } catch (err) {
       setHc(prev);
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
+
+  // Same optimistic shape as saveHc: the switch moves, and goes back if the server refuses.
+  const saveDash = async (next: DashboardPolicy) => {
+    const prev = dash;
+    setDash(next);
+    try {
+      await Backend.Admin.setDashboardPolicy(next);
+    } catch (err) {
+      setDash(prev);
       setError(err instanceof Error ? err.message : 'Failed to save');
     }
   };
@@ -513,6 +530,90 @@ export function InstanceSettingsPanel() {
               value={hc.minInterval}
               onChange={(e) => setHc({ ...hc, minInterval: Number(e.target.value) })}
               onBlur={() => saveHc(hc)}
+              className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+            />
+            <span className="text-sm text-muted-foreground">seconds</span>
+          </div>
+        </div>
+
+        {/* Machine dashboard (ADR 0019): only the cards that execute on a host are governed.
+            Overview, port forwarding and the Board touch no host and are never gated. */}
+        <div className="border-t border-border p-4">
+          <div className="font-medium">Machine dashboard — container &amp; service cards</div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            These two cards run a command on the host every time they refresh. Everything else on the
+            dashboard — address, port forwarding, the Board — reads what Rite already holds and is never
+            affected by the switches below.
+          </p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The two halves are not equally strong, and it is worth knowing which is which.{' '}
+            <b>Web UI</b> is <b>enforcement</b>: the browser cannot open SSH, this server executes, so off
+            means nothing runs. <b>Clients</b> is <b>policy</b>: a desktop client probes from its own network
+            and this server never sees the request — the official client honours the switch by hiding the
+            cards, a modified one could ignore it. What it buys you is the traffic stopped in normal use, no
+            trigger left in the UI to fire by accident, and a recorded statement of intent.
+          </p>
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">Allow in the web UI</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              This server runs the commands, so its own egress pays. Off means off for everyone in a browser —
+              not a matter of preference.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={dash.webui}
+            aria-label="Allow the dashboard probing cards in the web UI"
+            onClick={() => saveDash({ ...dash, webui: !dash.webui })}
+            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${dash.webui ? 'bg-primary' : 'bg-muted'}`}
+          >
+            <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${dash.webui ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">Allow in attached clients</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Each client probes from its own network position, so your users&apos; endpoints pay. A user may
+              also turn the cards off for themselves; neither side can override the other upward.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={dash.clients}
+            aria-label="Allow the dashboard probing cards in attached clients"
+            onClick={() => saveDash({ ...dash, clients: !dash.clients })}
+            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${dash.clients ? 'bg-primary' : 'bg-muted'}`}
+          >
+            <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${dash.clients ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+
+        <div
+          className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${!dash.webui && !dash.clients ? 'pointer-events-none opacity-40' : ''}`}
+        >
+          <div>
+            <div className="font-medium">Minimum refresh interval</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Floor between <b>automatic</b> refreshes of these cards. Today they refresh when a
+              dashboard opens and when a user presses Refresh, so this is the ceiling any future
+              background refresh has to respect — it does not rate-limit a person clicking.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={3600}
+              value={dash.minInterval}
+              onChange={(e) => setDash({ ...dash, minInterval: Number(e.target.value) })}
+              onBlur={() => saveDash(dash)}
               className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             />
             <span className="text-sm text-muted-foreground">seconds</span>

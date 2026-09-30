@@ -646,3 +646,56 @@ test('a collection Board round-trips its cards, and the server only sees ciphert
   expect(withBoard!.boardEnc!).toMatch(/^v1\./);
   expect(withBoard!.boardEnc!).not.toContain('runbook.secret.example');
 });
+
+/**
+ * The server's half of the dashboard gate, seen from a browser (ADR 0019 §3, §6).
+ *
+ * In the web UI a refusal is *enforcement*, not a preference: the browser cannot open SSH,
+ * this server runs the command, so `webui: false` means the cards run for nobody. What has
+ * to hold here is that the client obeys a policy it pulled from the server, that it drops
+ * only the two cards that execute on a host, and that it says which side refused — the
+ * refusal a user cannot undo is the one worth naming.
+ */
+test('dashboard policy: webui:false hides the probing cards and names the server (ADR 0019)', async ({
+  page,
+  request,
+}) => {
+  const admin = await login(request, 'admin', ADMIN.password);
+  const setPolicy = (webui: boolean) =>
+    request.patch(`${BASE}/api/admin/dashboard-policy`, {
+      headers: auth(admin),
+      data: { webui, clients: true, minInterval: 30 },
+    });
+
+  const card = (name: string) => page.getByRole('heading', { name, exact: true });
+
+  // Default (nothing configured): the machine carol already owns shows both cards.
+  await signInCarol(page);
+  await page.getByText('zk-behind-jump').first().click();
+  await expect(card('Overview')).toBeVisible({ timeout: 30_000 });
+  await expect(card('Containers')).toBeVisible();
+  await expect(card('Services')).toBeVisible();
+
+  // The admin refuses the web UI. A reload re-pulls server_mode, as a fresh tab would.
+  expect((await setPolicy(false)).status()).toBe(204);
+  await page.reload();
+  await expectWorkspace(page);
+  await page.getByText('zk-behind-jump').first().click();
+
+  await expect(page.getByText('Containers and services are not being checked')).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByText('Your server turns off container and service checks in the web UI, so they run for nobody here.'),
+  ).toBeVisible();
+  await expect(card('Containers')).toHaveCount(0);
+  await expect(card('Services')).toHaveCount(0);
+  // Refusing to probe is not refusing the dashboard.
+  await expect(card('Overview')).toBeVisible();
+  await expect(card('Port forwarding')).toBeVisible();
+
+  // Reopen, so the rest of the suite sees an unrestricted server.
+  expect((await setPolicy(true)).status()).toBe(204);
+  await page.reload();
+  await expectWorkspace(page);
+  await page.getByText('zk-behind-jump').first().click();
+  await expect(card('Containers')).toBeVisible({ timeout: 30_000 });
+});
