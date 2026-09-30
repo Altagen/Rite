@@ -888,8 +888,11 @@ export function Workspace({
 
   // Handle switch tab (now switches between tab groups)
   const handleSwitchTab = (tabId: string) => {
-    console.log('[MainScreen] Switching to tab group:', tabId);
     setActiveTabId(tabId);
+    // A terminal tab IS the terminal view. With the strips merged there is no separate
+    // "Terminal" button left to come back with, so picking a tab has to do it — else
+    // the tab changes underneath a dashboard that stays on screen.
+    setMainView('terminal');
   };
 
   // Handle reorder tabs
@@ -1163,6 +1166,65 @@ export function Workspace({
     }
     return [...s].sort((a, b) => a.localeCompare(b));
   };
+
+  // The collection and machine tabs live in the terminal strip, after the terminal
+  // tabs and before the "+", which is where the mock keeps them (`#mtabs`). They had
+  // their own strip above it, so opening a machine produced two bars — and the
+  // terminal one, `relative z-10` like the dashboard overlay and later in the DOM,
+  // painted over the dashboard it has nothing to say about.
+  const viewTabs = (openCollectionId || openMachine) ? (
+    <>
+      {openCollectionId && (
+        <div
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+            mainView === 'collection' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          <button onClick={() => setMainView('collection')} className="flex items-center gap-1.5">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
+            </svg>
+            <span className="max-w-[160px] truncate">{openCollectionName}</span>
+          </button>
+          <button
+            onClick={handleCloseCollection}
+            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+            aria-label="Close collection"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+      {openMachine && (
+        <div
+          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+            mainView === 'machine' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          <button onClick={() => setMainView('machine')} className="flex items-center gap-1.5">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <rect x="3" y="5" width="18" height="6" rx="1.5" />
+              <rect x="3" y="13" width="18" height="6" rx="1.5" />
+              <path strokeLinecap="round" d="M6.5 8h.01M6.5 16h.01" />
+            </svg>
+            <span className="max-w-[160px] truncate">{openMachine.name}</span>
+          </button>
+          <button
+            onClick={handleCloseMachine}
+            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+            aria-label={t('dash.close')}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+    </>
+  ) : null;
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -1500,71 +1562,6 @@ export function Workspace({
             is open), then the terminal manager (kept mounted so sessions survive)
             with the collection view overlaid when its tab is active. */}
         <div className="relative flex min-w-0 flex-1 flex-col">
-          {(openCollectionId || openMachine) && (
-            <div className="flex items-center gap-1 border-b border-border bg-card px-2 py-1">
-              <button
-                onClick={() => setMainView('terminal')}
-                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
-                  mainView === 'terminal' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
-                }`}
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 17l6-5-6-5M12 19h8" />
-                </svg>
-                {t('main.terminal') !== 'main.terminal' ? t('main.terminal') : 'Terminal'}
-              </button>
-              {openCollectionId && (
-                <div
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
-                    mainView === 'collection' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  <button onClick={() => setMainView('collection')} className="flex items-center gap-1.5">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
-                    </svg>
-                    <span className="max-w-[160px] truncate">{openCollectionName}</span>
-                  </button>
-                  <button
-                    onClick={handleCloseCollection}
-                    className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-                    aria-label="Close collection"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-              {openMachine && (
-                <div
-                  className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
-                    mainView === 'machine' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
-                  }`}
-                >
-                  <button onClick={() => setMainView('machine')} className="flex items-center gap-1.5">
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <rect x="3" y="5" width="18" height="6" rx="1.5" />
-                      <rect x="3" y="13" width="18" height="6" rx="1.5" />
-                      <path strokeLinecap="round" d="M6.5 8h.01M6.5 16h.01" />
-                    </svg>
-                    <span className="max-w-[160px] truncate">{openMachine.name}</span>
-                  </button>
-                  <button
-                    onClick={handleCloseMachine}
-                    className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-                    aria-label={t('dash.close')}
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
           <div className="relative flex min-h-0 flex-1 flex-col">
             {/* Collection view overlay (kept above the terminal when its tab is active) */}
             {openCollectionId && mainView === 'collection' && (
@@ -1636,6 +1633,7 @@ export function Workspace({
         {/* Main panel - Terminal Manager */}
         <ErrorBoundary level="feature" name="TerminalManager">
           <TerminalManager
+            viewTabs={viewTabs}
             tabGroups={tabGroups}
             activeTabId={activeTabId}
             onSplitPane={handleSplitPane}
