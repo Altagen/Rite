@@ -33,7 +33,7 @@ echo "server checks (fresh accounts server each):"
 for c in discovery-check first-login-check reset-check manager-role-check \
          rbac-hierarchy-check enrollment-token-check enrollment-scoping-check \
          invitations-switch-check self-register-check collection-policy-check \
-         healthcheck-check; do
+         healthcheck-check dashboard-policy-check; do
   pkill -f 'target/debug/rite-server' 2>/dev/null
   sleep 1
   sh e2e/serve-accounts.sh >/tmp/rite-checks-server.log 2>&1 &
