@@ -47,6 +47,19 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
 | Admin console | **no** — server management lives in the web console | yes (if admin) |
 | Session persistence | — | admin setting |
 | SSH import | file path or paste | **paste only** |
+| Machine dashboard + Board | yes | **yes** — same cards, same markup (ADR 0019) |
+| Probing cards (containers, services) | governed by `clients` when attached; the user's own call in a vault | governed by `webui`; off there means off for everyone |
+
+The **machine dashboard and the Board are not divergences** — they are *usage* features and
+live in both shells (ADR 0019). Only the two cards that execute something on a host are
+governed, and the governance is per shell: `dashboard_policy { webui, clients, minInterval }`
+in the admin console's **Instance → Client capabilities**, narrowable (never widenable) by a
+per-device user setting in **Settings → Machine status**. Most-restrictive-wins: a "yes" is a
+permission, never an instruction. In the web UI a refusal is *enforcement* (the server runs the
+commands); in an attached client it is *policy* (the client probes from its own network, and the
+server never sees the request). The mock says so in the admin copy rather than leaving it to be
+discovered. Both shells load the shared `machine.js` / `machine.css`, so neither entry page can
+drift from the other — the drift is how the web UI ended up with an undocumented dashboard.
 
 ## Files
 - `web.html` — the web-UI prototype (markup + inline logic).
@@ -63,6 +76,10 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
   members + per-member roles, sharing, colour, rename/delete; Personal is a real
   1-member collection that can't be shared or deleted. The counterpart to admin
   governance: same objects, different need.
+- `machine.js` / `machine.css` — the **machine dashboard** (Overview, port forwarding,
+  containers, services) and the collection **Board**, shared by both entry pages (ADR 0019).
+  Each page supplies `DASH_SHELL` (`'webui'` / `'clients'`) and `probeGoverned()`; the shared
+  `probeVerdict()` holds the precedence table so it cannot be re-derived differently twice.
 - `rite.css` — shared design tokens + components (dark, terminal-forward).
 - `rite.js` — shared helpers (toast, modal, mini-terminal) + generic dialogs.
 - `full-data.js` — mock data (org directory, teams, collections) + extra icons.

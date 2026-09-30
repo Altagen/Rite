@@ -4,6 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Rite · web UI mock</title>
 <link rel="stylesheet" href="rite.css">
+<link rel="stylesheet" href="machine.css">
 <style>
   /* Shared tree / cards / menu bits (kept in sync with desktop mock) */
   .side-hdr{display:flex;align-items:center;gap:4px;padding:4px 8px 6px 14px}
@@ -95,10 +96,11 @@
     </main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>web UI</b> · one server (instance name, no pill) · <a href="#" onclick="openHostKey();return false">host-key</a></div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>web UI</b> · one server (instance name, no pill) · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openMachine('web-01');return false">machine dashboard</a> · <a href="#" onclick="dlgBoard(find('c-prod'));return false">board</a> · <a href="#" onclick="demoToggleDashPolicy();return false">dashboard policy</a></div>
 
 <script src="rite.js"></script>
 <script src="full-data.js"></script>
+<script src="machine.js"></script>
 <script>
 /* ================= web-UI mock =================
    The browser talks to ONE Rite server. No context pill, no local vault, no
@@ -120,6 +122,13 @@ const M={
   compass:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg>',
   bell:'<svg class="icon" viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>',
   refresh:'<svg class="icon" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7L21 8M21 3v5h-5"/></svg>',
+  // Dashboard + Board icons (the shared machine.js draws with these — kept identical to the
+  // desktop mock's, since the same cards are drawn in both shells).
+  forward:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 9h13l-3.5-3.5M20 15H7l3.5 3.5"/></svg>',
+  docker:'<svg class="icon" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="11" rx="1.5"/><path d="M7 8V6h4v2M13 8V6h4v2M7 12h.01M11 12h.01M15 12h.01"/></svg>',
+  service:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M4.2 7.5l2.1 1.2M17.7 15.3l2.1 1.2M4.2 16.5l2.1-1.2M17.7 8.7l2.1-1.2"/></svg>',
+  board:'<svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="5" rx="1.5"/><rect x="3" y="15" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="8" rx="1.5"/></svg>',
+  jump:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 18c0-6 4-10 8-10s8 4 8 10M9 8l3-4 3 4"/></svg>',
 };
 const SSH_HOSTS=[
   {name:'gitlab',host:'gitlab.com',user:'git',port:22},
@@ -160,19 +169,36 @@ const LIB=[
             {name:'NAS',host:'nas.local',user:'admin',port:22,last:'1w ago'}]}]}]},
  // A personal ORGANISER folder (view hierarchy) that groups shared collections.
  {id:'f-acme',type:'folder',color:'#e5b567',name:'Acme',open:true,children:[
-   {id:'c-prod',type:'coll',color:'#f7768e',name:'Production',shared:true,members:['alex','carol','erin'],roles:{alex:'owner',carol:'editor',erin:'viewer'},open:true,conns:[
+   {id:'c-prod',type:'coll',color:'#f7768e',name:'Production',shared:true,members:['alex','carol','erin'],roles:{alex:'owner',carol:'editor',erin:'viewer'},open:true,
+    // The Board is collection data encrypted for members (ADR 0019 §2): it touches no host,
+    // so it ships in both shells ungoverned.
+    board:[
+      {id:'b1',type:'link',cat:'Monitoring',title:'Grafana',url:'https://grafana.acme.io/d/prod',emoji:'📊'},
+      {id:'b2',type:'link',cat:'Docs',title:'Runbook',url:'https://wiki.acme.io/prod/runbook',emoji:'📕'},
+      {id:'b3',type:'note',cat:'Ops',title:'Deploy window',text:'Deploys **Tue/Thu 14:00 UTC**. Freeze on Fridays. On-call: `#prod-oncall`.'},
+      {id:'b4',type:'action',cat:'Ops',title:'Restart API',label:'Restart',desc:'systemctl restart app on web-01'},
+      {id:'b5',type:'live',cat:'Monitoring',title:'Failed units (web-01)',rows:[{up:false,text:'backup.service — failed'},{up:true,text:'nginx.service — active'}]},
+    ],
+    conns:[
       {name:'lb-01',host:'10.0.0.4',user:'deploy',port:22,last:'1h ago'}],children:[
       {id:'cf-web',type:'folder',color:'#7c9cf5',name:'Web servers',open:true,conns:[
-         {name:'web-01',host:'10.0.0.5',user:'deploy',port:22,last:'5m ago'}],children:[
+         {name:'web-01',host:'10.0.0.5',user:'deploy',port:22,forwards:[{type:'local',localPort:'8080',remoteHost:'10.0.0.9',remotePort:'80',active:true}],last:'5m ago'}],children:[
          {id:'cf-eu',type:'folder',color:'#bb9af7',name:'EU',open:true,conns:[
             {name:'web-02',host:'10.0.0.6',user:'deploy',port:22,last:'12m ago'}]}]}]},
    {id:'c-db',type:'coll',color:'#f0a35e',name:'Databases',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
-      {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,last:'1h ago'}]} ]},
+      {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,forwards:[{type:'local',localPort:'5432',remoteHost:'localhost',remotePort:'5432',active:false}],last:'1h ago'}]} ]},
 ];
 function walk(list,fn){list.forEach(n=>{fn(n);if(n.children)walk(n.children,fn);});}
 function find(id){let r=null;walk(LIB,n=>{if(n.id===id)r=n;});return r;}
 function allColls(){const a=[];walk(LIB,n=>{if(n.type==='coll')a.push(n);});return a;}
 function collectMachines(node){let out=[...(node.conns||[])];(node.children||[]).forEach(c=>out=out.concat(collectMachines(c)));return out;}
+/* A small glyph on machines that have saved port forwards (accent when any is live). */
+function pfGlyph(cn){if(!cn.forwards||!cn.forwards.length)return '';const live=cn.forwards.filter(f=>f.active).length;
+  return `<span class="jhop" ${live?'style="color:var(--accent);opacity:1"':''} title="${cn.forwards.length} port forward${cn.forwards.length>1?'s':''}${live?` · ${live} live`:''}">${M.forward}</span>`;}
+function machineByName(name){let r=null;walk(LIB,n=>{(n.conns||[]).forEach(m=>{if(m.name===name&&!r)r=m;});});return r;}
+function jumpChain(cn){const out=[];const seen=new Set();let j=cn&&cn.jump;while(j&&!seen.has(j)){seen.add(j);out.push(j);const m=machineByName(j);j=m&&m.jump;}return out;}
+// The web UI opens terminals on the SERVER, so "connect" is a server-side session here.
+function connectMachine(target,name){toast(`▶ ${name||target} — session opened on the server`);}
 function underColl(id){let res=false;(function rec(list,inColl){for(const n of list){if(n.id===id){res=inColl;return;}if(n.children)rec(n.children,inColl||n.type==='coll');}})(LIB,false);return res;}
 
 const IS_ADMIN=true;
@@ -182,7 +208,15 @@ function toggleProfile(e){e.stopPropagation();document.getElementById('pmenu').c
 function closeProfile(){document.getElementById('pmenu').classList.remove('show');}
 function initProfile(){const a=document.getElementById('pmAv');if(!a)return;a.textContent=ME_INIT;a.style.background=ME_COLOR;document.getElementById('pmName').textContent=ME_NAME;document.getElementById('pmServer').textContent=document.getElementById('instName').textContent;}
 document.addEventListener('click',e=>{if(!e.target.closest('.profile')&&!e.target.closest('.pmenu'))closeProfile();});
-let STATE={sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp'};
+/* Which half of dashboard_policy applies here (ADR 0019). In a browser the SERVER runs the
+   commands, so `webui` governs — and a refusal is enforcement, not policy: the browser cannot
+   open SSH by itself. STATE.dashPolicy stands in for what the admin set in the console. */
+const DASH_SHELL='webui';
+// A browser is always attached to a server; there is no standalone context to be sole authority in.
+function isLocal(){return false;}
+// …and the server always governs here: it is the one running the commands.
+function probeGoverned(){return true;}
+let STATE={sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30}};
 // The web UI opens terminals ON THE SERVER, so the shell is the server's default (set by the
 // admin in Instance settings), not a per-user pick. Choosing between local shells (fish/zsh/…)
 // is a DESKTOP feature (local terminals). Comes from the server mode in the real app.
@@ -257,10 +291,10 @@ function nodeRow(n,depth,exp){const isColl=n.type==='coll';
     <span class="acts">${isColl
       ?`<button class="btn btn-ghost" title="Add" onclick="event.stopPropagation();collAdd('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();collMore('${n.id}',event)">${EXICON.more}</button>`
       :`<button class="btn btn-ghost" title="New here" onclick="event.stopPropagation();folderMenu('${n.id}',event)">${ICON.plus}</button><button class="btn btn-ghost" title="More" onclick="event.stopPropagation();folderMore('${n.id}',event)">${EXICON.more}</button>`}</span></div>`;}
-function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click to open')">
+function connRow(cn,depth){return `<div class="tnode leaf" style="padding-left:${6+depth*15}px" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="openMachine('${cn.name}')" title="Click: dashboard · double-click: connect">
     <span class="ca"></span><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span>
     <span class="nm">${cn.name}</span>${pastille(cn)}
-    <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();toast('▶ ${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="Edit" onclick="event.stopPropagation();dlgNewConn('',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button></span></div>`;}
+    <span class="acts"><button class="btn btn-ghost" title="Open" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button><button class="btn btn-ghost" title="Edit" onclick="event.stopPropagation();dlgNewConn('',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button></span></div>`;}
 function n_toggle(id){const n=find(id);n.open=!n.open;renderSide();}
 function openColl(id){STATE.selColl=id;STATE.collPath=null;STATE.mainTab='coll';renderSide();renderMain();}
 function collGo(fid){STATE.collPath=fid;renderMain();}
@@ -296,20 +330,24 @@ function moveConnByName(name,targetId){
 function renderMain(){
   const mt=document.getElementById('mtabs'); const coll=STATE.selColl?find(STATE.selColl):null;
   const tabActs=`<button class="mtab-act" title="Rename tab" onclick="event.stopPropagation();toast('Rename tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button><button class="mtab-act mtab-close" title="Close tab" onclick="event.stopPropagation();toast('Close tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>`;
+  const mach=STATE.machineView?machineByName(STATE.machineView):null;
   mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Server terminal (${SERVER_SHELL})</span>${tabActs}</div>
     ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
+    ${mach?`<div class="mtab ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
     <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
   const b=document.getElementById('mbody');
+  // The dashboard is shell-agnostic (ADR 0019) — same cards, same markup as the desktop.
+  if(STATE.mainTab==='machine'&&mach){ b.innerHTML=machineDashboard(mach); return; }
   if(STATE.mainTab==='term'||!coll){ b.innerHTML=`<div class="pane-wrap focused">${termHTML(null)}</div>`; return; }
   b.innerHTML=cardsView(coll);
 }
 function cardsView(coll){
   const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
-  const card=cn=>`<div class="ccard" ondblclick="toast('▶ ${cn.name}')" onclick="toast('${cn.name} · double-click')">
-    <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span>${pastille(cn)}<span style="flex:1"></span>
+  const card=cn=>`<div class="ccard" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="openMachine('${cn.name}')" title="Click: dashboard · double-click: connect">
+    <div class="h"><span style="color:${cn.color||'var(--teal)'};display:grid;place-items:center">${M.machine}</span><span class="nm">${cn.name}</span>${pfGlyph(cn)}${pastille(cn)}<span style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" title="Move to folder…" style="padding:3px" onclick="event.stopPropagation();dlgMoveConn('${cn.name}',event)">${M.move}</button>
       <button class="btn btn-ghost btn-sm" title="Edit machine" style="padding:3px" onclick="event.stopPropagation();dlgNewConn('${coll.name}',${JSON.stringify(cn).replace(/"/g,'&quot;')})">${M.edit}</button>
-      <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();toast('▶ Connecting…')">${ICON.play}</button></div>
+      <button class="btn btn-ghost btn-sm" title="Connect" style="padding:3px" onclick="event.stopPropagation();connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play}</button></div>
     <div class="tgt">${cn.user}@${cn.host}:${cn.port}</div>
     <div class="meta"><span>⏱ ${cn.last||'—'}</span><span>ssh</span></div></div>`;
   const grid=list=>`<div class="cards ${STATE.layout}">${sortF(list).map(card).join('')}</div>`;
@@ -376,8 +414,10 @@ function folderMore(id,e){const f=find(id);floatMenu(e,[
   {icon:EXICON.trash,label:'Delete folder',onclick:()=>toast(`Delete “${f.name}”…`)}]);}
 // Collection ⋯ : the Personal collection can't be shared or deleted — rename only.
 function collMore(id,e){const c=find(id);floatMenu(e,c.personal
-  ?[{icon:M.coll,label:'Rename…',onclick:()=>toast(`Rename “${c.name}”…`)}]
-  :[{icon:EXICON.users,label:'Members & sharing…',onclick:()=>openMemberPicker(id)},
+  ?[{icon:M.board,label:'Board…',onclick:()=>dlgBoard(c)},
+    {icon:M.coll,label:'Rename…',onclick:()=>toast(`Rename “${c.name}”…`)}]
+  :[{icon:M.board,label:'Board…',onclick:()=>dlgBoard(c)},
+    {icon:EXICON.users,label:'Members & sharing…',onclick:()=>openMemberPicker(id)},
     {icon:M.coll,label:'Rename…',onclick:()=>toast(`Rename “${c.name}”…`)},
     {icon:EXICON.trash,label:'Delete collection',onclick:()=>toast(`Delete “${c.name}”…`)}]);}
 
@@ -485,6 +525,7 @@ function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',bod
   <div class="settings-row"><div><b>Server shell</b><div class="muted" style="font-size:12px">Terminals run on the server, so the shell is set by your admin — not per user. (Local-shell choice is a desktop-app feature.)</div></div><span class="muted" style="font-size:13px"><code>${SERVER_SHELL}</code> · set by the server</span></div>
   <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
   <div class="settings-row"><div><b>Machine status</b><div class="muted" style="font-size:12px"><span style="color:var(--amber)">Governed by your server</span> — you can only narrow it. Passive “last seen” costs no network traffic; active probing does.</div></div><select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select></div>
+  <div class="settings-row"><div><b>Container &amp; service cards on the machine dashboard</b><div class="muted" style="font-size:12px">These two cards ask the server to run a command on the host each time they refresh.${STATE.dashPolicy.webui===false?' <span style="color:var(--amber)">Your server turns them off for the web UI</span> — nobody can run them here, and this switch changes nothing.':' Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.'}</div></div><div class="toggle ${STATE.machineProbes?'on':''}" onclick="this.classList.toggle('on');STATE.machineProbes=this.classList.contains('on');renderAll()"><i></i></div></div>
   <div class="settings-row" style="border:none"><div><b>Show member count on collections</b><div class="muted" style="font-size:12px">The number next to shared collections</div></div><div class="toggle ${STATE.showMemberCount?'on':''}" onclick="this.classList.toggle('on');STATE.showMemberCount=this.classList.contains('on');renderAll()"><i></i></div></div>`});}
 // Administration is its own surface at /admin — the header button navigates to
 // admin.html (see the real app's route split, RITE_SERVE_ADMIN). No inline modal.
@@ -519,6 +560,10 @@ function grantReq(i){const r=ORG.accessRequests[i];toast(`Sealed machine access 
 function dismissReq(i){const r=ORG.accessRequests[i];toast(`Dismissed ${r.user}'s request`);ORG.accessRequests.splice(i,1);refreshInbox();}
 
 /* ================= wire ================= */
+/* Demo only: flip what the admin set for the web UI (ADR 0019), so the refusal — and the
+   fact that it is enforcement here, not a preference — can be seen without the console. */
+function demoToggleDashPolicy(){STATE.dashPolicy.webui=!STATE.dashPolicy.webui;
+  toast(`Server policy: probing cards <span class="accent">${STATE.dashPolicy.webui?'allowed':'off'}</span> for the web UI`);renderAll();}
 function renderAll(){renderActs();renderSide();renderMain();}
 renderAll();
 </script>
