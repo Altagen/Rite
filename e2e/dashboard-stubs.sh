@@ -1,6 +1,10 @@
 #!/usr/bin/env sh
-# Install stub `docker` and `systemctl` on the harness host so the machine
+# Install stub `docker` and `systemctl` INSIDE the harness container so the machine
 # dashboard's agentless probes return populated output over a real SSH exec.
+#
+# Do not run this on your own machine: it writes two fake binaries into /usr/local/bin
+# and needs root to do it. `sh e2e/harness-up.sh` runs it where it belongs — in the
+# throwaway container that also carries the sshd — and nothing touches the host.
 #
 # The dashboard detects what a host offers by running one command per card and
 # parsing its stdout (see apps/desktop/src/utils/machineProbe.ts). The harness

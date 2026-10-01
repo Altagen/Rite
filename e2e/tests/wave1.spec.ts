@@ -8,7 +8,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
  * has core-level tests; here they are exercised the way a user meets them, so a
  * break in the wiring between the UI, rite-server and rite-core is caught too.
  *
- * Requires e2e/sshd-setup.sh to be running (127.0.0.1:2222, riteuser/ritepass123).
+ * Requires the SSH harness: `sh e2e/harness-up.sh` (127.0.0.1:2222, riteuser/ritepass123).
  */
 
 import {

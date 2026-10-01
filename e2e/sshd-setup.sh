@@ -2,6 +2,9 @@
 # Start a throwaway sshd in the harness container so the SSH e2e tests can prove
 # a real connection (rite-server opens the SSH session to 127.0.0.1:2222).
 # Password auth, PAM off, one dedicated user — deterministic, no host secrets.
+#
+# It creates a user account and starts a daemon, so it needs root: run it through
+# `sh e2e/harness-up.sh`, which does it inside the container, not on your machine.
 set -e
 export PATH="/usr/sbin:/sbin:$PATH"
 
