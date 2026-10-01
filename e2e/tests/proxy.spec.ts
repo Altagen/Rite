@@ -271,3 +271,97 @@ test('client-execute: a saved connection opens SSH locally and streams over the 
 
   expect(output).toBe('marker-seen');
 });
+
+/**
+ * An attached client honours `clients: false` — and this is the half that is *policy*,
+ * not enforcement (ADR 0019 §6).
+ *
+ * The distinction only exists here. A desktop client holds the decrypted host and its own
+ * network path: `terminal_stays_local` routes its exec to its OWN local server, so the
+ * remote never sees the request and could not refuse it if it wanted to. What the official
+ * client does is obey: it hides the two cards and says who refused. A modified client
+ * could ignore that, exactly as ADR 0017 says of active health-checks — which is why the
+ * admin copy sells this as stopped traffic and a recorded intent, not as prevention.
+ *
+ * So the assertion is about the client's behaviour, and the proof that it is policy is
+ * that no request leaves at all: there is nothing for the remote to have refused.
+ */
+test('an attached client obeys clients:false, and it is the client that obeys (ADR 0019)', async ({ page }) => {
+  // The gate asks which shell this is, and the answer picks which half of the policy
+  // applies. In a browser-driven test that answer has to be injected — the launch token
+  // is what the native shell puts there (ADR 0009/0014).
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__RITE_TOKEN__ = 'e2e-attached-client';
+  });
+
+  await page.goto('/');
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#username').fill('envadmin');
+  await page.locator('#password').fill('EnvPass123!');
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+
+  // The remote admin refuses attached clients. Sent through the mux, as this client's
+  // own admin console would: /api is reverse-proxied to the remote, which holds the policy.
+  const set = async (clients: boolean) =>
+    page.evaluate(
+      (allow) =>
+        fetch('/api/admin/dashboard-policy', {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ webui: true, clients: allow, minInterval: 30 }),
+        }).then((r) => r.status),
+      clients,
+    );
+  expect(await set(false)).toBe(204);
+
+  // A machine on the harness sshd, saved through the mux (encrypted on the remote).
+  const created = await page.evaluate(async () => {
+    const r = await fetch('/api/connections', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'policy-client-box',
+        protocol: 'ssh',
+        hostname: '127.0.0.1',
+        port: 2222,
+        username: 'riteuser',
+        authMethod: { type: 'password', password: 'ritepass123' },
+        color: null, icon: null, folder: null, notes: null,
+        sshKeepAliveOverride: null, sshKeepAliveInterval: null,
+      }),
+    });
+    return r.status;
+  });
+  expect(created, 'the machine should be saved on the remote').toBeLessThan(300);
+
+  const execs: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().includes('/api/terminal/exec')) execs.push(r.url());
+  });
+
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.getByText('policy-client-box').first().click();
+
+  // The dashboard opens, minus the two cards that would have run something.
+  await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Containers and services are not being checked')).toBeVisible();
+  await expect(page.getByText('Your server turns off container and service checks for this client.')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Containers', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Services', exact: true })).toHaveCount(0);
+  // Port forwarding is untouched: refusing to probe is not refusing the dashboard.
+  await expect(page.getByRole('heading', { name: 'Port forwarding', exact: true })).toBeVisible();
+
+  // And nothing was asked of anyone — the client simply did not send it. That is what
+  // "policy, not enforcement" means in practice.
+  expect(execs, 'an obeying client sends no probe at all').toEqual([]);
+
+  // Allowed again: the same client probes, from its own network position.
+  expect(await set(true)).toBe(204);
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.getByText('policy-client-box').first().click();
+  await expect(page.getByRole('heading', { name: 'Containers', exact: true })).toBeVisible({ timeout: 30_000 });
+  expect(execs.length, 'and now it does send one').toBeGreaterThan(0);
+});

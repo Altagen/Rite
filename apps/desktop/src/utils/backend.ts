@@ -530,6 +530,16 @@ const ServerModeSchema = z.object({
   // This server's own TLS leaf fingerprint (hex) for out-of-band pinning; null behind a
   // reverse proxy (rite-server doesn't terminate TLS then).
   hostKey: z.string().nullable().optional(),
+  // Machine-dashboard policy (ADR 0019). Governs only the cards that execute on a host —
+  // containers and services. Absent ⇒ both shells allowed, which is what a server that has
+  // never been configured means.
+  dashboardPolicy: z
+    .object({
+      webui: z.boolean(),
+      clients: z.boolean(),
+      minInterval: z.number(),
+    })
+    .optional(),
   // Collection governance policy (admin → Collections). Absent ⇒ permissive defaults.
   collectionPolicy: z
     .object({
@@ -542,6 +552,7 @@ const ServerModeSchema = z.object({
 });
 export type HealthcheckPolicy = NonNullable<z.infer<typeof ServerModeSchema>['healthcheck']>;
 export type CollectionPolicy = NonNullable<z.infer<typeof ServerModeSchema>['collectionPolicy']>;
+export type DashboardPolicy = NonNullable<z.infer<typeof ServerModeSchema>['dashboardPolicy']>;
 // Active health-check probe (ADR 0017). The client sends host:port (decrypted from its own
 // blob) per target; the server returns a reachability verdict. `unsupported` ≠ `down` — it
 // means the method can't run (e.g. icmp without privileges), so the UI won't paint it offline.
@@ -786,6 +797,9 @@ export const BackendAdmin = {
   /** Set the machine health-check policy (org-admin). Sends the whole policy object. */
   setHealthcheck: (policy: HealthcheckPolicy) =>
     invokeWithValidation('admin_set_healthcheck', z.null(), policy as unknown as Record<string, unknown>),
+  /** Set the machine-dashboard policy (org-admin, ADR 0019). Sends the whole policy object. */
+  setDashboardPolicy: (policy: DashboardPolicy) =>
+    invokeWithValidation('admin_set_dashboard_policy', z.null(), policy as unknown as Record<string, unknown>),
   /** Set the collection governance policy (org-admin). Sends the whole policy object. */
   setCollectionPolicy: (policy: CollectionPolicy) =>
     invokeWithValidation('admin_set_collection_policy', z.null(), policy as unknown as Record<string, unknown>),
