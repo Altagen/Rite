@@ -71,6 +71,11 @@ tasks:
     cmds:
       - pnpm e2e
 
+  e2e:harness:
+    desc: Bring up the SSH harness the e2e suite connects to (in a container, nothing on the host)
+    cmds:
+      - sh e2e/harness-up.sh
+
   # Linting
   lint:
     desc: Run all linters (Rust + TypeScript)

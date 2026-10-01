@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
  * Real SSH parity: rite-server opens an actual SSH session (client-execute) to
  * the harness sshd and streams the remote shell over the WebSocket. Covers both
  * a saved connection (connect_terminal) and an ad-hoc quick connect
- * (quick_ssh_connect). Requires e2e/sshd-setup.sh to be running.
+ * (quick_ssh_connect). Requires the SSH harness: `sh e2e/harness-up.sh`.
  */
 
 import { createCollection, createMachine, SSH } from './support/localVault';
