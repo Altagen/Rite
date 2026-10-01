@@ -173,6 +173,12 @@ Because the cost differs per shell, the two halves are governed separately, thro
 `dashboard_policy { webui, clients, minInterval }` (admin console → Instance → Client
 capabilities), narrowable per device by the user's own setting. Most-restrictive-wins.
 
+`minInterval` is the floor between **automatic** refreshes: an open dashboard re-runs those
+two cards on its own, never faster than the server's floor and never faster than the
+client's own floor of 15s either — a server cannot talk a client into hammering a host.
+Polling stops when the dashboard is closed and is skipped while the window is hidden, so
+the traffic is bounded by who is actually looking.
+
 The two halves are **not equally strong**, and we do not claim otherwise:
 
 - **`webui: false` is enforcement.** The browser cannot execute; the server refuses; nothing

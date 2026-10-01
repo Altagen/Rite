@@ -601,9 +601,10 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Minimum refresh interval</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Floor between <b>automatic</b> refreshes of these cards. Today they refresh when a
-              dashboard opens and when a user presses Refresh, so this is the ceiling any future
-              background refresh has to respect — it does not rate-limit a person clicking.
+              Floor between <b>automatic</b> refreshes: an open dashboard re-runs these two cards on
+              its own, and never faster than this. Clients apply a floor of their own as well, so a
+              very small number here does not buy a very fast refresh. It does not rate-limit a
+              person pressing Refresh, and a dashboard nobody is looking at does not poll.
             </p>
           </div>
           <div className="flex items-center gap-2">

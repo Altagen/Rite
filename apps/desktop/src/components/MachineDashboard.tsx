@@ -7,7 +7,7 @@
  * still connects; card actions open a terminal pane running the command.
  */
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { forwardKey, useRunningForwards } from '../utils/forwards';
 import { StatusPastille } from './StatusPastille';
@@ -411,13 +411,9 @@ export function MachineDashboard({
         )}
         {execRemote && !probes.allowed && (
           <div className="col-span-full rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Containers and services are not being checked</p>
-            <p className="mt-1">{probeBlockedReason(probes)}</p>
-            {probes.by === 'you' && (
-              <p className="mt-1">
-                Turn them back on in Settings. Everything else on this dashboard is unaffected.
-              </p>
-            )}
+            <p className="font-medium text-foreground">{t('dash.probesOffTitle')}</p>
+            <p className="mt-1">{t(probeBlockedReason(probes) as string)}</p>
+            {probes.by === 'you' && <p className="mt-1">{t('dash.probesOffYouHint')}</p>}
           </div>
         )}
       </div>
@@ -485,7 +481,7 @@ function CustomizeModal({
                   {label}
                   {governed && (
                     <span className="block text-xs font-normal text-muted-foreground">
-                      {probes.by === 'server' ? 'not allowed here' : 'off in your settings'}
+                      {probes.by === 'server' ? t('dash.probesCardServer') : t('dash.probesCardYou')}
                     </span>
                   )}
                 </span>
@@ -503,6 +499,9 @@ function CustomizeModal({
     </div>
   );
 }
+
+/** Seconds. The client's own floor on automatic probing, under any server policy. */
+const MIN_PROBE_INTERVAL = 15;
 
 // --- shared card chrome -----------------------------------------------------
 
@@ -609,6 +608,40 @@ const RowBtn = ({
   </button>
 );
 
+/**
+ * Keep a probing card current while it is on screen (ADR 0019 §3).
+ *
+ * A dashboard that only ever shows the moment it was opened is a screenshot. But each
+ * refresh is a command executed on the host, so the cadence is not ours to pick freely:
+ * the server publishes a floor (`dashboard_policy.minInterval`) and this never goes below
+ * it — nor below a client-side floor of its own, because a server that says `1` would
+ * have every open dashboard exec once a second, which is the same self-DoS seen from the
+ * other side.
+ *
+ * Two things bound the cost beyond that. The card only polls while it is mounted, so
+ * closing the machine tab stops it; and ticks are skipped while the window is hidden,
+ * because nobody is reading a background tab. A skipped tick is not caught up later —
+ * coming back shows the last answer until the next tick, which is cheaper than a thundering
+ * herd of refreshes every time a laptop wakes up.
+ */
+function useAutoProbe(refresh: () => Promise<void>, enabled: boolean) {
+  const mode = useServerSession((s) => s.mode);
+  const every = Math.max(MIN_PROBE_INTERVAL, mode?.dashboardPolicy?.minInterval ?? MIN_PROBE_INTERVAL) * 1000;
+  // The timer must not restart every time `refresh` changes identity, or a card that
+  // re-renders often would never actually reach a tick.
+  const latest = useRef(refresh);
+  useEffect(() => {
+    latest.current = refresh;
+  }, [refresh]);
+  useEffect(() => {
+    if (!enabled) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void latest.current();
+    }, every);
+    return () => window.clearInterval(id);
+  }, [enabled, every]);
+}
+
 // --- Containers card --------------------------------------------------------
 
 function ContainersCard({
@@ -655,6 +688,8 @@ function ContainersCard({
     const t = setTimeout(() => void refresh(), 0);
     return () => clearTimeout(t);
   }, [refresh]);
+  // Only once the first answer is in, and never on top of one still running.
+  useAutoProbe(refresh, loaded && !busy);
 
   // Live CPU/Mem is a second one-shot — fetched only when the card is expanded.
   const fetchStats = useCallback(async () => {
@@ -843,6 +878,7 @@ function ServicesCard({
     const t = setTimeout(() => void refresh(), 0);
     return () => clearTimeout(t);
   }, [refresh]);
+  useAutoProbe(refresh, loaded && !busy);
 
   // Per-unit memory + since is a second one-shot — fetched only when expanded.
   const fetchExtra = useCallback(async () => {
