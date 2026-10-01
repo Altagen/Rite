@@ -1297,6 +1297,26 @@ async fn dashboard_policy(state: &ServerState) -> Result<Value, AppError> {
     }))
 }
 
+/// May a browser against this server run the dashboard's probing cards right now
+/// (ADR 0019 §6)? This is the half that is *enforcement* rather than policy: a browser
+/// cannot open SSH, so the exec it asks for happens here or not at all — which means the
+/// refusal has to live here too. The client-side gate stops the request being made; this
+/// stops it being served, and only the second one is a promise we can keep.
+///
+/// Answers `true` outside accounts mode without reading anything: a desktop client reaches
+/// its OWN local server for these (client-execute, ADR 0011 §4), and a local server is a
+/// single user's vault with nobody to govern it.
+async fn dashboard_probes_allowed(state: &ServerState) -> Result<bool, AppError> {
+    if !state.accounts {
+        return Ok(true);
+    }
+    Ok(dashboard_policy(state)
+        .await?
+        .get("webui")
+        .and_then(Value::as_bool)
+        .unwrap_or(true))
+}
+
 /// Collection governance policy (mock admin → Collections). Stored as one JSON setting with
 /// permissive defaults: anyone may create collections, share with anyone in the directory, no
 /// member cap, and new members default to viewer. Admins bypass these limits.
@@ -4462,12 +4482,25 @@ struct MachineExecReq {
 async fn machine_exec(
     State(state): State<ServerState>,
     Json(req): Json<MachineExecReq>,
-) -> Result<Json<rite_core::terminal::RemoteCommandOutput>, AppError> {
+) -> Result<Response, AppError> {
+    if !dashboard_probes_allowed(&state).await? {
+        return Ok(probes_refused());
+    }
     let out = state
         .sessions
         .run_remote_command(&req.connection_id, state.events_sink(), &req.command)
         .await?;
-    Ok(Json(out))
+    Ok(Json(out).into_response())
+}
+
+/// One wording for both exec routes: the reason, not just the status, because a client
+/// that gets this is meant to say which side refused rather than render an empty panel.
+fn probes_refused() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        "the machine dashboard's container and service checks are turned off for the web UI on this server",
+    )
+        .into_response()
 }
 
 /// Run a one-shot command on an ad-hoc target (accounts client-execute) and return
@@ -4488,7 +4521,10 @@ struct MachineExecQuickReq {
 async fn machine_exec_quick(
     State(state): State<ServerState>,
     Json(req): Json<MachineExecQuickReq>,
-) -> Result<Json<rite_core::terminal::RemoteCommandOutput>, AppError> {
+) -> Result<Response, AppError> {
+    if !dashboard_probes_allowed(&state).await? {
+        return Ok(probes_refused());
+    }
     let auth: AuthMethod = req.auth_method.into();
     let connection = quick_connection("exec", &req.host, req.port, &req.username, auth.clone());
     let out = state
@@ -4501,7 +4537,7 @@ async fn machine_exec_quick(
             &quick_hops(req.jumps),
         )
         .await?;
-    Ok(Json(out))
+    Ok(Json(out).into_response())
 }
 
 #[derive(Deserialize)]

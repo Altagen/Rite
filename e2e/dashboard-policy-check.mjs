@@ -55,9 +55,29 @@ try {
   assert.deepEqual(await policy(), { webui: true, clients: false, minInterval: 60 }, 'only the clients are refused');
   ok('each half turns off on its own, and server_mode says which');
 
+  step = 'enforcement';
+  // ADR 0019 §6: in the web UI the refusal is enforcement, not policy — a client that
+  // ignores its own gate must still be refused here, because this server is the thing
+  // that would run the command. The alternative is an admin console that promises
+  // "nothing runs" while anything that can POST still gets an answer.
+  const probe = (token) =>
+    post('/api/terminal/exec-quick', {
+      host: '127.0.0.1', port: 2222, username: 'riteuser',
+      authMethod: { type: 'password', password: 'ritepass123' },
+      command: 'echo probe',
+    }, token);
+  assert.equal((await patch('/api/admin/dashboard-policy', { webui: false, clients: true, minInterval: 30 }, admin)).status, 204, 'webui off');
+  assert.equal((await probe(bob)).status, 403, 'exec refused while the web UI is off');
+  // The admin is not special here: the policy is about this server's egress, not about
+  // who is asking. An admin who wants the cards back turns them back on.
+  assert.equal((await probe(admin)).status, 403, 'and refused for an admin too');
+  assert.equal((await patch('/api/admin/dashboard-policy', { webui: true, clients: true, minInterval: 30 }, admin)).status, 204, 'webui on');
+  assert.notEqual((await probe(bob)).status, 403, 'and served again once allowed');
+  ok('webui:false is enforced on /api/terminal/exec-quick, not just hidden in the UI');
+
   step = 'admin-only';
   assert.equal((await patch('/api/admin/dashboard-policy', { webui: false, clients: false, minInterval: 30 }, bob)).status, 403, 'non-admin refused');
-  assert.deepEqual(await policy(), { webui: true, clients: false, minInterval: 60 }, 'and the policy is untouched');
+  assert.deepEqual(await policy(), { webui: true, clients: true, minInterval: 30 }, 'and the policy is untouched');
   ok('a non-admin cannot change it (403), and nothing moved');
 
   step = 'validation';
@@ -69,7 +89,7 @@ try {
   ]) {
     assert.equal((await patch('/api/admin/dashboard-policy', body, admin)).status, 400, `rejected: ${why}`);
   }
-  assert.deepEqual(await policy(), { webui: true, clients: false, minInterval: 60 }, 'no rejected write landed');
+  assert.deepEqual(await policy(), { webui: true, clients: true, minInterval: 30 }, 'no rejected write landed');
   ok('validation refuses what would silently disable the feature; nothing partial stored');
 
   step = 'reopen';
