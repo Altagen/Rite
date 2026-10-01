@@ -66,15 +66,26 @@ tasks:
     cmds:
       - pnpm typecheck
 
+  # Everything that needs a running server, in the order that makes it meaningful.
+  # The two build steps are not politeness: Playwright serves apps/desktop/dist and the
+  # checks drive target/debug/rite-server, and neither is rebuilt by the suites. A stale
+  # one tests the previous commit and says "passed", which is the worst possible answer.
+  # One script rather than a list of cmds here: `task` is not installed everywhere, and
+  # the gate has to be runnable with nothing but a shell.
   e2e:
-    desc: Run the Playwright end-to-end suite against a real rite-server
+    desc: Run every end-to-end gate — builds, harness, standalone checks, then Playwright
     cmds:
-      - pnpm e2e
+      - sh e2e/gate.sh
 
   e2e:harness:
     desc: Bring up the SSH harness the e2e suite connects to (in a container, nothing on the host)
     cmds:
       - sh e2e/harness-up.sh
+
+  e2e:play:
+    desc: Playwright only — assumes the harness is up and the builds are current
+    cmds:
+      - pnpm e2e
 
   # Linting
   lint:
