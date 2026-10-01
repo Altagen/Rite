@@ -49,17 +49,15 @@ export function probeVerdict({ mode, userWants, native }: ProbeInputs): ProbeVer
 }
 
 /**
- * Why the cards are not there, in words the reader can act on. The server's refusal
- * is not something they can undo here; their own is one click away, so the two do not
- * get the same sentence.
+ * Why the cards are not there, as an i18n key rather than a sentence — this stays a pure
+ * function, and the dashboard is translated like the rest of it.
+ *
+ * Three refusals, three different things to tell the reader: in the web UI nobody can
+ * undo it, on a client the server asked and this client agreed, and their own switch is
+ * one click away. A single "disabled" would flatten all three.
  */
 export function probeBlockedReason(verdict: ProbeVerdict): string | null {
   if (verdict.allowed) return null;
-  if (verdict.by === 'you') return 'Container and service checks are off in your settings.';
-  return verdict.shell === 'webui'
-    // Enforcement: the browser cannot open SSH, so this server is the only thing that could
-    // have run the command. There is nothing for the reader to turn back on.
-    ? 'Your server turns off container and service checks in the web UI, so they run for nobody here.'
-    // Policy: this client could probe from its own network, and honours the setting instead.
-    : 'Your server turns off container and service checks for this client.';
+  if (verdict.by === 'you') return 'dash.probesOffYou';
+  return verdict.shell === 'webui' ? 'dash.probesOffWebui' : 'dash.probesOffClients';
 }
