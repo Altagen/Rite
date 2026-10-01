@@ -35,6 +35,7 @@ export default defineConfig({
       name: 'chromium',
       testIgnore: [
         /smoke\.spec\.ts/,
+        /mock\.spec\.ts/,
         /accounts\.spec\.ts/,
         /accounts-env\.spec\.ts/,
         /proxy\.spec\.ts/,
@@ -42,6 +43,14 @@ export default defineConfig({
       ],
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
+    },
+    // The UX mock (design/mock) — plain pages opened from disk, so no server and no
+    // vault setup. It runs here rather than on its own because the mock is the source
+    // of truth for UI/UX and had nothing watching it (ADR 0019).
+    {
+      name: 'mock',
+      testMatch: /mock\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'] },
     },
     // Server mode (ADR 0010): its own rite-server on :1422, independent of the
     // local-vault suite.

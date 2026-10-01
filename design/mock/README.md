@@ -37,6 +37,14 @@ xdg-open design/mock/desktop.html   # the desktop shell
 Everything is mock (no real backend) — clicks toast, dialogs are illustrative,
 data lives in memory. It exists to *feel* placement, flows, and dialogs.
 
+**It is checked like the app.** `e2e/tests/mock.spec.ts` (the `mock` Playwright project,
+no server, the pages opened from disk) opens both entry pages, requires the same dashboard
+cards and a working Board in each, fails on any console error, and walks the ADR 0019
+precedence table row by row — including what the refusal says. Run it with
+`npx playwright test --project=mock`; `pnpm e2e` covers it too. The mock is the source of
+truth for UI/UX, and until now nothing told anyone when it broke: that silence is how the
+web UI ended up with a dashboard nobody had decided on.
+
 ## Divergences (web ↔ desktop)
 
 | | Desktop (binary) | Web UI |
