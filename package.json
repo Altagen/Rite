@@ -22,7 +22,7 @@
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
     "@playwright/test": "^1.63.0",
-    "@types/node": "^24.13.3",
+    "@types/node": "^26.6.4",
     "husky": "^9.1.7",
     "prettier": "^3.9.9",
     "typescript": "^5.9.3"
