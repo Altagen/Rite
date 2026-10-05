@@ -14,7 +14,7 @@ path = "src/main.rs"
 rite-server = { path = "../../../packages/rite-server" }
 
 tao = "0.35"
-wry = "0.55"
+wry = "0.57"
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
