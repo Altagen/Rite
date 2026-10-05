@@ -26,7 +26,7 @@ sqlx = { workspace = true }
 # Crypto (auth module)
 argon2 = { workspace = true }
 zeroize = { workspace = true }
-sha2 = "0.10"
+sha2 = "0.11"
 
 # SSH + local PTY
 russh = { workspace = true }
