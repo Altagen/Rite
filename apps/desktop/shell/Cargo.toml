@@ -13,7 +13,7 @@ path = "src/main.rs"
 [dependencies]
 rite-server = { path = "../../../packages/rite-server" }
 
-tao = "0.35"
+tao = "0.37"
 wry = "0.57"
 tokio = { workspace = true }
 anyhow = { workspace = true }
