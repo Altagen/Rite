@@ -55,10 +55,17 @@ See the [Roadmap](docs/ROADMAP.md) for planned features (theme system, SFTP, jum
 
 ### Prerequisites
 
-- **Rust**: 1.85+ (edition 2024) — [Install Rust](https://rustup.rs/)
-- **Node.js**: 20+ — [Install Node.js](https://nodejs.org/)
-- **pnpm**: 9+ — [Install pnpm](https://pnpm.io/installation)
-- **Task**: [Install go-task](https://taskfile.dev/installation/)
+Three toolchains, each pinned in the repo so a local build and CI are the same build.
+Install the manager, not the version — it reads the pin:
+
+- **Rust** — [rustup](https://rustup.rs/); the version comes from `rust-toolchain.toml`
+- **Node.js** — [fnm](https://github.com/Schniz/fnm) or nvm; the version comes from `.node-version`
+- **pnpm** — `corepack enable`; the version comes from `packageManager` in `package.json`
+- **Task** — [go-task](https://taskfile.dev/installation/)
+
+Installing pnpm by hand is what these pins exist to prevent: an older pnpm rewrites
+`pnpm-lock.yaml` on install and silently drops the security overrides declared in
+`pnpm-workspace.yaml`. Let corepack pick it.
 
 ### Development Setup
 
