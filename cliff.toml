@@ -53,7 +53,10 @@ commit_parsers = [
   { message = "^refactor", group = "<!-- 4 -->♻️ Refactor" },
   { message = "^style", group = "<!-- 5 -->🎨 Styling" },
   { message = "^test", group = "<!-- 6 -->✅ Testing" },
-  { message = "^chore\\(release\\): prepare for", skip = true },
+  # Every release-mechanics commit, not just the "prepare for" shape: the version bump
+  # is the release's title, so listing it inside its own notes tells the reader nothing
+  # they are not already looking at.
+  { message = "^chore\\(release\\)", skip = true },
   # Dependency work is shipped content, not noise: 0.2.1 was ENTIRELY dependency
   # updates and its generated notes came out with three lines in them, none of
   # which were the release. Grouped rather than skipped.
