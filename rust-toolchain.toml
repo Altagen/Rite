@@ -1,0 +1,11 @@
+# The Rust the whole project is built with — CI, the ISO-CI image and any local
+# checkout alike. rustup reads this file wherever cargo is invoked, so there is one
+# version to change and nowhere for the three to drift apart.
+#
+# It was `stable` everywhere before, which is not a version: the image baked whatever
+# stable was current the day it was built, CI resolved it again on every run, and the
+# two were only ever equal by luck. Pinning costs a deliberate bump when a new stable
+# brings something we want; it buys "it builds here" meaning "it builds there".
+[toolchain]
+channel = "1.97.0"
+components = ["rustfmt", "clippy"]

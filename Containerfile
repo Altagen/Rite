@@ -9,9 +9,9 @@
 #
 # Pinned to reproduce the CI toolchain:
 #   - Ubuntu 24.04            (ubuntu-latest)
-#   - Rust stable + rustfmt + clippy   (dtolnay/rust-toolchain@stable)
-#   - Node.js 24             (actions/setup-node@v6, node-version 24)
-#   - pnpm 11                (pnpm/action-setup, version 11)
+#   - Rust                   from rust-toolchain.toml, as CI does
+#   - Node.js                from .node-version, as CI does
+#   - pnpm                   from package.json `packageManager`, as CI does
 #   - cargo-audit            (Cargo Audit check)
 #   - go-task                (repo uses `task check`)
 FROM ubuntu:24.04
@@ -39,21 +39,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         patchelf \
     && rm -rf /var/lib/apt/lists/*
 
-# --- Rust (stable) -----------------------------------------------------------
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --profile minimal --default-toolchain stable \
+# --- Rust ---------------------------------------------------------------------
+# The version comes from rust-toolchain.toml, the same file CI and a local checkout
+# read, so the image cannot bake a different stable from the one everything else uses.
+COPY rust-toolchain.toml /tmp/rust-toolchain.toml
+RUN RUST_VERSION="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' /tmp/rust-toolchain.toml)" \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --profile minimal --default-toolchain "$RUST_VERSION" \
               --component rustfmt --component clippy \
     && rustc --version && cargo --version
 
 # cargo-audit for the "Cargo Audit" CI check
 RUN cargo install cargo-audit --locked
 
-# --- Node.js 20 + pnpm 8 -----------------------------------------------------
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/* \
+# --- Node.js + pnpm -----------------------------------------------------------
+# Both versions come from the repo rather than from this file: .node-version is what
+# fnm/nvm read locally and what actions/setup-node reads in CI, and `packageManager`
+# in package.json is what corepack reads everywhere. The comment here used to say
+# "Node.js 20 + pnpm 8" while the lines installed 24 and 11 — which is exactly the
+# kind of drift copied version numbers invite.
+COPY .node-version /tmp/.node-version
+COPY package.json /tmp/package.json
+# The official tarball rather than nodesource: nodesource pins the MAJOR only, so the
+# image drifted to the latest 24.x while CI installed the exact version from the same
+# file — a divergence introduced by the very step meant to remove one.
+RUN NODE_VERSION="$(tr -d '[:space:]' < /tmp/.node-version)" \
+    && case "$(dpkg --print-architecture)" in \
+         amd64) NODE_ARCH=x64 ;; \
+         arm64) NODE_ARCH=arm64 ;; \
+         *) echo "unsupported architecture" >&2; exit 1 ;; \
+       esac \
+    && curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
+         | tar -xJ -C /usr/local --strip-components=1 --exclude=CHANGELOG.md --exclude=LICENSE --exclude=README.md \
     && corepack enable \
-    && corepack prepare pnpm@11.11.0 --activate \
+    && corepack prepare "$(sed -n 's/.*"packageManager" *: *"\([^"]*\)".*/\1/p' /tmp/package.json)" --activate \
     && node --version && pnpm --version
 
 # --- go-task -----------------------------------------------------------------
