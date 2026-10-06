@@ -168,17 +168,20 @@ export function ContextPill() {
     </button>
   );
   const removeVaultBtn = (v: NativeVault) => {
-    // The current vault opens the Reset flow (you can't forget the one you're in); others open
-    // the remove/delete flow. The dialog decides — keep the label neutral for both.
-    const current = isLocalActive && currentVaultPath === v.path;
+    // Not on the vault this window holds. It used to open a Reset there — the same trash,
+    // in the same place, meaning "forget this one" on every other row and "erase this one's
+    // master password and contents" on this one. Removing the button is the fix: you cannot
+    // forget the vault you are in anyway, and resetting it belongs in Settings ▸ danger zone
+    // behind DELETE ALL DATA, not one click from Open.
+    if (isLocalActive && currentVaultPath === v.path) return null;
     return (
     <button
       onClick={() => {
         setOpen(false);
         setRemoveVault(v);
       }}
-      title={current ? 'Reset vault' : 'Remove from list'}
-      aria-label={current ? `Reset ${v.label}` : `Remove ${v.label}`}
+      title="Remove from list"
+      aria-label={`Remove ${v.label}`}
       className="hidden flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500 group-hover:block"
     >
       <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

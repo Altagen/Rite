@@ -437,6 +437,10 @@ function tog(v){return `<div class="toggle ${v?'on':''}"><i></i></div>`;}
 // Health-check server policy (ADR 0017). Governs what CONNECTED clients may do; applied
 // live over the existing WS (no reconnect). Passive "last seen" is free; active is gated.
 let HC={passive:true, mode:'off', tcp:true, icmp:false, ssh:false, restrict:false, allow:['erin'], interval:60};
+// Machine-dashboard policy (ADR 0019). Governs only the two cards that execute on a host —
+// containers and services. Defaults on/on: that is what ships, and silently disabling a
+// working feature on upgrade would surprise users more than the traffic it saves.
+let DASH={webui:true, clients:true, interval:30};
 function mchk(key,label){return `<label class="mchk" onclick="event.preventDefault();HC.${key}=!HC.${key};renderContent();toast('${label}: '+(HC.${key}?'allowed':'blocked'))"><span class="mbox ${HC[key]?'on':''}">${HC[key]?'✓':''}</span>${label}</label>`;}
 function hcRows(){const off=HC.mode==='off';
   return `<div class="setrow" style="border-top:1px solid var(--border);margin-top:4px"><div><div class="lab">Machine health-check</div><div class="hint"><b>Passive “last seen”</b> (from users' own connections) costs no traffic. <b>Active probing</b> makes network requests from every client — a scan-like footprint at scale — so it's governed here.</div></div></div>
@@ -453,6 +457,17 @@ function hcRows(){const off=HC.mode==='off';
       <div style="display:flex;gap:6px;flex-wrap:wrap">${HC.allow.map(u=>`<span class="chip">${av(u)} <span style="margin:0 2px">${u}</span> <span onclick="toast('Removed ${u} from allowlist')" style="cursor:pointer;color:var(--red)">✕</span></span>`).join('')}</div></div>`:''}
     <div class="setrow gate ${off||HC.mode==='on-demand'?'off':''}" style="border:none"><div><div class="lab">Minimum interval</div><div class="hint">Floor for background polling, so status never saturates the network.</div></div>
       <div style="display:flex;gap:8px;align-items:center"><input class="inp" style="width:80px" value="${HC.interval}"><span class="muted">seconds</span></div></div>`;}
+/* Dashboard policy (ADR 0019). The two halves are not equally strong and the copy says so:
+   `webui` is enforcement (the server executes), `clients` is policy (an attached client probes
+   from its own network and this server never sees it). We do not sell the second as prevention. */
+function dashRows(){const off=!DASH.webui&&!DASH.clients;
+  return `<div class="setrow" style="border-top:1px solid var(--border);margin-top:4px"><div><div class="lab">Machine dashboard — container &amp; service cards</div><div class="hint">These two cards run a command on the host every time they refresh. The rest of the dashboard — address, port forwarding, the Board — reads what Rite already holds and is never affected.<br><b>Web UI</b> is <b>enforcement</b>: the browser cannot open SSH, this server executes, so off means nothing runs. <b>Clients</b> is <b>policy</b>: a desktop client probes from its own network and this server never sees the request — the official client honours it by hiding the cards, a modified one could ignore it. What it buys you: the traffic stopped in normal use, no trigger left in the UI to fire by accident, and a recorded statement of intent.</div></div></div>
+    <div class="setrow"><div><div class="lab">Allow in the web UI</div><div class="hint">This server runs the commands, so its own egress pays. Off means off for everyone in a browser — not a matter of preference.</div></div>
+      <div onclick="DASH.webui=!DASH.webui;renderContent();toast('Probing cards '+(DASH.webui?'allowed':'off')+' in the web UI')">${tog(DASH.webui)}</div></div>
+    <div class="setrow"><div><div class="lab">Allow in attached clients</div><div class="hint">Each client probes from its own network position, so your users' endpoints pay. A user may also turn the cards off for themselves; neither side can override the other upward.</div></div>
+      <div onclick="DASH.clients=!DASH.clients;renderContent();toast('Probing cards '+(DASH.clients?'allowed':'off')+' in attached clients')">${tog(DASH.clients)}</div></div>
+    <div class="setrow gate ${off?'off':''}" style="border:none"><div><div class="lab">Minimum refresh interval</div><div class="hint">Floor between <b>automatic</b> refreshes: an open dashboard re-runs these two cards on its own, and never faster than this. Clients apply a floor of their own as well, so a very small number here does not buy a very fast refresh. It does not rate-limit a person pressing Refresh, and a dashboard nobody is looking at does not poll.</div></div>
+      <div style="display:flex;gap:8px;align-items:center"><input class="inp" style="width:80px" value="${DASH.interval}"><span class="muted">seconds</span></div></div>`;}
 function instance(){
   // Client capabilities = what CONNECTED clients may do, governed by the server (shell,
   // Quick SSH, health-check). Grouped so it stays legible as it grows. See rite-mock-two-shells.
@@ -484,6 +499,7 @@ function instance(){
       ${shellRow}
       ${quickRow}
       ${hcRows()}
+      ${dashRows()}
     </div>`;
 }
 

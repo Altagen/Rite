@@ -1,0 +1,117 @@
+/* Rite mock — machine dashboard + Board styles (shared by both shells, ADR 0019).
+   Loaded after rite.css by web.html and desktop.html alike. */
+  /* Port-forwarding panel */
+  .pf-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+  .pf-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card2)}
+  .pf-badge{font-size:11px;font-weight:700;color:var(--accent);border:1px solid var(--line);border-radius:5px;padding:1px 6px;flex:none}
+  .pf-route{flex:1;font-size:12.5px;font-family:var(--mono);display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pf-arrow{display:inline-grid;place-items:center;color:var(--fg-dim);flex:none}.pf-arrow .icon{width:15px;height:15px}
+  .pf-seg-row{display:flex;gap:6px;margin-bottom:10px}
+  .pf-seg{font-size:12px;padding:4px 10px;border:1px solid var(--line);border-radius:7px;color:var(--fg-dim);user-select:none}
+  .pf-seg.on{color:var(--accent);border-color:var(--accent)}
+  .pf-add{display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap}
+  /* Shared list-row panels (containers, services) */
+  .card-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .lrow-list{display:flex;flex-direction:column;gap:6px}
+  .lrow{display:flex;align-items:center;gap:9px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card2)}
+  .lmeta{flex:1;min-width:0}
+  .lname{font-weight:600;font-size:13px;display:flex;align-items:center;gap:6px}
+  .lsub{display:block;font-family:var(--mono);font-size:11.5px;color:var(--fg-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lpin{color:var(--amber);font-size:12px}
+  .accent-red{color:var(--red)}
+  .chip-sm{font-size:11px;font-weight:700;color:var(--accent);border:1px solid var(--line);border-radius:5px;padding:1px 7px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg-b{font-size:12px;padding:4px 11px;color:var(--fg-dim);background:transparent;border:0;border-left:1px solid var(--line);cursor:pointer}
+  .seg-b:first-child{border-left:0}
+  .seg-b.on{color:var(--accent);background:rgba(124,156,245,.13)}
+  /* Board */
+  .bgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+  .bcard{border:1px solid var(--line);border-radius:10px;background:var(--card2);padding:11px 12px;display:flex;flex-direction:column}
+  .bcard.blink{cursor:pointer}.bcard.blink:hover{border-color:var(--accent)}
+  .bcard-h{display:flex;align-items:center;gap:6px;margin-bottom:8px}
+  .btype{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-dim);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+  .bcard-h .btn{margin-left:auto;padding:2px 6px}.bcard-h .btn+.btn{margin-left:4px}
+  .btitle{font-weight:650;font-size:13.5px}
+  .bsub{font-size:12px;color:var(--muted);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .blink-body{display:flex;align-items:center;gap:10px}.bemoji{font-size:24px;line-height:1}.blink .bmeta{min-width:0}
+  .bnote{font-size:12.5px;color:var(--fg-dim);line-height:1.55;margin-top:4px}
+  .blive{display:flex;flex-direction:column;gap:5px;margin-top:8px}
+  .blive-row{display:flex;align-items:center;gap:7px}
+  /* Board — toolbar, category sections, gallery/list, detail modal */
+  .bbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .bchips{display:flex;gap:6px;flex-wrap:wrap}
+  .bchip{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+  .bchip:hover{border-color:var(--accent);color:var(--fg)}
+  .bchip.on{background:var(--accent);border-color:var(--accent);color:#0b0e14;font-weight:600}
+  .bmodal{display:flex;flex-direction:column;height:min(64vh,540px)}
+  .bsecs{display:flex;flex-direction:column;gap:16px}
+  .bmodal>.bsecs{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;margin-right:-8px;padding-right:8px}
+  .blive-row.down .mono,.bd-live-down{color:var(--red)}
+  .bsec-h{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .bsec-n{font-size:10px;font-weight:600;color:var(--fg-dim);border:1px solid var(--line);border-radius:999px;padding:0 6px;line-height:16px}
+  .bgal{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+  .btile{border:1px solid var(--line);border-radius:10px;background:var(--card2);padding:10px 11px;cursor:pointer;display:flex;flex-direction:column;min-height:96px;transition:border-color .12s}
+  .btile:hover{border-color:var(--accent)}
+  .btile-h{display:flex;align-items:center;gap:6px;margin-bottom:7px}
+  .btile-h .bx{margin-left:auto;padding:1px 5px;opacity:0;transition:opacity .12s}
+  .btile:hover .bx{opacity:1}
+  .btile-b{display:flex;align-items:flex-start;gap:9px;min-width:0}
+  .btile-emoji{font-size:22px;line-height:1;flex:none}
+  .btile-meta{min-width:0}
+  .btile-prev{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:3px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .blist{display:flex;flex-direction:column;gap:4px}
+  .brow{display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--card2);cursor:pointer}
+  .brow:hover{border-color:var(--accent)}
+  .brow-emoji{font-size:16px;line-height:1;flex:none}
+  .brow-title{font-weight:600;font-size:13px;flex:none;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brow-prev{font-size:12px;color:var(--muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brow .bx{flex:none;padding:1px 6px;opacity:0}.brow:hover .bx{opacity:1}
+  .bd-wrap{display:flex;flex-direction:column;gap:12px}
+  .bd-link{display:flex;align-items:center;gap:12px}.bd-emoji{font-size:30px;line-height:1;flex:none}
+  .bd-url-lbl{font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-bottom:3px}
+  .bd-url{font-family:var(--mono);font-size:13px;color:var(--accent);word-break:break-all;text-decoration:none}.bd-url:hover{text-decoration:underline}
+  .bd-note{font-size:13.5px;color:var(--fg);line-height:1.65;white-space:normal}
+  .bd-desc{font-family:var(--mono);font-size:13px;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;word-break:break-word}
+  .bd-actions{display:flex;gap:10px}
+  .bd-foot{display:flex;justify-content:flex-end;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  /* Machine dashboard (main area) */
+  .mdash{padding:16px 18px 64px;height:100%;overflow:auto}
+  .mdash-hd{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+  .mdash-hd>span:first-child .icon{width:26px;height:26px}
+  .mdash-id{min-width:0}
+  .mdash-name{font-weight:700;font-size:17px;display:flex;align-items:center;gap:7px}
+  .mdash-sub{font-size:12.5px;color:var(--fg-dim)}
+  .dgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;align-items:start}
+  .dcard{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:13px 14px}
+  .dcard.wide{grid-column:1/-1}
+  .dcard-h{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .dcard-h .icon{width:17px;height:17px;color:var(--fg-dim)}
+  .dcard-t{font-weight:650;font-size:14px}
+  .dcard-x{display:grid;place-items:center;width:24px;height:24px;border-radius:6px;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer;flex:none}
+  .dcard-x:hover{color:var(--fg);border-color:var(--accent)}
+  /* wide card → a proper table with extra columns (more info at a glance) */
+  .dtwrap{overflow-x:auto}
+  .dtable{width:100%;border-collapse:collapse;font-size:12.5px}
+  .dtable th{text-align:left;font-weight:600;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:5px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .dtable td{padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:middle}
+  .dtable tr:last-child td{border-bottom:none}
+  .dtable tr:hover td{background:var(--card2)}
+  .dtable .u-name{font-weight:600}
+  .dtable .u-desc{color:var(--muted)}
+  .dtable .u-num{font-family:var(--mono);color:var(--fg-dim);white-space:nowrap}
+  .dtable .u-act{display:flex;gap:5px;justify-content:flex-end}
+  .dtable td.right{text-align:right}
+  .mdash-foot{display:flex;align-items:flex-start;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line);color:var(--muted);font-size:11.5px;line-height:1.5}
+  .mdash-foot .icon{width:14px;height:14px;flex:none;margin-top:1px;color:var(--fg-dim)}
+  .ov{display:flex;flex-direction:column;gap:7px}
+  .ov.ov2{display:grid;grid-template-columns:1fr 1fr;gap:8px 28px}
+  .ov-row{display:flex;justify-content:space-between;gap:12px;font-size:12.5px}
+  .dcust{display:flex;flex-direction:column}
+  .dcust-row{display:flex;align-items:center;justify-content:space-between;padding:10px 2px;font-size:13.5px;font-weight:550;border-bottom:1px solid var(--line);cursor:pointer}
+  .dcust-row:last-child{border-bottom:none}
+  .ov-k{color:var(--muted)}.ov-v{color:var(--fg);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* ADR 0019 — a refusal that says which side said no, in the grid where the cards would be. */
+  .dnote{grid-column:1/-1;display:flex;gap:9px;align-items:flex-start;border:1px dashed var(--border2);border-radius:12px;padding:11px 13px;color:var(--muted);font-size:12px;line-height:1.5}
+  .dnote .icon{width:15px;height:15px;flex:none;margin-top:1px;color:var(--fg-dim)}
+  .dcust-row.off{opacity:.55}
+  .dcust-why{display:block;font-size:11px;font-weight:400;color:var(--muted)}

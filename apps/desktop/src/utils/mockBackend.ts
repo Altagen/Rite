@@ -181,7 +181,7 @@ export async function mockInvoke(
     // Default: behave as a local vault (no accounts). Under the dev harness (?harness=…) behave
     // as a shared server so the accounts/admin surfaces are browsable in the backend-less mock.
     case 'server_mode':
-      return { accounts: harnessOn(), needsBootstrap: false, instanceName: harnessOn() ? 'Acme Corp' : null, sessionPersistence: true, defaultShell: 'bash', allowQuickSsh: false, openRegistration: false, allowInvitations: true, confirmRoleChange: false, healthcheck: { passiveStatus: true, active: 'off', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 }, collectionPolicy: { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 0, defaultRole: 'viewer' } };
+      return { accounts: harnessOn(), needsBootstrap: false, instanceName: harnessOn() ? 'Acme Corp' : null, sessionPersistence: true, defaultShell: 'bash', allowQuickSsh: false, openRegistration: false, allowInvitations: true, confirmRoleChange: false, healthcheck: { passiveStatus: true, active: 'off', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 }, dashboardPolicy: { webui: true, clients: true, minInterval: 30 }, collectionPolicy: { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 0, defaultRole: 'viewer' } };
     case 'admin_set_instance':
     case 'admin_set_session_persistence':
     case 'admin_set_default_shell':
@@ -190,6 +190,7 @@ export async function mockInvoke(
     case 'admin_set_allow_invitations':
     case 'admin_set_confirm_role_change':
     case 'admin_set_healthcheck':
+    case 'admin_set_dashboard_policy':
     case 'admin_set_collection_policy':
     case 'admin_revoke_enrollment_token':
       return null;

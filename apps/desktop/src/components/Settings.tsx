@@ -14,6 +14,7 @@ import { useServerSession } from '../store/serverSessionStore';
 import { useFocusMode } from '../store/focusMode';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { isNativeShell } from '../utils/nativeShell';
+import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
 
@@ -43,10 +44,17 @@ export function Settings({ onClose }: SettingsProps) {
   const setAutoReconnect = useAutoReconnect((s) => s.setEnabled);
   const showMemberCount = useDisplayPrefs((s) => s.showMemberCount);
   const setShowMemberCount = useDisplayPrefs((s) => s.setShowMemberCount);
+  const machineProbes = useDisplayPrefs((s) => s.machineProbes);
+  const setMachineProbes = useDisplayPrefs((s) => s.setMachineProbes);
   const healthPref = useHealthPref((s) => s.pref);
   const setHealthPref = useHealthPref((s) => s.setPref);
   // Local terminals only: on a server the shell is server-governed (no per-user picker).
-  const isLocalContext = !useServerSession((s) => s.mode)?.accounts;
+  const serverMode = useServerSession((s) => s.mode);
+  const isLocalContext = !serverMode?.accounts;
+  // ADR 0019: the toggle below can only narrow the server's answer, so when the server
+  // already says no the switch is told it changes nothing rather than pretending to.
+  const probesVerdict = probeVerdict({ mode: serverMode ?? null, userWants: true });
+  const probesRefusedByServer = !probesVerdict.allowed && probesVerdict.by === 'server';
   const [shellDraft, setShellDraft] = useState('');
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync draft to async-loaded value
@@ -284,6 +292,28 @@ export function Settings({ onClose }: SettingsProps) {
                 Passive “last seen” costs no network traffic; active probing does.
               </p>
             </div>
+            <label className="mt-4 flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={machineProbes}
+                onChange={(e) => setMachineProbes(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <span>
+                <span className="text-sm font-medium">Container and service cards on the machine dashboard</span>
+                <span className="block text-xs text-muted-foreground">
+                  These two cards run a command on the host each time they refresh. Turning them off
+                  leaves the rest of the dashboard — address, port forwarding, the Board — untouched.
+                  {probesRefusedByServer && (
+                    <>
+                      {' '}
+                      <span className="text-amber-500">Your server turns them off for this client</span>, so
+                      this setting changes nothing here.
+                    </>
+                  )}
+                </span>
+              </span>
+            </label>
           </section>
 
           {/* Default shell — local terminals only (a server governs its own shell). */}

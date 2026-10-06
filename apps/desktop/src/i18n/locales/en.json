@@ -275,7 +275,14 @@
     "colCpu": "CPU",
     "colMem": "Mem",
     "colMemory": "Memory",
-    "colSince": "Since"
+    "colSince": "Since",
+    "probesOffTitle": "Containers and services are not being checked",
+    "probesOffWebui": "Your server turns off container and service checks in the web UI, so they run for nobody here.",
+    "probesOffClients": "Your server turns off container and service checks for this client.",
+    "probesOffYou": "Container and service checks are off in your settings.",
+    "probesOffYouHint": "Turn them back on in Settings. Everything else on this dashboard is unaffected.",
+    "probesCardServer": "not allowed here",
+    "probesCardYou": "off in your settings"
   },
   "board": {
     "title": "Board",

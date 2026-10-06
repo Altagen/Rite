@@ -34,6 +34,15 @@ interface TerminalManagerProps {
   onCloseTab?: (tabId: string) => void;
   onReorganizePane?: (sourcePaneId: string, targetPaneId: string, position: 'top' | 'bottom' | 'left' | 'right') => void;
   onNewLocalTerminal?: (shell?: string) => void;
+  /**
+   * The collection / machine tabs, rendered in this strip after the terminal tabs
+   * and before the "+", which is where the mock puts them (`#mtabs`). They used to
+   * live in a second strip above this one: two bars, one of which was meaningless
+   * for whichever view was showing, and the terminal strip — `relative z-10`, same
+   * level as the dashboard overlay and later in the DOM — drew on top of the very
+   * dashboard it had nothing to do with.
+   */
+  viewTabs?: React.ReactNode;
   onSaveQuickSSH?: (sessionId: string) => void;
   quickSSHSessions?: string[];
 }
@@ -53,6 +62,7 @@ export function TerminalManager({
   onCloseTab,
   onReorganizePane,
   onNewLocalTerminal,
+  viewTabs,
   onSaveQuickSSH,
   quickSSHSessions = [],
 }: TerminalManagerProps) {
@@ -355,7 +365,11 @@ export function TerminalManager({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Tabs */}
-      <div className="flex items-center gap-1 border-b border-border bg-card px-2 py-1 pb-3 overflow-x-auto overflow-y-visible flex-shrink-0 relative z-10">
+      <div
+        role="tablist"
+        aria-label="Open tabs"
+        className="flex items-center gap-1 border-b border-border bg-card px-2 py-1 pb-3 overflow-x-auto overflow-y-visible flex-shrink-0 relative z-10"
+      >
         {tabGroups.map((tab) => {
           // Get all sessions in this tab for Quick SSH detection
           const tabSessions = getAllSessions(tab.paneTree);
@@ -470,6 +484,8 @@ export function TerminalManager({
             </div>
           );
         })}
+
+        {viewTabs}
 
         {/* New Terminal Dropdown Button */}
         {onNewLocalTerminal && (

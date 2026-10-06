@@ -13,8 +13,8 @@ path = "src/main.rs"
 [dependencies]
 rite-server = { path = "../../../packages/rite-server" }
 
-tao = "0.35"
-wry = "0.55"
+tao = "0.37"
+wry = "0.57"
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
@@ -26,4 +26,4 @@ dirs = "6.0"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 base64 = "0.23"
 fslock = "0.2"
-rfd = { version = "0.15", default-features = false, features = ["gtk3"] }
+rfd = { version = "0.17", default-features = false, features = ["gtk3"] }

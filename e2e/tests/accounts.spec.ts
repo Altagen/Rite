@@ -508,6 +508,8 @@ async function addMachine(
     host: string;
     user: string;
     password: string;
+    /** Defaults to the form's 22. Set it to reach the harness sshd on 2222. */
+    port?: number;
     jump?: { name: string; user: string; host: string };
   },
 ): Promise<void> {
@@ -516,6 +518,7 @@ async function addMachine(
   await expect(page.getByRole('heading', { name: 'New Connection' })).toBeVisible();
   await page.getByPlaceholder('My Server').fill(opts.name);
   await page.getByPlaceholder('example.com or 192.168.1.1').fill(opts.host);
+  if (opts.port !== undefined) await page.locator('input[type="number"]').first().fill(String(opts.port));
   await page.getByPlaceholder('user').fill(opts.user);
   await page.getByPlaceholder('Enter password...').fill(opts.password);
   if (opts.jump) {
@@ -645,4 +648,117 @@ test('a collection Board round-trips its cards, and the server only sees ciphert
   expect(withBoard, 'the board should be stored on the collection').toBeTruthy();
   expect(withBoard!.boardEnc!).toMatch(/^v1\./);
   expect(withBoard!.boardEnc!).not.toContain('runbook.secret.example');
+});
+
+/**
+ * The server's half of the dashboard gate, seen from a browser (ADR 0019 §3, §6).
+ *
+ * In the web UI a refusal is *enforcement*, not a preference: the browser cannot open SSH,
+ * this server runs the command, so `webui: false` means the cards run for nobody. What has
+ * to hold here is that the client obeys a policy it pulled from the server, that it drops
+ * only the two cards that execute on a host, and that it says which side refused — the
+ * refusal a user cannot undo is the one worth naming.
+ */
+test('dashboard policy: webui:false hides the probing cards and names the server (ADR 0019)', async ({
+  page,
+  request,
+}) => {
+  const admin = await login(request, 'admin', ADMIN.password);
+  const setPolicy = (webui: boolean) =>
+    request.patch(`${BASE}/api/admin/dashboard-policy`, {
+      headers: auth(admin),
+      data: { webui, clients: true, minInterval: 30 },
+    });
+
+  const card = (name: string) => page.getByRole('heading', { name, exact: true });
+
+  // Default (nothing configured): the machine carol already owns shows both cards.
+  await signInCarol(page);
+  await page.getByText('zk-behind-jump').first().click();
+  await expect(card('Overview')).toBeVisible({ timeout: 30_000 });
+  await expect(card('Containers')).toBeVisible();
+  await expect(card('Services')).toBeVisible();
+
+  // The admin refuses the web UI — and the open page obeys *without being reloaded*. The
+  // server broadcasts `policy-updated` and the client re-pulls its mode (App.tsx), which
+  // is the whole point: turning the cards off takes effect while the admin is watching,
+  // not at whatever moment each user next happens to reload.
+  expect((await setPolicy(false)).status()).toBe(204);
+  await expect(page.getByText('Containers and services are not being checked')).toBeVisible({ timeout: 30_000 });
+  await expect(
+    page.getByText('Your server turns off container and service checks in the web UI, so they run for nobody here.'),
+  ).toBeVisible();
+  await expect(card('Containers')).toHaveCount(0);
+  await expect(card('Services')).toHaveCount(0);
+  // Refusing to probe is not refusing the dashboard.
+  await expect(card('Overview')).toBeVisible();
+  await expect(card('Port forwarding')).toBeVisible();
+
+  // And back, live again — so the rest of the suite sees an unrestricted server.
+  expect((await setPolicy(true)).status()).toBe(204);
+  await expect(card('Containers')).toBeVisible({ timeout: 30_000 });
+});
+
+/**
+ * The cards refresh on their own, at the cadence the server allows (ADR 0019 §3).
+ *
+ * This is the only test in the suite that waits on wall-clock seconds, and it does so on
+ * purpose: `minInterval` is a promise about traffic, and a promise about traffic can only
+ * be checked by watching traffic. The policy asks for 1s and the client refuses to go
+ * under its own 15s floor — so a second probe arriving between 15s and 25s proves both
+ * halves at once: that polling happens at all, and that the server cannot talk the client
+ * into hammering a host.
+ */
+test('the probing cards refresh on their own, never faster than the client floor', async ({ page, request }) => {
+  // Waiting out a 15s floor does not fit in the default 30s budget, and shortening the
+  // floor to fit would be testing a different promise than the one we make.
+  test.setTimeout(120_000);
+  const admin = await login(request, 'admin', ADMIN.password);
+  expect(
+    (
+      await request.patch(`${BASE}/api/admin/dashboard-policy`, {
+        headers: auth(admin),
+        data: { webui: true, clients: true, minInterval: 1 },
+      })
+    ).status(),
+  ).toBe(204);
+
+  await signInCarol(page);
+  // A host that ANSWERS. The spec's other machines point at deliberately unresolvable
+  // names (the point there is what travels in the request, not what comes back), and on
+  // those every probe ends in a connect timeout — long enough to look like a refresh
+  // interval and hide the absence of one.
+  await addMachine(page, {
+    name: 'probe-cadence',
+    host: '127.0.0.1',
+    port: 2222,
+    user: 'riteuser',
+    password: 'ritepass123',
+  });
+
+  const execs: number[] = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/api/terminal/exec-quick')) execs.push(Date.now());
+  });
+
+  await page.getByText('probe-cadence').first().click();
+  await expect(page.getByRole('heading', { name: 'Containers', exact: true })).toBeVisible({ timeout: 30_000 });
+  // The two cards each probe once on open, and those answer quickly.
+  await expect.poll(() => execs.length, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
+  const opened = execs.length;
+  const settled = execs[opened - 1];
+
+  // …then again on their own, without anyone touching the page. The server asked for 1s;
+  // the client refuses to go under its own 15s floor, so this gap proves both halves:
+  // that polling happens at all, and that a server cannot talk a client into hammering
+  // a host.
+  await expect.poll(() => execs.length, { timeout: 60_000, intervals: [500] }).toBeGreaterThan(opened);
+  const gap = execs[opened] - settled;
+  expect(gap, `an automatic refresh ${gap}ms after the last one must respect the 15s floor`).toBeGreaterThanOrEqual(13_000);
+
+  // Put the policy back for anything that runs after this.
+  await request.patch(`${BASE}/api/admin/dashboard-policy`, {
+    headers: auth(admin),
+    data: { webui: true, clients: true, minInterval: 30 },
+  });
 });

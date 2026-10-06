@@ -53,13 +53,28 @@ commit_parsers = [
   { message = "^refactor", group = "<!-- 4 -->♻️ Refactor" },
   { message = "^style", group = "<!-- 5 -->🎨 Styling" },
   { message = "^test", group = "<!-- 6 -->✅ Testing" },
-  { message = "^chore\\(release\\): prepare for", skip = true },
-  { message = "^chore\\(deps.*\\)", skip = true },
+  # Every release-mechanics commit, not just the "prepare for" shape: the version bump
+  # is the release's title, so listing it inside its own notes tells the reader nothing
+  # they are not already looking at.
+  { message = "^chore\\(release\\)", skip = true },
+  # Dependency work is shipped content, not noise: 0.2.1 was ENTIRELY dependency
+  # updates and its generated notes came out with three lines in them, none of
+  # which were the release. Grouped rather than skipped.
+  #
+  # Every prefix dependabot uses, not just `chore`: it raises GitHub Actions bumps
+  # as `ci(deps)` and some ecosystems as `build(deps)`, and matched only on `chore`
+  # those land in Miscellaneous — which is where the reader is not looking for them.
+  # The index in the HTML comment orders the sections, and it has to be UNIQUE: two
+  # groups sharing one made the second disappear entirely rather than render after the
+  # first. That is how 0.2.1 — a release made of nothing but dependency work — came out
+  # with its dependency section missing, and why widening the match above was not enough
+  # on its own: the commits were being grouped correctly and then dropped.
+  { message = "^(chore|ci|build)\\(deps", group = "<!-- 7 -->📦 Dependencies" },
   { message = "^chore\\(pr\\)", skip = true },
   { message = "^chore\\(pull\\)", skip = true },
-  { message = "^chore|^ci", group = "<!-- 7 -->⚙️ Miscellaneous" },
-  { body = ".*security", group = "<!-- 8 -->🔒 Security" },
-  { message = "^revert", group = "<!-- 9 -->⏪ Revert" },
+  { message = "^chore|^ci", group = "<!-- 8 -->⚙️ Miscellaneous" },
+  { body = ".*security", group = "<!-- 9 -->🔒 Security" },
+  { message = "^revert", group = "<!-- 10 -->⏪ Revert" },
 ]
 
 # Filter out commits based on regex
