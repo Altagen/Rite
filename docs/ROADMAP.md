@@ -36,6 +36,10 @@ The release is much wider than the phase list below, which predates it:
   over SSH).
 - **Health-check governance** — passive last-seen plus a server-governed active
   probe (ADR 0017).
+- **Dashboard governance** — the dashboard and the Board in **both** shells, with the
+  two cards that execute on a host (containers, services) governed per shell by
+  `dashboard_policy { webui, clients, minInterval }` and narrowable per device by the
+  user (ADR 0019).
 
 Known gaps at 0.2.0: port forwards are **local (`-L`) only** — remote (`-R`) and
 dynamic (SOCKS) are not built. Snippets are per-device (browser storage), not

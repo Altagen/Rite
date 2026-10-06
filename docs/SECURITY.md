@@ -137,6 +137,61 @@ The following are encrypted before storage:
 - **macOS**: Keychain (Phase 2)
 - **Use Case**: Store master password (opt-in) or sync credentials
 
+## Where Commands Run (the two execution loci)
+
+The same feature can execute in two different places depending on the shell, and the security
+consequences differ. This is worth stating plainly because the UI looks identical in both.
+
+### The desktop client
+
+A desktop client runs its own local rite-server. `terminal_stays_local` routes
+`/api/terminal/ssh`, `/quick-ssh`, `/exec` and `/exec-quick` to **that local server**, even when
+the client is attached to a remote one (ADR 0011 §4, ADR 0012). So:
+
+- The SSH connection is opened from the user's own machine and its own network position.
+- A remote rite-server never sees the target, the credentials, or the command output.
+- Everything else (collections, members, the vault blobs) is proxied to the remote server as
+  ciphertext.
+
+### The web UI
+
+A browser cannot open an SSH connection. The **remote rite-server** does it. The browser holds
+the keys, decrypts the target (`host:port`, credentials) client-side, and hands it to the server
+per request — exactly as it already does to open a terminal. So, for that call's duration, the
+server sees the host and the credentials it was given. It stores nothing of them: the vault stays
+ciphertext, no key is persisted server-side, and zero-knowledge is unaffected — nothing that is
+*stored* becomes readable. What exists is a window during which the server handles plaintext it
+was handed in order to do the work it was asked to do.
+
+A user who can open a shell on a host through the web UI can already run any command in it by
+hand. The dashboard's container and service cards therefore expose nothing new **in kind**; what
+they change is **volume and rhythm** — a terminal is one act, a dashboard refreshes.
+
+### Governance of the probing cards (ADR 0019)
+
+Because the cost differs per shell, the two halves are governed separately, through
+`dashboard_policy { webui, clients, minInterval }` (admin console → Instance → Client
+capabilities), narrowable per device by the user's own setting. Most-restrictive-wins.
+
+`minInterval` is the floor between **automatic** refreshes: an open dashboard re-runs those
+two cards on its own, never faster than the server's floor and never faster than the
+client's own floor of 15s either — a server cannot talk a client into hammering a host.
+Polling stops when the dashboard is closed and is skipped while the window is hidden, so
+the traffic is bounded by who is actually looking.
+
+The two halves are **not equally strong**, and we do not claim otherwise:
+
+- **`webui: false` is enforcement.** The browser cannot execute; the server refuses; nothing
+  runs.
+- **`clients: false` is policy.** An attached client holds the decrypted host and its own network
+  path, and the remote server never sees the request. The official client honours the setting by
+  hiding the cards; a modified client could ignore it — the same caveat ADR 0017 states for
+  active health-checks. Its value is that it stops the traffic in normal use, removes the trigger
+  from the UI so nobody fires it by accident, and records an auditable statement of intent.
+
+Only the cards that execute on a host are governed. Overview, port forwarding and the collection
+Board touch no host and are never gated.
+
 ## Configuration Security
 
 ### Master Password

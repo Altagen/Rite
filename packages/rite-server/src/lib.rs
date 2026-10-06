@@ -521,6 +521,7 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/collection-policy", patch(set_collection_policy))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
+        .route("/api/admin/dashboard-policy", patch(set_dashboard_policy))
         .route("/api/healthcheck/probe", post(healthcheck_probe))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
         // guard-gated to admin); team management is per-team authorized in-handler.
@@ -1247,6 +1248,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "confirmRoleChange": confirm_role_change,
         "healthcheck": healthcheck,
         "collectionPolicy": collection_policy(&state).await?,
+        "dashboardPolicy": dashboard_policy(&state).await?,
         "hostKey": state.host_key.as_deref(),
     })))
 }
@@ -1269,6 +1271,50 @@ async fn healthcheck_policy(state: &ServerState) -> Result<Value, AppError> {
             "minInterval": 60,
         })
     }))
+}
+
+/// The machine-dashboard policy (ADR 0019), stored as one JSON setting. Governs only the
+/// cards that execute something on a host — containers and services. Overview reads what
+/// Rite already holds and is never gated; the Board touches no host at all.
+///
+/// Defaults on/on: this is what ships today, and disabling a working feature on upgrade
+/// would be a worse surprise than the traffic it saves. `webui` is enforcement (the server
+/// runs the exec, so refusing it stops the request); `clients` is policy the official
+/// client honours — an attached client execs from its own network and the server never
+/// sees it. Said plainly here because the admin copy has to say it too.
+async fn dashboard_policy(state: &ServerState) -> Result<Value, AppError> {
+    let stored = state
+        .db
+        .get_setting("dashboard_policy")
+        .await?
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok());
+    Ok(stored.unwrap_or_else(|| {
+        json!({
+            "webui": true,        // may a browser against this server run the probing cards
+            "clients": true,      // may an attached desktop client run them
+            "minInterval": 30,    // floor between automatic refreshes, seconds
+        })
+    }))
+}
+
+/// May a browser against this server run the dashboard's probing cards right now
+/// (ADR 0019 §6)? This is the half that is *enforcement* rather than policy: a browser
+/// cannot open SSH, so the exec it asks for happens here or not at all — which means the
+/// refusal has to live here too. The client-side gate stops the request being made; this
+/// stops it being served, and only the second one is a promise we can keep.
+///
+/// Answers `true` outside accounts mode without reading anything: a desktop client reaches
+/// its OWN local server for these (client-execute, ADR 0011 §4), and a local server is a
+/// single user's vault with nobody to govern it.
+async fn dashboard_probes_allowed(state: &ServerState) -> Result<bool, AppError> {
+    if !state.accounts {
+        return Ok(true);
+    }
+    Ok(dashboard_policy(state)
+        .await?
+        .get("webui")
+        .and_then(Value::as_bool)
+        .unwrap_or(true))
 }
 
 /// Collection governance policy (mock admin → Collections). Stored as one JSON setting with
@@ -1459,6 +1505,46 @@ async fn set_healthcheck(
     // Live distribution (ADR 0017): nudge every connected client to re-pull the
     // policy now instead of waiting for its next throttled poll. A payload-less,
     // session-less event broadcasts to all sockets (see `event_visible_to`).
+    let _ = state
+        .events_tx
+        .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Admin: set the dashboard policy (ADR 0019). Validated rather than stored as given —
+/// a malformed blob here silently disables a feature for a whole organisation, and the
+/// admin would have no way to tell that from "it is off because I turned it off".
+async fn set_dashboard_policy(
+    State(state): State<ServerState>,
+    Json(policy): Json<Value>,
+) -> Result<Response, AppError> {
+    for key in ["webui", "clients"] {
+        if policy.get(key).is_some_and(|v| !v.is_boolean()) {
+            return Ok(
+                (StatusCode::BAD_REQUEST, format!("{key} must be a boolean")).into_response(),
+            );
+        }
+    }
+    // A floor of zero means "poll as fast as you like", which is the self-DoS this exists
+    // to prevent. An hour is past any plausible dashboard.
+    if let Some(interval) = policy.get("minInterval") {
+        match interval.as_u64() {
+            Some(n) if (1..=3600).contains(&n) => {}
+            _ => {
+                return Ok((
+                    StatusCode::BAD_REQUEST,
+                    "minInterval must be 1..=3600 seconds",
+                )
+                    .into_response());
+            }
+        }
+    }
+    state
+        .db
+        .set_setting("dashboard_policy", &policy.to_string())
+        .await?;
+    // Same live distribution as ADR 0017: clients re-pull now rather than at their next
+    // poll, so turning the cards off takes effect while the admin is still watching.
     let _ = state
         .events_tx
         .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
@@ -4396,12 +4482,25 @@ struct MachineExecReq {
 async fn machine_exec(
     State(state): State<ServerState>,
     Json(req): Json<MachineExecReq>,
-) -> Result<Json<rite_core::terminal::RemoteCommandOutput>, AppError> {
+) -> Result<Response, AppError> {
+    if !dashboard_probes_allowed(&state).await? {
+        return Ok(probes_refused());
+    }
     let out = state
         .sessions
         .run_remote_command(&req.connection_id, state.events_sink(), &req.command)
         .await?;
-    Ok(Json(out))
+    Ok(Json(out).into_response())
+}
+
+/// One wording for both exec routes: the reason, not just the status, because a client
+/// that gets this is meant to say which side refused rather than render an empty panel.
+fn probes_refused() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        "the machine dashboard's container and service checks are turned off for the web UI on this server",
+    )
+        .into_response()
 }
 
 /// Run a one-shot command on an ad-hoc target (accounts client-execute) and return
@@ -4422,7 +4521,10 @@ struct MachineExecQuickReq {
 async fn machine_exec_quick(
     State(state): State<ServerState>,
     Json(req): Json<MachineExecQuickReq>,
-) -> Result<Json<rite_core::terminal::RemoteCommandOutput>, AppError> {
+) -> Result<Response, AppError> {
+    if !dashboard_probes_allowed(&state).await? {
+        return Ok(probes_refused());
+    }
     let auth: AuthMethod = req.auth_method.into();
     let connection = quick_connection("exec", &req.host, req.port, &req.username, auth.clone());
     let out = state
@@ -4435,7 +4537,7 @@ async fn machine_exec_quick(
             &quick_hops(req.jumps),
         )
         .await?;
-    Ok(Json(out))
+    Ok(Json(out).into_response())
 }
 
 #[derive(Deserialize)]

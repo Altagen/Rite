@@ -307,6 +307,14 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_set_dashboard_policy: async (a) => {
+    await json('/api/admin/dashboard-policy', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(a),
+    });
+    return null;
+  },
   admin_set_collection_policy: async (a) => {
     await json('/api/admin/collection-policy', {
       method: 'PATCH',

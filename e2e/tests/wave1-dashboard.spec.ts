@@ -6,9 +6,11 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
  * wave1.spec.ts covers the dashboard on a bare host, where both cards resolve to
  * "nothing here". That leaves the bulk of the feature — the tables, the per-row
  * actions, pinning, filtering, the expanded wide view and Customize — untested,
- * because the harness has no container runtime and no systemd. e2e/dashboard-stubs.sh
- * puts stub `docker` and `systemctl` on the host so the probes return realistic
- * output; everything else (the exec over SSH, the parsers, the UI) is the real path.
+ * because the harness has no container runtime and no systemd. `sh e2e/harness-up.sh`
+ * puts stub `docker` and `systemctl` inside the harness container so the probes return
+ * realistic output; everything else (the exec over SSH, the parsers, the UI) is the
+ * real path. Nothing is installed on your machine — if these five fail, that script is
+ * what you are missing.
  */
 
 // Connection names are deliberately card-name-free ("e2e-dash-a", not

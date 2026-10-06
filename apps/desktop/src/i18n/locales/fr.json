@@ -275,7 +275,14 @@
     "colCpu": "CPU",
     "colMem": "Mém",
     "colMemory": "Mémoire",
-    "colSince": "Depuis"
+    "colSince": "Depuis",
+    "probesOffTitle": "Les conteneurs et les services ne sont pas interrogés",
+    "probesOffWebui": "Votre serveur désactive la vérification des conteneurs et des services dans l’interface web : elle ne s’exécute pour personne ici.",
+    "probesOffClients": "Votre serveur désactive la vérification des conteneurs et des services pour ce client.",
+    "probesOffYou": "La vérification des conteneurs et des services est désactivée dans vos paramètres.",
+    "probesOffYouHint": "Réactivez-la dans les Paramètres. Le reste de ce tableau de bord n’est pas affecté.",
+    "probesCardServer": "non autorisé ici",
+    "probesCardYou": "désactivé dans vos paramètres"
   },
   "board": {
     "title": "Tableau",
