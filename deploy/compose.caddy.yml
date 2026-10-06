@@ -1,0 +1,59 @@
+# Rite server behind Caddy — the shape to deploy on a machine other people reach.
+#
+#   RITE_DOMAIN=rite.example.com docker compose -f deploy/compose.caddy.yml up -d
+#   → https://rite.example.com
+#
+# Caddy obtains and renews a real certificate over ACME on its own. Nobody edits
+# a trust store, and nothing expires unattended. rite-server itself speaks plain
+# HTTP on a private network the proxy alone can reach, which is what
+# RITE_ALLOW_INSECURE_HTTP acknowledges — the hop exists, it just never leaves
+# the compose network.
+#
+# Requirements, so this works on the first try: the domain's A/AAAA record points
+# here, and ports 80 and 443 are free and reachable (ACME uses 80).
+#
+# One consequence worth knowing: with TLS terminated here, `hostKey` in
+# server_mode is null — rite-server is not holding the certificate, so it cannot
+# publish its fingerprint. Desktop clients pin the proxy's certificate by TOFU
+# instead (ADR 0012).
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      RITE_DOMAIN: ${RITE_DOMAIN:?set RITE_DOMAIN to the public hostname}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - rite
+
+  rite:
+    image: ghcr.io/altagen/rite-server:latest
+    restart: unless-stopped
+    # No `ports:` on purpose — rite-server is reachable only from the proxy.
+    expose:
+      - "1421"
+    environment:
+      RITE_ACCOUNTS: "1"
+      RITE_ADDR: "0.0.0.0:1421"
+      RITE_ALLOW_INSECURE_HTTP: "1"
+      RITE_ADMIN_USER: admin
+      RITE_ADMIN_PASSWORD_FILE: /run/secrets/rite_admin_password
+    secrets:
+      - rite_admin_password
+    volumes:
+      - rite-data:/home/rite/.local/share/rite
+
+secrets:
+  rite_admin_password:
+    file: ./admin_password.txt
+
+volumes:
+  rite-data:
+  caddy-data:
+  caddy-config:

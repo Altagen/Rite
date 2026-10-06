@@ -1,0 +1,38 @@
+# Rite server — HTTPS from rite-server itself, with a certificate you provide.
+#
+#   docker compose -f deploy/compose.tls.yml up
+#   → https://localhost:1421
+#
+# The two paths below are the only knob. Whatever produced the certificate — a
+# self-signed pair from openssl, mkcert, or a real one from a CA — this file does
+# not change. See docs/SERVER.md for the two ways to produce one locally and what
+# each costs you in the browser.
+#
+# A self-signed certificate encrypts exactly as well as any other. What it does
+# not do is prove anything to a browser, which is why mkcert exists: it installs
+# a local authority so the certificate is genuinely trusted on this machine.
+services:
+  rite:
+    image: ghcr.io/altagen/rite-server:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1421:1421"
+    environment:
+      RITE_ACCOUNTS: "1"
+      RITE_ADDR: "0.0.0.0:1421"
+      RITE_TLS_CERT: /etc/rite/tls/cert.pem
+      RITE_TLS_KEY: /etc/rite/tls/key.pem
+      RITE_ADMIN_USER: admin
+      RITE_ADMIN_PASSWORD_FILE: /run/secrets/rite_admin_password
+    secrets:
+      - rite_admin_password
+    volumes:
+      - ./tls:/etc/rite/tls:ro
+      - rite-data:/home/rite/.local/share/rite
+
+secrets:
+  rite_admin_password:
+    file: ./admin_password.txt
+
+volumes:
+  rite-data:
