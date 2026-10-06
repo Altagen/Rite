@@ -1,0 +1,7 @@
+# Caddy in front of rite-server. One line does the work: Caddy obtains a
+# certificate over ACME for this domain, renews it, and redirects HTTP to HTTPS.
+#
+# WebSockets need no special directive here — reverse_proxy upgrades them.
+{$RITE_DOMAIN} {
+	reverse_proxy rite:1421
+}
