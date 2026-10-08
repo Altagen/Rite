@@ -36,6 +36,7 @@ export default defineConfig({
       testIgnore: [
         /smoke\.spec\.ts/,
         /mock\.spec\.ts/,
+        /instance-config\.spec\.ts/,
         /accounts\.spec\.ts/,
         /accounts-env\.spec\.ts/,
         /proxy\.spec\.ts/,
@@ -58,6 +59,13 @@ export default defineConfig({
       name: 'accounts',
       testMatch: /accounts\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1422' },
+    },
+    // An instance governed by a configuration file on :1427 (ADR 0020): the console has to
+    // show what it cannot change, which is only observable against a configured server.
+    {
+      name: 'config',
+      testMatch: /instance-config\.spec\.ts/,
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1427' },
     },
     // Env-based admin bootstrap on :1423 (proves server Argon2 == browser Argon2).
     {
@@ -92,6 +100,14 @@ export default defineConfig({
     {
       command: 'sh e2e/serve-accounts.sh',
       url: 'http://127.0.0.1:1422/api/health',
+      reuseExistingServer: false,
+      timeout: 30_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+    {
+      command: 'sh e2e/serve-accounts-config.sh',
+      url: 'http://127.0.0.1:1427/api/health',
       reuseExistingServer: false,
       timeout: 30_000,
       stdout: 'pipe',

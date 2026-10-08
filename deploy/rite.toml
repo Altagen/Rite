@@ -1,0 +1,31 @@
+# Instance settings as code (ADR 0020), read by the server at start-up.
+#
+# A key declared here is LOCKED: the admin console shows it, inert, naming this file,
+# and the API answers 409 rather than accepting a change the next restart would undo.
+# A key left out is untouched — it stays in the console, live, exactly as before. That
+# is the whole of the trade, and you draw the line by choosing what to declare.
+#
+# The full list of settings, and what overriding one from the environment looks like,
+# is in docs/SERVER.md.
+
+instance_name = "Rite"
+
+# Self-service registration. Off by default; left declared here so an instance that
+# ships this file is invite-only on purpose rather than by accident. Comment it out if
+# you are the sort of operator who opens it for an afternoon — undeclared means the
+# console keeps it.
+open_registration = false
+
+# Ad-hoc SSH outside collections. Off by default: connections on a server should live
+# in collections, where they are saved, shared and auditable.
+allow_quick_ssh = false
+
+# The machine dashboard's container and service cards (ADR 0019). These are the only
+# part of the dashboard that runs a command on a host, so they are the only part that
+# costs network. `webui` is enforcement — the browser cannot open SSH, this server
+# executes, so off means nothing runs. `clients` is policy an attached desktop client
+# honours; it execs from its own network and this server never sees the request.
+[dashboard_policy]
+webui       = true
+clients     = true
+minInterval = 30

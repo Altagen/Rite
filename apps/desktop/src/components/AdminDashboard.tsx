@@ -286,11 +286,12 @@ const DEFAULT_COLL_POLICY: CollectionPolicy = {
   defaultRole: 'viewer',
 };
 
-function PolicyToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+function PolicyToggle({ on, disabled, onClick }: { on: boolean; disabled?: boolean; onClick: () => void }) {
   return (
     <button
       role="switch"
       aria-checked={on}
+      disabled={disabled}
       onClick={onClick}
       className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${on ? 'bg-primary' : 'bg-muted'}`}
     >
@@ -304,12 +305,19 @@ function PolicyToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 function CollectionPolicyPanel() {
   const [p, setP] = useState<CollectionPolicy>(DEFAULT_COLL_POLICY);
   const [err, setErr] = useState<string | null>(null);
+  // ADR 0020: when the instance holds this policy as code, the controls go inert and say
+  // where it is set — the server would refuse the save anyway.
+  const [managedBy, setManagedBy] = useState<string | null>(null);
   useEffect(() => {
     Backend.Server.mode()
-      .then((m) => setP(m.collectionPolicy ?? DEFAULT_COLL_POLICY))
+      .then((m) => {
+        setP(m.collectionPolicy ?? DEFAULT_COLL_POLICY);
+        setManagedBy(m.managed?.collection_policy ?? null);
+      })
       .catch(() => {});
   }, []);
   const save = async (next: CollectionPolicy) => {
+    if (managedBy) return;
     const prev = p;
     setP(next);
     setErr(null);
@@ -324,12 +332,18 @@ function CollectionPolicyPanel() {
   return (
     <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
       {err && <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-600">{err}</div>}
+      {managedBy && (
+        <div className="border-b border-border bg-muted/40 px-4 py-2 text-sm text-amber-500">
+          Set by this instance&apos;s configuration (<code className="font-mono">{managedBy}</code>) — change it there,
+          not here.
+        </div>
+      )}
       <div className={row}>
         <div>
           <div className="font-medium">Allow users to create collections</div>
           <p className="mt-1 text-sm text-muted-foreground">When off, only admins provision collections.</p>
         </div>
-        <PolicyToggle on={p.allowCreate} onClick={() => save({ ...p, allowCreate: !p.allowCreate })} />
+        <PolicyToggle on={p.allowCreate} disabled={!!managedBy} onClick={() => save({ ...p, allowCreate: !p.allowCreate })} />
       </div>
       <div className={row}>
         <div>
@@ -338,6 +352,7 @@ function CollectionPolicyPanel() {
         </div>
         <PolicyToggle
           on={p.allowSharingOutsideTeams}
+          disabled={!!managedBy}
           onClick={() => save({ ...p, allowSharingOutsideTeams: !p.allowSharingOutsideTeams })}
         />
       </div>
@@ -350,6 +365,7 @@ function CollectionPolicyPanel() {
           type="number"
           min={0}
           value={p.maxMembers}
+          disabled={!!managedBy}
           onChange={(e) => setP({ ...p, maxMembers: Math.max(0, Number(e.target.value) || 0) })}
           onBlur={() => save(p)}
           className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
@@ -362,6 +378,7 @@ function CollectionPolicyPanel() {
         </div>
         <select
           value={p.defaultRole}
+          disabled={!!managedBy}
           onChange={(e) => save({ ...p, defaultRole: e.target.value as CollectionPolicy['defaultRole'] })}
           className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
         >

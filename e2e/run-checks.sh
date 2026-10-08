@@ -47,5 +47,18 @@ done
 pkill -f 'target/debug/rite-server' 2>/dev/null
 
 echo
+echo "configured instance (ADR 0020 — its own server, started from a TOML file):"
+pkill -f 'target/debug/rite-server' 2>/dev/null
+sleep 1
+sh e2e/serve-accounts-config.sh >/tmp/rite-checks-config-server.log 2>&1 &
+i=0
+while [ $i -lt 30 ]; do
+  curl -sf http://127.0.0.1:1427/api/health >/dev/null 2>&1 && break
+  sleep 1; i=$((i + 1))
+done
+run "instance-config-check" node "e2e/instance-config-check.mjs"
+pkill -f 'target/debug/rite-server' 2>/dev/null
+
+echo
 echo "checks: $pass passed, $fail failed$([ -n "$failed" ] && echo " —$failed")"
 [ "$fail" -eq 0 ]
