@@ -209,26 +209,26 @@ This displays unreleased commits formatted according to conventional commits. Us
 ## Dependencies
 
 ### Local Development
-Matching CI, which is what `task check` is measured against. These are **exact
-pins**, not floors — each lives in a file, and CI installs what that file says:
-- **Rust**: `rust-toolchain.toml` (`channel`, plus the rustfmt and clippy
-  components). rustup reads it wherever cargo runs, so a local checkout and CI
-  compile with the same rustc. Not to be confused with `rust-version` in the
-  workspace manifest, which is the MSRV a consumer needs — a lower number, and a
-  different promise.
-- **Node.js**: `.node-version`
-- **pnpm**: `packageManager` in `package.json`, applied by corepack
-- **go-task**: 3+
+The four toolchains and the file that pins each one are listed in the README's
+[Prerequisites](../README.md#prerequisites). They are exact pins, not floors, and
+CI installs what those files say — so `task check` locally is the check CI runs.
+This section does not repeat the list: it drifted once already, claiming Rust
+"1.85+" long after the pin moved, while the README stayed right.
 
-One pin cannot read its file: a Containerfile chooses its base image before any
-file is available, so `Containerfile.server` carries `ARG RUST_VERSION`. The
-release workflow passes the real value from `rust-toolchain.toml`, and the default
-in the Containerfile is what a local build gets. **Bumping the Rust pin means
-editing both files**; the `📌 Pins` CI job fails if they disagree, so this is
-enforced rather than remembered.
+Two things that matter at release time and are not prerequisites:
 
-The ISO-CI container (`Containerfile`) pins all four, so a local `task check`
-inside it passes if and only if CI passes.
+- **The pin is not the MSRV.** `rust-version` in the workspace manifest is the
+  oldest Rust a consumer needs; `rust-toolchain.toml` is what we build with, and
+  it is higher. Lowering one does not lower the other.
+- **One pin cannot read its file.** A Containerfile chooses its base image before
+  any file is available, so `Containerfile.server` carries `ARG RUST_VERSION`; the
+  release workflow passes the real value from `rust-toolchain.toml`, and the
+  default is what a local build gets. **Bumping the Rust pin means editing both
+  files** — the `📌 Pins` CI job fails if they disagree, so it is enforced rather
+  than remembered.
+
+The ISO-CI container (`Containerfile`) carries all four pins, so a local
+`task check` inside it passes if and only if CI passes.
 
 ### Optional Tools
 - **git-cliff**: For changelog preview (optional locally, required in CI)

@@ -40,13 +40,11 @@ The release is much wider than the phase list below, which predates it:
   two cards that execute on a host (containers, services) governed per shell by
   `dashboard_policy { webui, clients, minInterval }` and narrowable per device by the
   user (ADR 0019).
-- **Instance configuration as code** — the settings an administrator would click can
-  instead be declared in a TOML file (`RITE_CONFIG`) or as `RITE__key__field`
-  environment variables, with a `__FILE` suffix for anything that belongs in a
-  secret. Precedence is env > file > database > default; a declared key is shadowed
-  rather than written through, and the API refuses to change it with a 409 naming
-  where the value came from (ADR 0020). Reload on SIGHUP and declarative team
-  provisioning are deferred.
+- **Instance configuration as code** — the ten settings an administrator would
+  click can instead be declared, in a TOML file (`RITE_CONFIG`) or as
+  `RITE__key__field` environment variables, and are then locked against the admin
+  API rather than merely seeded from it (ADR 0020). Reload on SIGHUP and
+  declarative team provisioning are deferred.
 
 Known gaps at 0.2.0: port forwards are **local (`-L`) only** — remote (`-R`) and
 dynamic (SOCKS) are not built. Snippets are per-device (browser storage), not
