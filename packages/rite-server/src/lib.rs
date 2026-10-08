@@ -32,6 +32,7 @@ use serde_json::{Value, json};
 use tokio::sync::broadcast;
 
 mod assets;
+pub mod config;
 mod probe;
 mod tls_pin;
 mod vault_conn;
@@ -1453,20 +1454,8 @@ async fn set_collection_policy(
     State(state): State<ServerState>,
     Json(policy): Json<Value>,
 ) -> Result<Response, AppError> {
-    let role = policy
-        .get("defaultRole")
-        .and_then(|v| v.as_str())
-        .unwrap_or("viewer");
-    if !["viewer", "editor"].contains(&role) {
-        return Ok((StatusCode::BAD_REQUEST, "invalid default role").into_response());
-    }
-    if policy
-        .get("maxMembers")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0)
-        < 0
-    {
-        return Ok((StatusCode::BAD_REQUEST, "maxMembers must be ≥ 0").into_response());
+    if let Err(why) = config::validate("collection_policy", &policy) {
+        return Ok((StatusCode::BAD_REQUEST, format!("{why:#}")).into_response());
     }
     state
         .db
@@ -1482,21 +1471,10 @@ async fn set_healthcheck(
     State(state): State<ServerState>,
     Json(policy): Json<Value>,
 ) -> Result<Response, AppError> {
-    let active = policy
-        .get("active")
-        .and_then(|v| v.as_str())
-        .unwrap_or("off");
-    if !["off", "on-demand", "full", "client-choice"].contains(&active) {
-        return Ok((StatusCode::BAD_REQUEST, "invalid active mode").into_response());
-    }
-    if let Some(methods) = policy.get("methods").and_then(|v| v.as_array()) {
-        let known = ["tcp-connect", "icmp", "ssh-handshake"];
-        if methods
-            .iter()
-            .any(|m| !m.as_str().is_some_and(|s| known.contains(&s)))
-        {
-            return Ok((StatusCode::BAD_REQUEST, "invalid probe method").into_response());
-        }
+    // One definition of valid, shared with the configuration loader (ADR 0020): two
+    // copies drift, and the copy that drifts is the one nobody is looking at.
+    if let Err(why) = config::validate("healthcheck_policy", &policy) {
+        return Ok((StatusCode::BAD_REQUEST, format!("{why:#}")).into_response());
     }
     state
         .db
@@ -1518,26 +1496,8 @@ async fn set_dashboard_policy(
     State(state): State<ServerState>,
     Json(policy): Json<Value>,
 ) -> Result<Response, AppError> {
-    for key in ["webui", "clients"] {
-        if policy.get(key).is_some_and(|v| !v.is_boolean()) {
-            return Ok(
-                (StatusCode::BAD_REQUEST, format!("{key} must be a boolean")).into_response(),
-            );
-        }
-    }
-    // A floor of zero means "poll as fast as you like", which is the self-DoS this exists
-    // to prevent. An hour is past any plausible dashboard.
-    if let Some(interval) = policy.get("minInterval") {
-        match interval.as_u64() {
-            Some(n) if (1..=3600).contains(&n) => {}
-            _ => {
-                return Ok((
-                    StatusCode::BAD_REQUEST,
-                    "minInterval must be 1..=3600 seconds",
-                )
-                    .into_response());
-            }
-        }
+    if let Err(why) = config::validate("dashboard_policy", &policy) {
+        return Ok((StatusCode::BAD_REQUEST, format!("{why:#}")).into_response());
     }
     state
         .db
