@@ -234,6 +234,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Read the pinned Rust version
+        id: rust-pin
+        run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
@@ -241,6 +245,16 @@ jobs:
           file: Containerfile.server
           platforms: linux/amd64,linux/arm64
           push: true
+          # The base image carries the pinned toolchain, so rustup has nothing to
+          # fetch — once per architecture, under emulation for arm64.
+          build-args: |
+            RUST_VERSION=${{ steps.rust-pin.outputs.channel }}
+          # Layer cache across runs. Without it the dependency layer below is rebuilt
+          # from scratch every tag, which is where this job's hour goes: a full clean
+          # build of this workspace is six minutes natively, so the rest is cache that
+          # was never kept.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ${{ steps.img.outputs.image }}:${{ needs.create-release.outputs.version }}
             ${{ steps.img.outputs.image }}:latest

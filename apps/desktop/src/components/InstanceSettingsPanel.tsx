@@ -23,6 +23,23 @@ const HC_METHODS: { id: string; label: string }[] = [
   { id: 'ssh-handshake', label: 'SSH handshake' },
 ];
 
+/**
+ * A setting the instance configuration owns (ADR 0020).
+ *
+ * The control stays on screen and goes inert, with the file or variable that set it named
+ * underneath. Hiding it would leave an administrator wondering where the switch went;
+ * greying it out without a reason sends them hunting through a deployment for a variable
+ * nobody told them about. The server refuses the change either way — this is the part that
+ * explains why before they try.
+ */
+function ManagedBy({ origin }: { origin: string }) {
+  return (
+    <p className="mt-1 text-xs text-amber-500">
+      Set by this instance&apos;s configuration (<code className="font-mono">{origin}</code>) — change it there, not here.
+    </p>
+  );
+}
+
 export function InstanceSettingsPanel() {
   const [name, setName] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
@@ -36,6 +53,8 @@ export function InstanceSettingsPanel() {
   const [confirmRole, setConfirmRole] = useState(false);
   const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
   const [dash, setDash] = useState<DashboardPolicy>(DEFAULT_DASH);
+  // ADR 0020: keys this instance holds as code, mapped to where each was declared.
+  const [managed, setManaged] = useState<Record<string, string>>({});
   const [userInput, setUserInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,6 +74,7 @@ export function InstanceSettingsPanel() {
       setConfirmRole(mode.confirmRoleChange === true);
       setHc(mode.healthcheck ?? DEFAULT_HC);
       setDash(mode.dashboardPolicy ?? DEFAULT_DASH);
+      setManaged(mode.managed ?? {});
     } catch {
       setError('Failed to load instance settings');
     }
@@ -193,13 +213,14 @@ export function InstanceSettingsPanel() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Acme Corp"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            disabled={busy}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
+            disabled={busy || !!managed.instance_name}
           />
+          {managed.instance_name && <ManagedBy origin={managed.instance_name} />}
         </div>
         <button
           type="submit"
-          disabled={busy || name.trim() === (saved ?? '')}
+          disabled={busy || !!managed.instance_name || name.trim() === (saved ?? '')}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           Save
@@ -242,11 +263,14 @@ export function InstanceSettingsPanel() {
               re-login. Still zero-knowledge — the key never leaves the browser and is cleared when the tab closes.
               Turn this off to enforce a RAM-only key (re-login on every reload).
             </p>
+            {managed.session_persistence && <ManagedBy origin={managed.session_persistence} />}
           </div>
           <button
             type="button"
             role="switch"
             aria-checked={persistence}
+            aria-label="Keep users signed in across reloads"
+            disabled={!!managed.session_persistence}
             onClick={togglePersistence}
             className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
               persistence ? 'bg-primary' : 'bg-muted'
@@ -270,11 +294,14 @@ export function InstanceSettingsPanel() {
               this server can self-register (role <b>user</b>, no team). They generate their own keys, so you never see
               them. Leave off for an invite-only instance (admin-provisioned accounts or enrollment tokens).
             </p>
+            {managed.open_registration && <ManagedBy origin={managed.open_registration} />}
           </div>
           <button
             type="button"
             role="switch"
             aria-checked={openReg}
+            aria-label="Open registration"
+            disabled={!!managed.open_registration}
             onClick={toggleOpenReg}
             className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
               openReg ? 'bg-primary' : 'bg-muted'
@@ -298,11 +325,14 @@ export function InstanceSettingsPanel() {
               close the invite path instance-wide — no new tokens can be minted and existing ones stop working, enforced
               on the server. Independent of open registration (invitations are the invite-only path).
             </p>
+            {managed.allow_invitations && <ManagedBy origin={managed.allow_invitations} />}
           </div>
           <button
             type="button"
             role="switch"
             aria-checked={allowInv}
+            aria-label="Allow invitations"
+            disabled={!!managed.allow_invitations}
             onClick={toggleAllowInv}
             className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
               allowInv ? 'bg-primary' : 'bg-muted'
@@ -325,11 +355,14 @@ export function InstanceSettingsPanel() {
               <b>Off by default.</b> When on, changing an account&apos;s role in Users asks for a confirmation first — a
               guard against an accidental promotion or demotion. A UX safety prompt, applied on every client.
             </p>
+            {managed.confirm_role_change && <ManagedBy origin={managed.confirm_role_change} />}
           </div>
           <button
             type="button"
             role="switch"
             aria-checked={confirmRole}
+            aria-label="Confirm role changes"
+            disabled={!!managed.confirm_role_change}
             onClick={toggleConfirmRole}
             className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
               confirmRole ? 'bg-primary' : 'bg-muted'
@@ -358,6 +391,7 @@ export function InstanceSettingsPanel() {
               The shell for terminals opened on this server. Web-UI users don&apos;t pick their own — this is it.
               (Desktop users choose their own <b>local</b> shell.)
             </p>
+            {managed.default_shell && <ManagedBy origin={managed.default_shell} />}
           </div>
           <select
             value={shell}
@@ -379,11 +413,14 @@ export function InstanceSettingsPanel() {
               Ad-hoc one-off SSH from the toolbar. <b>Off by default</b> — connections on a server should live in{' '}
               <b>collections</b> (saved, shared, auditable). Turn on for teams that need quick throwaway sessions.
             </p>
+            {managed.allow_quick_ssh && <ManagedBy origin={managed.allow_quick_ssh} />}
           </div>
           <button
             type="button"
             role="switch"
             aria-checked={quickSsh}
+            aria-label="Allow Quick SSH"
+            disabled={!!managed.allow_quick_ssh}
             onClick={toggleQuickSsh}
             className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${quickSsh ? 'bg-primary' : 'bg-muted'}`}
           >
@@ -402,6 +439,7 @@ export function InstanceSettingsPanel() {
             <b>Passive “last seen”</b> (from users&apos; own connections) costs no traffic. <b>Active probing</b> makes
             network requests from every client — a scan-like footprint at scale — so it&apos;s governed here.
           </p>
+          {managed.healthcheck_policy && <ManagedBy origin={managed.healthcheck_policy} />}
         </div>
 
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
@@ -413,6 +451,7 @@ export function InstanceSettingsPanel() {
             type="button"
             role="switch"
             aria-checked={hc.passiveStatus}
+            aria-label="Show machine status"
             onClick={() => saveHc({ ...hc, passiveStatus: !hc.passiveStatus })}
             className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${hc.passiveStatus ? 'bg-primary' : 'bg-muted'}`}
           >
@@ -553,6 +592,7 @@ export function InstanceSettingsPanel() {
             cards, a modified one could ignore it. What it buys you is the traffic stopped in normal use, no
             trigger left in the UI to fire by accident, and a recorded statement of intent.
           </p>
+          {managed.dashboard_policy && <ManagedBy origin={managed.dashboard_policy} />}
         </div>
 
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
@@ -567,6 +607,7 @@ export function InstanceSettingsPanel() {
             type="button"
             role="switch"
             aria-checked={dash.webui}
+            disabled={!!managed.dashboard_policy}
             aria-label="Allow the dashboard probing cards in the web UI"
             onClick={() => saveDash({ ...dash, webui: !dash.webui })}
             className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${dash.webui ? 'bg-primary' : 'bg-muted'}`}
@@ -587,6 +628,7 @@ export function InstanceSettingsPanel() {
             type="button"
             role="switch"
             aria-checked={dash.clients}
+            disabled={!!managed.dashboard_policy}
             aria-label="Allow the dashboard probing cards in attached clients"
             onClick={() => saveDash({ ...dash, clients: !dash.clients })}
             className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${dash.clients ? 'bg-primary' : 'bg-muted'}`}
@@ -613,6 +655,7 @@ export function InstanceSettingsPanel() {
               min={1}
               max={3600}
               value={dash.minInterval}
+              disabled={!!managed.dashboard_policy}
               onChange={(e) => setDash({ ...dash, minInterval: Number(e.target.value) })}
               onBlur={() => saveDash(dash)}
               className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"

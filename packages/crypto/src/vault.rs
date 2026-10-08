@@ -15,10 +15,14 @@
 //! Wire format for an encrypted value: `v1.<b64url(iv)>.<b64url(ciphertext‖tag)>`
 //! with a 12-byte GCM IV and the 16-byte tag appended to the ciphertext.
 
-use aes_gcm::aead::rand_core::RngCore;
+// aes-gcm 0.11 stopped re-exporting `OsRng`; random material now comes from the
+// `Generate` trait, which draws on the system RNG and panics if it fails — the same
+// contract `OsRng.fill_bytes` had, so nothing about the failure mode changes. The
+// algorithm, the 12-byte IV and the appended tag are all untouched, which is what
+// keeps the wire format below byte-compatible with the TS side.
 use aes_gcm::{
     Aes256Gcm, Nonce,
-    aead::{Aead, KeyInit, OsRng},
+    aead::{Aead, Generate, KeyInit},
 };
 use anyhow::{Result, anyhow};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD as B64};
@@ -49,15 +53,12 @@ pub fn derive_master_key(password: &str, salt: &[u8]) -> Result<[u8; KEY_LEN]> {
 
 /// Generate a fresh random user key.
 pub fn generate_user_key() -> [u8; KEY_LEN] {
-    let mut k = [0u8; KEY_LEN];
-    OsRng.fill_bytes(&mut k);
-    k
+    <[u8; KEY_LEN]>::generate()
 }
 
 /// Encrypt `plaintext` under `key` (AES-256-GCM), returning the `v1.iv.ct` string.
 pub fn encrypt_string(key: &[u8; KEY_LEN], plaintext: &[u8]) -> Result<String> {
-    let mut iv = [0u8; IV_LEN];
-    OsRng.fill_bytes(&mut iv);
+    let iv = <[u8; IV_LEN]>::generate();
     encrypt_with_iv(key, &iv, plaintext)
 }
 
@@ -66,7 +67,7 @@ pub fn encrypt_string(key: &[u8; KEY_LEN], plaintext: &[u8]) -> Result<String> {
 pub fn encrypt_with_iv(key: &[u8; KEY_LEN], iv: &[u8; IV_LEN], plaintext: &[u8]) -> Result<String> {
     let cipher = Aes256Gcm::new(key.into());
     let ct = cipher
-        .encrypt(Nonce::from_slice(iv), plaintext)
+        .encrypt(&Nonce::from(*iv), plaintext)
         .map_err(|e| anyhow!("aes-gcm encrypt: {e}"))?;
     Ok(format!("v1.{}.{}", B64.encode(iv), B64.encode(ct)))
 }
@@ -80,12 +81,10 @@ pub fn decrypt_string(key: &[u8; KEY_LEN], token: &str) -> Result<Vec<u8>> {
             let ct = B64
                 .decode(ct_b64)
                 .map_err(|e| anyhow!("bad ciphertext: {e}"))?;
-            if iv.len() != IV_LEN {
-                return Err(anyhow!("bad iv length"));
-            }
+            let nonce = Nonce::try_from(&iv[..]).map_err(|_| anyhow!("bad iv length"))?;
             let cipher = Aes256Gcm::new(key.into());
             cipher
-                .decrypt(Nonce::from_slice(&iv), ct.as_ref())
+                .decrypt(&nonce, ct.as_ref())
                 .map_err(|_| anyhow!("aes-gcm decrypt failed (wrong key or tampered)"))
         }
         _ => Err(anyhow!("malformed encrypted value")),

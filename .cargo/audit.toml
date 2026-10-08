@@ -1,21 +1,38 @@
-# Cargo audit configuration
-# Ignore known vulnerabilities that cannot be fixed
+# cargo-audit configuration.
+#
+# An entry here silences an advisory for the whole dependency graph, so each one
+# has to say what is being accepted and what would end it. An entry kept past its
+# fix is worse than no entry at all: it would hide the same advisory if a future
+# dependency pulled the vulnerable version back in.
 
 [advisories]
-# RUSTSEC-2023-0071: Marvin Attack in RSA
-# Status: No fixed upgrade available (russh dependency)
-# Severity: Medium (5.9)
-# Note: This is a timing sidechannel vulnerability in RSA key recovery.
-# While concerning, it requires specific attack conditions and is a
-# dependency of russh (our SSH library). The vulnerability will be
-# included in the SBOM for transparency.
 ignore = [
-  # RUSTSEC-2023-0071: Marvin Attack in RSA
-  # Fixed in rsa 0.9.10 — keeping entry for history
+  # RUSTSEC-2023-0071 — Marvin Attack: key recovery through timing sidechannels in `rsa`.
+  #
+  # No fixed version exists in any published release of the crate, so this is not a
+  # bump we are postponing. It arrives through russh -> rsa 0.10.0-rc.18 (also via
+  # ssh-key), and an SSH client cannot drop RSA without refusing RSA host and user
+  # keys. The attack needs an adaptive oracle over RSA *decryption* padding, which
+  # the signature path SSH uses does not expose, so the practical reach here is thin.
+  #
+  # It used to be reported twice, the second hit being rsa 0.9.10 under sqlx-mysql —
+  # a driver we never enable, pulled in by sqlx's default features. Pruning those
+  # features took that one out of the lockfile, so only the reachable hit remains.
+  #
+  # Drop this entry once `rsa` ships a release that closes it.
   "RUSTSEC-2023-0071",
 
-  # RUSTSEC-2024-0429: Unsoundness in glib::VariantStrIter
-  # Transitive via wry → webkit2gtk/gtk → glib 0.18.x (GTK3 bindings)
-  # No fix available in the 0.18 series; requires wry/webkit2gtk to move to GTK4.
+  # RUSTSEC-2024-0429 — unsoundness in glib::VariantStrIter.
+  #
+  # Iterating a GVariant string array dereferences a NULL pointer, so the impact is
+  # a crash rather than a disclosure. Rite never calls glib itself; it arrives
+  # transitively through wry -> webkit2gtk/gtk -> glib 0.18.
+  #
+  # Unfixable from here, not merely unfixed: the patch is in glib 0.20, which belongs
+  # to the GTK4 line, while wry and tao bind GTK3 through the `gtk` crate — upstream
+  # marks it UNMAINTAINED at 0.19 and points at gtk4. wry 0.57 and tao 0.37 are both
+  # the latest published versions, so there is no newer release to move to.
+  #
+  # Drop this entry when wry/tao bind GTK4 and glib reaches 0.20 in the lockfile.
   "RUSTSEC-2024-0429",
 ]

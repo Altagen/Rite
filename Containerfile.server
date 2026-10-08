@@ -6,23 +6,68 @@
 #
 # Build:  podman build -f Containerfile.server -t rite-server:local .
 # Run:    podman run --rm -p 1421:1421 rite-server:local
+#
+# Both build stages install their dependencies BEFORE copying the source, so a
+# change to our code does not invalidate the layer that compiled six hundred
+# crates. Paired with a registry cache in the release workflow, that is the
+# difference between recompiling the world on every tag — twice, since arm64 goes
+# through QEMU emulation — and recompiling four crates.
+
+# The Rust the project is pinned to (rust-toolchain.toml). A Containerfile cannot
+# read a file to choose its base image, so the release workflow passes this from
+# that file; the default below is for local builds and must track it.
+ARG RUST_VERSION=1.97.0
 
 # --- Stage 1: build the frontend bundle ---
 FROM node:24-bookworm-slim AS web
 ENV CI=true
 RUN corepack enable
 WORKDIR /app
+# Manifests first: `pnpm install` re-runs when dependencies change, not when a
+# component does. corepack reads `packageManager` from package.json, so the pnpm
+# version comes from the repository like everywhere else (ADR 0020's neighbours).
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/desktop/package.json apps/desktop/
+RUN pnpm install --frozen-lockfile
 COPY . .
-RUN pnpm install --frozen-lockfile \
- && pnpm --filter desktop build:frontend
+RUN pnpm --filter desktop build:frontend
 
 # --- Stage 2: compile rite-server with the embedded frontend ---
-FROM rust:1-bookworm AS builder
+ARG RUST_VERSION
+FROM rust:${RUST_VERSION}-bookworm AS builder
 WORKDIR /src
+
+# The dependency graph, in a layer of its own. Manifests and a stub source tree are
+# enough to compile every third-party crate; our four compile in seconds afterwards.
+# The base image already carries the pinned toolchain, so copying rust-toolchain.toml
+# here costs nothing — rustup finds what it asks for instead of downloading it once
+# per architecture.
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY apps/desktop/shell/Cargo.toml apps/desktop/shell/
+COPY packages/crypto/Cargo.toml packages/crypto/
+COPY packages/rite-core/Cargo.toml packages/rite-core/
+COPY packages/rite-server/Cargo.toml packages/rite-server/
+# `web/` has to exist or rust-embed fails at compile time (assets.rs, ADR 0004);
+# empty is fine here, the real bundle arrives with the source below.
+RUN mkdir -p apps/desktop/shell/src packages/crypto/src packages/rite-core/src \
+             packages/rite-server/src packages/rite-server/web \
+ && echo 'fn main() {}' > apps/desktop/shell/src/main.rs \
+ && echo 'fn main() {}' > packages/rite-server/src/main.rs \
+ && touch packages/crypto/src/lib.rs packages/rite-core/src/lib.rs \
+          packages/rite-server/src/lib.rs \
+ && cargo build --release -p rite-server \
+ && rm -rf apps packages
+
 COPY . .
 # rust-embed reads packages/rite-server/web at compile time (ADR 0004).
 COPY --from=web /app/apps/desktop/dist/. packages/rite-server/web/
-RUN cargo build --release -p rite-server
+# Our own sources arrive carrying their repository timestamps, which are older than the
+# stub artefacts the cached layer above left in target/. Cargo judges freshness by mtime,
+# so without this it declares the empty stub libraries up to date and links against them —
+# rite-server then fails to find its own modules, and only because the layer was cached.
+# The first build after a clean never shows it, which is what makes it worth a comment.
+RUN find apps packages -name '*.rs' -exec touch {} + \
+ && cargo build --release -p rite-server
 
 # --- Stage 3: minimal runtime ---
 FROM debian:bookworm-slim AS runtime

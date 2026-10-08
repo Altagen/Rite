@@ -1,0 +1,45 @@
+# Rite server — local evaluation.
+#
+#   docker compose -f deploy/compose.yml up
+#   → http://127.0.0.1:1421
+#
+# No certificate, no proxy, nothing to install. The published port is bound to
+# 127.0.0.1, so nothing here is reachable from the network.
+#
+# About RITE_ALLOW_INSECURE_HTTP: rite-server refuses to serve accounts over
+# plaintext on a non-loopback address, and inside the container it binds
+# 0.0.0.0 — which is not loopback as far as the process can tell. The flag
+# acknowledges a plaintext hop that, with the `127.0.0.1:` publish below, never
+# leaves this machine. Do not carry this file to a server; see compose.caddy.yml.
+services:
+  rite:
+    # Override to test a build that is not released yet:
+    #   RITE_IMAGE=localhost/rite-server:dev docker compose -f deploy/compose.yml up
+    image: ${RITE_IMAGE:-ghcr.io/altagen/rite-server:latest}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1421:1421"
+    environment:
+      RITE_ACCOUNTS: "1"
+      RITE_ADDR: "0.0.0.0:1421"
+      RITE_ALLOW_INSECURE_HTTP: "1"
+      # First-run administrator, created only while no account exists.
+      RITE_ADMIN_USER: admin
+      RITE_ADMIN_PASSWORD_FILE: /run/secrets/rite_admin_password
+      # Instance settings as code (ADR 0020). With this, the container comes up
+      # configured rather than merely administrable — no browser in the loop. Keys
+      # declared here are locked: the console shows them, inert, naming this file.
+      RITE_CONFIG: /etc/rite/rite.toml
+    secrets:
+      - rite_admin_password
+    volumes:
+      - ./rite.toml:/etc/rite/rite.toml:ro
+      - rite-data:/home/rite/.local/share/rite
+
+secrets:
+  rite_admin_password:
+    # echo -n 'a-strong-password' > deploy/admin_password.txt
+    file: ./admin_password.txt
+
+volumes:
+  rite-data:

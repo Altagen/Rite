@@ -1,0 +1,44 @@
+# Install the Rust the project is pinned to, rather than whatever `stable` is today.
+#
+# `dtolnay/rust-toolchain@stable` installs the current stable, and then the first
+# cargo invocation reads rust-toolchain.toml and makes rustup fetch 1.97.0 anyway —
+# so every job paid for two toolchains, and the one the cache was keyed on was not
+# the one that did the work. This reads the channel from the file that owns it and
+# installs exactly that, which is what "ISO CI and local" has to mean to be worth
+# anything.
+#
+# The components come from rust-toolchain.toml, so a job needing clippy or rustfmt
+# does not have to ask for them here.
+
+name: Setup Rust
+description: Install the toolchain pinned in rust-toolchain.toml
+
+inputs:
+  targets:
+    description: Comma-separated extra compilation targets (for cross-builds)
+    required: false
+    default: ''
+
+outputs:
+  channel:
+    description: The channel that was installed
+    value: ${{ steps.pin.outputs.channel }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read the pinned channel
+      id: pin
+      shell: bash
+      run: |
+        channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+        if [ -z "$channel" ]; then
+          echo "::error file=rust-toolchain.toml::no [toolchain] channel found" >&2
+          exit 1
+        fi
+        echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+    - uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ steps.pin.outputs.channel }}
+        targets: ${{ inputs.targets }}

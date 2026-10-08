@@ -8,11 +8,18 @@
 
 use anyhow::{Result, anyhow};
 use base64::{Engine, engine::general_purpose::STANDARD as B64};
-use dryoc::dryocbox::{DryocBox, KeyPair, PublicKey};
+// dryoc 2.0 is a set of renames, not a change of primitive: the stack-allocated keypair
+// alias is now `StackKeyPair` (the generic `KeyPair<PK, SK>` it aliases is what
+// `open_to_vec` takes), `unseal_to_vec` is now `open_to_vec`, and `gen` is now
+// `generate` — which also retires the raw identifier that `gen` being reserved in
+// edition 2024 forced on us. It is still libsodium's `crypto_box_seal` underneath, so
+// the bytes on the wire are unchanged; the pinned browser-produced box in the tests
+// below is what proves that rather than assumes it.
+use dryoc::dryocbox::{DryocBox, PublicKey, StackKeyPair};
 
 /// A fresh X25519 keypair, returned as (public, secret) raw bytes.
 pub fn generate_keypair() -> (Vec<u8>, Vec<u8>) {
-    let kp = KeyPair::r#gen();
+    let kp = StackKeyPair::generate();
     (kp.public_key.to_vec(), kp.secret_key.to_vec())
 }
 
@@ -29,9 +36,9 @@ pub fn open(public: &[u8], secret: &[u8], sealed_b64: &str) -> Result<Vec<u8>> {
         .decode(sealed_b64)
         .map_err(|e| anyhow!("bad base64: {e}"))?;
     let sealed = DryocBox::from_sealed_bytes(&bytes).map_err(|e| anyhow!("bad sealed box: {e}"))?;
-    let kp = KeyPair::from_slices(public, secret).map_err(|_| anyhow!("bad keypair"))?;
+    let kp = StackKeyPair::from_slices(public, secret).map_err(|_| anyhow!("bad keypair"))?;
     sealed
-        .unseal_to_vec(&kp)
+        .open_to_vec(&kp)
         .map_err(|_| anyhow!("unseal failed (wrong key or tampered)"))
 }
 

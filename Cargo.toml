@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Ange Cesari"]
@@ -32,13 +32,21 @@ age = "0.11"
 zeroize = { version = "1.8", features = ["derive"] }
 
 # SSH
-russh = "0.62"
+russh = "0.63"
 
 # FTP (for future use)
 suppaftp = "10.0"
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "sqlite",
+    # `FromRow` is a derive, so it lives behind this feature even though we
+    # never write a `query!`. Dropping it is what the explicit list is for:
+    # sqlx's defaults also hand us the MySQL and Postgres drivers, which we
+    # do not use and which drag a second, vulnerable `rsa` into the lockfile.
+    "macros",
+] }
 
 # Logging
 tracing = "0.1"
