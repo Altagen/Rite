@@ -6,7 +6,7 @@
 use anyhow::{Result, anyhow};
 use russh::ChannelMsg;
 use russh::client::{self};
-use russh::keys::{PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
 use sqlx::SqlitePool;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -101,8 +101,34 @@ impl client::Handler for SshClientHandler {
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &PublicKey,
+        server_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
+        // russh 0.63 widened this to let a host present an OpenSSH certificate instead of
+        // a bare key. Rite verifies a host by its key — trust on first use, recorded in
+        // known_hosts — and holds no CA to validate a certificate against. Reading the key
+        // out of a certificate and verifying that would quietly turn "I recognise this host"
+        // into "I trust whoever signed for it", which is not the promise the user was shown
+        // when they clicked Trust. So a certificate is refused until there is a CA-trust
+        // decision to implement.
+        //
+        // In practice this arm is unreachable: a server only presents a certificate when the
+        // client advertises `*-cert-v01@openssh.com`, which lives in `Preferred::
+        // host_key_certificates` and is empty in `Config::default()` — what we build below.
+        // The refusal is here so that widening the advertised algorithms some day fails
+        // closed, with a log line saying why, instead of inheriting a trust decision nobody
+        // made.
+        let server_public_key = match server_key {
+            PublicKeyOrCertificate::PublicKey { key, .. } => key,
+            PublicKeyOrCertificate::Certificate(_) => {
+                tracing::warn!(
+                    "[terminal.rs] {}:{} offered an OpenSSH certificate; Rite verifies host keys only",
+                    self.host,
+                    self.port
+                );
+                return Ok(false);
+            }
+        };
+
         tracing::info!(
             "[terminal.rs] Verifying host key for {}:{}",
             self.host,
