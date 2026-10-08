@@ -1303,7 +1303,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "hostKey": state.host_key.as_deref(),
         // ADR 0020: the keys this instance holds as code. The console renders these
         // locked, with their origin, instead of offering a control that cannot work.
-        "managed": state.config.managed_keys(),
+        "managed": state.config.managed_origins(),
     })))
 }
 

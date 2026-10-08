@@ -530,6 +530,10 @@ const ServerModeSchema = z.object({
   // This server's own TLS leaf fingerprint (hex) for out-of-band pinning; null behind a
   // reverse proxy (rite-server doesn't terminate TLS then).
   hostKey: z.string().nullable().optional(),
+  // Settings this instance holds as code (ADR 0020), mapped to where each was declared —
+  // a file path or an environment variable. The console renders these locked and says
+  // which, rather than offering a control whose change the server would refuse.
+  managed: z.record(z.string(), z.string()).optional(),
   // Machine-dashboard policy (ADR 0019). Governs only the cards that execute on a host —
   // containers and services. Absent ⇒ both shells allowed, which is what a server that has
   // never been configured means.

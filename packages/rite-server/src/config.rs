@@ -134,6 +134,17 @@ impl InstanceConfig {
         self.values.keys().cloned().collect()
     }
 
+    /// Managed keys with where each was declared, for `server_mode`. The console needs the
+    /// origin to render a locked field that explains itself: "greyed out" with no reason
+    /// sends its reader hunting through a deployment for a variable they cannot name.
+    pub fn managed_origins(&self) -> BTreeMap<String, String> {
+        self.origins
+            .iter()
+            .filter(|(key, _)| self.values.contains_key(*key))
+            .map(|(key, origin)| (key.clone(), origin.0.clone()))
+            .collect()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.values.is_empty()
     }

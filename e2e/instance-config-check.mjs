@@ -77,11 +77,14 @@ try {
   step = 'managed-is-published';
   // The console cannot render a locked field without being told which keys are locked.
   assert.deepEqual(
-    [...mode.managed].sort(),
+    Object.keys(mode.managed).sort(),
     ['allow_quick_ssh', 'collection_policy', 'dashboard_policy', 'instance_name', 'open_registration'],
     'server_mode lists exactly the keys the file and the environment declare',
   );
-  ok('server_mode publishes the managed keys, and only those');
+  assert.match(mode.managed.instance_name, /rite\.toml$/, 'and where each one came from');
+  assert.equal(mode.managed.dashboard_policy, 'RITE__dashboard_policy__minInterval',
+    'a policy the environment touched last names the variable, not the file');
+  ok('server_mode publishes the managed keys with their origin, and only those');
 
   step = 'refused-with-a-reason';
   // An admin who flips a switch, sees it work, and finds it reverted after the next restart
