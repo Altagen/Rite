@@ -191,6 +191,25 @@ RITE__instance_name__FILE=/run/secrets/name   # read the value from a mounted se
 
 A double underscore separates levels, because the keys themselves contain single ones.
 
+**Do not quote values.** Nothing here is interpreted by a shell, so quotes are not needed
+even for values containing spaces — `RITE__instance_name=Acme Corp` is correct as written.
+
+Compose strips surrounding quotes for you, both in `environment:` (YAML does it) and in an
+`env_file:`, so copying the examples above into a compose setup works either way. `docker
+run --env-file` and `podman run --env-file` do **not**: there the quotes become part of the
+value. What that looks like depends on the setting:
+
+| In the file | Through compose | Through `run --env-file` |
+|---|---|---|
+| `RITE__instance_name=Acme Corp` | `Acme Corp` | `Acme Corp` |
+| `RITE__instance_name="Acme Corp"` | `Acme Corp` | `"Acme Corp"` — quotes included |
+| `RITE__open_registration=true` | on | on |
+| `RITE__open_registration="true"` | on | **refuses to start**: ``RITE__open_registration: `"true"` is not a boolean`` |
+
+Booleans and numbers have a grammar, so a stray quote stops the server with the variable and
+the value named. Text has none, so the quotes simply ride along and the instance ends up
+called `"Acme Corp"`. Leaving them out is correct everywhere.
+
 ### What declaring something costs you
 
 **A declared setting is locked.** The console shows it, inert, naming the file or variable
