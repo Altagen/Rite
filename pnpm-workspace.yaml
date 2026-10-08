@@ -9,6 +9,9 @@ overrides:
   ajv@<6.14.0: '>=6.14.0'
   # 4 high advisories, all transitive via commitlint → ajv (dev-only, never shipped).
   fast-uri@<3.1.6: '>=3.1.6'
+  # 3 advisories on the brace-expansion 5 line, reached through minimatch 10 (glob,
+  # itself a build-time dependency). The widest patch floor covers all three.
+  brace-expansion@>=4.0.0 <5.0.12: '>=5.0.12'
   glob@>=10.2.0 <10.5.0: '>=10.5.0'
   js-yaml@>=4.0.0 <4.1.1: '>=4.1.1'
   minimatch@<3.1.3: '>=3.1.3'
@@ -16,3 +19,5 @@ overrides:
   minimatch@>=9.0.0 <9.0.6: '>=9.0.6'
   minimatch@>=9.0.0 <9.0.7: '>=9.0.7'
   rollup@>=4.0.0 <4.59.0: '>=4.59.0'
+  # Reached through postcss, which Vite pulls in to process the stylesheets.
+  source-map-js@<1.2.2: '>=1.2.2'
