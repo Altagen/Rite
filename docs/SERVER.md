@@ -154,6 +154,66 @@ One consequence of terminating TLS upstream: `hostKey` in `server_mode` is
 fingerprint for out-of-band pinning; desktop clients pin the proxy's certificate
 by TOFU instead.
 
+## Configuring the instance as code
+
+Ten settings govern how an instance behaves. Declare any of them in a TOML file, point
+`RITE_CONFIG` at it, and they stop being something an administrator has to click:
+
+```toml
+instance_name     = "Acme Corp"
+open_registration = false
+allow_quick_ssh   = false
+default_shell     = "bash"
+
+[dashboard_policy]        # ADR 0019
+webui       = false       # the web UI may not run the probing cards
+clients     = true        # attached desktop clients may
+minInterval = 60
+
+[collection_policy]       # ADR 0016
+allowCreate = true
+maxMembers  = 25
+```
+
+The full list: `instance_name`, `session_persistence`, `default_shell`,
+`allow_quick_ssh`, `open_registration`, `allow_invitations`, `confirm_role_change`,
+`healthcheck_policy`, `collection_policy`, `dashboard_policy`. A key outside that list
+stops the server, named — a typo should be heard at start-up, not discovered months later
+as a setting that never applied.
+
+Any key can also be set from the environment, which wins over the file:
+
+```
+RITE__instance_name=Acme Corp
+RITE__dashboard_policy__webui=false        # one field of a policy, leaving the rest
+RITE__instance_name__FILE=/run/secrets/name   # read the value from a mounted secret
+```
+
+A double underscore separates levels, because the keys themselves contain single ones.
+
+### What declaring something costs you
+
+**A declared setting is locked.** The console shows it, inert, naming the file or variable
+that set it, and the admin API answers `409` rather than accepting a change the next
+restart would undo. Changing it means editing the configuration and restarting the server.
+
+**A setting you leave out is untouched.** It stays in the console, live, exactly as before.
+This is the whole of the trade: you draw the line by choosing what to declare. Put the
+governance policies in the file so they are reviewable in git, and leave
+`open_registration` out if you are the sort of operator who opens it for an afternoon.
+
+**Nothing is written back.** A value an administrator set earlier stays in the database,
+shadowed while the configuration declares the key, and returns unchanged if the key leaves
+the file.
+
+### What a restart is still needed for
+
+The settings above take effect when the server starts. So do the boot values — the listen
+address, the served surfaces, accounts mode, and TLS material: `RITE_TLS_CERT` and
+`RITE_TLS_KEY` are read when the socket is bound, and no amount of re-reading a settings
+file swaps a certificate chain underneath it. Where a proxy terminates TLS, certificate
+renewal belongs to the proxy and never reaches rite-server at all.
+
 ## First run
 
 On first launch with no accounts, open the server in a browser: it shows
@@ -177,7 +237,6 @@ auth hash the browser would, so a later browser login just works). Prefer
 vars leak via `ps` / `inspect`. It only acts when there are no accounts yet;
 change the password after the first login.
 
-What it does **not** do yet is configure the instance. Registration, Quick SSH and
-the governance policies of ADR 0016/0017/0019 are still reachable only from the
-admin console, so a headless deployment comes up administrable but unconfigured.
-Closing that gap is what ADR 0020 is for.
+Pair it with `RITE_CONFIG` (above) and the deployment comes up **configured**, not merely
+administrable: the administrator exists, the policies are the ones in your repository, and
+nobody has opened a browser.
