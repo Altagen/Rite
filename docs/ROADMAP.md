@@ -134,7 +134,16 @@ had no released version to be compatible with.
 - ✅ Password strength validation (zxcvbn with visual indicator)
 - ✅ Auto-lock after inactivity (configurable timeout: 1, 3, 5 min or custom)
 - ✅ Clipboard security (auto-clear after 30 seconds)
-- ✅ Host key verification (known_hosts) *(partially implemented)*
+- ✅ Host key verification (known_hosts) — trust on first use with SHA256
+  fingerprints; strict / warn / accept modes; a **changed** key refused in every
+  mode, not just strict; OpenSSH host certificates refused, since Rite knows a
+  host by its key and holds no CA
+- [ ] Known-hosts management — nothing lists what is trusted or forgets a key
+  (the API has only the strict-mode `accept` and `reject` for a pending key, and
+  there is no UI at all). So a host whose key legitimately rotated has no clean
+  way back: the changed-key dialog deliberately offers no accept, and the only
+  path through is Quick SSH, which force-accepts *before* verification runs and
+  overwrites the stored key without showing that it changed
 - [ ] Session timeout configuration
 - [ ] Secure credential storage review
 
