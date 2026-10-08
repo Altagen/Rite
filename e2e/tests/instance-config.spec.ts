@@ -46,15 +46,20 @@ async function openInstancePanel(page: Page) {
 test('the console locks what the configuration owns, and names where it is set', async ({ page }) => {
   await openInstancePanel(page);
 
-  // The name came from the file, so the field and its Save both go inert…
+  // The name is set through a mounted secret, which outranks the `instance_name` the
+  // file also declares — so the field and its Save go inert on the variable's authority.
   const nameField = page.locator('#instance-name');
-  await expect(nameField).toHaveValue('Configured by file');
+  await expect(nameField).toHaveValue('Set from a secret');
   await expect(nameField).toBeDisabled();
 
-  // …and the row says where it came from, by path, not just that it is locked.
-  const notes = page.getByText(/Set by this instance's configuration/);
-  expect(await notes.count()).toBeGreaterThan(0);
-  await expect(notes.first()).toContainText('rite.toml');
+  // And the row names the variable that actually won, not the file it overrode. Getting
+  // this wrong would send an operator editing a file that has no effect on this value.
+  const nameRow = page.getByText(/Set by this instance's configuration/).first();
+  await expect(nameRow).toContainText('RITE__instance_name__FILE');
+
+  // A key the file alone declares is attributed to the file, by path.
+  await expect(page.getByText(/Set by this instance's configuration/).filter({ hasText: 'rite.toml' }).first())
+    .toBeVisible();
 
   // A switch the file declares cannot be thrown, and its row says so too.
   await expect(page.getByRole('switch', { name: 'Open registration' })).toBeDisabled();
