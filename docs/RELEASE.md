@@ -209,11 +209,23 @@ This displays unreleased commits formatted according to conventional commits. Us
 ## Dependencies
 
 ### Local Development
-Matching CI, which is what `task check` is measured against:
-- **Rust**: 1.85+ (`rust-version` in the workspace manifest)
-- **Node.js**: 24
-- **pnpm**: 11
+Matching CI, which is what `task check` is measured against. These are **exact
+pins**, not floors — each lives in a file, and CI installs what that file says:
+- **Rust**: `rust-toolchain.toml` (`channel`, plus the rustfmt and clippy
+  components). rustup reads it wherever cargo runs, so a local checkout and CI
+  compile with the same rustc. Not to be confused with `rust-version` in the
+  workspace manifest, which is the MSRV a consumer needs — a lower number, and a
+  different promise.
+- **Node.js**: `.node-version`
+- **pnpm**: `packageManager` in `package.json`, applied by corepack
 - **go-task**: 3+
+
+One pin cannot read its file: a Containerfile chooses its base image before any
+file is available, so `Containerfile.server` carries `ARG RUST_VERSION`. The
+release workflow passes the real value from `rust-toolchain.toml`, and the default
+in the Containerfile is what a local build gets. **Bumping the Rust pin means
+editing both files**; the `📌 Pins` CI job fails if they disagree, so this is
+enforced rather than remembered.
 
 The ISO-CI container (`Containerfile`) pins all four, so a local `task check`
 inside it passes if and only if CI passes.
