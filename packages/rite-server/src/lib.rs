@@ -1301,6 +1301,9 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "collectionPolicy": collection_policy(&state).await?,
         "dashboardPolicy": dashboard_policy(&state).await?,
         "hostKey": state.host_key.as_deref(),
+        // ADR 0020: the keys this instance holds as code. The console renders these
+        // locked, with their origin, instead of offering a control that cannot work.
+        "managed": state.config.managed_keys(),
     })))
 }
 
@@ -1357,15 +1360,37 @@ struct InstanceNameReq {
 }
 
 /// Set the global instance name (org-admin only; guard-gated by `/api/admin`).
+/// Refuse a change the operator declared as code (ADR 0020 §4).
+///
+/// 409 rather than a silent accept, and the origin in the body rather than a bare status:
+/// an administrator who flips a switch, sees it work, and finds it reverted after the next
+/// restart has been lied to. The console renders the field locked for the same reason, but
+/// the API has to hold the line on its own — a locked field is a courtesy, this is the rule.
+fn managed_refusal(state: &ServerState, key: &str) -> Option<Response> {
+    state.config.origin(key).map(|origin| {
+        (
+            StatusCode::CONFLICT,
+            format!(
+                "`{key}` is set by this instance's configuration ({origin}) and cannot be \
+                 changed from the console. Edit the configuration and restart the server."
+            ),
+        )
+            .into_response()
+    })
+}
+
 async fn set_instance_name(
     State(state): State<ServerState>,
     Json(req): Json<InstanceNameReq>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "instance_name") {
+        return Ok(refusal);
+    }
     state
         .db
         .set_setting("instance_name", req.name.trim())
         .await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 #[derive(Deserialize)]
@@ -1377,12 +1402,15 @@ struct EnabledReq {
 async fn set_session_persistence(
     State(state): State<ServerState>,
     Json(req): Json<EnabledReq>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "session_persistence") {
+        return Ok(refusal);
+    }
     state
         .db
         .set_setting("session_persistence", if req.enabled { "1" } else { "0" })
         .await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 #[derive(Deserialize)]
@@ -1396,6 +1424,9 @@ async fn set_default_shell(
     State(state): State<ServerState>,
     Json(req): Json<ShellReq>,
 ) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "default_shell") {
+        return Ok(refusal);
+    }
     let shell = req.shell.trim();
     if !["bash", "sh", "zsh", "fish"].contains(&shell) {
         return Ok((StatusCode::BAD_REQUEST, "unsupported shell").into_response());
@@ -1409,12 +1440,15 @@ async fn set_default_shell(
 async fn set_quick_ssh(
     State(state): State<ServerState>,
     Json(req): Json<EnabledReq>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "allow_quick_ssh") {
+        return Ok(refusal);
+    }
     state
         .db
         .set_setting("allow_quick_ssh", if req.enabled { "1" } else { "0" })
         .await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// Turn self-service registration on/off (org-admin only; guard-gated by `/api/admin`, and
@@ -1422,12 +1456,15 @@ async fn set_quick_ssh(
 async fn set_open_registration(
     State(state): State<ServerState>,
     Json(req): Json<EnabledReq>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "open_registration") {
+        return Ok(refusal);
+    }
     state
         .db
         .set_setting("open_registration", if req.enabled { "1" } else { "0" })
         .await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// Master switch for the invitation-token path (mint + redeem), org-admin only. Default ON;
@@ -1435,12 +1472,15 @@ async fn set_open_registration(
 async fn set_allow_invitations(
     State(state): State<ServerState>,
     Json(req): Json<EnabledReq>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "allow_invitations") {
+        return Ok(refusal);
+    }
     state
         .db
         .set_setting("allow_invitations", if req.enabled { "1" } else { "0" })
         .await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// Whether the invitation-token path is open (default ON). Read where tokens are minted and
@@ -1454,12 +1494,15 @@ async fn invitations_allowed(state: &ServerState) -> Result<bool, AppError> {
 async fn set_confirm_role_change(
     State(state): State<ServerState>,
     Json(req): Json<EnabledReq>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "confirm_role_change") {
+        return Ok(refusal);
+    }
     state
         .db
         .set_setting("confirm_role_change", if req.enabled { "1" } else { "0" })
         .await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// Set the collection governance policy (org-admin only; guard-gated by `/api/admin`). Stored as
@@ -1468,6 +1511,9 @@ async fn set_collection_policy(
     State(state): State<ServerState>,
     Json(policy): Json<Value>,
 ) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "collection_policy") {
+        return Ok(refusal);
+    }
     if let Err(why) = config::validate("collection_policy", &policy) {
         return Ok((StatusCode::BAD_REQUEST, format!("{why:#}")).into_response());
     }
@@ -1485,6 +1531,9 @@ async fn set_healthcheck(
     State(state): State<ServerState>,
     Json(policy): Json<Value>,
 ) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "healthcheck_policy") {
+        return Ok(refusal);
+    }
     // One definition of valid, shared with the configuration loader (ADR 0020): two
     // copies drift, and the copy that drifts is the one nobody is looking at.
     if let Err(why) = config::validate("healthcheck_policy", &policy) {
@@ -1510,6 +1559,9 @@ async fn set_dashboard_policy(
     State(state): State<ServerState>,
     Json(policy): Json<Value>,
 ) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "dashboard_policy") {
+        return Ok(refusal);
+    }
     if let Err(why) = config::validate("dashboard_policy", &policy) {
         return Ok((StatusCode::BAD_REQUEST, format!("{why:#}")).into_response());
     }

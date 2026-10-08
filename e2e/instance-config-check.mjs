@@ -19,6 +19,14 @@ const hx = (h) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b,
 const bh = (b) => Buffer.from(b).toString('hex');
 const argon = (password, saltHex) => argon2id({ password, salt: hx(saltHex), parallelism: KDF.par, iterations: KDF.iter, memorySize: KDF.mem, hashLength: 32, outputType: 'hex' });
 async function aes(k, p) { const iv = crypto.getRandomValues(new Uint8Array(12)); const key = await crypto.subtle.importKey('raw', k, 'AES-GCM', false, ['encrypt']); const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, p)); const u = (b) => Buffer.from(b).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); return `v1.${u(iv)}.${u(ct)}`; }
+async function patch(path, body, token) { return fetch(BASE + path, { method: 'PATCH', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body ?? {}) }); }
+/// The configured instance has no accounts yet; the refusal check needs an admin to be
+/// refused *as*, so that a 409 cannot be confused with a 401.
+async function bootstrapAdmin() {
+  const av = await vaultFor('AdminPass1!');
+  const res = await post('/api/server/bootstrap', { username: 'cfgadmin', ...av.body });
+  return (await res.json()).token;
+}
 async function post(path, body, token) { return fetch(BASE + path, { method: 'POST', headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body ?? {}) }); }
 const getJson = (path) => fetch(BASE + path).then((r) => r.json());
 async function vaultFor(password) {
@@ -52,6 +60,10 @@ try {
   assert.equal(mode.collectionPolicy.maxMembers, 7, 'and the rest of the file still stands');
   ok('the environment overrides one field of a policy the file declares');
 
+  // Before anything creates an account: bootstrap only acts on an empty instance, and the
+  // registration check below is about to fill it.
+  const admin = await bootstrapAdmin();
+
   step = 'enforced-not-just-reported';
   // The configuration turns self-registration ON, which is not the default. Nothing was
   // ever written to the database, so an endpoint still reading the database refuses — and
@@ -61,6 +73,38 @@ try {
   const res = await post('/api/server/register', { username: 'walkin', ...v.body });
   assert.equal(res.status, 201, `the file allows registration, so it must succeed — got ${res.status}`);
   ok('open_registration is enforced at the endpoint, not only reported');
+
+  step = 'managed-is-published';
+  // The console cannot render a locked field without being told which keys are locked.
+  assert.deepEqual(
+    [...mode.managed].sort(),
+    ['allow_quick_ssh', 'collection_policy', 'dashboard_policy', 'instance_name', 'open_registration'],
+    'server_mode lists exactly the keys the file and the environment declare',
+  );
+  ok('server_mode publishes the managed keys, and only those');
+
+  step = 'refused-with-a-reason';
+  // An admin who flips a switch, sees it work, and finds it reverted after the next restart
+  // has been lied to. So the API refuses, and says where the value actually comes from.
+  const refused = await patch('/api/admin/registration', { enabled: false }, admin);
+  assert.equal(refused.status, 409, `a managed key must be refused, got ${refused.status}`);
+  const why = await refused.text();
+  assert.match(why, /open_registration/, 'the refusal names the key');
+  assert.match(why, /rite\.toml|RITE__/, `the refusal names where it is set: ${why}`);
+  ok('a managed key is refused with 409, naming the key and its origin');
+
+  step = 'refusal-changed-nothing';
+  assert.equal((await getJson('/api/server/mode')).openRegistration, true, 'still what the file says');
+  ok('and the refusal left the value alone');
+
+  step = 'unmanaged-still-works';
+  // The lock covers what the operator declared, and nothing else — that is what makes a
+  // lock with no exceptions livable. `session_persistence` is in neither the file nor the
+  // environment, so the console still owns it.
+  assert.equal((await patch('/api/admin/session-persistence', { enabled: false }, admin)).status, 204,
+    'an undeclared key is still the console\'s');
+  assert.equal((await getJson('/api/server/mode')).sessionPersistence, false, 'and it took effect');
+  ok('an undeclared key stays editable — the lock covers only what was declared');
 
   console.log('\n✅ instance-config-check passed');
 } catch (e) {
