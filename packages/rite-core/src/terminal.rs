@@ -1693,3 +1693,142 @@ impl SessionManager {
         self.sessions.lock().await.contains_key(session_id)
     }
 }
+
+#[cfg(test)]
+mod host_key_tests {
+    use super::*;
+    use crate::db::Database;
+    use russh::client::Handler;
+    use tempfile::TempDir;
+
+    /// A real OpenSSH host certificate, made with `ssh-keygen -s ca -I rite-test -h
+    /// -n testhost.example`. Checked in rather than generated so the test needs no
+    /// ssh-keygen and no clock: `-V -1d:+3650d` puts it inside its validity window
+    /// for a decade, and nothing here inspects the window anyway.
+    const HOST_CERT: &str = "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIFsHoFoR5Ck+5PN31NmiA5/iOkFk3VDSY4cKNZBWwUd0AAAAII+uvT/n2Orf0CvUkKVq8VQf7+kdFWt7Un+pwuKk7TPWAAAAAAAAAAAAAAACAAAACXJpdGUtdGVzdAAAABQAAAAQdGVzdGhvc3QuZXhhbXBsZQAAAABqxrjWAAAAAH2UDVYAAAAAAAAAAAAAAAAAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIHKx/do6U5YEqtcUfZ85AgCUyfvAD/CHTIkyQdK9B+jxAAAAUwAAAAtzc2gtZWQyNTUxOQAAAECULk8qG4KRzlEbxga9T5l1FpwX8CNaASEy9tlg5PYc6yhM8Wt5rcn1I9TrxDqpYGIfpA1hwwJoRRJ0xlijTGIC rite-test-host";
+
+    /// The bare key signed by that certificate. If a future refactor ever "helpfully"
+    /// unwrapped a certificate to the key inside, this is what would land in
+    /// known_hosts — so the test watches for it by fingerprint.
+    const KEY_INSIDE_CERT: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII+uvT/n2Orf0CvUkKVq8VQf7+kdFWt7Un+pwuKk7TPW";
+
+    struct SilentEvents;
+    impl crate::events::SessionEvents for SilentEvents {
+        fn terminal_data(&self, _: &str, _: &[u8]) {}
+        fn terminal_exit(&self, _: &str, _: u32) {}
+        fn terminal_closed(&self, _: &str) {}
+        fn terminal_error(&self, _: &str, _: &str) {}
+        fn connection_dead(&self, _: &str, _: &str) {}
+        fn host_key_unknown(&self, _: &str, _: u16, _: &str, _: &str) {}
+        fn host_key_added(&self, _: &str, _: u16, _: &str, _: &str) {}
+        fn host_key_changed(&self, _: &str, _: u16, _: &str, _: &str) {}
+    }
+
+    async fn handler(force_accept: bool) -> (SshClientHandler, Database, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let db = Database::new(&dir.path().join("test.db")).await.unwrap();
+        let handler = SshClientHandler {
+            db: Arc::new(db.pool().clone()),
+            host: "testhost.example".to_string(),
+            port: 22,
+            events: Arc::new(SilentEvents),
+            force_accept_host_key: force_accept,
+        };
+        (handler, db, dir)
+    }
+
+    async fn known_host_count(db: &Database) -> i64 {
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM known_hosts")
+            .fetch_one(db.pool())
+            .await
+            .unwrap()
+    }
+
+    /// Rows across *both* trust tables. Counting `known_hosts` alone is not enough: in
+    /// strict mode an offered key is parked in `pending_host_keys` for the user to
+    /// confirm, so a certificate that had been wrongly unwrapped would leave no trace in
+    /// `known_hosts` and the assertion would pass for the wrong reason.
+    async fn trust_row_count(db: &Database) -> i64 {
+        let pending = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM pending_host_keys")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        known_host_count(db).await + pending
+    }
+
+    /// ADR 0021, decision 4: a host offering an OpenSSH certificate is refused, because
+    /// Rite knows a host by its key and holds no authority to validate a signature
+    /// against. russh 0.63 widened `check_server_key` to make this case expressible, and
+    /// no ordinary connection reaches it — nothing advertises the certificate algorithms
+    /// — so only a test keeps the branch honest across a library upgrade.
+    #[tokio::test]
+    async fn a_host_certificate_is_refused() {
+        let (mut handler, _db, _dir) = handler(false).await;
+        let cert = russh::keys::Certificate::from_openssh(HOST_CERT).expect("fixture parses");
+
+        let verdict = handler
+            .check_server_key(&PublicKeyOrCertificate::Certificate(cert))
+            .await;
+
+        // Ok(false) specifically: russh reads that as "I do not accept this key". An
+        // Err here would mean the certificate had reached the known_hosts path and been
+        // rejected as an unknown *key*, which is the confusion this branch exists to stop.
+        assert!(
+            matches!(verdict, Ok(false)),
+            "a certificate must be refused outright, got {verdict:?}"
+        );
+    }
+
+    /// The refusal has to leave no trust behind. Unwrapping a certificate to the key it
+    /// carries would look like compatibility and would silently turn "I recognise this
+    /// host" into "I trust whoever signed for it" — and the evidence would be a row in
+    /// known_hosts, so that is what this asserts on.
+    #[tokio::test]
+    async fn a_refused_certificate_trusts_nothing() {
+        let (mut handler, db, _dir) = handler(false).await;
+        let cert = russh::keys::Certificate::from_openssh(HOST_CERT).unwrap();
+        let inside = PublicKey::from_openssh(KEY_INSIDE_CERT).unwrap();
+
+        let _ = handler
+            .check_server_key(&PublicKeyOrCertificate::Certificate(cert))
+            .await;
+
+        assert_eq!(
+            trust_row_count(&db).await,
+            0,
+            "refusing a certificate must record the key inside it nowhere — not as a known \
+             host, and not as a pending one awaiting confirmation"
+        );
+        assert!(
+            known_hosts::verify_host_key(handler.db.as_ref(), "testhost.example", 22, &inside)
+                .await
+                .is_ok_and(|r| !matches!(r, HostKeyVerificationResult::Accepted)),
+            "the key inside the certificate must not have become a known host"
+        );
+    }
+
+    /// Quick SSH force-accepts before verification runs (ADR 0021, decision 5), which is
+    /// the one path that could plausibly have been written to swallow a certificate too.
+    /// It must not: the refusal is checked first, so even the deliberately permissive
+    /// mode records nothing.
+    #[tokio::test]
+    async fn quick_ssh_does_not_force_accept_a_certificate() {
+        let (mut handler, db, _dir) = handler(true).await;
+        let cert = russh::keys::Certificate::from_openssh(HOST_CERT).unwrap();
+
+        let verdict = handler
+            .check_server_key(&PublicKeyOrCertificate::Certificate(cert))
+            .await;
+
+        assert!(
+            matches!(verdict, Ok(false)),
+            "force-accept must not extend to certificates, got {verdict:?}"
+        );
+        assert_eq!(
+            known_host_count(&db).await,
+            0,
+            "force-accept must not record a certificate's key either"
+        );
+    }
+}
