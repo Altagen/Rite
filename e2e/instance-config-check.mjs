@@ -43,10 +43,23 @@ const ok = (m) => console.log('  ✓ ' + m);
 try {
   step = 'file-reaches-server-mode';
   const mode = await getJson('/api/server/mode');
-  assert.equal(mode.instanceName, 'Configured by file', 'a text setting comes from the file');
+  assert.equal(mode.instanceName, 'Set from a secret', 'RITE__instance_name__FILE outranks the file');
   assert.equal(mode.allowQuickSsh, true, 'a boolean flipped away from its default');
   assert.equal(mode.openRegistration, true, 'and one flipped away from its default too');
   ok('the file governs server_mode — text and booleans alike');
+
+  step = 'environment-only-forms';
+  // Until now a single variable was exercised against a running server. These two are the
+  // forms a container deployment actually leans on: a scalar the file never mentions, and
+  // a secret mounted as a file. Both were unit-tested; neither had ever been read by a
+  // process from its own environment.
+  assert.equal(mode.defaultShell, 'zsh', 'a scalar set only by RITE__default_shell');
+  assert.equal(mode.instanceName, 'Set from a secret',
+    'and a value read through __FILE, trailing newline trimmed');
+  assert.equal(mode.managed.instance_name, 'RITE__instance_name__FILE',
+    'attributed to the variable that set it, not to the file it overrode');
+  assert.equal(mode.managed.default_shell, 'RITE__default_shell');
+  ok('a scalar by variable and a secret by __FILE, both on a running server');
 
   step = 'partial-policy';
   // The file declares `webui` only. The other fields must still be there, at their shipped
@@ -78,10 +91,11 @@ try {
   // The console cannot render a locked field without being told which keys are locked.
   assert.deepEqual(
     Object.keys(mode.managed).sort(),
-    ['allow_quick_ssh', 'collection_policy', 'dashboard_policy', 'instance_name', 'open_registration'],
+    ['allow_quick_ssh', 'collection_policy', 'dashboard_policy', 'default_shell', 'instance_name',
+     'open_registration'],
     'server_mode lists exactly the keys the file and the environment declare',
   );
-  assert.match(mode.managed.instance_name, /rite\.toml$/, 'and where each one came from');
+  assert.match(mode.managed.collection_policy, /rite\.toml$/, 'a file-declared key names the file');
   assert.equal(mode.managed.dashboard_policy, 'RITE__dashboard_policy__minInterval',
     'a policy the environment touched last names the variable, not the file');
   ok('server_mode publishes the managed keys with their origin, and only those');

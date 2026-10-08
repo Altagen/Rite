@@ -23,12 +23,22 @@ webui = false
 maxMembers = 7
 TOML
 
+# A secret the way a container runtime mounts one: a file whose whole content is the
+# value, trailing newline included — the loader has to trim it or the instance comes up
+# named "Set from a secret\n".
+printf '%s\n' 'Set from a secret' > "$HOME/instance-name.secret"
+
 export RITE_ADDR="127.0.0.1:1427"
 export RITE_ACCOUNTS=1
 export RITE_CONFIG="$HOME/rite.toml"
 # One field set from the environment, over a policy the file already declares — the
 # precedence has to hold end to end, not only in the unit tests.
 export RITE__dashboard_policy__minInterval=90
+# A scalar the file never mentions, set purely by variable.
+export RITE__default_shell=zsh
+# And the secret form. This overrides `instance_name`, which the file also declares, so
+# it proves both that __FILE is read by a running process and that it outranks the file.
+export RITE__instance_name__FILE="$HOME/instance-name.secret"
 export RITE_WEB_DIR="$PWD/apps/desktop/dist"
 
 exec "$PWD/target/debug/rite-server"

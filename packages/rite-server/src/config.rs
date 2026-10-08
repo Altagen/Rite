@@ -193,6 +193,11 @@ impl InstanceConfig {
             let leaf = parts.next().map(str::to_string);
             reject_unknown(&key, "the environment")?;
 
+            // Trimmed here and again when the value is typed. The redundancy is on purpose:
+            // a mounted secret ends with a newline in nearly every runtime, and the failure
+            // is silent — an instance named "Acme\n" renders as "Acme" and compares as
+            // something else. It also means removing either trim alone changes nothing,
+            // which is worth knowing before concluding a mutation proved something.
             let text = if from_file {
                 std::fs::read_to_string(value)
                     .with_context(|| format!("{name}: reading the value from {value}"))?
