@@ -59,6 +59,9 @@ pub struct ServerState {
     /// bearer token) instead of the loopback launch token. Mutually exclusive
     /// with `token` in practice (local shell vs shared server).
     pub accounts: bool,
+    /// Settings the operator declared as code (ADR 0020). Empty in every deployment that
+    /// has not asked for it, which is why the resolver below falls through to the database.
+    pub config: Arc<config::InstanceConfig>,
     /// Which served surfaces this deployment exposes (rite-admin-console-split
     /// runtime gating). Both default on; a deployment can serve the client
     /// workspace, the admin console, both, or neither. The API `/api/admin/*`
@@ -313,6 +316,7 @@ impl ServerState {
             events_tx,
             token: None,
             accounts: false,
+            config: Arc::new(config::InstanceConfig::load()?),
             serve_admin: env_flag("RITE_SERVE_ADMIN", true),
             serve_webui: env_flag("RITE_SERVE_WEBUI", true),
             host_key: None,
@@ -329,6 +333,55 @@ impl ServerState {
             probe_throttle: Arc::new(std::sync::Mutex::new(HashMap::new())),
             kbd_challenges: Arc::new(std::sync::Mutex::new(HashMap::new())),
         })
+    }
+
+    /// Replace the loaded configuration. For tests and for callers that build their own.
+    pub fn with_config(mut self, config: config::InstanceConfig) -> Self {
+        self.config = Arc::new(config);
+        self
+    }
+
+    /// Read a boolean setting through ADR 0020's precedence: the configuration, then the
+    /// database, then the shipped default.
+    ///
+    /// The database stores these as "1" / "0", and each key has always had its own default
+    /// — `session_persistence` is on unless switched off, `allow_quick_ssh` is off unless
+    /// switched on — so the caller passes the one that belongs to it.
+    async fn setting_bool(&self, key: &str, default: bool) -> Result<bool, AppError> {
+        if let Some(value) = self.config.get(key).and_then(Value::as_bool) {
+            return Ok(value);
+        }
+        Ok(match self.db.get_setting(key).await?.as_deref() {
+            Some("1") => true,
+            Some("0") => false,
+            _ => default,
+        })
+    }
+
+    /// Read a text setting through the same precedence.
+    async fn setting_text(&self, key: &str, default: &str) -> Result<String, AppError> {
+        if let Some(value) = self.config.get(key).and_then(Value::as_str) {
+            return Ok(value.to_string());
+        }
+        Ok(self
+            .db
+            .get_setting(key)
+            .await?
+            .unwrap_or_else(|| default.to_string()))
+    }
+
+    /// Read a policy through the same precedence. A configured policy is already complete
+    /// and already validated — the loader merged it over the shipped defaults at start-up.
+    async fn setting_policy(&self, key: &str) -> Result<Value, AppError> {
+        if let Some(value) = self.config.get(key) {
+            return Ok(value.clone());
+        }
+        let stored = self
+            .db
+            .get_setting(key)
+            .await?
+            .and_then(|s| serde_json::from_str::<Value>(&s).ok());
+        Ok(stored.unwrap_or_else(|| config::policy_default(key)))
     }
 
     /// Enable the local-transport guard: API/WS then require this bearer token
@@ -1207,33 +1260,30 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
     let needs_bootstrap = state.accounts && !server_auth::has_any_user(state.db.pool()).await?;
     // A global, admin-set instance name (e.g. the company/team) so users can tell
     // which server they're on. Public so the login screen can show it too.
-    let instance_name = state.db.get_setting("instance_name").await?;
+    let instance_name = state
+        .config
+        .get("instance_name")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or(state.db.get_setting("instance_name").await?);
     // Whether the client may keep the (RAM-derived) vault key in sessionStorage so a
     // page reload doesn't force re-login. Still zero-knowledge (the key never leaves
     // the browser); admins who enforce stricter security can turn it off. Default on.
-    let session_persistence =
-        state.db.get_setting("session_persistence").await? != Some("0".to_string());
+    let session_persistence = state.setting_bool("session_persistence", true).await?;
     // Server-governed client capabilities (ADR: mock "Client capabilities"). The shell used
     // for terminals opened on this server (web users don't pick their own); and whether ad-hoc
     // Quick SSH is allowed (off by default — connections should live in collections).
-    let default_shell = state
-        .db
-        .get_setting("default_shell")
-        .await?
-        .unwrap_or_else(|| "bash".to_string());
-    let allow_quick_ssh = state.db.get_setting("allow_quick_ssh").await? == Some("1".to_string());
+    let default_shell = state.setting_text("default_shell", "bash").await?;
+    let allow_quick_ssh = state.setting_bool("allow_quick_ssh", false).await?;
     // Self-service registration (ADR 0015 phase 1). Off by default — an invite-only instance
     // leaves it off; turning it on lets the sign-in screen offer "Create an account".
-    let open_registration =
-        state.db.get_setting("open_registration").await? == Some("1".to_string());
+    let open_registration = state.setting_bool("open_registration", false).await?;
     // Master switch for the invitation-token path (mint + redeem). Default ON, and independent of
     // open_registration: tokens are the invite-only path, needed precisely when open reg is off.
-    let allow_invitations =
-        state.db.get_setting("allow_invitations").await? != Some("0".to_string());
+    let allow_invitations = state.setting_bool("allow_invitations", true).await?;
     // A UX safety policy, server-persisted so every client honours it: when on, the client asks
     // to confirm each account role change before applying it. Default off.
-    let confirm_role_change =
-        state.db.get_setting("confirm_role_change").await? == Some("1".to_string());
+    let confirm_role_change = state.setting_bool("confirm_role_change", false).await?;
     let healthcheck = healthcheck_policy(&state).await?;
     Ok(Json(json!({
         "accounts": state.accounts,
@@ -1258,20 +1308,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
 /// passive "last seen" on; active probing off; TCP-connect the only method; no user restriction;
 /// a 60s min interval. The client obeys it (passive is always free; active is governed).
 async fn healthcheck_policy(state: &ServerState) -> Result<Value, AppError> {
-    let stored = state
-        .db
-        .get_setting("healthcheck_policy")
-        .await?
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok());
-    Ok(stored.unwrap_or_else(|| {
-        json!({
-            "passiveStatus": true,
-            "active": "off",              // off | on-demand | full | client-choice
-            "methods": ["tcp-connect"],   // subset of tcp-connect | icmp | ssh-handshake
-            "restrictUsers": [],          // usernames allowed to actively probe (empty = all)
-            "minInterval": 60,
-        })
-    }))
+    state.setting_policy("healthcheck_policy").await
 }
 
 /// The machine-dashboard policy (ADR 0019), stored as one JSON setting. Governs only the
@@ -1284,18 +1321,7 @@ async fn healthcheck_policy(state: &ServerState) -> Result<Value, AppError> {
 /// client honours — an attached client execs from its own network and the server never
 /// sees it. Said plainly here because the admin copy has to say it too.
 async fn dashboard_policy(state: &ServerState) -> Result<Value, AppError> {
-    let stored = state
-        .db
-        .get_setting("dashboard_policy")
-        .await?
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok());
-    Ok(stored.unwrap_or_else(|| {
-        json!({
-            "webui": true,        // may a browser against this server run the probing cards
-            "clients": true,      // may an attached desktop client run them
-            "minInterval": 30,    // floor between automatic refreshes, seconds
-        })
-    }))
+    state.setting_policy("dashboard_policy").await
 }
 
 /// May a browser against this server run the dashboard's probing cards right now
@@ -1322,19 +1348,7 @@ async fn dashboard_probes_allowed(state: &ServerState) -> Result<bool, AppError>
 /// permissive defaults: anyone may create collections, share with anyone in the directory, no
 /// member cap, and new members default to viewer. Admins bypass these limits.
 async fn collection_policy(state: &ServerState) -> Result<Value, AppError> {
-    let stored = state
-        .db
-        .get_setting("collection_policy")
-        .await?
-        .and_then(|s| serde_json::from_str::<Value>(&s).ok());
-    Ok(stored.unwrap_or_else(|| {
-        json!({
-            "allowCreate": true,               // when false, only org-admins provision collections
-            "allowSharingOutsideTeams": true,  // when false, members may only add teammates
-            "maxMembers": 0,                   // 0 = unlimited
-            "defaultRole": "viewer",           // viewer | editor — default when adding a member
-        })
-    }))
+    state.setting_policy("collection_policy").await
 }
 
 #[derive(Deserialize)]
@@ -1432,7 +1446,7 @@ async fn set_allow_invitations(
 /// Whether the invitation-token path is open (default ON). Read where tokens are minted and
 /// redeemed so the master switch is enforced server-side, not just hidden in the UI.
 async fn invitations_allowed(state: &ServerState) -> Result<bool, AppError> {
-    Ok(state.db.get_setting("allow_invitations").await? != Some("0".to_string()))
+    state.setting_bool("allow_invitations", true).await
 }
 
 /// Turn the client's "confirm every role change" safety prompt on/off (org-admin only). A UX
@@ -1877,7 +1891,7 @@ async fn server_register(
     }
 
     // --- Path B: plain self-service — requires the opt-in setting, lands role `user`. ---
-    if state.db.get_setting("open_registration").await? != Some("1".to_string()) {
+    if !state.setting_bool("open_registration", false).await? {
         return Ok((
             StatusCode::FORBIDDEN,
             Json(json!({ "error": "open registration is disabled" })),
