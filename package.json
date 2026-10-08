@@ -1,6 +1,6 @@
 {
   "name": "rite",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "Rust & TypeScript Interface for Terminal Environment",
   "repository": "https://github.com/Altagen/Rite",
