@@ -15,10 +15,9 @@ ignore = [
   # keys. The attack needs an adaptive oracle over RSA *decryption* padding, which
   # the signature path SSH uses does not expose, so the practical reach here is thin.
   #
-  # cargo-audit reports this twice because it reads Cargo.lock rather than the build
-  # graph: the second hit, rsa 0.9.10 under sqlx-mysql, is a lockfile entry for a
-  # driver we never enable — `cargo tree -i rsa@0.9.10 --target all` finds no path to
-  # it, and nothing compiles it.
+  # It used to be reported twice, the second hit being rsa 0.9.10 under sqlx-mysql —
+  # a driver we never enable, pulled in by sqlx's default features. Pruning those
+  # features took that one out of the lockfile, so only the reachable hit remains.
   #
   # Drop this entry once `rsa` ships a release that closes it.
   "RUSTSEC-2023-0071",
