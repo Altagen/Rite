@@ -40,6 +40,11 @@ The release is much wider than the phase list below, which predates it:
   two cards that execute on a host (containers, services) governed per shell by
   `dashboard_policy { webui, clients, minInterval }` and narrowable per device by the
   user (ADR 0019).
+- **Instance configuration as code** — the ten settings an administrator would
+  click can instead be declared, in a TOML file (`RITE_CONFIG`) or as
+  `RITE__key__field` environment variables, and are then locked against the admin
+  API rather than merely seeded from it (ADR 0020). Reload on SIGHUP and
+  declarative team provisioning are deferred.
 
 Known gaps at 0.2.0: port forwards are **local (`-L`) only** — remote (`-R`) and
 dynamic (SOCKS) are not built. Snippets are per-device (browser storage), not
@@ -129,7 +134,16 @@ had no released version to be compatible with.
 - ✅ Password strength validation (zxcvbn with visual indicator)
 - ✅ Auto-lock after inactivity (configurable timeout: 1, 3, 5 min or custom)
 - ✅ Clipboard security (auto-clear after 30 seconds)
-- ✅ Host key verification (known_hosts) *(partially implemented)*
+- ✅ Host key verification (known_hosts) — trust on first use with SHA256
+  fingerprints; strict / warn / accept modes; a **changed** key refused in every
+  mode, not just strict; OpenSSH host certificates refused, since Rite knows a
+  host by its key and holds no CA
+- [ ] Known-hosts management — nothing lists what is trusted or forgets a key
+  (the API has only the strict-mode `accept` and `reject` for a pending key, and
+  there is no UI at all). So a host whose key legitimately rotated has no clean
+  way back: the changed-key dialog deliberately offers no accept, and the only
+  path through is Quick SSH, which force-accepts *before* verification runs and
+  overwrites the stored key without showing that it changed
 - [ ] Session timeout configuration
 - [ ] Secure credential storage review
 

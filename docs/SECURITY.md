@@ -64,7 +64,11 @@ This document outlines the security architecture, threat model, and best practic
 
 **Mitigations**:
 - SSH's built-in encryption and authentication
-- Host key verification (SSH)
+- Host key verification (SSH), trust on first use, recorded in `known_hosts`
+- OpenSSH host **certificates are refused**: Rite recognises a host by its key and
+  holds no certificate authority to validate a signature against, so accepting one
+  would silently turn "I know this host" into "I trust whoever signed for it" —
+  a different promise from the one shown when the user clicked Trust
 - No credentials sent over network in plaintext
 - Sync data encrypted before transmission (E2E)
 
