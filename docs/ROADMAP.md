@@ -4,7 +4,10 @@ This document outlines the planned features for RITE, organized by development p
 
 **Product Vision:** Modern terminal with advanced features and native SSH/SFTP support (not just an SSH client).
 
-**Current Focus:** Phase 1 MVP - Building a complete terminal experience with local shell + SSH capabilities.
+**Current Focus:** Phase 1 MVP — a complete terminal experience with local shell
+and SSH. Two engine items inside it now gate later work: the keyboard shortcut
+engine, and pane kinds — which the SFTP pane and the Agent Manager both need.
+The **Agent Manager** is the next major feature after them, ahead of Phase 2.
 
 ---
 
@@ -45,6 +48,15 @@ The release is much wider than the phase list below, which predates it:
   `RITE__key__field` environment variables, and are then locked against the admin
   API rather than merely seeded from it (ADR 0020). Reload on SIGHUP and
   declarative team provisioning are deferred.
+
+**Pane or menu** — the rule that decides where a surface goes. A view that belongs
+*to a machine* is a **menu**: the dashboard's containers and services cards are
+reached from inside that host's context and mean nothing outside it, which is why a
+menu was right for them. A surface with a **context of its own**, independent of any
+host, is a **pane** — a first-class leaf in the split tree, openable beside a
+terminal, movable, detachable. SFTP browsing and the agent manager are both of the
+second kind. Getting this backwards produces a feature nailed to a machine it does
+not belong to.
 
 Known gaps at 0.2.0: port forwards are **local (`-L`) only** — remote (`-R`) and
 dynamic (SOCKS) are not built. Snippets are per-device (browser storage), not
@@ -119,6 +131,27 @@ had no released version to be compatible with.
   - ✅ Terminal persistence across pane movements
   - ✅ Tab drag & drop to merge terminals
   - ✅ Tab close button with confirmation
+- [ ] **Keyboard shortcut engine** — there are four shortcuts today, hardcoded in
+  two components with no registry: `Ctrl+F` (search, `Terminal.tsx`), `Ctrl+W`,
+  `Ctrl+Shift+H` and `Ctrl+Shift+V` (`TerminalManager.tsx`). Everything under
+  UI/UX Polish about configuring, remapping or listing shortcuts depends on this
+  existing first, and two defects are already shipping:
+  - [ ] One table owning every binding, instead of `if (e.ctrlKey && …)` inline
+  - [ ] Fix the macOS asymmetry — only `Ctrl+F` accepts `metaKey`, so `Cmd+W`
+        does not close a pane
+  - [ ] Resolve `Ctrl+Shift+V`, which splits vertically here but is **paste** in
+        gnome-terminal, konsole and xfce4-terminal — it collides with the
+        copy/paste work already on this list
+- [ ] **Pane kinds** — a leaf in the split tree is always a terminal today.
+  `AnyPaneNode` is already a discriminated union (`type: 'terminal' | 'split'`),
+  so this is an extension rather than a rewrite, but fourteen call sites test
+  `type === 'terminal'` and the helpers are named for it (`getFirstTerminalPane`,
+  `getAllPanes`, `getAllSessions` all return `TerminalPaneNode`). Both the SFTP
+  pane and the agent manager need the same third kind, so it is done **once,
+  before either** — otherwise it gets built twice, or an agent gets bolted into
+  the terminal pane.
+  - [ ] Leaf-agnostic traversal and focus
+  - [ ] A pane kind registry, so a new kind is a registration and not a patch
 - [ ] **Command palette** (Ctrl+K / Cmd+K)
   - [ ] Quick actions (new tab, split, settings)
   - [ ] Connection search
@@ -189,6 +222,41 @@ had no released version to be compatible with.
 
 ---
 
+## 🤖 Agent Manager (next major feature — ahead of Phase 2)
+
+**Goal:** Stop hunting for AI coding agents. See the ones that exist, resume one
+where it stopped, and start a new one already carrying its context — without
+copying a session id out of a file by hand.
+
+Prioritised ahead of Phase 2 deliberately. Integrating TUIs like k9s or lazygit
+would add almost nothing: they already run in a pane, there is nothing to build
+but an icon. This is something no SSH client does, and it sits directly on what
+0.2.3 shipped — dashboard cards, the Board, and client-execute (ADR 0012), which
+already runs a command on the *local* machine from either shell.
+
+**This is an AI feature, so it gets mocked before it gets built** — in
+`design/mock/`, as the dashboard was, so the shape is argued over on screen
+rather than in a pull request. An ADR follows the mock, and code follows the ADR.
+
+- [ ] **Mock first** (`design/mock/`) — the agent pane in both shells, before any
+      Rust or TypeScript
+- [ ] **ADR** — the session model, the per-tool adapter boundary, and what is
+      explicitly out of scope
+- [ ] **Agent pane**, not a menu: an agent has a context of its own — a working
+      directory, a transcript, a lifetime — and belongs to no machine (see *Pane
+      or menu* above). Depends on **Pane kinds** in Phase 1.
+- [ ] Discover existing sessions — list them with their project, their last
+      activity and whether they are still running
+- [ ] **Resume** a session in a pane, without the user ever seeing its id
+- [ ] **Seed** a new agent with its context automatically, rather than pasting it
+- [ ] Per-tool adapter, isolated on purpose — `--resume <uuid>`, the paths under a
+      vendor's home directory and the transcript format are **not a stable API**
+      and will change without notice. One adapter per tool, written expecting to
+      break, with the breakage contained to it. (ADR 0003's lesson, learned the
+      hard way: pin the constraint, never the incidental shape.)
+- [ ] Decide what *not* to do — this is adjacent to Rite's purpose, and the risk
+      is becoming two half-products instead of one good one
+
 ## Phase 2: Advanced SSH & File Transfer
 **Goal:** Enhanced SSH features and basic SFTP support.
 
@@ -200,6 +268,11 @@ had no released version to be compatible with.
 - ✅ Auto-reconnect on network failure (opt-in setting; off by default — a reconnect is a new shell)
 
 ### 📁 SFTP Core (Priority: MEDIUM)
+- [ ] **SFTP pane** — a browser as its own pane kind beside a terminal, not a menu
+      hanging off a machine (see *Pane or menu* above). Depends on **Pane kinds**.
+      `Protocol::SFTP` already exists in `connection.rs` and in the TypeScript
+      `Protocol` union, so a connection can be declared SFTP today with nothing
+      behind it — that surface is a promise currently unkept.
 - [ ] SFTP client implementation
 - [ ] List directory
 - [ ] Download files
