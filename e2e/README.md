@@ -31,6 +31,29 @@ The image comes from the repo's Containerfile:
 podman build -t rite-ci:local -f Containerfile .
 ```
 
+## The browser suite in that same image
+
+```sh
+sh e2e/harness-up.sh      # from the host, as above
+task e2e:iso
+```
+
+It builds the frontend and the debug server in `rite-ci:local` and runs Playwright
+there, under the Node that `.node-version` pins and the system libraries CI mirrors. The
+whole suite passes inside the container in the same time it takes on the host, and the
+host's `node_modules` comes back untouched — one named volume per workspace tree
+shadows it, because those trees are symlink farms into `.pnpm` and an install under a
+different layout rewrites the host's links.
+
+The image carries chromium's dependencies but not chromium: that is ~500 MB per
+revision for a suite GitHub CI does not run yet, so `~/.cache/ms-playwright` is
+mounted read-only from the host instead. `npx playwright install chromium` fills it if
+it is empty.
+
+**The harness stays on the host**, and so does the turnkey acceptance step: both of
+them run `podman` themselves, and this is already inside a container. That — not the
+browser — is the reason `e2e/gate.sh` is not one container from end to end.
+
 ## The pieces, if you want one of them
 
 | Command | What it covers |
