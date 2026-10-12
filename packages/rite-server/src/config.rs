@@ -614,4 +614,43 @@ webui = false
             "undeclared keys stay the console's"
         );
     }
+
+    /// `toml_to_json` is the one place TOML meets JSON, and a `toml` major can reshape
+    /// either side of it. Two of its arms are reachable from no key the schema accepts —
+    /// a float and a datetime — so nothing else in this suite touches them, and
+    /// `toml_datetime` went from 0.7 to 1.1 in the bump that brought this test.
+    ///
+    /// Exact values rather than a round-trip, and the same values pass under both
+    /// versions of the crate: that is what makes this evidence of no change rather than
+    /// agreement with whatever the new one happens to do.
+    #[test]
+    fn every_toml_value_converts_to_the_json_it_always_did() {
+        let parsed: toml::Value = toml::from_str(
+            r#"
+text  = "a string"
+whole = 42
+ratio = 0.5
+flag  = true
+stamp = 1979-05-27T07:32:00Z
+list  = [1, "two", false]
+
+[nested]
+inner = "deep"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            toml_to_json(&parsed),
+            json!({
+                "text": "a string",
+                "whole": 42,
+                "ratio": 0.5,
+                "flag": true,
+                "stamp": "1979-05-27T07:32:00Z",
+                "list": [1, "two", false],
+                "nested": { "inner": "deep" },
+            })
+        );
+    }
 }
