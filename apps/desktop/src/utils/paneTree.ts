@@ -4,14 +4,14 @@
  * Helper functions for manipulating the pane tree structure
  */
 
-import {
+import type {
   AnyPaneNode,
   TerminalPaneNode,
   SplitPaneNode,
   SplitDirection,
   LayoutTree,
+  TerminalSession,
 } from '../types/pane';
-import { TerminalSession } from '../components/TerminalManager';
 
 /**
  * Generate unique ID using browser crypto API

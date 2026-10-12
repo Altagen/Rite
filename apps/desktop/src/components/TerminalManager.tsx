@@ -13,11 +13,9 @@ import { getAllSessions, getFocusedPane, getFirstTerminalPane } from '../utils/p
 import { PaneDragProvider } from '../contexts/PaneDragContext';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
-export interface TerminalSession {
-  id: string;
-  connectionId: string;
-  connectionName: string;
-}
+// Moved to ../types/pane (a data shape does not belong in a component). Re-exported
+// here because callers already import it from this module.
+export type { TerminalSession } from '../types/pane';
 
 interface TerminalManagerProps {
   tabGroups: Tab[];

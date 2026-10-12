@@ -4,7 +4,17 @@
  * Defines the tree structure for split panes (multiplexer)
  */
 
-import { TerminalSession } from '../components/TerminalManager';
+/**
+ * A terminal session's identity. Defined here rather than in TerminalManager so a
+ * pure utility like paneTree does not have to import from a React component to
+ * describe a data shape — and so the module stays free of runtime imports, which
+ * is what lets `e2e/pane-tree-check.mjs` load it with Node's type stripping.
+ */
+export interface TerminalSession {
+  id: string;
+  connectionId: string;
+  connectionName: string;
+}
 
 export type SplitDirection = 'horizontal' | 'vertical';
 

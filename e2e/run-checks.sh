@@ -3,6 +3,7 @@
 #
 # Two groups, because they have different needs:
 #
+#  * pure logic — no server and no browser, just a module and its data structure;
 #  * crypto parity — no server, just Rust-vs-browser vectors;
 #  * server checks — each drives the accounts server on :1422 through a full
 #    bootstrap, so each needs a FRESH one. Several of them assume they are the
@@ -23,6 +24,11 @@ run() {
   fi
 }
 
+# Loads apps/desktop/src/utils/paneTree.ts directly: Node strips the types, and the
+# module imports only types, so this tests the shipped code rather than a copy of it.
+run "pane-tree-check" node "e2e/pane-tree-check.mjs"
+
+echo
 echo "crypto parity (Rust ↔ browser):"
 for c in argon-check sealbox-check vault-check collection-crypto-check; do
   run "$c" node "e2e/$c.mjs"
