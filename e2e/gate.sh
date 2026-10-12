@@ -47,7 +47,8 @@ if [ "$want" != "$have" ] && [ "${RITE_SKIP_NODE_CHECK:-0}" != "1" ]; then
   echo "pnpm purge error that looks like a build failure." >&2
   if command -v fnm >/dev/null 2>&1; then
     echo >&2
-    echo "  fnm use            # reads .node-version in this directory" >&2
+    echo "  fnm install          # reads .node-version; installs beside what you have" >&2
+    echo "  fnm use              # switch this shell to it" >&2
     echo "  fnm env --use-on-cd  # add to your shell config so it is automatic" >&2
   elif command -v nvm >/dev/null 2>&1; then
     echo >&2; echo "  nvm use" >&2

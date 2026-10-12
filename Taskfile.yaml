@@ -107,27 +107,46 @@ tasks:
       - pnpm lint
       - pnpm typecheck
 
-  # Same checks, under the Node the project pins, whatever this machine runs.
+  # The Playwright suite, in the image, on a machine that has neither the pinned
+  # Node nor chromium's system libraries.
   #
-  # The container mounts the repository, so it would otherwise share node_modules
-  # with the host — and not the Node version. A pnpm command under the other Node
-  # rebuilds the tree, and the next pnpm on the host decides to purge it and
-  # refuses without a TTY, which kills the gate at step 1 reading like a build
-  # failure. One named volume per workspace tree shadows node_modules so the two
-  # never meet; the host's trees come back untouched.
+  # This replaced a `lint-ts:iso` that existed only because the host was not on the
+  # version that `.node-version` pins. The gate now refuses to run on the wrong Node
+  # (e2e/gate.sh), so `task lint-ts` on the host already runs under the pin and the
+  # container has nothing left to add there.
   #
-  # Needs no browser and no podman socket, which is why this is worth having and
-  # running the whole gate in a container is not (see e2e/gate.sh).
-  lint-ts:iso:
-    desc: Run the TypeScript checks in the ISO-CI container, under the pinned Node
+  # Measured, not assumed: the whole suite — every project, 60 specs — passes here
+  # in the same 1.8 minutes it takes on the host, and the host's node_modules comes
+  # back with its mtime unchanged.
+  #
+  #   --network=host             the seven webServers in playwright.config.ts bind
+  #                              127.0.0.1:1421-1427, and the SSH harness answers on
+  #                              127.0.0.1:2222. e2e/serve.sh keeps each vault under
+  #                              the container's own /tmp, so nothing of the host's
+  #                              is read or written.
+  #   ms-playwright, read-only   the image carries chromium's dependencies but not
+  #                              chromium — ~500 MB a revision, for a suite GitHub CI
+  #                              does not run yet. `npx playwright install chromium`
+  #                              on the host fills the cache if it is empty.
+  #   one volume per nm tree     the trees are symlink farms into `.pnpm`, so an
+  #                              install under a different layout rewrites the host's
+  #                              links. That is what used to kill the gate at step 1
+  #                              with a pnpm purge error that read like a build break.
+  #
+  # Bring the harness up from the host first (`sh e2e/harness-up.sh`): that is podman
+  # starting a container, and this is already inside one. Steps 2 and 5 of the gate
+  # stay outside for that reason — never because of the browser.
+  e2e:iso:
+    desc: Run the Playwright suite in the ISO-CI container, under the pinned Node
     cmds:
       - |
-        podman run --rm \
+        podman run --rm --network=host \
           -v "$PWD":/workspace:Z \
           -v rite-ci-nm-root:/workspace/node_modules \
           -v rite-ci-nm-desktop:/workspace/apps/desktop/node_modules \
+          -v "$HOME/.cache/ms-playwright":/root/.cache/ms-playwright:ro \
           -w /workspace -e CI=true rite-ci:local \
-          bash -lc 'pnpm install --frozen-lockfile && pnpm --filter desktop typecheck && pnpm --filter desktop lint'
+          bash -lc 'pnpm install --frozen-lockfile && pnpm --filter desktop build:frontend && cargo build -p rite-server && pnpm e2e'
 
   fmt:
     desc: Format Rust code
