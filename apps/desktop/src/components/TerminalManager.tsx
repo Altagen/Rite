@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { PaneContainer } from './PaneContainer';
 import { Tab } from '../types/pane';
-import { getAllSessions, getFocusedPane, getFirstTerminalPane } from '../utils/paneTree';
+import { getAllSessions, getFocusedPane, getFirstLeafPane } from '../utils/paneTree';
 import { PaneDragProvider } from '../contexts/PaneDragContext';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
@@ -125,7 +125,7 @@ export function TerminalManager({
   useEffect(() => {
     if (paneTree && activeTabId && activeTabId !== lastFocusedTabRef.current) {
       // Tab has changed, focus the first pane
-      const firstPane = getFirstTerminalPane(paneTree);
+      const firstPane = getFirstLeafPane(paneTree);
       if (firstPane) {
         console.log('[TerminalManager] Auto-focusing first pane on tab switch:', firstPane.id, 'for tab:', activeTabId);
         lastFocusedTabRef.current = activeTabId;

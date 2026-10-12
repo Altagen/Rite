@@ -6,6 +6,7 @@
 
 import type {
   AnyPaneNode,
+  LeafPaneNode,
   TerminalPaneNode,
   SplitPaneNode,
   SplitDirection,
@@ -18,6 +19,24 @@ import type {
  */
 function generateId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * Is this node content, rather than a container of other panes?
+ *
+ * Deliberately `!== 'split'` rather than `=== 'terminal'`. Almost everything in
+ * this file is about the shape of the tree — which node is where, which one has
+ * focus, what collapses when one closes — and none of it depends on what a pane
+ * displays. The two were the same question only while terminal was the only kind.
+ *
+ * Asked this way, a kind added to `LeafPaneNode` is handled by every traversal
+ * below without a further change. The three functions that genuinely are about
+ * terminals (`getAllSessions`, `getSessionsInPane`, `updateSession`) narrow on
+ * `type` *after* this guard, so when a second kind arrives the compiler points at
+ * them and at nothing else.
+ */
+export function isLeaf(node: AnyPaneNode): node is LeafPaneNode {
+  return node.type !== 'split';
 }
 
 /**
@@ -72,7 +91,7 @@ export function findPaneById(tree: LayoutTree, id: string): AnyPaneNode | null {
  * Find the parent of a pane node
  */
 export function findParent(tree: LayoutTree, childId: string): SplitPaneNode | null {
-  if (!tree || tree.type === 'terminal') return null;
+  if (!tree || isLeaf(tree)) return null;
 
   if (tree.children[0].id === childId || tree.children[1].id === childId) {
     return tree;
@@ -86,7 +105,12 @@ export function findParent(tree: LayoutTree, childId: string): SplitPaneNode | n
 }
 
 /**
- * Split a terminal pane in the specified direction
+ * Split a pane in the specified direction, putting a new terminal beside it
+ *
+ * The pane being split can be of any kind — splitting an SFTP or agent pane is the
+ * same tree operation. What lands next to it is a terminal, which is why this takes
+ * a session; opening another kind beside a pane is the registry's job, not this
+ * function's.
  */
 export function splitPane(
   tree: LayoutTree,
@@ -96,9 +120,9 @@ export function splitPane(
 ): LayoutTree {
   if (!tree) return null;
 
-  if (tree.id === paneId && tree.type === 'terminal') {
+  if (tree.id === paneId && isLeaf(tree)) {
     // Found the pane to split - replace it with a split container
-    const existingPane: TerminalPaneNode = { ...tree, isFocused: false };
+    const existingPane: LeafPaneNode = { ...tree, isFocused: false };
     const newPane = createTerminalPane(newSession, true); // New pane gets focus
 
     return createSplitPane(direction, existingPane, newPane);
@@ -129,7 +153,7 @@ export function closePane(tree: LayoutTree, paneId: string): LayoutTree {
   if (!tree) return null;
 
   // If this is the only pane, return null (empty tree)
-  if (tree.id === paneId && tree.type === 'terminal') {
+  if (tree.id === paneId && isLeaf(tree)) {
     return null;
   }
 
@@ -170,88 +194,76 @@ export function closePane(tree: LayoutTree, paneId: string): LayoutTree {
 export function setFocusedPane(tree: LayoutTree, paneId: string): LayoutTree {
   if (!tree) return null;
 
-  if (tree.type === 'terminal') {
+  if (isLeaf(tree)) {
     return {
       ...tree,
       isFocused: tree.id === paneId,
     };
   }
 
-  if (tree.type === 'split') {
-    return {
-      ...tree,
-      children: [
-        setFocusedPane(tree.children[0], paneId),
-        setFocusedPane(tree.children[1], paneId),
-      ] as [AnyPaneNode, AnyPaneNode],
-    };
-  }
-
-  return tree;
+  return {
+    ...tree,
+    children: [
+      setFocusedPane(tree.children[0], paneId),
+      setFocusedPane(tree.children[1], paneId),
+    ] as [AnyPaneNode, AnyPaneNode],
+  };
 }
 
 /**
  * Get the currently focused pane
  */
-export function getFocusedPane(tree: LayoutTree): TerminalPaneNode | null {
+export function getFocusedPane(tree: LayoutTree): LeafPaneNode | null {
   if (!tree) return null;
 
-  if (tree.type === 'terminal') {
+  if (isLeaf(tree)) {
     return tree.isFocused ? tree : null;
   }
 
-  if (tree.type === 'split') {
-    const leftResult = getFocusedPane(tree.children[0]);
-    if (leftResult) return leftResult;
+  const leftResult = getFocusedPane(tree.children[0]);
+  if (leftResult) return leftResult;
 
-    const rightResult = getFocusedPane(tree.children[1]);
-    return rightResult;
-  }
-
-  return null;
+  const rightResult = getFocusedPane(tree.children[1]);
+  return rightResult;
 }
 
 /**
- * Get the first terminal pane (for auto-focus when switching tabs)
+ * Get the first leaf pane (for auto-focus when switching tabs)
  */
-export function getFirstTerminalPane(tree: LayoutTree): TerminalPaneNode | null {
+export function getFirstLeafPane(tree: LayoutTree): LeafPaneNode | null {
   if (!tree) return null;
 
-  if (tree.type === 'terminal') {
+  if (isLeaf(tree)) {
     return tree;
   }
 
-  if (tree.type === 'split') {
-    // Try left child first
-    const leftResult = getFirstTerminalPane(tree.children[0]);
-    if (leftResult) return leftResult;
+  // Try left child first
+  const leftResult = getFirstLeafPane(tree.children[0]);
+  if (leftResult) return leftResult;
 
-    // Then try right child
-    const rightResult = getFirstTerminalPane(tree.children[1]);
-    return rightResult;
-  }
-
-  return null;
+  // Then try right child
+  const rightResult = getFirstLeafPane(tree.children[1]);
+  return rightResult;
 }
 
 /**
  * Get all terminal sessions from the tree (flat list)
+ *
+ * Terminal-specific by design: a leaf of another kind has no session, and
+ * contributing nothing is the right answer rather than an error. The callers are
+ * about terminals — closing a tab disposes the sessions it held.
  */
 export function getAllSessions(tree: LayoutTree): TerminalSession[] {
   if (!tree) return [];
 
-  if (tree.type === 'terminal') {
-    return [tree.session];
+  if (isLeaf(tree)) {
+    return tree.type === 'terminal' ? [tree.session] : [];
   }
 
-  if (tree.type === 'split') {
-    return [
-      ...getAllSessions(tree.children[0]),
-      ...getAllSessions(tree.children[1]),
-    ];
-  }
-
-  return [];
+  return [
+    ...getAllSessions(tree.children[0]),
+    ...getAllSessions(tree.children[1]),
+  ];
 }
 
 /**
@@ -278,23 +290,19 @@ export function getSessionsInPane(tree: LayoutTree, paneId: string): TerminalSes
 }
 
 /**
- * Get all terminal panes from the tree (flat list)
+ * Get all leaf panes from the tree (flat list)
  */
-export function getAllPanes(tree: LayoutTree): TerminalPaneNode[] {
+export function getAllPanes(tree: LayoutTree): LeafPaneNode[] {
   if (!tree) return [];
 
-  if (tree.type === 'terminal') {
+  if (isLeaf(tree)) {
     return [tree];
   }
 
-  if (tree.type === 'split') {
-    return [
-      ...getAllPanes(tree.children[0]),
-      ...getAllPanes(tree.children[1]),
-    ];
-  }
-
-  return [];
+  return [
+    ...getAllPanes(tree.children[0]),
+    ...getAllPanes(tree.children[1]),
+  ];
 }
 
 /**
@@ -325,6 +333,9 @@ export function updateSplitRatio(tree: LayoutTree, splitId: string, newRatio: nu
 
 /**
  * Replace a session in the tree (used when updating session data)
+ *
+ * Terminal-specific, like getAllSessions: a leaf of another kind holds no session
+ * to update and is returned untouched.
  */
 export function updateSession(
   tree: LayoutTree,
@@ -333,8 +344,8 @@ export function updateSession(
 ): LayoutTree {
   if (!tree) return null;
 
-  if (tree.type === 'terminal') {
-    if (tree.session.id === sessionId) {
+  if (isLeaf(tree)) {
+    if (tree.type === 'terminal' && tree.session.id === sessionId) {
       return {
         ...tree,
         session: updater(tree.session),
@@ -343,17 +354,13 @@ export function updateSession(
     return tree;
   }
 
-  if (tree.type === 'split') {
-    return {
-      ...tree,
-      children: [
-        updateSession(tree.children[0], sessionId, updater),
-        updateSession(tree.children[1], sessionId, updater),
-      ] as [AnyPaneNode, AnyPaneNode],
-    };
-  }
-
-  return tree;
+  return {
+    ...tree,
+    children: [
+      updateSession(tree.children[0], sessionId, updater),
+      updateSession(tree.children[1], sessionId, updater),
+    ] as [AnyPaneNode, AnyPaneNode],
+  };
 }
 
 /**
@@ -363,13 +370,13 @@ export function updateSession(
 export function extractPane(
   tree: LayoutTree,
   paneId: string
-): { extractedPane: TerminalPaneNode | null; remainingTree: LayoutTree } {
+): { extractedPane: LeafPaneNode | null; remainingTree: LayoutTree } {
   if (!tree) {
     return { extractedPane: null, remainingTree: null };
   }
 
   // If this is the pane we want to extract
-  if (tree.id === paneId && tree.type === 'terminal') {
+  if (tree.id === paneId && isLeaf(tree)) {
     return { extractedPane: tree, remainingTree: null };
   }
 
@@ -378,12 +385,12 @@ export function extractPane(
     const [left, right] = tree.children;
 
     // Check if left child is the target pane
-    if (left.id === paneId && left.type === 'terminal') {
+    if (left.id === paneId && isLeaf(left)) {
       return { extractedPane: left, remainingTree: right };
     }
 
     // Check if right child is the target pane
-    if (right.id === paneId && right.type === 'terminal') {
+    if (right.id === paneId && isLeaf(right)) {
       return { extractedPane: right, remainingTree: left };
     }
 
@@ -452,12 +459,12 @@ export function reorganizePane(
   function replaceTargetPane(node: LayoutTree): LayoutTree {
     if (!node) return null;
 
-    if (node.id === targetPaneId && node.type === 'terminal') {
+    if (node.id === targetPaneId && isLeaf(node)) {
       // Found the target pane - create a split with source and target
       const direction = (position === 'left' || position === 'right') ? 'horizontal' : 'vertical';
       const ratio = 0.5;
 
-      // Determine order based on position (extractedPane is guaranteed non-null by line 472 guard)
+      // Determine order based on position (extractedPane is guaranteed non-null by the guard above)
       const children: [AnyPaneNode, AnyPaneNode] =
         (position === 'left' || position === 'top')
           ? [extractedPane!, node] // Source on left/top

@@ -19,20 +19,36 @@ export interface TerminalSession {
 export type SplitDirection = 'horizontal' | 'vertical';
 
 /**
+ * What every node in the tree has, whatever it is
+ */
+interface PaneNodeBase {
+  id: string;
+}
+
+/**
+ * What every *leaf* kind has in common.
+ *
+ * Focus lives here rather than on the terminal node because focus belongs to the
+ * layout, not to what a pane contains: the tree has to be able to move it onto an
+ * SFTP or agent pane without knowing what either of those is. A split is never
+ * focused — focus always lands on content — so it does not extend this.
+ */
+interface LeafPaneNodeBase extends PaneNodeBase {
+  isFocused?: boolean;
+}
+
+/**
  * Terminal leaf node - contains actual terminal session
  */
-export interface TerminalPaneNode {
-  id: string;
+export interface TerminalPaneNode extends LeafPaneNodeBase {
   type: 'terminal';
   session: TerminalSession;
-  isFocused?: boolean;
 }
 
 /**
  * Split container node - contains two child panes (recursive structure)
  */
-export interface SplitPaneNode {
-  id: string;
+export interface SplitPaneNode extends PaneNodeBase {
   type: 'split';
   direction: SplitDirection;
   ratio: number; // 0.0 to 1.0 - position of divider
@@ -40,9 +56,19 @@ export interface SplitPaneNode {
 }
 
 /**
+ * Every kind of pane that holds content rather than other panes.
+ *
+ * Terminal is the only one today. SFTP and the agent manager join this union, and
+ * joining it is the whole of what the tree has to learn about them: `paneTree`
+ * reaches a leaf through `isLeaf()` and never asks which kind it is, except in the
+ * three places that genuinely are about terminals.
+ */
+export type LeafPaneNode = TerminalPaneNode;
+
+/**
  * Union type for any pane node
  */
-export type AnyPaneNode = TerminalPaneNode | SplitPaneNode;
+export type AnyPaneNode = LeafPaneNode | SplitPaneNode;
 
 /**
  * Base node type (for backward compatibility)
