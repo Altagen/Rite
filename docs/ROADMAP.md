@@ -5,9 +5,9 @@ This document outlines the planned features for RITE, organized by development p
 **Product Vision:** Modern terminal with advanced features and native SSH/SFTP support (not just an SSH client).
 
 **Current Focus:** Phase 1 MVP — a complete terminal experience with local shell
-and SSH. Two engine items inside it now gate later work: the keyboard shortcut
-engine, and pane kinds — which the SFTP pane and the Agent Manager both need.
-The **Agent Manager** is the next major feature after them, ahead of Phase 2.
+and SSH. **Pane kinds are done**, so the SFTP pane and the Agent Manager no longer
+wait on the split tree; the keyboard shortcut engine is the one engine item still
+gating later work. The **Agent Manager** is the next major feature, ahead of Phase 2.
 
 ---
 
@@ -142,16 +142,26 @@ had no released version to be compatible with.
   - [ ] Resolve `Ctrl+Shift+V`, which splits vertically here but is **paste** in
         gnome-terminal, konsole and xfce4-terminal — it collides with the
         copy/paste work already on this list
-- [ ] **Pane kinds** — a leaf in the split tree is always a terminal today.
-  `AnyPaneNode` is already a discriminated union (`type: 'terminal' | 'split'`),
-  so this is an extension rather than a rewrite, but fourteen call sites test
-  `type === 'terminal'` and the helpers are named for it (`getFirstTerminalPane`,
-  `getAllPanes`, `getAllSessions` all return `TerminalPaneNode`). Both the SFTP
-  pane and the agent manager need the same third kind, so it is done **once,
-  before either** — otherwise it gets built twice, or an agent gets bolted into
-  the terminal pane.
-  - [ ] Leaf-agnostic traversal and focus
-  - [ ] A pane kind registry, so a new kind is a registration and not a patch
+- [x] **Pane kinds** — a leaf in the split tree used to be a terminal by definition:
+  fourteen call sites tested `type === 'terminal'` and the helpers were named for it.
+  Both the SFTP pane and the agent manager need the same third kind, so it was done
+  **once, before either** — otherwise it gets built twice, or an agent gets bolted
+  into the terminal pane.
+
+  Adding a kind is now three steps: extend `LeafPaneNode` in
+  `apps/desktop/src/types/pane.ts`, write the kind under
+  `apps/desktop/src/panes/kinds/`, and add its line to the registry's record. The
+  record is keyed by the union's own discriminant, so forgetting that line is a
+  compile error rather than a pane that renders as nothing — and with a second kind
+  added and nothing else touched, that missing line is the *only* thing the compiler
+  asks for.
+  - [x] Leaf-agnostic traversal and focus — `isLeaf()` asks about shape, never about
+        kind; 28 checks in `e2e/pane-tree-check.mjs` hold it there, six of them by
+        feeding the tree a leaf of a kind it has never heard of
+  - [x] A pane kind registry, so a new kind is a registration and not a patch —
+        `apps/desktop/src/panes/registry.ts`; it owns rendering, whether a kind can
+        split, how a detached pane names its tab, and disposal (6 checks in
+        `e2e/pane-dispose-check.mjs`)
 - [ ] **Command palette** (Ctrl+K / Cmd+K)
   - [ ] Quick actions (new tab, split, settings)
   - [ ] Connection search
@@ -244,7 +254,8 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       explicitly out of scope
 - [ ] **Agent pane**, not a menu: an agent has a context of its own — a working
       directory, a transcript, a lifetime — and belongs to no machine (see *Pane
-      or menu* above). Depends on **Pane kinds** in Phase 1.
+      or menu* above). **Pane kinds** in Phase 1 are done, so this is a registration
+      under `apps/desktop/src/panes/kinds/` rather than a change to the split tree.
 - [ ] Discover existing sessions — list them with their project, their last
       activity and whether they are still running
 - [ ] **Resume** a session in a pane, without the user ever seeing its id
@@ -269,7 +280,8 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 
 ### 📁 SFTP Core (Priority: MEDIUM)
 - [ ] **SFTP pane** — a browser as its own pane kind beside a terminal, not a menu
-      hanging off a machine (see *Pane or menu* above). Depends on **Pane kinds**.
+      hanging off a machine (see *Pane or menu* above). **Pane kinds** are done, so
+      this registers a kind instead of touching the split tree.
       `Protocol::SFTP` already exists in `connection.rs` and in the TypeScript
       `Protocol` union, so a connection can be declared SFTP today with nothing
       behind it — that surface is a promise currently unkept.

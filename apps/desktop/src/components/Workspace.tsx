@@ -10,6 +10,7 @@
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
+import { disposeAllPanes, paneKind } from '../panes/registry';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useFocusMode } from '../store/focusMode';
@@ -70,7 +71,6 @@ import {
   updateSplitRatio,
   getFocusedPane,
   getAllPanes,
-  getAllSessions,
   getSessionsInPane,
   extractPane,
   reorganizePane,
@@ -908,21 +908,16 @@ export function Workspace({
     const tabToClose = tabGroups.find(t => t.id === tabId);
     if (!tabToClose) return;
 
-    // Get all sessions in this tab
-    const sessionsToClose = getAllSessions(tabToClose.paneTree);
-
-    // Gracefully disconnect all terminal sessions
-    console.log('[MainScreen] Disconnecting', sessionsToClose.length, 'terminal sessions');
-    await Promise.all(
-      sessionsToClose.map(async (session) => {
-        try {
-          await Backend.Terminal.disconnectTerminal(session.id);
-          console.log('[MainScreen] Disconnected session:', session.id);
-        } catch (err) {
-          console.error('[MainScreen] Failed to disconnect session:', session.id, err);
-        }
-      })
-    );
+    // Release what every pane in this tab held. Each kind knows what that means for
+    // itself, which is why this is a list of panes and no longer a list of session
+    // ids: a tab holding an SFTP or agent pane closes correctly with no change here.
+    const panesToClose = getAllPanes(tabToClose.paneTree);
+    console.log('[MainScreen] Disposing', panesToClose.length, 'panes');
+    const { disposed, failed } = await disposeAllPanes(panesToClose);
+    console.log('[MainScreen] Disposed', disposed, 'of', panesToClose.length, 'panes');
+    for (const { pane, error } of failed) {
+      console.error('[MainScreen] Failed to dispose pane:', pane.id, error);
+    }
 
     // Remove the tab
     setTabGroups(prev => {
@@ -962,7 +957,7 @@ export function Workspace({
     // Create a new tab with the extracted pane
     const newTab: Tab = {
       id: crypto.randomUUID(),
-      name: extractedPane.session.connectionName,
+      name: paneKind(extractedPane).title(extractedPane),
       paneTree: { ...extractedPane, isFocused: true },
     };
 

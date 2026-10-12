@@ -24,9 +24,11 @@ run() {
   fi
 }
 
-# Loads apps/desktop/src/utils/paneTree.ts directly: Node strips the types, and the
-# module imports only types, so this tests the shipped code rather than a copy of it.
+# Both load a module from apps/desktop/src directly: Node strips the types, and
+# neither module imports anything at runtime, so these test the shipped code rather
+# than a copy of it.
 run "pane-tree-check" node "e2e/pane-tree-check.mjs"
+run "pane-dispose-check" node "e2e/pane-dispose-check.mjs"
 
 echo
 echo "crypto parity (Rust ↔ browser):"
