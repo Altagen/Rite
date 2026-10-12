@@ -107,6 +107,28 @@ tasks:
       - pnpm lint
       - pnpm typecheck
 
+  # Same checks, under the Node the project pins, whatever this machine runs.
+  #
+  # The container mounts the repository, so it would otherwise share node_modules
+  # with the host — and not the Node version. A pnpm command under the other Node
+  # rebuilds the tree, and the next pnpm on the host decides to purge it and
+  # refuses without a TTY, which kills the gate at step 1 reading like a build
+  # failure. One named volume per workspace tree shadows node_modules so the two
+  # never meet; the host's trees come back untouched.
+  #
+  # Needs no browser and no podman socket, which is why this is worth having and
+  # running the whole gate in a container is not (see e2e/gate.sh).
+  lint-ts:iso:
+    desc: Run the TypeScript checks in the ISO-CI container, under the pinned Node
+    cmds:
+      - |
+        podman run --rm \
+          -v "$PWD":/workspace:Z \
+          -v rite-ci-nm-root:/workspace/node_modules \
+          -v rite-ci-nm-desktop:/workspace/apps/desktop/node_modules \
+          -w /workspace -e CI=true rite-ci:local \
+          bash -lc 'pnpm install --frozen-lockfile && pnpm --filter desktop typecheck && pnpm --filter desktop lint'
+
   fmt:
     desc: Format Rust code
     cmds:
