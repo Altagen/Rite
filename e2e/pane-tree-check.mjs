@@ -5,7 +5,12 @@
 // focused pane" — but never the tree operations themselves: splitting, closing,
 // collapsing, focusing, detaching, reorganising. That is the logic a refactor
 // breaks silently, and pane kinds (SFTP, agents) are a refactor of exactly this
-// file, so it gets locked down first.
+// file, so it got locked down first.
+//
+// The last group goes further than regression: it feeds the tree a leaf of a kind
+// paneTree has never heard of, which is what an SFTP or agent pane will be to it.
+// Those checks are what `isLeaf()` is for, and every one of them fails if a single
+// traversal goes back to asking `type === 'terminal'`.
 //
 // No test framework is involved, and none is needed. Node strips TypeScript types
 // natively, and paneTree.ts imports *only* types — so those imports are erased and
@@ -15,6 +20,7 @@
 // Run from the repo root: `node e2e/pane-tree-check.mjs`
 import assert from 'node:assert/strict';
 import {
+  isLeaf,
   createTerminalPane,
   createSplitPane,
   findPaneById,
@@ -23,7 +29,7 @@ import {
   closePane,
   setFocusedPane,
   getFocusedPane,
-  getFirstTerminalPane,
+  getFirstLeafPane,
   getAllSessions,
   getSessionsInPane,
   getAllPanes,
@@ -144,7 +150,7 @@ check('lookups: by id, by parent, first leaf', () => {
   assert.equal(findParent(tree, left.id).id, tree.id);
   assert.equal(findParent(tree, tree.id), null, 'the root has no parent');
   // Structural, despite the name: it returns the first leaf in traversal order.
-  assert.equal(getFirstTerminalPane(tree).id, left.id);
+  assert.equal(getFirstLeafPane(tree).id, left.id);
 });
 
 check('sessions can be collected for the whole tree or one pane', () => {
@@ -252,7 +258,7 @@ check('an empty tree is handled by every reader without throwing', () => {
   assert.equal(closePane(null, 'x'), null);
   assert.equal(setFocusedPane(null, 'x'), null);
   assert.equal(getFocusedPane(null), null);
-  assert.equal(getFirstTerminalPane(null), null);
+  assert.equal(getFirstLeafPane(null), null);
   assert.deepEqual(getAllSessions(null), []);
   assert.deepEqual(getAllPanes(null), []);
   assert.deepEqual(getSessionsInPane(null, 'x'), []);
@@ -268,6 +274,126 @@ check('createSplitPane keeps the direction, ratio and child order it is given', 
   assert.equal(s.direction, 'vertical');
   assert.equal(s.ratio, 0.25);
   assert.deepEqual(names(s), ['a', 'b']);
+});
+
+// Pane kinds: the tree has to carry a leaf it knows nothing about.
+//
+// `mockLeaf` is a leaf of a kind paneTree has never heard of — which is exactly what
+// an SFTP or agent pane will be to it. These checks are the reason the structural
+// tests in paneTree moved from `type === 'terminal'` to `isLeaf()`: every one of them
+// fails against the old file, because a pane that was not a terminal was not a pane.
+const mockLeaf = (name) => ({ id: `m-${name}`, type: 'sftp', isFocused: false });
+
+check('isLeaf answers about shape, not about kind', () => {
+  assert.equal(isLeaf(createTerminalPane(session('a'))), true);
+  assert.equal(isLeaf(mockLeaf('a')), true);
+  assert.equal(isLeaf(createSplitPane('horizontal', createTerminalPane(session('a')), mockLeaf('b'))), false);
+});
+
+check('a leaf of an unknown kind is a leaf to every traversal', () => {
+  const t = createTerminalPane(session('a'), true);
+  const m = mockLeaf('b');
+  const tree = createSplitPane('horizontal', t, m);
+
+  assert.deepEqual(leafIds(tree), [t.id, m.id]);
+  assert.equal(getFirstLeafPane(tree).id, t.id);
+  assert.equal(findPaneById(tree, m.id).id, m.id);
+  assert.equal(findParent(tree, m.id).id, tree.id);
+  assert.equal(findParent(m, 'anything'), null);
+});
+
+check('focus moves onto an unknown kind and off the terminal', () => {
+  const t = createTerminalPane(session('a'), true);
+  const tree = setFocusedPane(createSplitPane('horizontal', t, mockLeaf('b')), 'm-b');
+
+  assert.equal(getFocusedPane(tree).id, 'm-b');
+  assert.equal(getAllPanes(tree).filter((p) => p.isFocused).length, 1);
+  assert.equal(getAllPanes(tree).find((p) => p.id === t.id).isFocused, false);
+});
+
+check('closing a terminal collapses the split onto the unknown kind', () => {
+  const t = createTerminalPane(session('a'), true);
+  const m = mockLeaf('b');
+  const tree = createSplitPane('horizontal', t, m);
+
+  const left = closePane(tree, m.id);
+  assert.equal(left.id, t.id);
+
+  const right = closePane(tree, t.id);
+  assert.equal(right.id, m.id);
+  assert.equal(closePane(m, m.id), null);
+});
+
+check('an unknown kind splits, detaches and reorganises like any pane', () => {
+  const m = mockLeaf('a');
+  const split = splitPane(m, m.id, 'vertical', session('b'));
+  assert.equal(split.type, 'split');
+  assert.equal(split.children[0].id, m.id);
+  assert.equal(split.children[0].isFocused, false);
+  assert.equal(split.children[1].type, 'terminal');
+
+  const { extractedPane, remainingTree } = extractPane(split, m.id);
+  assert.equal(extractedPane.id, m.id);
+  assert.equal(remainingTree.type, 'terminal');
+
+  const t = createTerminalPane(session('c'), true);
+  const pair = createSplitPane('horizontal', t, mockLeaf('d'));
+  const moved = reorganizePane(pair, 'm-d', t.id, 'top');
+  assert.equal(moved.direction, 'vertical');
+  assert.deepEqual(leafIds(moved), ['m-d', t.id]);
+});
+
+check('the session helpers pass over a leaf that holds no session', () => {
+  const t = createTerminalPane(session('a'), true);
+  const m = mockLeaf('b');
+  const tree = createSplitPane('horizontal', t, m);
+
+  assert.deepEqual(names(tree), ['a']);
+  assert.deepEqual(getSessionsInPane(tree, m.id), []);
+  assert.deepEqual(getSessionsInPane(tree, t.id).map((s) => s.connectionName), ['a']);
+
+  const renamed = updateSession(tree, 's-a', (s) => ({ ...s, connectionName: 'renamed' }));
+  assert.deepEqual(names(renamed), ['renamed']);
+  assert.deepEqual(renamed.children[1], m);
+  assert.equal(updateSession(m, 's-a', () => { throw new Error('must not be called'); }), m);
+});
+
+check('extracting a split container is refused — only a leaf detaches', () => {
+  // extractPane promises a leaf: the caller opens a new tab from it, and a container
+  // handed over instead would be nested as if it were content. The guard is on both
+  // children, so both sides are checked here — a mutation that drops either one
+  // passed this file until this check existed.
+  const a = createTerminalPane(session('a'), true);
+  const withB = splitPane(a, a.id, 'horizontal', session('b'));
+  const [, b] = withB.children;
+
+  const splitOnTheLeft = splitPane(withB, a.id, 'vertical', session('c'));
+  const left = extractPane(splitOnTheLeft, splitOnTheLeft.children[0].id);
+  assert.equal(left.extractedPane, null);
+  assert.equal(left.remainingTree, splitOnTheLeft);
+
+  const splitOnTheRight = splitPane(withB, b.id, 'vertical', session('d'));
+  const right = extractPane(splitOnTheRight, splitOnTheRight.children[1].id);
+  assert.equal(right.extractedPane, null);
+  assert.equal(right.remainingTree, splitOnTheRight);
+});
+
+check('closing a split by its id: a child collapses, the root does not', () => {
+  // This asymmetry is pre-existing and deliberately left alone here, because PR 2 is a
+  // refactor and this is a behaviour question. `closePane` tests a child's id without
+  // asking whether it is a leaf, so naming a child split removes its whole subtree;
+  // the root is only matched by the leaf guard, so naming the root does nothing.
+  //
+  // Nothing reaches either case today — close buttons live on leaves — and which of
+  // the two is right belongs with the pane-kind registry, where disposing a pane's
+  // contents gets an owner. Pinned so that answering it has to be deliberate.
+  const a = createTerminalPane(session('a'), true);
+  const withB = splitPane(a, a.id, 'horizontal', session('b'));
+  const tree = splitPane(withB, a.id, 'vertical', session('c'));
+
+  assert.deepEqual(names(tree), ['a', 'c', 'b']);
+  assert.deepEqual(names(closePane(tree, tree.children[0].id)), ['b']);
+  assert.deepEqual(leafIds(closePane(tree, tree.id)), leafIds(tree));
 });
 
 console.log(failures === 0 ? '\npane tree: all checks passed' : `\npane tree: ${failures} FAILED`);
