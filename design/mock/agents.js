@@ -1,15 +1,23 @@
 /* Rite mock — the AI agent manager (shared by both shells, like machine.js).
 
-   Two surfaces, and the split between them is the whole design:
+   Three surfaces, and the split between them is the whole design:
 
      * the MANAGER is a VIEW, not a pane. It is a chooser — machine, then tool, then
        conversation — and a chooser has no context of its own. It lives where the
        machine dashboard lives, reached from the toolbar and closable from the tab
-       strip, so resuming an agent leaves it exactly where you left it.
-     * an AGENT SESSION is a PANE. It has a working directory, a transcript and a
-       lifetime of its own, which is precisely the rule that decides pane vs menu.
-       Resuming opens it in a NEW TAB — the same gesture connecting to a machine
-       already uses, never a split the user did not ask for.
+       strip, so resuming an agent leaves it exactly where you left it. Its tab is
+       marked `.view`, because a tab you can type into must not look like one you
+       cannot.
+     * an AGENT SESSION is a PANE, and a leaf of the ORDINARY split tree. It has a
+       working directory, a transcript and a lifetime of its own, which is the rule
+       that decides pane vs menu. Resuming opens it in a NEW TAB — the gesture
+       connecting to a machine already uses — and from there it splits with plain
+       terminals on the same machine, so a `watch docker ps` can sit beside the
+       agent causing it. Its chrome comes from `paneActs` in rite.js, not from here:
+       a pane that drew its own would drift into a near-copy of a terminal.
+     * WHAT IS IN EFFECT is read-only, and the banner above `AGENT_CONTEXT` holds
+       the reasoning for that — it is the longest argument in this file because it
+       is the one most likely to be re-litigated.
 
    Where an agent may run, and the one place it may not:
 
@@ -28,8 +36,12 @@
    pick a machine, it is probed, and the result carries the time it was read. A
    stale answer that says when it was taken beats a fresh-looking one that lies.
 
-   Each page supplies: STATE, renderMain/renderSide, M, ICON, toast, floatMenu,
-   showModal, machineByName, and AGENT_SHELL — 'desktop' or 'web'. */
+   Each page supplies: STATE, renderMain/renderSide, the icon maps M / ICON /
+   EXICON, the library (`lib()` or LIB) and `walk`, and AGENT_SHELL — 'desktop' or
+   'web', which decides exactly one thing: whether your own machine can answer.
+   From rite.js it uses toast, showModal, floatMenu, openSnippets, openInNewWindow,
+   termHTML and paneActs; from machine.js, IC_INFO. (machine.js calls back the other
+   way, for the Agents button on a machine's dashboard — see `openAgentsOn`.) */
 
 /* ---- the tools we adapt to ----
    One adapter per tool, written expecting to break: `--resume <uuid>`, the paths
