@@ -182,6 +182,7 @@ function machineDashboard(cn){
       ${pastille(cn)}
       <span style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" onclick="dlgDashCustomize(machineByName('${cn.name}'))" title="Choose which cards appear"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="15" cy="6" r="2" fill="var(--card)"/><circle cx="7" cy="12" r="2" fill="var(--card)"/><circle cx="12" cy="18" r="2" fill="var(--card)"/></svg> Customize</button>
+      <button class="btn btn-ghost btn-sm" onclick="openAgentsOn('${cn.name}')" title="AI agent sessions on this machine">${M.agent} Agents</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgNewConn('',machineByName('${cn.name}'))">${M.edit} Edit</button>
       <button class="btn btn-primary btn-sm" onclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play} Connect</button>
     </div>

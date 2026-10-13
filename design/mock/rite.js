@@ -140,11 +140,32 @@ function dlgQuickSSH(){
 }
 function openInNewWindow(name){toast(`${ICON.win} <span class="accent">${name}</span> opened in a new window`);}
 
-/* mini terminal content */
-function termHTML(host){
+/* The chrome every pane carries, whatever it displays.
+   Split, detach, snippets, search and close belong to the PANE, not to what is
+   inside it — so a terminal and an agent session get them from here rather than
+   each drawing its own near-copy. That is the mock's version of what the pane-kind
+   registry does in the app: the surroundings are written once, the content is
+   registered. Each option is an onclick string, or empty for an inert mock button. */
+function paneActs(o) {
+  o = o || {};
+  const I = (d, r) => `<svg class="icon" viewBox="0 0 24 24"${r ? ' style="transform:rotate(90deg)"' : ''}><path d="${d}"/></svg>`;
+  const b = (title, icon, click) => `<button title="${title}"${click ? ` onclick="${click}"` : ''}>${icon}</button>`;
+  const grip = `<div class="grip" title="Drag to reorganize pane"><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div></div>`;
+  return `${o.lead || ''}${grip}
+    ${b('Split horizontal (Ctrl+Shift+H)', I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4'), o.splitH)}
+    ${b('Split vertical (Ctrl+Shift+V)', I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4', 1), o.splitV)}
+    ${b(o.detachTitle || 'Detach to new tab', I('M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'), o.detach)}
+    ${b('Snippets — run a saved command here', I('M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12'), o.snippets)}
+    ${b('Search in pane (Ctrl+F)', I('M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'), o.search)}
+    ${b(o.closeTitle || 'Close terminal', I('M6 18L18 6M6 6l12 12'), o.close)}`;
+}
+
+/* mini terminal content. `opts` lets a caller give the pane a name and a body of its
+   own — a `top` or a `watch docker ps` beside an agent is still an ordinary terminal
+   pane, not a third kind of thing. */
+function termHTML(host, opts){
+  opts = opts || {};
   const who=host?`<span class="ok">${host}</span>`:'<span class="ok">local</span>';
-  const I=(d,r)=>`<svg class="icon" viewBox="0 0 24 24"${r?' style="transform:rotate(90deg)"':''}><path d="${d}"/></svg>`;
-  const grip=`<div class="grip" title="Drag to reorganize pane"><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div></div>`;
   // Reconnect state — SSH panes only. The mock's demoDisconnected flag simulates a
   // dropped session; STATE.autoReconnect decides auto-reconnect (a banner) vs a
   // manual "Reconnect" button. Either way the user is told they were disconnected.
@@ -161,7 +182,9 @@ function termHTML(host){
   let banner='';
   if(lost && auto) banner=`<div style="background:color-mix(in oklab,var(--amber) 12%,transparent);border:1px solid color-mix(in oklab,var(--amber) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ Connection lost — <b>automatically reconnected</b>. This is a new shell: your previous history, on-screen output and any running job were lost.</div>`;
   else if(lost) banner=`<div style="background:color-mix(in oklab,var(--red) 10%,transparent);border:1px solid color-mix(in oklab,var(--red) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ <b>Connection lost.</b> Reconnecting opens a <b>new shell</b> (history & on-screen output are lost) — use <b>Reconnect ↗</b> when you're ready.</div>`;
-  const body = (lost && auto)
+  const body = opts.lines
+    ? `${banner}<div class="ln di"># ${opts.cmd || ''}</div>${opts.lines.map((l)=>`<div class="ln di">${l}</div>`).join('')}<div class="ln"><span class="pr">${who} ~ ❯</span> <span class="cursor"></span></div>`
+    : (lost && auto)
     ? `${banner}<div class="ln"><span class="pr">${who} ~ ❯</span> <span class="cursor"></span></div>`
     : `${banner}<div class="ln di"># ${host?'ssh '+host:'local shell — /usr/bin/fish'}</div>
       <div class="ln"><span class="pr">${who} ~ ❯</span> uname -a</div>
@@ -169,19 +192,15 @@ function termHTML(host){
       <div class="ln"><span class="pr">${who} ~ ❯</span> ls</div>
       <div class="ln di">Documents  Downloads  projects  .config</div>
       <div class="ln"><span class="pr">${who} ~ ❯</span> ${lost?'<span class="muted">(disconnected)</span>':'<span class="cursor"></span>'}</div>`;
+  const name = opts.name || (host ? host : 'Local Terminal (' + (typeof STATE!=='undefined'?STATE.defaultShell:'fish') + ')');
   return `<div class="termpane">
     <div class="termpane-hdr">
-      <div class="who">${host?'<span class="st"></span>':''}<span class="name">${host?host:'Local Terminal ('+(typeof STATE!=='undefined'?STATE.defaultShell:'fish')+')'}</span>${status}</div>
-      <div class="termpane-acts">
-        ${reconnectBtn}
-        ${grip}
-        <button title="Split horizontal (Ctrl+Shift+H)">${I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4')}</button>
-        <button title="Split vertical (Ctrl+Shift+V)">${I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4',1)}</button>
-        <button title="Detach to new tab">${I('M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14')}</button>
-        <button title="Snippets — run a saved command here" onclick="openSnippets(${host?`'${host}'`:'null'})">${I('M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12')}</button>
-        <button title="Search in terminal (Ctrl+F)">${I('M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z')}</button>
-        <button title="Close terminal">${I('M6 18L18 6M6 6l12 12')}</button>
-      </div>
+      <div class="who">${host?'<span class="st"></span>':''}<span class="name">${name}</span>${status}</div>
+      <div class="termpane-acts">${paneActs({
+        lead: reconnectBtn,
+        snippets: `openSnippets(${host?`'${host}'`:'null'})`,
+        close: opts.close || '',
+      })}</div>
     </div>
     <div class="term-body scroll">
       ${body}

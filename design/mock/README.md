@@ -86,6 +86,28 @@ gives it a pane. Resuming therefore opens a pane **in a new tab** — the gestur
 connecting to a machine already uses — so the list you chose from is still where you
 left it, and no split appears that you did not ask for.
 
+**An agent pane is a leaf of the ordinary split tree.** It is a terminal, so it gets
+the terminal's chrome from the same code (`paneActs` in `rite.js`, the mock's stand-in
+for the pane-kind registry) and it splits *with plain terminals in the same tab* — a
+`watch docker ps` or a `top` beside the agent that is causing them. Calling it a
+terminal and then giving it a tab it could not share would be the same mistake as
+rebuilding a chat UI over a vendor's TUI: the word right, the thing wrong. It is
+*marked*, not redesigned — one purple edge and a purple header rule, enough to find in
+a four-pane tab.
+
+**A tab that holds a view does not look like a tab that holds panes.** The manager, a
+collection and a machine dashboard are outlined; tabs holding panes stay filled and
+keep the terminal icon. This was not a theory: "Agents" and a resumed agent both wore
+the robot, and nothing said which one you could type into.
+
+**Another CLI is two commands** — how to list its conversations, how to resume one.
+That is the entire adapter boundary, and it is configurable from the manager's
+**Tools** dialog, which shows both commands for every tool. Switching an adapter off
+stops Rite looking for it; adding one says honestly that the last probe predates it
+rather than claiming the machine does not have it. An adapter is yours, not a
+machine's: the binary may be missing on one host and present on the next, and that is
+what the probe reports.
+
 **Agents run on a machine, under the account you already have there.** A machine from
 your library works in *both* shells, because that is an SSH session and Rite already
 has the transport. Your own machine is native on the desktop and needs an attached
@@ -103,6 +125,11 @@ machine, so it is explicit and dated rather than ambient. The conversation **id 
 never typed and always reachable**: when an adapter breaks — and it will, `--resume`
 and a vendor's home-directory layout are not a stable API — `claude --resume <id>` in
 a terminal pane must still work. Rite is never the only way back to your own session.
+
+The manager also opens **already pointed at a machine**, from that machine's dashboard
+(`Agents`, beside `Edit` and `Connect`). A menu is a fine switcher and a poor finder:
+with a real fleet you look a machine up where you always do — the library — and come at
+its agents the way you come at its containers.
 
 ## Files
 - `web.html` — the web-UI prototype (markup + inline logic).
@@ -123,6 +150,9 @@ a terminal pane must still work. Rite is never the only way back to your own ses
   containers, services) and the collection **Board**, shared by both entry pages (ADR 0019).
   Each page supplies `DASH_SHELL` (`'webui'` / `'clients'`) and `probeGoverned()`; the shared
   `probeVerdict()` holds the precedence table so it cannot be re-derived differently twice.
+- `rite.js` carries `paneActs()` — the split/detach/snippets/search/close chrome that
+  belongs to a **pane**, not to what is inside it. A terminal and an agent session both
+  draw from it, so neither can drift into a near-copy of the other.
 - `agents.js` / `agents.css` — the **agent manager** (the view) and the **agent pane**,
   shared by both entry pages. Each page supplies `AGENT_SHELL` (`'desktop'` / `'web'`),
   which decides only one thing: whether your own machine can answer, or needs an attached

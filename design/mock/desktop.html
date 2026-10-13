@@ -315,7 +315,7 @@ const AGENT_SHELL='desktop';
 // A server governs the probing cards only when we are actually in a server context. A local
 // vault — or the base workspace — has no authority to consult: it is the user's own network.
 function probeGoverned(){return STATE.ctx.type==='server';}
-let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentPane:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
+let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
 const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
 // Quick SSH in a SERVER context follows the server policy (off by default — server
 // connections belong in collections). A local vault is self-governed → always available.
@@ -555,13 +555,13 @@ function renderMain(){
   const tabActs=`<button class="mtab-act" title="Rename tab" onclick="event.stopPropagation();toast('Rename tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button><button class="mtab-act mtab-close" title="Close tab" onclick="event.stopPropagation();toast('Close tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>`;
   const mach=STATE.machineView?machineByName(STATE.machineView):null;
   mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Local Terminal (${STATE.defaultShell})</span>${tabActs}</div>
-    ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
-    ${mach?`<div class="mtab ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
+    ${coll?`<div class="mtab view ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
+    ${mach?`<div class="mtab view ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
     ${agentTabsHTML()}
     <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
   const b=document.getElementById('mbody');
   if(STATE.mainTab==='agents'){ b.innerHTML=agentsViewHTML(); return; }
-  if(STATE.mainTab==='agent'&&STATE.agentPane){ b.innerHTML=`<div class="pane-wrap focused">${agentPaneHTML(STATE.agentPane)}</div>`; return; }
+  if(STATE.mainTab==='agent'&&STATE.agentTab){ b.innerHTML=agentTabHTML(); return; }
   if(STATE.mainTab==='machine'&&mach){ b.innerHTML=machineDashboard(mach); return; }
   if(STATE.ctx.type==='home'||STATE.mainTab==='term'||!coll){ b.innerHTML=paneGrid(); return; }
   b.innerHTML=cardsView(coll);
