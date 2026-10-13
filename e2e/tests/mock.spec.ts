@@ -151,7 +151,7 @@ test('desktop mock: an agent pane splits with plain terminals, with the same chr
 
   // Everything else is behind the chevron beside it, and it is all configurable.
   await page.locator('.agentpane .split-more').click();
-  await page.locator('.menu .row', { hasText: 'Containers' }).click();
+  await page.locator('.menu .row', { hasText: 'Disk' }).click();
 
   // Two panes in ONE tab, separated by the divider a terminal split already uses.
   await expect(page.locator('.pane-wrap')).toHaveCount(2);
@@ -373,8 +373,8 @@ for (const shell of ['web', 'desktop'] as const) {
     // A preset is a name and a command, and both are the user's.
     await page.locator('.termpane .split-more').first().click();
     await expect(page.locator('.menu .row').first()).toContainText('Terminal');
-    await page.locator('.menu .row', { hasText: 'Containers' }).click();
-    await expect(page.locator('.termpane-hdr .name', { hasText: 'Containers' })).toHaveCount(1);
+    await page.locator('.menu .row', { hasText: 'Disk' }).click();
+    await expect(page.locator('.termpane-hdr .name', { hasText: 'Disk' })).toHaveCount(1);
 
     // A layout opens several at once — the "five terminals arranged like this" case.
     const n = await page.locator('.pane-wrap').count();

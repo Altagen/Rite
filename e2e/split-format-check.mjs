@@ -15,7 +15,7 @@
  * Run: node e2e/split-format-check.mjs
  */
 import assert from 'node:assert/strict';
-import { parseStored, parseLayoutPanes } from '../apps/desktop/src/store/splitsFormat.ts';
+import { parseStored, parseLayoutPanes, isPreset, isLayout } from '../apps/desktop/src/store/splitsFormat.ts';
 
 let passed = 0;
 const check = (name, fn) => {
@@ -104,6 +104,61 @@ check('an empty layout is an empty list, not one blank pane', () => {
 check('a trailing equals is a named pane with a plain shell', () => {
   // How the placeholder itself writes the first line: `shell =`.
   assert.deepEqual(parseLayoutPanes('shell ='), [{ name: 'shell', command: '' }]);
+});
+
+console.log('\nthe shape of a stored entry:');
+
+check('a preset needs an id, a name, and a command that is a string', () => {
+  assert.equal(isPreset({ id: 'a', name: 'A', command: 'top' }), true);
+  // The empty command is the plain shell and is meaningful; a missing one is not.
+  assert.equal(isPreset({ id: 'a', name: 'A', command: '' }), true, 'empty command is a plain shell');
+  assert.equal(isPreset({ id: 'a', name: 'A' }), false, 'no command');
+  assert.equal(isPreset({ id: 'a', command: 'top' }), false, 'no name');
+  assert.equal(isPreset({ name: 'A', command: 'top' }), false, 'no id');
+  assert.equal(isPreset({ id: 'a', name: '  ', command: 'top' }), false, 'a blank name is not a name');
+  assert.equal(isPreset({ id: 'a', name: 'A', command: 42 }), false, 'a command that is not text');
+});
+
+check('nothing that is not an object is a preset', () => {
+  // Guarding the JSON and not the shape was half a guard: `["nope"]` parses, and
+  // then `preset.name` is undefined in a menu row and `preset.id` is a React key
+  // that collides with every other one.
+  for (const entry of [null, undefined, 'nope', 42, true, [], () => {}]) {
+    assert.equal(isPreset(entry), false, String(entry));
+  }
+});
+
+check('a layout needs a name and panes, and each pane needs its two fields', () => {
+  assert.equal(isLayout({ id: 'l', name: 'L', panes: [{ name: 'shell', command: '' }] }), true);
+  assert.equal(isLayout({ id: 'l', name: 'L', panes: [] }), true, 'an empty layout is still a layout');
+  assert.equal(isLayout({ id: 'l', name: 'L' }), false, 'no panes');
+  assert.equal(isLayout({ id: 'l', name: 'L', panes: 'shell' }), false, 'panes that are not a list');
+  assert.equal(isLayout({ id: 'l', name: 'L', panes: [{ name: 'shell' }] }), false, 'a pane with no command');
+  assert.equal(isLayout({ id: 'l', name: 'L', panes: [null] }), false, 'a pane that is nothing');
+});
+
+check('one bad entry costs one entry, not the whole library', () => {
+  // The alternative is that a single mistyped row sends the user back to the
+  // defaults and loses the presets they still had.
+  const raw = JSON.stringify([
+    { id: 'a', name: 'A', command: 'top' },
+    'nope',
+    { id: 'b', name: 'B', command: 'df -h' },
+  ]);
+  assert.deepEqual(parseStored(raw, DEFAULTS, isPreset), [
+    { id: 'a', name: 'A', command: 'top' },
+    { id: 'b', name: 'B', command: 'df -h' },
+  ]);
+});
+
+check('a stored list of nothing but rubbish is empty, not the defaults', () => {
+  // It parsed and it was a list, so the user did configure something — badly.
+  // Handing back the defaults here would silently resurrect presets they removed.
+  assert.deepEqual(parseStored('[1,2,3]', DEFAULTS, isPreset), []);
+});
+
+check('without a filter nothing is dropped, so old callers are unchanged', () => {
+  assert.deepEqual(parseStored('[1,2]', DEFAULTS), [1, 2]);
 });
 
 console.log(`\n${passed} checks passed`);

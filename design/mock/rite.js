@@ -159,8 +159,8 @@ registerPaneKind('term', (p,i) => termHTML(p.host, { name:p.name, cmd:p.cmd, lin
    Name and command are both the user's — nothing here is built in but the plain one. */
 let SPLIT_PRESETS = [
   { id:'plain',    name:'Terminal',   command:'', builtin:true },
-  { id:'p-docker', name:'Containers', command:'watch -n2 docker ps' },
   { id:'p-load',   name:'Load',       command:'top' },
+  { id:'p-disk',   name:'Disk',       command:'df -h' },
 ];
 /* A layout opens several panes at once — the "five terminals arranged like this"
    case. It is a list of presets by value, so editing a preset never silently
@@ -169,7 +169,7 @@ let PANE_LAYOUTS = [
   { id:'l-deploy', name:'Deploy watch', panes:[
       { name:'shell',      command:'' },
       { name:'logs',       command:'journalctl -fu app' },
-      { name:'containers', command:'watch -n2 docker ps' } ] },
+      { name:'disk',       command:'df -h' } ] },
 ];
 
 /* The tab the controls act on: whichever one is on screen. The mock has two (the
@@ -233,13 +233,13 @@ function splitPrefsBody(){
     <div class="snip-list">${SPLIT_PRESETS.map(preset).join('')}</div>
     <div class="snip-add">
       <label class="field"><span>Name</span><input class="inp" id="sp-name" placeholder="Containers"></label>
-      <label class="field"><span>Command</span><input class="inp mono" id="sp-cmd" placeholder="watch -n2 docker ps"></label>
+      <label class="field"><span>Command</span><input class="inp mono" id="sp-cmd" placeholder="df -h"></label>
       <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sp-add>Add preset</button></div></div>
     <div class="sec"><span class="eyebrow">Layouts</span><span class="line"></span></div>
     <div class="snip-list">${PANE_LAYOUTS.map(layout).join('')||'<p class="muted" style="font-size:13px;margin:2px 0 10px">No layout yet.</p>'}</div>
     <div class="snip-add">
       <label class="field"><span>Name</span><input class="inp" id="sl-name" placeholder="Deploy watch"></label>
-      <label class="field"><span>Panes <span class="muted" style="font-weight:400">· one per line, <code>name = command</code></span></span><textarea class="inp mono" id="sl-panes" rows="4" spellcheck="false" style="resize:vertical;line-height:1.6" placeholder="shell =&#10;logs = journalctl -fu app&#10;containers = watch -n2 docker ps"></textarea></label>
+      <label class="field"><span>Panes <span class="muted" style="font-weight:400">· one per line, <code>name = command</code></span></span><textarea class="inp mono" id="sl-panes" rows="4" spellcheck="false" style="resize:vertical;line-height:1.6" placeholder="shell =&#10;load = top&#10;disk = df -h"></textarea></label>
       <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sl-add>Add layout</button></div></div>`;
 }
 function dlgSplitPrefs(){
