@@ -20,7 +20,7 @@ export type { TerminalSession } from '../types/pane';
 interface TerminalManagerProps {
   tabGroups: Tab[];
   activeTabId: string | null;
-  onSplitPane: (paneId: string, direction: 'horizontal' | 'vertical') => void;
+  onSplitPane: (paneId: string, direction: 'horizontal' | 'vertical', preset?: { name: string; command: string }) => Promise<void>;
   onClosePane: (paneId: string) => void;
   onFocusPane: (paneId: string) => void;
   onSplitRatioChange: (splitId: string, newRatio: number) => void;
@@ -156,13 +156,13 @@ export function TerminalManager({
       // Ctrl+Shift+H: Split horizontally
       if (e.ctrlKey && e.shiftKey && e.key === 'H') {
         e.preventDefault();
-        onSplitPane(focusedPane.id, 'horizontal');
+        void onSplitPane(focusedPane.id, 'horizontal');
       }
 
       // Ctrl+Shift+V: Split vertically
       if (e.ctrlKey && e.shiftKey && e.key === 'V') {
         e.preventDefault();
-        onSplitPane(focusedPane.id, 'vertical');
+        void onSplitPane(focusedPane.id, 'vertical');
       }
     };
 

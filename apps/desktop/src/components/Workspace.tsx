@@ -664,12 +664,11 @@ export function Workspace({
   const handleRunInPane = async (connection: ConnectionInfo, command: string) => {
     try {
       const sessionId = await conns.connect(connection);
-      addTerminalToTree({ id: sessionId, connectionId: connection.id, connectionName: connection.name });
-      // Let the remote shell come up, then type the command (+ Enter).
-      setTimeout(() => {
-        const bytes = Array.from(new TextEncoder().encode(`${command}\n`));
-        void Backend.Terminal.sendTerminalInput(sessionId, bytes).catch(() => {});
-      }, 700);
+      // The pane runs it once its session is readable, rather than this guessing when
+      // that is: the backend buffers a session's first output until the pane claims
+      // it, and a shell discards queued input while it sets the tty up, so a timer
+      // here loses the command outright instead of merely running it late.
+      addTerminalToTree({ id: sessionId, connectionId: connection.id, connectionName: connection.name, initialCommand: command });
     } catch (error) {
       const msg = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Failed to connect';
       if (msg.includes('Disconnect')) return; // host-key modal handles it
@@ -761,8 +760,17 @@ export function Workspace({
   };
 
   // Handle split pane
-  const handleSplitPane = async (paneId: string, direction: SplitDirection) => {
-    console.log('[MainScreen] Splitting pane:', paneId, 'direction:', direction);
+  /**
+   * Split a pane, optionally running something in the new one.
+   *
+   * With no preset this is the plain divider the button has always been — and that
+   * stays the button, because a plain split is what most people want from a divider.
+   * With one, the new pane is still an ordinary terminal: the command rides on the
+   * session and the pane runs it once it is readable, so a preset adds a name and a
+   * first command and nothing else.
+   */
+  const handleSplitPane = async (paneId: string, direction: SplitDirection, preset?: { name: string; command: string }) => {
+    console.log('[MainScreen] Splitting pane:', paneId, 'direction:', direction, preset ? `preset: ${preset.name}` : '');
 
     if (!activeTabId) return;
 
@@ -775,7 +783,9 @@ export function Workspace({
       const newSession: TerminalSession = {
         id: sessionId,
         connectionId: 'local',
-        connectionName: `Local Terminal (${shellName})`,
+        connectionName: preset?.name || `Local Terminal (${shellName})`,
+        // Run by the pane once its session is readable — see TerminalSession.
+        initialCommand: preset?.command || undefined,
       };
 
       // Split the pane in the active tab's tree

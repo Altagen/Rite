@@ -8,6 +8,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
 import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
+import { SplitsModal } from './SplitsModal';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
 import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
 import { useServerSession } from '../store/serverSessionStore';
@@ -60,6 +61,9 @@ export function Settings({ onClose }: SettingsProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync draft to async-loaded value
     setShellDraft(settings.defaultShell);
   }, [settings.defaultShell]);
+
+  // The splits library, opened from here and from the foot of a pane's split menu.
+  const [splitsOpen, setSplitsOpen] = useState(false);
   // Change master password (local vault): re-keys all connections server-side.
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
@@ -336,6 +340,26 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
             </section>
           )}
+
+          {/* Splits — what a divider can open, beyond a plain terminal. */}
+          <section className="border-b border-border pb-6">
+            <h3 className="mb-4 text-lg font-semibold">Splits</h3>
+            <div className="flex items-start justify-between gap-4">
+              <p className="text-xs text-muted-foreground">
+                A divider opens a plain terminal — that is the split button, and it stays that way.
+                What else it can open, from the chevron beside it, is yours to set: a named command,
+                or a whole layout at once.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSplitsOpen(true)}
+                className="flex-none rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                data-testid="open-splits-settings"
+              >
+                Configure…
+              </button>
+            </div>
+          </section>
 
           {/* Auto-lock settings */}
           <section className="border-b border-border pb-6">
@@ -712,6 +736,8 @@ export function Settings({ onClose }: SettingsProps) {
           </button>
         </div>
       </div>
+      {/* The splits library sits above this dialog, not inside its scroll area. */}
+      {splitsOpen && <SplitsModal onClose={() => setSplitsOpen(false)} />}
     </div>
   );
 }

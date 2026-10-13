@@ -33,6 +33,15 @@ export interface PaneChrome {
   /** Absent when the kind cannot be split, so the content cannot offer the action. */
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
+  /**
+   * Split and run something in the new pane.
+   *
+   * Separate from the two above on purpose: those are the plain divider, which is
+   * what the button does and what most people want. This is what the chevron beside
+   * it offers — a preset, a snippet, or one pane of a layout — and a kind that
+   * cannot split never receives it either.
+   */
+  onSplitWith?: (direction: 'horizontal' | 'vertical', preset: { name: string; command: string }) => Promise<void>;
   onDetach?: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;

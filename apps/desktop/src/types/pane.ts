@@ -14,6 +14,16 @@ export interface TerminalSession {
   id: string;
   connectionId: string;
   connectionName: string;
+  /**
+   * A command to run once, as soon as this session is ready to read one.
+   *
+   * It lives on the session rather than being sent by whoever opened it, because
+   * only the pane knows when "ready" happened: the backend buffers a session's first
+   * output and switches to streaming only when the pane claims that buffer, so there
+   * is no event for an outsider to wait on — and a shell discards queued input while
+   * it sets the tty up, which turns "a bit early" into "silently never ran".
+   */
+  initialCommand?: string;
 }
 
 export type SplitDirection = 'horizontal' | 'vertical';

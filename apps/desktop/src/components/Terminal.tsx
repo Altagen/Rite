@@ -15,6 +15,8 @@ import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { SnippetsModal } from './SnippetsModal';
+import { SplitMenu } from './SplitMenu';
+import { SplitsModal } from './SplitsModal';
 
 // Global cache to track if a terminal has already been initialized
 // This prevents re-writing initial content on remount
@@ -28,6 +30,11 @@ interface TerminalProps {
   isFocused?: boolean; // Optional - whether this terminal pane is focused
   onSplitHorizontal?: () => void; // Optional - callback to split this terminal horizontally
   onSplitVertical?: () => void; // Optional - callback to split this terminal vertically
+  // Split and run something in the new pane — the chevron beside the split buttons.
+  // Absent for a kind that cannot split, exactly like the two above.
+  onSplitWith?: (direction: 'horizontal' | 'vertical', preset: { name: string; command: string }) => Promise<void>;
+  // Run once, as soon as this session is streaming — see TerminalSession.initialCommand.
+  initialCommand?: string;
   onDetach?: () => void; // Optional - callback to detach this pane into a new tab
   onDragStart?: (e: React.DragEvent) => void; // Optional - callback when pane drag starts
   onDragEnd?: () => void; // Optional - callback when pane drag ends
@@ -55,7 +62,7 @@ interface ConnectionDeadEvent {
   reason: string;
 }
 
-export function Terminal({ connectionId, connectionName, onClose, sessionId: existingSessionId, isFocused, onSplitHorizontal, onSplitVertical, onDetach, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: TerminalProps) {
+export function Terminal({ connectionId, connectionName, onClose, sessionId: existingSessionId, isFocused, onSplitHorizontal, onSplitVertical, onSplitWith, initialCommand, onDetach, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -65,6 +72,14 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   const [error, setError] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  // An initial command runs once per session, never again on a remount.
+  const initialCommandSentRef = useRef(false);
+
+  // The split menu and the splits library, each open or not. Both are small enough
+  // to live beside the snippets panel rather than in a store.
+  const [splitMenuOpen, setSplitMenuOpen] = useState(false);
+  const [splitsLibraryOpen, setSplitsLibraryOpen] = useState(false);
+
   // The live session id captured when the snippets panel is opened (null = closed).
   const [snippetSession, setSnippetSession] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -376,14 +391,32 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           // claim is best-effort; streaming mode still activates on claim error
         }
 
-        // Fallback: if the buffer was empty (local terminal, or SSH connected
-        // so fast that no data arrived yet), send a newline after a short delay
-        // to make the shell re-display its prompt.
-        if (!promptDetectedRef.current) {
+        // A pane opened with something to run (a split preset, a dashboard action)
+        // runs it here and nowhere else, because here is the first place the session
+        // is known to be readable: the claim above is what switched it out of the
+        // backend's buffer, and a shell discards whatever is queued while it sets the
+        // tty up — so sending early is not early, it is gone, leaving a clean prompt
+        // that looks like the pane was asked for nothing.
+        const runInitialCommand = () => {
+          if (!initialCommand || initialCommandSentRef.current) return;
+          if (!sessionIdRef.current) return;
+          initialCommandSentRef.current = true;
+          sendTerminalInput(`${initialCommand}\n`);
+        };
+
+        if (promptDetectedRef.current) {
+          // The claimed buffer already held a prompt: the shell is reading.
+          runInitialCommand();
+        } else {
+          // Fallback: the buffer was empty (local terminal, or SSH connected so fast
+          // that no data arrived yet), so a newline makes the shell re-display its
+          // prompt. The initial command rides the same timer rather than starting a
+          // second one — one readiness heuristic in this file, not two.
           promptDetectionTimerRef.current = setTimeout(() => {
             if (!promptDetectedRef.current && sessionIdRef.current && xtermRef.current) {
               sendTerminalInput('\n');
             }
+            runInitialCommand();
           }, isLocalTerminal ? 150 : 400);
         }
       } else {
@@ -682,6 +715,34 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             </button>
           )}
 
+          {/* Split with… — everything the plain buttons above deliberately do not do.
+              Narrow on purpose: most people never open it, and it must not read as a
+              third split action. */}
+          {onSplitWith && (
+            <div className="relative">
+              <button
+                onClick={() => setSplitMenuOpen((v) => !v)}
+                className="rounded px-0.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title="Split with… — a preset, a snippet or a layout"
+                aria-haspopup="menu"
+                aria-expanded={splitMenuOpen}
+                data-testid="split-more"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              {splitMenuOpen && (
+                <SplitMenu
+                  direction="horizontal"
+                  onSplitWith={onSplitWith}
+                  onConfigure={() => setSplitsLibraryOpen(true)}
+                  onClose={() => setSplitMenuOpen(false)}
+                />
+              )}
+            </div>
+          )}
+
           {/* Detach button - move pane to new tab */}
           {onDetach && (
             <button
@@ -789,6 +850,8 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           pointerEvents: isDragging ? 'none' : 'auto',
         }}
       />
+
+      {splitsLibraryOpen && <SplitsModal onClose={() => setSplitsLibraryOpen(false)} />}
 
       {snippetSession && (
         <SnippetsModal

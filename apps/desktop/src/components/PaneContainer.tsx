@@ -17,7 +17,7 @@ export interface PaneContainerProps {
   onSplitRatioChange: (splitId: string, newRatio: number) => void;
   onClosePane: (paneId: string) => void;
   onFocusPane: (paneId: string) => void;
-  onSplitPane: (paneId: string, direction: 'horizontal' | 'vertical') => void;
+  onSplitPane: (paneId: string, direction: 'horizontal' | 'vertical', preset?: { name: string; command: string }) => Promise<void>;
   onDetachPane?: (paneId: string) => void;
   onReorganizePane?: (sourcePaneId: string, targetPaneId: string, position: 'top' | 'bottom' | 'left' | 'right') => void;
 }
@@ -160,6 +160,7 @@ export function PaneContainer({ node, onSplitRatioChange, onClosePane, onFocusPa
       onClose: () => onClosePane(node.id),
       onSplitHorizontal: canSplit ? () => onSplitPane(node.id, 'horizontal') : undefined,
       onSplitVertical: canSplit ? () => onSplitPane(node.id, 'vertical') : undefined,
+      onSplitWith: canSplit ? (direction, preset) => onSplitPane(node.id, direction, preset) : undefined,
       onDetach: onDetachPane ? () => onDetachPane(node.id) : undefined,
       onDragStart: handleDragStart,
       onDragEnd: handleDragEnd,
