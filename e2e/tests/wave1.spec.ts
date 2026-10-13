@@ -232,3 +232,55 @@ test('the machine dashboard probes the host and degrades gracefully', async ({ p
   await expect(page.getByText('Detecting…')).toHaveCount(0, { timeout: 30_000 });
   await expect(page.getByText(/Couldn't detect/)).toHaveCount(0);
 });
+
+/**
+ * Splitting a pane: plain by default, configurable beyond that.
+ *
+ * The split button must keep splitting plainly — that is what most people want from
+ * a divider, and a menu in the way is a tax on all of them for the benefit of the
+ * few who want `top` on the right. Everything configurable lives behind the chevron
+ * beside it, and a preset that only exists in the author's head is not configurable.
+ */
+test('a split opens a plain terminal, and a preset opens a named one', async ({ page, request }) => {
+  await machine(request, { name: 'e2e-splits' });
+
+  await page.goto('/');
+  await page.getByText('e2e-splits').dblclick();
+  await expect(page.locator('.xterm-screen').first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.xterm-rows').first()).toContainText(`${SSH.username}@`, {
+    timeout: 20_000,
+  });
+  await expect(page.locator('.xterm-screen')).toHaveCount(1);
+
+  // The plain button splits, with no menu in the way.
+  await page.getByTitle(/^Split horizontal/).first().click();
+  await expect(page.locator('.xterm-screen')).toHaveCount(2, { timeout: 20_000 });
+  await expect(page.getByRole('menu')).toHaveCount(0);
+
+  // A preset the user wrote: a name, and a command typed into the new pane for them.
+  await page.getByTestId('split-more').first().click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  await menu.getByText('Configure splits…').click();
+
+  const dialog = page.getByRole('dialog', { name: 'Splits' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByTestId('preset-name').fill('e2e-preset');
+  await dialog.getByTestId('preset-command').fill('echo RITE_PRESET_OK');
+  await dialog.getByTestId('add-preset').click();
+  await expect(dialog.getByText('e2e-preset')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  await page.getByTestId('split-more').first().click();
+  await page.getByRole('menu').getByText('e2e-preset').click();
+  await expect(page.locator('.xterm-screen')).toHaveCount(3, { timeout: 20_000 });
+  // The command is typed into the new pane, the way a snippet is — a preset adds a
+  // name and a first command to an ordinary terminal and nothing else.
+  // Found by content, not by position: a split puts the new pane beside the one it
+  // divided, so the newest pane is not the last one in the DOM.
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'RITE_PRESET_OK' })).toHaveCount(1, {
+    timeout: 20_000,
+  });
+  // And it is named after the preset rather than after the shell.
+  await expect(page.getByText('e2e-preset', { exact: true })).toBeVisible();
+});

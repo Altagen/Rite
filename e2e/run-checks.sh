@@ -24,11 +24,12 @@ run() {
   fi
 }
 
-# Both load a module from apps/desktop/src directly: Node strips the types, and
-# neither module imports anything at runtime, so these test the shipped code rather
+# Each loads a module from apps/desktop/src directly: Node strips the types, and
+# none of them imports anything at runtime, so these test the shipped code rather
 # than a copy of it.
 run "pane-tree-check" node "e2e/pane-tree-check.mjs"
 run "pane-dispose-check" node "e2e/pane-dispose-check.mjs"
+run "split-format-check" node "e2e/split-format-check.mjs"
 
 echo
 echo "crypto parity (Rust ↔ browser):"
