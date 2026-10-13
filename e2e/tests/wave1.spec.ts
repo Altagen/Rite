@@ -308,6 +308,7 @@ test('a shortcut can be remapped, and it is the new chord that fires', async ({ 
 
   // Every command is in one table, with what fires it.
   await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-keyboard').click();
   const row = page.getByTestId('shortcut-row-pane.splitHorizontal');
   await expect(row).toBeVisible();
   await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText('Ctrl+Shift+H');
@@ -332,4 +333,155 @@ test('a shortcut can be remapped, and it is the new chord that fires', async ({ 
   await expect(page.locator('.xterm-screen')).toHaveCount(2);
   await page.keyboard.press('Control+Alt+J');
   await expect(page.locator('.xterm-screen')).toHaveCount(3, { timeout: 20_000 });
+
+  // And the button says so. A tooltip that spells its own chord is a second opinion
+  // about the keyboard, which is how `Split vertical (Ctrl+Shift+V)` outlived the
+  // default that moved off that chord — the button named a key that did nothing.
+  await expect(page.getByTitle('Split horizontal (Ctrl+Alt+J)').first()).toBeVisible();
+  await expect(page.getByTitle(/Split horizontal \(Ctrl\+Shift\+H\)/)).toHaveCount(0);
+  await expect(page.getByTitle('Split vertical (Ctrl+Shift+D)').first()).toBeVisible();
+});
+
+/**
+ * A stored override may not hold a chord the terminal needs.
+ *
+ * The table refuses copy and paste when they are typed, which covers the user who
+ * tries it today. It does not cover the override that was already stored before the
+ * reserved list grew — and that list will grow. Whoever had taken the chord would
+ * keep it, and would be the one user who cannot paste and cannot explain why. So the
+ * list is enforced where the bindings are resolved, not only where they are typed.
+ */
+test('a reserved chord stored as an override is dropped, not honoured', async ({ page }) => {
+  await page.goto('/');
+
+  // Written the way a build that predates the reserved list would have written it.
+  await page.evaluate(() =>
+    localStorage.setItem('rite-shortcuts', JSON.stringify({ 'pane.splitVertical': 'Mod+Shift+V' })),
+  );
+  await page.reload();
+
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-keyboard').click();
+  // Back to its default, and listed as a default: no reset arrow, because there is
+  // no override left to undo.
+  await expect(page.getByTestId('shortcut-binding-pane.splitVertical')).toHaveText('Ctrl+Shift+D');
+  await expect(page.getByTestId('shortcut-reset-pane.splitVertical')).toHaveCount(0);
+  // A chord that only one command holds is not a conflict, so the absence of the
+  // badge here also says the reserved chord did not land on top of something.
+  await expect(page.getByTestId('shortcut-conflict-pane.splitVertical')).toHaveCount(0);
+
+  // And it is gone from storage, not merely ignored in memory: left there it would
+  // come back the moment someone shortened the reserved list, long after anyone
+  // remembers putting it there.
+  const stored = await page.evaluate(() => localStorage.getItem('rite-shortcuts'));
+  expect(JSON.parse(stored ?? '{}')).toEqual({});
+});
+
+/**
+ * Settings is a rail of sections, not one long scroll.
+ *
+ * Eleven sections in one column meant finding the clipboard timeout was a matter of
+ * knowing roughly how far down it lived. What this holds is the part that is easy to
+ * regress: that only the chosen section is in view, and that the rail never offers an
+ * entry leading to a section this context does not have.
+ */
+test('settings shows one section at a time, chosen from the rail', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTitle('Settings').click();
+
+  // It opens on the first section, and that one only.
+  await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Clipboard', exact: true })).toBeHidden();
+
+  // The rail switches which one is in view.
+  await page.getByTestId('settings-nav-clipboard').click();
+  await expect(page.getByRole('heading', { name: 'Clipboard', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Appearance' })).toBeHidden();
+
+  // Keyboard and Splits are reachable from it rather than scrolled to.
+  await page.getByTestId('settings-nav-keyboard').click();
+  await expect(page.getByTestId('shortcut-row-pane.close')).toBeVisible();
+  await page.getByTestId('settings-nav-splits').click();
+  await expect(page.getByTestId('open-splits-settings')).toBeVisible();
+  await expect(page.getByTestId('open-layouts-settings')).toBeVisible();
+
+  // Focus mode belongs to the native shell; the browser must not be offered it.
+  await expect(page.getByTestId('settings-nav-focus')).toHaveCount(0);
+});
+
+/**
+ * A preset and a layout can be changed, not just made and unmade.
+ *
+ * The first version could only add and remove, so correcting a typo in a command was
+ * "delete it, retype the other field, add it again" — and for a five-pane layout that
+ * is five lines retyped to fix one. An entry you cannot edit is a list you stop
+ * trusting, and the layout round-trip is what proves the editor is not rewriting the
+ * panes it was only meant to show.
+ */
+test('a preset is editable, and a layout opens from the tab strip', async ({ page, request }) => {
+  await machine(request, { name: 'e2e-editable' });
+
+  await page.goto('/');
+  await page.getByText('e2e-editable').dblclick();
+  await expect(page.locator('.xterm-screen').first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.xterm-screen')).toHaveCount(1);
+
+  // Nothing is configured, so the tab strip offers no Layouts button yet: an empty
+  // dropdown beside the tabs is a permanent invitation to find out it is empty.
+  await expect(page.getByTestId('layouts-button')).toHaveCount(0);
+
+  await page.getByTestId('split-more').first().click();
+  await page.getByRole('menu').getByText('Configure splits…').click();
+  const dialog = page.getByRole('dialog', { name: 'Splits' });
+  await expect(dialog).toBeVisible();
+
+  // Make one, then change both of its fields in place.
+  await dialog.getByTestId('preset-name').fill('typo-name');
+  await dialog.getByTestId('preset-command').fill('echo WRONG');
+  await dialog.getByTestId('add-preset').click();
+  await expect(dialog.getByText('typo-name')).toBeVisible();
+
+  // Scoped to its own row: the shipped defaults have edit buttons too, and a
+  // selector that matches three of them would click whichever came first.
+  const rows = dialog.locator('li');
+  const before = await rows.count();
+  await rows.filter({ hasText: 'typo-name' }).getByTestId(/^edit-preset-/).click();
+  await expect(dialog.getByTestId('preset-name')).toHaveValue('typo-name');
+  await expect(dialog.getByTestId('preset-command')).toHaveValue('echo WRONG');
+  await dialog.getByTestId('preset-name').fill('fixed-name');
+  await dialog.getByTestId('preset-command').fill('echo RITE_EDITED_OK');
+  await dialog.getByTestId('add-preset').click();
+
+  // Edited, not duplicated: the id is kept, so the list is the same length.
+  await expect(rows.filter({ hasText: 'fixed-name' })).toHaveCount(1);
+  await expect(rows.filter({ hasText: 'typo-name' })).toHaveCount(0);
+  await expect(rows).toHaveCount(before);
+  await expect(dialog.getByText('echo RITE_EDITED_OK')).toBeVisible();
+
+  // A layout, in its own section of the same dialog.
+  await dialog.getByTestId('splits-tab-layouts').click();
+  await dialog.getByTestId('layout-name').fill('e2e-layout');
+  await dialog.getByTestId('layout-panes').fill('one = echo RITE_PANE_ONE\ntwo = echo RITE_PANE_TWO');
+  await dialog.getByTestId('add-layout').click();
+  await expect(dialog.getByText('e2e-layout')).toBeVisible();
+
+  // Re-opening it shows the panes as written — the editor must not rewrite what it
+  // was only asked to display.
+  await dialog.getByTestId(/^edit-layout-/).click();
+  await expect(dialog.getByTestId('layout-panes')).toHaveValue(
+    'one = echo RITE_PANE_ONE\ntwo = echo RITE_PANE_TWO',
+  );
+  await dialog.getByTestId('cancel-edit').click();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+
+  // Now the tab strip has the button, and it opens the whole arrangement.
+  await page.getByTestId('layouts-button').click();
+  await page.getByRole('menu', { name: /Layouts/ }).getByText('e2e-layout').click();
+  await expect(page.locator('.xterm-screen')).toHaveCount(3, { timeout: 20_000 });
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'RITE_PANE_ONE' })).toHaveCount(1, {
+    timeout: 20_000,
+  });
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'RITE_PANE_TWO' })).toHaveCount(1, {
+    timeout: 20_000,
+  });
 });

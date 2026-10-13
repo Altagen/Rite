@@ -29,6 +29,9 @@ test('a password set in the UI unlocks the vault again', async ({ page, request 
   // The suite's vault is already set up, so change the password through the UI the
   // way a user would, then lock and come back with the same keystrokes.
   await page.getByRole('button', { name: 'Settings' }).click();
+  // Settings is a rail of sections and only the chosen one is rendered, so the
+  // section has to be selected rather than scrolled to.
+  await page.getByTestId('settings-nav-password').click();
 
   const current = page.getByPlaceholder('Current password');
   await expect(current).toBeVisible();
@@ -55,6 +58,9 @@ test('a password set in the UI unlocks the vault again', async ({ page, request 
 
   // Put the suite's password back so the specs that follow are unaffected.
   await page.getByRole('button', { name: 'Settings' }).click();
+  // Settings is a rail of sections and only the chosen one is rendered, so the
+  // section has to be selected rather than scrolled to.
+  await page.getByTestId('settings-nav-password').click();
   await page.getByPlaceholder('Current password').fill(TRICKY);
   await page.getByPlaceholder('New password', { exact: true }).fill('Rite-E2E-Str0ng!pass');
   await page.getByPlaceholder('Confirm new password').fill('Rite-E2E-Str0ng!pass');

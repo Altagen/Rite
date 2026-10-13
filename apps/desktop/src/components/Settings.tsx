@@ -20,21 +20,66 @@ import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
 
-// Read-only keyboard-shortcuts reference (mirrors design/mock/desktop.html). Focus mode is
-// client/native only — filtered out of the table on the web UI where it doesn't apply.
+/**
+ * The two chords that are not in the bindings table, and why.
+ *
+ * There used to be a second, static list here naming all six — written by hand,
+ * which is how it came to advertise `Ctrl+Shift+V` for the vertical split after the
+ * default moved off it, and `Ctrl+W` with no mention of Cmd. A dialog that
+ * contradicts itself about its own keyboard is worse than one that says less, so the
+ * four bindable commands are now read from the engine that runs them, and only these
+ * two are listed by hand — because neither is a binding:
+ *
+ *   * F11 is focus mode, which the native shell owns and the web UI does not have;
+ *   * Escape dismisses. Making it remappable would let someone remove the only way
+ *     out of a find bar that covers the terminal.
+ */
 const KBD = 'rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground';
-const SHORTCUTS: { action: string; keys: string[]; desc: string; nativeOnly?: boolean }[] = [
-  { action: 'Focus mode', keys: ['F11'], desc: 'Hide the toolbar so terminals fill the screen. Esc or F11 to exit; hover the top edge to reveal the toolbar.', nativeOnly: true },
-  { action: 'Close terminal pane', keys: ['Ctrl', 'W'], desc: 'Close the focused split pane.' },
-  { action: 'Split horizontally', keys: ['Ctrl', 'Shift', 'H'], desc: 'Split the pane into top / bottom.' },
-  { action: 'Split vertically', keys: ['Ctrl', 'Shift', 'V'], desc: 'Split the pane into left / right.' },
-  { action: 'Find in terminal', keys: ['Ctrl/⌘', 'F'], desc: 'Search the terminal scrollback.' },
-  { action: 'Close find / dialog', keys: ['Esc'], desc: 'Dismiss the search bar or an open dialog.' },
+const FIXED_CHORDS: { key: string; i18n: string; nativeOnly?: boolean }[] = [
+  { key: 'F11', i18n: 'shortcuts.fixed.focusMode', nativeOnly: true },
+  { key: 'Esc', i18n: 'shortcuts.fixed.dismiss' },
 ];
 
 interface SettingsProps {
   onClose: () => void;
 }
+
+/**
+ * The sections, in rail order. This list is the only place that order is decided.
+ *
+ * `local` marks a section that belongs to a local vault (a server governs its own
+ * shell, holds its own accounts, and has no master password of yours); `native`
+ * marks one the browser does not have. A section hidden by either is hidden from the
+ * rail too — a rail entry that leads to nothing is worse than no entry.
+ */
+type SectionId =
+  | 'appearance'
+  | 'keyboard'
+  | 'splits'
+  | 'shell'
+  | 'machines'
+  | 'security'
+  | 'ssh'
+  | 'clipboard'
+  | 'focus'
+  | 'language'
+  | 'password'
+  | 'danger';
+
+const RAIL: { id: SectionId; i18n: string; local?: true; native?: true; danger?: true }[] = [
+  { id: 'appearance', i18n: 'settings.sec.appearance' },
+  { id: 'keyboard', i18n: 'settings.keyboard' },
+  { id: 'splits', i18n: 'settings.splits' },
+  { id: 'shell', i18n: 'settings.sec.shell', local: true },
+  { id: 'machines', i18n: 'settings.sec.machines' },
+  { id: 'security', i18n: 'settings.security' },
+  { id: 'ssh', i18n: 'settings.sec.ssh' },
+  { id: 'clipboard', i18n: 'settings.clipboard' },
+  { id: 'focus', i18n: 'settings.sec.focus', native: true },
+  { id: 'language', i18n: 'settings.language' },
+  { id: 'password', i18n: 'settings.sec.password', local: true },
+  { id: 'danger', i18n: 'settings.sec.danger', local: true, danger: true },
+];
 
 export function Settings({ onClose }: SettingsProps) {
   const { t, locale, setLocale } = useTranslation();
@@ -64,7 +109,18 @@ export function Settings({ onClose }: SettingsProps) {
   }, [settings.defaultShell]);
 
   // The splits library, opened from here and from the foot of a pane's split menu.
-  const [splitsOpen, setSplitsOpen] = useState(false);
+  // `splitsOpen` carries which tab of it to land on.
+  const [splitsOpen, setSplitsOpen] = useState<'presets' | 'layouts' | null>(null);
+
+  /**
+   * Which section the rail is showing.
+   *
+   * Everything used to be one column of eleven sections in one scroll, which made
+   * finding the clipboard timeout a matter of knowing roughly how far down it lived.
+   * The rail is the index; `hidden` on each section is what keeps only one of them
+   * in view, so the sections themselves did not have to move.
+   */
+  const [active, setActive] = useState<SectionId>('appearance');
   // Change master password (local vault): re-keys all connections server-side.
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
@@ -222,12 +278,17 @@ export function Settings({ onClose }: SettingsProps) {
     return t('settings.hostKeyVerificationStrict');
   };
 
+  // A section the current context does not have is not reachable from the rail.
+  const rail = RAIL.filter((r) => (!r.local || isLocalContext) && (!r.native || native));
+  // …and if the active one disappears (a context switch), fall back to the first.
+  const shown: SectionId = rail.some((r) => r.id === active) ? active : (rail[0]?.id ?? 'appearance');
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
-      <div className="mx-4 w-full max-w-2xl rounded-lg bg-background p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className="mx-4 flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-2xl font-bold">{t('settings.title')}</h2>
+        <div className="flex flex-none items-center justify-between border-b border-border px-6 py-4">
+          <h2 className="text-xl font-bold">{t('settings.title')}</h2>
           <button
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground"
@@ -239,9 +300,35 @@ export function Settings({ onClose }: SettingsProps) {
           </button>
         </div>
 
-        <div className="space-y-6">
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          {/* The rail. A row of chips at phone width, a column beside the body above it. */}
+          <nav
+            aria-label={t('settings.sections')}
+            className="flex flex-none gap-1 overflow-x-auto border-b border-border p-2 sm:w-52 sm:flex-col sm:overflow-y-auto sm:border-b-0 sm:border-r"
+          >
+            {rail.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => setActive(r.id)}
+                aria-current={shown === r.id ? 'page' : undefined}
+                className={`flex-none whitespace-nowrap rounded px-3 py-1.5 text-left text-sm transition-colors sm:w-full ${
+                  shown === r.id
+                    ? 'bg-muted font-medium text-foreground'
+                    : r.danger
+                      ? 'text-red-500 hover:bg-muted'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                data-testid={`settings-nav-${r.id}`}
+              >
+                {t(r.i18n)}
+              </button>
+            ))}
+          </nav>
+
+          <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
           {/* Appearance */}
-          <section className="border-b border-border pb-6">
+          <section hidden={shown !== 'appearance'} className="pb-2">
             <h3 className="mb-4 text-lg font-semibold">Appearance</h3>
             <div>
               <label className="mb-1 block text-sm font-medium">Terminal theme</label>
@@ -277,7 +364,7 @@ export function Settings({ onClose }: SettingsProps) {
           </section>
 
           {/* Machine status (ADR 0017) — a client-side narrowing of the server's health policy. */}
-          <section className="border-b border-border pb-6">
+          <section hidden={shown !== 'machines'} className="pb-2">
             <h3 className="mb-4 text-lg font-semibold">Machine status</h3>
             <div>
               <label className="mb-1 block text-sm font-medium">Health-check</label>
@@ -323,7 +410,7 @@ export function Settings({ onClose }: SettingsProps) {
 
           {/* Default shell — local terminals only (a server governs its own shell). */}
           {isLocalContext && (
-            <section className="border-b border-border pb-6">
+            <section hidden={shown !== 'shell'} className="pb-2">
               <h3 className="mb-4 text-lg font-semibold">Default shell</h3>
               <div>
                 <label className="mb-1 block text-sm font-medium">Shell for new local terminals</label>
@@ -343,33 +430,47 @@ export function Settings({ onClose }: SettingsProps) {
           )}
 
           {/* Keyboard — one table owning every binding. */}
-          <section className="border-b border-border pb-6">
-            <h3 className="mb-4 text-lg font-semibold">Keyboard</h3>
+          <section hidden={shown !== 'keyboard'} className="pb-2">
+            <h3 className="mb-4 text-lg font-semibold">{t('settings.keyboard')}</h3>
             <ShortcutsSettings />
+            <ul className="mt-3 flex flex-col gap-1">
+              {FIXED_CHORDS.filter((c) => native || !c.nativeOnly).map((c) => (
+                <li key={c.key} className="text-xs text-muted-foreground">
+                  <kbd className={KBD}>{c.key}</kbd> <span className="ml-1">{t(c.i18n)}</span>
+                </li>
+              ))}
+            </ul>
           </section>
 
           {/* Splits — what a divider can open, beyond a plain terminal. */}
-          <section className="border-b border-border pb-6">
-            <h3 className="mb-4 text-lg font-semibold">Splits</h3>
-            <div className="flex items-start justify-between gap-4">
-              <p className="text-xs text-muted-foreground">
-                A divider opens a plain terminal — that is the split button, and it stays that way.
-                What else it can open, from the chevron beside it, is yours to set: a named command,
-                or a whole layout at once.
-              </p>
+          <section hidden={shown !== 'splits'} className="pb-2">
+            <h3 className="mb-4 text-lg font-semibold">{t('settings.splits')}</h3>
+            <p className="mb-3 text-xs text-muted-foreground">{t('settings.splitsHint')}</p>
+            {/* Two buttons into one dialog: a preset is one command in one pane, a
+                layout arranges a whole tab, and landing on the wrong list is a step
+                the person has to notice and undo. */}
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setSplitsOpen(true)}
+                onClick={() => setSplitsOpen('presets')}
                 className="flex-none rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
                 data-testid="open-splits-settings"
               >
-                Configure…
+                {t('split.presets')}…
+              </button>
+              <button
+                type="button"
+                onClick={() => setSplitsOpen('layouts')}
+                className="flex-none rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                data-testid="open-layouts-settings"
+              >
+                {t('split.layouts')}…
               </button>
             </div>
           </section>
 
           {/* Auto-lock settings */}
-          <section className="border-b border-border pb-6">
+          <section hidden={shown !== 'security'} className="pb-2">
             <h3 className="text-lg font-semibold mb-4">{t('settings.security')}</h3>
 
             <div className="space-y-4">
@@ -504,7 +605,7 @@ export function Settings({ onClose }: SettingsProps) {
           </section>
 
           {/* Clipboard settings */}
-          <section className="border-b border-border pb-6">
+          <section hidden={shown !== 'clipboard'} className="pb-2">
             <h3 className="text-lg font-semibold mb-4">{t('settings.clipboard')}</h3>
 
             <div className="space-y-4">
@@ -524,7 +625,7 @@ export function Settings({ onClose }: SettingsProps) {
           </section>
 
           {/* Language settings */}
-          <section className="pb-6">
+          <section hidden={shown !== 'language'} className="pb-2">
             <h3 className="text-lg font-semibold mb-4">{t('settings.language')}</h3>
 
             <div ref={languageDropdownRef}>
@@ -572,7 +673,7 @@ export function Settings({ onClose }: SettingsProps) {
 
           {/* Master password — change it (local vault). Re-keys every connection. */}
           {isLocalContext && (
-            <section className="border-b border-border pb-6">
+            <section hidden={shown !== 'password'} className="pb-2">
               <h3 className="mb-4 text-lg font-semibold">Master password</h3>
               <div className="max-w-sm space-y-2">
                 <input
@@ -618,7 +719,7 @@ export function Settings({ onClose }: SettingsProps) {
 
           {/* Danger zone — reset this local vault (wipe + reboot to first-run). Local only. */}
           {isLocalContext && (
-            <section className="pb-6">
+            <section hidden={shown !== 'danger'} className="pb-2">
               <h3 className="mb-4 text-lg font-semibold text-red-500">Danger zone</h3>
               <div className="rounded-md border border-red-500/30 bg-red-500/5 p-4">
                 <div className="font-medium">Reset vault</div>
@@ -648,7 +749,7 @@ export function Settings({ onClose }: SettingsProps) {
           )}
 
           {/* SSH connections */}
-          <section className="border-b border-border pb-6">
+          <section hidden={shown !== 'ssh'} className="pb-2">
             <h3 className="mb-4 text-lg font-semibold">SSH connections</h3>
             <label className="flex cursor-pointer items-center gap-3">
               <input
@@ -670,7 +771,7 @@ export function Settings({ onClose }: SettingsProps) {
 
           {/* Focus mode (client/native only) */}
           {native && (
-            <section className="border-b border-border pb-6">
+            <section hidden={shown !== 'focus'} className="pb-2">
               <h3 className="mb-4 text-lg font-semibold">Focus mode</h3>
               <label className="flex cursor-pointer items-center gap-3">
                 <input
@@ -689,42 +790,11 @@ export function Settings({ onClose }: SettingsProps) {
             </section>
           )}
 
-          {/* Keyboard shortcuts (read-only reference) */}
-          <section className="border-b border-border pb-6">
-            <h3 className="mb-1 text-lg font-semibold">Keyboard shortcuts</h3>
-            <p className="mb-3 text-sm text-muted-foreground">Reference — not editable.</p>
-            <div className="overflow-hidden rounded-lg border border-border">
-              <table className="w-full text-sm">
-                <thead className="bg-secondary/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 font-semibold">Action</th>
-                    <th className="px-3 py-2 font-semibold">Keys</th>
-                    <th className="px-3 py-2 font-semibold">Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {SHORTCUTS.filter((s) => native || !s.nativeOnly).map((s) => (
-                    <tr key={s.action} className="border-t border-border align-top">
-                      <td className="whitespace-nowrap px-3 py-2">{s.action}</td>
-                      <td className="whitespace-nowrap px-3 py-2">
-                        {s.keys.map((k, i) => (
-                          <span key={k}>
-                            {i > 0 && ' '}
-                            <kbd className={KBD}>{k}</kbd>
-                          </span>
-                        ))}
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">{s.desc}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          </div>
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4">
+        <div className="flex flex-none justify-end gap-3 border-t border-border px-6 py-4">
           <button
             type="button"
             onClick={onClose}
@@ -744,7 +814,7 @@ export function Settings({ onClose }: SettingsProps) {
         </div>
       </div>
       {/* The splits library sits above this dialog, not inside its scroll area. */}
-      {splitsOpen && <SplitsModal onClose={() => setSplitsOpen(false)} />}
+      {splitsOpen && <SplitsModal section={splitsOpen} onClose={() => setSplitsOpen(null)} />}
     </div>
   );
 }

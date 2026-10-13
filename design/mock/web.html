@@ -350,6 +350,7 @@ function renderMain(){
     ${coll?`<div class="mtab view ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
     ${mach?`<div class="mtab view ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
     ${agentTabsHTML()}
+    ${layoutsBtnHTML()}
     <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
   const b=document.getElementById('mbody');
   // The dashboard is shell-agnostic (ADR 0019) — same cards, same markup as the desktop.
