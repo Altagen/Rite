@@ -38,11 +38,57 @@
    adapter breaks, `claude --resume <id>` in a terminal pane must still work. Rite
    is never the only way back to your own session. */
 const AGENT_TOOLS = [
-  { id: 'claude', name: 'Claude Code', cmd: 'claude', resume: (id) => `claude --resume ${id}` },
-  { id: 'codex', name: 'Codex CLI', cmd: 'codex', resume: (id) => `codex resume ${id}` },
-  { id: 'gemini', name: 'Gemini CLI', cmd: 'gemini', resume: (id) => `gemini chat --session ${id}` },
+  { id: 'claude', name: 'Claude Code', bin: 'claude', on: true,
+    list: 'ls ~/.claude/projects/*/*.jsonl', resumeFmt: 'claude --resume {id}' },
+  { id: 'codex', name: 'Codex CLI', bin: 'codex', on: true,
+    list: 'codex sessions --json', resumeFmt: 'codex resume {id}' },
+  { id: 'gemini', name: 'Gemini CLI', bin: 'gemini', on: true,
+    list: 'ls ~/.gemini/tmp', resumeFmt: 'gemini chat --session {id}' },
 ];
 const agentTool = (id) => AGENT_TOOLS.find((t) => t.id === id);
+const agentResume = (tool, id) => (tool.resumeFmt || '{id}').replace('{id}', id);
+
+/* Which adapters are switched on. An adapter is yours, not a machine's: the binary
+   may be missing on one host and present on the next, and that is what the probe
+   reports — so the list is configured once and detection answers per machine. */
+const agentEnabled = () => AGENT_TOOLS.filter((t) => t.on);
+
+/* Teaching Rite about another CLI is two commands: how to list its conversations
+   and how to resume one. Nothing else about a vendor is depended on — that is the
+   whole adapter boundary, kept small because it is written expecting to break. */
+function dlgAgentTools() {
+  const row = (t) => `<label class="mrow" style="align-items:flex-start" onclick="agentToggleTool('${t.id}',this)">
+      <span class="chk ${t.on ? 'on' : ''}" style="margin-top:3px">${t.on ? '✓' : ''}</span>
+      <div class="grow"><div class="title" style="font-weight:600">${t.name} <span class="muted mono" style="font-weight:400">${t.bin}</span></div>
+        <div class="sub mono" style="font-size:11.5px;color:var(--fg-dim);line-height:1.6">list &nbsp;${t.list}<br>resume &nbsp;${t.resumeFmt}</div></div></label>`;
+  showModal({
+    title: 'Agent CLIs', subtitle: 'Which tools Rite looks for, and how it talks to each', wide: true, confirm: 'Done',
+    body: `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">${AGENT_TOOLS.map(row).join('')}</div>
+      <div class="sec"><span class="eyebrow">Add a CLI</span><span class="line"></span></div>
+      <label class="field"><span>Name</span><input class="inp" id="at-name" placeholder="e.g. Aider"></label>
+      <label class="field"><span>Binary</span><input class="inp mono" id="at-bin" placeholder="aider"></label>
+      <label class="field"><span>Command that lists its conversations</span><input class="inp mono" id="at-list" placeholder="ls ~/.aider/sessions"></label>
+      <label class="field"><span>Command that resumes one</span><input class="inp mono" id="at-resume" placeholder="aider --restore {id}"></label>
+      <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55"><b>{id}</b> is where the conversation id goes — you never type it, and the adapter never
+      asks you to. These two commands are the <i>entire</i> contract with a tool: a vendor changing
+      its flags or its file layout breaks this adapter and nothing else.</p>`,
+    onConfirm: (m) => {
+      const g = (k) => (m.querySelector('#at-' + k).value || '').trim();
+      if (!g('name') || !g('bin')) return;             // nothing typed — just close
+      AGENT_TOOLS.push({ id: g('bin'), name: g('name'), bin: g('bin'), on: true,
+        list: g('list') || `which ${g('bin')}`, resumeFmt: g('resume') || `${g('bin')} {id}` });
+      toast(`<span class="accent">${g('name')}</span> added — probe a machine to see if it is installed there`);
+      renderMain();
+    },
+  });
+}
+function agentToggleTool(id, el) {
+  const t = agentTool(id); if (!t) return;
+  t.on = !t.on;
+  const c = el.querySelector('.chk');
+  c.classList.toggle('on', t.on); c.textContent = t.on ? '✓' : '';
+  renderMain();
+}
 
 /* ---- what a probe of one machine came back with ----
    Keyed by machine name; a machine that is absent here has simply never been
@@ -162,22 +208,45 @@ function closeAgents() {
   renderMain();
 }
 
-/* The manager and any resumed agent, in the tab strip. The manager is a view you
-   can close like a machine dashboard; the agent is a tab of its own, because
-   resuming opened one — it did not take the manager's place or split the pane the
-   user was already in. */
+/* The manager and any resumed agent, in the tab strip.
+   They must not look alike, and they used to: both wore the robot and nothing said
+   which one held panes. A tab that holds a VIEW now carries `.view` — outlined,
+   not filled — and a tab that holds panes keeps the terminal's own look and icon.
+   The agent tab shows how many panes are in it, because by then it may hold a
+   `top` and a `watch docker ps` as well. */
 function agentTabsHTML() {
   const mgr = STATE.agentsView
-    ? `<div class="mtab ${STATE.mainTab === 'agents' ? 'on' : ''}" onclick="STATE.mainTab='agents';renderMain()">${M.agent} Agents
+    ? `<div class="mtab view ${STATE.mainTab === 'agents' ? 'on' : ''}" onclick="STATE.mainTab='agents';renderMain()">${M.agent} Agents
         <span class="x" onclick="event.stopPropagation();closeAgents()">✕</span></div>`
     : '';
-  const pane = STATE.agentPane
-    ? `<div class="mtab ${STATE.mainTab === 'agent' ? 'on' : ''}" onclick="STATE.mainTab='agent';renderMain()">${M.agent} ${STATE.agentPane.session.project}
+  const t = STATE.agentTab;
+  const pane = t
+    ? `<div class="mtab ${STATE.mainTab === 'agent' ? 'on' : ''}" onclick="STATE.mainTab='agent';renderMain()">${ICON.term} ${t.panes[0].session.project}
+        ${t.panes.length > 1 ? `<span class="chip-sm" title="${t.panes.length} panes in this tab">${t.panes.length}</span>` : ''}
         <span class="x" onclick="event.stopPropagation();closeAgentPane()">✕</span></div>`
     : '';
   return mgr + pane;
 }
 function agentPickScope(id) { STATE.agentScope = id; renderMain(); }
+
+/* Open the manager already pointed at one machine. A menu is a fine switcher and a
+   poor finder: with a real fleet you look a machine up where you always do — the
+   library — and come at its agents from its dashboard, the way you come at its
+   containers. */
+function openAgentsOn(name) { STATE.agentScope = name; openAgents(); }
+
+/* The scope picker is a themed menu, not a native <select>: an OS dropdown paints
+   its own list in its own colours and lands a white panel in the middle of a dark
+   app. It also lets each entry carry its subtitle, which is where the local row in
+   a browser says why it cannot answer. */
+function agentScopeMenu(e) {
+  e.stopPropagation();
+  floatMenu(e, agentScopes().map((s) => ({
+    icon: s.kind === 'local' ? ICON.term : s.kind === 'server' ? ICON.server : M.machine,
+    label: `${s.name}<div class="sub mono" style="font-size:11px;color:var(--muted);font-weight:400">${s.sub}</div>`,
+    onclick: () => agentPickScope(s.id),
+  })));
+}
 function agentProbeNow() {
   const sc = agentScope(STATE.agentScope);
   if (sc.kind === 'server') return;              // nothing to probe: see agentServerNote
@@ -225,7 +294,7 @@ function agentRowMenu(scopeId, toolId, sessionId, e) {
   ]);
 }
 function agentCopyId(id) { toast(`Conversation id copied — <span class="mono">${id}</span>`); }
-function agentCopyCmd(tool, id) { toast(`Copied — <span class="mono">${tool.resume(id)}</span>`); }
+function agentCopyCmd(tool, id) { toast(`Copied — <span class="mono">${agentResume(tool, id)}</span>`); }
 
 /* One tool on one machine. Three outcomes, all of them visible: sessions, not
    installed, or installed and unable to answer. */
@@ -260,8 +329,6 @@ function agentToolBlock(sc, probeTool) {
 function agentsViewHTML() {
   const sc = agentScope(STATE.agentScope);
   const probe = agentProbeOf(sc.id);
-  const opts = agentScopes().map((s) =>
-    `<option value="${s.id}" ${s.id === sc.id ? 'selected' : ''}>${s.name}${s.kind === 'ssh' ? ' — ' + s.sub : ''}</option>`).join('');
   // A local scope in a browser can never answer, so it never claims to have been read.
   const readable = sc.kind === 'ssh' || (sc.kind === 'local' && AGENT_SHELL === 'desktop');
 
@@ -280,7 +347,13 @@ function agentsViewHTML() {
         and tells you when the answer was read, not just what it said.</div>
       <button class="btn btn-primary btn-sm" onclick="agentProbeNow()">${M.refresh} Probe ${sc.name}</button></div>`;
   } else {
-    body = probe.tools.map((t) => agentToolBlock(sc, t)).join('');
+    const on = new Set(agentEnabled().map((t) => t.id));
+    const known = probe.tools.filter((t) => on.has(t.id));
+    // An adapter added after the last probe has simply not been looked for yet.
+    const unprobed = agentEnabled().filter((t) => !probe.tools.some((p) => p.id === t.id));
+    body = known.map((t) => agentToolBlock(sc, t)).join('')
+      + unprobed.map((t) => `<div class="dcard atool off"><div class="dcard-h">${M.agent}<span class="dcard-t">${t.name}</span>
+          <span style="flex:1"></span><span class="muted" style="font-size:12px">added since the last probe — probe again to look for it</span></div></div>`).join('');
   }
 
   return `<div class="mdash">
@@ -289,7 +362,8 @@ function agentsViewHTML() {
       <div class="mdash-id"><div class="mdash-name">Agents</div>
         <div class="mdash-sub">Pick the machine, then the tool, then the conversation.</div></div>
       <span style="flex:1"></span>
-      <div class="sel-input">${M.machine}<select onchange="agentPickScope(this.value)">${opts}</select></div>
+      <button class="btn btn-sm" onclick="agentScopeMenu(event)" title="Choose the machine to look on">${M.machine} ${sc.name} ${EXICON.chevD}</button>
+      <button class="btn btn-ghost btn-sm" onclick="dlgAgentTools()" title="Which agent CLIs Rite looks for">${EXICON.gear} Tools</button>
       ${probe && readable ? `<span class="muted" style="font-size:12px" title="Discovery is one command over SSH — it is read when you ask, not continuously">read ${probe.at}</span>
         <button class="btn btn-ghost btn-sm" onclick="agentProbeNow()">${M.refresh} Probe again</button>` : ''}
     </div>
@@ -299,7 +373,11 @@ function agentsViewHTML() {
   </div>`;
 }
 
-/* ---- resuming: a pane, in a new tab ---- */
+/* ---- resuming: a pane in a new tab, in the ordinary split tree ----
+   The agent is a leaf like any other, which is the point of the pane-kind registry:
+   it splits with plain terminals in the same tab, so you can keep `watch docker ps`
+   or `top` beside the agent that is causing them. The tab holds a list of panes and
+   a focused index — the mock's stand-in for the tree the app already has. */
 function resumeAgent(scopeId, toolId, sessionId) {
   const sc = agentScope(scopeId);
   const probe = agentProbeOf(scopeId);
@@ -307,24 +385,65 @@ function resumeAgent(scopeId, toolId, sessionId) {
   const s = pt && (pt.sessions || []).find((x) => x.id === sessionId);
   if (!s) return;
   // The user never typed the id, and never will — the adapter builds the command.
-  STATE.agentPane = { scope: sc, tool: agentTool(toolId), session: s };
+  STATE.agentTab = { panes: [{ kind: 'agent', scope: sc, tool: agentTool(toolId), session: s }], focus: 0 };
   STATE.mainTab = 'agent';
   renderMain();
   toast(`${M.agent} <span class="accent">${s.project}</span> resumed on ${sc.name} — new tab`);
 }
-function closeAgentPane() { STATE.agentPane = null; STATE.mainTab = STATE.agentsView ? 'agents' : 'term'; renderMain(); }
+function agentFocusPane(i) { if (STATE.agentTab) { STATE.agentTab.focus = i; renderMain(); } }
+function closeAgentTabPane(i) {
+  const t = STATE.agentTab; if (!t) return;
+  t.panes.splice(i, 1);
+  if (!t.panes.length) return closeAgentPane();
+  t.focus = Math.min(t.focus, t.panes.length - 1);
+  renderMain();
+}
+function closeAgentPane() { STATE.agentTab = null; STATE.mainTab = STATE.agentsView ? 'agents' : 'term'; renderMain(); }
+
+/* What lands beside an agent. Every one of these is an ORDINARY terminal pane on
+   the same machine — not a third kind of surface — which is exactly why an agent
+   had to be a leaf of the normal tree rather than a tab of its own. */
+function agentSplitMenu(e) {
+  e.stopPropagation();
+  const t = STATE.agentTab; if (!t) return;
+  const sc = t.panes[0].scope;
+  const host = sc.kind === 'local' ? null : sc.sub;
+  const add = (p) => { t.panes.push(p); t.focus = t.panes.length - 1; renderMain(); };
+  floatMenu(e, [
+    { icon: ICON.term, label: `Terminal on ${sc.name}`, onclick: () => add({ kind: 'term', host }) },
+    { icon: M.docker, label: 'watch docker ps', onclick: () => add({ kind: 'term', host, name: 'watch docker ps',
+        cmd: 'watch -n2 docker ps', lines: ['NAMES     STATUS          PORTS', 'api       Up 3 days       8080->8080', 'worker    Up 3 days', 'redis     Up 8 days       6379->6379'] }) },
+    { icon: M.refresh, label: 'top', onclick: () => add({ kind: 'term', host, name: 'top',
+        cmd: 'top -b -n1', lines: ['load average: 0.84, 0.61, 0.55', '  PID USER      %CPU  %MEM  COMMAND', ' 4812 deploy     7.4   2.1  node', ' 1190 deploy     2.0   0.8  claude'] }) },
+  ]);
+}
+
+/* The agent tab: panes side by side, with the same divider a terminal split uses.
+   A pane here is the agent or a terminal; both carry the same chrome, because the
+   chrome comes from `paneActs` in rite.js rather than from either of them. */
+function agentTabHTML() {
+  const t = STATE.agentTab;
+  if (!t || !t.panes.length) return '';
+  const cells = t.panes.map((p, i) => {
+    const inner = p.kind === 'agent' ? agentPaneHTML(p, i) : termHTML(p.host, { name: p.name, cmd: p.cmd, lines: p.lines, close: `closeAgentTabPane(${i})` });
+    return `${i ? '<div class="pdiv" title="Drag to resize"><i></i></div>' : ''}
+      <div class="pane-wrap ${i === t.focus ? 'focused' : ''}" style="flex:1" onclick="agentFocusPane(${i})">${inner}</div>`;
+  }).join('');
+  return `<div class="psplit">${cells}</div>`;
+}
 
 
 /* The pane shows the REAL CLI, not a chat interface rebuilt over it. What Rite adds
    is the header — machine, tool, project, working directory, state — and the
    lifetime. A reimplemented conversation UI would pin the one thing a vendor
    changes without notice, which is the mistake ADR 0003 already paid for once. */
-function agentPaneHTML(p) {
+function agentPaneHTML(p, i) {
   const { scope, tool, session } = p;
   const I = (d) => `<svg class="icon" viewBox="0 0 24 24"><path d="${d}"/></svg>`;
-  const grip = `<div class="grip" title="Drag to reorganize pane"><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div></div>`;
   const where = scope.kind === 'local' ? 'on this machine' : `on ${scope.name}`;
-  return `<div class="termpane">
+  // The only button that is the agent's own: the id it never made you type.
+  const copyId = `<button title="Conversation id — ${session.id}" onclick="agentCopyId('${session.id}')">${I('M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z')}</button>`;
+  return `<div class="termpane agentpane">
     <div class="termpane-hdr">
       <div class="who">
         <span class="st" style="background:var(--purple)"></span>
@@ -332,16 +451,19 @@ function agentPaneHTML(p) {
         <span class="chip-sm" style="color:var(--purple)">${tool.name}</span>
         <span class="muted" style="font-size:12px">${where} · ${session.cwd}</span>
       </div>
-      <div class="termpane-acts">
-        ${grip}
-        <button title="Conversation id — ${session.id}" onclick="agentCopyId('${session.id}')">${I('M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z')}</button>
-        <button title="Split horizontal (Ctrl+Shift+H)">${I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4')}</button>
-        <button title="Detach to new window" onclick="openInNewWindow('${session.project}')">${I('M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14')}</button>
-        <button title="Close agent pane" onclick="closeAgentPane()">${I('M6 18L18 6M6 6l12 12')}</button>
-      </div>
+      <div class="termpane-acts">${paneActs({
+        lead: copyId,
+        splitH: 'agentSplitMenu(event)',
+        splitV: 'agentSplitMenu(event)',
+        detach: `openInNewWindow('${session.project}')`,
+        detachTitle: 'Detach to a new window',
+        snippets: `openSnippets(${scope.kind === 'local' ? 'null' : `'${scope.sub}'`})`,
+        close: `closeAgentTabPane(${i})`,
+        closeTitle: 'Close agent pane',
+      })}</div>
     </div>
     <div class="term-body scroll">
-      <div class="ln di"># ${tool.resume(session.id)}</div>
+      <div class="ln di"># ${agentResume(tool, session.id)}</div>
       <div class="ln di">${tool.name} · resumed · ${session.turns} turns · ${session.cwd}</div>
       <div class="ln"><span class="pr">▸</span> ${session.title}</div>
       <div class="ln di">  Reading src/queue/worker.ts…</div>

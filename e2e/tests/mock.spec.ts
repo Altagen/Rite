@@ -127,6 +127,109 @@ test('desktop mock: resuming an agent opens a pane beside the manager, not over 
 });
 
 /**
+ * An agent pane is a leaf of the ORDINARY split tree, so `watch docker ps` or `top`
+ * can sit beside the agent that is causing them. Calling it a terminal and then
+ * giving it a tab it cannot share would be the same mistake as rebuilding a chat
+ * UI over a TUI: the word would be right and the thing would not.
+ */
+test('desktop mock: an agent pane splits with plain terminals, with the same chrome', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => { openAgents(); agentPickScope('@local'); });
+  await page.locator('.arow').first().getByRole('button', { name: 'Resume' }).click();
+
+  // One pane, no divider yet.
+  await expect(page.locator('.pane-wrap')).toHaveCount(1);
+  await expect(page.locator('.pdiv')).toHaveCount(0);
+
+  // Splitting from the agent's own header offers ordinary terminals on that machine.
+  await page.locator('.agentpane button[title^="Split horizontal"]').click();
+  await page.locator('.menu .row', { hasText: 'watch docker ps' }).click();
+
+  // Two panes in ONE tab, separated by the divider a terminal split already uses.
+  await expect(page.locator('.pane-wrap')).toHaveCount(2);
+  await expect(page.locator('.pdiv')).toHaveCount(1);
+  await expect(page.locator('.agentpane')).toHaveCount(1);
+  await expect(page.locator('.termpane:not(.agentpane)')).toHaveCount(1);
+
+  // Same chrome on both, because both get it from `paneActs` — the agent only adds
+  // the one control that is its own, the id it never made you type. Compared by
+  // what each button IS, not how many there are: a count still passes when a pane
+  // draws its own near-copy, which is the drift this is here to catch.
+  const titles = (sel: string) => page.locator(`${sel} .termpane-acts button`).evaluateAll(
+    (bs) => bs.map((b) => b.getAttribute('title') || ''),
+  );
+  const agentActs = await titles('.agentpane');
+  const termActs = await titles('.pane-wrap:not(:has(.agentpane)) .termpane');
+  expect(agentActs.filter((t) => !t.startsWith('Conversation id'))).toEqual(
+    termActs.map((t) => (t === 'Close terminal' ? 'Close agent pane' : t === 'Detach to new tab' ? 'Detach to a new window' : t)),
+  );
+  expect(agentActs.filter((t) => t.startsWith('Conversation id'))).toHaveLength(1);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * A tab holding a view must not look like a tab holding panes. Before this, the
+ * manager and a resumed agent both wore the robot and nothing said which one you
+ * could type into.
+ */
+for (const shell of ['web', 'desktop'] as const) {
+  test(`${shell} mock: view tabs and pane tabs are told apart, and no native dropdown`, async ({ page }) => {
+    const errs = watchErrors(page);
+    await page.goto(mock(shell));
+    await page.evaluate(() => { openMachine('web-01'); openAgents(); });
+
+    // The machine dashboard and the agent manager are views; the terminal is not.
+    await expect(page.locator('.mtab.view')).toHaveCount(2);
+    await expect(page.locator('.mtab', { hasText: 'Agents' })).toHaveClass(/view/);
+    await expect(page.locator('.mtab', { hasText: 'Terminal' })).not.toHaveClass(/view/);
+
+    // A resumed agent holds panes, so its tab is not a view tab.
+    await page.evaluate(() => agentPickScope('web-01'));
+    await page.locator('.arow').first().getByRole('button', { name: 'Resume' }).click();
+    await expect(page.locator('.mtab.view')).toHaveCount(2);
+    await expect(page.locator('.mtab', { hasText: 'acme/api' })).not.toHaveClass(/view/);
+
+    // The scope picker is ours: a native <select> paints its own list in the OS's
+    // colours and drops a white panel into a dark app.
+    await expect(page.locator('.mdash select')).toHaveCount(0);
+
+    expect(errs, 'the mock must not log errors').toEqual([]);
+  });
+}
+
+/**
+ * Another CLI is two commands: how to list its conversations and how to resume one.
+ * That is the entire adapter boundary, and it has to be configurable or the three
+ * built-in tools are magic.
+ */
+test('desktop mock: another agent CLI can be registered, and is looked for', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => { openAgents(); agentPickScope('web-01'); });
+  const before = await page.locator('.atool').count();
+
+  await page.evaluate(() => dlgAgentTools());
+  await page.locator('#at-name').fill('Aider');
+  await page.locator('#at-bin').fill('aider');
+  await page.locator('#at-list').fill('ls ~/.aider/sessions');
+  await page.locator('#at-resume').fill('aider --restore {id}');
+  await page.locator('.backdrop [data-ok]').click();
+
+  // It appears, and says honestly that the last probe predates it rather than
+  // claiming the machine does not have it.
+  await expect(page.locator('.atool')).toHaveCount(before + 1);
+  await expect(page.locator('.atool', { hasText: 'Aider' })).toContainText(/added since the last probe/);
+
+  // Switching an adapter off stops Rite looking for it at all.
+  await page.evaluate(() => { agentTool('gemini').on = false; renderMain(); });
+  await expect(page.locator('.atool', { hasText: 'Gemini' })).toHaveCount(0);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
  * ADR 0019 §5, walked. Each row is the whole statement: who is asked, what each one
  * answered, and what the dashboard does — so a change to the rule has to change this
  * table too, instead of quietly changing what renders.

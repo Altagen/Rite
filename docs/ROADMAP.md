@@ -259,7 +259,12 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       **dated**. Four states are speakable rather than silent — never probed, not
       installed, installed but unable to read its transcripts, and the refusal below.
       The conversation **id is never typed and always copyable**, because an adapter
-      that breaks must not be the only way back to your own session.
+      that breaks must not be the only way back to your own session. The agent pane
+      is a **leaf of the ordinary split tree** — it carries the terminal's chrome from
+      the same code and splits with plain terminals in the same tab, so a `watch
+      docker ps` can sit beside the agent causing it. Which CLIs Rite looks for is
+      **configurable**: an adapter is two commands (list, resume), and that is the
+      whole contract with a vendor.
 - [ ] **ADR** — the session model, the per-tool adapter boundary, and what is
       explicitly out of scope
 - [ ] **Agent pane**, not a menu: an agent has a context of its own — a working
@@ -285,6 +290,11 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       On a target machine it runs under the SSH account the user already had, so Rite
       grants nothing new. This is a **non-goal**, stated on screen in the mock, and it
       belongs in the ADR with its reason so it is not re-litigated in six months.
+- [ ] **The management layer, deliberately after the basics** — stored pre-prompts,
+      per-project conventions (a `CLAUDE.md` and its equivalents), pre-arranged agent
+      set-ups. This is where a real advantage over running the CLI yourself would sit,
+      and it is explicitly *not* in the first mock: the basics come first, and what
+      "plus" means gets argued once the basics are on screen.
 - [ ] Decide what *not* to do — this is adjacent to Rite's purpose, and the risk
       is becoming two half-products instead of one good one
 

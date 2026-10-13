@@ -3,6 +3,44 @@
    footer idioms on purpose, because it is the same kind of surface — a view you
    browse, not a pane you work in. */
 
+  /* ---- a tab that holds a VIEW must not look like a tab that holds PANES ----
+     This is not an agent concern on its own, but the agent manager is what exposed
+     it: "Agents" and a resumed agent both wore the robot, and nothing said which
+     one you could type into. Views — a collection, a machine dashboard, the agent
+     manager — are outlined; tabs holding panes stay filled and keep the terminal
+     icon. Three classes deep so the shells' own `.mtab.on` cannot win by order. */
+  .mtab.view{border:1px dashed var(--border2);background:transparent}
+  .mtab.view.on{border-style:dashed;border-color:var(--accent);background:transparent;color:var(--accent)}
+  .mtab.view .icon{opacity:.85}
+
+  /* A themed menu can hold a whole fleet, so it is bounded and scrolls rather than
+     running off the bottom of the window — `floatMenu` positions from a row-count
+     estimate and cannot know a row carries a subtitle. */
+  .menu{max-height:70vh;overflow:auto}
+
+  /* ---- panes side by side, with the divider a terminal split already uses ---- */
+  .psplit{height:100%;display:flex;align-items:stretch}
+  .pdiv{flex:none;width:10px;cursor:col-resize;display:grid;place-items:center;align-self:stretch}
+  .pdiv i{display:block;width:2px;height:34px;border-radius:2px;background:var(--border2)}
+  .pdiv:hover i{background:var(--accent);height:60px}
+
+  /* An agent pane is a terminal — same chrome, same splits, same everything — so it
+     is marked, not redesigned: one purple edge and a purple header rule. Enough to
+     find it in a four-pane tab, not enough to make it a different kind of surface. */
+  .agentpane{border-color:color-mix(in oklab,var(--purple) 60%,var(--border))}
+  .agentpane .termpane-hdr{border-bottom-color:color-mix(in oklab,var(--purple) 55%,var(--border));
+    background:linear-gradient(to right,color-mix(in oklab,var(--purple) 14%,var(--card)),var(--card) 55%)}
+  .agentpane .termpane-hdr .st{box-shadow:0 0 6px color-mix(in oklab,var(--purple) 70%,transparent)}
+
+  /* The header carries more than a terminal's does — project, tool, machine, working
+     directory — and a pane is often half a screen wide. It truncates from the least
+     important end instead of wrapping into two lines and shoving the actions down. */
+  .agentpane .termpane-hdr .who{flex:1;min-width:0;gap:7px}
+  .agentpane .who .chip-sm{flex:none;white-space:nowrap}
+  .agentpane .who .name{flex:none;max-width:40%}
+  .agentpane .who .muted{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  @media (max-width:1100px){ .agentpane .who .muted{display:none} }
+
   /* A tool block is a list, so it always spans the grid rather than sitting in a
      320px column beside another list. */
   .atool{grid-column:1/-1}
