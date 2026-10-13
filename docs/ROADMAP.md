@@ -7,7 +7,10 @@ This document outlines the planned features for RITE, organized by development p
 **Current Focus:** Phase 1 MVP — a complete terminal experience with local shell
 and SSH. **Pane kinds are done**, so the SFTP pane and the Agent Manager no longer
 wait on the split tree; the keyboard shortcut engine is the one engine item still
-gating later work. The **Agent Manager** is the next major feature, ahead of Phase 2.
+gating later work. The **Agent Manager** is the next major feature, ahead of Phase 2;
+its **mock is done** — the manager is a view, an agent session is a pane, and agents
+run on a machine from your library, never inside the server container. The ADR is next,
+then the code.
 
 ---
 
@@ -248,8 +251,15 @@ already runs a command on the *local* machine from either shell.
 `design/mock/`, as the dashboard was, so the shape is argued over on screen
 rather than in a pull request. An ADR follows the mock, and code follows the ADR.
 
-- [ ] **Mock first** (`design/mock/`) — the agent pane in both shells, before any
-      Rust or TypeScript
+- [x] **Mock first** (`design/mock/`) — `agents.js` / `agents.css`, shared by both
+      shells. Settled on screen: the **manager is a view** (a chooser has no context
+      of its own) and an **agent session is a pane**, so resuming opens a pane in a
+      **new tab** and leaves the list where it was. The selector is **machine → tool
+      → conversation**; discovery is one command per machine, so it is explicit and
+      **dated**. Four states are speakable rather than silent — never probed, not
+      installed, installed but unable to read its transcripts, and the refusal below.
+      The conversation **id is never typed and always copyable**, because an adapter
+      that breaks must not be the only way back to your own session.
 - [ ] **ADR** — the session model, the per-tool adapter boundary, and what is
       explicitly out of scope
 - [ ] **Agent pane**, not a menu: an agent has a context of its own — a working
@@ -265,6 +275,16 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       and will change without notice. One adapter per tool, written expecting to
       break, with the breakage contained to it. (ADR 0003's lesson, learned the
       hard way: pin the constraint, never the incidental shape.)
+- [x] **Where an agent may run, and the one place it may not.** On a **machine from
+      the library**, over SSH — in **both shells**, since that is a session and the
+      transport is already shipped (`run_remote_command` / `run_quick_remote_command`,
+      built for the agentless dashboard). On **your own machine** — native on the
+      desktop, an attached client in a browser. **Never inside the Rite-Server
+      container**: an agent runs arbitrary code, and in the server's process it would
+      sit beside every user's encrypted data, the database and administrator sessions.
+      On a target machine it runs under the SSH account the user already had, so Rite
+      grants nothing new. This is a **non-goal**, stated on screen in the mock, and it
+      belongs in the ADR with its reason so it is not re-litigated in six months.
 - [ ] Decide what *not* to do — this is adjacent to Rite's purpose, and the risk
       is becoming two half-products instead of one good one
 

@@ -39,8 +39,9 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
 
 **It is checked like the app.** `e2e/tests/mock.spec.ts` (the `mock` Playwright project,
 no server, the pages opened from disk) opens both entry pages, requires the same dashboard
-cards and a working Board in each, fails on any console error, and walks the ADR 0019
-precedence table row by row — including what the refusal says. Run it with
+cards and a working Board in each, fails on any console error, walks the ADR 0019
+precedence table row by row — including what the refusal says — and holds the agent
+manager to each state it exists to make speakable. Run it with
 `npx playwright test --project=mock`; `task e2e` covers it too, along with the three
 places the same rule is checked against the real app: the local vault (`dashboard-probe-gate`),
 the web UI (`accounts`) and an attached client (`proxy`). The mock is the source of
@@ -59,6 +60,9 @@ web UI ended up with a dashboard nobody had decided on.
 | SSH import | file path or paste | **paste only** |
 | Machine dashboard + Board | yes | **yes** — same cards, same markup (ADR 0019) |
 | Probing cards (containers, services) | governed by `clients` when attached; the user's own call in a vault | governed by `webui`; off there means off for everyone |
+| Agents on a library machine | yes | **yes** — it is an SSH session, like its terminal |
+| Agents on your own machine | yes, natively | **no** — needs an attached desktop client |
+| Agents in the Rite-Server container | **never** | **never** |
 
 The **machine dashboard and the Board are not divergences** — they are *usage* features and
 live in both shells (ADR 0019). Only the two cards that execute something on a host are
@@ -70,6 +74,35 @@ commands); in an attached client it is *policy* (the client probes from its own 
 server never sees the request). The mock says so in the admin copy rather than leaving it to be
 discovered. Both shells load the shared `machine.js` / `machine.css`, so neither entry page can
 drift from the other — the drift is how the web UI ended up with an undocumented dashboard.
+
+## The agent manager
+
+**The manager is a view, the agent is a pane**, and that split is the design. The
+manager is a chooser — machine, then tool, then conversation — and a chooser has no
+context of its own, so it lives where the machine dashboard lives: opened from the
+toolbar, closable from the tab strip. An agent *session* does have a context of its
+own (a working directory, a transcript, a lifetime), which is exactly the rule that
+gives it a pane. Resuming therefore opens a pane **in a new tab** — the gesture
+connecting to a machine already uses — so the list you chose from is still where you
+left it, and no split appears that you did not ask for.
+
+**Agents run on a machine, under the account you already have there.** A machine from
+your library works in *both* shells, because that is an SSH session and Rite already
+has the transport. Your own machine is native on the desktop and needs an attached
+client in a browser — listed in both, so the gap is stated instead of silent. And the
+Rite-Server container is a **non-goal**, on screen, with its reason: an agent runs
+arbitrary code, and in the server's own process it would sit beside every user's
+encrypted data. On a target machine Rite grants no access the user did not already
+have; inside the container it would grant all of it.
+
+Four things the mock insists on being able to say, because each is an hour lost when
+a UI stays quiet instead: a machine **nobody has probed** (not an empty list), a tool
+that is **not installed**, a tool that is installed and **cannot read its own
+transcripts**, and **when** the answer was read — discovery is one command per
+machine, so it is explicit and dated rather than ambient. The conversation **id is
+never typed and always reachable**: when an adapter breaks — and it will, `--resume`
+and a vendor's home-directory layout are not a stable API — `claude --resume <id>` in
+a terminal pane must still work. Rite is never the only way back to your own session.
 
 ## Files
 - `web.html` — the web-UI prototype (markup + inline logic).
@@ -90,6 +123,11 @@ drift from the other — the drift is how the web UI ended up with an undocument
   containers, services) and the collection **Board**, shared by both entry pages (ADR 0019).
   Each page supplies `DASH_SHELL` (`'webui'` / `'clients'`) and `probeGoverned()`; the shared
   `probeVerdict()` holds the precedence table so it cannot be re-derived differently twice.
+- `agents.js` / `agents.css` — the **agent manager** (the view) and the **agent pane**,
+  shared by both entry pages. Each page supplies `AGENT_SHELL` (`'desktop'` / `'web'`),
+  which decides only one thing: whether your own machine can answer, or needs an attached
+  client. Everything else — the machine → tool → conversation selector, the refusal on the
+  server's own host, what a broken adapter says — is identical in both, on purpose.
 - `rite.css` — shared design tokens + components (dark, terminal-forward).
 - `rite.js` — shared helpers (toast, modal, mini-terminal) + generic dialogs.
 - `full-data.js` — mock data (org directory, teams, collections) + extra icons.
