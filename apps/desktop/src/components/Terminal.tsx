@@ -14,6 +14,7 @@ import { terminalPool } from '../utils/terminalPool';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 import { useAutoReconnect } from '../store/autoReconnect';
+import { useShortcut } from '../shortcuts/useShortcut';
 import { SnippetsModal } from './SnippetsModal';
 import { SplitMenu } from './SplitMenu';
 import { SplitsModal } from './SplitsModal';
@@ -561,21 +562,22 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
     reconnectRef.current = handleReconnect;
   });
 
-  // Handle Ctrl+F for search
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        setShowSearch(true);
-      }
-      if (e.key === 'Escape' && showSearch) {
-        setShowSearch(false);
-        setSearchTerm('');
-      }
-    };
+  // Search is the focused pane's command, so only the focused pane answers it —
+  // before, every mounted terminal opened its own find bar on one keypress.
+  useShortcut('pane.search', () => setShowSearch(true), isFocused);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+  // Escape closes the find bar. Not a bound command: it is the dismissal every
+  // dialog in the app already uses, and making it remappable would let someone
+  // remove the only way out of a bar that covers the terminal.
+  useEffect(() => {
+    if (!showSearch) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setShowSearch(false);
+      setSearchTerm('');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, [showSearch]);
 
   const handleSearch = (direction: 'next' | 'previous') => {

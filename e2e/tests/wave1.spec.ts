@@ -284,3 +284,52 @@ test('a split opens a plain terminal, and a preset opens a named one', async ({ 
   // And it is named after the preset rather than after the shell.
   await expect(page.getByText('e2e-preset', { exact: true })).toBeVisible();
 });
+
+/**
+ * The keyboard engine, through its table.
+ *
+ * Four shortcuts used to be written inline in two components as `if (e.ctrlKey && …)`,
+ * which is how one of them accepted Cmd and the others did not. The table is the fix
+ * and the screen is the proof: a command is listed, remapped, and fires on the new
+ * chord rather than the old one.
+ */
+test('a shortcut can be remapped, and it is the new chord that fires', async ({ page, request }) => {
+  await machine(request, { name: 'e2e-keys' });
+
+  await page.goto('/');
+  await page.getByText('e2e-keys').dblclick();
+  await expect(page.locator('.xterm-screen').first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.xterm-screen')).toHaveCount(1);
+
+  // The shipped default splits horizontally.
+  await page.locator('.xterm-screen').first().click();
+  await page.keyboard.press('Control+Shift+H');
+  await expect(page.locator('.xterm-screen')).toHaveCount(2, { timeout: 20_000 });
+
+  // Every command is in one table, with what fires it.
+  await page.getByTitle('Settings').click();
+  const row = page.getByTestId('shortcut-row-pane.splitHorizontal');
+  await expect(row).toBeVisible();
+  await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText('Ctrl+Shift+H');
+
+  // Remapped by pressing the keys, not by typing their name.
+  await page.getByTestId('shortcut-binding-pane.splitHorizontal').click();
+  await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText('press keys…');
+  await page.keyboard.press('Control+Alt+J');
+  await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText('Ctrl+Alt+J');
+
+  // Paste belongs to the terminal and cannot be taken, whatever the user asks.
+  await page.getByTestId('shortcut-binding-pane.close').click();
+  await page.keyboard.press('Control+Shift+V');
+  await expect(page.getByText(/belongs to the terminal/)).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: /^(Cancel|Close)$/ }).first().click();
+
+  // The new chord splits; the old one no longer does.
+  await page.locator('.xterm-screen').first().click();
+  await page.keyboard.press('Control+Shift+H');
+  await expect(page.locator('.xterm-screen')).toHaveCount(2);
+  await page.keyboard.press('Control+Alt+J');
+  await expect(page.locator('.xterm-screen')).toHaveCount(3, { timeout: 20_000 });
+});
