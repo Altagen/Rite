@@ -485,3 +485,44 @@ test('a preset is editable, and a layout opens from the tab strip', async ({ pag
     timeout: 20_000,
   });
 });
+
+/**
+ * A locked vault does not take the preferences with it.
+ *
+ * Base-first (ADR 0014): this workspace runs local terminals and Quick SSH with no
+ * vault at all. Settings used to disappear entirely while the vault was locked — the
+ * header offered Unlock and nothing else — which made the theme, the keyboard, the
+ * splits and the language hostage to unlocking something none of them depend on.
+ *
+ * Nothing technical required it: the settings table is plaintext in the vault's
+ * database and answers 200 on a read and 204 on a write while locked; only the
+ * connection blobs are gated, and those answer 410. So the only sections that go are
+ * the two with nothing to act on — and they go because a vault does not exist, not
+ * because it is shut.
+ */
+test('settings are reachable with the vault locked', async ({ page, request }) => {
+  await page.goto('/');
+  await request.post('/api/auth/lock');
+  await page.reload();
+
+  // Locked: Unlock is offered, and so is Settings.
+  await expect(page.getByRole('button', { name: 'Unlock' })).toBeVisible({ timeout: 15_000 });
+  await page.getByTitle('Settings').click();
+
+  // The per-device sections are all there and usable.
+  for (const id of ['appearance', 'keyboard', 'splits', 'language', 'clipboard']) {
+    await expect(page.getByTestId(`settings-nav-${id}`)).toBeVisible();
+  }
+  await page.getByTestId('settings-nav-keyboard').click();
+  await expect(page.getByTestId('shortcut-binding-pane.close')).toHaveText('Ctrl+W');
+
+  // And a server-backed one reads its value rather than failing: this is the half
+  // that a locked vault could plausibly have broken.
+  await page.getByTestId('settings-nav-clipboard').click();
+  await expect(page.getByRole('heading', { name: 'Clipboard', exact: true })).toBeVisible();
+
+  // The vault exists, so its own two sections stay offered — a shut vault is not a
+  // missing one, and changing a master password asks for the current one anyway.
+  await expect(page.getByTestId('settings-nav-password')).toBeVisible();
+  await expect(page.getByTestId('settings-nav-danger')).toBeVisible();
+});

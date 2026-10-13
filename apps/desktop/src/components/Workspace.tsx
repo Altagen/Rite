@@ -1340,14 +1340,29 @@ export function Workspace({
         {headerExtra}
 
         {isLocked ? (
-          <button
-            onClick={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
-            className="m-btn m-btn-primary m-btn-sm"
-            title={isFirstRun ? 'Create your local vault' : 'Unlock vault'}
-          >
-            <IconLock className="h-4 w-4" />
-            <span className="hidden md:inline">{isFirstRun ? 'Create vault' : 'Unlock'}</span>
-          </button>
+          /* Locked, or no vault yet. Base-first (ADR 0014): this workspace already
+             runs local terminals and Quick SSH with no vault, so its preferences have
+             to be reachable here too — the theme, the keyboard, the splits and the
+             language are per-device and have nothing to do with a vault. Settings used
+             to vanish entirely in this state, which made every one of them hostage to
+             unlocking something they do not depend on. */
+          <>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="m-btn m-btn-ghost m-btn-sm"
+              title={t('settings.title')}
+            >
+              <IconGear className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
+              className="m-btn m-btn-primary m-btn-sm"
+              title={isFirstRun ? 'Create your local vault' : 'Unlock vault'}
+            >
+              <IconLock className="h-4 w-4" />
+              <span className="hidden md:inline">{isFirstRun ? 'Create vault' : 'Unlock'}</span>
+            </button>
+          </>
         ) : identity ? (
           // Accounts context: the pastille owns Settings + Sign out.
           <ProfilePastille

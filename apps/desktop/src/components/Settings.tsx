@@ -6,6 +6,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
+import { useAuthStore } from '../store/authStore';
 import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
 import { SplitsModal } from './SplitsModal';
@@ -49,8 +50,17 @@ interface SettingsProps {
  *
  * `local` marks a section that belongs to a local vault (a server governs its own
  * shell, holds its own accounts, and has no master password of yours); `native`
- * marks one the browser does not have. A section hidden by either is hidden from the
- * rail too — a rail entry that leads to nothing is worse than no entry.
+ * marks one the browser does not have; `vault` marks one that needs a vault to
+ * **exist**. A section hidden by any of them is hidden from the rail too — a rail
+ * entry that leads to nothing is worse than no entry.
+ *
+ * `vault` is as narrow as it looks, deliberately. A *locked* vault is no reason to
+ * hide anything: the settings table is plaintext in the vault's database, and it
+ * reads (200) and writes (204) with the vault locked — only the connection blobs are
+ * gated, and those answer 410. So the theme, the keyboard, the splits, the language,
+ * the shell, auto-lock, the clipboard and host-key verification are all reachable
+ * before unlocking, which is what ADR 0014's base-first workspace already promised.
+ * The two exceptions are the two with nothing to act on until a vault exists.
  */
 type SectionId =
   | 'appearance'
@@ -66,7 +76,7 @@ type SectionId =
   | 'password'
   | 'danger';
 
-const RAIL: { id: SectionId; i18n: string; local?: true; native?: true; danger?: true }[] = [
+const RAIL: { id: SectionId; i18n: string; local?: true; native?: true; vault?: true; danger?: true }[] = [
   { id: 'appearance', i18n: 'settings.sec.appearance' },
   { id: 'keyboard', i18n: 'settings.keyboard' },
   { id: 'splits', i18n: 'settings.splits' },
@@ -77,8 +87,8 @@ const RAIL: { id: SectionId; i18n: string; local?: true; native?: true; danger?:
   { id: 'clipboard', i18n: 'settings.clipboard' },
   { id: 'focus', i18n: 'settings.sec.focus', native: true },
   { id: 'language', i18n: 'settings.language' },
-  { id: 'password', i18n: 'settings.sec.password', local: true },
-  { id: 'danger', i18n: 'settings.sec.danger', local: true, danger: true },
+  { id: 'password', i18n: 'settings.sec.password', local: true, vault: true },
+  { id: 'danger', i18n: 'settings.sec.danger', local: true, vault: true, danger: true },
 ];
 
 export function Settings({ onClose }: SettingsProps) {
@@ -98,6 +108,10 @@ export function Settings({ onClose }: SettingsProps) {
   // Local terminals only: on a server the shell is server-governed (no per-user picker).
   const serverMode = useServerSession((s) => s.mode);
   const isLocalContext = !serverMode?.accounts;
+  // Does a vault exist at all? `isFirstRun` means there is none yet, so the two
+  // sections that act on one have nothing to act on. A vault that exists but is
+  // locked is a different thing and hides nothing — see the note on RAIL.
+  const hasVault = useAuthStore((a) => a.isFirstRun) === false;
   // ADR 0019: the toggle below can only narrow the server's answer, so when the server
   // already says no the switch is told it changes nothing rather than pretending to.
   const probesVerdict = probeVerdict({ mode: serverMode ?? null, userWants: true });
@@ -279,7 +293,9 @@ export function Settings({ onClose }: SettingsProps) {
   };
 
   // A section the current context does not have is not reachable from the rail.
-  const rail = RAIL.filter((r) => (!r.local || isLocalContext) && (!r.native || native));
+  const rail = RAIL.filter(
+    (r) => (!r.local || isLocalContext) && (!r.native || native) && (!r.vault || hasVault),
+  );
   // …and if the active one disappears (a context switch), fall back to the first.
   const shown: SectionId = rail.some((r) => r.id === active) ? active : (rail[0]?.id ?? 'appearance');
 
