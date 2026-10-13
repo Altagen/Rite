@@ -70,3 +70,17 @@
     .arow{flex-wrap:wrap;row-gap:8px}
     .ameta{min-width:150px}
   }
+
+  /* ---- what is in effect: provenance on every row ---- */
+  .alayer{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--border);
+    border-radius:5px;padding:2px 7px;flex:none;color:var(--muted)}
+  .alayer.project{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 45%,transparent)}
+  .alayer.user{color:var(--teal);border-color:color-mix(in oklab,var(--teal) 45%,transparent)}
+  /* Loaded by neither layer — shown, not hidden, because "why is my skill not
+     applying" is answered by seeing the copy that lost. */
+  .arow.shadowed{opacity:.5}
+  .arow.shadowed .atitle{text-decoration:line-through;text-decoration-color:var(--muted)}
+  /* A hook is a command that runs unattended, so it is never drawn as a quiet row. */
+  .arow.hook{border-color:color-mix(in oklab,var(--amber) 30%,var(--border))}
+  .arow.hook.foreign{border-color:color-mix(in oklab,var(--amber) 70%,transparent);
+    background:color-mix(in oklab,var(--amber) 7%,var(--card2))}

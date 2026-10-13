@@ -220,8 +220,9 @@ function agentTabsHTML() {
         <span class="x" onclick="event.stopPropagation();closeAgents()">✕</span></div>`
     : '';
   const t = STATE.agentTab;
+  const lead = t && (t.panes[0].session ? t.panes[0].session.project : t.panes[0].name || 'Terminal');
   const pane = t
-    ? `<div class="mtab ${STATE.mainTab === 'agent' ? 'on' : ''}" onclick="STATE.mainTab='agent';renderMain()">${ICON.term} ${t.panes[0].session.project}
+    ? `<div class="mtab ${STATE.mainTab === 'agent' ? 'on' : ''}" onclick="STATE.mainTab='agent';renderMain()">${ICON.term} ${lead}
         ${t.panes.length > 1 ? `<span class="chip-sm" title="${t.panes.length} panes in this tab">${t.panes.length}</span>` : ''}
         <span class="x" onclick="event.stopPropagation();closeAgentPane()">✕</span></div>`
     : '';
@@ -289,6 +290,7 @@ function agentRowMenu(scopeId, toolId, sessionId, e) {
   floatMenu(e, [
     { icon: ICON.play, label: 'Resume here', onclick: () => resumeAgent(scopeId, toolId, sessionId) },
     { icon: EXICON.split, label: 'Resume in a new window', onclick: () => { resumeAgent(scopeId, toolId, sessionId); openInNewWindow(tool.name); } },
+    { icon: EXICON.shield, label: 'What is in effect — skills, commands, hooks', onclick: () => dlgAgentContext(scopeId, toolId, sessionId) },
     { icon: M.edit, label: 'Copy conversation id', onclick: () => agentCopyId(sessionId) },
     { icon: ICON.term, label: 'Copy the resume command', onclick: () => agentCopyCmd(tool, sessionId) },
   ]);
@@ -406,7 +408,8 @@ function closeAgentPane() { STATE.agentTab = null; STATE.mainTab = STATE.agentsV
 function agentSplitMenu(e) {
   e.stopPropagation();
   const t = STATE.agentTab; if (!t) return;
-  const sc = t.panes[0].scope;
+  const agent = t.panes.find((p) => p.kind === 'agent');
+  const sc = agent ? agent.scope : agentScope(STATE.agentScope);
   const host = sc.kind === 'local' ? null : sc.sub;
   const add = (p) => { t.panes.push(p); t.focus = t.panes.length - 1; renderMain(); };
   floatMenu(e, [
@@ -442,7 +445,8 @@ function agentPaneHTML(p, i) {
   const I = (d) => `<svg class="icon" viewBox="0 0 24 24"><path d="${d}"/></svg>`;
   const where = scope.kind === 'local' ? 'on this machine' : `on ${scope.name}`;
   // The only button that is the agent's own: the id it never made you type.
-  const copyId = `<button title="Conversation id — ${session.id}" onclick="agentCopyId('${session.id}')">${I('M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z')}</button>`;
+  const copyId = `<button title="What is in effect — skills, commands, hooks" onclick="dlgAgentContext('${scope.id}','${tool.id}','${session.id}')">${I('M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z')}</button>
+    <button title="Conversation id — ${session.id}" onclick="agentCopyId('${session.id}')">${I('M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z')}</button>`;
   return `<div class="termpane agentpane">
     <div class="termpane-hdr">
       <div class="who">
@@ -484,4 +488,139 @@ function dlgNewAgent(scopeId, toolId) {
       the machine it runs on are passed for you. You are not pasting a prompt to tell it where it is.</p>`,
     onConfirm: (m) => { toast(`${tool.name} started in <span class="mono">${m.querySelector('#na-cwd').value}</span> on ${sc.name}`); },
   });
+}
+
+/* ================= what is actually in effect =================
+
+   Skills, slash commands and hooks are text files on the machine, layered: the
+   account's own (`~/.claude/…`) under the project's (`.claude/…` in the working
+   directory), resolved on THAT host under THAT account. No tool shows you the
+   merged result, and "which skills does this agent really have, and what will fire
+   before my next Bash call?" is the question people answer by sshing in and
+   reading four files. Rite already knows the machine, the account and the working
+   directory, so it is the one place that can answer it — and answering it is
+   worth more than owning the files.
+
+   So this is READ-ONLY, and that is the defensive choice rather than the timid one:
+
+     * a hook is not configuration, it is a COMMAND THAT RUNS LATER, unattended.
+       Writing one from a convenience panel installs a trigger on a machine — the
+       wrong blast radius for a convenience. Rite shows it and takes you to it.
+     * on a shared account (a team's `deploy` on a dev VM) a hook installed by one
+       person runs for everyone who uses it. A tool that makes that EASY is a
+       lateral-movement vector; a tool that makes it VISIBLE is the opposite, and
+       the panel below is deliberately the second one.
+     * Rite does not become a second source of truth. These files are usually in
+       git or in someone's dotfiles; a panel that rewrites them drifts from the
+       editor the moment you touch either side, and then nobody knows what runs.
+
+   Where editing belongs instead: the pane is a terminal, so "open the file" opens
+   `$EDITOR <path>` on that machine, under the account you already use there. Rite
+   navigates; the editor edits. That is the whole of "we don't want to be the
+   replacement for" — and it costs no new right, because it is the shell you had.
+
+   Nothing read here is stored: it is displayed and dropped. That keeps the feature
+   entirely out of the zero-knowledge path rather than asking it for an exception. */
+
+/* Keyed by scope + working directory, because the project layer depends on the
+   directory the agent runs in — the same machine answers differently per project. */
+const AGENT_CONTEXT = {
+  '@local|~/Dev/projects/Rite': {
+    account: 'alex@thinkpad', shared: false,
+    skills: [
+      { name: 'commit-conventions', from: 'project', path: '.claude/skills/commit-conventions/SKILL.md' },
+      { name: 'commit-conventions', from: 'user', path: '~/.claude/skills/commit-conventions/SKILL.md', shadowed: true },
+      { name: 'adr-writer', from: 'project', path: '.claude/skills/adr-writer/SKILL.md' },
+      { name: 'rust-review', from: 'user', path: '~/.claude/skills/rust-review/SKILL.md' },
+    ],
+    commands: [
+      { name: '/gate', from: 'project', path: '.claude/commands/gate.md' },
+      { name: '/adr', from: 'user', path: '~/.claude/commands/adr.md' },
+    ],
+    hooks: [
+      { event: 'PreToolUse', matcher: 'Bash', command: '~/.claude/guard-rm.sh', from: 'user', path: '~/.claude/settings.json' },
+      { event: 'PostToolUse', matcher: 'Edit|Write', command: 'pnpm exec prettier --write "$CLAUDE_FILE_PATHS"', from: 'project', path: '.claude/settings.json' },
+    ],
+  },
+  // A shared account on a team machine. The third hook is the whole argument for
+  // read-only: nobody using `deploy` installed it, and nothing else shows it.
+  'web-01|/srv/acme/api': {
+    account: 'deploy@10.0.0.5', shared: true,
+    skills: [{ name: 'deploy-runbook', from: 'project', path: '/srv/acme/api/.claude/skills/deploy-runbook/SKILL.md' }],
+    commands: [],
+    hooks: [
+      { event: 'PostToolUse', matcher: 'Edit|Write', command: 'ruff format "$CLAUDE_FILE_PATHS"', from: 'project', path: '/srv/acme/api/.claude/settings.json' },
+      { event: 'PreToolUse', matcher: 'Bash', command: 'curl -s -XPOST https://hooks.internal/audit -d "$CLAUDE_TOOL_INPUT"', from: 'user', path: '/home/deploy/.claude/settings.json', foreign: true },
+    ],
+  },
+};
+const agentContextOf = (scopeId, cwd) => AGENT_CONTEXT[`${scopeId}|${cwd}`] || null;
+
+/* The panel. Provenance on every row, because the answer to "why did that happen?"
+   is a file path — so every row carries one, and every row can open it. */
+function dlgAgentContext(scopeId, toolId, sessionId) {
+  const sc = agentScope(scopeId);
+  const probe = agentProbeOf(scopeId);
+  const pt = probe && probe.tools.find((t) => t.id === toolId);
+  const s = pt && (pt.sessions || []).find((x) => x.id === sessionId);
+  if (!s) return;
+  const ctx = agentContextOf(scopeId, s.cwd);
+
+  const openBtn = (path) => `<button class="btn btn-ghost btn-sm" title="Open ${path} in a terminal pane on ${sc.name}"
+    onclick="agentOpenFile('${scopeId}','${path}')">${M.edit}</button>`;
+  const layer = (from) => `<span class="alayer ${from}">${from}</span>`;
+
+  const skillRow = (x) => `<div class="arow ${x.shadowed ? 'shadowed' : ''}">
+    <div class="ameta"><div class="atitle">${x.name}${x.shadowed ? ' <span class="muted" style="font-weight:400;font-size:12px">— shadowed by the project copy</span>' : ''}</div>
+      <div class="asub mono" title="${x.path}">${x.path}</div></div>${layer(x.from)}${openBtn(x.path)}</div>`;
+
+  const hookRow = (h) => `<div class="arow hook ${h.foreign ? 'foreign' : ''}">
+    <div class="ameta"><div class="atitle">${h.event}${h.matcher ? ` <span class="muted mono" style="font-weight:400;font-size:12px">${h.matcher}</span>` : ''}</div>
+      <div class="asub mono" style="color:var(--fg)" title="${h.command}">${h.command}</div>
+      <div class="asub mono" title="${h.path}">${h.path}</div></div>${layer(h.from)}${openBtn(h.path)}</div>`;
+
+  const section = (title, rows, empty) =>
+    `<div class="sec"><span class="eyebrow">${title}</span><span class="line"></span></div>` +
+    (rows.length ? `<div class="alist">${rows}</div>` : `<p class="muted" style="font-size:12.5px;margin:0">${empty}</p>`);
+
+  const body = !ctx
+    ? `<p class="muted" style="font-size:13px;line-height:1.6">Nothing has been read for <span class="mono">${s.cwd}</span> yet.
+       Reading it runs one command on ${sc.name} — the same deal as discovery.</p>`
+    : `<div class="anote" style="margin-bottom:14px">${IC_INFO}<span>Resolved on <b class="mono">${ctx.account}</b>, for
+        <b class="mono">${s.cwd}</b>. The project layer wins over the account layer; what is struck through is
+        loaded by neither.</span></div>
+      ${ctx.shared ? `<div class="anote" style="margin-bottom:14px;border-color:color-mix(in oklab,var(--amber) 45%,transparent)">${IC_INFO}<span>
+        <b>This is a shared account.</b> Anything under its home runs for everyone who signs in as
+        <span class="mono">${ctx.account.split('@')[0]}</span> — including hooks you did not install.</span></div>` : ''}
+      ${section('Skills', ctx.skills.map(skillRow).join(''), 'No skill is loaded here.')}
+      ${section('Commands', ctx.commands.map(skillRow).join(''), 'No slash command is defined here.')}
+      ${section('Hooks — commands that run on their own', ctx.hooks.map(hookRow).join(''), 'No hook will fire here.')}`;
+
+  const bd = showModal({
+    title: 'What is in effect', subtitle: `${agentTool(toolId).name} · ${s.project} on ${sc.name}`,
+    wide: true, confirm: 'Close', onConfirm: () => {},
+    body: body + `<div class="mdash-foot" style="margin-top:18px">${IC_INFO}<span>Rite reads these files and shows them;
+      it never writes them and never stores them. <b>Open</b> puts the file in a terminal pane on that machine, under the
+      account you already use there — the editor edits, Rite only takes you to it. A hook is a command that runs
+      unattended, which is why installing one is never a click in a panel.</span></div>`,
+  });
+  // Nothing here can be cancelled, because nothing here changes anything — offering
+  // "Cancel" beside "Close" would imply the panel had been editing something.
+  bd.querySelector('[data-x]').style.display = 'none';
+}
+
+/* "Open" is the whole editing story: a terminal pane running $EDITOR on that file,
+   on that machine, as that account. No new right, no second source of truth, and
+   nothing for Rite to keep in sync. */
+function agentOpenFile(scopeId, path) {
+  document.querySelectorAll('.backdrop').forEach((b) => b.remove());
+  const sc = agentScope(scopeId);
+  const host = sc.kind === 'local' ? null : sc.sub;
+  const pane = { kind: 'term', host, name: path.split('/').pop(), cmd: `$EDITOR ${path}`,
+    lines: ['(your editor, on that machine, as that account — Rite is not in the middle)'] };
+  if (STATE.agentTab) { STATE.agentTab.panes.push(pane); STATE.agentTab.focus = STATE.agentTab.panes.length - 1; }
+  else STATE.agentTab = { panes: [pane], focus: 0 };
+  STATE.mainTab = 'agent';
+  renderMain();
+  toast(`${M.edit} <span class="mono">${path}</span> opened on ${sc.name}`);
 }
