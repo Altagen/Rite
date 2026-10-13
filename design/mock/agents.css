@@ -1,0 +1,34 @@
+/* Rite mock — agent manager styles (shared by both shells, like machine.css).
+   Loaded after machine.css: the manager reuses the dashboard's card, note and
+   footer idioms on purpose, because it is the same kind of surface — a view you
+   browse, not a pane you work in. */
+
+  /* A tool block is a list, so it always spans the grid rather than sitting in a
+     320px column beside another list. */
+  .atool{grid-column:1/-1}
+  .atool.off{opacity:.62}
+  .atool .dcard-h .icon{color:var(--purple)}
+  .alist{display:flex;flex-direction:column;gap:6px}
+
+  /* One conversation. Read left to right: is it working, what is it doing, where,
+     when was it last alive, and how do I get back into it. */
+  .arow{display:flex;align-items:center;gap:11px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--card2)}
+  .arow:hover{border-color:var(--accent)}
+  .ameta{flex:1;min-width:0}
+  .atitle{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .asub{display:block;font-size:11.5px;color:var(--fg-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+  .aage{font-size:12px;color:var(--muted);white-space:nowrap;flex:none}
+
+  /* An adapter that cannot answer says so here, in the tool's own block — never by
+     leaving the list empty, which reads as "you have no agents". */
+  .anote{display:flex;gap:9px;align-items:flex-start;border:1px dashed var(--border2);border-radius:9px;padding:10px 12px;color:var(--muted);font-size:12.5px;line-height:1.55}
+  .anote .icon{width:15px;height:15px;flex:none;margin-top:2px;color:var(--fg-dim)}
+  .anote .mono{color:var(--fg-dim)}
+
+  /* Never probed is a state, not an empty list. */
+  .aempty{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;border:1px dashed var(--border2);border-radius:12px;padding:30px 22px}
+
+  @media (max-width:760px){
+    .arow{flex-wrap:wrap;row-gap:8px}
+    .ameta{min-width:150px}
+  }

@@ -5,6 +5,7 @@
 <title>Rite · desktop mock</title>
 <link rel="stylesheet" href="rite.css">
 <link rel="stylesheet" href="machine.css">
+<link rel="stylesheet" href="agents.css">
 <style>
   #ctxmenu{position:absolute;left:0;top:calc(100% + 8px);width:320px;background:var(--card);border:1px solid var(--border2);border-radius:14px;box-shadow:var(--shadow);padding:8px;display:none;z-index:40}#ctxmenu.show{display:block}
   .side-hdr{display:flex;align-items:center;gap:4px;padding:4px 8px 6px 14px}
@@ -157,9 +158,13 @@
 <script src="rite.js"></script>
 <script src="full-data.js"></script>
 <script src="machine.js"></script>
+<script src="agents.js"></script>
 <script>
 /* ---- icons specific to this mock ---- */
 const M={
+  // Agent = an AI coding session: a head with an antenna, never a machine's stacked
+  // units — an agent belongs to no host, which is exactly why it gets a pane.
+  agent:'<svg class="icon" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2.5"/><path d="M12 8V5M9 13h.01M15 13h.01M9.5 16.5h5"/><circle cx="12" cy="3.6" r="1.4"/></svg>',
   // Folder = your personal organiser (a plain folder).
   folder:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>',
   // Collection = a shareable group of machines (stacked layers = "a set").
@@ -305,10 +310,12 @@ function jumpChain(cn){const out=[];const seen=new Set();let j=cn&&cn.jump;while
    attached client: it probes from its own network position, so `clients` governs it —
    and in a local vault nothing governs it but the user. */
 const DASH_SHELL='clients';
+// The desktop can run an agent on this machine itself (client-execute); a browser cannot.
+const AGENT_SHELL='desktop';
 // A server governs the probing cards only when we are actually in a server context. A local
 // vault — or the base workspace — has no authority to consult: it is the user's own network.
 function probeGoverned(){return STATE.ctx.type==='server';}
-let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
+let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentPane:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
 const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
 // Quick SSH in a SERVER context follows the server policy (off by default — server
 // connections belong in collections). A local vault is self-governed → always available.
@@ -550,8 +557,11 @@ function renderMain(){
   mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Local Terminal (${STATE.defaultShell})</span>${tabActs}</div>
     ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
     ${mach?`<div class="mtab ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
+    ${agentTabsHTML()}
     <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
   const b=document.getElementById('mbody');
+  if(STATE.mainTab==='agents'){ b.innerHTML=agentsViewHTML(); return; }
+  if(STATE.mainTab==='agent'&&STATE.agentPane){ b.innerHTML=`<div class="pane-wrap focused">${agentPaneHTML(STATE.agentPane)}</div>`; return; }
   if(STATE.mainTab==='machine'&&mach){ b.innerHTML=machineDashboard(mach); return; }
   if(STATE.ctx.type==='home'||STATE.mainTab==='term'||!coll){ b.innerHTML=paneGrid(); return; }
   b.innerHTML=cardsView(coll);
@@ -1006,6 +1016,7 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
   <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
   <button class="btn btn-ghost btn-sm" title="Focus mode (F11) — hide the toolbar, terminals fill the screen" onclick="toggleFocus()"><svg class="icon" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
   ${STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK?'':`<button class="btn btn-sm" onclick="dlgQuickSSH()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`}
+  <button class="btn btn-ghost btn-sm" title="Agents — the AI sessions running on your machines" onclick="openAgents()">${M.agent} <span class="lbl">Agents</span></button>
   ${STATE.ctx.type==='vault'&&!STATE.ctx.locked?`<button class="btn btn-ghost btn-sm" title="Lock vault" onclick="lockVault('${STATE.ctx.id}')">${ICON.lock}</button>`:''}
   ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Discover collections offered to your teams" onclick="openDiscover()">${M.compass} <span class="lbl">Discover</span></button>
   <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
