@@ -128,6 +128,32 @@ never typed and always reachable**: when an adapter breaks — and it will, `--r
 and a vendor's home-directory layout are not a stable API — `claude --resume <id>` in
 a terminal pane must still work. Rite is never the only way back to your own session.
 
+### Splits: a plain divider by default, configurable beyond that
+
+Splitting is a **terminal** feature, not an agent one, so it lives in `rite.js` and
+both shells get it. **The split button splits — plainly, with no menu in the way**,
+because that is what most people want from a divider and they should not pay for the
+minority who want `top` on the right. Everything else sits behind a narrow chevron
+beside it:
+
+- **presets** — a name and a command, both the user's. Nothing is built in but the
+  plain one;
+- **snippets** — the existing library, because "run my saved command in the new pane"
+  is the same intent as "open a preset";
+- **layouts** — several panes at once, the *five terminals arranged like this* case.
+  A layout holds its panes by value, so editing a preset never silently rewrites a
+  layout someone relies on.
+
+All of it is edited in one dialog (**Settings → Splits**, or *Configure splits…* at
+the foot of the menu) rather than in two half-places.
+
+This is also where the mock converges on the app's architecture: `rite.js` carries a
+tiny **pane-kind registry** (`registerPaneKind`), and `paneTabHTML` renders a tab
+without ever branching on what a pane displays. A terminal tab and an agent tab are
+the same structure, so a split, a preset or a layout is **one** feature rather than
+two implementations of it — exactly what `apps/desktop/src/panes/registry.ts` buys in
+the real client.
+
 ### Skills, commands and hooks — read-only, on purpose
 
 The product is the answer to **"what is actually in effect?"**, which no tool gives
@@ -184,9 +210,11 @@ its agents the way you come at its containers.
   containers, services) and the collection **Board**, shared by both entry pages (ADR 0019).
   Each page supplies `DASH_SHELL` (`'webui'` / `'clients'`) and `probeGoverned()`; the shared
   `probeVerdict()` holds the precedence table so it cannot be re-derived differently twice.
-- `rite.js` carries `paneActs()` — the split/detach/snippets/search/close chrome that
-  belongs to a **pane**, not to what is inside it. A terminal and an agent session both
-  draw from it, so neither can drift into a near-copy of the other.
+- `rite.js` carries the **pane-kind registry** (`registerPaneKind` / `paneTabHTML`),
+  the **split presets and layouts** with their preferences dialog, and `paneActs()` —
+  the split/detach/snippets/search/close chrome that belongs to a **pane**, not to what
+  is inside it. A terminal and an agent session both draw from it, so neither can drift
+  into a near-copy of the other.
 - `agents.js` / `agents.css` — the **agent manager** (the view) and the **agent pane**,
   shared by both entry pages. Each page supplies `AGENT_SHELL` (`'desktop'` / `'web'`),
   which decides only one thing: whether your own machine can answer, or needs an attached

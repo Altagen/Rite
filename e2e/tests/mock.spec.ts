@@ -142,9 +142,16 @@ test('desktop mock: an agent pane splits with plain terminals, with the same chr
   await expect(page.locator('.pane-wrap')).toHaveCount(1);
   await expect(page.locator('.pdiv')).toHaveCount(0);
 
-  // Splitting from the agent's own header offers ordinary terminals on that machine.
+  // The split button splits — plainly, with no menu in the way. That is what most
+  // people want from a divider, so it is what the button does.
   await page.locator('.agentpane button[title^="Split horizontal"]').click();
-  await page.locator('.menu .row', { hasText: 'watch docker ps' }).click();
+  await expect(page.locator('.menu')).toHaveCount(0);
+  expect(await page.evaluate(() => STATE.agentTab.panes[1].cmd)).toBeUndefined();
+  await page.evaluate(() => closePaneAt(1));
+
+  // Everything else is behind the chevron beside it, and it is all configurable.
+  await page.locator('.agentpane .split-more').click();
+  await page.locator('.menu .row', { hasText: 'Containers' }).click();
 
   // Two panes in ONE tab, separated by the divider a terminal split already uses.
   await expect(page.locator('.pane-wrap')).toHaveCount(2);
@@ -330,10 +337,9 @@ test('desktop mock: every agent control can be used without the page throwing', 
 
   // Splitting from the agent, focusing a pane, closing one, then the tab.
   await page.locator('.agentpane button[title^="Split vertical"]').click();
-  await page.locator('.menu .row', { hasText: /Terminal on/ }).click();
   await expect(page.locator('.pane-wrap')).toHaveCount(2);
-  await page.evaluate(() => agentFocusPane(1));
-  await page.evaluate(() => closeAgentTabPane(1));
+  await page.evaluate(() => focusPaneAt(1));
+  await page.evaluate(() => closePaneAt(1));
   await expect(page.locator('.pane-wrap')).toHaveCount(1);
   await page.evaluate(() => closeAgentPane());
   await expect(page.locator('.mtab', { hasText: 'rite' })).toHaveCount(0);
@@ -344,6 +350,59 @@ test('desktop mock: every agent control can be used without the page throwing', 
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
+
+/**
+ * Splits are a TERMINAL feature, configurable, and the plain one is the default.
+ *
+ * Most people want a plain divider; a minority want `top` on the right; some want
+ * five panes arranged a particular way. The first must not pay for the other two,
+ * and none of the three should be something only the author can change.
+ */
+for (const shell of ['web', 'desktop'] as const) {
+  test(`${shell} mock: a divider opens a plain terminal, and what else it opens is configurable`, async ({ page }) => {
+    const errs = watchErrors(page);
+    await page.goto(mock(shell));
+
+    // The plain terminal tab is a pane list like any other — same renderer, so a
+    // split is one feature in both shells rather than an agent-only trick.
+    const before = await page.locator('.pane-wrap').count();
+    await page.locator('.termpane button[title^="Split horizontal"]').first().click();
+    await expect(page.locator('.pane-wrap')).toHaveCount(before + 1);
+    await expect(page.locator('.menu')).toHaveCount(0);
+
+    // A preset is a name and a command, and both are the user's.
+    await page.locator('.termpane .split-more').first().click();
+    await expect(page.locator('.menu .row').first()).toContainText('Terminal');
+    await page.locator('.menu .row', { hasText: 'Containers' }).click();
+    await expect(page.locator('.termpane-hdr .name', { hasText: 'Containers' })).toHaveCount(1);
+
+    // A layout opens several at once — the "five terminals arranged like this" case.
+    const n = await page.locator('.pane-wrap').count();
+    await page.locator('.termpane .split-more').first().click();
+    await page.locator('.menu .row', { hasText: 'Deploy watch' }).click();
+    await expect(page.locator('.pane-wrap')).toHaveCount(n + 3);
+
+    // Snippets are reachable from the same place, because "run my saved command in
+    // the new pane" is the same intent as "open a preset".
+    await page.locator('.termpane .split-more').first().click();
+    await page.locator('.menu .row', { hasText: 'Snippets' }).click();
+    await expect(page.locator('.backdrop')).toContainText('Snippets');
+    await page.locator('.backdrop [data-ok]').click();
+
+    // And all of it is editable, from the same dialog Settings points at.
+    await page.evaluate(() => dlgSplitPrefs());
+    await expect(page.locator('#sp-name')).toBeVisible();
+    await page.locator('#sp-name').fill('Journal');
+    await page.locator('#sp-cmd').fill('journalctl -f');
+    await page.locator('.backdrop [data-sp-add]').click();
+    await expect(page.locator('.backdrop .snip-name', { hasText: 'Journal' })).toHaveCount(1);
+    await page.locator('.backdrop [data-ok]').click();
+    await page.locator('.termpane .split-more').first().click();
+    await expect(page.locator('.menu .row', { hasText: 'Journal' })).toHaveCount(1);
+
+    expect(errs, 'the mock must not log errors').toEqual([]);
+  });
+}
 
 /**
  * ADR 0019 §5, walked. Each row is the whole statement: who is asked, what each one

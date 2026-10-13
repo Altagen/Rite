@@ -224,7 +224,7 @@ const AGENT_SHELL='web';
 function isLocal(){return false;}
 // …and the server always governs here: it is the one running the commands.
 function probeGoverned(){return true;}
-let STATE={sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30}};
+let STATE={sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30}};
 // The web UI opens terminals ON THE SERVER, so the shell is the server's default (set by the
 // admin in Instance settings), not a per-user pick. Choosing between local shells (fish/zsh/…)
 // is a DESKTOP feature (local terminals). Comes from the server mode in the real app.
@@ -335,6 +335,12 @@ function moveConnByName(name,targetId){
   toast(`Moved “${cn.name}” → ${target.name}`);renderMain();
 }
 
+/* The terminal tab holds a pane list rendered by the shared `paneTabHTML`, exactly
+   as the desktop's does — splits, presets and layouts are one feature in both. */
+function paneGrid(){
+  if(!STATE.termTab) STATE.termTab={ host:null, focus:0, panes:[{kind:'term',host:null}] };
+  return paneTabHTML(STATE.termTab);}
+
 /* ================= main: terminal + collection cards ================= */
 function renderMain(){
   const mt=document.getElementById('mtabs'); const coll=STATE.selColl?find(STATE.selColl):null;
@@ -348,9 +354,9 @@ function renderMain(){
   const b=document.getElementById('mbody');
   // The dashboard is shell-agnostic (ADR 0019) — same cards, same markup as the desktop.
   if(STATE.mainTab==='agents'){ b.innerHTML=agentsViewHTML(); return; }
-  if(STATE.mainTab==='agent'&&STATE.agentTab){ b.innerHTML=agentTabHTML(); return; }
+  if(STATE.mainTab==='agent'&&STATE.agentTab){ b.innerHTML=paneTabHTML(STATE.agentTab); return; }
   if(STATE.mainTab==='machine'&&mach){ b.innerHTML=machineDashboard(mach); return; }
-  if(STATE.mainTab==='term'||!coll){ b.innerHTML=`<div class="pane-wrap focused">${termHTML(null)}</div>`; return; }
+  if(STATE.mainTab==='term'||!coll){ b.innerHTML=paneGrid(); return; }
   b.innerHTML=cardsView(coll);
 }
 function cardsView(coll){

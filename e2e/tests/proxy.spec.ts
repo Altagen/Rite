@@ -363,5 +363,11 @@ test('an attached client obeys clients:false, and it is the client that obeys (A
   await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
   await page.getByText('policy-client-box').first().click();
   await expect(page.getByRole('heading', { name: 'Containers', exact: true })).toBeVisible({ timeout: 30_000 });
-  expect(execs.length, 'and now it does send one').toBeGreaterThan(0);
+  // Polled, not snapshotted: the card renders and *then* probes, so the heading being
+  // visible does not mean the request has left yet. Asserting on the array right here
+  // reads an empty list whenever the machine is a few milliseconds slow — which is
+  // what it did, twice, on an otherwise green gate.
+  await expect
+    .poll(() => execs.length, { message: 'and now it does send one', timeout: 15_000 })
+    .toBeGreaterThan(0);
 });

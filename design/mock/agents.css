@@ -84,3 +84,9 @@
   .arow.hook{border-color:color-mix(in oklab,var(--amber) 30%,var(--border))}
   .arow.hook.foreign{border-color:color-mix(in oklab,var(--amber) 70%,transparent);
     background:color-mix(in oklab,var(--amber) 7%,var(--card2))}
+
+  /* The split button splits plainly; this opens everything else. Narrow on purpose:
+     most people never need it, and it must not look like a seventh action. */
+  .split-more{padding:2px 0 !important;width:14px;margin-left:-4px;opacity:.7}
+  .split-more:hover{opacity:1}
+  .split-more .icon{width:13px;height:13px}
