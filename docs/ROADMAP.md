@@ -271,8 +271,19 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       docker ps` can sit beside the agent causing it. Which CLIs Rite looks for is
       **configurable**: an adapter is two commands (list, resume), and that is the
       whole contract with a vendor.
-- [ ] **ADR** — the session model, the per-tool adapter boundary, and what is
-      explicitly out of scope
+- [x] **ADR 0022** — the session model, the per-tool adapter boundary, what is
+      explicitly out of scope, and the governance question the mock could not answer:
+      discovery and reading what is in effect are governed by a new `agent_policy
+      { webui, clients }` (0019's shape, its own key, no `minInterval` because
+      discovery is explicit rather than periodic), while **running** an agent is
+      deliberately *not* governed — a server cannot stop it, so Rite must not pretend
+      to, and a switch that only hid the button would be relied on.
+- [ ] **PTY + exec in `rite-core`** — there is PTY+shell (interactive) and exec
+      without a PTY (one-shot); an agent wants both. Not the typed-after-a-delay
+      shortcut: a shell discards queued input while it sets the tty up, so an early
+      send is *gone*, which the split-preset work already proved and fixed once.
+- [ ] **`local_terminal.rs`** — argv-direct spawn (it goes through `cmd.arg("-c")`)
+      and `cwd` support, which does not exist. Desktop-local case only.
 - [ ] **Agent pane**, not a menu: an agent has a context of its own — a working
       directory, a transcript, a lifetime — and belongs to no machine (see *Pane
       or menu* above). **Pane kinds** in Phase 1 are done, so this is a registration
