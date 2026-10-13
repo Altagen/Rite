@@ -36,6 +36,13 @@ for (const shell of ['web', 'desktop'] as const) {
     await page.evaluate(() => openMachine('web-01'));
     await expect(page.locator('.dcard .dcard-t')).toHaveText(CARDS);
 
+    // Every card token must resolve. `machine.css` spent its life referencing a
+    // `--line` variable nobody ever defined, so `border: 1px solid var(--line)`
+    // collapsed to `border-style: none` and the cards were drawn edgeless in both
+    // shells — invisible to a spec that only ever read text.
+    const border = await page.locator('.dcard').first().evaluate((el) => getComputedStyle(el).borderTopWidth);
+    expect(border, 'the dashboard cards must actually have a border').not.toBe('0px');
+
     // The Board touches no host, so it is ungoverned and present in both shells.
     await page.evaluate(() => dlgBoard(find('c-prod')));
     await expect(page.locator('.btile, .brow').first()).toBeVisible();
