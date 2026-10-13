@@ -20,16 +20,24 @@ import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
 
-// Read-only keyboard-shortcuts reference (mirrors design/mock/desktop.html). Focus mode is
-// client/native only — filtered out of the table on the web UI where it doesn't apply.
+/**
+ * The two chords that are not in the bindings table, and why.
+ *
+ * There used to be a second, static list here naming all six — written by hand,
+ * which is how it came to advertise `Ctrl+Shift+V` for the vertical split after the
+ * default moved off it, and `Ctrl+W` with no mention of Cmd. A dialog that
+ * contradicts itself about its own keyboard is worse than one that says less, so the
+ * four bindable commands are now read from the engine that runs them, and only these
+ * two are listed by hand — because neither is a binding:
+ *
+ *   * F11 is focus mode, which the native shell owns and the web UI does not have;
+ *   * Escape dismisses. Making it remappable would let someone remove the only way
+ *     out of a find bar that covers the terminal.
+ */
 const KBD = 'rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground';
-const SHORTCUTS: { action: string; keys: string[]; desc: string; nativeOnly?: boolean }[] = [
-  { action: 'Focus mode', keys: ['F11'], desc: 'Hide the toolbar so terminals fill the screen. Esc or F11 to exit; hover the top edge to reveal the toolbar.', nativeOnly: true },
-  { action: 'Close terminal pane', keys: ['Ctrl', 'W'], desc: 'Close the focused split pane.' },
-  { action: 'Split horizontally', keys: ['Ctrl', 'Shift', 'H'], desc: 'Split the pane into top / bottom.' },
-  { action: 'Split vertically', keys: ['Ctrl', 'Shift', 'V'], desc: 'Split the pane into left / right.' },
-  { action: 'Find in terminal', keys: ['Ctrl/⌘', 'F'], desc: 'Search the terminal scrollback.' },
-  { action: 'Close find / dialog', keys: ['Esc'], desc: 'Dismiss the search bar or an open dialog.' },
+const FIXED_CHORDS: { key: string; i18n: string; nativeOnly?: boolean }[] = [
+  { key: 'F11', i18n: 'shortcuts.fixed.focusMode', nativeOnly: true },
+  { key: 'Esc', i18n: 'shortcuts.fixed.dismiss' },
 ];
 
 interface SettingsProps {
@@ -344,26 +352,29 @@ export function Settings({ onClose }: SettingsProps) {
 
           {/* Keyboard — one table owning every binding. */}
           <section className="border-b border-border pb-6">
-            <h3 className="mb-4 text-lg font-semibold">Keyboard</h3>
+            <h3 className="mb-4 text-lg font-semibold">{t('settings.keyboard')}</h3>
             <ShortcutsSettings />
+            <ul className="mt-3 flex flex-col gap-1">
+              {FIXED_CHORDS.filter((c) => native || !c.nativeOnly).map((c) => (
+                <li key={c.key} className="text-xs text-muted-foreground">
+                  <kbd className={KBD}>{c.key}</kbd> <span className="ml-1">{t(c.i18n)}</span>
+                </li>
+              ))}
+            </ul>
           </section>
 
           {/* Splits — what a divider can open, beyond a plain terminal. */}
           <section className="border-b border-border pb-6">
-            <h3 className="mb-4 text-lg font-semibold">Splits</h3>
+            <h3 className="mb-4 text-lg font-semibold">{t('settings.splits')}</h3>
             <div className="flex items-start justify-between gap-4">
-              <p className="text-xs text-muted-foreground">
-                A divider opens a plain terminal — that is the split button, and it stays that way.
-                What else it can open, from the chevron beside it, is yours to set: a named command,
-                or a whole layout at once.
-              </p>
+              <p className="text-xs text-muted-foreground">{t('settings.splitsHint')}</p>
               <button
                 type="button"
                 onClick={() => setSplitsOpen(true)}
                 className="flex-none rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
                 data-testid="open-splits-settings"
               >
-                Configure…
+                {t('settings.configure')}
               </button>
             </div>
           </section>
@@ -689,38 +700,6 @@ export function Settings({ onClose }: SettingsProps) {
             </section>
           )}
 
-          {/* Keyboard shortcuts (read-only reference) */}
-          <section className="border-b border-border pb-6">
-            <h3 className="mb-1 text-lg font-semibold">Keyboard shortcuts</h3>
-            <p className="mb-3 text-sm text-muted-foreground">Reference — not editable.</p>
-            <div className="overflow-hidden rounded-lg border border-border">
-              <table className="w-full text-sm">
-                <thead className="bg-secondary/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 font-semibold">Action</th>
-                    <th className="px-3 py-2 font-semibold">Keys</th>
-                    <th className="px-3 py-2 font-semibold">Description</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {SHORTCUTS.filter((s) => native || !s.nativeOnly).map((s) => (
-                    <tr key={s.action} className="border-t border-border align-top">
-                      <td className="whitespace-nowrap px-3 py-2">{s.action}</td>
-                      <td className="whitespace-nowrap px-3 py-2">
-                        {s.keys.map((k, i) => (
-                          <span key={k}>
-                            {i > 0 && ' '}
-                            <kbd className={KBD}>{k}</kbd>
-                          </span>
-                        ))}
-                      </td>
-                      <td className="px-3 py-2 text-muted-foreground">{s.desc}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
         </div>
 
         {/* Actions */}

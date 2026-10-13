@@ -15,7 +15,7 @@
  * there is no backend and the library lives per-device in localStorage.
  */
 import { create } from 'zustand';
-import { parseStored, parseLayoutPanes, type LayoutPane } from './splitsFormat';
+import { parseStored, parseLayoutPanes, isPreset, isLayout, type LayoutPane } from './splitsFormat';
 
 export { parseLayoutPanes };
 export type { LayoutPane };
@@ -41,16 +41,27 @@ const LAYOUTS_KEY = 'rite-split-layouts';
 /** The plain split, always present and never removable: it is what the button does. */
 export const PLAIN_PRESET: SplitPreset = { id: 'plain', name: 'Terminal', command: '' };
 
+/**
+ * What ships, for a first run that has nothing configured.
+ *
+ * Both of these run on a machine with nothing installed on it, which is the whole
+ * requirement: a preset that ships broken makes the user understand the feature
+ * before they can work out why it did nothing. `watch -n2 docker ps` was here and
+ * is gone, because it only works for people who have Docker; anyone who has it can
+ * add it in two fields, and anyone who does not would have had a preset that fails.
+ * The machine dashboard is the opposite case and is fine: it *detects* a runtime
+ * and says so when there is none.
+ */
 const DEFAULT_PRESETS: SplitPreset[] = [
-  { id: 'sp-containers', name: 'Containers', command: 'watch -n2 docker ps' },
   { id: 'sp-load', name: 'Load', command: 'top' },
+  { id: 'sp-disk', name: 'Disk', command: 'df -h' },
 ];
 
 const DEFAULT_LAYOUTS: SplitLayout[] = [];
 
-const read = <T>(key: string, fallback: T[]): T[] => {
+const read = <T>(key: string, fallback: T[], keep: (entry: unknown) => boolean): T[] => {
   try {
-    return parseStored(localStorage.getItem(key), fallback);
+    return parseStored(localStorage.getItem(key), fallback, keep);
   } catch {
     return fallback;
   }
@@ -76,8 +87,8 @@ interface SplitsState {
 }
 
 export const useSplits = create<SplitsState>((set) => ({
-  presets: read(PRESETS_KEY, DEFAULT_PRESETS),
-  layouts: read(LAYOUTS_KEY, DEFAULT_LAYOUTS),
+  presets: read(PRESETS_KEY, DEFAULT_PRESETS, isPreset),
+  layouts: read(LAYOUTS_KEY, DEFAULT_LAYOUTS, isLayout),
   addPreset: (name, command) =>
     set((s) => {
       const next = [...s.presets, { id: newId('sp'), name, command }];

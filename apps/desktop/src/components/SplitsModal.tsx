@@ -113,7 +113,7 @@ export function SplitsModal({ onClose }: Props) {
               <input
                 value={presetName}
                 onChange={(e) => setPresetName(e.target.value)}
-                placeholder="Containers"
+                placeholder="Disk"
                 className={inputClass}
                 data-testid="preset-name"
               />,
@@ -124,7 +124,7 @@ export function SplitsModal({ onClose }: Props) {
               <input
                 value={presetCommand}
                 onChange={(e) => setPresetCommand(e.target.value)}
-                placeholder="watch -n2 docker ps"
+                placeholder="df -h"
                 className={`${inputClass} font-mono`}
                 data-testid="preset-command"
               />,
@@ -195,7 +195,7 @@ export function SplitsModal({ onClose }: Props) {
                 onChange={(e) => setLayoutPanes(e.target.value)}
                 rows={4}
                 spellCheck={false}
-                placeholder={'shell =\nlogs = journalctl -fu app\ncontainers = watch -n2 docker ps'}
+                placeholder={'shell =\nload = top\ndisk = df -h'}
                 className={`${inputClass} resize-y font-mono leading-relaxed`}
                 data-testid="layout-panes"
               />,
