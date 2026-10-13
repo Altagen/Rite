@@ -7,18 +7,28 @@
  * different feature), the user's presets, their snippets, and their layouts.
  *
  * Opening a layout splits once per pane, in order and one after another, because
- * each split has to see the tree the previous one left behind.
+ * each split has to see the tree the previous one left behind — and the direction
+ * alternates as it goes. Five panes all split the same way is six columns, which is
+ * nobody's "five terminals arranged like this"; alternating makes a grid out of the
+ * same number of splits.
  */
 
 import { useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { useSnippets } from '../store/snippets';
 import { useSplits, PLAIN_PRESET } from '../store/splits';
+import { layoutDirections } from '../store/splitsFormat';
 
 interface Props {
   /** Split and run something in the new pane. */
   onSplitWith: (direction: 'horizontal' | 'vertical', preset: { name: string; command: string }) => Promise<void>;
-  /** Where the new panes go — the same direction the plain button would have used. */
+  /**
+   * Where a single new pane goes.
+   *
+   * One chevron serves both split buttons, so it has to pick one: it is the
+   * horizontal button's direction, the same one the pane's first split button uses.
+   * A layout ignores it after its first pane and alternates — see above.
+   */
   direction: 'horizontal' | 'vertical';
   onConfigure: () => void;
   onClose: () => void;
@@ -53,7 +63,8 @@ export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Prop
   const openLayout = (panes: { name: string; command: string }[]) => {
     onClose();
     void (async () => {
-      for (const pane of panes) await onSplitWith(direction, pane);
+      const dirs = layoutDirections(panes.length, direction);
+      for (const [i, pane] of panes.entries()) await onSplitWith(dirs[i], pane);
     })();
   };
 

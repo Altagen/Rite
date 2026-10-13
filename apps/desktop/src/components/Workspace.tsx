@@ -11,6 +11,7 @@ import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { disposeAllPanes, paneKind } from '../panes/registry';
+import { layoutDirections, type LayoutPane } from '../store/splitsFormat';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useFocusMode } from '../store/focusMode';
@@ -70,6 +71,7 @@ import {
   setFocusedPane,
   updateSplitRatio,
   getFocusedPane,
+  getFirstLeafPane,
   getAllPanes,
   getSessionsInPane,
   extractPane,
@@ -804,6 +806,26 @@ export function Workspace({
     }
   };
 
+  /**
+   * Open a saved layout in the active tab, from the Layouts button in the tab strip.
+   *
+   * The pane to divide is resolved **once**, before the first split: a split moves
+   * focus to the pane it just created, so re-reading the focused pane each time would
+   * walk down the new panes and build a staircase instead of the saved arrangement.
+   * Splitting the same leaf repeatedly works because that leaf keeps its id — it is
+   * the node the tree re-parents, not the node it replaces.
+   */
+  const handleApplyLayout = async (panes: LayoutPane[]) => {
+    const tab = tabGroups.find((t) => t.id === activeTabId);
+    if (!tab) return;
+    const target = getFocusedPane(tab.paneTree) ?? getFirstLeafPane(tab.paneTree);
+    if (!target) return;
+    const dirs = layoutDirections(panes.length, 'horizontal');
+    for (const [i, pane] of panes.entries()) {
+      await handleSplitPane(target.id, dirs[i], pane);
+    }
+  };
+
   // Handle close pane
   const handleClosePane = (paneId: string) => {
     console.log('[MainScreen] Closing pane:', paneId);
@@ -1318,14 +1340,29 @@ export function Workspace({
         {headerExtra}
 
         {isLocked ? (
-          <button
-            onClick={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
-            className="m-btn m-btn-primary m-btn-sm"
-            title={isFirstRun ? 'Create your local vault' : 'Unlock vault'}
-          >
-            <IconLock className="h-4 w-4" />
-            <span className="hidden md:inline">{isFirstRun ? 'Create vault' : 'Unlock'}</span>
-          </button>
+          /* Locked, or no vault yet. Base-first (ADR 0014): this workspace already
+             runs local terminals and Quick SSH with no vault, so its preferences have
+             to be reachable here too — the theme, the keyboard, the splits and the
+             language are per-device and have nothing to do with a vault. Settings used
+             to vanish entirely in this state, which made every one of them hostage to
+             unlocking something they do not depend on. */
+          <>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="m-btn m-btn-ghost m-btn-sm"
+              title={t('settings.title')}
+            >
+              <IconGear className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
+              className="m-btn m-btn-primary m-btn-sm"
+              title={isFirstRun ? 'Create your local vault' : 'Unlock vault'}
+            >
+              <IconLock className="h-4 w-4" />
+              <span className="hidden md:inline">{isFirstRun ? 'Create vault' : 'Unlock'}</span>
+            </button>
+          </>
         ) : identity ? (
           // Accounts context: the pastille owns Settings + Sign out.
           <ProfilePastille
@@ -1646,6 +1683,7 @@ export function Workspace({
             onFocusPane={handleFocusPane}
             onSplitRatioChange={handleSplitRatioChange}
             onSwitchTab={handleSwitchTab}
+            onApplyLayout={handleApplyLayout}
             onReorderTabs={handleReorderTabs}
             onDetachPane={handleDetachPane}
             onRenameTab={handleRenameTab}

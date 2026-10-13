@@ -8,7 +8,7 @@
  * two commands do not fight over one handler.
  */
 import { useEffect } from 'react';
-import { matchesBinding } from './binding';
+import { matchesBinding, displayBinding } from './binding';
 import { useShortcuts, IS_MAC } from './store';
 
 export function useShortcut(commandId: string, handler: (event: KeyboardEvent) => void, enabled = true) {
@@ -32,4 +32,18 @@ export function useShortcut(commandId: string, handler: (event: KeyboardEvent) =
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
   }, [binding, enabled, handler]);
+}
+
+/**
+ * How this command's chord reads on this platform — for a tooltip or a menu label.
+ *
+ * Here because a tooltip that spells a chord by hand is a second opinion about the
+ * keyboard, and the app had three of them: `Split vertical (Ctrl+Shift+V)` survived
+ * the default moving off that chord, so the button told the user a key that no
+ * longer did anything. Reading it from the same store that dispatches the command
+ * means a remap updates the tooltip, and a changed default cannot leave one behind.
+ */
+export function useBindingText(commandId: string): string {
+  const binding = useShortcuts((s) => s.bindings[commandId]);
+  return binding ? displayBinding(binding, IS_MAC) : '';
 }

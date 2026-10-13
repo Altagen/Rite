@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import {
   displayBinding,
   bindingFromEvent,
@@ -23,6 +24,7 @@ import { SHORTCUT_COMMANDS, isReservedText } from '../shortcuts/commands';
 import { useShortcuts, IS_MAC } from '../shortcuts/store';
 
 export function ShortcutsSettings() {
+  const { t } = useTranslation();
   const { bindings, overrides, rebind, reset, resetAll } = useShortcuts();
   const [recording, setRecording] = useState<string | null>(null);
   const [refused, setRefused] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export function ShortcutsSettings() {
       const text = formatBinding(binding);
       if (isReservedText(text)) {
         // Refused rather than accepted-and-broken: this is the terminal's own chord.
-        setRefused(`${displayBinding(binding, IS_MAC)} belongs to the terminal — it is copy or paste.`);
+        setRefused(t('shortcuts.reserved', { chord: displayBinding(binding, IS_MAC) }));
         return;
       }
 
@@ -59,7 +61,7 @@ export function ShortcutsSettings() {
     };
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
-  }, [recording, rebind]);
+  }, [recording, rebind, t]);
 
   const anyOverride = Object.keys(overrides).length > 0;
 
@@ -67,8 +69,7 @@ export function ShortcutsSettings() {
     <div>
       <div className="mb-3 flex items-start justify-between gap-4">
         <p className="text-xs text-muted-foreground">
-          Click a shortcut, then press the keys you want. {IS_MAC ? 'Cmd' : 'Ctrl'} is the command
-          modifier on this machine, and the same binding follows you to the other.
+          {t('shortcuts.hint', { mod: IS_MAC ? 'Cmd' : 'Ctrl' })}
         </p>
         {anyOverride && (
           <button
@@ -77,7 +78,7 @@ export function ShortcutsSettings() {
             className="flex-none rounded border border-border px-2 py-1 text-xs hover:bg-muted"
             data-testid="shortcuts-reset-all"
           >
-            Reset all
+            {t('shortcuts.resetAll')}
           </button>
         )}
       </div>
@@ -98,17 +99,21 @@ export function ShortcutsSettings() {
               data-testid={`shortcut-row-${command.id}`}
             >
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">{command.label}</div>
-                <div className="truncate text-[11px] text-muted-foreground">{command.description}</div>
+                <div className="truncate text-sm font-medium">
+                  {t(`shortcuts.cmd.${command.id}.label`)}
+                </div>
+                <div className="truncate text-[11px] text-muted-foreground">
+                  {t(`shortcuts.cmd.${command.id}.description`)}
+                </div>
               </div>
 
               {clashes && (
                 <span
                   className="flex-none rounded border border-amber-500/50 px-1.5 text-[10px] font-semibold text-amber-500"
-                  title="Another command uses this chord, so one of the two never fires."
+                  title={t('shortcuts.conflictTitle')}
                   data-testid={`shortcut-conflict-${command.id}`}
                 >
-                  conflict
+                  {t('shortcuts.conflict')}
                 </span>
               )}
 
@@ -125,7 +130,7 @@ export function ShortcutsSettings() {
                 }`}
                 data-testid={`shortcut-binding-${command.id}`}
               >
-                {isRecording ? 'press keys…' : displayBinding(binding, IS_MAC)}
+                {isRecording ? t('shortcuts.recording') : displayBinding(binding, IS_MAC)}
               </button>
 
               {overridden && (
@@ -133,7 +138,9 @@ export function ShortcutsSettings() {
                   type="button"
                   onClick={() => reset(command.id)}
                   className="flex-none rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-                  title={`Back to ${displayBinding(parseBinding(command.defaultBinding)!, IS_MAC)}`}
+                  title={t('shortcuts.backTo', {
+                    chord: displayBinding(parseBinding(command.defaultBinding)!, IS_MAC),
+                  })}
                   data-testid={`shortcut-reset-${command.id}`}
                 >
                   ↺
@@ -146,9 +153,7 @@ export function ShortcutsSettings() {
 
       {refused && <p className="mt-2 text-xs text-amber-500">{refused}</p>}
       {conflicts.length > 0 && (
-        <p className="mt-2 text-xs text-amber-500">
-          Two commands share a chord. Both are saved, but only one of them will fire.
-        </p>
+        <p className="mt-2 text-xs text-amber-500">{t('shortcuts.conflictNote')}</p>
       )}
     </div>
   );

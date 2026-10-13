@@ -8,7 +8,7 @@
  */
 import { create } from 'zustand';
 import { parseBinding, formatBinding, type Binding } from './binding';
-import { SHORTCUT_COMMANDS } from './commands';
+import { SHORTCUT_COMMANDS, isReservedText } from './commands';
 
 /**
  * The defaults as parsed bindings.
@@ -59,15 +59,53 @@ function writeOverrides(overrides: Record<string, string>) {
   }
 }
 
-/** Defaults with overrides applied. An override that no longer parses is dropped,
- *  so the command falls back to its default rather than to nothing. */
+/**
+ * The overrides that survive, as bindings. One gate, three ways to fail it:
+ *
+ *   * a command that no longer exists — a stored id outlives a rename;
+ *   * text that no longer parses;
+ *   * a chord the terminal needs for itself. The settings table already refuses
+ *     those, so an override can only hold one if it predates the refusal — and that
+ *     is exactly what happens the next time the reserved list grows: whoever had
+ *     taken the chord would keep it, and would be the one user who cannot paste and
+ *     cannot explain why. The list belongs where the bindings are decided, not only
+ *     where they are typed.
+ *
+ * Both of the functions below read this one, so there is no second copy of the rule
+ * to fall behind — and no branch that only one of them exercises.
+ */
+function accepted(overrides: Record<string, string>): Map<string, Binding> {
+  const known = defaultBindings();
+  const out = new Map<string, Binding>();
+  for (const [id, text] of Object.entries(overrides)) {
+    if (!(id in known)) continue;
+    const binding = parseBinding(text);
+    if (!binding) continue;
+    if (isReservedText(formatBinding(binding))) continue;
+    out.set(id, binding);
+  }
+  return out;
+}
+
+/**
+ * The overrides worth storing, canonically spelled.
+ *
+ * Dropping the rest changes no binding — `resolveBindings` ignores them either way.
+ * It changes what is *stored*, and therefore what the settings table is allowed to
+ * say: a row shows a reset arrow when an override exists, and an override that is
+ * ignored would put that arrow beside a binding that is the default. Dead data has
+ * to be removed rather than explained.
+ */
+export function pruneOverrides(overrides: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [id, binding] of accepted(overrides)) out[id] = formatBinding(binding);
+  return out;
+}
+
+/** Defaults with the surviving overrides applied. */
 export function resolveBindings(overrides: Record<string, string>): Record<string, Binding> {
   const resolved = defaultBindings();
-  for (const [id, text] of Object.entries(overrides)) {
-    if (!(id in resolved)) continue; // a command that no longer exists
-    const binding = parseBinding(text);
-    if (binding) resolved[id] = binding;
-  }
+  for (const [id, binding] of accepted(overrides)) resolved[id] = binding;
   return resolved;
 }
 
@@ -83,7 +121,11 @@ interface ShortcutsState {
 }
 
 export const useShortcuts = create<ShortcutsState>((set) => {
-  const overrides = readOverrides();
+  const stored = readOverrides();
+  const overrides = pruneOverrides(stored);
+  // Written back only when something was actually dropped, so a normal start does
+  // not touch storage.
+  if (Object.keys(overrides).length !== Object.keys(stored).length) writeOverrides(overrides);
   return {
     overrides,
     bindings: resolveBindings(overrides),

@@ -14,7 +14,8 @@ import { terminalPool } from '../utils/terminalPool';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 import { useAutoReconnect } from '../store/autoReconnect';
-import { useShortcut } from '../shortcuts/useShortcut';
+import { useTranslation } from '../i18n/i18n';
+import { useShortcut, useBindingText } from '../shortcuts/useShortcut';
 import { SnippetsModal } from './SnippetsModal';
 import { SplitMenu } from './SplitMenu';
 import { SplitsModal } from './SplitsModal';
@@ -64,6 +65,7 @@ interface ConnectionDeadEvent {
 }
 
 export function Terminal({ connectionId, connectionName, onClose, sessionId: existingSessionId, isFocused, onSplitHorizontal, onSplitVertical, onSplitWith, initialCommand, onDetach, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: TerminalProps) {
+  const { t } = useTranslation();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -75,6 +77,13 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   const [showSearch, setShowSearch] = useState(false);
   // An initial command runs once per session, never again on a remount.
   const initialCommandSentRef = useRef(false);
+
+  // The chords these buttons advertise, read from the engine that dispatches them —
+  // never spelled here. A hand-written tooltip is how `Split vertical (Ctrl+Shift+V)`
+  // outlived the default that moved off that chord.
+  const splitHChord = useBindingText('pane.splitHorizontal');
+  const splitVChord = useBindingText('pane.splitVertical');
+  const searchChord = useBindingText('pane.search');
 
   // The split menu and the splits library, each open or not. Both are small enough
   // to live beside the snippets panel rather than in a store.
@@ -188,7 +197,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
       fitAddon.fit();
 
-      // NOTE: Keyboard shortcuts (Ctrl+W, Ctrl+Shift+H, Ctrl+Shift+V) are handled
+      // NOTE: Keyboard shortcuts (pane.close, pane.split*, pane.search) are handled
       // at the TerminalManager level using capture phase to intercept before xterm
       // gets them. This is simpler and more reliable than attachCustomKeyEventHandler.
 
@@ -698,7 +707,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             <button
               onClick={onSplitHorizontal}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title="Split horizontal (Ctrl+Shift+H)"
+              title={`Split horizontal (${splitHChord})`}
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4" />
@@ -709,7 +718,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             <button
               onClick={onSplitVertical}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title="Split vertical (Ctrl+Shift+V)"
+              title={`Split vertical (${splitVChord})`}
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ transform: 'rotate(90deg)' }}>
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4" />
@@ -725,7 +734,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
               <button
                 onClick={() => setSplitMenuOpen((v) => !v)}
                 className="rounded px-0.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                title="Split with… — a preset, a snippet or a layout"
+                title={t('split.more')}
                 aria-haspopup="menu"
                 aria-expanded={splitMenuOpen}
                 data-testid="split-more"
@@ -773,7 +782,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           <button
             onClick={() => setShowSearch(!showSearch)}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Search in terminal (Ctrl+F)"
+            title={`Search in terminal (${searchChord})`}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

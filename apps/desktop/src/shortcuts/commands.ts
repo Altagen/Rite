@@ -11,11 +11,15 @@
  */
 
 export interface ShortcutCommand {
+  /**
+   * The command's id, and the stem of its two strings in the locales:
+   * `shortcuts.cmd.<id>.label` and `.description`. `t()` splits on dots, so an id
+   * like `pane.close` nests the way the rest of the file does. The strings are not
+   * here because this module has to import nothing — and because the app has a
+   * French locale, and a settings screen in one language is not a settings screen.
+   * `e2e/i18n-check.mjs` holds every id below to having both, in both locales.
+   */
   id: string;
-  /** What the settings table calls it. */
-  label: string;
-  /** Why it exists, for the row's second line. */
-  description: string;
   /** `Mod` is Cmd on macOS, Ctrl elsewhere — see binding.ts. */
   defaultBinding: string;
 }
@@ -34,34 +38,11 @@ export interface ShortcutCommand {
  *     engine — but it cannot be what we ship.
  */
 export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
-  {
-    id: 'pane.close',
-    label: 'Close pane',
-    description: 'Closes the focused pane, asking first if it holds live sessions.',
-    defaultBinding: 'Mod+W',
-  },
-  {
-    id: 'pane.splitHorizontal',
-    label: 'Split horizontally',
-    description: 'Opens a plain terminal beside the focused pane.',
-    defaultBinding: 'Mod+Shift+H',
-  },
-  {
-    id: 'pane.splitVertical',
-    label: 'Split vertically',
-    description: 'Opens a plain terminal below the focused pane.',
-    defaultBinding: 'Mod+Shift+D',
-  },
-  {
-    id: 'pane.search',
-    label: 'Search in pane',
-    description: 'Opens the find bar over the focused terminal.',
-    defaultBinding: 'Mod+F',
-  },
+  { id: 'pane.close', defaultBinding: 'Mod+W' },
+  { id: 'pane.splitHorizontal', defaultBinding: 'Mod+Shift+H' },
+  { id: 'pane.splitVertical', defaultBinding: 'Mod+Shift+D' },
+  { id: 'pane.search', defaultBinding: 'Mod+F' },
 ];
-
-export const commandById = (id: string): ShortcutCommand | undefined =>
-  SHORTCUT_COMMANDS.find((c) => c.id === id);
 
 /**
  * Chords the app must not take, whatever the user asks.

@@ -9,6 +9,28 @@
  * the shipped module is tested, not a copy of it.
  */
 
+/** Which way each successive split of a layout goes. */
+export type SplitAxis = 'horizontal' | 'vertical';
+
+/**
+ * The direction of each split a layout performs, in order.
+ *
+ * It alternates. Five panes all split the same way is six columns, which is nobody's
+ * "five terminals arranged like this"; alternating makes a grid out of the same
+ * number of splits. Here rather than in either caller because there are two of them —
+ * the split menu's chevron and the Layouts button — and two copies of an alternation
+ * is how they end up disagreeing about what a saved layout looks like.
+ */
+export function layoutDirections(count: number, first: SplitAxis): SplitAxis[] {
+  const out: SplitAxis[] = [];
+  let next = first;
+  for (let i = 0; i < count; i++) {
+    out.push(next);
+    next = next === 'horizontal' ? 'vertical' : 'horizontal';
+  }
+  return out;
+}
+
 /** One pane of a layout: a name to show, and what to run in it. */
 export interface LayoutPane {
   name: string;
@@ -21,15 +43,50 @@ export interface LayoutPane {
  * A corrupt key must not silently empty someone's presets, and an absent key is
  * not the same thing as an empty one: the first means "never configured" and gets
  * the defaults, the second means "configured to nothing" and is honoured.
+ *
+ * `keep` decides what an entry has to look like, and entries that fail it are
+ * dropped rather than failing the whole key — one bad row should cost one row.
+ * Guarding the JSON and not the shape was half a guard: `["nope"]` parses, reaches
+ * the split menu as a preset, and `preset.id` on a string renders nothing while
+ * `preset.name` on `null` takes the window down. What is in this key is per-device
+ * and written by the app, so this is not about an attacker; it is about a key that
+ * survives a refactor, a half-finished hand edit, or a version that spelled a
+ * field differently.
  */
-export function parseStored<T>(raw: string | null, fallback: T[]): T[] {
+export function parseStored<T>(raw: string | null, fallback: T[], keep?: (entry: unknown) => boolean): T[] {
   if (raw === null) return fallback;
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as T[]) : fallback;
+    if (!Array.isArray(parsed)) return fallback;
+    return (keep ? parsed.filter(keep) : parsed) as T[];
   } catch {
     return fallback;
   }
+}
+
+/** A string field that is actually a string, and not the empty one. */
+const named = (v: unknown): v is string => typeof v === 'string' && v.trim() !== '';
+
+/**
+ * Is this a preset? A name, and a command that is a string — the empty command is
+ * the plain shell and is meaningful, so it is allowed; a missing one is not.
+ */
+export function isPreset(entry: unknown): boolean {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const e = entry as Record<string, unknown>;
+  return named(e.id) && named(e.name) && typeof e.command === 'string';
+}
+
+/** Is this a layout? A name, and panes that are each a preset's two fields. */
+export function isLayout(entry: unknown): boolean {
+  if (typeof entry !== 'object' || entry === null) return false;
+  const e = entry as Record<string, unknown>;
+  if (!named(e.id) || !named(e.name) || !Array.isArray(e.panes)) return false;
+  return e.panes.every((pane) => {
+    if (typeof pane !== 'object' || pane === null) return false;
+    const p = pane as Record<string, unknown>;
+    return named(p.name) && typeof p.command === 'string';
+  });
 }
 
 /**
@@ -51,4 +108,17 @@ export function parseLayoutPanes(text: string): LayoutPane[] {
       return { name: line.slice(0, at).trim(), command: line.slice(at + 1).trim() };
     })
     .filter((p) => p.name !== '');
+}
+
+/**
+ * A layout's panes back as text, for the editor to put in the textarea.
+ *
+ * The inverse of `parseLayoutPanes`, and it has to be an exact one: a layout the user
+ * opens, does not touch and saves must come back the same, or editing one pane of five
+ * quietly rewrites the other four. A pane with no command is written with a trailing
+ * `=`, the way the placeholder shows it, rather than as a bare name — both parse to
+ * the same thing, and the explicit form shows the field exists.
+ */
+export function formatLayoutPanes(panes: LayoutPane[]): string {
+  return panes.map((p) => `${p.name} = ${p.command}`.trimEnd()).join('\n');
 }

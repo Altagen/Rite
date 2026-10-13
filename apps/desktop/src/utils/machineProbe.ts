@@ -85,6 +85,37 @@ export function parseServices(stdout: string): ServiceRow[] {
 
 export const isRunning = (c: ContainerRow) => c.state === 'running' || c.state === 'up';
 
+/**
+ * One argument of a command this app builds, safe to put in front of a shell.
+ *
+ * Every name below is **read off a remote host** — a container name from
+ * `docker ps`, a unit name from `systemctl list-units` — and the command built from
+ * it is typed into a live shell on that host. Docker and systemd both restrict the
+ * names they accept, which is why nothing here has ever gone wrong; but that is
+ * their rule, enforced somewhere else, about data that has already left their hands
+ * by the time it reaches this file. This function is this file's own rule.
+ *
+ * It quotes only what needs it, because these strings are also the tooltip on the
+ * button: `docker logs -f --tail 200 web-01` is what the user is about to run and is
+ * worth reading, and quoting every ordinary name to guard against the one that is
+ * not would cost that for nothing. A name outside the conservative set below — or
+ * one that does not start with a letter or a digit, so that it cannot be read as a
+ * flag — is single-quoted instead.
+ *
+ * What it does not solve: a name that *is* a flag is still passed as one, since no
+ * amount of quoting changes argv parsing. Neither docker nor systemd will produce
+ * such a name, and putting `--` in every builder would be guarding the same corner
+ * twice. It is named here so the next person does not have to rediscover the limit.
+ */
+const PLAIN_ARG = /^[A-Za-z0-9][A-Za-z0-9._@:+-]*$/;
+
+export function shellArg(value: string): string {
+  if (PLAIN_ARG.test(value)) return value;
+  // POSIX single quotes: everything is literal inside them, and a literal quote is
+  // written by leaving, escaping it, and coming back.
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 // --- lazy enrichments (fetched only when a card is expanded) -----------------
 
 /** Live container CPU%/memory (`docker/podman stats --no-stream`). */
@@ -110,7 +141,10 @@ export function parseStats(stdout: string): Record<string, { cpu: string; mem: s
 
 /** Per-unit memory + active-since for systemd services (`systemctl show`). */
 export function servicesShowCmd(units: string[]): string {
-  const list = units.map((u) => u.replace(/[^a-zA-Z0-9._@-]/g, '')).join(' ');
+  // Quoted, not stripped. Stripping used to drop whatever it did not like, which
+  // turns `a;b.service` into `ab.service` — a real unit, possibly someone else's,
+  // silently asked about instead of the one in hand. Quoting keeps the name.
+  const list = units.map(shellArg).join(' ');
   return `systemctl show ${list} -p Id,MemoryCurrent,ActiveEnterTimestamp --no-pager 2>/dev/null`;
 }
 /** unit → {mem, since}. Blocks are `Key=Value` groups separated by blank lines. */
@@ -145,15 +179,14 @@ function fmtSince(v?: string): string {
   return m ? m[0] : '—';
 }
 
-/** A shell-quoted-safe unit/name is assumed (systemd/container names have no spaces). */
 export const containerShellCmd = (rt: ContainerRuntime, name: string) =>
-  `${rt === 'none' ? 'docker' : rt} exec -it ${name} sh`;
+  `${rt === 'none' ? 'docker' : rt} exec -it ${shellArg(name)} sh`;
 export const containerLogsCmd = (rt: ContainerRuntime, name: string) =>
-  `${rt === 'none' ? 'docker' : rt} logs -f --tail 200 ${name}`;
+  `${rt === 'none' ? 'docker' : rt} logs -f --tail 200 ${shellArg(name)}`;
 export const containerRestartCmd = (rt: ContainerRuntime, name: string) =>
-  `${rt === 'none' ? 'docker' : rt} restart ${name}`;
+  `${rt === 'none' ? 'docker' : rt} restart ${shellArg(name)}`;
 
-export const serviceJournalCmd = (name: string) => `journalctl -u ${name} -f -n 200`;
-export const serviceRestartCmd = (name: string) => `sudo systemctl restart ${name}`;
+export const serviceJournalCmd = (name: string) => `journalctl -u ${shellArg(name)} -f -n 200`;
+export const serviceRestartCmd = (name: string) => `sudo systemctl restart ${shellArg(name)}`;
 export const serviceToggleCmd = (name: string, active: boolean) =>
-  `sudo systemctl ${active ? 'stop' : 'start'} ${name}`;
+  `sudo systemctl ${active ? 'stop' : 'start'} ${shellArg(name)}`;

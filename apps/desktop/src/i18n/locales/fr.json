@@ -161,7 +161,21 @@
     "hostKeyVerificationAccept": "Accepter - TOFU silencieux",
     "languageLabel": "Langue de l'interface",
     "save": "Enregistrer",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "keyboard": "Clavier",
+    "splits": "Divisions",
+    "splitsHint": "Un séparateur ouvre un terminal simple — c'est le bouton de division, et il le reste. Ce qu'il peut ouvrir d'autre, depuis le chevron à côté, vous appartient : une commande nommée, ou toute une disposition d'un coup.",
+    "configure": "Configurer…",
+    "sections": "Sections",
+    "sec": {
+      "appearance": "Apparence",
+      "shell": "Shell par défaut",
+      "machines": "État des machines",
+      "ssh": "Connexions SSH",
+      "focus": "Mode focus",
+      "password": "Mot de passe maître",
+      "danger": "Zone dangereuse"
+    }
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -210,7 +224,16 @@
     "remove": "Retirer",
     "needName": "Donnez-lui un nom.",
     "needPanes": "Une disposition a besoin d'au moins un panneau.",
-    "close": "Fermer"
+    "close": "Fermer",
+    "edit": "Modifier",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "newPreset": "Nouveau préréglage",
+    "editPreset": "Modifier le préréglage",
+    "newLayout": "Nouvelle disposition",
+    "editLayout": "Modifier la disposition",
+    "layoutsTitle": "Dispositions — ouvrir un agencement enregistré dans cet onglet",
+    "configureLayouts": "Configurer les dispositions…"
   },
   "pf": {
     "title": "Redirection de ports",
@@ -370,5 +393,39 @@
     "advancedOptions": "Options avancées",
     "seconds": "Secondes",
     "close": "Fermer"
+  },
+  "shortcuts": {
+    "hint": "Cliquez sur un raccourci, puis appuyez sur les touches voulues. {mod} est le modificateur de commande sur cette machine, et le même raccourci vous suit sur l'autre.",
+    "resetAll": "Tout réinitialiser",
+    "recording": "appuyez sur les touches…",
+    "conflict": "conflit",
+    "conflictTitle": "Une autre commande utilise cet accord : l'une des deux ne se déclenchera jamais.",
+    "conflictNote": "Deux commandes partagent un accord. Les deux sont enregistrées, mais une seule se déclenchera.",
+    "reserved": "{chord} appartient au terminal — c'est copier ou coller.",
+    "backTo": "Revenir à {chord}",
+    "cmd": {
+      "pane": {
+        "close": {
+          "label": "Fermer le panneau",
+          "description": "Ferme le panneau actif, en demandant confirmation s'il contient des sessions actives."
+        },
+        "splitHorizontal": {
+          "label": "Diviser horizontalement",
+          "description": "Ouvre un terminal simple à côté du panneau actif."
+        },
+        "splitVertical": {
+          "label": "Diviser verticalement",
+          "description": "Ouvre un terminal simple sous le panneau actif."
+        },
+        "search": {
+          "label": "Rechercher dans le panneau",
+          "description": "Ouvre la barre de recherche par-dessus le terminal actif."
+        }
+      }
+    },
+    "fixed": {
+      "focusMode": "Mode focus — masque la barre d'outils pour que les terminaux remplissent l'écran. Échap ou F11 pour sortir.",
+      "dismiss": "Ferme la barre de recherche, ou une boîte de dialogue ouverte."
+    }
   }
 }
