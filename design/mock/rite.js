@@ -140,6 +140,137 @@ function dlgQuickSSH(){
 }
 function openInNewWindow(name){toast(`${ICON.win} <span class="accent">${name}</span> opened in a new window`);}
 
+/* ================= panes: kinds, splits, layouts =================
+
+   The mock's version of apps/desktop/src/panes/registry.ts. One renderer per kind,
+   registered by name, so the tab renderer below never branches on what a pane
+   displays — and an agent pane and a terminal pane genuinely live in one tree
+   instead of each owning a tab.
+
+   The split itself is a TERMINAL feature, not an agent one. Most people want a
+   plain divider, so a plain divider is what the split button does; everything else
+   lives behind the chevron beside it, and all of it is the user's to configure. */
+const PANE_KINDS = {};
+function registerPaneKind(type, render){ PANE_KINDS[type] = render; }
+registerPaneKind('term', (p,i) => termHTML(p.host, { name:p.name, cmd:p.cmd, lines:p.lines, close:`closePaneAt(${i})` }));
+
+/* What a split can open. `plain` is first and is the default action: the preset list
+   is for the minority who want `top` on the right, not a tax on everyone else.
+   Name and command are both the user's — nothing here is built in but the plain one. */
+let SPLIT_PRESETS = [
+  { id:'plain',    name:'Terminal',   command:'', builtin:true },
+  { id:'p-docker', name:'Containers', command:'watch -n2 docker ps' },
+  { id:'p-load',   name:'Load',       command:'top' },
+];
+/* A layout opens several panes at once — the "five terminals arranged like this"
+   case. It is a list of presets by value, so editing a preset never silently
+   rewrites a layout someone relies on. */
+let PANE_LAYOUTS = [
+  { id:'l-deploy', name:'Deploy watch', panes:[
+      { name:'shell',      command:'' },
+      { name:'logs',       command:'journalctl -fu app' },
+      { name:'containers', command:'watch -n2 docker ps' } ] },
+];
+
+/* The tab the controls act on: whichever one is on screen. The mock has two (the
+   terminal tab and a resumed agent's), and every pane control is drawn inside one
+   of them, so "the visible one" is never ambiguous. */
+function curTab(){ return (typeof STATE==='undefined') ? null : (STATE.mainTab==='agent' ? STATE.agentTab : STATE.termTab); }
+function focusPaneAt(i){ const t=curTab(); if(t){ t.focus=i; renderMain(); } }
+function closePaneAt(i){ const t=curTab(); if(!t) return;
+  t.panes.splice(i,1);
+  if(!t.panes.length){ if(STATE.mainTab==='agent') return closeAgentPane(); STATE.termTab=null; return renderMain(); }
+  t.focus=Math.min(t.focus,t.panes.length-1); renderMain(); }
+function addPane(p){ const t=curTab(); if(!t) return;
+  t.panes.push(Object.assign({ kind:'term', host:t.host||null }, p));
+  t.focus=t.panes.length-1; renderMain(); }
+
+/* A preset becomes a pane. An empty command is a plain shell — the common case —
+   so it carries no name and no canned output either. */
+function paneFromPreset(preset,host){
+  if(!preset.command) return { kind:'term', host };
+  return { kind:'term', host, name:preset.name, cmd:preset.command,
+    lines:['(running — this is an ordinary terminal pane)'] };
+}
+function splitWith(presetId){ const t=curTab(); const p=SPLIT_PRESETS.find(x=>x.id===presetId);
+  if(p) addPane(paneFromPreset(p,t&&t.host));
+}
+function applyLayout(id){ const l=PANE_LAYOUTS.find(x=>x.id===id); const t=curTab(); if(!l||!t) return;
+  l.panes.forEach(p=>t.panes.push(Object.assign({kind:'term',host:t.host||null},paneFromPreset(p,t.host))));
+  t.focus=t.panes.length-1; renderMain();
+  toast(`Layout <span class="accent">${l.name}</span> — ${l.panes.length} panes opened`);}
+
+/* Everything a split can be, behind the chevron. The plain one is also here, first,
+   so the menu is a superset of the button rather than a different feature. */
+function splitMenu(e){
+  e.stopPropagation();
+  const t=curTab(); const host=t&&t.host;
+  const items = SPLIT_PRESETS.map(p=>({ icon:ICON.term,
+    label:`${p.name}${p.command?`<div class="sub mono" style="font-size:11px;color:var(--muted);font-weight:400">${p.command}</div>`:''}`,
+    onclick:()=>splitWith(p.id) }));
+  items.push({ icon:EXICON.split, label:'Snippets…', onclick:()=>openSnippets(host||null) });
+  PANE_LAYOUTS.forEach(l=>items.push({ icon:EXICON.panel,
+    label:`${l.name}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes</div>`,
+    onclick:()=>applyLayout(l.id) }));
+  items.push({ icon:EXICON.gear, label:'Configure splits…', onclick:()=>dlgSplitPrefs() });
+  floatMenu(e, items);
+}
+
+/* Where the name and the command are the user's. Presets and layouts are the same
+   two fields twice, so they are edited in one place rather than two half-places. */
+function splitPrefsBody(){
+  const preset = (p,i) => `<div class="snip-row">
+    <div class="snip-meta"><div class="snip-name">${p.name}${p.builtin?' <span class="snip-count">always there</span>':''}</div>
+      <code class="snip-cmd">${p.command||'a plain shell — no command'}</code></div>
+    ${p.builtin?'':`<button class="btn btn-ghost btn-sm" data-sp-del="${i}" title="Remove">✕</button>`}</div>`;
+  const layout = (l,i) => `<div class="snip-row">
+    <div class="snip-meta"><div class="snip-name">${l.name} <span class="snip-count">${l.panes.length} panes</span></div>
+      <code class="snip-cmd">${l.panes.map(p=>p.name).join(' · ')}</code></div>
+    <button class="btn btn-ghost btn-sm" data-sl-del="${i}" title="Remove">✕</button></div>`;
+  return `<p class="muted" style="font-size:12px;margin:0 0 10px">Splitting a pane opens a <b>plain terminal</b> — that is the button.
+    These are what the chevron beside it offers as well: a named command, or a whole layout at once.</p>
+    <div class="sec"><span class="eyebrow">Split presets</span><span class="line"></span></div>
+    <div class="snip-list">${SPLIT_PRESETS.map(preset).join('')}</div>
+    <div class="snip-add">
+      <label class="field"><span>Name</span><input class="inp" id="sp-name" placeholder="Containers"></label>
+      <label class="field"><span>Command</span><input class="inp mono" id="sp-cmd" placeholder="watch -n2 docker ps"></label>
+      <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sp-add>Add preset</button></div></div>
+    <div class="sec"><span class="eyebrow">Layouts</span><span class="line"></span></div>
+    <div class="snip-list">${PANE_LAYOUTS.map(layout).join('')||'<p class="muted" style="font-size:13px;margin:2px 0 10px">No layout yet.</p>'}</div>
+    <div class="snip-add">
+      <label class="field"><span>Name</span><input class="inp" id="sl-name" placeholder="Deploy watch"></label>
+      <label class="field"><span>Panes <span class="muted" style="font-weight:400">· one per line, <code>name = command</code></span></span><textarea class="inp mono" id="sl-panes" rows="4" spellcheck="false" style="resize:vertical;line-height:1.6" placeholder="shell =&#10;logs = journalctl -fu app&#10;containers = watch -n2 docker ps"></textarea></label>
+      <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sl-add>Add layout</button></div></div>`;
+}
+function dlgSplitPrefs(){
+  const bd=showModal({title:'Splits',subtitle:'What a divider can open',wide:true,confirm:'Done',body:splitPrefsBody()});
+  const body=bd.querySelector('.body');
+  body.addEventListener('click',e=>{const t=e.target.closest('[data-sp-del],[data-sp-add],[data-sl-del],[data-sl-add]');if(!t)return;
+    if(t.dataset.spDel!==undefined){SPLIT_PRESETS.splice(+t.dataset.spDel,1);}
+    else if(t.dataset.slDel!==undefined){PANE_LAYOUTS.splice(+t.dataset.slDel,1);}
+    else if(t.dataset.spAdd!==undefined){
+      const n=(body.querySelector('#sp-name').value||'').trim(), c=(body.querySelector('#sp-cmd').value||'').trim();
+      if(!n){toast('Give the preset a name');return;}
+      SPLIT_PRESETS.push({id:'p'+Math.random().toString(36).slice(2,7),name:n,command:c});}
+    else if(t.dataset.slAdd!==undefined){
+      const n=(body.querySelector('#sl-name').value||'').trim();
+      const panes=(body.querySelector('#sl-panes').value||'').split('\n').map(x=>x.trim()).filter(Boolean)
+        .map(line=>{const k=line.indexOf('=');return k<0?{name:line,command:''}:{name:line.slice(0,k).trim(),command:line.slice(k+1).trim()};});
+      if(!n||!panes.length){toast('A layout needs a name and at least one pane');return;}
+      PANE_LAYOUTS.push({id:'l'+Math.random().toString(36).slice(2,7),name:n,panes});}
+    body.innerHTML=splitPrefsBody();});
+}
+
+/* The tab renderer, one for every kind. */
+function paneTabHTML(tab){
+  if(!tab||!tab.panes.length) return '';
+  return `<div class="psplit">${tab.panes.map((p,i)=>{
+    const render = PANE_KINDS[p.kind] || PANE_KINDS.term;
+    return `${i?'<div class="pdiv" title="Drag to resize"><i></i></div>':''}
+      <div class="pane-wrap ${i===tab.focus?'focused':''}" style="flex:1" onclick="focusPaneAt(${i})">${render(p,i)}</div>`;
+  }).join('')}</div>`;
+}
+
 /* The chrome every pane carries, whatever it displays.
    Split, detach, snippets, search and close belong to the PANE, not to what is
    inside it — so a terminal and an agent session get them from here rather than
@@ -152,8 +283,9 @@ function paneActs(o) {
   const b = (title, icon, click) => `<button title="${title}"${click ? ` onclick="${click}"` : ''}>${icon}</button>`;
   const grip = `<div class="grip" title="Drag to reorganize pane"><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div></div>`;
   return `${o.lead || ''}${grip}
-    ${b('Split horizontal (Ctrl+Shift+H)', I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4'), o.splitH)}
-    ${b('Split vertical (Ctrl+Shift+V)', I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4', 1), o.splitV)}
+    ${b('Split horizontal (Ctrl+Shift+H)', I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4'), o.splitH || "splitWith('plain')")}
+    ${b('Split vertical (Ctrl+Shift+V)', I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4', 1), o.splitV || "splitWith('plain')")}
+    <button class="split-more" title="Split with… — a preset, a snippet or a whole layout" onclick="splitMenu(event)">${I('M6 9l6 6 6-6')}</button>
     ${b(o.detachTitle || 'Detach to new tab', I('M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'), o.detach)}
     ${b('Snippets — run a saved command here', I('M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12'), o.snippets)}
     ${b('Search in pane (Ctrl+F)', I('M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z'), o.search)}

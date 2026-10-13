@@ -315,7 +315,7 @@ const AGENT_SHELL='desktop';
 // A server governs the probing cards only when we are actually in a server context. A local
 // vault — or the base workspace — has no authority to consult: it is the user's own network.
 function probeGoverned(){return STATE.ctx.type==='server';}
-let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
+let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
 const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
 // Quick SSH in a SERVER context follows the server policy (off by default — server
 // connections belong in collections). A local vault is self-governed → always available.
@@ -561,17 +561,25 @@ function renderMain(){
     <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
   const b=document.getElementById('mbody');
   if(STATE.mainTab==='agents'){ b.innerHTML=agentsViewHTML(); return; }
-  if(STATE.mainTab==='agent'&&STATE.agentTab){ b.innerHTML=agentTabHTML(); return; }
+  if(STATE.mainTab==='agent'&&STATE.agentTab){ b.innerHTML=paneTabHTML(STATE.agentTab); return; }
   if(STATE.mainTab==='machine'&&mach){ b.innerHTML=machineDashboard(mach); return; }
   if(STATE.ctx.type==='home'||STATE.mainTab==='term'||!coll){ b.innerHTML=paneGrid(); return; }
   b.innerHTML=cardsView(coll);
 }
-function paneGrid(){if(STATE.ctx.type==='home')return `<div class="pane-wrap focused">${termHTML(null)}</div>`;
-  // A split = two termpanes side by side (each carries its own header, ISO with
-  // the web UI's Terminal.tsx pane). Only the focused pane gets the blue ring.
-  return `<div style="height:100%;display:flex;gap:10px">
-    <div class="pane-wrap focused" style="flex:1">${termHTML('deploy@10.0.0.5')}</div>
-    <div class="pane-wrap" style="flex:1">${termHTML('deploy@10.0.0.4')}</div></div>`;}
+// The terminal tab holds the same pane list an agent tab does, rendered by the same
+// `paneTabHTML` — so splits, presets and layouts are one feature, not two. Seeded
+// from the context (home = one local shell, a vault/server = the two-pane demo) and
+// re-seeded only when the context itself changes, so panes you opened survive a
+// render but not a switch to somewhere they do not belong.
+function defaultTermTab(sig){
+  return sig==='home'
+    ? { sig, host:null, focus:0, panes:[{kind:'term',host:null}] }
+    : { sig, host:'deploy@10.0.0.5', focus:0,
+        panes:[{kind:'term',host:'deploy@10.0.0.5'},{kind:'term',host:'deploy@10.0.0.4'}] };}
+function paneGrid(){
+  const sig = STATE.ctx.type==='home' ? 'home' : 'ctx';
+  if(!STATE.termTab || STATE.termTab.sig!==sig) STATE.termTab = defaultTermTab(sig);
+  return paneTabHTML(STATE.termTab);}
 function cardsView(coll){
   const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
   const card=cn=>`<div class="ccard" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="openMachine('${cn.name}')" title="Click: dashboard · double-click: connect">
@@ -940,6 +948,7 @@ function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',bod
   <div class="settings-row"><div><b>Theme</b><div class="muted" style="font-size:12px">Dark / light</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
   <div class="settings-row"><div><b>Auto-lock vault</b><div class="muted" style="font-size:12px">After inactivity</div></div><select class="inp" style="width:auto"><option>Disabled</option><option>1 min</option><option>3 min</option><option selected>5 min</option><option>Custom…</option></select></div>
   <div class="settings-row"><div><b>Auto-clear clipboard</b><div class="muted" style="font-size:12px">Clear 30s after a copy (security)</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
+  <div class="settings-row"><div><b>Splits</b><div class="muted" style="font-size:12px">A divider opens a plain terminal. What else it can open — a named command, or a whole layout at once — is yours to set.</div></div><button class="btn btn-sm" onclick="dlgSplitPrefs()">Configure…</button></div>
   <div class="settings-row"><div><b>Default shell</b><div class="muted" style="font-size:12px">New local terminals (also in the toolbar)</div></div><select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name}${s.installed?'':' (not installed)'}</option>`).join('')}</select></div>
   <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
   <div class="settings-row"><div><b>Auto-reconnect lost SSH connections</b><div class="muted" style="font-size:12px">Off by default. On → a dropped session reconnects automatically (a <b>new shell</b>: history, on-screen output and any running job are lost). Off → we show a <b>Reconnect</b> button instead. Either way you're told you were disconnected.</div></div><div class="toggle ${STATE.autoReconnect?'on':''}" onclick="this.classList.toggle('on');STATE.autoReconnect=this.classList.contains('on');renderMain()"><i></i></div></div>

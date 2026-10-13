@@ -399,53 +399,19 @@ function resumeAgent(scopeId, toolId, sessionId) {
   const s = pt && (pt.sessions || []).find((x) => x.id === sessionId);
   if (!s) return;
   // The user never typed the id, and never will — the adapter builds the command.
-  STATE.agentTab = { panes: [{ kind: 'agent', scope: sc, tool: agentTool(toolId), session: s }], focus: 0 };
+  STATE.agentTab = { host: sc.kind === 'local' ? null : sc.sub,
+    panes: [{ kind: 'agent', scope: sc, tool: agentTool(toolId), session: s }], focus: 0 };
   STATE.mainTab = 'agent';
   renderMain();
   toast(`${M.agent} <span class="accent">${s.project}</span> resumed on ${sc.name} — new tab`);
 }
-function agentFocusPane(i) { if (STATE.agentTab) { STATE.agentTab.focus = i; renderMain(); } }
-function closeAgentTabPane(i) {
-  const t = STATE.agentTab; if (!t) return;
-  t.panes.splice(i, 1);
-  if (!t.panes.length) return closeAgentPane();
-  t.focus = Math.min(t.focus, t.panes.length - 1);
-  renderMain();
-}
 function closeAgentPane() { STATE.agentTab = null; STATE.mainTab = STATE.agentsView ? 'agents' : 'term'; renderMain(); }
 
-/* What lands beside an agent. Every one of these is an ORDINARY terminal pane on
-   the same machine — not a third kind of surface — which is exactly why an agent
-   had to be a leaf of the normal tree rather than a tab of its own. */
-function agentSplitMenu(e) {
-  e.stopPropagation();
-  const t = STATE.agentTab; if (!t) return;
-  const agent = t.panes.find((p) => p.kind === 'agent');
-  const sc = agent ? agent.scope : agentScope(STATE.agentScope);
-  const host = sc.kind === 'local' ? null : sc.sub;
-  const add = (p) => { t.panes.push(p); t.focus = t.panes.length - 1; renderMain(); };
-  floatMenu(e, [
-    { icon: ICON.term, label: `Terminal on ${sc.name}`, onclick: () => add({ kind: 'term', host }) },
-    { icon: M.docker, label: 'watch docker ps', onclick: () => add({ kind: 'term', host, name: 'watch docker ps',
-        cmd: 'watch -n2 docker ps', lines: ['NAMES     STATUS          PORTS', 'api       Up 3 days       8080->8080', 'worker    Up 3 days', 'redis     Up 8 days       6379->6379'] }) },
-    { icon: M.refresh, label: 'top', onclick: () => add({ kind: 'term', host, name: 'top',
-        cmd: 'top -b -n1', lines: ['load average: 0.84, 0.61, 0.55', '  PID USER      %CPU  %MEM  COMMAND', ' 4812 deploy     7.4   2.1  node', ' 1190 deploy     2.0   0.8  claude'] }) },
-  ]);
-}
-
-/* The agent tab: panes side by side, with the same divider a terminal split uses.
-   A pane here is the agent or a terminal; both carry the same chrome, because the
-   chrome comes from `paneActs` in rite.js rather than from either of them. */
-function agentTabHTML() {
-  const t = STATE.agentTab;
-  if (!t || !t.panes.length) return '';
-  const cells = t.panes.map((p, i) => {
-    const inner = p.kind === 'agent' ? agentPaneHTML(p, i) : termHTML(p.host, { name: p.name, cmd: p.cmd, lines: p.lines, close: `closeAgentTabPane(${i})` });
-    return `${i ? '<div class="pdiv" title="Drag to resize"><i></i></div>' : ''}
-      <div class="pane-wrap ${i === t.focus ? 'focused' : ''}" style="flex:1" onclick="agentFocusPane(${i})">${inner}</div>`;
-  }).join('');
-  return `<div class="psplit">${cells}</div>`;
-}
+/* The agent is a pane KIND, registered like any other — so splitting, focusing,
+   closing, presets and layouts all come from rite.js and none of it is written
+   twice. What lands beside an agent is whatever the user configured a split to
+   open, on the machine the agent runs on. */
+registerPaneKind('agent', agentPaneHTML);
 
 
 /* The pane shows the REAL CLI, not a chat interface rebuilt over it. What Rite adds
@@ -469,12 +435,10 @@ function agentPaneHTML(p, i) {
       </div>
       <div class="termpane-acts">${paneActs({
         lead: copyId,
-        splitH: 'agentSplitMenu(event)',
-        splitV: 'agentSplitMenu(event)',
         detach: `openInNewWindow('${session.project}')`,
         detachTitle: 'Detach to a new window',
         snippets: `openSnippets(${scope.kind === 'local' ? 'null' : `'${scope.sub}'`})`,
-        close: `closeAgentTabPane(${i})`,
+        close: `closePaneAt(${i})`,
         closeTitle: 'Close agent pane',
       })}</div>
     </div>
@@ -630,8 +594,9 @@ function agentOpenFile(scopeId, path) {
   const host = sc.kind === 'local' ? null : sc.sub;
   const pane = { kind: 'term', host, name: path.split('/').pop(), cmd: `$EDITOR ${path}`,
     lines: ['(your editor, on that machine, as that account — Rite is not in the middle)'] };
-  if (STATE.agentTab) { STATE.agentTab.panes.push(pane); STATE.agentTab.focus = STATE.agentTab.panes.length - 1; }
-  else STATE.agentTab = { panes: [pane], focus: 0 };
+  if (!STATE.agentTab) STATE.agentTab = { host, panes: [], focus: 0 };
+  STATE.agentTab.panes.push(pane);
+  STATE.agentTab.focus = STATE.agentTab.panes.length - 1;
   STATE.mainTab = 'agent';
   renderMain();
   toast(`${M.edit} <span class="mono">${path}</span> opened on ${sc.name}`);

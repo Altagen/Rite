@@ -300,6 +300,13 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       in a terminal pane on that machine, under the account you already use there —
       no new right, no second source of truth, nothing to keep in sync. Nothing read
       is stored, which keeps this out of the zero-knowledge path entirely.
+- [x] **Configurable splits** (mocked, and a *terminal* feature rather than an agent
+      one). The split button opens a **plain terminal** — the common case pays nothing
+      — and a chevron beside it offers **presets** (a name and a command, both the
+      user's), the existing **snippets**, and **layouts** that open several panes at
+      once. One preferences dialog owns all of it. The mock gained a small
+      **pane-kind registry** to do this, so a terminal tab and an agent tab are the
+      same structure and a split is one feature instead of two.
 - [ ] **Compare what is in effect across machines** — "this project loads three skills
       on web-01 and two on my laptop" is the same read, answered twice. Still
       read-only, and the natural next step once the single-machine view is real.
