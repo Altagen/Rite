@@ -284,7 +284,7 @@ function paneActs(o) {
   const grip = `<div class="grip" title="Drag to reorganize pane"><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div><div class="gr"><i></i><i></i></div></div>`;
   return `${o.lead || ''}${grip}
     ${b('Split horizontal (Ctrl+Shift+H)', I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4'), o.splitH || "splitWith('plain')")}
-    ${b('Split vertical (Ctrl+Shift+V)', I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4', 1), o.splitV || "splitWith('plain')")}
+    ${b('Split vertical (Ctrl+Shift+D)', I('M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4', 1), o.splitV || "splitWith('plain')")}
     <button class="split-more" title="Split with… — a preset, a snippet or a whole layout" onclick="splitMenu(event)">${I('M6 9l6 6 6-6')}</button>
     ${b(o.detachTitle || 'Detach to new tab', I('M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14'), o.detach)}
     ${b('Snippets — run a saved command here', I('M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12'), o.snippets)}

@@ -32,6 +32,7 @@ run "pane-dispose-check" node "e2e/pane-dispose-check.mjs"
 run "split-format-check" node "e2e/split-format-check.mjs"
 run "shortcut-binding-check" node "e2e/shortcut-binding-check.mjs"
 run "machine-command-check" node "e2e/machine-command-check.mjs"
+run "i18n-check" node "e2e/i18n-check.mjs"
 
 echo
 echo "crypto parity (Rust ↔ browser):"

@@ -332,4 +332,45 @@ test('a shortcut can be remapped, and it is the new chord that fires', async ({ 
   await expect(page.locator('.xterm-screen')).toHaveCount(2);
   await page.keyboard.press('Control+Alt+J');
   await expect(page.locator('.xterm-screen')).toHaveCount(3, { timeout: 20_000 });
+
+  // And the button says so. A tooltip that spells its own chord is a second opinion
+  // about the keyboard, which is how `Split vertical (Ctrl+Shift+V)` outlived the
+  // default that moved off that chord — the button named a key that did nothing.
+  await expect(page.getByTitle('Split horizontal (Ctrl+Alt+J)').first()).toBeVisible();
+  await expect(page.getByTitle(/Split horizontal \(Ctrl\+Shift\+H\)/)).toHaveCount(0);
+  await expect(page.getByTitle('Split vertical (Ctrl+Shift+D)').first()).toBeVisible();
+});
+
+/**
+ * A stored override may not hold a chord the terminal needs.
+ *
+ * The table refuses copy and paste when they are typed, which covers the user who
+ * tries it today. It does not cover the override that was already stored before the
+ * reserved list grew — and that list will grow. Whoever had taken the chord would
+ * keep it, and would be the one user who cannot paste and cannot explain why. So the
+ * list is enforced where the bindings are resolved, not only where they are typed.
+ */
+test('a reserved chord stored as an override is dropped, not honoured', async ({ page }) => {
+  await page.goto('/');
+
+  // Written the way a build that predates the reserved list would have written it.
+  await page.evaluate(() =>
+    localStorage.setItem('rite-shortcuts', JSON.stringify({ 'pane.splitVertical': 'Mod+Shift+V' })),
+  );
+  await page.reload();
+
+  await page.getByTitle('Settings').click();
+  // Back to its default, and listed as a default: no reset arrow, because there is
+  // no override left to undo.
+  await expect(page.getByTestId('shortcut-binding-pane.splitVertical')).toHaveText('Ctrl+Shift+D');
+  await expect(page.getByTestId('shortcut-reset-pane.splitVertical')).toHaveCount(0);
+  // A chord that only one command holds is not a conflict, so the absence of the
+  // badge here also says the reserved chord did not land on top of something.
+  await expect(page.getByTestId('shortcut-conflict-pane.splitVertical')).toHaveCount(0);
+
+  // And it is gone from storage, not merely ignored in memory: left there it would
+  // come back the moment someone shortened the reserved list, long after anyone
+  // remembers putting it there.
+  const stored = await page.evaluate(() => localStorage.getItem('rite-shortcuts'));
+  expect(JSON.parse(stored ?? '{}')).toEqual({});
 });

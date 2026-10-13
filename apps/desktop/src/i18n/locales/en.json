@@ -161,7 +161,11 @@
     "hostKeyVerificationAccept": "Accept - Silent TOFU",
     "languageLabel": "Interface Language",
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "keyboard": "Keyboard",
+    "splits": "Splits",
+    "splitsHint": "A divider opens a plain terminal — that is the split button, and it stays that way. What else it can open, from the chevron beside it, is yours to set: a named command, or a whole layout at once.",
+    "configure": "Configure…"
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -370,5 +374,39 @@
     "advancedOptions": "Advanced Options",
     "seconds": "Seconds",
     "close": "Close"
+  },
+  "shortcuts": {
+    "hint": "Click a shortcut, then press the keys you want. {mod} is the command modifier on this machine, and the same binding follows you to the other.",
+    "resetAll": "Reset all",
+    "recording": "press keys…",
+    "conflict": "conflict",
+    "conflictTitle": "Another command uses this chord, so one of the two never fires.",
+    "conflictNote": "Two commands share a chord. Both are saved, but only one of them will fire.",
+    "reserved": "{chord} belongs to the terminal — it is copy or paste.",
+    "backTo": "Back to {chord}",
+    "cmd": {
+      "pane": {
+        "close": {
+          "label": "Close pane",
+          "description": "Closes the focused pane, asking first if it holds live sessions."
+        },
+        "splitHorizontal": {
+          "label": "Split horizontally",
+          "description": "Opens a plain terminal beside the focused pane."
+        },
+        "splitVertical": {
+          "label": "Split vertically",
+          "description": "Opens a plain terminal below the focused pane."
+        },
+        "search": {
+          "label": "Search in pane",
+          "description": "Opens the find bar over the focused terminal."
+        }
+      }
+    },
+    "fixed": {
+      "focusMode": "Focus mode — hide the toolbar so terminals fill the screen. Esc or F11 to leave.",
+      "dismiss": "Dismiss the find bar, or an open dialog."
+    }
   }
 }
