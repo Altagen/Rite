@@ -9,6 +9,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
 import { SplitsModal } from './SplitsModal';
+import { ShortcutsSettings } from './ShortcutsSettings';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
 import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
 import { useServerSession } from '../store/serverSessionStore';
@@ -340,6 +341,12 @@ export function Settings({ onClose }: SettingsProps) {
               </div>
             </section>
           )}
+
+          {/* Keyboard — one table owning every binding. */}
+          <section className="border-b border-border pb-6">
+            <h3 className="mb-4 text-lg font-semibold">Keyboard</h3>
+            <ShortcutsSettings />
+          </section>
 
           {/* Splits — what a divider can open, beyond a plain terminal. */}
           <section className="border-b border-border pb-6">

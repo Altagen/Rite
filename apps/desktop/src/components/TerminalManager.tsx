@@ -10,6 +10,7 @@ import { Backend } from '../utils/backend';
 import { PaneContainer } from './PaneContainer';
 import { Tab } from '../types/pane';
 import { getAllSessions, getFocusedPane, getFirstLeafPane } from '../utils/paneTree';
+import { useShortcut } from '../shortcuts/useShortcut';
 import { PaneDragProvider } from '../contexts/PaneDragContext';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
@@ -135,41 +136,20 @@ export function TerminalManager({
   }, [activeTabId, paneTree, onFocusPane]); // Need paneTree to get the pane to focus
 
   // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!focusedPane) return;
-
-      // Ctrl+W: Close current pane
-      // We handle it here at the manager level to avoid issues with multiple
-      // terminals and focus changes. We use capture phase to intercept before xterm.
-      if (e.ctrlKey && e.key === 'w') {
-        e.preventDefault();
-        e.stopPropagation();
-
-        // Ignore key repeats when user holds the key down
-        if (e.repeat) return;
-
-        onClosePane(focusedPane.id);
-        return;
-      }
-
-      // Ctrl+Shift+H: Split horizontally
-      if (e.ctrlKey && e.shiftKey && e.key === 'H') {
-        e.preventDefault();
-        void onSplitPane(focusedPane.id, 'horizontal');
-      }
-
-      // Ctrl+Shift+V: Split vertically
-      if (e.ctrlKey && e.shiftKey && e.key === 'V') {
-        e.preventDefault();
-        void onSplitPane(focusedPane.id, 'vertical');
-      }
-    };
-
-    // Use capture phase to intercept before xterm gets the event
-    window.addEventListener('keydown', handleKeyDown, { capture: true });
-    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [focusedPane, onClosePane, onSplitPane]);
+  // Pane commands live at the manager level — one focused pane, one handler each —
+  // rather than in every terminal, where multiple panes and focus changes used to
+  // make them fight. Which keys fire them is the engine's business, not this file's.
+  useShortcut('pane.close', () => focusedPane && onClosePane(focusedPane.id), !!focusedPane);
+  useShortcut(
+    'pane.splitHorizontal',
+    () => focusedPane && void onSplitPane(focusedPane.id, 'horizontal'),
+    !!focusedPane,
+  );
+  useShortcut(
+    'pane.splitVertical',
+    () => focusedPane && void onSplitPane(focusedPane.id, 'vertical'),
+    !!focusedPane,
+  );
 
   const handleDragStart = (e: React.DragEvent, tabId: string) => {
     setDraggedTabId(tabId);

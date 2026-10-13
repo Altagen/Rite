@@ -6,8 +6,8 @@ This document outlines the planned features for RITE, organized by development p
 
 **Current Focus:** Phase 1 MVP — a complete terminal experience with local shell
 and SSH. **Pane kinds are done**, so the SFTP pane and the Agent Manager no longer
-wait on the split tree; the keyboard shortcut engine is the one engine item still
-gating later work. The **Agent Manager** is the next major feature, ahead of Phase 2;
+wait on the split tree, and the keyboard shortcut engine is done too — so no engine
+item gates later work any more. The **Agent Manager** is the next major feature, ahead of Phase 2;
 its **mock is done** — the manager is a view, an agent session is a pane, and agents
 run on a machine from your library, never inside the server container. The ADR is next,
 then the code.
@@ -134,17 +134,22 @@ had no released version to be compatible with.
   - ✅ Terminal persistence across pane movements
   - ✅ Tab drag & drop to merge terminals
   - ✅ Tab close button with confirmation
-- [ ] **Keyboard shortcut engine** — there are four shortcuts today, hardcoded in
-  two components with no registry: `Ctrl+F` (search, `Terminal.tsx`), `Ctrl+W`,
-  `Ctrl+Shift+H` and `Ctrl+Shift+V` (`TerminalManager.tsx`). Everything under
-  UI/UX Polish about configuring, remapping or listing shortcuts depends on this
-  existing first, and two defects are already shipping:
-  - [ ] One table owning every binding, instead of `if (e.ctrlKey && …)` inline
-  - [ ] Fix the macOS asymmetry — only `Ctrl+F` accepts `metaKey`, so `Cmd+W`
-        does not close a pane
-  - [ ] Resolve `Ctrl+Shift+V`, which splits vertically here but is **paste** in
-        gnome-terminal, konsole and xfce4-terminal — it collides with the
-        copy/paste work already on this list
+- [x] **Keyboard shortcut engine** — done (0.2.4). Four shortcuts used to be written
+  inline in two components as `if (e.ctrlKey && …)`, with nothing comparing them,
+  which is exactly why the two defects below existed.
+  - [x] One table owning every binding (`shortcuts/commands.ts`), with the matching
+        rules in an importless `shortcuts/binding.ts` the gate loads directly. A
+        component names the *command* it implements and never a key.
+  - [x] macOS asymmetry fixed — bindings are written with `Mod`, which is Cmd on
+        macOS and Ctrl elsewhere, decided in one place. `Cmd+W` closes a pane now.
+  - [x] `Ctrl+Shift+V` given back — it is **paste** in gnome-terminal, konsole and
+        xfce4-terminal. The vertical split ships on `Mod+Shift+D` (iTerm2's chord,
+        free in those three), and copy/paste are a reserved list the table refuses
+        to assign, so no future default can take them back.
+  - [x] Remapping, in **Settings → Keyboard**: a row records the keypress rather
+        than asking anyone to spell a chord, shows a conflict when two commands
+        claim one, and resets per row or all at once. Only overrides are stored, so
+        a default we change later still reaches people who never touched it.
 - [x] **Pane kinds** — a leaf in the split tree used to be a terminal by definition:
   fourteen call sites tested `type === 'terminal'` and the helpers were named for it.
   Both the SFTP pane and the agent manager need the same third kind, so it was done
@@ -217,9 +222,10 @@ had no released version to be compatible with.
   - [ ] Basic preferences (theme, font)
   - [ ] Optional SSH config import
 - [ ] Keyboard shortcuts configuration
-  - ✅ Tab close shortcut (Ctrl+W)
-  - [ ] Customizable keybindings
-  - [ ] Shortcuts cheatsheet (Ctrl+?)
+  - ✅ Tab close shortcut (`Mod+W`)
+  - ✅ Customizable keybindings — **Settings → Keyboard**
+  - [ ] Shortcuts cheatsheet (`Mod+?`) — the table exists now, so this is a reader
+        for it rather than a second list to keep in step
 - [ ] Connection status indicators (SSH)
 - [ ] Error handling improvements
 - ✅ Toast notifications system
