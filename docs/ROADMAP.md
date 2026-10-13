@@ -290,6 +290,19 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       On a target machine it runs under the SSH account the user already had, so Rite
       grants nothing new. This is a **non-goal**, stated on screen in the mock, and it
       belongs in the ADR with its reason so it is not re-litigated in six months.
+- [x] **Skills, commands and hooks — read-only, with provenance** (mocked). Answers
+      *what is actually in effect*: the account layer under the project layer,
+      resolved on that host under that account, with every row carrying its layer and
+      its path, and a shadowed copy shown losing rather than hidden. Read-only is the
+      **defensive** choice — a hook is a command that runs unattended, and on a shared
+      account one person's hook runs for everyone, so making it visible is the
+      opposite of making it easy. **Editing is never Rite's**: *Open* runs `$EDITOR`
+      in a terminal pane on that machine, under the account you already use there —
+      no new right, no second source of truth, nothing to keep in sync. Nothing read
+      is stored, which keeps this out of the zero-knowledge path entirely.
+- [ ] **Compare what is in effect across machines** — "this project loads three skills
+      on web-01 and two on my laptop" is the same read, answered twice. Still
+      read-only, and the natural next step once the single-machine view is real.
 - [ ] **The management layer, deliberately after the basics** — stored pre-prompts,
       per-project conventions (a `CLAUDE.md` and its equivalents), pre-arranged agent
       set-ups. This is where a real advantage over running the CLI yourself would sit,

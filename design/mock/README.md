@@ -126,6 +126,38 @@ never typed and always reachable**: when an adapter breaks — and it will, `--r
 and a vendor's home-directory layout are not a stable API — `claude --resume <id>` in
 a terminal pane must still work. Rite is never the only way back to your own session.
 
+### Skills, commands and hooks — read-only, on purpose
+
+The product is the answer to **"what is actually in effect?"**, which no tool gives
+you: the account layer (`~/.claude/…`) under the project layer (`.claude/…` in the
+working directory), resolved on *that* host under *that* account. People answer it
+today by sshing in and reading four files. Rite already knows the machine, the
+account and the directory, so it is the one place that can answer it — and answering
+it is worth more than owning the files.
+
+Read-only is the **defensive** choice, not the timid one:
+
+- a hook is not configuration, it is **a command that runs later, unattended**.
+  Installing one from a convenience panel is the wrong blast radius for a convenience.
+- on a **shared account** — a team's `deploy` on a dev VM — a hook one person installs
+  runs for everyone who signs in. A tool that makes that *easy* is a lateral-movement
+  vector; a tool that makes it *visible* is the opposite. The mock shows exactly that
+  case, with the foreign hook marked.
+- writing would make Rite a **second source of truth** for files that usually live in
+  git or someone's dotfiles. The moment either side is touched by hand, nobody knows
+  what runs.
+
+Every row carries its **layer and its path**, because the answer to "why did that
+happen?" is a file path — and a copy that loses to the project layer is shown *losing*
+rather than hidden, since "why is my skill not applying" is answered by seeing the one
+that was shadowed. Nothing read is stored: it is displayed and dropped, which keeps the
+feature out of the zero-knowledge path instead of asking it for an exception.
+
+**Editing happens where it already did.** *Open* puts the file in a terminal pane on
+that machine, running `$EDITOR` under the account you already use there — no new right,
+nothing to keep in sync. Rite navigates; the editor edits. That is the whole of "we
+don't want to be the replacement for".
+
 The manager also opens **already pointed at a machine**, from that machine's dashboard
 (`Agents`, beside `Edit` and `Connect`). A menu is a fine switcher and a poor finder:
 with a real fleet you look a machine up where you always do — the library — and come at

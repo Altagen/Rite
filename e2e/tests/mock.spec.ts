@@ -153,18 +153,21 @@ test('desktop mock: an agent pane splits with plain terminals, with the same chr
   await expect(page.locator('.termpane:not(.agentpane)')).toHaveCount(1);
 
   // Same chrome on both, because both get it from `paneActs` — the agent only adds
-  // the one control that is its own, the id it never made you type. Compared by
-  // what each button IS, not how many there are: a count still passes when a pane
-  // draws its own near-copy, which is the drift this is here to catch.
+  // the controls that are its own. Compared by what each button IS, not how many
+  // there are: a count still passes when a pane draws its own near-copy, which is
+  // the drift this is here to catch. The agent's own controls are named here, so
+  // adding one is a deliberate edit to this list rather than a silent divergence.
+  const OWN = [/^Conversation id/, /^What is in effect/];
   const titles = (sel: string) => page.locator(`${sel} .termpane-acts button`).evaluateAll(
     (bs) => bs.map((b) => b.getAttribute('title') || ''),
   );
   const agentActs = await titles('.agentpane');
   const termActs = await titles('.pane-wrap:not(:has(.agentpane)) .termpane');
-  expect(agentActs.filter((t) => !t.startsWith('Conversation id'))).toEqual(
+  const isOwn = (t: string) => OWN.some((re) => re.test(t));
+  expect(agentActs.filter((t) => !isOwn(t))).toEqual(
     termActs.map((t) => (t === 'Close terminal' ? 'Close agent pane' : t === 'Detach to new tab' ? 'Detach to a new window' : t)),
   );
-  expect(agentActs.filter((t) => t.startsWith('Conversation id'))).toHaveLength(1);
+  expect(agentActs.filter(isOwn)).toHaveLength(OWN.length);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
@@ -225,6 +228,61 @@ test('desktop mock: another agent CLI can be registered, and is looked for', asy
   // Switching an adapter off stops Rite looking for it at all.
   await page.evaluate(() => { agentTool('gemini').on = false; renderMain(); });
   await expect(page.locator('.atool', { hasText: 'Gemini' })).toHaveCount(0);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * Skills, commands and hooks — read-only, with provenance.
+ *
+ * The product here is the answer to "what is ACTUALLY in effect?", which no tool
+ * gives you: the account layer under the project layer, resolved on that host under
+ * that account. Read-only is the defensive choice, not the timid one — a hook is a
+ * command that runs unattended, and on a shared account one person's hook runs for
+ * everyone. Making that visible is the opposite of making it easy.
+ */
+test('desktop mock: what is in effect is shown with its provenance, and never written', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => { openAgents(); agentPickScope('@local'); });
+  await page.evaluate(() => dlgAgentContext('@local', 'claude', '41b9c8d7-6e52-4a19-83f0-9c1d5b2e7a44'));
+
+  // Every row names the layer it came from and the file it is in: the answer to
+  // "why did that happen?" is a path, so a row without one answers nothing.
+  const rows = page.locator('.backdrop .arow');
+  expect(await rows.count()).toBeGreaterThan(0);
+  expect(await page.locator('.backdrop .arow .alayer').count()).toBe(await rows.count());
+
+  // A copy that loses to the project layer is shown losing, not hidden — "why is my
+  // skill not applying" is answered by seeing the one that was shadowed.
+  await expect(page.locator('.backdrop .arow.shadowed')).toHaveCount(1);
+
+  // Nothing is editable here, so nothing can be cancelled either.
+  await expect(page.locator('.backdrop [data-x]')).toBeHidden();
+  await expect(page.locator('.backdrop input, .backdrop textarea')).toHaveCount(0);
+
+  // Opening a file is a terminal pane running the editor on that machine — Rite
+  // navigates, the editor edits, and no new right is needed to do it.
+  await page.locator('.backdrop .arow.hook').first().getByRole('button').click();
+  await expect(page.locator('.backdrop')).toHaveCount(0);
+  await expect(page.locator('.term-body')).toContainText('$EDITOR');
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/** A shared account is the case the panel exists for, so it says so out loud. */
+test('desktop mock: a hook nobody here installed is visible, on a shared account', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => { openAgents(); agentPickScope('web-01'); });
+  await page.evaluate(() => dlgAgentContext('web-01', 'claude', '3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11'));
+
+  await expect(page.locator('.backdrop')).toContainText(/shared account/);
+  await expect(page.locator('.backdrop')).toContainText(/hooks you did not install/);
+  // The one under the shared home is marked apart from the project's own.
+  await expect(page.locator('.backdrop .arow.hook')).toHaveCount(2);
+  await expect(page.locator('.backdrop .arow.hook.foreign')).toHaveCount(1);
+  await expect(page.locator('.backdrop .arow.hook.foreign')).toContainText('/home/deploy/.claude/settings.json');
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
