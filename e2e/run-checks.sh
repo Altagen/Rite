@@ -31,6 +31,7 @@ run "pane-tree-check" node "e2e/pane-tree-check.mjs"
 run "pane-dispose-check" node "e2e/pane-dispose-check.mjs"
 run "split-format-check" node "e2e/split-format-check.mjs"
 run "shortcut-binding-check" node "e2e/shortcut-binding-check.mjs"
+run "machine-command-check" node "e2e/machine-command-check.mjs"
 
 echo
 echo "crypto parity (Rust ↔ browser):"
