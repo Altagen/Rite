@@ -214,6 +214,9 @@ test('desktop mock: another agent CLI can be registered, and is looked for', asy
   const before = await page.locator('.atool').count();
 
   await page.evaluate(() => dlgAgentTools());
+  // The dialog focuses its first input on a timer; typing before it is attached
+  // silently lands nowhere and the assertion below then fails for the wrong reason.
+  await expect(page.locator('#at-name')).toBeVisible();
   await page.locator('#at-name').fill('Aider');
   await page.locator('#at-bin').fill('aider');
   await page.locator('#at-list').fill('ls ~/.aider/sessions');
@@ -283,6 +286,61 @@ test('desktop mock: a hook nobody here installed is visible, on a shared account
   await expect(page.locator('.backdrop .arow.hook')).toHaveCount(2);
   await expect(page.locator('.backdrop .arow.hook.foreign')).toHaveCount(1);
   await expect(page.locator('.backdrop .arow.hook.foreign')).toContainText('/home/deploy/.claude/settings.json');
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * Every control the agent surface added, actually clicked.
+ *
+ * The spec above checks the states that carry an argument; this one checks that
+ * nothing throws. A mock that breaks on a click nobody exercised is the exact
+ * silence this file exists to end — it is how the web UI shipped a dashboard
+ * nobody had decided on.
+ */
+test('desktop mock: every agent control can be used without the page throwing', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  // Reached from a machine's dashboard, already pointed at it.
+  await page.evaluate(() => openMachine('web-01'));
+  // The dashboard's own button, not the toolbar's — that is the one that arrives
+  // already pointed at this machine.
+  await page.locator('.mdash-hd').getByRole('button', { name: 'Agents' }).click();
+  expect(await page.evaluate(() => STATE.agentScope)).toBe('web-01');
+
+  // Probe, scope menu, a machine that answers nothing, and back.
+  await page.evaluate(() => agentProbeNow());
+  await expect(page.locator('.mdash-hd')).toContainText('read just now');
+  await page.evaluate(() => agentPickScope('lb-01'));
+  await expect(page.locator('.atool.off')).toHaveCount(3);
+  await page.evaluate(() => agentPickScope('@local'));
+
+  // Start a new agent: the dialog asks for the one thing it cannot guess.
+  await page.locator('.atool', { hasText: 'Claude Code' }).getByRole('button', { name: 'New' }).click();
+  await expect(page.locator('#na-cwd')).toBeVisible();
+  await page.locator('.backdrop [data-ok]').click();
+  await expect(page.locator('.backdrop')).toHaveCount(0);
+
+  // Each entry of the row menu, one at a time.
+  for (const label of [/Copy conversation id/, /Copy the resume command/, /Resume in a new window/]) {
+    await page.locator('.arow').first().getByRole('button', { name: 'More' }).click();
+    await page.locator('.menu .row', { hasText: label }).click();
+  }
+
+  // Splitting from the agent, focusing a pane, closing one, then the tab.
+  await page.locator('.agentpane button[title^="Split vertical"]').click();
+  await page.locator('.menu .row', { hasText: /Terminal on/ }).click();
+  await expect(page.locator('.pane-wrap')).toHaveCount(2);
+  await page.evaluate(() => agentFocusPane(1));
+  await page.evaluate(() => closeAgentTabPane(1));
+  await expect(page.locator('.pane-wrap')).toHaveCount(1);
+  await page.evaluate(() => closeAgentPane());
+  await expect(page.locator('.mtab', { hasText: 'rite' })).toHaveCount(0);
+
+  // Closing the manager leaves nothing of it behind.
+  await page.evaluate(() => closeAgents());
+  await expect(page.locator('.mtab.view', { hasText: 'Agents' })).toHaveCount(0);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });

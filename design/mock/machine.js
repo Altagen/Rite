@@ -6,7 +6,9 @@
 
    Each page supplies: STATE, renderSide/renderMain, M (icons), ICON, pastille,
    machineByName, jumpChain, connectMachine, dlgNewConn, floatMenu, isLocal, and
-   DASH_SHELL — 'webui' in a browser, 'clients' in the desktop. */
+   DASH_SHELL — 'webui' in a browser, 'clients' in the desktop. The dashboard header
+   also calls `openAgentsOn` from agents.js, so that a machine's agents are reached
+   where its containers are: a menu is a fine switcher and a poor finder. */
 /* Port forwarding (Wave-1): saved per-machine tunnels, started/stopped live. MVP =
    LOCAL forward (127.0.0.1:localPort → remoteHost:remotePort over SSH, as seen from
    the host). Remote & dynamic (SOCKS) reserved in the UI, built later — all ride the

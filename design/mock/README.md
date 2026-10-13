@@ -42,7 +42,9 @@ no server, the pages opened from disk) opens both entry pages, requires the same
 cards and a working Board in each, fails on any console error, walks the ADR 0019
 precedence table row by row — including what the refusal says — and holds the agent
 manager to each state it exists to make speakable. Run it with
-`npx playwright test --project=mock`; `task e2e` covers it too, along with the three
+`npx playwright test --project=mock`; it also clicks **every control the agent surface
+added**, because a mock that throws on a click nobody exercised is the same silence in a
+smaller place. `task e2e` covers it too, along with the three
 places the same rule is checked against the real app: the local vault (`dashboard-probe-gate`),
 the web UI (`accounts`) and an attached client (`proxy`). The mock is the source of
 truth for UI/UX, and until now nothing told anyone when it broke: that silence is how the
