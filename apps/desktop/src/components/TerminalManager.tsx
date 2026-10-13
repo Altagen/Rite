@@ -8,7 +8,9 @@ import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { PaneContainer } from './PaneContainer';
+import { LayoutsMenu } from './LayoutsMenu';
 import { Tab } from '../types/pane';
+import type { LayoutPane } from '../store/splitsFormat';
 import { getAllSessions, getFocusedPane, getFirstLeafPane } from '../utils/paneTree';
 import { useShortcut } from '../shortcuts/useShortcut';
 import { PaneDragProvider } from '../contexts/PaneDragContext';
@@ -34,6 +36,11 @@ interface TerminalManagerProps {
   onReorganizePane?: (sourcePaneId: string, targetPaneId: string, position: 'top' | 'bottom' | 'left' | 'right') => void;
   onNewLocalTerminal?: (shell?: string) => void;
   /**
+   * Open a saved layout in the active tab. Here rather than on a pane because a
+   * layout arranges the whole tab, which is also why its button sits in this strip.
+   */
+  onApplyLayout?: (panes: LayoutPane[]) => Promise<void>;
+  /**
    * The collection / machine tabs, rendered in this strip after the terminal tabs
    * and before the "+", which is where the mock puts them (`#mtabs`). They used to
    * live in a second strip above this one: two bars, one of which was meaningless
@@ -54,6 +61,7 @@ export function TerminalManager({
   onFocusPane,
   onSplitRatioChange,
   onSwitchTab,
+  onApplyLayout,
   onReorderTabs,
   onDetachPane,
   onRenameTab,
@@ -464,6 +472,9 @@ export function TerminalManager({
         })}
 
         {viewTabs}
+
+        {/* Layouts — a whole-tab arrangement, so it belongs beside the tabs. */}
+        {onApplyLayout && <LayoutsMenu onApplyLayout={onApplyLayout} />}
 
         {/* New Terminal Dropdown Button */}
         {onNewLocalTerminal && (

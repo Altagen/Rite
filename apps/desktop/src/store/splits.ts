@@ -81,8 +81,12 @@ interface SplitsState {
   presets: SplitPreset[];
   layouts: SplitLayout[];
   addPreset: (name: string, command: string) => void;
+  /** Change a preset in place. The id is kept, so a layout built from it is unaffected
+   *  — layouts hold their panes by value, which is the point of that copy. */
+  updatePreset: (id: string, name: string, command: string) => void;
   removePreset: (id: string) => void;
   addLayout: (name: string, panes: LayoutPane[]) => void;
+  updateLayout: (id: string, name: string, panes: LayoutPane[]) => void;
   removeLayout: (id: string) => void;
 }
 
@@ -92,6 +96,12 @@ export const useSplits = create<SplitsState>((set) => ({
   addPreset: (name, command) =>
     set((s) => {
       const next = [...s.presets, { id: newId('sp'), name, command }];
+      write(PRESETS_KEY, next);
+      return { presets: next };
+    }),
+  updatePreset: (id, name, command) =>
+    set((s) => {
+      const next = s.presets.map((x) => (x.id === id ? { ...x, name, command } : x));
       write(PRESETS_KEY, next);
       return { presets: next };
     }),
@@ -105,6 +115,16 @@ export const useSplits = create<SplitsState>((set) => ({
     set((s) => {
       // Copied here, so a later edit to a preset cannot reach into this layout.
       const next = [...s.layouts, { id: newId('sl'), name, panes: panes.map((p) => ({ ...p })) }];
+      write(LAYOUTS_KEY, next);
+      return { layouts: next };
+    }),
+  updateLayout: (id, name, panes) =>
+    set((s) => {
+      // Copied here too, for the same reason `addLayout` copies: the caller's array
+      // must not stay reachable from the stored layout.
+      const next = s.layouts.map((x) =>
+        x.id === id ? { ...x, name, panes: panes.map((p) => ({ ...p })) } : x,
+      );
       write(LAYOUTS_KEY, next);
       return { layouts: next };
     }),

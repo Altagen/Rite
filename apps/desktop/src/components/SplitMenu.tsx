@@ -17,6 +17,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { useSnippets } from '../store/snippets';
 import { useSplits, PLAIN_PRESET } from '../store/splits';
+import { layoutDirections } from '../store/splitsFormat';
 
 interface Props {
   /** Split and run something in the new pane. */
@@ -62,11 +63,8 @@ export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Prop
   const openLayout = (panes: { name: string; command: string }[]) => {
     onClose();
     void (async () => {
-      let next = direction;
-      for (const pane of panes) {
-        await onSplitWith(next, pane);
-        next = next === 'horizontal' ? 'vertical' : 'horizontal';
-      }
+      const dirs = layoutDirections(panes.length, direction);
+      for (const [i, pane] of panes.entries()) await onSplitWith(dirs[i], pane);
     })();
   };
 

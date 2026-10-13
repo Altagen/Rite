@@ -72,6 +72,9 @@ test('resetting a vault still asks for the phrase, in settings', async ({ page }
   await fakeNativeShell(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings' }).click();
+  // Settings is a rail of sections and only the chosen one is rendered, so the
+  // section has to be selected rather than scrolled to.
+  await page.getByTestId('settings-nav-danger').click();
 
   const phrase = page.getByPlaceholder('Type DELETE ALL DATA');
   await expect(phrase).toHaveCount(1);

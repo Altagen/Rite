@@ -15,7 +15,14 @@
  * Run: node e2e/split-format-check.mjs
  */
 import assert from 'node:assert/strict';
-import { parseStored, parseLayoutPanes, isPreset, isLayout } from '../apps/desktop/src/store/splitsFormat.ts';
+import {
+  parseStored,
+  parseLayoutPanes,
+  formatLayoutPanes,
+  layoutDirections,
+  isPreset,
+  isLayout,
+} from '../apps/desktop/src/store/splitsFormat.ts';
 
 let passed = 0;
 const check = (name, fn) => {
@@ -104,6 +111,60 @@ check('an empty layout is an empty list, not one blank pane', () => {
 check('a trailing equals is a named pane with a plain shell', () => {
   // How the placeholder itself writes the first line: `shell =`.
   assert.deepEqual(parseLayoutPanes('shell ='), [{ name: 'shell', command: '' }]);
+});
+
+console.log('\nwriting a layout back out, for the editor:');
+
+check('a layout survives a round trip untouched', () => {
+  // The whole point of being able to edit one: a layout opened, not touched and
+  // saved must come back the same, or correcting one pane of five quietly rewrites
+  // the other four.
+  const panes = [
+    { name: 'shell', command: '' },
+    { name: 'logs', command: 'journalctl -fu app' },
+    { name: 'disk', command: 'df -h' },
+  ];
+  assert.deepEqual(parseLayoutPanes(formatLayoutPanes(panes)), panes);
+});
+
+check('a command containing an equals sign survives it too', () => {
+  // `parseLayoutPanes` splits on the FIRST equals, so this is the case that breaks
+  // if the writer ever decides to quote or escape.
+  const panes = [{ name: 'env', command: 'FOO=bar make run' }];
+  assert.deepEqual(parseLayoutPanes(formatLayoutPanes(panes)), panes);
+});
+
+check('a pane with no command is written with its equals sign', () => {
+  // Both forms parse the same; the explicit one shows the field exists.
+  assert.equal(formatLayoutPanes([{ name: 'shell', command: '' }]), 'shell =');
+});
+
+check('an empty layout writes an empty string, not a blank line', () => {
+  assert.equal(formatLayoutPanes([]), '');
+  assert.deepEqual(parseLayoutPanes(formatLayoutPanes([])), []);
+});
+
+console.log('\nhow a layout divides the tab:');
+
+check('the direction alternates, so panes land in a grid', () => {
+  // Five panes all split the same way is six columns, which is nobody's "five
+  // terminals arranged like this".
+  assert.deepEqual(layoutDirections(4, 'horizontal'), [
+    'horizontal',
+    'vertical',
+    'horizontal',
+    'vertical',
+  ]);
+});
+
+check('it starts where the caller says', () => {
+  // The chevron passes the direction its own split button would have used.
+  assert.deepEqual(layoutDirections(3, 'vertical'), ['vertical', 'horizontal', 'vertical']);
+});
+
+check('one pane is one split, and none is none', () => {
+  assert.deepEqual(layoutDirections(1, 'horizontal'), ['horizontal']);
+  assert.deepEqual(layoutDirections(0, 'horizontal'), []);
 });
 
 console.log('\nthe shape of a stored entry:');

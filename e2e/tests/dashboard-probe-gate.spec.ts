@@ -25,6 +25,9 @@ async function openDashboard(page: Page, machine: string) {
 /** Flip the per-device preference through the Settings switch a user would use. */
 async function setProbes(page: Page, on: boolean) {
   await page.getByRole('button', { name: 'Settings' }).click();
+  // Settings is a rail of sections and only the chosen one is rendered, so the
+  // section has to be selected rather than scrolled to.
+  await page.getByTestId('settings-nav-machines').click();
   const check = page
     .locator('label', { hasText: 'Container and service cards on the machine dashboard' })
     .locator('input[type="checkbox"]');

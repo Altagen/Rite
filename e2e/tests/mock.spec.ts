@@ -459,3 +459,71 @@ test('both mocks resolve ADR 0019 §5 the same way, row for row', async ({ page 
   }
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
+
+/**
+ * A preset and a layout can be changed, and a layout has its own button.
+ *
+ * Two corrections from the same review. Editing: the first version could only add and
+ * remove, so fixing a typo meant deleting the entry and retyping the other field.
+ * Placement: a layout arranges a whole tab, so it belongs beside the tabs — the split
+ * menu keeps offering them, because someone who learned the chevron should not have
+ * to unlearn it.
+ */
+for (const shell of ['web', 'desktop'] as const) {
+  test(`${shell} mock: a preset is editable, and a layout has its own button`, async ({ page }) => {
+    const errs = watchErrors(page);
+    await page.goto(mock(shell));
+
+    // The button is there because a layout ships in the mock's library; with none
+    // configured it hides itself rather than opening on nothing.
+    const layoutsBtn = page.locator('button[title^="Layouts"]');
+    await expect(layoutsBtn).toHaveCount(1);
+    expect(await page.evaluate(() => PANE_LAYOUTS.length)).toBeGreaterThan(0);
+    // Spliced out and pushed back: `length = 0` discards the entries, and setting
+    // the length back only makes empty slots — which is a check that breaks the
+    // thing it is inspecting.
+    expect(
+      await page.evaluate(() => {
+        const saved = PANE_LAYOUTS.splice(0, PANE_LAYOUTS.length);
+        const html = layoutsBtnHTML();
+        PANE_LAYOUTS.push(...saved);
+        return html;
+      }),
+    ).toBe('');
+    expect(await page.evaluate(() => PANE_LAYOUTS.length)).toBeGreaterThan(0);
+
+    // It opens the whole arrangement, in the tab, from the tab strip.
+    const before = await page.locator('.pane-wrap').count();
+    const panes = await page.evaluate(() => PANE_LAYOUTS[0].panes.length);
+    await layoutsBtn.click();
+    await page.locator('.menu .row', { hasText: 'Deploy watch' }).click();
+    await expect(page.locator('.pane-wrap')).toHaveCount(before + panes);
+
+    // Editing a preset changes it in place rather than adding a second one.
+    await page.evaluate(() => dlgSplitPrefs());
+    const rows = page.locator('.backdrop .snip-row');
+    const rowsBefore = await rows.count();
+    // Regexes, not strings: `hasText` with a string matches case-insensitively, and
+    // the layout row lists a pane called `disk` — so 'Disk' found two rows and the
+    // rename looked like it had not taken.
+    await rows.filter({ hasText: /Disk/ }).locator('[data-sp-edit]').click();
+    await expect(page.locator('#sp-name')).toHaveValue('Disk');
+    await expect(page.locator('#sp-cmd')).toHaveValue('df -h');
+    await page.locator('#sp-name').fill('Espace');
+    await page.locator('#sp-cmd').fill('df -h /');
+    await page.locator('[data-sp-add]').click();
+    await expect(rows.filter({ hasText: /Espace/ })).toHaveCount(1);
+    await expect(rows.filter({ hasText: /Disk/ })).toHaveCount(0);
+    await expect(rows).toHaveCount(rowsBefore);
+
+    // A layout comes back out of the editor exactly as it went in: correcting one
+    // pane of five must not rewrite the other four.
+    const written = await page.evaluate(() =>
+      PANE_LAYOUTS[0].panes.map((p) => `${p.name} = ${p.command}`.trimEnd()).join('\n'),
+    );
+    await rows.filter({ hasText: /Deploy watch/ }).locator('[data-sl-edit]').click();
+    await expect(page.locator('#sl-panes')).toHaveValue(written);
+
+    expect(errs, 'the mock must not log errors').toEqual([]);
+  });
+}

@@ -9,6 +9,28 @@
  * the shipped module is tested, not a copy of it.
  */
 
+/** Which way each successive split of a layout goes. */
+export type SplitAxis = 'horizontal' | 'vertical';
+
+/**
+ * The direction of each split a layout performs, in order.
+ *
+ * It alternates. Five panes all split the same way is six columns, which is nobody's
+ * "five terminals arranged like this"; alternating makes a grid out of the same
+ * number of splits. Here rather than in either caller because there are two of them —
+ * the split menu's chevron and the Layouts button — and two copies of an alternation
+ * is how they end up disagreeing about what a saved layout looks like.
+ */
+export function layoutDirections(count: number, first: SplitAxis): SplitAxis[] {
+  const out: SplitAxis[] = [];
+  let next = first;
+  for (let i = 0; i < count; i++) {
+    out.push(next);
+    next = next === 'horizontal' ? 'vertical' : 'horizontal';
+  }
+  return out;
+}
+
 /** One pane of a layout: a name to show, and what to run in it. */
 export interface LayoutPane {
   name: string;
@@ -86,4 +108,17 @@ export function parseLayoutPanes(text: string): LayoutPane[] {
       return { name: line.slice(0, at).trim(), command: line.slice(at + 1).trim() };
     })
     .filter((p) => p.name !== '');
+}
+
+/**
+ * A layout's panes back as text, for the editor to put in the textarea.
+ *
+ * The inverse of `parseLayoutPanes`, and it has to be an exact one: a layout the user
+ * opens, does not touch and saves must come back the same, or editing one pane of five
+ * quietly rewrites the other four. A pane with no command is written with a trailing
+ * `=`, the way the placeholder shows it, rather than as a bare name — both parse to
+ * the same thing, and the explicit form shows the field exists.
+ */
+export function formatLayoutPanes(panes: LayoutPane[]): string {
+  return panes.map((p) => `${p.name} = ${p.command}`.trimEnd()).join('\n');
 }

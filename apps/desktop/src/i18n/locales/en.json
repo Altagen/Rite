@@ -165,7 +165,17 @@
     "keyboard": "Keyboard",
     "splits": "Splits",
     "splitsHint": "A divider opens a plain terminal — that is the split button, and it stays that way. What else it can open, from the chevron beside it, is yours to set: a named command, or a whole layout at once.",
-    "configure": "Configure…"
+    "configure": "Configure…",
+    "sections": "Sections",
+    "sec": {
+      "appearance": "Appearance",
+      "shell": "Default shell",
+      "machines": "Machine status",
+      "ssh": "SSH connections",
+      "focus": "Focus mode",
+      "password": "Master password",
+      "danger": "Danger zone"
+    }
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -214,7 +224,16 @@
     "remove": "Remove",
     "needName": "Give it a name.",
     "needPanes": "A layout needs at least one pane.",
-    "close": "Close"
+    "close": "Close",
+    "edit": "Edit",
+    "save": "Save",
+    "cancel": "Cancel",
+    "newPreset": "New preset",
+    "editPreset": "Edit preset",
+    "newLayout": "New layout",
+    "editLayout": "Edit layout",
+    "layoutsTitle": "Layouts — open a saved arrangement in this tab",
+    "configureLayouts": "Configure layouts…"
   },
   "pf": {
     "title": "Port forwarding",

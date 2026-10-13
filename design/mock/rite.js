@@ -216,16 +216,41 @@ function splitMenu(e){
   floatMenu(e, items);
 }
 
+/* The Layouts button, in the tab strip.
+
+   A layout arranges a WHOLE TAB — five terminals set up a particular way — so it
+   belongs beside the tabs and not only inside one pane's split menu, which is where
+   it first appeared. That menu keeps offering them: someone who learned the chevron
+   should not have to unlearn it. This is the obvious place, not the only one.
+
+   No layouts configured → no button. An empty dropdown beside the tabs is a
+   permanent invitation to find out that it is empty; the split menu's
+   "Configure splits…" is where a first layout comes from. */
+function layoutsBtnHTML(){
+  if(!PANE_LAYOUTS.length) return '';
+  return `<button class="mtab-new" title="Layouts — open a saved arrangement in this tab" onclick="layoutsMenu(event)">${EXICON.panel}${EXICON.chevD}</button>`;
+}
+function layoutsMenu(e){
+  e.stopPropagation();
+  const items = PANE_LAYOUTS.map(l=>({ icon:EXICON.panel,
+    label:`${l.name}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes · ${l.panes.map(p=>p.name).join(' · ')}</div>`,
+    onclick:()=>applyLayout(l.id) }));
+  items.push({ icon:EXICON.gear, label:'Configure layouts…', onclick:()=>dlgSplitPrefs() });
+  floatMenu(e, items);
+}
+
 /* Where the name and the command are the user's. Presets and layouts are the same
    two fields twice, so they are edited in one place rather than two half-places. */
 function splitPrefsBody(){
   const preset = (p,i) => `<div class="snip-row">
     <div class="snip-meta"><div class="snip-name">${p.name}${p.builtin?' <span class="snip-count">always there</span>':''}</div>
       <code class="snip-cmd">${p.command||'a plain shell — no command'}</code></div>
-    ${p.builtin?'':`<button class="btn btn-ghost btn-sm" data-sp-del="${i}" title="Remove">✕</button>`}</div>`;
+    ${p.builtin?'':`<button class="btn btn-ghost btn-sm" data-sp-edit="${i}" title="Edit">Edit</button>
+    <button class="btn btn-ghost btn-sm" data-sp-del="${i}" title="Remove">✕</button>`}</div>`;
   const layout = (l,i) => `<div class="snip-row">
     <div class="snip-meta"><div class="snip-name">${l.name} <span class="snip-count">${l.panes.length} panes</span></div>
       <code class="snip-cmd">${l.panes.map(p=>p.name).join(' · ')}</code></div>
+    <button class="btn btn-ghost btn-sm" data-sl-edit="${i}" title="Edit">Edit</button>
     <button class="btn btn-ghost btn-sm" data-sl-del="${i}" title="Remove">✕</button></div>`;
   return `<p class="muted" style="font-size:12px;margin:0 0 10px">Splitting a pane opens a <b>plain terminal</b> — that is the button.
     These are what the chevron beside it offers as well: a named command, or a whole layout at once.</p>
@@ -234,31 +259,50 @@ function splitPrefsBody(){
     <div class="snip-add">
       <label class="field"><span>Name</span><input class="inp" id="sp-name" placeholder="Containers"></label>
       <label class="field"><span>Command</span><input class="inp mono" id="sp-cmd" placeholder="df -h"></label>
-      <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sp-add>Add preset</button></div></div>
+      <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sp-add>${EDITING.preset>=0?'Save preset':'Add preset'}</button></div></div>
     <div class="sec"><span class="eyebrow">Layouts</span><span class="line"></span></div>
     <div class="snip-list">${PANE_LAYOUTS.map(layout).join('')||'<p class="muted" style="font-size:13px;margin:2px 0 10px">No layout yet.</p>'}</div>
     <div class="snip-add">
       <label class="field"><span>Name</span><input class="inp" id="sl-name" placeholder="Deploy watch"></label>
       <label class="field"><span>Panes <span class="muted" style="font-weight:400">· one per line, <code>name = command</code></span></span><textarea class="inp mono" id="sl-panes" rows="4" spellcheck="false" style="resize:vertical;line-height:1.6" placeholder="shell =&#10;load = top&#10;disk = df -h"></textarea></label>
-      <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sl-add>Add layout</button></div></div>`;
+      <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sl-add>${EDITING.layout>=0?'Save layout':'Add layout'}</button></div></div>`;
 }
+/* Add AND edit. The first version could only add and remove, so fixing a typo in a
+   command meant deleting the entry and retyping the other field — and for a five-pane
+   layout, five lines retyped to fix one. `EDITING` is the index being changed, or -1
+   for the add form, and the two forms are the same two fields either way. */
+let EDITING={preset:-1,layout:-1};
 function dlgSplitPrefs(){
+  EDITING={preset:-1,layout:-1};
   const bd=showModal({title:'Splits',subtitle:'What a divider can open',wide:true,confirm:'Done',body:splitPrefsBody()});
   const body=bd.querySelector('.body');
-  body.addEventListener('click',e=>{const t=e.target.closest('[data-sp-del],[data-sp-add],[data-sl-del],[data-sl-add]');if(!t)return;
-    if(t.dataset.spDel!==undefined){SPLIT_PRESETS.splice(+t.dataset.spDel,1);}
-    else if(t.dataset.slDel!==undefined){PANE_LAYOUTS.splice(+t.dataset.slDel,1);}
+  const panesText=panes=>panes.map(p=>`${p.name} = ${p.command}`.trimEnd()).join('\n');
+  const readPanes=v=>(v||'').split('\n').map(x=>x.trim()).filter(Boolean)
+    .map(line=>{const k=line.indexOf('=');return k<0?{name:line,command:''}:{name:line.slice(0,k).trim(),command:line.slice(k+1).trim()};});
+  const redraw=()=>{body.innerHTML=splitPrefsBody();
+    if(EDITING.preset>=0){const p=SPLIT_PRESETS[EDITING.preset];
+      body.querySelector('#sp-name').value=p.name; body.querySelector('#sp-cmd').value=p.command;}
+    if(EDITING.layout>=0){const l=PANE_LAYOUTS[EDITING.layout];
+      body.querySelector('#sl-name').value=l.name; body.querySelector('#sl-panes').value=panesText(l.panes);}};
+  body.addEventListener('click',e=>{
+    const t=e.target.closest('[data-sp-del],[data-sp-add],[data-sp-edit],[data-sl-del],[data-sl-add],[data-sl-edit]');
+    if(!t)return;
+    if(t.dataset.spEdit!==undefined){EDITING.preset=+t.dataset.spEdit;}
+    else if(t.dataset.slEdit!==undefined){EDITING.layout=+t.dataset.slEdit;}
+    else if(t.dataset.spDel!==undefined){SPLIT_PRESETS.splice(+t.dataset.spDel,1);EDITING.preset=-1;}
+    else if(t.dataset.slDel!==undefined){PANE_LAYOUTS.splice(+t.dataset.slDel,1);EDITING.layout=-1;}
     else if(t.dataset.spAdd!==undefined){
       const n=(body.querySelector('#sp-name').value||'').trim(), c=(body.querySelector('#sp-cmd').value||'').trim();
       if(!n){toast('Give the preset a name');return;}
-      SPLIT_PRESETS.push({id:'p'+Math.random().toString(36).slice(2,7),name:n,command:c});}
+      if(EDITING.preset>=0){Object.assign(SPLIT_PRESETS[EDITING.preset],{name:n,command:c});EDITING.preset=-1;}
+      else SPLIT_PRESETS.push({id:'p'+Math.random().toString(36).slice(2,7),name:n,command:c});}
     else if(t.dataset.slAdd!==undefined){
       const n=(body.querySelector('#sl-name').value||'').trim();
-      const panes=(body.querySelector('#sl-panes').value||'').split('\n').map(x=>x.trim()).filter(Boolean)
-        .map(line=>{const k=line.indexOf('=');return k<0?{name:line,command:''}:{name:line.slice(0,k).trim(),command:line.slice(k+1).trim()};});
+      const panes=readPanes(body.querySelector('#sl-panes').value);
       if(!n||!panes.length){toast('A layout needs a name and at least one pane');return;}
-      PANE_LAYOUTS.push({id:'l'+Math.random().toString(36).slice(2,7),name:n,panes});}
-    body.innerHTML=splitPrefsBody();});
+      if(EDITING.layout>=0){Object.assign(PANE_LAYOUTS[EDITING.layout],{name:n,panes});EDITING.layout=-1;}
+      else PANE_LAYOUTS.push({id:'l'+Math.random().toString(36).slice(2,7),name:n,panes});}
+    redraw();});
 }
 
 /* The tab renderer, one for every kind. */

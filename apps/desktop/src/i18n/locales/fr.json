@@ -165,7 +165,17 @@
     "keyboard": "Clavier",
     "splits": "Divisions",
     "splitsHint": "Un séparateur ouvre un terminal simple — c'est le bouton de division, et il le reste. Ce qu'il peut ouvrir d'autre, depuis le chevron à côté, vous appartient : une commande nommée, ou toute une disposition d'un coup.",
-    "configure": "Configurer…"
+    "configure": "Configurer…",
+    "sections": "Sections",
+    "sec": {
+      "appearance": "Apparence",
+      "shell": "Shell par défaut",
+      "machines": "État des machines",
+      "ssh": "Connexions SSH",
+      "focus": "Mode focus",
+      "password": "Mot de passe maître",
+      "danger": "Zone dangereuse"
+    }
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -214,7 +224,16 @@
     "remove": "Retirer",
     "needName": "Donnez-lui un nom.",
     "needPanes": "Une disposition a besoin d'au moins un panneau.",
-    "close": "Fermer"
+    "close": "Fermer",
+    "edit": "Modifier",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "newPreset": "Nouveau préréglage",
+    "editPreset": "Modifier le préréglage",
+    "newLayout": "Nouvelle disposition",
+    "editLayout": "Modifier la disposition",
+    "layoutsTitle": "Dispositions — ouvrir un agencement enregistré dans cet onglet",
+    "configureLayouts": "Configurer les dispositions…"
   },
   "pf": {
     "title": "Redirection de ports",
