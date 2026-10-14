@@ -16,6 +16,8 @@ const EXICON = {
   key:'<svg class="icon" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M17 6l2 2M14 9l2 2"/></svg>',
   trash:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"/></svg>',
   bell:'<svg class="icon" viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>',
+  // Same path as ICON.term in rite.js: the overlay pages do not load it.
+  term:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 17l6-5-6-5M12 19h8"/></svg>',
 };
 
 /* ================= the accounts nav =================
@@ -39,6 +41,10 @@ function overlayNavHTML(current){
   const me = typeof ME !== 'undefined' ? ME : null;
   const role = (typeof ORG !== 'undefined' && me && (ORG.users.find(u => u.u === me) || {}).role) || 'user';
   const pages = [
+    // The way back, NAMED. It replaces the ✕ that used to be the only exit: a nav of
+    // four destinations says where you are going, where a Close only says "not here".
+    { id:'app', label:'Terminals', href:'web.html', icon:EXICON.term,
+      title:'Back to your terminals (Esc)' },
     { id:'teams', label:'Teams', href:'teams.html', icon:EXICON.users, title:'Teams' },
     { id:'collections', label:'Collections', href:'collections.html', icon:EXICON.coll,
       title:'Collections — yours + Discover (offered to your teams)' },

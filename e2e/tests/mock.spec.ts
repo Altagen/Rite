@@ -840,9 +840,10 @@ for (const page_ of ['collections', 'teams', 'notifications'] as const) {
     await page.goto(mock(page_));
 
     const nav = page.locator('#onav button');
-    // Teams, Collections, Administration (this account is an admin), and the bell —
-    // except on the inbox page itself, where a bell would open what you are reading.
-    await expect(nav).toHaveCount(page_ === 'notifications' ? 3 : 4);
+    // Terminals, Teams, Collections, Administration (this account is an admin), and the
+    // bell — except on the inbox page itself, where a bell would open what you are reading.
+    await expect(nav).toHaveCount(page_ === 'notifications' ? 4 : 5);
+    await expect(nav.filter({ hasText: 'Terminals' })).toHaveCount(1);
     await expect(nav.filter({ hasText: 'Teams' })).toHaveCount(1);
     await expect(nav.filter({ hasText: 'Collections' })).toHaveCount(1);
     await expect(nav.filter({ hasText: 'Administration' })).toHaveCount(1);
@@ -862,8 +863,9 @@ for (const page_ of ['collections', 'teams', 'notifications'] as const) {
       await expect(here).not.toHaveAttribute('onclick', /./);
     }
 
-    // Close is untouched — the nav is what was missing, not what replaces it.
-    await expect(page.locator('.appbar button', { hasText: 'Close' })).toHaveCount(1);
+    // And no ✕: "Terminals" IS the way back, so a Close beside it would be a second
+    // answer to a question already answered — the duplicate the nav was added to remove.
+    await expect(page.locator('.appbar button', { hasText: 'Close' })).toHaveCount(0);
     expect(errs, 'the mock must not log errors').toEqual([]);
   });
 }
@@ -891,10 +893,15 @@ test('mock: the nav travels between the overlay pages, and the console does not 
   expect(asUser).not.toContain('Administration');
   expect(asUser).toContain('Collections');
 
-  // The console is the exception, on purpose.
+  // The way back is named, and it is the nav's own first entry.
+  await page.locator('#onav button', { hasText: 'Terminals' }).click();
+  await expect(page).toHaveURL(/web\.html$/);
+
+  // The console is the exception on both counts: no nav, so it keeps its ✕.
   await page.goto(mock('admin'));
   await expect(page.locator('#onav')).toHaveCount(0);
   await expect(page.locator('.appbar button', { hasText: 'Collections' })).toHaveCount(0);
+  await expect(page.locator('.appbar button', { hasText: 'Close' })).toHaveCount(1);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });

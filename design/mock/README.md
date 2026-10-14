@@ -183,16 +183,21 @@ the real client.
 ### An overlay page carries the nav
 
 Teams, Collections and Notifications are **pages you travel between**, and their bar used
-to hold Close and your avatar and nothing else: Collections → Teams meant Close, then
+to hold a ✕ and your avatar and nothing else: Collections → Teams meant Close, then
 finding the button you had just left. The bar is the emptiest one in the app, so the nav
-rides along — Teams / Collections / Administration + the bell — and **Close stays exactly
-where it was** for the trip back to the terminals.
+rides along — **Terminals** / Teams / Collections / Administration + the bell.
+
+The first entry *is* the way back, so **there is no Close any more**: a nav of four
+destinations says where you are going, where a ✕ only says "not here". Esc still closes.
+The workspace's own bar has no "Terminals" entry — it would name the page you are looking
+at — which is the same rule as the one below.
 
 The page you are on is **marked, not dropped**: hiding the current entry would shift the
-other two under the cursor on every hop. Two deliberate exceptions: the **inbox** page
-has no bell (it *is* the inbox), and the **admin console** carries no nav at all — its own
-left rail already says Teams and Collections, the organisation's rather than yours, and
-the same two words twice on one screen is worse than a Close.
+others under the cursor on every hop. Two deliberate exceptions: the **inbox** page has no
+bell (it *is* the inbox), and the **admin console** carries no nav at all — its own left
+rail already says Teams and Collections, the organisation's rather than yours, and the
+same two words twice on one screen is worse than a Close. Which is also why the console is
+the one overlay that keeps its ✕.
 
 ### Skills, commands and hooks — read-only, on purpose
 

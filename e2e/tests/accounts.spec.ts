@@ -764,17 +764,18 @@ test('the probing cards refresh on their own, never faster than the client floor
 });
 
 /**
- * An overlay page carries the nav, so Collections → Teams costs no Close.
+ * An overlay page carries the nav, and the nav is also the way back.
  *
  * Teams, Collections and the console are pages you travel between, and an overlay's bar
- * used to hold Close and the identity pastille and nothing else: every hop was Close,
- * then find the button you had just left. The bar is the emptiest one in the app, so the
- * nav costs nothing to carry, and Close stays where it was for the trip back.
+ * used to hold a ✕ and the identity pastille and nothing else: every hop was Close, then
+ * find the button you had just left. The bar is the emptiest one in the app, so the nav
+ * rides along — and its first entry, "Terminals", replaced the ✕ rather than joining it.
+ * A nav of four destinations says where you are going; a Close only says "not here".
  *
  * `design/mock/full-data.js` (`overlayNavHTML`) is the same list in the prototype, and
  * `mock.spec.ts` holds it to the same rules.
  */
-test('an overlay page carries the nav, and Close still returns to the terminals', async ({ page }) => {
+test('an overlay page carries the nav, which is also the way back', async ({ page }) => {
   // Wide enough that OverflowNav keeps the entries inline: this test is about what the
   // bar offers, not about when it folds into "⋯".
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -791,6 +792,10 @@ test('an overlay page carries the nav, and Close still returns to the terminals'
     await page.getByRole('button', { name: /^sign in$/i }).click();
   }
   await expectWorkspace(page);
+
+  // The workspace's own bar has no "Terminals" entry: it would name the page you are
+  // looking at. The way back exists only where there is somewhere to come back from.
+  await expect(page.getByRole('button', { name: 'Terminals', exact: true })).toHaveCount(0);
 
   // The overlay's own bar, not the workspace's behind it.
   const bar = page.locator('.fixed.inset-0.z-50 > header.m-appbar');
@@ -813,8 +818,16 @@ test('an overlay page carries the nav, and Close still returns to the terminals'
   // …and the admin console is reachable from here too, by the name this shell gives it.
   await expect(bar.getByRole('button', { name: /^(Admin|Organization)$/ })).toHaveCount(1);
 
-  // Close is untouched: the nav is what was missing, not what replaces it.
-  await bar.getByRole('button', { name: /^close$/i }).click();
+  // No ✕ any more: the nav's first entry IS the way back, and it is named. A Close beside
+  // it would be a second answer to a question already answered.
+  await expect(bar.getByRole('button', { name: /^close$/i })).toHaveCount(0);
+  await bar.getByRole('button', { name: 'Terminals', exact: true }).click();
   await expect(page.locator('.fixed.inset-0.z-50 > header.m-appbar')).toHaveCount(0);
   await expectWorkspace(page);
+
+  // Esc still closes, because a mode you open over the app should close that way.
+  await page.getByRole('button', { name: 'Collections', exact: true }).click();
+  await expect(page.locator('.fixed.inset-0.z-50 > header.m-appbar')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.fixed.inset-0.z-50 > header.m-appbar')).toHaveCount(0);
 });

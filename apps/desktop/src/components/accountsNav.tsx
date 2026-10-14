@@ -22,11 +22,11 @@
 
 import { useRoutePath, navigate } from '../store/route';
 import { useServerSession } from '../store/serverSessionStore';
-import { IconCollection, IconShield, IconUsers } from './icons';
+import { IconCollection, IconShield, IconTerminal, IconUsers } from './icons';
 import { isNativeShell } from '../utils/nativeShell';
 import type { NavAction } from './OverflowNav';
 
-export function useAccountsNav(): NavAction[] {
+export function useAccountsNav({ includeWorkspace = false } = {}): NavAction[] {
   const { user, mode } = useServerSession();
   const path = useRoutePath();
   if (!user || mode?.serveWebui === false) return [];
@@ -38,6 +38,22 @@ export function useAccountsNav(): NavAction[] {
   const orgLabel = isNativeShell() || user.role === 'manager' ? 'Organization' : 'Admin';
 
   const nav: NavAction[] = [
+    // The way back, NAMED — and only where you are not already there. It replaces the ✕
+    // the overlays used to carry: a nav of four destinations says where you are going,
+    // where a Close only says "not here". In the workspace's own bar the entry would be
+    // an entry for the page you are looking at, so `includeWorkspace` is false there.
+    ...(includeWorkspace
+      ? [
+          {
+            id: 'app',
+            label: 'Terminals',
+            title: 'Back to your terminals (Esc)',
+            icon: <IconTerminal className="h-4 w-4" />,
+            onClick: () => navigate('/'),
+            active: path === '/',
+          },
+        ]
+      : []),
     {
       id: 'teams',
       label: 'Teams',
