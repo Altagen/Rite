@@ -5,7 +5,7 @@
  */
 
 import type { SplitTarget } from '../types/pane';
-import type { LayoutPane } from '../store/layoutsFormat';
+import type { Layout } from '../store/layoutsFormat';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
@@ -40,7 +40,7 @@ interface TerminalManagerProps {
    * Open a saved layout in the active tab. Here rather than on a pane because a
    * layout arranges the whole tab, which is also why its button sits in this strip.
    */
-  onApplyLayout?: (panes: LayoutPane[]) => Promise<void>;
+  onApplyLayout?: (layout: Layout) => Promise<void>;
   /** The machines a layout can name, and whether their names can be read at all. */
   layoutConnections?: { name: string }[];
   layoutLibraryReadable?: boolean;
@@ -350,6 +350,19 @@ export function TerminalManager({
         </svg>
         <p className="text-lg">No active terminal sessions</p>
         <p className="mt-2 text-sm">Double-click a connection to open a terminal</p>
+        {/* A layout opens its own tabs, so this is exactly when it is wanted: nothing
+            is open, and the morning is one click away. It used to live only beside the
+            tabs, which meant you had to open a terminal before you could open the
+            arrangement that opens terminals. */}
+        {onApplyLayout && (
+          <div className="mt-6">
+            <LayoutsMenu
+              onApplyLayout={onApplyLayout}
+              connections={layoutConnections ?? []}
+              libraryReadable={layoutLibraryReadable ?? false}
+            />
+          </div>
+        )}
       </div>
     );
   }

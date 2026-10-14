@@ -22,8 +22,6 @@ import { useTranslation } from '../i18n/i18n';
 import { useSnippets } from '../store/snippets';
 import { useSplits, PLAIN_PRESET } from '../store/splits';
 import { useLayouts } from '../store/layouts';
-import { layoutDirections } from '../store/splitsFormat';
-import type { LayoutPane } from '../store/layoutsFormat';
 import type { SplitTarget } from '../types/pane';
 
 interface Props {
@@ -44,7 +42,9 @@ interface Props {
 export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Props) {
   const { t } = useTranslation();
   const { presets } = useSplits();
-  const { layouts } = useLayouts();
+  // No workspace file, no library to configure: the plain split and the snippets are
+  // all this menu has to offer on a shared server (ADR 0023).
+  const hasWorkspaceFile = useLayouts((s) => s.available);
   const { snippets } = useSnippets();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -66,14 +66,6 @@ export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Prop
   const run = (target: SplitTarget) => {
     onClose();
     void onSplitWith(direction, target);
-  };
-
-  const openLayout = (panes: LayoutPane[]) => {
-    onClose();
-    void (async () => {
-      const dirs = layoutDirections(panes.length, direction);
-      for (const [i, pane] of panes.entries()) await onSplitWith(dirs[i], pane);
-    })();
   };
 
   const row = (key: string, label: string, sub: string | null, onClick: () => void) => (
@@ -108,16 +100,15 @@ export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Prop
         row(s.id, s.name, s.command.split('\n')[0], () => run({ name: s.name, command: s.command })),
       )}
 
-      {layouts.length > 0 && heading(t('split.layouts'))}
-      {layouts.map((l) =>
-        row(l.id, l.name, t('split.panesCount', { count: l.panes.length }), () => openLayout(l.panes)),
+      {hasWorkspaceFile && (
+        <>
+          <div className="my-1 border-t border-border" />
+          {row('configure', t('split.configure'), null, () => {
+            onClose();
+            onConfigure();
+          })}
+        </>
       )}
-
-      <div className="my-1 border-t border-border" />
-      {row('configure', t('split.configure'), null, () => {
-        onClose();
-        onConfigure();
-      })}
     </div>
   );
 }

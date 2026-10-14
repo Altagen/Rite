@@ -320,8 +320,8 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 - [x] **Configurable splits** — **built** (0.2.4), after being mocked. A *terminal*
       feature rather than an agent one. The split button opens a **plain terminal** — the common case pays nothing
       — and a chevron beside it offers **presets** (a name and a command, both the
-      user's), the existing **snippets**, and **layouts** that open several panes at
-      once. One preferences dialog owns all of it. The mock gained a small
+      user's) and the existing **snippets**. Layouts left the chevron and became a
+      file of their own (below), so the two features have two buttons. The mock gained a small
       **pane-kind registry** to do this, so a terminal tab and an agent tab are the
       same structure and a split is one feature instead of two. In the app, a preset's
       command rides on the `TerminalSession` and the **pane** runs it once its session
@@ -329,6 +329,19 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       it, and a shell discards queued input while it sets the tty up, so a timer on the
       caller's side loses the command outright rather than running it late. The
       dashboard's run-in-pane moved onto the same path and lost its 700 ms guess.
+- [x] **The workspace as a file** — **built** (0.2.4), ADR 0023, docs/LAYOUTS.md.
+      Presets and layouts are `[[preset]]` and `[[layout]]` in one TOML file on the
+      machine, because they describe *this machine's* setup: they travel in a dotfiles
+      repository, not through a server. A layout opens **its own tabs**, each pane
+      saying where it goes (`split`, `of`, `size` as a percentage of the area it cuts,
+      `tab`), so an eight-pane file produces exactly eight panes; a file that says
+      nothing tiles into a balanced grid. A machine the file names and this computer
+      does not have opens a plain shell with a note instead of cancelling the
+      arrangement, and a machine's **pre-connect hook** now runs for a layout too —
+      once per machine, however many panes name it. A shared server has no file and
+      offers no substitute: the first attempt kept the text in the settings table,
+      which is plaintext in a table with no owner column, so the server could read
+      machine names it is never allowed to read and one account overwrote another's.
 - [ ] **Compare what is in effect across machines** — "this project loads three skills
       on web-01 and two on my laptop" is the same read, answered twice. Still
       read-only, and the natural next step once the single-machine view is real.
@@ -449,7 +462,7 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 - [ ] Variables in profiles
 - [ ] Conditional tabs (environment-based)
 - [ ] Pre/post-connect hooks
-- [ ] Advanced layouts (grids, custom splits)
+- [x] Advanced layouts (grids, custom splits) — the workspace file, ADR 0023
 - [ ] Workspace mode (auto-save/restore session)
 
 ### 👥 Collaboration (Priority: LOW)
@@ -528,7 +541,7 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 - [ ] Plugin system
 - [ ] Terminal ligatures support
 - [ ] GPU-accelerated rendering
-- [ ] Pane presets/layouts (save and restore pane arrangements)
+- [x] Pane presets/layouts (save and restore pane arrangements) — docs/LAYOUTS.md
 - [ ] Detach panes to floating windows (multi-window support)
 - [ ] Terminal zoom mode (focus one pane fullscreen temporarily)
 - [ ] Pane synchronization (broadcast to selected panes only)
@@ -539,7 +552,7 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 - [ ] Terminal bell notifications (visual + system notifications)
 - [ ] Custom tab icons and colors (visual organization)
 - [ ] Pane title bars (show pwd, connection name, or custom label)
-- [ ] Split pane templates (2x2 grid, 1-3 layout, etc.)
+- [x] Split pane templates (2x2 grid, 1-3 layout, etc.) — a bare file tiles into a grid
 - [ ] Drag tabs between windows (when multi-window is implemented)
 - [ ] Terminal screenshot/export (capture pane or full tab as image)
 - [ ] Activity indicators (show which panes have new output)

@@ -17,11 +17,11 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from '../i18n/i18n';
 import { useLayouts } from '../store/layouts';
 import { LayoutsModal } from './LayoutsModal';
-import type { LayoutPane } from '../store/layoutsFormat';
+import type { Layout } from '../store/layoutsFormat';
 
 interface Props {
   /** Open a layout: one pane after another, in the active tab. */
-  onApplyLayout: (panes: LayoutPane[]) => Promise<void>;
+  onApplyLayout: (layout: Layout) => Promise<void>;
   connections: { name: string }[];
   libraryReadable: boolean;
 }
@@ -117,7 +117,7 @@ export function LayoutsMenu({ onApplyLayout, connections, libraryReadable }: Pro
                   key={l.id}
                   onClick={() => {
                     setOpen(false);
-                    void onApplyLayout(l.panes);
+                    void onApplyLayout(l);
                   }}
                   className="w-full rounded px-3 py-2 text-left transition-colors hover:bg-muted"
                 >

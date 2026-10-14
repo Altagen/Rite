@@ -105,6 +105,21 @@ export function findParent(tree: LayoutTree, childId: string): SplitPaneNode | n
 }
 
 /**
+ * Which side the new pane takes, and how much of the area it gets.
+ *
+ * Both default to what a chevron split does — beside or below, half and half — so the
+ * menu calls this function with nothing extra. A layout file is the caller that needs
+ * them: `split = "left"` and `size = "45%"` have no other way through (ADR 0023).
+ */
+export interface SplitOptions {
+  /** The new pane takes the left or top side instead of the right or bottom one. */
+  before?: boolean;
+  /** The FIRST child's share of the area, 0.1–0.9. A planner states it from that end
+   *  because that is what the tree stores and what `SplitPane` lays out. */
+  ratio?: number;
+}
+
+/**
  * Split a pane in the specified direction, putting a new terminal beside it
  *
  * The pane being split can be of any kind — splitting an SFTP or agent pane is the
@@ -116,7 +131,8 @@ export function splitPane(
   tree: LayoutTree,
   paneId: string,
   direction: SplitDirection,
-  newSession: TerminalSession
+  newSession: TerminalSession,
+  options: SplitOptions = {}
 ): LayoutTree {
   if (!tree) return null;
 
@@ -125,13 +141,19 @@ export function splitPane(
     const existingPane: LeafPaneNode = { ...tree, isFocused: false };
     const newPane = createTerminalPane(newSession, true); // New pane gets focus
 
-    return createSplitPane(direction, existingPane, newPane);
+    // Out-of-range ratios are refused at the file's edge with a line number; anything
+    // that reaches here is clamped to what the drag handle allows rather than laying
+    // out a pane nobody can see.
+    const ratio = Math.max(0.1, Math.min(0.9, options.ratio ?? 0.5));
+    return options.before
+      ? createSplitPane(direction, newPane, existingPane, ratio)
+      : createSplitPane(direction, existingPane, newPane, ratio);
   }
 
   if (tree.type === 'split') {
     // Recursively search in children
-    const newLeft = splitPane(tree.children[0], paneId, direction, newSession);
-    const newRight = splitPane(tree.children[1], paneId, direction, newSession);
+    const newLeft = splitPane(tree.children[0], paneId, direction, newSession, options);
+    const newRight = splitPane(tree.children[1], paneId, direction, newSession, options);
 
     return {
       ...tree,

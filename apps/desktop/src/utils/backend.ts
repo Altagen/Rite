@@ -231,11 +231,12 @@ export const BackendAuth = {
   resetDatabase: () => invokeWithValidation('reset_database', z.null()),
 } as const;
 
-// Layouts (docs/LAYOUTS.md) — the file that says what opens when you sit down.
-// `path` is null wherever there is no file the caller may edit by hand (a shared
-// server), and the UI shows the editor without a path rather than a path that lies.
+// The workspace file (docs/LAYOUTS.md) — the split menu's presets, and what opens
+// when you sit down. `text` is null where there is no file at all: presets and
+// layouts are the machine's, so a shared server has neither and offers no substitute
+// (ADR 0023). `path` says where the file is, so an editor can open it too.
 const LayoutsFileSchema = z.object({
-  text: z.string(),
+  text: z.string().nullable(),
   path: z.string().nullable(),
 });
 

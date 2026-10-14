@@ -161,7 +161,7 @@
     "hostKeyVerificationAccept": "Accepter - TOFU silencieux",
     "languageLabel": "Langue de l'interface",
     "keyboard": "Clavier",
-    "splitsHint": "Un séparateur ouvre un terminal simple — c'est le bouton de division, et il le reste. Ce qu'il peut ouvrir d'autre, depuis le chevron à côté, vous appartient : une commande nommée, ou toute une disposition d'un coup.",
+    "splitsHint": "Un diviseur ouvre un terminal simple — c'est le bouton, et ça le reste. Ce qu'il peut ouvrir d'autre, depuis le chevron à côté, t'appartient : une commande nommée, gardée dans ton fichier d'espace de travail à côté de tes dispositions.",
     "sections": "Sections",
     "sec": {
       "appearance": "Apparence",
@@ -213,10 +213,9 @@
   },
   "split": {
     "menu": "Diviser avec…",
-    "more": "Diviser avec… — un préréglage, un snippet ou une disposition",
+    "more": "Diviser avec… — un préréglage ou un snippet",
     "plain": "Terminal",
     "snippets": "Snippets",
-    "layouts": "Dispositions",
     "panesCount": "{count} panneaux",
     "configure": "Préréglages de division…",
     "title": "Divisions",
@@ -433,7 +432,7 @@
     "subtitle": "Ce qui s'ouvre quand tu t'installes",
     "lede": "Quels terminaux s'ouvrent, dans quel ordre, et sur quelles machines. C'est un fichier : tu peux le versionner et l'emporter d'un poste à l'autre. Une machine que ce poste n'a pas ouvre un shell simple avec une note dans le panneau — le reste de la disposition s'ouvre quand même.",
     "openFile": "Ouvrir le fichier…",
-    "noPath": "Conservé avec ton compte sur ce serveur — il n'y a pas de fichier à ouvrir ici.",
+    "noPath": "Cette instance n'a pas dit où se trouve le fichier.",
     "reload": "↻ Recharger",
     "save": "Enregistrer le fichier",
     "saved": "Enregistré",
@@ -443,6 +442,7 @@
     "loaded": "{count} disposition(s) chargée(s).",
     "whatItOpens": "Ce que ça ouvre",
     "atStartup": "au démarrage",
+    "inTab": "Onglet « {tab} »",
     "thisComputer": "ce poste",
     "needsVault": "nécessite un coffre ouvert",
     "notInLibrary": "absente de ta bibliothèque",
@@ -450,6 +450,8 @@
     "fileHasError": "Ton fichier de dispositions contient une erreur",
     "fellBackLocked": "{machine} nécessite un coffre ouvert — tes machines sont chiffrées, donc ce panneau a ouvert un shell simple.",
     "fellBackMissing": "{machine} est absente de ta bibliothèque — renommée, ou venue d'un autre poste. Ce panneau a ouvert un shell simple.",
+    "fellBackPreconnect": "Le hook pre-connect de {machine} n'est pas passé, donc ce panneau a ouvert un shell simple.",
+    "fellBackFailed": "{machine} n'a pas pu s'ouvrir ({why}), donc ce panneau a ouvert un shell simple.",
     "startupHint": "Mets startup = true sur une disposition dans le fichier et elle s'ouvrira au lancement de Rite."
   }
 }

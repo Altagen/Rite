@@ -1,11 +1,16 @@
 /**
- * The layouts file, held to its format.
+ * The workspace file, held to its format.
  *
- * A layout is a file now (docs/LAYOUTS.md), which means the parser is the feature:
- * every pane that opens, every machine that is named, and every refusal the user
- * reads comes out of it. `store/layoutsFormat.ts` imports nothing, so Node's type
- * stripping loads the real module — these checks run against the parser the app
- * ships, not against a copy of it.
+ * Presets and layouts are a file now (docs/LAYOUTS.md, ADR 0023), which means the
+ * parser is the feature: every pane that opens, every machine that is named, every
+ * cut of the screen and every refusal the user reads comes out of it.
+ * `store/layoutsFormat.ts` imports nothing, so Node's type stripping loads the real
+ * module — these checks run against the parser the app ships, not against a copy.
+ *
+ * The arrangement is checked by BUILDING it: the plan goes through the shipped
+ * `paneTree`, and the resulting tree is painted onto a character grid and compared to
+ * the picture in the documentation. An assertion about steps would pass while the
+ * screen was wrong; a picture cannot.
  *
  * What is pinned here is mostly the refusals, because they are what a user hits on
  * a Tuesday: the file came from another computer, a value lost its quotes, a table
@@ -15,11 +20,15 @@
  * Run: node e2e/layout-file-check.mjs
  */
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   parseLayoutFile,
   formatLayoutFile,
+  replacePresetBlocks,
+  planLayout,
   paneLabel,
 } from '../apps/desktop/src/store/layoutsFormat.ts';
+import { createTerminalPane, splitPane, getAllPanes } from '../apps/desktop/src/utils/paneTree.ts';
 
 let passed = 0;
 const check = (name, fn) => {
@@ -88,8 +97,8 @@ check('a file of nothing but comments is a fresh install, not an error', () => {
 });
 
 check('an empty file is not an error either', () => {
-  assert.deepEqual(parseLayoutFile(''), { layouts: [], error: null });
-  assert.deepEqual(parseLayoutFile('   \n\n'), { layouts: [], error: null });
+  assert.deepEqual(parseLayoutFile(''), { presets: [], layouts: [], error: null });
+  assert.deepEqual(parseLayoutFile('   \n\n'), { presets: [], layouts: [], error: null });
 });
 
 check('a # inside a quoted command is part of the command', () => {
@@ -134,7 +143,7 @@ check('an unknown table', () => {
 });
 
 check('a key a pane does not have', () => {
-  fails('[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  host = "web-01"\n', 5, 'machine, command and name');
+  fails('[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  host = "web-01"\n', 5, 'not host');
 });
 
 check('a key a layout does not have', () => {
@@ -192,6 +201,335 @@ check('a quote in a name survives the round trip', () => {
   const { layouts: back, error } = parseLayoutFile(text);
   assert.equal(error, null, `${text} should parse`);
   assert.equal(back[0].name, 'the "big" one');
+});
+
+console.log('\nthe presets in the same file:');
+
+check('a preset is a name and a command', () => {
+  const { presets, error } = parseLayoutFile('[[preset]]\nname = "Logs"\ncommand = "journalctl -fu app"\n');
+  assert.equal(error, null);
+  assert.deepEqual(
+    presets.map((p) => [p.name, p.command]),
+    [['Logs', 'journalctl -fu app']],
+  );
+});
+
+check('a pane may cite a preset instead of repeating the command', () => {
+  const { layouts, error } = parseLayoutFile(
+    '[[preset]]\nname = "Logs"\ncommand = "journalctl -fu app"\n\n' +
+      '[[layout]]\nname = "M"\n\n  [[layout.pane]]\n  machine = "web-01"\n  preset = "Logs"\n',
+  );
+  assert.equal(error, null);
+  assert.equal(layouts[0].panes[0].command, 'journalctl -fu app');
+  assert.equal(layouts[0].panes[0].machine, 'web-01');
+});
+
+check('a preset may be declared after the layout that cites it', () => {
+  // The whole file is read before the citations are resolved, so the order people
+  // write their file in is their business.
+  const { layouts, error } = parseLayoutFile(
+    '[[layout]]\nname = "M"\n\n  [[layout.pane]]\n  preset = "Logs"\n\n' +
+      '[[preset]]\nname = "Logs"\ncommand = "top"\n',
+  );
+  assert.equal(error, null);
+  assert.equal(layouts[0].panes[0].command, 'top');
+});
+
+check('a preset nobody declared names its line', () => {
+  fails(
+    '[[layout]]\nname = "M"\n\n  [[layout.pane]]\n  preset = "Nope"\n',
+    5,
+    'no [[preset]] is named "Nope"',
+  );
+});
+
+check('a pane takes a preset or a command, not both', () => {
+  // Two sources for one pane's command is how they end up disagreeing.
+  fails(
+    '[[preset]]\nname = "Logs"\ncommand = "top"\n\n' +
+      '[[layout]]\nname = "M"\n\n  [[layout.pane]]\n  preset = "Logs"\n  command = "df -h"\n',
+    10,
+    'not both',
+  );
+});
+
+check('a key a preset does not have', () => {
+  fails('[[preset]]\nname = "A"\nmachine = "web-01"\n', 3, 'name and command');
+});
+
+console.log('\nwhere each pane goes:');
+
+/** Build the tab the way the workspace does, then paint it as the renderer would. */
+const render = (layout, w = 32, h = 12) =>
+  planLayout(layout).map((plan) => {
+    const session = (i) => ({ id: `s${i}`, connectionId: 'c', connectionName: String(i + 1) });
+    let tree = createTerminalPane(session(0), true);
+    const ids = new Map([[0, tree.id]]);
+    for (const step of plan.steps) {
+      const anchor = ids.get(step.anchor);
+      assert.ok(anchor, `step ${step.pane} has no anchor to cut`);
+      tree = splitPane(tree, anchor, step.direction, session(step.pane), {
+        before: step.before,
+        ratio: step.ratio,
+      });
+      const added = getAllPanes(tree).find((pane) => pane.session.id === `s${step.pane}`);
+      assert.ok(added, `pane ${step.pane} is not in the tree`);
+      ids.set(step.pane, added.id);
+    }
+    const grid = Array.from({ length: h }, () => Array(w).fill('.'));
+    const paint = (node, x, y, pw, ph) => {
+      if (node.type !== 'split') {
+        for (let r = y; r < y + ph; r++) for (let c = x; c < x + pw; c++) grid[r][c] = node.session.connectionName;
+        return;
+      }
+      if (node.direction === 'horizontal') {
+        const first = Math.round(pw * node.ratio);
+        paint(node.children[0], x, y, first, ph);
+        paint(node.children[1], x + first, y, pw - first, ph);
+      } else {
+        const first = Math.round(ph * node.ratio);
+        paint(node.children[0], x, y, pw, first);
+        paint(node.children[1], x, y + first, pw, ph - first);
+      }
+    };
+    paint(tree, 0, 0, w, h);
+    return { tab: plan.tab, picture: grid.map((r) => r.join('')).join('\n') };
+  });
+
+const bare = (count, w = 12, h = 4) => {
+  const panes = Array.from({ length: count }, (_, i) => `  [[layout.pane]]\n  command = "c${i}"`).join('\n\n');
+  const { layouts, error } = parseLayoutFile(`[[layout]]\nname = "G"\n\n${panes}\n`);
+  assert.equal(error, null, JSON.stringify(error));
+  return render(layouts[0], w, h)[0].picture;
+};
+
+check('two bare panes sit side by side', () => {
+  assert.equal(bare(2), ['111111222222', '111111222222', '111111222222', '111111222222'].join('\n'));
+});
+
+check('four bare panes make a 2×2 grid, in reading order', () => {
+  // The promise in ADR 0023 §4, and the one thing a file is allowed to leave unsaid.
+  assert.equal(bare(4), ['111111222222', '111111222222', '333333444444', '333333444444'].join('\n'));
+});
+
+check('eight bare panes make 4×2, because wider is better for a terminal', () => {
+  assert.equal(
+    bare(8),
+    ['111222333444', '111222333444', '555666777888', '555666777888'].join('\n'),
+  );
+});
+
+check('nine bare panes make three EQUAL rows, not 50/25/25', () => {
+  // Each cut takes its share of what is left — 1/3, then 1/2 of the remainder.
+  // Halving every time is the mistake that looks right with two rows and wrong with
+  // three, which is why this case exists and why it is nine panes.
+  assert.equal(
+    bare(9, 9, 6),
+    ['111222333', '111222333', '444555666', '444555666', '777888999', '777888999'].join('\n'),
+  );
+});
+
+check('the eight-pane arrangement in the documentation is the one you get', () => {
+  // The acceptance test of ADR 0023 §8.1. The file is read out of docs/LAYOUTS.md
+  // itself, so an example that drifts from the parser fails here rather than in
+  // somebody's morning.
+  const doc = readFileSync(new URL('../docs/LAYOUTS.md', import.meta.url), 'utf8');
+  const block = doc
+    .split('```toml')
+    .slice(1)
+    .map((b) => b.split('```')[0])
+    .find((b) => b.includes('Warroom'));
+  assert.ok(block, 'docs/LAYOUTS.md no longer carries the Warroom example');
+  const { layouts, error } = parseLayoutFile(
+    '[[preset]]\nname = "Logs"\ncommand = "journalctl -fu app"\n' + block,
+  );
+  assert.equal(error, null, JSON.stringify(error));
+  const [{ picture }] = render(layouts[0]);
+  // Pane numbers are the file's order: 1 web-01, 2 db-01/psql, 3 web-02, 4 uptime,
+  // 5 web-03, 6 top, 7 df, 8 free.
+  assert.equal(
+    picture,
+    [
+      '11111111111111112222222222222222',
+      '11111111111111112222222222222222',
+      '11111111111111112222222222222222',
+      '11111111111111112222222222222222',
+      '33333333555555556666666666666666',
+      '33333333555555556666666666666666',
+      '33333333555555556666666666666666',
+      '33333333555555556666666666666666',
+      '44444444444444447777777788888888',
+      '44444444444444447777777788888888',
+      '44444444444444447777777788888888',
+      '44444444444444447777777788888888',
+    ].join('\n'),
+  );
+});
+
+check('size is a share of what is cut, and left and up put the pane first', () => {
+  const { layouts, error } = parseLayoutFile(
+    '[[layout]]\nname = "S"\n\n  [[layout.pane]]\n  command = "a"\n\n' +
+      '  [[layout.pane]]\n  command = "b"\n  split = "left"\n  size = "25%"\n',
+  );
+  assert.equal(error, null, JSON.stringify(error));
+  // "left" puts the new pane on the left, and 25% is ITS share — not the other one's.
+  assert.equal(render(layouts[0], 8, 2)[0].picture, ['22111111', '22111111'].join('\n'));
+});
+
+check('tabs are their own arrangements', () => {
+  const { layouts, error } = parseLayoutFile(
+    '[[layout]]\nname = "Two"\n\n' +
+      '  [[layout.pane]]\n  tab = "Prod"\n  command = "a"\n\n' +
+      '  [[layout.pane]]\n  command = "b"\n  split = "down"\n\n' +
+      '  [[layout.pane]]\n  tab = "Local"\n  command = "c"\n',
+  );
+  assert.equal(error, null, JSON.stringify(error));
+  const tabs = render(layouts[0], 4, 2);
+  assert.deepEqual(
+    tabs.map((x) => x.tab),
+    ['Prod', 'Local'],
+  );
+  // The second pane follows the first into Prod; the third opens a tab of its own.
+  assert.equal(tabs[0].picture, ['1111', '2222'].join('\n'));
+  assert.equal(tabs[1].picture, ['1111', '1111'].join('\n'));
+});
+
+console.log('\narrangements a file may not ask for:');
+
+check('a split that is not one of the four words', () => {
+  fails(
+    '[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "a"\n\n  [[layout.pane]]\n  split = "sideways"\n',
+    8,
+    'right, down, left or up',
+  );
+});
+
+check('a size outside what the screen can honour', () => {
+  for (const [value, line] of [['5%', 8], ['95%', 8], ['half', 8]]) {
+    fails(
+      '[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "a"\n\n  [[layout.pane]]\n  size = "' +
+        value +
+        '"\n',
+      line,
+      'between 10% and 90%',
+    );
+  }
+});
+
+check('an unquoted percentage says how to write it', () => {
+  // The mistake this TOML subset invites, so it gets its own sentence.
+  fails(
+    '[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "a"\n\n  [[layout.pane]]\n  size = 45\n',
+    8,
+    'size = "45%"',
+  );
+});
+
+check('an anchor that names no pane placed before it', () => {
+  fails(
+    '[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "a"\n  name = "one"\n\n' +
+      '  [[layout.pane]]\n  split = "right"\n  of = "two"\n',
+    10,
+    'no pane placed before this one',
+  );
+});
+
+check('an anchor in another tab says so, rather than "no such pane"', () => {
+  fails(
+    '[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  tab = "One"\n  command = "a"\n  name = "left"\n\n' +
+      '  [[layout.pane]]\n  tab = "Two"\n  command = "b"\n\n' +
+      '  [[layout.pane]]\n  split = "right"\n  of = "left"\n',
+    15,
+    'in another tab',
+  );
+});
+
+check('two panes of one layout may not share a name', () => {
+  fails(
+    '[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "a"\n  name = "same"\n\n' +
+      '  [[layout.pane]]\n  command = "b"\n  name = "same"\n',
+    10,
+    'could not tell them apart',
+  );
+});
+
+check('the first pane of a tab is the whole area', () => {
+  for (const [key, value] of [['split', '"right"'], ['of', '"x"'], ['size', '"40%"']]) {
+    fails(
+      `[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "a"\n  ${key} = ${value}\n`,
+      6,
+      'the whole area',
+    );
+  }
+});
+
+console.log('\nediting the presets without rewriting the file:');
+
+const spliced = (text, presets) => {
+  const out = replacePresetBlocks(text, presets);
+  const parse = parseLayoutFile(out);
+  assert.equal(parse.error, null, `${JSON.stringify(parse.error)}\n${out}`);
+  return { out, parse };
+};
+
+check('the layouts, the comments and the blank lines survive an edit', () => {
+  const { out, parse } = spliced(
+    '# my file\n\n[[preset]]\nname = "Old"\ncommand = "ls"\n\n[[layout]]\nname = "Morning"\n\n' +
+      '  [[layout.pane]]\n  command = "top"   # keep me\n',
+    [{ id: 'a', name: 'Load', command: 'top' }],
+  );
+  assert.ok(out.startsWith('# my file'), out);
+  assert.ok(out.includes('# keep me'), out);
+  assert.ok(!out.includes('"Old"'), out);
+  assert.deepEqual(parse.presets.map((p) => p.name), ['Load']);
+  assert.deepEqual(parse.layouts.map((l) => l.name), ['Morning']);
+});
+
+check('a preset block followed straight by a layout does not swallow it', () => {
+  // The off-by-one that a less careful splice makes: the block ends at the next
+  // table, and the next table must survive it.
+  const { parse } = spliced('[[preset]]\n[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "x"\n', [
+    { id: 'a', name: 'Load', command: 'top' },
+  ]);
+  assert.equal(parse.layouts.length, 1);
+  assert.equal(parse.presets.length, 1);
+});
+
+check('a file with no presets yet gets them before its first table', () => {
+  const { parse } = spliced('# header\n\n[[layout]]\nname = "M"\n\n  [[layout.pane]]\n  command = ""\n', [
+    { id: 'a', name: 'Load', command: 'top' },
+  ]);
+  assert.equal(parse.presets.length, 1);
+  assert.equal(parse.layouts.length, 1);
+});
+
+check('an empty file and a comments-only file both take the presets', () => {
+  for (const input of ['', '# only comments\n']) {
+    const { parse } = spliced(input, [{ id: 'a', name: 'Load', command: 'top' }]);
+    assert.deepEqual(parse.presets.map((p) => p.name), ['Load']);
+  }
+});
+
+check('removing every preset leaves the layouts alone', () => {
+  const { parse } = spliced(
+    '[[preset]]\nname = "Load"\ncommand = "top"\n\n[[layout]]\nname = "M"\n\n  [[layout.pane]]\n  command = ""\n',
+    [],
+  );
+  assert.equal(parse.presets.length, 0);
+  assert.equal(parse.layouts.length, 1);
+});
+
+check('two scattered preset blocks collapse into one library', () => {
+  const { parse } = spliced(
+    '[[preset]]\nname = "A"\ncommand = "a"\n\n[[layout]]\nname = "M"\n\n  [[layout.pane]]\n  command = ""\n\n' +
+      '[[preset]]\nname = "B"\ncommand = "b"\n',
+    [
+      { id: '1', name: 'A', command: 'a' },
+      { id: '2', name: 'B', command: 'b' },
+    ],
+  );
+  assert.deepEqual(parse.presets.map((p) => p.name), ['A', 'B']);
+  assert.equal(parse.layouts.length, 1);
 });
 
 console.log(`\n${passed} checks passed`);

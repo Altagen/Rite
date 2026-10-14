@@ -16,7 +16,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { useLayouts } from '../store/layouts';
-import { paneLabel, type Layout } from '../store/layoutsFormat';
+import { paneLabel, planLayout, type Layout } from '../store/layoutsFormat';
 
 interface Props {
   onClose: () => void;
@@ -81,20 +81,33 @@ export function LayoutsModal({ onClose, connections, libraryReadable }: Props) {
           </span>
         )}
       </div>
-      {layout.panes.map((pane, i) => {
-        const where = paneWhere(pane.machine);
-        return (
-          <div key={i} className="flex gap-2 py-0.5 text-xs">
-            <span className={`w-44 flex-none truncate ${where.ok ? 'text-muted-foreground' : 'text-amber-500'}`}>
-              {where.label}
-            </span>
-            <code className="min-w-0 flex-1 truncate font-mono text-muted-foreground">
-              {pane.command || t('layouts.plainShell')}
-            </code>
-            <span className="flex-none text-muted-foreground">{paneLabel(pane)}</span>
-          </div>
-        );
-      })}
+      {/* Grouped the way it will open: a layout may name tabs, and a pane listed
+          under the wrong one would be the opposite of what this list is for. */}
+      {planLayout(layout).map((plan, p) => (
+        <div key={p}>
+          {plan.tab && (
+            <div className="pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {t('layouts.inTab', { tab: plan.tab })}
+            </div>
+          )}
+          {plan.panes.map((pane, i) => {
+            const where = paneWhere(pane.machine);
+            return (
+              <div key={i} className="flex gap-2 py-0.5 text-xs">
+                <span
+                  className={`w-44 flex-none truncate ${where.ok ? 'text-muted-foreground' : 'text-amber-500'}`}
+                >
+                  {where.label}
+                </span>
+                <code className="min-w-0 flex-1 truncate font-mono text-muted-foreground">
+                  {pane.command || t('layouts.plainShell')}
+                </code>
+                <span className="flex-none text-muted-foreground">{paneLabel(pane)}</span>
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </li>
   );
 

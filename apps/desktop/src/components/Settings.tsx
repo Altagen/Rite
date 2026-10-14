@@ -13,6 +13,7 @@ import { SplitsModal } from './SplitsModal';
 import { LayoutsModal } from './LayoutsModal';
 import { Dropdown } from './Dropdown';
 import { useToolbar, type ToolbarPrefs } from '../store/toolbar';
+import { useLayouts } from '../store/layouts';
 import { installedShells, type ShellChoice } from '../utils/shells';
 import { ShortcutsSettings } from './ShortcutsSettings';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
@@ -93,14 +94,23 @@ type SectionId =
   | 'password'
   | 'danger';
 
-const RAIL: { id: SectionId; i18n: string; local?: true; native?: true; vault?: true; danger?: true }[] = [
+const RAIL: {
+  id: SectionId;
+  i18n: string;
+  local?: true;
+  native?: true;
+  vault?: true;
+  /** Needs a workspace file, which a shared server does not have (ADR 0023). */
+  file?: true;
+  danger?: true;
+}[] = [
   { id: 'appearance', i18n: 'settings.sec.appearance' },
   { id: 'toolbar', i18n: 'settings.sec.toolbar' },
   { id: 'keyboard', i18n: 'settings.keyboard' },
   // Two entries, because they are two features. A preset is one command in one pane;
   // a layout is what opens when you sit down, and it lives in a file.
-  { id: 'splits', i18n: 'split.presets' },
-  { id: 'layouts', i18n: 'layouts.title' },
+  { id: 'splits', i18n: 'split.presets', file: true },
+  { id: 'layouts', i18n: 'layouts.title', file: true },
   { id: 'shell', i18n: 'settings.sec.shell', local: true },
   { id: 'machines', i18n: 'settings.sec.machines' },
   { id: 'security', i18n: 'settings.security' },
@@ -145,6 +155,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
   // Two libraries, two dialogs. They shared one and that is what made them look
   // like one feature.
+  const hasWorkspaceFile = useLayouts((st) => st.available);
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [layoutsOpen, setLayoutsOpen] = useState(false);
 
@@ -302,9 +313,15 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
 
 
-  // A section the current context does not have is not reachable from the rail.
+  // A section the current context does not have is not reachable from the rail. The
+  // workspace file is one of those: on a shared server there is no file, so presets
+  // and layouts are absent rather than shown empty (ADR 0023).
   const rail = RAIL.filter(
-    (r) => (!r.local || isLocalContext) && (!r.native || native) && (!r.vault || hasVault),
+    (r) =>
+      (!r.local || isLocalContext) &&
+      (!r.native || native) &&
+      (!r.vault || hasVault) &&
+      (!r.file || hasWorkspaceFile),
   );
   // …and if the active one disappears (a context switch), fall back to the first.
   const shown: SectionId = rail.some((r) => r.id === active) ? active : (rail[0]?.id ?? 'appearance');
@@ -540,7 +557,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               {toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
               {native && toolbarRow('focusMode', 'settings.toolbarFocus', 'settings.toolbarFocusDesc')}
               {toolbarRow('quickSsh', 'settings.toolbarQuickSsh', 'settings.toolbarQuickSshDesc')}
-              {toolbarRow('layouts', 'settings.toolbarLayouts', 'settings.toolbarLayoutsDesc')}
+              {hasWorkspaceFile && toolbarRow('layouts', 'settings.toolbarLayouts', 'settings.toolbarLayoutsDesc')}
             </div>
           </section>
 

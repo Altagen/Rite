@@ -3329,48 +3329,67 @@ async fn set_setting(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// The settings key the layouts file falls back to when there is no file to use.
-const LAYOUTS_KEY: &str = "layouts_toml";
-
-/// Where this computer keeps its layouts file. `None` when the platform has no config
-/// directory, which is also how a deployment with no filesystem to offer behaves.
+/// Where this computer keeps its workspace file. `None` when the platform has no
+/// config directory, which is also how a deployment with no filesystem behaves.
+///
+/// `RITE_LAYOUTS_FILE` overrides the location so the file can live in a dotfiles
+/// repository or beside a project. `dirs::config_dir()` reads `XDG_CONFIG_HOME`
+/// before `$HOME/.config`, which is what a test harness has to pin to stay out of
+/// the real one.
 fn layouts_path() -> Option<std::path::PathBuf> {
+    if let Some(custom) = std::env::var_os("RITE_LAYOUTS_FILE") {
+        if !custom.is_empty() {
+            return Some(std::path::PathBuf::from(custom));
+        }
+    }
     dirs::config_dir().map(|d| d.join("rite").join("layouts.toml"))
 }
 
-/// Should this instance keep layouts in a FILE, or in its settings table?
+/// Is there a workspace file to offer at all? (ADR 0023)
 ///
-/// A layout names machines and has an order, and people keep it next to the rest of
-/// their setup, so on a desktop it is a file you can also open in your own editor and
-/// `path` tells the UI where. A shared server has no filesystem to offer a browser,
-/// and one file could not belong to several accounts anyway, so there the same text
-/// lives in the instance settings store and the UI shows no path.
+/// Presets and layouts are the MACHINE's, not the account's: my desktop and my laptop
+/// do not open the same morning. A single-operator instance therefore gets a file it
+/// can also edit by hand, and a shared server gets nothing — not a settings row, which
+/// would be plaintext in a table with no owner column, so one account's machine names
+/// would be both readable by the server and overwritable by a colleague.
 fn layouts_file(accounts: bool) -> Option<std::path::PathBuf> {
-    if accounts { None } else { layouts_path() }
+    if accounts {
+        None
+    } else {
+        layouts_path()
+    }
 }
 
 /// What a new installation sees instead of an empty box: the shape of the file, as
 /// documented. Nothing is written to disk until the user saves, so Reload on an
 /// untouched installation shows this again rather than an empty file.
-const LAYOUTS_TEMPLATE: &str = r##"# Layouts: what opens, where, and on which machine.
+const LAYOUTS_TEMPLATE: &str = r##"# Your workspace: the commands the split menu offers, and what opens in the morning.
 # Every key is documented in docs/LAYOUTS.md.
+
+# [[preset]]
+# name = "Logs"
+# command = "journalctl -fu app"
 
 # [[layout]]
 # name = "Morning"
 # startup = true
 #
 #   [[layout.pane]]
-#   command = ""                   # no machine = this computer, a plain shell
+#   command = ""                   # the first pane is the whole tab
 #
 #   [[layout.pane]]
 #   machine = "web-01"             # a machine from your library, by name
-#   command = "journalctl -fu app"
+#   preset = "Logs"                # or command = "..." — one or the other
+#   split = "right"                # right, down, left, up — of the previous pane
+#   size = "40%"                   # this pane's share of what it cuts
 "##;
 
 #[derive(Serialize)]
 struct LayoutsFile {
-    text: String,
-    /// Where the text came from, when it came from a file the user can also edit.
+    /// The file's text, or `None` where there is no file — which is how a shell is
+    /// told the feature does not exist here, rather than being handed a substitute.
+    text: Option<String>,
+    /// Where the text came from, so it can be edited by hand too.
     path: Option<String>,
 }
 
@@ -3383,16 +3402,12 @@ async fn get_layouts(State(state): State<ServerState>) -> Result<Json<LayoutsFil
             Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display()).into()),
         };
         return Ok(Json(LayoutsFile {
-            text,
+            text: Some(text),
             path: Some(path.display().to_string()),
         }));
     }
     Ok(Json(LayoutsFile {
-        text: state
-            .db
-            .get_setting(LAYOUTS_KEY)
-            .await?
-            .unwrap_or_else(|| LAYOUTS_TEMPLATE.to_string()),
+        text: None,
         path: None,
     }))
 }
@@ -3412,21 +3427,40 @@ async fn put_layouts(
             .map_err(|e| anyhow::anyhow!("writing {}: {e}", path.display()))?;
         return Ok(StatusCode::NO_CONTENT);
     }
-    state.db.set_setting(LAYOUTS_KEY, &req.value).await?;
-    Ok(StatusCode::NO_CONTENT)
+    // No file, and nowhere else to put it: there is nothing to save, and saying so is
+    // better than accepting bytes that would go into a shared table.
+    Ok(StatusCode::NOT_FOUND)
 }
 
 #[cfg(test)]
 mod layouts_tests {
     use super::*;
 
-    /// The two modes, pinned. A desktop hands out a path so the file can also be
-    /// edited by hand; a shared server must not, because the file it would name is
-    /// the operator's, not the account holder's.
+    /// The two modes, pinned (ADR 0023). A single-operator instance hands out a path
+    /// so the file can also be edited by hand; a shared server offers no file — and no
+    /// substitute, which is the half that made the first attempt wrong.
     #[test]
     fn a_server_has_no_file_to_offer() {
         assert_eq!(layouts_file(true), None);
         assert_eq!(layouts_file(false), layouts_path());
+    }
+
+    /// `RITE_LAYOUTS_FILE` wins, so the file can live in a dotfiles repository or
+    /// beside a project. The variable is process-global, so this puts it back; nothing
+    /// else in the suite reads it.
+    #[test]
+    fn an_explicit_path_wins() {
+        let before = std::env::var_os("RITE_LAYOUTS_FILE");
+        unsafe { std::env::set_var("RITE_LAYOUTS_FILE", "/tmp/rite-workspace-elsewhere.toml") };
+        let found = layouts_path();
+        match before {
+            Some(v) => unsafe { std::env::set_var("RITE_LAYOUTS_FILE", v) },
+            None => unsafe { std::env::remove_var("RITE_LAYOUTS_FILE") },
+        }
+        assert_eq!(
+            found,
+            Some(std::path::PathBuf::from("/tmp/rite-workspace-elsewhere.toml"))
+        );
     }
 
     /// The template is a comment block: valid TOML that declares no layout, so a

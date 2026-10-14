@@ -161,7 +161,7 @@
     "hostKeyVerificationAccept": "Accept - Silent TOFU",
     "languageLabel": "Interface Language",
     "keyboard": "Keyboard",
-    "splitsHint": "A divider opens a plain terminal — that is the split button, and it stays that way. What else it can open, from the chevron beside it, is yours to set: a named command, or a whole layout at once.",
+    "splitsHint": "A divider opens a plain terminal — that is the split button, and it stays that way. What else it can open, from the chevron beside it, is yours to set: a named command, kept in your workspace file beside your layouts.",
     "sections": "Sections",
     "sec": {
       "appearance": "Appearance",
@@ -213,10 +213,9 @@
   },
   "split": {
     "menu": "Split with…",
-    "more": "Split with… — a preset, a snippet or a layout",
+    "more": "Split with… — a preset or a snippet",
     "plain": "Terminal",
     "snippets": "Snippets",
-    "layouts": "Layouts",
     "panesCount": "{count} panes",
     "configure": "Split presets…",
     "title": "Splits",
@@ -433,7 +432,7 @@
     "subtitle": "What opens when you sit down",
     "lede": "Which terminals open, in what order, and on which machines. It is a file, so you can keep it in version control and carry it between computers. A machine this computer doesn't have opens a plain shell with a note in the pane — the rest of the layout still opens.",
     "openFile": "Open the layouts file…",
-    "noPath": "Stored with your account on this server — there is no file to open here.",
+    "noPath": "This instance did not say where the file is.",
     "reload": "↻ Reload",
     "save": "Save file",
     "saved": "Saved",
@@ -443,6 +442,7 @@
     "loaded": "{count} layout(s) loaded.",
     "whatItOpens": "What it opens",
     "atStartup": "at startup",
+    "inTab": "Tab “{tab}”",
     "thisComputer": "this computer",
     "needsVault": "needs an open vault",
     "notInLibrary": "not in your library",
@@ -450,6 +450,8 @@
     "fileHasError": "Your layouts file has an error",
     "fellBackLocked": "{machine} needs an open vault — your machines are encrypted, so this pane opened a plain shell.",
     "fellBackMissing": "{machine} isn't in your library — renamed, or from another computer. This pane opened a plain shell.",
+    "fellBackPreconnect": "{machine}'s pre-connect hook did not pass, so this pane opened a plain shell.",
+    "fellBackFailed": "{machine} would not open ({why}), so this pane opened a plain shell.",
     "startupHint": "Set startup = true on a layout in the file and it opens itself when Rite starts."
   }
 }

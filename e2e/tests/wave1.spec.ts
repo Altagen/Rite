@@ -503,8 +503,8 @@ test('a layout opens from its file, and a missing machine falls back in place', 
   await page.goto('/');
   await expect(page.getByText('e2e-layout-host')).toBeVisible({ timeout: 20_000 });
 
-  // A layout arranges a tab, so there has to be one: open a local terminal first,
-  // which is also what a person has open when they reach for a layout.
+  // A layout opens its own tab, so it does not need one — but a person reaching for
+  // a layout usually has something open, and what is open must survive it.
   await page.getByRole('button', { name: /Terminal/ }).first().click();
   await expect(page.locator('.xterm-screen')).toHaveCount(1, { timeout: 20_000 });
 
@@ -526,12 +526,15 @@ test('a layout opens from its file, and a missing machine falls back in place', 
   await expect(editor.getByTestId('layouts-error')).toContainText('Line 5');
 
   // Three panes: one plain, one on a machine that exists, one on a machine that does
-  // not. Written as the documented file, not through a form.
+  // not — arranged by the file, not by an alternating default: the third is cut out
+  // of the FIRST pane, which only `of` can say.
   await editor.getByTestId('layouts-file').fill(
     '[[layout]]\nname = "e2e-layout"\n\n' +
-      '  [[layout.pane]]\n  command = "echo RITE_PANE_ONE"\n\n' +
-      '  [[layout.pane]]\n  machine = "e2e-layout-host"\n  command = "echo RITE_PANE_TWO"\n\n' +
-      '  [[layout.pane]]\n  machine = "nope-01"\n  command = "echo RITE_PANE_THREE"\n',
+      '  [[layout.pane]]\n  command = "echo RITE_PANE_ONE"\n  name = "first"\n\n' +
+      '  [[layout.pane]]\n  machine = "e2e-layout-host"\n  command = "echo RITE_PANE_TWO"\n' +
+      '  split = "right"\n  size = "40%"\n\n' +
+      '  [[layout.pane]]\n  machine = "nope-01"\n  command = "echo RITE_PANE_THREE"\n' +
+      '  split = "down"\n  of = "first"\n',
   );
   await editor.getByTestId('layouts-save').click();
   await expect(editor.getByTestId('layouts-error')).toHaveCount(0);
@@ -550,9 +553,11 @@ test('a layout opens from its file, and a missing machine falls back in place', 
   // Exact: the row underneath lists the machines, one of which is `e2e-layout-host`,
   // so a substring match finds the layout and its own subtitle.
   await page.getByRole('menu', { name: /Layouts/ }).getByText('e2e-layout', { exact: true }).click();
-  // Three panes added to the one that was open: a layout divides the tab it is
-  // opened in rather than replacing what is there.
-  await expect(page.locator('.xterm-screen')).toHaveCount(4, { timeout: 30_000 });
+  // A layout opens its OWN tab, named after itself, holding exactly the panes the
+  // file declares — three, not three plus whatever was already on screen. That is
+  // what lets a file describe an arrangement exactly (ADR 0023).
+  await expect(page.locator('.xterm-screen')).toHaveCount(3, { timeout: 30_000 });
+  await expect(page.getByText('e2e-layout', { exact: true })).toBeVisible();
 
   for (const marker of ['RITE_PANE_ONE', 'RITE_PANE_TWO', 'RITE_PANE_THREE']) {
     await expect(page.locator('.xterm-rows').filter({ hasText: marker })).toHaveCount(1, {
@@ -566,6 +571,113 @@ test('a layout opens from its file, and a missing machine falls back in place', 
   await expect(page.getByTestId('pane-note')).toContainText('nope-01');
 
   // Put the file back as it was found.
+  await request.put('/api/layouts', { data: { value: '' } });
+});
+
+/**
+ * A machine's pre-connect hook belongs to the machine, so a layout owes it the same
+ * gate a click does — once per machine, however many panes name it.
+ *
+ * It was skipped entirely: `sessionForTarget` called connect() directly, so a host
+ * behind a VPN opened on a click and failed from a layout with an authentication
+ * error that explained nothing. And a four-pane layout must not ask four times.
+ *
+ * Counting is done by the hook itself: it appends a line to a file and prints how
+ * many there are, so the number is observable in the modal rather than inferred from
+ * the absence of one. Opening the machine again afterwards is what makes the count
+ * legible — if the layout had run the hook four times, this second run would say 5.
+ */
+test('a layout runs a pre-connect hook once, however many panes name the machine', async ({
+  page,
+  request,
+}) => {
+  const counter = `/tmp/rite-e2e-hook-${Date.now()}`;
+  await machine(request, {
+    name: 'e2e-layout-hook',
+    preconnect: `echo x >> ${counter}; echo HOOK_RUNS=$(wc -l < ${counter} | tr -d ' ')`,
+  });
+  await request.put('/api/layouts', { data: { value: '' } });
+
+  await page.goto('/');
+  await expect(page.getByText('e2e-layout-hook')).toBeVisible({ timeout: 20_000 });
+
+  // Four panes, one machine. Written through the API: this test is about the hook,
+  // not about the editor, and the editor has its own test.
+  await request.put('/api/layouts', {
+    data: {
+      value:
+        '[[layout]]\nname = "e2e-hooked"\n\n' +
+        ['first', 'second', 'third', 'fourth']
+          .map(
+            (name, i) =>
+              `  [[layout.pane]]\n  machine = "e2e-layout-hook"\n  name = "${name}"\n  command = "echo RITE_HOOKED_${i}"` +
+              (i === 0 ? '' : '\n  split = "down"'),
+          )
+          .join('\n\n') +
+        '\n',
+    },
+  });
+  await page.reload();
+
+  await page.getByTestId('layouts-button').click();
+  await page.getByRole('menu', { name: /Layouts/ }).getByText('e2e-hooked', { exact: true }).click();
+
+  // One modal, and it is the hook's first run.
+  const dialog = page.getByRole('dialog', { name: 'Running pre-connect' });
+  await expect(dialog.locator('.xterm-rows')).toContainText('HOOK_RUNS=1', { timeout: 20_000 });
+  await expect(dialog).toBeHidden({ timeout: 20_000 });
+
+  // All four panes opened, on the machine, with the hook asked for only once.
+  await expect(page.locator('.xterm-screen')).toHaveCount(4, { timeout: 60_000 });
+  await expect(page.getByTestId('pane-note')).toHaveCount(0);
+
+  // Opening it again by hand runs the hook a SECOND time — the proof that the layout
+  // ran it exactly once, because four runs would make this one say 5.
+  await page.getByText('e2e-layout-hook').dblclick();
+  await expect(dialog.locator('.xterm-rows')).toContainText('HOOK_RUNS=2', { timeout: 20_000 });
+  await expect(dialog).toBeHidden({ timeout: 20_000 });
+
+  await request.put('/api/layouts', { data: { value: '' } });
+});
+
+/**
+ * `tab` groups panes into tabs, and the arrangement is resolved inside each one.
+ *
+ * Panes are for what you watch side by side; tabs are for changing context. A layout
+ * that wants sixteen terminals in the morning needs both, and a file that names tabs
+ * must not quietly pile them into one.
+ */
+test('a layout opens the tabs its file names', async ({ page, request }) => {
+  await request.put('/api/layouts', {
+    data: {
+      value:
+        '[[layout]]\nname = "e2e-two-tabs"\n\n' +
+        '  [[layout.pane]]\n  tab = "e2e-prod"\n  command = "echo RITE_TAB_PROD"\n\n' +
+        '  [[layout.pane]]\n  command = "echo RITE_TAB_PROD_TWO"\n  split = "down"\n\n' +
+        '  [[layout.pane]]\n  tab = "e2e-local"\n  command = "echo RITE_TAB_LOCAL"\n',
+    },
+  });
+
+  await page.goto('/');
+  await page.getByTestId('layouts-button').click();
+  await page
+    .getByRole('menu', { name: /Layouts/ })
+    .getByText('e2e-two-tabs', { exact: true })
+    .click();
+
+  // Both tabs exist, named by the file rather than after the layout.
+  await expect(page.getByText('e2e-prod', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('e2e-local', { exact: true })).toBeVisible();
+
+  // The first tab is the one shown, and the pane that followed it is in it: two
+  // panes here, one next door.
+  await expect(page.locator('.xterm-screen')).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'RITE_TAB_PROD' })).toHaveCount(2);
+
+  await page.getByText('e2e-local', { exact: true }).click();
+  await expect(page.locator('.xterm-screen')).toHaveCount(1, { timeout: 30_000 });
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'RITE_TAB_LOCAL' })).toHaveCount(1);
+
   await request.put('/api/layouts', { data: { value: '' } });
 });
 

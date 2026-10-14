@@ -3,33 +3,11 @@
  *
  * `splits.ts` imports zustand, so it cannot be loaded by anything but a bundler.
  * These two functions hold the only decisions in the feature — what a corrupt
- * stored key falls back to, and how a layout is written by hand — so they live
- * here, importing nothing at runtime, and `e2e/split-format-check.mjs` loads this
- * file directly. That is the same arrangement `utils/paneTree.ts` already uses:
+ * stored key falls back to, and what counts as a preset — so they live here,
+ * importing nothing at runtime, and `e2e/split-format-check.mjs` loads this file
+ * directly. That is the same arrangement `utils/paneTree.ts` already uses:
  * the shipped module is tested, not a copy of it.
  */
-
-/** Which way each successive split of a layout goes. */
-export type SplitAxis = 'horizontal' | 'vertical';
-
-/**
- * The direction of each split a layout performs, in order.
- *
- * It alternates. Five panes all split the same way is six columns, which is nobody's
- * "five terminals arranged like this"; alternating makes a grid out of the same
- * number of splits. Here rather than in either caller because there are two of them —
- * the split menu's chevron and the Layouts button — and two copies of an alternation
- * is how they end up disagreeing about what a saved layout looks like.
- */
-export function layoutDirections(count: number, first: SplitAxis): SplitAxis[] {
-  const out: SplitAxis[] = [];
-  let next = first;
-  for (let i = 0; i < count; i++) {
-    out.push(next);
-    next = next === 'horizontal' ? 'vertical' : 'horizontal';
-  }
-  return out;
-}
 
 /**
  * Read a stored library, falling back to the defaults on anything unexpected.

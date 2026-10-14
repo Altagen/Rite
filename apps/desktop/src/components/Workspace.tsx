@@ -11,8 +11,7 @@ import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { disposeAllPanes, paneKind } from '../panes/registry';
-import { layoutDirections } from '../store/splitsFormat';
-import type { LayoutPane } from '../store/layoutsFormat';
+import { planLayout, type Layout } from '../store/layoutsFormat';
 import { useLayouts } from '../store/layouts';
 import { useToolbar } from '../store/toolbar';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
@@ -74,7 +73,6 @@ import {
   setFocusedPane,
   updateSplitRatio,
   getFocusedPane,
-  getFirstLeafPane,
   getAllPanes,
   getSessionsInPane,
   extractPane,
@@ -244,8 +242,13 @@ export function Workspace({
   const [hostKeyPrompt, setHostKeyPrompt] = useState<HostKeyPrompt | null>(null);
   const [hostKeyBusy, setHostKeyBusy] = useState(false);
   const lastConnectionRef = useRef<ConnectionInfo | null>(null);
-  // Pre-connect hook: the connection whose hook is running before we open SSH.
-  const [preconnectPrompt, setPreconnectPrompt] = useState<ConnectionInfo | null>(null);
+  // Pre-connect hook: the connection whose hook is running before we open SSH, and
+  // the caller waiting on it. A layout opens several panes in a row and has to know
+  // whether each hook passed, so the modal settles a promise instead of calling on.
+  const [preconnectPrompt, setPreconnectPrompt] = useState<{
+    conn: ConnectionInfo;
+    settle: (passed: boolean) => void;
+  } | null>(null);
   // Port forwarding: the connection whose forwards panel is open.
   const [forwardTarget, setForwardTarget] = useState<ConnectionInfo | null>(null);
 
@@ -614,14 +617,30 @@ export function Workspace({
     setMainView('terminal');
   };
 
+  /**
+   * Run a machine's pre-connect hook, and say whether the connection may proceed.
+   *
+   * A machine with no hook passes without a modal. `gate` remembers what a hook
+   * already answered during one layout, so four panes on one host ask once — and if
+   * the hook failed, all four fall back rather than each asking again.
+   */
+  const runPreconnect = async (
+    connection: ConnectionInfo,
+    gate?: Map<string, boolean>,
+  ): Promise<boolean> => {
+    if (!connection.preconnect?.trim()) return true;
+    const remembered = gate?.get(connection.id);
+    if (remembered !== undefined) return remembered;
+    const passed = await new Promise<boolean>((settle) => setPreconnectPrompt({ conn: connection, settle }));
+    gate?.set(connection.id, passed);
+    return passed;
+  };
+
   // Handle connect - open terminal (allows multiple tabs for same connection).
   // A pre-connect hook (a local command — VPN up, SSO refresh) runs first in a
   // modal; the connection only proceeds when it exits 0.
   const handleConnect = async (connection: ConnectionInfo) => {
-    if (connection.preconnect?.trim()) {
-      setPreconnectPrompt(connection);
-      return;
-    }
+    if (!(await runPreconnect(connection))) return;
     await doConnect(connection);
   };
 
@@ -793,31 +812,42 @@ export function Workspace({
    * another computer. None of those cancel the pane — it opens as a plain shell and
    * carries a `note` saying what was asked for, because a layout that silently drops
    * a pane costs you the workspace you asked for and tells you nothing.
+   *
+   * `localSession` is that fallback, and is also the plain split — one function, so a
+   * pane that fell back is built exactly like a pane that was asked for.
    */
-  const sessionForTarget = async (target?: SplitTarget): Promise<TerminalSession> => {
-    const local = async (note?: string): Promise<TerminalSession> => {
-      const shellToUse = settings.defaultShell;
-      const sessionId = await Backend.Terminal.connectLocalTerminal(shellToUse);
-      const shellName = shellToUse.split('/').pop() || 'shell';
-      return {
-        id: sessionId,
-        connectionId: 'local',
-        connectionName: target?.name || `Local Terminal (${shellName})`,
-        // Run by the pane once its session is readable — see TerminalSession.
-        initialCommand: target?.command || undefined,
-        note,
-      };
+  const localSession = async (target?: SplitTarget, note?: string): Promise<TerminalSession> => {
+    const shellToUse = settings.defaultShell;
+    const sessionId = await Backend.Terminal.connectLocalTerminal(shellToUse);
+    const shellName = shellToUse.split('/').pop() || 'shell';
+    return {
+      id: sessionId,
+      connectionId: 'local',
+      connectionName: target?.name || `Local Terminal (${shellName})`,
+      // Run by the pane once its session is readable — see TerminalSession.
+      initialCommand: target?.command || undefined,
+      note,
     };
+  };
 
+  const sessionForTarget = async (
+    target?: SplitTarget,
+    gate?: Map<string, boolean>,
+  ): Promise<TerminalSession> => {
     const machine = target?.machine?.trim();
-    if (!machine) return local();
+    if (!machine) return localSession(target);
 
     // A locked vault is not a wrong name: the names are encrypted, so there is
     // nothing to compare against, and saying so is the honest message.
-    if (isLocked) return local(t('layouts.fellBackLocked', { machine }));
+    if (isLocked) return localSession(target, t('layouts.fellBackLocked', { machine }));
 
     const connection = (conns.connections ?? []).find((c) => c.name === machine);
-    if (!connection) return local(t('layouts.fellBackMissing', { machine }));
+    if (!connection) return localSession(target, t('layouts.fellBackMissing', { machine }));
+
+    // The hook belongs to the machine, so every way of opening it owes it the same
+    // gate — a host behind a VPN used to open on a click and fail from a layout.
+    if (!(await runPreconnect(connection, gate)))
+      return localSession(target, t('layouts.fellBackPreconnect', { machine }));
 
     const sessionId = await conns.connect(connection);
     return {
@@ -852,46 +882,87 @@ export function Workspace({
 
 
   /**
-   * Open a saved layout in the active tab, from the Layouts button in the tab strip.
+   * Open a layout: its own tabs, arranged as its file says (ADR 0023).
    *
-   * The pane to divide is resolved **once**, before the first split: a split moves
-   * focus to the pane it just created, so re-reading the focused pane each time would
-   * walk down the new panes and build a staircase instead of the saved arrangement.
-   * Splitting the same leaf repeatedly works because that leaf keeps its id — it is
-   * the node the tree re-parents, not the node it replaces.
+   * A layout opens tabs rather than splitting whatever is on screen, so an eight-pane
+   * file produces exactly eight panes and `startup` can be honoured before anything
+   * else exists. `planLayout` turns the file into cuts; this applies them.
+   *
+   * Panes are tracked by the session they opened, because `splitPane` mints the new
+   * node's id internally — and the pane being cut keeps its id, which is what lets a
+   * later step anchor to a pane placed earlier.
    */
-  const handleApplyLayout = async (panes: LayoutPane[]) => {
-    const tab = tabGroups.find((t) => t.id === activeTabId);
-    if (!tab) return;
-    const target = getFocusedPane(tab.paneTree) ?? getFirstLeafPane(tab.paneTree);
-    if (!target) return;
-    const dirs = layoutDirections(panes.length, 'horizontal');
-    for (const [i, pane] of panes.entries()) {
-      await handleSplitPane(target.id, dirs[i], pane);
+  const handleApplyLayout = async (layout: Layout) => {
+    // One hook per machine for the whole layout, however many panes it has.
+    const gate = new Map<string, boolean>();
+    const opened: Tab[] = [];
+
+    for (const plan of planLayout(layout)) {
+      const sessionFor = async (index: number): Promise<TerminalSession> => {
+        try {
+          return await sessionForTarget(plan.panes[index], gate);
+        } catch (error) {
+          // A machine that refuses costs this pane's content, never the arrangement:
+          // the pane opens as a plain shell carrying why (ADR 0023 §5).
+          const why = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
+          const machine = plan.panes[index].machine?.trim();
+          return localSession(plan.panes[index], machine ? t('layouts.fellBackFailed', { machine, why }) : why);
+        }
+      };
+
+      let tree = createTerminalPane(await sessionFor(0), true) as AnyPaneNode;
+      const paneIds = new Map<number, string>([[0, tree.id]]);
+
+      for (const step of plan.steps) {
+        const anchorId = paneIds.get(step.anchor);
+        if (!anchorId) continue;
+        const session = await sessionFor(step.pane);
+        const grown = splitPane(tree, anchorId, step.direction, session, {
+          before: step.before,
+          ratio: step.ratio,
+        });
+        if (!grown) continue;
+        tree = grown;
+        const added = getAllPanes(tree).find((pane) => pane.session.id === session.id);
+        if (added) paneIds.set(step.pane, added.id);
+      }
+
+      opened.push({ id: crypto.randomUUID(), name: plan.tab ?? layout.name, paneTree: tree });
     }
+
+    if (opened.length === 0) return;
+    setTabGroups((prev) => [...prev, ...opened]);
+    setActiveTabId(opened[0].id);
+    // A layout is terminals; a dashboard or a collection covering the workspace would
+    // hide every one of them.
+    setMainView('terminal');
   };
 
   /**
-   * The layouts marked `startup = true` open themselves, once, when the workspace
-   * first has a tab to put them in.
+   * The layouts marked `startup = true` open themselves, once, as soon as the file
+   * has been read.
+   *
+   * They no longer wait for a tab to exist: a layout opens its own tabs, so waiting
+   * for one would mean never opening on a fresh start, which is the only moment a
+   * startup layout is for.
    *
    * Once per run, not once per render and not once per context: a guard ref rather
-   * than a dependency list, because the layouts arrive asynchronously and the active
-   * tab changes all day. Switching vault re-mounts this workspace, which is the one
-   * case where opening them again is the right answer.
+   * than a dependency list, because the layouts arrive asynchronously. Switching vault
+   * re-mounts this workspace, which is the one case where opening them again is the
+   * right answer.
    */
   const startupOpened = useRef(false);
   useEffect(() => {
     if (startupOpened.current) return;
-    if (!layoutsLoaded || !activeTabId) return;
+    if (!layoutsLoaded) return;
     const atStartup = layoutsFromFile.filter((l) => l.startup);
     startupOpened.current = true;
     if (atStartup.length === 0) return;
     void (async () => {
-      for (const layout of atStartup) await handleApplyLayout(layout.panes);
+      for (const layout of atStartup) await handleApplyLayout(layout);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [layoutsLoaded, activeTabId, layoutsFromFile]);
+  }, [layoutsLoaded, layoutsFromFile]);
 
   // Handle close pane
   const handleClosePane = (paneId: string) => {
@@ -2096,16 +2167,20 @@ export function Workspace({
       )}
 
       {/* Pre-connect hook: runs a local command before opening SSH */}
-      {preconnectPrompt && preconnectPrompt.preconnect && (
+      {preconnectPrompt && preconnectPrompt.conn.preconnect && (
         <PreconnectModal
-          command={preconnectPrompt.preconnect}
-          connectionName={preconnectPrompt.name}
+          command={preconnectPrompt.conn.preconnect}
+          connectionName={preconnectPrompt.conn.name}
           onSuccess={() => {
-            const conn = preconnectPrompt;
+            const settle = preconnectPrompt.settle;
             setPreconnectPrompt(null);
-            void doConnect(conn);
+            settle(true);
           }}
-          onCancel={() => setPreconnectPrompt(null)}
+          onCancel={() => {
+            const settle = preconnectPrompt.settle;
+            setPreconnectPrompt(null);
+            settle(false);
+          }}
         />
       )}
 

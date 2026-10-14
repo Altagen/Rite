@@ -9,19 +9,17 @@
  * what happens when the stored key is corrupt, and the wrong answer there silently
  * empties someone's presets.
  *
- * The layout half of this file is gone with the feature it tested. A layout is a file
- * now, parsed by `store/layoutsFormat.ts` and checked in `e2e/layout-file-check.mjs`;
- * what stays here is `layoutDirections`, which is still how any multi-pane open
- * decides its directions.
+ * The layout half of this file is gone with the feature it tested, and so is the
+ * alternating cascade: a layout states its own cuts in the workspace file now, parsed
+ * and planned by `store/layoutsFormat.ts` and checked in `e2e/layout-file-check.mjs`.
+ * What is left here is the one thing presets still need from this module — reading a
+ * stored library without trusting it, which is how the release candidate's presets
+ * are carried into the file (ADR 0023).
  *
  * Run: node e2e/split-format-check.mjs
  */
 import assert from 'node:assert/strict';
-import {
-  parseStored,
-  layoutDirections,
-  isPreset,
-} from '../apps/desktop/src/store/splitsFormat.ts';
+import { parseStored, isPreset } from '../apps/desktop/src/store/splitsFormat.ts';
 
 let passed = 0;
 const check = (name, fn) => {
@@ -65,29 +63,6 @@ check('valid JSON that is not a list falls back', () => {
   assert.deepEqual(parseStored('{"a":1}', DEFAULTS), DEFAULTS);
   assert.deepEqual(parseStored('"hello"', DEFAULTS), DEFAULTS);
   assert.deepEqual(parseStored('null', DEFAULTS), DEFAULTS);
-});
-
-console.log('\nhow a layout divides the tab:');
-
-check('the direction alternates, so panes land in a grid', () => {
-  // Five panes all split the same way is six columns, which is nobody's "five
-  // terminals arranged like this".
-  assert.deepEqual(layoutDirections(4, 'horizontal'), [
-    'horizontal',
-    'vertical',
-    'horizontal',
-    'vertical',
-  ]);
-});
-
-check('it starts where the caller says', () => {
-  // The chevron passes the direction its own split button would have used.
-  assert.deepEqual(layoutDirections(3, 'vertical'), ['vertical', 'horizontal', 'vertical']);
-});
-
-check('one pane is one split, and none is none', () => {
-  assert.deepEqual(layoutDirections(1, 'horizontal'), ['horizontal']);
-  assert.deepEqual(layoutDirections(0, 'horizontal'), []);
 });
 
 console.log('\nthe shape of a stored entry:');
