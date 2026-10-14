@@ -580,17 +580,14 @@ export function InstanceSettingsPanel() {
         <div className="border-t border-border p-4">
           <div className="font-medium">Machine dashboard — container &amp; service cards</div>
           <p className="mt-1 text-sm text-muted-foreground">
-            These two cards run a command on the host every time they refresh. Everything else on the
-            dashboard — address, port forwarding, the Board — reads what Rite already holds and is never
-            affected by the switches below.
+            These two cards run a command on the host each time they refresh. The rest of the dashboard —
+            address, port forwarding, the Board — reads what Rite already holds and is never affected.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            The two halves are not equally strong, and it is worth knowing which is which.{' '}
-            <b>Web UI</b> is <b>enforcement</b>: the browser cannot open SSH, this server executes, so off
-            means nothing runs. <b>Clients</b> is <b>policy</b>: a desktop client probes from its own network
-            and this server never sees the request — the official client honours the switch by hiding the
-            cards, a modified one could ignore it. What it buys you is the traffic stopped in normal use, no
-            trigger left in the UI to fire by accident, and a recorded statement of intent.
+            The two switches are not equally strong. <b>Web UI</b> is <b>enforcement</b>: this server runs
+            the commands, so off means nothing runs. <b>Clients</b> is <b>policy</b>: a client probes from
+            its own network and this server never sees it — the official client hides the cards, a modified
+            one could ignore the switch. It still stops the traffic in normal use and records the intent.
           </p>
           {managed.dashboard_policy && <ManagedBy origin={managed.dashboard_policy} />}
         </div>
@@ -644,9 +641,9 @@ export function InstanceSettingsPanel() {
             <div className="font-medium">Minimum refresh interval</div>
             <p className="mt-1 text-sm text-muted-foreground">
               Floor between <b>automatic</b> refreshes: an open dashboard re-runs these two cards on
-              its own, and never faster than this. Clients apply a floor of their own as well, so a
-              very small number here does not buy a very fast refresh. It does not rate-limit a
-              person pressing Refresh, and a dashboard nobody is looking at does not poll.
+              its own, never faster than this. Clients apply a floor of their own, so a very small
+              number here buys little. Pressing Refresh is not rate-limited, and a dashboard nobody
+              is watching does not poll.
             </p>
           </div>
           <div className="flex items-center gap-2">
