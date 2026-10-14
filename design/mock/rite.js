@@ -124,6 +124,10 @@ function openPrefs(prefs,at){
     const b=e.target.closest('[data-pref]'); if(!b)return;
     PREF_AT=b.dataset.pref; body.innerHTML=prefsHTML(prefs);
   });
+  // Settings ▸ Layouts carries a switch that WRITES the workspace file, and the file
+  // is the state — so the section is redrawn from the new parse rather than left
+  // showing what was clicked.
+  wireStartupToggles(body,()=>{body.innerHTML=prefsHTML(prefs);});
   return bd;
 }
 
@@ -221,28 +225,28 @@ const PANE_KINDS = {};
 function registerPaneKind(type, render){ PANE_KINDS[type] = render; }
 registerPaneKind('term', (p,i) => termHTML(p.host, { name:p.name, cmd:p.cmd, lines:p.lines, warn:p.warn, close:`closePaneAt(${i})` }));
 
-/* What a split can open. `plain` is first and is the default action: the preset list
-   is for the minority who want `top` on the right, not a tax on everyone else.
-   Name and command are both the user's — nothing here is built in but the plain one. */
-let SPLIT_PRESETS = [
-  { id:'plain',    name:'Terminal',   command:'', builtin:true },
-  { id:'p-load',   name:'Load',       command:'top' },
-  { id:'p-disk',   name:'Disk',       command:'df -h' },
-];
-/* ================= Layouts: a file =================
+/* ================= The workspace file =================
 
-   A split preset and a layout were in the same dialog because they are the same two
-   fields. They are not the same feature, and sharing a form made that hard to see.
+   ONE file describes how this machine is set up: `[[preset]]` is what the split menu
+   offers, `[[layout]]` is the morning — what opens, where on the screen, and on which
+   machine. Both belong to the MACHINE and neither is a secret, which is why they are a
+   file and not a row in an account's settings table: you version it, you copy it
+   between computers, and a shared server never sees it (ADR 0023).
 
-   A preset is a reflex: the pane you are in, divided, running one command. It belongs
-   next to the divider, it is one line long, and a list in the preferences is the right
-   home for it.
+   That last clause is the whole divergence. The desktop shell IS a machine, so it has
+   the file. The browser talks to a server, where the file does not exist and has no
+   substitute — so `web.html` has no Layouts section, no Split presets section and no
+   Layouts button, rather than empty ones.
 
-   A layout is the start of a working day: what opens, where, and on which machine. It
-   names machines, it has an order, it can be the thing that runs when Rite starts, and
-   it is the kind of thing people keep in version control and copy between computers.
-   That is a FILE — `layouts.toml`, read on startup, edited here or in your own editor.
-   Settings ▸ Layouts shows the file, not a form pretending the file is not there.
+   A preset is a reflex: the pane you are in, divided, running one command. One line
+   long, edited in a small dialog that splices its blocks back into the file.
+
+   A layout is the start of a working day. It names machines, it has an order, and it
+   can be the thing that runs when Rite starts. Settings ▸ Layouts therefore LEADS with
+   a card per layout — what it opens, resolved against the library this computer
+   actually has — and the file editor is one button underneath. The section used to be
+   a title and a button that sent you somewhere else, which put the only answer to
+   "what do I have" behind a click and below a textarea.
 
    A layout names a machine; the library may not have it. The file is not a contract
    the app can enforce — a machine gets renamed, a vault stays locked, the file comes
@@ -250,8 +254,16 @@ let SPLIT_PRESETS = [
    layout: it opens a PLAIN SHELL and says so in the pane. You get your workspace,
    minus what could not be found, and you can see exactly what was missing. */
 const LAYOUT_PATH = '~/.config/rite/layouts.toml';
-let LAYOUT_FILE = `# Layouts — what opens, where, and on which machine.
+let LAYOUT_FILE = `# Your workspace: the commands the split menu offers, and what opens in the morning.
 # Rite reads this file at startup. Settings ▸ Layouts edits it; so does your editor.
+
+[[preset]]
+name = "Load"
+command = "top"
+
+[[preset]]
+name = "Disk"
+command = "df -h"
 
 [[layout]]
 name = "Morning"
@@ -259,14 +271,20 @@ startup = true            # open this layout when Rite starts
 
   [[layout.pane]]
   command = ""            # no machine = this computer, a plain shell
+                          # the first pane of a tab is the whole area
 
   [[layout.pane]]
   machine = "web-01"      # a machine from your library, by name
   command = "journalctl -fu app"
+  name = "logs"           # the pane header, and what "of" points at
+  split = "right"         # right, down, left, up — of the previous pane
+  size = "40%"            # this pane's share of what it cuts
 
   [[layout.pane]]
   machine = "pg-prod"
-  command = "top"
+  preset = "Load"         # or command = "..." — one or the other
+  split = "down"
+  of = "logs"             # cut out of that pane, not the previous one
 
 [[layout]]
 name = "Deploy watch"
@@ -280,62 +298,286 @@ name = "Deploy watch"
   command = "tail -f /var/log/nginx/access.log"
 
   [[layout.pane]]
+  tab = "disks"           # a tab of its own, opened beside the first
   command = "df -h"
 `;
 
-/* A deliberately small TOML subset: [[layout]], [[layout.pane]], and quoted or
-   boolean values. The real one uses a TOML parser (ADR 0020 already made TOML the
-   house format for config-as-code); what matters in the mock is the shape of the
-   file and what a BAD file looks like.
+/* A deliberately small TOML subset: [[preset]], [[layout]], [[layout.pane]], quoted
+   strings and booleans. The real one is `apps/desktop/src/store/layoutsFormat.ts`,
+   held to these messages by `e2e/layout-file-check.mjs`; what matters here is the
+   shape of the file, what a BAD file looks like, and where it gets reported.
 
-   A file that does not parse loads NOTHING, and the dialog names the line. Half a
-   file is worse than no file: you would not know which half you got. */
+   A file that does not parse loads NOTHING and names the line. Half a file is worse
+   than no file: you would not know which half you got. A file of nothing but comments
+   is a fresh install, not an error. */
+const SPLIT_WORDS = ['right','down','left','up'];
+/* Drop a trailing comment, but not a `#` inside a quoted value — `command = "git log
+   --format=%h#%s"` is one command, not a command and a comment. */
+function stripComment(line){
+  let quoted=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(c==='"'&&line[i-1]!=='\\') quoted=!quoted;
+    else if(c==='#'&&!quoted) return line.slice(0,i);
+  }
+  return line;
+}
+/* `"45%"` as a share of the area being cut. A percentage, because that is the unit
+   the screen already works in. Outside 10–90% there is no answer to give — the drag
+   handle clamps there — so such a file is REFUSED rather than quietly clamped: a
+   screen that does not match the file is worse than a rejection. */
+function parseShare(v){
+  const m=/^([0-9]+(?:\.[0-9]+)?)\s*%$/.exec(String(v).trim());
+  if(!m) return null;
+  const share=Number(m[1])/100;
+  return (share>=0.1&&share<=0.9)? share : null;
+}
 function parseLayoutFile(text){
-  const layouts=[]; let cur=null, pane=null;
-  const fail=(line,message)=>({layouts:[],error:{line,message}});
+  const presets=[], layouts=[];
+  let preset=null, cur=null, pane=null;
+  /* Which line each key came from, so a check made once the whole file is read can
+     still point at one. */
+  const lineOf=new Map();
+  const at=(o,k)=>(lineOf.get(o)||{})[k]||0;
+  const mark=(o,k,n)=>{const seen=lineOf.get(o)||{};seen[k]=n;lineOf.set(o,seen);};
+  const fail=(line,message)=>({presets:[],layouts:[],error:{line,message}});
   const lines=(text||'').split('\n');
   for(let i=0;i<lines.length;i++){
-    const line=lines[i].replace(/#.*$/,'').trim();
+    const line=stripComment(lines[i]).trim();
     if(!line) continue;
-    if(line==='[[layout]]'){ cur={id:'l'+(layouts.length+1),name:'',startup:false,panes:[]}; layouts.push(cur); pane=null; continue; }
+    if(line==='[[preset]]'){ preset={id:'p'+(presets.length+1),name:'',command:''}; presets.push(preset); cur=null; pane=null; continue; }
+    if(line==='[[layout]]'){ cur={id:'l'+(layouts.length+1),name:'',startup:false,panes:[]}; layouts.push(cur); preset=null; pane=null; continue; }
     if(line==='[[layout.pane]]'){
       if(!cur) return fail(i+1,'[[layout.pane]] before any [[layout]]');
-      pane={machine:null,command:'',name:''}; cur.panes.push(pane); continue; }
-    if(line.startsWith('[')) return fail(i+1,`unknown table ${line} — only [[layout]] and [[layout.pane]] exist`);
+      pane={command:''}; cur.panes.push(pane); continue; }
+    if(line.startsWith('[')) return fail(i+1,`unknown table ${line} — only [[preset]], [[layout]] and [[layout.pane]] exist`);
     const m=line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
     if(!m) return fail(i+1,`not a key or a table header: ${line}`);
     const key=m[1]; const rawv=m[2].trim(); let v;
-    if(/^".*"$/.test(rawv)) v=rawv.slice(1,-1);
+    if(rawv.length>=2&&rawv.startsWith('"')&&rawv.endsWith('"')) v=rawv.slice(1,-1).replace(/\\(["\\])/g,'$1');
     else if(rawv==='true'||rawv==='false') v=(rawv==='true');
+    // `size = 45%` is the mistake this subset invites, so it gets its own sentence
+    // instead of the generic one about quoting.
+    else if(/^[0-9]+(\.[0-9]+)?%?$/.test(rawv)) return fail(i+1,`a value is quoted — write ${key} = "${rawv.endsWith('%')?rawv:rawv+'%'}"`);
     else return fail(i+1,`a value is a quoted string or true/false, not ${rawv||'nothing'}`);
     if(pane){
+      mark(pane,key,i+1);
       if(key==='machine') pane.machine=String(v);
       else if(key==='command') pane.command=String(v);
       else if(key==='name') pane.name=String(v);
-      else return fail(i+1,`a pane takes machine, command and name — not ${key}`);
+      else if(key==='preset') pane.preset=String(v);
+      else if(key==='of') pane.of=String(v);
+      else if(key==='tab') pane.tab=String(v);
+      else if(key==='split'){
+        if(!SPLIT_WORDS.includes(String(v))) return fail(i+1,`a split is right, down, left or up — not ${v}`);
+        pane.split=String(v); }
+      else if(key==='size'){
+        const share=parseShare(v);
+        if(share===null) return fail(i+1,`a size is a percentage between 10% and 90%, not ${String(v)||'nothing'}`);
+        pane.size=share; }
+      else return fail(i+1,`a pane takes machine, command, name, preset, split, of, size and tab — not ${key}`);
+    } else if(preset){
+      mark(preset,key,i+1);
+      if(key==='name') preset.name=String(v);
+      else if(key==='command') preset.command=String(v);
+      else return fail(i+1,`a preset takes name and command — not ${key}`);
     } else if(cur){
+      mark(cur,key,i+1);
       if(key==='name') cur.name=String(v);
       else if(key==='startup') cur.startup=!!v;
       else return fail(i+1,`a layout takes name and startup — not ${key}`);
-    } else return fail(i+1,`${key} is outside any [[layout]]`);
+    } else return fail(i+1,`${key} is outside any [[preset]] or [[layout]]`);
   }
-  const nameless=layouts.findIndex(l=>!l.name);
+  /* Checks that can only be made once the whole file is read: a preset may be declared
+     AFTER the layout that cites it, and an anchor is only wrong in the company of the
+     other panes. */
+  const namelessPreset=presets.find(p=>!p.name.trim());
+  if(namelessPreset) return fail(at(namelessPreset,'command'),'a preset has no name');
+  const nameless=layouts.findIndex(l=>!l.name.trim());
   if(nameless>=0) return fail(0,`layout #${nameless+1} has no name`);
   const empty=layouts.find(l=>!l.panes.length);
   if(empty) return fail(0,`layout "${empty.name}" has no [[layout.pane]]`);
-  return {layouts,error:null};
+  for(const l of layouts){
+    const seen=new Set();
+    for(const p of l.panes){
+      const n=(p.name||'').trim();
+      if(n){
+        if(seen.has(n)) return fail(at(p,'name'),`two panes are named "${n}" — "of" could not tell them apart`);
+        seen.add(n); }
+      if(p.preset!==undefined){
+        const cited=presets.find(x=>x.name.trim()===p.preset.trim());
+        if(!cited) return fail(at(p,'preset'),`no [[preset]] is named "${p.preset}"`);
+        if(at(p,'command')) return fail(at(p,'command'),'a pane takes preset or command, not both');
+        p.command=cited.command; }
+    }
+    // The tabs and the anchors have to hold, and it is the same walk, so it reports
+    // here rather than failing later with no line to name.
+    const planned=planTabs(l,at);
+    if(planned.error) return {presets:[],layouts:[],error:planned.error};
+  }
+  return {presets,layouts,error:null};
 }
 
-let PANE_LAYOUTS=[], LAYOUT_ERROR=null;
+/* A layout opens its own TABS: the first pane of a tab IS that tab, not a split of
+   whatever happened to be on screen. That is what lets an eight-pane file produce
+   eight panes, and why `startup` can be honoured before anything else exists.
+
+   Grouping them is what the cards show, and it is the same walk that validates `of` —
+   so it is written once and called from both.
+
+   The mock stops at the grouping. The real planner also compiles the CUTS (a balanced
+   grid when no pane says `split`, the file's own order when one does), which this
+   prototype cannot show: `paneTabHTML` lays panes out in one flex row, not a split
+   tree. That geometry lives in `layoutsFormat.ts` with its own checks, and inventing a
+   second version of it here would be a copy nobody could trust. */
+function planTabs(layout,at){
+  at=at||(()=>0);
+  const tabs=[]; const byName=new Map(); let currentTab=null;
+  for(const pane of layout.panes){
+    if((pane.tab||'').trim()) currentTab=pane.tab.trim();
+    let plan=byName.get(currentTab);
+    if(!plan){ plan={tab:currentTab,panes:[]}; byName.set(currentTab,plan); tabs.push(plan); }
+    plan.panes.push(pane);
+  }
+  for(const plan of tabs){
+    const first=plan.panes[0];
+    for(const key of ['split','of','size'])
+      if(first[key]!==undefined) return {tabs,error:{line:at(first,key),
+        message:`the first pane of a tab is the whole area — it has no ${key}`}};
+    for(let i=1;i<plan.panes.length;i++){
+      const pane=plan.panes[i];
+      if(pane.of===undefined) continue;
+      const wanted=pane.of.trim();
+      const found=plan.panes.findIndex((p,j)=>j<i&&(p.name||'').trim()===wanted);
+      if(found<0){
+        const elsewhere=layout.panes.some(p=>(p.name||'').trim()===wanted);
+        return {tabs,error:{line:at(pane,'of'),message:elsewhere
+          ? `"${wanted}" is in another tab, or comes later — "of" points at a pane already placed in this tab`
+          : `no pane placed before this one is named "${wanted}"`}};
+      }
+    }
+  }
+  return {tabs,error:null};
+}
+function planLayout(layout){ return planTabs(layout).tabs; }
+
+/* The pane header a layout asks for, when it does not name one itself. */
+function paneLabel(p){
+  return (p.name||'').trim() || (p.machine||'').trim()
+    || ((p.command||'').trim().split(/\s+/)[0] || '');
+}
+
+let PANE_LAYOUTS=[], LAYOUT_ERROR=null, SPLIT_PRESETS=[];
+/* The plain split: always offered, never editable, not in anyone's file. It is what
+   the split BUTTON does, and listing it is what makes the menu a superset of the
+   button rather than a different feature. */
+const PLAIN_PRESET={ id:'plain', name:'Terminal', command:'', builtin:true };
+/* The two shipped presets are a FALLBACK, not a default written into a file: they
+   appear only while the file declares nothing at all. A file with a layout and no
+   preset is a decision, and a fallback that overrode it would be a bug. */
+const DEFAULT_PRESETS=[{id:'sp-load',name:'Load',command:'top'},{id:'sp-disk',name:'Disk',command:'df -h'}];
 function reloadLayouts(){
+  // No file, nothing to load — not an empty file, and not a default standing in for
+  // one. The browser shell lands here (see `hasWorkspaceFile`), which is why its
+  // split chevron offers the plain divider and its snippets, and nothing else.
+  if(!hasWorkspaceFile()){
+    PANE_LAYOUTS=[]; SPLIT_PRESETS=[]; LAYOUT_ERROR=null;
+    return {presets:[],layouts:[],error:null};
+  }
   const r=parseLayoutFile(LAYOUT_FILE);
-  // A broken file keeps the layouts you had running; it does not empty the menu
+  // A broken file keeps the layouts and presets you had; it does not empty the menu
   // under you. It only stops NEW ones from loading, and says why.
-  if(!r.error) PANE_LAYOUTS=r.layouts;
+  if(!r.error){
+    PANE_LAYOUTS=r.layouts;
+    SPLIT_PRESETS=r.presets.length? r.presets : (r.layouts.length? [] : DEFAULT_PRESETS.slice());
+  }
   LAYOUT_ERROR=r.error;
   return r;
 }
+/* Read once here so a page that only includes rite.js still has something, and again
+   from each entry page's boot — `WORKSPACE_FILE` is declared in the page, which is a
+   later <script> than this one, so this first read cannot see it. */
 reloadLayouts();
+
+/* Does this shell have a workspace file at all? The desktop is a machine, so yes; the
+   browser talks to a server, where there is no file and nothing stands in for one
+   (ADR 0023) — the two sections and the button are ABSENT there, not empty. Each entry
+   page answers for itself, and the desktop's answer is the default. */
+function hasWorkspaceFile(){ return typeof WORKSPACE_FILE==='undefined' ? true : !!WORKSPACE_FILE; }
+
+/* ===== Two edits made from the UI, spliced into the file =====
+
+   The file is hand-written and commented, so an edit from a dialog or a switch
+   REWRITES ONE THING and leaves every other line as it was typed. Regenerating the
+   document from the parse would be easier and would silently throw away the comments,
+   the blank lines and the order someone chose.
+
+   The file editor is the exception, and deliberately: its textarea IS the file, so
+   Save stores the whole thing. Press ↻ Reload there before typing if something else
+   has written since you opened it. */
+function quoteVal(s){ return `"${String(s).replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"`; }
+/* The preset dialog's whole library becomes the file's first [[preset]] block; the
+   other preset blocks go away. Comments written INSIDE a preset block are the one
+   thing this loses — they belong to the rows being replaced. */
+function replacePresetBlocks(text,presets){
+  const lines=(text||'').split('\n');
+  const isHeader=l=>stripComment(l).trim().startsWith('[');
+  const isPresetHeader=l=>stripComment(l).trim()==='[[preset]]';
+  const block=presets.map(p=>['[[preset]]',`name = ${quoteVal(p.name)}`,`command = ${quoteVal(p.command)}`].join('\n')).join('\n\n');
+  const out=[]; let written=false, i=0;
+  // Everything before the first table header is the file's own preamble and stays put.
+  while(i<lines.length&&!isHeader(lines[i])) out.push(lines[i++]);
+  for(;i<lines.length;i++){
+    if(!isPresetHeader(lines[i])){
+      if(!written&&isHeader(lines[i])){ if(block) out.push(block,''); written=true; }
+      out.push(lines[i]); continue;
+    }
+    if(!written){ if(block) out.push(block,''); written=true; }
+    i++;
+    while(i<lines.length&&!isHeader(lines[i])) i++;
+    i--; // land on the header that ended the block, so the loop's step reaches it
+  }
+  if(!written&&block){
+    // No table at all: the preamble is the whole file, so the presets go after it.
+    if(out.length&&out[out.length-1].trim()!=='') out.push('');
+    out.push(block,'');
+  }
+  return out.join('\n');
+}
+/* The startup switch. The target is the layout's POSITION in the file, not its name:
+   two layouts may legitimately share a name, and the position is what the parse
+   returns. Off REMOVES the line rather than writing `startup = false`, so the file
+   stays free of a key that states the default. An index no layout occupies returns the
+   text unchanged — the file may have been edited under the dialog, and rewriting the
+   wrong layout would be worse than doing nothing. */
+function setLayoutStartup(text,index,startup){
+  const lines=(text||'').split('\n');
+  const isHeader=l=>stripComment(l).trim().startsWith('[');
+  const keyOf=l=>{const m=/^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(stripComment(l).trim());return m?m[1]:undefined;};
+  const indentOf=l=>(/^\s*/.exec(l||'')||[''])[0];
+  let seen=-1, start=-1;
+  for(let i=0;i<lines.length;i++){
+    if(stripComment(lines[i]).trim()!=='[[layout]]') continue;
+    seen++;
+    if(seen===index){ start=i; break; }
+  }
+  if(start<0) return text||'';
+  let end=start+1;
+  while(end<lines.length&&!isHeader(lines[end])) end++; // stops at the first pane
+  const body=lines.slice(start+1,end);
+  const out=lines.slice();
+  const at=body.findIndex(l=>keyOf(l)==='startup');
+  if(at>=0){
+    if(startup) out[start+1+at]=indentOf(lines[start+1+at])+'startup = true';
+    else out.splice(start+1+at,1);
+    return out.join('\n');
+  }
+  if(!startup) return text||'';
+  const nameAt=body.findIndex(l=>keyOf(l)==='name');
+  const insertAt=nameAt>=0? start+2+nameAt : start+1;
+  out.splice(insertAt,0,indentOf(lines[insertAt-1])+'startup = true');
+  return out.join('\n');
+}
 
 /* A machine by name, anywhere in the collection tree. */
 function findMachine(name){
@@ -382,36 +624,48 @@ function paneFromPreset(preset,host){
   return { kind:'term', host, name:preset.name, cmd:preset.command,
     lines:['(running — this is an ordinary terminal pane)'] };
 }
-function splitWith(presetId){ const t=curTab(); const p=SPLIT_PRESETS.find(x=>x.id===presetId);
+function splitWith(presetId){ const t=curTab();
+  // `plain` is not in the file, so it is looked up before it: the split BUTTON must
+  // keep working on a shell that has no workspace file at all.
+  const p = presetId==='plain' ? PLAIN_PRESET : SPLIT_PRESETS.find(x=>x.id===presetId);
   if(p) addPane(paneFromPreset(p,t&&t.host));
 }
+/* Open a layout. `command` is already resolved — a pane citing a `preset` had the
+   preset's command folded in at parse — so nothing here looks a preset up again.
+
+   The real app opens one TAB per named tab of the plan. The mock has a single terminal
+   tab, so it opens every pane into the one on screen and the toast says how many tabs
+   that collapsed, rather than pretending the file's tabs do not exist. */
 function applyLayout(id){ const l=PANE_LAYOUTS.find(x=>x.id===id); const t=curTab(); if(!l||!t) return;
   let fellBack=0;
-  l.panes.forEach(p=>{
+  const plans=planLayout(l);
+  plans.forEach(plan=>plan.panes.forEach(p=>{
     const tgt=layoutTarget(p);
     if(tgt.warn) fellBack++;
     t.panes.push({ kind:'term', host:tgt.host, warn:tgt.warn,
-      name:p.name || (tgt.host||null) || (p.command? p.command.split(/\s+/)[0] : null),
+      name:paneLabel(p)||null,
       cmd:p.command||'', lines:p.command?['(running — this is an ordinary terminal pane)']:null });
-  });
+  }));
   t.focus=t.panes.length-1; renderMain();
+  const tabs=plans.length>1?` · ${plans.length} tabs in one here`:'';
   toast(fellBack
-    ? `Layout <span class="accent">${l.name}</span> — ${l.panes.length} panes, ${fellBack} fell back to a plain shell`
-    : `Layout <span class="accent">${l.name}</span> — ${l.panes.length} panes opened`);}
+    ? `Layout <span class="accent">${l.name}</span> — ${l.panes.length} panes, ${fellBack} fell back to a plain shell${tabs}`
+    : `Layout <span class="accent">${l.name}</span> — ${l.panes.length} panes opened${tabs}`);}
 
 /* Everything a split can be, behind the chevron. The plain one is also here, first,
    so the menu is a superset of the button rather than a different feature. */
 function splitMenu(e){
   e.stopPropagation();
   const t=curTab(); const host=t&&t.host;
-  const items = SPLIT_PRESETS.map(p=>({ icon:ICON.term,
+  const items = [PLAIN_PRESET].concat(SPLIT_PRESETS).map(p=>({ icon:ICON.term,
     label:`${p.name}${p.command?`<div class="sub mono" style="font-size:11px;color:var(--muted);font-weight:400">${p.command}</div>`:''}`,
     onclick:()=>splitWith(p.id) }));
   items.push({ icon:EXICON.split, label:'Snippets…', onclick:()=>openSnippets(host||null) });
   PANE_LAYOUTS.forEach(l=>items.push({ icon:EXICON.panel,
     label:`${l.name}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes</div>`,
     onclick:()=>applyLayout(l.id) }));
-  items.push({ icon:EXICON.gear, label:'Split presets…', onclick:()=>dlgSplitPrefs() });
+  // Nothing to configure where there is no file to write it to (ADR 0023).
+  if(hasWorkspaceFile()) items.push({ icon:EXICON.gear, label:'Split presets…', onclick:()=>dlgSplitPrefs() });
   floatMenu(e, items);
 }
 
@@ -427,6 +681,9 @@ function splitMenu(e){
    "Configure splits…" is where a first layout comes from. */
 function layoutsBtnHTML(){
   if(typeof STATE!=='undefined' && STATE.toolbar && STATE.toolbar.layouts===false) return '';
+  // No second test for "is there a file": a shell without one loads no layouts and no
+  // error, so the line below already hides the button — and one rule in one place is
+  // what keeps the two from disagreeing.
   if(!PANE_LAYOUTS.length && !LAYOUT_ERROR) return '';
   const bad=!!LAYOUT_ERROR;
   return `<button class="mtab-new" title="${bad?'Layouts — your layouts.toml has an error':'Layouts — open a saved arrangement in this tab'}"
@@ -435,7 +692,7 @@ function layoutsBtnHTML(){
 function layoutsMenu(e){
   e.stopPropagation();
   const items = PANE_LAYOUTS.map(l=>({ icon:EXICON.panel,
-    label:`${l.name}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes · ${l.panes.map(p=>p.name).join(' · ')}</div>`,
+    label:`${l.name}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes · ${l.panes.map(paneLabel).join(' · ')}</div>`,
     onclick:()=>applyLayout(l.id) }));
   if(LAYOUT_ERROR) items.unshift({ icon:'⚠',
     label:`<span style="color:var(--amber)">layouts.toml has an error</span><div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${LAYOUT_ERROR.line?`line ${LAYOUT_ERROR.line} · `:''}${LAYOUT_ERROR.message}</div>`,
@@ -447,7 +704,16 @@ function layoutsMenu(e){
 /* ===== Split presets: the small dialog =====
    One command, one pane, one line each. No layouts here any more: a preset you can
    type in four seconds and a file you keep in version control are not two halves of
-   one screen. This dialog saves as you go, so it has no footer (see showModal). */
+   one screen. This dialog saves as you go, so it has no footer (see showModal).
+
+   Every edit here SPLICES the file's [[preset]] blocks and leaves the layouts, the
+   comments and the blank lines exactly as typed — the presets and the layouts share
+   one file, so a list of fields may not regenerate the document. */
+function presetsFromDialog(presets){
+  LAYOUT_FILE=replacePresetBlocks(LAYOUT_FILE,presets);
+  reloadLayouts();
+  if(typeof renderMain==='function') renderMain();
+}
 function splitPrefsBody(){
   const preset = (p,i) => `<div class="snip-row">
     <div class="snip-meta"><div class="snip-name">${p.name}${p.builtin?' <span class="snip-count">always there</span>':''}</div>
@@ -456,9 +722,9 @@ function splitPrefsBody(){
     <button class="btn btn-ghost btn-sm" data-sp-del="${i}" title="Remove">✕</button>`}</div>`;
   return `<p class="muted" style="font-size:12px;margin:0 0 10px">Splitting a pane opens a <b>plain terminal</b> — that is the button.
     A preset is the same divider running one named command, offered by the chevron beside it.
-    Arranging a whole tab is a <b>layout</b>, and layouts live in a file: ${'' /* keep the two apart */}
+    Arranging a whole tab is a <b>layout</b>, and both live in <code>${LAYOUT_PATH}</code>: ${'' /* keep the two apart */}
     <button class="btn btn-ghost btn-sm" style="padding:1px 7px" onclick="this.closest('.backdrop').remove();dlgLayouts()">Layouts…</button></p>
-    <div class="snip-list">${SPLIT_PRESETS.map(preset).join('')}</div>
+    <div class="snip-list">${[PLAIN_PRESET].concat(SPLIT_PRESETS).map((p,i)=>preset(p,i-1)).join('')}</div>
     <div class="snip-add">
       <label class="field"><span>Name</span><input class="inp" id="sp-name" placeholder="Containers"></label>
       <label class="field"><span>Command</span><input class="inp mono" id="sp-cmd" placeholder="df -h"></label>
@@ -479,52 +745,124 @@ function dlgSplitPrefs(){
     const t=e.target.closest('[data-sp-del],[data-sp-add],[data-sp-edit]');
     if(!t)return;
     if(t.dataset.spEdit!==undefined){EDITING.preset=+t.dataset.spEdit;}
-    else if(t.dataset.spDel!==undefined){SPLIT_PRESETS.splice(+t.dataset.spDel,1);EDITING.preset=-1;}
+    else if(t.dataset.spDel!==undefined){
+      const next=SPLIT_PRESETS.slice(); next.splice(+t.dataset.spDel,1);
+      presetsFromDialog(next); EDITING.preset=-1;}
     else if(t.dataset.spAdd!==undefined){
       const n=(body.querySelector('#sp-name').value||'').trim(), c=(body.querySelector('#sp-cmd').value||'').trim();
       if(!n){toast('Give the preset a name');return;}
-      if(EDITING.preset>=0){Object.assign(SPLIT_PRESETS[EDITING.preset],{name:n,command:c});EDITING.preset=-1;}
-      else SPLIT_PRESETS.push({id:'p'+Math.random().toString(36).slice(2,7),name:n,command:c});}
+      const next=SPLIT_PRESETS.map(x=>({...x}));
+      if(EDITING.preset>=0){Object.assign(next[EDITING.preset],{name:n,command:c});EDITING.preset=-1;}
+      else next.push({id:'p'+Math.random().toString(36).slice(2,7),name:n,command:c});
+      presetsFromDialog(next);}
     redraw();});
   return bd;
 }
 
+/* ===== The layout cards =====
+
+   What the file opens, grouped the way it will open it, resolved against the library
+   THIS computer has. Two places show them from this one function: Settings ▸ Layouts,
+   which leads with them, and the file editor, which lists them under the textarea.
+
+   `toggle` is the only difference, and it is a data-loss rule rather than a style: in
+   Settings the switch writes `startup` straight into the file, which is safe because
+   nothing there holds an unsaved copy of it. The EDITOR passes no toggle — it has a
+   draft in a textarea, and a switch that rewrote the file under an unsaved edit would
+   throw that edit away. There the badge stays what it has always been: a statement,
+   not a control. */
+function layoutCardsHTML(opts){
+  opts=opts||{};
+  const where=p=>{
+    if(!p.machine) return '<span class="muted">this computer</span>';
+    const tgt=layoutTarget(p);
+    return tgt.host? `<span class="ok">${p.machine}</span>`
+      : `<span style="color:var(--amber)">${p.machine} → plain shell</span>`;
+  };
+  const paneRow=p=>`<div style="display:flex;gap:8px;font-size:12px;padding:2px 0">
+    <span style="flex:0 0 150px">${where(p)}</span>
+    <code class="mono" style="color:var(--fg-dim);min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.command||'(plain shell)'}</code>
+    <span class="muted" style="flex:0 0 auto">${paneLabel(p)}</span></div>`;
+  return PANE_LAYOUTS.map((l,index)=>{
+    /* A checkbox and not a radio: the file lets several layouts open at startup, each
+       in its own tabs, and that is useful — one for what you watch, one for what you
+       work on. A radio would be a narrower file format pretending to be a widget. */
+    const startup = opts.toggle
+      ? `<label class="lay-startup"><input type="checkbox" data-lay-startup="${index}"${l.startup?' checked':''}> at startup</label>`
+      : (l.startup?'<span class="snip-count" style="color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,transparent)">at startup</span>':'');
+    /* Grouped as it will open: a layout may name tabs, and a pane listed under the
+       wrong one would be the opposite of what this list is for. */
+    const body = planLayout(l).map(plan=>
+      (plan.tab?`<div class="eyebrow" style="margin:4px 0 1px">Tab “${plan.tab}”</div>`:'')
+      + plan.panes.map(paneRow).join('')).join('');
+    return `<div class="snip-row" style="display:block" data-lay-card="${index}">
+      <div class="snip-name" style="margin-bottom:4px;display:flex;align-items:center;gap:6px">
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.name}</span>
+        <span class="snip-count">${l.panes.length} panes</span>
+        ${startup}</div>
+      ${body}</div>`;
+  }).join('');
+}
+/* The parse error, where you look first. "No layouts" and "your file has a typo on
+   line 12" are very different facts and used to look identical in Settings — a title
+   and a button, with the difference hidden behind the button. */
+function layoutErrorHTML(){
+  if(!LAYOUT_ERROR) return '';
+  return `<div class="lay-err">⚠ <b>Not loaded.</b> ${LAYOUT_ERROR.line?`Line ${LAYOUT_ERROR.line}: `:''}${LAYOUT_ERROR.message}<br>
+    <span class="muted">The layouts already loaded keep working until the file parses again.</span></div>`;
+}
+/* Settings ▸ Layouts: the cards, then the file.
+
+   It was a title and an "Open the layouts file…" button, so the only answer to "what
+   do I have" was behind a click and below a textarea. The cards lead; the button is
+   for EDITING, which is a rarer thing to want than looking. */
+function layoutsSettingsHTML(){
+  const cards=layoutCardsHTML({toggle:true});
+  return `<h4>Layouts</h4><p class="lede">What opens when you sit down: which terminals, in what order, on which machines.
+      Kept as a file so you can version it and carry it between computers.</p>
+    ${layoutErrorHTML()}
+    ${cards? `<div class="snip-list" data-lay-cards>${cards}</div>`
+      : (LAYOUT_ERROR?'':'<p class="muted" style="font-size:12.5px;margin:2px 0 10px" data-lay-empty>No layouts yet. Open the file and describe what should open when you sit down.</p>')}
+    <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+      <button class="btn btn-sm" onclick="dlgLayouts()">Open the layouts file…</button>
+      <code class="muted" style="font-size:11.5px">${LAYOUT_PATH}</code></div>
+    <p class="muted" style="font-size:12px;margin:10px 0 0;line-height:1.5">Tick “at startup” and the layout opens itself when Rite starts —
+      several may, each in its own tabs. The switch writes <code>startup</code> into the file.</p>`;
+}
+/* The startup switch, wherever it is drawn. One checkbox, one key, spliced — and a
+   re-render, because the file is the state and the box only reflected it. */
+function wireStartupToggles(root,after){
+  root.addEventListener('change',e=>{
+    const t=e.target.closest('[data-lay-startup]');
+    if(!t) return;
+    const index=+t.dataset.layStartup;
+    const name=(PANE_LAYOUTS[index]||{}).name||'';
+    LAYOUT_FILE=setLayoutStartup(LAYOUT_FILE,index,t.checked);
+    reloadLayouts();
+    if(typeof after==='function') after();
+    if(typeof renderMain==='function') renderMain();
+    toast(t.checked?`<span class="accent">${name}</span> opens when Rite starts`:`<span class="accent">${name}</span> no longer opens at startup`);
+  });
+}
+
 /* ===== Layouts: the file, shown as the file =====
 
-   Not a form over a file. A form would have to invent a widget for every key the
-   file grows, and the file is the thing people copy between computers, mail to a
-   colleague and commit — so the file is what the dialog shows. Save parses it; a
-   bad file is refused with its line number and the layouts you had keep working.
+   Not a form over a file. A form would have to invent a widget for every key the file
+   grows, and the file is the thing people copy between computers, mail to a colleague
+   and commit — so the file is what the editor shows. Save parses it; a bad file is
+   refused with its line number and the layouts you had keep working.
 
-   What it opens is listed underneath, resolved against the library you actually
-   have, because the interesting question is not "is my TOML valid" but "will this
-   open what I think it opens, on this computer, today". */
+   This is the one place that stores the WHOLE text, which is why the startup switch is
+   absent here and why ↻ Reload exists: another surface may have spliced the file since
+   you opened this one. */
 function layoutsBody(){
-  const rows = PANE_LAYOUTS.map(l=>{
-    const panes = l.panes.map(p=>{
-      const tgt=layoutTarget(p);
-      const where = p.machine
-        ? (tgt.host? `<span class="ok">${p.machine}</span>` : `<span style="color:var(--amber)">${p.machine} → plain shell</span>`)
-        : '<span class="muted">this computer</span>';
-      return `<div style="display:flex;gap:8px;font-size:12px;padding:2px 0">
-        <span style="flex:0 0 150px">${where}</span>
-        <code class="mono" style="color:var(--fg-dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.command||'(plain shell)'}</code></div>`;
-    }).join('');
-    return `<div class="snip-row" style="display:block">
-      <div class="snip-name" style="margin-bottom:4px">${l.name}
-        <span class="snip-count">${l.panes.length} panes</span>
-        ${l.startup?'<span class="snip-count" style="color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,transparent)">at startup</span>':''}
-        <button class="btn btn-ghost btn-sm" style="float:right;padding:1px 8px" data-lay-open="${l.id}">Open now</button></div>
-      ${panes}</div>`;
-  }).join('');
-  const err = LAYOUT_ERROR
-    ? `<div class="lay-err">⚠ <b>Not loaded.</b> ${LAYOUT_ERROR.line?`Line ${LAYOUT_ERROR.line}: `:''}${LAYOUT_ERROR.message}<br>
-       <span class="muted">The layouts already loaded keep working until the file parses again.</span></div>`
-    : `<p class="lay-ok">✓ ${PANE_LAYOUTS.length} layout${PANE_LAYOUTS.length===1?'':'s'} loaded.</p>`;
+  const cards=layoutCardsHTML({});
+  const err = LAYOUT_ERROR? layoutErrorHTML()
+    : `<p class="lay-ok">✓ ${PANE_LAYOUTS.length} layout${PANE_LAYOUTS.length===1?'':'s'} loaded, ${SPLIT_PRESETS.length} preset${SPLIT_PRESETS.length===1?'':'s'}.</p>`;
   return `<p class="muted" style="font-size:12.5px;margin:0 0 10px;line-height:1.55">
-      A layout is what you open when you sit down: which terminals, in what order, on which machines.
-      It is a file, so you can keep it in version control and carry it between computers.
-      A machine this computer doesn't have opens a <b>plain shell</b> with a note in the pane — the layout still opens.</p>
+      One file for how this machine is set up: <code>[[preset]]</code> is what the chevron beside a divider offers,
+      <code>[[layout]]</code> is what you open when you sit down — which terminals, in what order, on which machines.
+      A machine this computer doesn't have opens a <b>plain shell</b> with a note in the pane; the layout still opens.</p>
     <div class="lay-path">${EXICON.coll} <code>${LAYOUT_PATH}</code>
       <span class="grow" style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" data-lay-editor>Open in my editor</button>
@@ -535,17 +873,16 @@ function layoutsBody(){
       <a href="#" onclick="toast('docs/LAYOUTS.md');return false" class="muted" style="font-size:12px">What can go in this file →</a></div>
     ${err}
     <div class="sec" style="margin-top:16px"><span class="eyebrow">What it opens</span><span class="line"></span></div>
-    <div class="snip-list">${rows||'<p class="muted" style="font-size:13px;margin:2px 0 10px">Nothing loaded.</p>'}</div>`;
+    <div class="snip-list">${cards||'<p class="muted" style="font-size:13px;margin:2px 0 10px">Nothing loaded.</p>'}</div>`;
 }
 function dlgLayouts(){
   const bd=showModal({title:'Layouts',subtitle:'What opens when you sit down',width:'620px',confirm:null,body:layoutsBody()});
   const body=bd.querySelector('.body');
   const redraw=()=>{body.innerHTML=layoutsBody();};
   body.addEventListener('click',e=>{
-    const t=e.target.closest('[data-lay-save],[data-lay-reload],[data-lay-editor],[data-lay-open]');
+    const t=e.target.closest('[data-lay-save],[data-lay-reload],[data-lay-editor]');
     if(!t)return;
     if(t.dataset.layEditor!==undefined){ toast(`${LAYOUT_PATH} — opened in your editor`); return; }
-    if(t.dataset.layOpen!==undefined){ bd.remove(); applyLayout(t.dataset.layOpen); return; }
     if(t.dataset.layReload!==undefined){ reloadLayouts(); redraw();
       toast(LAYOUT_ERROR?'File re-read — it still has an error':'File re-read'); if(typeof renderMain==='function')renderMain(); return; }
     // Save: the textarea is the file. Parse first, keep the old layouts if it fails.

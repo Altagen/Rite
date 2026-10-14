@@ -370,9 +370,38 @@ for (const shell of ['web', 'desktop'] as const) {
     await expect(page.locator('.pane-wrap')).toHaveCount(before + 1);
     await expect(page.locator('.menu')).toHaveCount(0);
 
-    // A preset is a name and a command, and both are the user's.
+    // The plain terminal heads the chevron in both shells: the menu is a superset of
+    // the button, not a different feature.
     await page.locator('.termpane .split-more').first().click();
     await expect(page.locator('.menu .row').first()).toContainText('Terminal');
+
+    // Snippets are reachable from the same place, because "run my saved command in
+    // the new pane" is the same intent as "open a preset". They are a personal
+    // library, not a file on a machine, so they are in both shells.
+    await page.locator('.menu .row', { hasText: 'Snippets' }).click();
+    await expect(page.locator('.backdrop')).toContainText('Snippets');
+    await page.locator('.backdrop [data-ok]').click();
+
+    // Everything past that point comes out of the workspace file, which a browser
+    // talking to a shared server does not have (ADR 0023). The divergence is checked
+    // here rather than left to be discovered: the same chevron, two honest answers.
+    if (shell === 'web') {
+      await page.locator('.termpane .split-more').first().click();
+      const rows = page.locator('.menu .row');
+      await expect(rows).toHaveCount(2); // the plain terminal, and Snippets…
+      await expect(rows.filter({ hasText: /Split presets/ })).toHaveCount(0);
+      await expect(rows.filter({ hasText: /Deploy watch/ })).toHaveCount(0);
+      expect(await page.evaluate(() => [SPLIT_PRESETS.length, PANE_LAYOUTS.length])).toEqual([0, 0]);
+      // And no Layouts button beside the tabs, for the same reason.
+      await expect(page.locator('button[title^="Layouts"]')).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      expect(errs, 'the mock must not log errors').toEqual([]);
+      return;
+    }
+
+    // A preset is a name and a command, and both are the user's — `[[preset]]` in the
+    // workspace file, so the chevron offers what the file declares.
+    await page.locator('.termpane .split-more').first().click();
     await page.locator('.menu .row', { hasText: 'Disk' }).click();
     await expect(page.locator('.termpane-hdr .name', { hasText: 'Disk' })).toHaveCount(1);
 
@@ -381,13 +410,6 @@ for (const shell of ['web', 'desktop'] as const) {
     await page.locator('.termpane .split-more').first().click();
     await page.locator('.menu .row', { hasText: 'Deploy watch' }).click();
     await expect(page.locator('.pane-wrap')).toHaveCount(n + 3);
-
-    // Snippets are reachable from the same place, because "run my saved command in
-    // the new pane" is the same intent as "open a preset".
-    await page.locator('.termpane .split-more').first().click();
-    await page.locator('.menu .row', { hasText: 'Snippets' }).click();
-    await expect(page.locator('.backdrop')).toContainText('Snippets');
-    await page.locator('.backdrop [data-ok]').click();
 
     // And all of it is editable, from the same dialog Settings points at. A
     // preferences dialog saves as you go, so it has no footer: the ✕ is the way out,
@@ -472,68 +494,68 @@ test('both mocks resolve ADR 0019 §5 the same way, row for row', async ({ page 
  * menu keeps offering them, because someone who learned the chevron should not have
  * to unlearn it.
  */
-for (const shell of ['web', 'desktop'] as const) {
-  test(`${shell} mock: a preset is editable, and a layout has its own button`, async ({ page }) => {
-    const errs = watchErrors(page);
-    await page.goto(mock(shell));
+// Desktop only: both halves come out of the workspace file, which a browser talking
+// to a shared server does not have. The web shell's side of that is checked above.
+test(`desktop mock: a preset is editable, and a layout has its own button`, async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
 
-    // The button is there because a layout ships in the mock's library; with none
-    // configured it hides itself rather than opening on nothing.
-    const layoutsBtn = page.locator('button[title^="Layouts"]');
-    await expect(layoutsBtn).toHaveCount(1);
-    expect(await page.evaluate(() => PANE_LAYOUTS.length)).toBeGreaterThan(0);
-    // Spliced out and pushed back: `length = 0` discards the entries, and setting
-    // the length back only makes empty slots — which is a check that breaks the
-    // thing it is inspecting.
-    expect(
-      await page.evaluate(() => {
-        const saved = PANE_LAYOUTS.splice(0, PANE_LAYOUTS.length);
-        const html = layoutsBtnHTML();
-        PANE_LAYOUTS.push(...saved);
-        return html;
-      }),
-    ).toBe('');
-    expect(await page.evaluate(() => PANE_LAYOUTS.length)).toBeGreaterThan(0);
+  // The button is there because a layout ships in the mock's library; with none
+  // configured it hides itself rather than opening on nothing.
+  const layoutsBtn = page.locator('button[title^="Layouts"]');
+  await expect(layoutsBtn).toHaveCount(1);
+  expect(await page.evaluate(() => PANE_LAYOUTS.length)).toBeGreaterThan(0);
+  // Spliced out and pushed back: `length = 0` discards the entries, and setting
+  // the length back only makes empty slots — which is a check that breaks the
+  // thing it is inspecting.
+  expect(
+    await page.evaluate(() => {
+      const saved = PANE_LAYOUTS.splice(0, PANE_LAYOUTS.length);
+      const html = layoutsBtnHTML();
+      PANE_LAYOUTS.push(...saved);
+      return html;
+    }),
+  ).toBe('');
+  expect(await page.evaluate(() => PANE_LAYOUTS.length)).toBeGreaterThan(0);
 
-    // It opens the whole arrangement, in the tab, from the tab strip. The layout it
-    // opens is the one it measured — reading one layout's pane count and clicking a
-    // different layout's row passes or fails on a coincidence.
-    const before = await page.locator('.pane-wrap').count();
-    const first = await page.evaluate(() => ({
-      name: PANE_LAYOUTS[0].name,
-      panes: PANE_LAYOUTS[0].panes.length,
-    }));
-    expect(first.panes).toBe(3);
-    await layoutsBtn.click();
-    await page.locator('.menu .row', { hasText: new RegExp(first.name) }).click();
-    await expect(page.locator('.pane-wrap')).toHaveCount(before + first.panes);
+  // It opens the whole arrangement, in the tab, from the tab strip. The layout it
+  // opens is the one it measured — reading one layout's pane count and clicking a
+  // different layout's row passes or fails on a coincidence.
+  const before = await page.locator('.pane-wrap').count();
+  const first = await page.evaluate(() => ({
+    name: PANE_LAYOUTS[0].name,
+    panes: PANE_LAYOUTS[0].panes.length,
+  }));
+  expect(first.panes).toBe(3);
+  await layoutsBtn.click();
+  await page.locator('.menu .row', { hasText: new RegExp(first.name) }).click();
+  await expect(page.locator('.pane-wrap')).toHaveCount(before + first.panes);
 
-    // Editing a preset changes it in place rather than adding a second one.
-    await page.evaluate(() => dlgSplitPrefs());
-    const rows = page.locator('.backdrop .snip-row');
-    const rowsBefore = await rows.count();
-    // Regexes, not strings: `hasText` with a string matches case-insensitively, and
-    // the layout row lists a pane called `disk` — so 'Disk' found two rows and the
-    // rename looked like it had not taken.
-    await rows.filter({ hasText: /Disk/ }).locator('[data-sp-edit]').click();
-    await expect(page.locator('#sp-name')).toHaveValue('Disk');
-    await expect(page.locator('#sp-cmd')).toHaveValue('df -h');
-    await page.locator('#sp-name').fill('Espace');
-    await page.locator('#sp-cmd').fill('df -h /');
-    await page.locator('[data-sp-add]').click();
-    await expect(rows.filter({ hasText: /Espace/ })).toHaveCount(1);
-    await expect(rows.filter({ hasText: /Disk/ })).toHaveCount(0);
-    await expect(rows).toHaveCount(rowsBefore);
+  // Editing a preset changes it in place rather than adding a second one.
+  await page.evaluate(() => dlgSplitPrefs());
+  const rows = page.locator('.backdrop .snip-row');
+  const rowsBefore = await rows.count();
+  // Regexes, not strings: `hasText` with a string matches case-insensitively, and
+  // the layout row lists a pane called `disk` — so 'Disk' found two rows and the
+  // rename looked like it had not taken.
+  await rows.filter({ hasText: /Disk/ }).locator('[data-sp-edit]').click();
+  await expect(page.locator('#sp-name')).toHaveValue('Disk');
+  await expect(page.locator('#sp-cmd')).toHaveValue('df -h');
+  await page.locator('#sp-name').fill('Espace');
+  await page.locator('#sp-cmd').fill('df -h /');
+  await page.locator('[data-sp-add]').click();
+  await expect(rows.filter({ hasText: /Espace/ })).toHaveCount(1);
+  await expect(rows.filter({ hasText: /Disk/ })).toHaveCount(0);
+  await expect(rows).toHaveCount(rowsBefore);
 
-    // The presets dialog is presets only. A layout is not a bigger preset, and
-    // sharing one screen with it said that it was.
-    await expect(page.locator('.backdrop [data-sl-edit]')).toHaveCount(0);
-    await expect(page.locator('.backdrop #sl-panes')).toHaveCount(0);
-    await page.locator('.backdrop .modal-x').click();
+  // The presets dialog is presets only. A layout is not a bigger preset, and
+  // sharing one screen with it said that it was.
+  await expect(page.locator('.backdrop [data-sl-edit]')).toHaveCount(0);
+  await expect(page.locator('.backdrop #sl-panes')).toHaveCount(0);
+  await page.locator('.backdrop .modal-x').click();
 
-    expect(errs, 'the mock must not log errors').toEqual([]);
-  });
-}
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
 
 /**
  * A layout is a file.
@@ -547,70 +569,213 @@ for (const shell of ['web', 'desktop'] as const) {
  * must still OPEN, as a plain shell, saying so in the pane. Anything else means a
  * renamed machine or a locked vault silently costs you your workspace.
  */
-for (const shell of ['web', 'desktop'] as const) {
-  test(`${shell} mock: a layout opens from a file, and falls back pane by pane`, async ({ page }) => {
-    const errs = watchErrors(page);
-    await page.goto(mock(shell));
+test(`desktop mock: a layout opens from a file, and falls back pane by pane`, async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
 
-    // The file is the store: the menu lists what the file declares, in its order.
-    expect(await page.evaluate(() => PANE_LAYOUTS.map((l) => l.name))).toEqual([
-      'Morning',
-      'Deploy watch',
-    ]);
-    expect(await page.evaluate(() => PANE_LAYOUTS[0].startup)).toBe(true);
+  // The file is the store: the menu lists what the file declares, in its order.
+  expect(await page.evaluate(() => PANE_LAYOUTS.map((l) => l.name))).toEqual([
+    'Morning',
+    'Deploy watch',
+  ]);
+  expect(await page.evaluate(() => PANE_LAYOUTS[0].startup)).toBe(true);
 
-    // Morning: a plain shell, then two machines named by the file.
-    const before = await page.locator('.pane-wrap').count();
-    await page.locator('button[title^="Layouts"]').click();
-    await page.locator('.menu .row', { hasText: /Morning/ }).click();
-    await expect(page.locator('.pane-wrap')).toHaveCount(before + 3);
+  // Morning: a plain shell, then two machines named by the file.
+  const before = await page.locator('.pane-wrap').count();
+  await page.locator('button[title^="Layouts"]').click();
+  await page.locator('.menu .row', { hasText: /Morning/ }).click();
+  await expect(page.locator('.pane-wrap')).toHaveCount(before + 3);
 
-    // What the two machine panes became depends on whether the library is reachable
-    // — and either way the layout opened all three panes.
-    const reachable = await page.evaluate(() => {
-      const c = typeof STATE === 'undefined' ? null : (STATE as { ctx?: { type: string } }).ctx;
-      return !c || c.type === 'server';
-    });
-    await expect(page.locator('.pane-warn')).toHaveCount(reachable ? 0 : 2);
-    if (!reachable) {
-      await expect(page.locator('.pane-warn').first()).toContainText('web-01');
-      await expect(page.locator('.pane-warn').first()).toContainText('open vault');
-    }
-
-    // A machine the file names and the library does not have: one pane, a plain
-    // shell, and the name it asked for printed in the pane.
-    await page.evaluate(() => {
-      LAYOUT_FILE = '[[layout]]\nname = "Ghost"\n\n  [[layout.pane]]\n  machine = "nope-01"\n  command = "top"\n';
-      reloadLayouts();
-    });
-    const n = await page.locator('.pane-wrap').count();
-    await page.locator('button[title^="Layouts"]').click();
-    await page.locator('.menu .row', { hasText: /Ghost/ }).click();
-    await expect(page.locator('.pane-wrap')).toHaveCount(n + 1);
-    await expect(page.locator('.pane-warn').last()).toContainText('nope-01');
-
-    // A file that does not parse loads NOTHING and names the line — and the layouts
-    // already loaded keep working, because half a file is worse than no file.
-    const err = await page.evaluate(() => {
-      LAYOUT_FILE = '[[layout]]\nname = "Broken"\n\n  [[layout.pane]]\n  machine = web-01\n';
-      const r = reloadLayouts();
-      return { line: r.error && r.error.line, loaded: PANE_LAYOUTS.map((l) => l.name) };
-    });
-    expect(err.line).toBe(5);
-    expect(err.loaded).toEqual(['Ghost']);
-
-    // The dialog is the file, and saving it reloads.
-    await page.evaluate(() => dlgLayouts());
-    await expect(page.locator('.lay-err')).toContainText('Line 5');
-    await page.locator('#lay-file').fill('[[layout]]\nname = "Fixed"\n\n  [[layout.pane]]\n  command = "top"\n');
-    await page.locator('[data-lay-save]').click();
-    await expect(page.locator('.lay-err')).toHaveCount(0);
-    expect(await page.evaluate(() => PANE_LAYOUTS.map((l) => l.name))).toEqual(['Fixed']);
-    await page.locator('.backdrop .modal-x').click();
-
-    expect(errs, 'the mock must not log errors').toEqual([]);
+  // What the two machine panes became depends on whether the library is reachable
+  // — and either way the layout opened all three panes.
+  const reachable = await page.evaluate(() => {
+    const c = typeof STATE === 'undefined' ? null : (STATE as { ctx?: { type: string } }).ctx;
+    return !c || c.type === 'server';
   });
-}
+  await expect(page.locator('.pane-warn')).toHaveCount(reachable ? 0 : 2);
+  if (!reachable) {
+    await expect(page.locator('.pane-warn').first()).toContainText('web-01');
+    await expect(page.locator('.pane-warn').first()).toContainText('open vault');
+  }
+
+  // A machine the file names and the library does not have: one pane, a plain
+  // shell, and the name it asked for printed in the pane.
+  await page.evaluate(() => {
+    LAYOUT_FILE = '[[layout]]\nname = "Ghost"\n\n  [[layout.pane]]\n  machine = "nope-01"\n  command = "top"\n';
+    reloadLayouts();
+  });
+  const n = await page.locator('.pane-wrap').count();
+  await page.locator('button[title^="Layouts"]').click();
+  await page.locator('.menu .row', { hasText: /Ghost/ }).click();
+  await expect(page.locator('.pane-wrap')).toHaveCount(n + 1);
+  await expect(page.locator('.pane-warn').last()).toContainText('nope-01');
+
+  // A file that does not parse loads NOTHING and names the line — and the layouts
+  // already loaded keep working, because half a file is worse than no file.
+  const err = await page.evaluate(() => {
+    LAYOUT_FILE = '[[layout]]\nname = "Broken"\n\n  [[layout.pane]]\n  machine = web-01\n';
+    const r = reloadLayouts();
+    return { line: r.error && r.error.line, loaded: PANE_LAYOUTS.map((l) => l.name) };
+  });
+  expect(err.line).toBe(5);
+  expect(err.loaded).toEqual(['Ghost']);
+
+  // The dialog is the file, and saving it reloads.
+  await page.evaluate(() => dlgLayouts());
+  await expect(page.locator('.lay-err')).toContainText('Line 5');
+  await page.locator('#lay-file').fill('[[layout]]\nname = "Fixed"\n\n  [[layout.pane]]\n  command = "top"\n');
+  await page.locator('[data-lay-save]').click();
+  await expect(page.locator('.lay-err')).toHaveCount(0);
+  expect(await page.evaluate(() => PANE_LAYOUTS.map((l) => l.name))).toEqual(['Fixed']);
+  await page.locator('.backdrop .modal-x').click();
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * Settings ▸ Layouts leads with the cards, and the switch on a card writes the file.
+ *
+ * The section was a heading, three lines of prose and an "Open the layouts file…"
+ * button — so the only answer to "what do I have" was behind a click and underneath a
+ * textarea. The cards come first now and the button is for EDITING, which is a rarer
+ * thing to want than looking.
+ *
+ * The switch is the second half: `startup = true` was a key you had to know about and
+ * go and type. It writes by SPLICING, so the comments, the presets and the other
+ * layouts have to come back unchanged — that is most of what is checked below, because
+ * a switch that quietly reformats a hand-written file is worse than no switch.
+ */
+test('desktop mock: Settings leads with the layout cards, and the startup switch writes the file', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.evaluate(() => openSettings('layouts'));
+  const cards = page.locator('[data-lay-cards] .snip-row');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.nth(0)).toContainText('Morning');
+  await expect(cards.nth(1)).toContainText('Deploy watch');
+  // Grouped as it will open: the file gives "Deploy watch" a tab of its own, and a
+  // pane listed under the wrong tab is the opposite of what the list is for.
+  await expect(cards.nth(1)).toContainText('Tab “disks”');
+  // Resolved against the library this computer has, not just echoed from the file.
+  await expect(cards.nth(0)).toContainText('this computer');
+
+  // The cards are ABOVE the editor button — that is the whole change, so it is the
+  // geometry that is checked and not merely that both exist.
+  const cardsBox = await page.locator('[data-lay-cards]').boundingBox();
+  const btnBox = await page.locator('.prefs-pane button', { hasText: /Open the layouts file/ }).boundingBox();
+  expect(cardsBox!.y + cardsBox!.height).toBeLessThanOrEqual(btnBox!.y);
+
+  // "Deploy watch" does not open at startup, and the file is where that is stored.
+  const toggle = cards.nth(1).locator('input[type=checkbox]');
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  await expect(page.locator('[data-lay-cards] .snip-row').nth(1).locator('input[type=checkbox]')).toBeChecked();
+
+  // What the file says now. The key goes under `name`, where the documentation shows
+  // it, and every other line is untouched: counted, because a comparison that only
+  // looks for what was ADDED would pass against a splicer that rewrote the rest.
+  const after = await page.evaluate(() => ({
+    file: LAYOUT_FILE,
+    startups: PANE_LAYOUTS.map((l) => l.startup),
+    panes: (LAYOUT_FILE.match(/\[\[layout\.pane\]\]/g) || []).length,
+    presets: (LAYOUT_FILE.match(/\[\[preset\]\]/g) || []).length,
+  }));
+  expect(after.file).toContain('name = "Deploy watch"\nstartup = true');
+  expect(after.startups).toEqual([true, true]);
+  expect(after.panes).toBe(6);
+  expect(after.presets).toBe(2);
+  // Morning's own key, and the comment written beside it, are still there.
+  expect(after.file).toContain('startup = true            # open this layout when Rite starts');
+  expect(after.file).toContain('  machine = "web-01"      # a machine from your library, by name');
+  expect(after.file.startsWith('# Your workspace:')).toBe(true);
+
+  // Off REMOVES the line rather than writing `startup = false`: the file stays free of
+  // a key that states the default.
+  await page.locator('[data-lay-cards] .snip-row').nth(1).locator('input[type=checkbox]').click();
+  await expect(page.locator('[data-lay-cards] .snip-row').nth(1).locator('input[type=checkbox]')).not.toBeChecked();
+  const off = await page.evaluate(() => ({
+    file: LAYOUT_FILE,
+    startups: PANE_LAYOUTS.map((l) => l.startup),
+  }));
+  expect(off.file).not.toContain('startup = false');
+  expect((off.file.match(/startup = true/g) || []).length).toBe(1);
+  expect(off.startups).toEqual([true, false]);
+
+  // A file that does not parse is reported HERE, where you look first. "No layouts"
+  // and "line 5 is wrong" are very different facts and used to look identical.
+  await page.evaluate(() => {
+    document.querySelectorAll('.backdrop').forEach((b) => b.remove());
+    LAYOUT_FILE = '[[layout]]\nname = "Broken"\n\n  [[layout.pane]]\n  machine = web-01\n';
+    reloadLayouts();
+    openSettings('layouts');
+  });
+  await expect(page.locator('.prefs-pane .lay-err')).toContainText('Line 5');
+  await expect(page.locator('.prefs-pane .lay-err')).toContainText('Not loaded');
+
+  // An empty file is not an error, and says what to do about it rather than nothing.
+  await page.evaluate(() => {
+    document.querySelectorAll('.backdrop').forEach((b) => b.remove());
+    LAYOUT_FILE = '# nothing here yet\n';
+    reloadLayouts();
+    openSettings('layouts');
+  });
+  await expect(page.locator('.prefs-pane .lay-err')).toHaveCount(0);
+  await expect(page.locator('.prefs-pane [data-lay-empty]')).toContainText('No layouts yet');
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * The presets and the layouts are one file, so the preset dialog may not own it.
+ *
+ * A list of two fields is the easiest thing in the world to save by regenerating the
+ * document from the parse — and that silently throws away the comments, the blank lines
+ * and the order someone chose, along with every layout in the same file. So the dialog
+ * SPLICES: its library becomes the file's preset blocks and nothing else moves.
+ */
+test('desktop mock: the preset dialog rewrites the preset blocks and nothing else', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.evaluate(() => dlgSplitPrefs());
+  await page.locator('#sp-name').fill('Journal');
+  await page.locator('#sp-cmd').fill('journalctl -f');
+  await page.locator('.backdrop [data-sp-add]').click();
+
+  const after = await page.evaluate(() => ({
+    file: LAYOUT_FILE,
+    presets: SPLIT_PRESETS.map((p) => p.name),
+    layouts: PANE_LAYOUTS.map((l) => l.name),
+    panes: (LAYOUT_FILE.match(/\[\[layout\.pane\]\]/g) || []).length,
+  }));
+  expect(after.presets).toEqual(['Load', 'Disk', 'Journal']);
+  expect(after.file).toContain('[[preset]]\nname = "Journal"\ncommand = "journalctl -f"');
+  // Everything that is not a preset block came back exactly as it was typed.
+  expect(after.layouts).toEqual(['Morning', 'Deploy watch']);
+  expect(after.panes).toBe(6);
+  expect(after.file.startsWith('# Your workspace:')).toBe(true);
+  expect(after.file).toContain('  of = "logs"             # cut out of that pane, not the previous one');
+
+  // A pane citing a preset gets the preset's command at parse — one place to change it.
+  expect(await page.evaluate(() => PANE_LAYOUTS[0].panes[2].command)).toBe('top');
+
+  // Removing one leaves the rest of the file alone too.
+  await page.locator('.backdrop .snip-row', { hasText: /Journal/ }).locator('[data-sp-del]').click();
+  const removed = await page.evaluate(() => ({
+    presets: SPLIT_PRESETS.map((p) => p.name),
+    layouts: PANE_LAYOUTS.map((l) => l.name),
+    cites: LAYOUT_FILE.includes('Journal'),
+  }));
+  expect(removed.presets).toEqual(['Load', 'Disk']);
+  expect(removed.layouts).toEqual(['Morning', 'Deploy watch']);
+  expect(removed.cites).toBe(false);
+  await page.locator('.backdrop .modal-x').click();
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
 
 /**
  * Settings is a rail, and the rail is built from the context.
@@ -630,9 +795,13 @@ for (const shell of ['web', 'desktop'] as const) {
     expect(await nav.count()).toBeGreaterThan(5);
     await expect(page.locator('.prefs-pane')).toHaveCount(1);
 
-    // Splits and Layouts are two entries, because they are two features.
-    await expect(nav.filter({ hasText: /Split presets/ })).toHaveCount(1);
-    await expect(nav.filter({ hasText: /Layouts/ })).toHaveCount(1);
+    // Splits and Layouts are two entries, because they are two features — and both
+    // are entries only where there is a workspace file to hold them. On a shared
+    // server there is none and nothing stands in for one, so they are ABSENT from the
+    // rail rather than present and empty (ADR 0023).
+    const file = shell === 'desktop' ? 1 : 0;
+    await expect(nav.filter({ hasText: /Split presets/ })).toHaveCount(file);
+    await expect(nav.filter({ hasText: /Layouts/ })).toHaveCount(file);
 
     // A preferences dialog has no footer at all: the ✕ is the only way out.
     await expect(page.locator('.backdrop [data-ok]')).toHaveCount(0);

@@ -319,6 +319,10 @@ let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false
   // Which toolbar buttons this person wants. Hiding one never grants or revokes
   // anything: the server policies and the keyboard shortcuts are unchanged.
   toolbar:{shell:true,focus:true,quick:true,agents:true,layouts:true}};
+/* This shell IS a machine, so it has the workspace file — the presets and the layouts
+   both live in it (ADR 0023). `web.html` says false, and that one line is the whole
+   difference between the two shells here. */
+const WORKSPACE_FILE=true;
 const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
 // Quick SSH in a SERVER context follows the server policy (off by default — server
 // connections belong in collections). A local vault is self-governed → always available.
@@ -991,17 +995,17 @@ const PREFS=[
 
   { id:'splits', label:'Split presets', body:()=>
       `<h4>Split presets</h4><p class="lede">A divider opens a plain terminal — that is the button. A preset is that same divider running one named command, offered by the chevron beside it.</p>`
-    + prefRow('Presets',`${SPLIT_PRESETS.filter(p=>!p.builtin).length} configured, plus the plain terminal`,`<button class="btn btn-sm" onclick="dlgSplitPrefs()">Edit presets…</button>`) },
+    + prefRow('Presets',`${SPLIT_PRESETS.length} in <code>${LAYOUT_PATH}</code>, plus the plain terminal`,`<button class="btn btn-sm" onclick="dlgSplitPrefs()">Edit presets…</button>`) },
 
   /* Layouts are NOT splits, and sharing a settings row said they were. A preset is
      one command in one pane; a layout is the morning — what opens, where, on which
      machine — and it lives in a file you can commit and carry. Own section, own
-     dialog, own documentation. */
-  { id:'layouts', label:'Layouts', body:()=>
-      `<h4>Layouts</h4><p class="lede">What opens when you sit down: which terminals, in what order, on which machines. Kept as a file so you can version it and carry it between computers.</p>`
-    + prefRow('Layouts file',`<code>${LAYOUT_PATH}</code> — ${LAYOUT_ERROR?'<span style="color:var(--amber)">has an error</span>':`${PANE_LAYOUTS.length} loaded`}`,`<button class="btn btn-sm" onclick="dlgLayouts()">Open file…</button>`)
-    + prefRow('A machine the file names but this computer doesn\'t have','Opens a plain shell with a note in the pane. The rest of the layout still opens.','<span class="muted" style="font-size:12px">always</span>')
-    + prefRow('Open a layout at startup',`Set <code>startup = true</code> on it in the file.`,'<span class="muted" style="font-size:12px">in the file</span>') },
+     editor, own documentation.
+
+     The section LEADS with a card per layout (`layoutsSettingsHTML`, shared with the
+     editor): three rows of prose and a button that sent you elsewhere meant the only
+     answer to "what do I have" was behind a click, under a textarea. */
+  { id:'layouts', label:'Layouts', body:()=>layoutsSettingsHTML() },
 
   { id:'machines', label:'Machine status', body:()=>
       `<h4>Machine status</h4><p class="lede">${STATE.ctx.type==='server'?'<span style="color:var(--amber)">Governed by your server</span> — you can only narrow it.':'You govern this for this local vault.'} Passive “last seen” costs no network traffic; active probing does.</p>`
@@ -1137,6 +1141,9 @@ document.addEventListener('keydown',e=>{
 });
 function renderAll(){renderPill();renderActs();renderSide();renderMain();}
 STATE.ctx=Object.assign({type:'server'},DATA.servers[0]); // start on a server to show collections
+// This page has now said whether it has a workspace file; the first read in
+// rite.js could not see that answer.
+reloadLayouts();
 renderAll();
 </script>
 </body>

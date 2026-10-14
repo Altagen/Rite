@@ -225,7 +225,12 @@ function isLocal(){return false;}
 // …and the server always governs here: it is the one running the commands.
 function probeGoverned(){return true;}
 let STATE={sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},
-  toolbar:{quick:true,agents:true,library:true,layouts:true}};
+  toolbar:{quick:true,agents:true,library:true}};
+/* No workspace file in a browser: this shell talks to a shared server, and the file
+   belongs to a machine (ADR 0023). `rite.js` reads this to hide the Layouts button
+   and the "Split presets…" row the same way the app hides them when `/api/layouts`
+   answers that there is no file. */
+const WORKSPACE_FILE=false;
 // The web UI opens terminals ON THE SERVER, so the shell is the server's default (set by the
 // admin in Instance settings), not a per-user pick. Choosing between local shells (fish/zsh/…)
 // is a DESKTOP feature (local terminals). Comes from the server mode in the real app.
@@ -552,8 +557,7 @@ const PREFS=[
     + prefRow('Quick SSH', ALLOW_QUICK_SSH?'One-off connections that aren\'t in a collection.':'<span style="color:var(--amber)">Your server turns this off</span>, so it is hidden regardless.',
         prefToggle('toolbar.quick','renderActs()'))
     + prefRow('Agents','The AI sessions running on your machines.',prefToggle('toolbar.agents','renderActs()'))
-    + prefRow('Teams and Collections','The two library shortcuts.',prefToggle('toolbar.library','renderActs()'))
-    + prefRow('Layouts','The button beside the tabs.',prefToggle('toolbar.layouts','renderMain&&renderMain()')) },
+    + prefRow('Teams and Collections','The two library shortcuts.',prefToggle('toolbar.library','renderActs()')) },
 
   { id:'keyboard', label:'Keyboard', body:()=>
       `<h4>Keyboard</h4><p class="lede">Click a chord to record a new one. <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd> and <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>C</kbd> belong to the terminal and are refused. <kbd>F11</kbd> is not here: focus mode belongs to the desktop window.</p>
@@ -568,14 +572,14 @@ const PREFS=[
       `<h4>Terminals</h4><p class="lede">Terminals run on the server here, so the shell is the server's to set — not a per-user preference. The desktop app is where you pick your own.</p>`
     + prefRow('Server shell','Set by your admin',`<span class="muted" style="font-size:13px"><code>${SERVER_SHELL}</code> · set by the server</span>`) },
 
-  { id:'splits', label:'Split presets', body:()=>
-      `<h4>Split presets</h4><p class="lede">A divider opens a plain terminal — that is the button. A preset is that same divider running one named command, offered by the chevron beside it.</p>`
-    + prefRow('Presets',`${SPLIT_PRESETS.filter(p=>!p.builtin).length} configured, plus the plain terminal`,`<button class="btn btn-sm" onclick="dlgSplitPrefs()">Edit presets…</button>`) },
-
-  { id:'layouts', label:'Layouts', body:()=>
-      `<h4>Layouts</h4><p class="lede">Which terminals open, in what order, on which machines. A file, so it travels with you — the browser keeps its own copy per account.</p>`
-    + prefRow('Layouts file',`<code>layouts.toml</code> — ${LAYOUT_ERROR?'<span style="color:var(--amber)">has an error</span>':`${PANE_LAYOUTS.length} loaded`}`,`<button class="btn btn-sm" onclick="dlgLayouts()">Open file…</button>`)
-    + prefRow('A machine the file names but you can\'t reach','Opens a plain shell with a note in the pane. The rest of the layout still opens.','<span class="muted" style="font-size:12px">always</span>') },
+  /* No "Split presets" and no "Layouts" here, and that is the ADR 0023 rule showing
+     through: both live in a workspace file, the file belongs to a MACHINE, and this
+     shell is a browser talking to a shared server. There is no file and nothing
+     stands in for one — a per-account copy in the server's database would make the
+     server hold what it is designed never to see. So the two sections are ABSENT
+     rather than empty, the Layouts button beside the tabs hides itself, and the split
+     chevron offers the plain divider and your snippets. The desktop app, which IS a
+     machine, is where this part of the setup lives (`WORKSPACE_FILE`, up top). */
 
   { id:'machines', label:'Machine status', body:()=>
       `<h4>Machine status</h4><p class="lede"><span style="color:var(--amber)">Governed by your server</span> — you can only narrow it. Passive “last seen” costs no network traffic; active probing does.</p>`
@@ -632,6 +636,9 @@ function dismissReq(i){const r=ORG.accessRequests[i];toast(`Dismissed ${r.user}'
 function demoToggleDashPolicy(){STATE.dashPolicy.webui=!STATE.dashPolicy.webui;
   toast(`Server policy: probing cards <span class="accent">${STATE.dashPolicy.webui?'allowed':'off'}</span> for the web UI`);renderAll();}
 function renderAll(){renderActs();renderSide();renderMain();}
+// This page has now said whether it has a workspace file; the first read in
+// rite.js could not see that answer.
+reloadLayouts();
 renderAll();
 </script>
 </body>

@@ -60,6 +60,7 @@ web UI ended up with a dashboard nobody had decided on.
 | Admin console | **no** — server management lives in the web console | yes (if admin) |
 | Session persistence | — | admin setting |
 | SSH import | file path or paste | **paste only** |
+| Workspace file (presets + layouts) | yes — it is a machine | **no** — ADR 0023, so both sections are absent |
 | Machine dashboard + Board | yes | **yes** — same cards, same markup (ADR 0019) |
 | Probing cards (containers, services) | governed by `clients` when attached; the user's own call in a vault | governed by `webui`; off there means off for everyone |
 | Agents on a library machine | yes | **yes** — it is an SSH session, like its terminal |
@@ -141,11 +142,36 @@ beside it:
 - **snippets** — the existing library, because "run my saved command in the new pane"
   is the same intent as "open a preset";
 - **layouts** — several panes at once, the *five terminals arranged like this* case.
-  A layout holds its panes by value, so editing a preset never silently rewrites a
-  layout someone relies on.
+  A layout arranges a whole **tab**, so its own button sits beside the tabs; the
+  chevron keeps offering them, because someone who learned the chevron should not have
+  to unlearn it.
 
-All of it is edited in one dialog (**Settings → Splits**, or *Configure splits…* at
-the foot of the menu) rather than in two half-places.
+### One file for how this machine is set up
+
+The presets and the layouts are **one file** — `~/.config/rite/layouts.toml`, ADR 0023,
+`docs/LAYOUTS.md`. `[[preset]]` is what the chevron offers, `[[layout]]` is the
+morning: what opens, where on the screen (`split`, `size`, `of`, `tab`), and on which
+machine. Both belong to the *machine* and neither is a secret, which is why they are a
+file rather than a row in an account's settings table — you version it, you copy it
+between computers, and a shared server never sees it.
+
+That is a real divergence, and the mock states it: **`web.html` has no Layouts section,
+no Split presets section and no Layouts button**, because a browser talking to a shared
+server has no file and nothing stands in for one. One line says so per entry page
+(`WORKSPACE_FILE`), and `reloadLayouts()` in `rite.js` is where it takes effect.
+
+**Settings ▸ Layouts leads with a card per layout** — what it opens, grouped by tab,
+resolved against the library this computer actually has — and the *Open the layouts
+file…* button sits underneath, for editing. It used to be a heading and that button, so
+the only answer to "what do I have" was behind a click and below a textarea. Each card
+carries an **at startup** checkbox (not a radio: the file lets several open at once),
+which splices `startup` into the file.
+
+Every edit made from the UI **splices**: the preset dialog rewrites only the
+`[[preset]]` blocks, the switch rewrites one key, and the comments, blank lines and
+order someone chose come back untouched. The file editor is the exception and says so —
+its textarea *is* the file, so Save stores the whole thing and ↻ Reload is there for
+when something else has written since.
 
 This is also where the mock converges on the app's architecture: `rite.js` carries a
 tiny **pane-kind registry** (`registerPaneKind`), and `paneTabHTML` renders a tab
@@ -211,7 +237,8 @@ its agents the way you come at its containers.
   Each page supplies `DASH_SHELL` (`'webui'` / `'clients'`) and `probeGoverned()`; the shared
   `probeVerdict()` holds the precedence table so it cannot be re-derived differently twice.
 - `rite.js` carries the **pane-kind registry** (`registerPaneKind` / `paneTabHTML`),
-  the **split presets and layouts** with their preferences dialog, and `paneActs()` —
+  the **workspace file** (`parseLayoutFile`, the preset/startup splicers, the layout
+  cards shared by Settings and the editor), and `paneActs()` —
   the split/detach/snippets/search/close chrome that belongs to a **pane**, not to what
   is inside it. A terminal and an agent session both draw from it, so neither can drift
   into a near-copy of the other.
