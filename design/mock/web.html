@@ -569,7 +569,8 @@ const PREFS=[
 
   { id:'terminals', label:'Terminals', body:()=>
       `<h4>Terminals</h4><p class="lede">Terminals run on the server here, so the shell is the server's to set — not a per-user preference. The desktop app is where you pick your own.</p>`
-    + prefRow('Server shell','Set by your admin',`<span class="muted" style="font-size:13px"><code>${SERVER_SHELL}</code> · set by the server</span>`) },
+    + prefRow('Server shell','Set by your administrator for every terminal on this server. Desktop users pick their own local shell.',
+        `<code class="mono" style="font-size:13px;color:var(--muted)">${SERVER_SHELL}</code>`) },
 
   /* No "Split presets" and no "Layouts" here, and that is the ADR 0023 rule showing
      through: both live in a workspace file, the file belongs to a MACHINE, and this

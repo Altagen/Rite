@@ -831,3 +831,54 @@ test('an overlay page carries the nav, which is also the way back', async ({ pag
   await page.keyboard.press('Escape');
   await expect(page.locator('.fixed.inset-0.z-50 > header.m-appbar')).toHaveCount(0);
 });
+/**
+ * The web UI's settings say what they can, and offer nothing they cannot do.
+ *
+ * Two holes found by comparing the rail against the desktop's, both of the same kind.
+ * The browser was offered a switch for the **shell picker**, a toolbar button that only
+ * renders outside a server context — a switch for something that cannot appear says you
+ * have a choice you do not have. And it was told nothing at all about **which shell its
+ * terminals use**, although the server sets it for everyone: the answer existed only in
+ * the tooltip of the New-terminal button.
+ *
+ * So the Shell section exists in both shells now, and answers the question each one can
+ * actually answer: the picker on a machine, the server's choice read-only here.
+ */
+test('the web UI is told which shell the server sets, and is not offered the local picker', async ({
+  page,
+}) => {
+  await page.goto('/');
+  if (await page.getByText('Create the server administrator').isVisible().catch(() => false)) {
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /create administrator/i }).click();
+  } else {
+    await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+  }
+  await expectWorkspace(page);
+
+  await page.getByRole('button', { name: /^AD / }).click();
+  await page.getByRole('button', { name: /^settings$/i }).click();
+
+  // The answer, read-only, and it is the server's own value rather than a guess: the
+  // same string the API reports in /api/server/mode.
+  await page.getByTestId('settings-nav-shell').click();
+  const mode = await (await page.request.get(`${BASE}/api/server/mode`)).json();
+  await expect(page.getByTestId('server-shell')).toHaveText(mode.defaultShell ?? 'bash');
+  await expect(page.getByText('Set by your administrator', { exact: false })).toBeVisible();
+  // …and no picker: the choice is not this user's to make here.
+  await expect(page.getByTestId('shell-choices')).toHaveCount(0);
+  await expect(page.getByTestId('shell-path')).toHaveCount(0);
+
+  // The toolbar section offers switches for buttons that exist. The shell picker is not
+  // one of them in a browser; Quick SSH is.
+  await page.getByTestId('settings-nav-toolbar').click();
+  await expect(page.getByTestId('toolbar-shellPicker')).toHaveCount(0);
+  await expect(page.getByTestId('toolbar-quickSsh')).toBeVisible();
+  // Focus mode belongs to the native window, and the workspace file to a machine.
+  await expect(page.getByTestId('toolbar-focusMode')).toHaveCount(0);
+  await expect(page.getByTestId('toolbar-layouts')).toHaveCount(0);
+});

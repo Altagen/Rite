@@ -184,6 +184,10 @@
     "toolbarLayoutsDesc": "The button beside the tabs. It already hides itself when you have no layouts.",
     "editPresets": "Edit presets…",
     "shellHint": "What a new local terminal opens. This is the same setting as the picker in the toolbar — changing it either way changes both.",
+    "shellInstalled": "Installed on this machine",
+    "shellServer": "Server shell",
+    "shellServerDesc": "Set by your administrator for every terminal on this server. Desktop users pick their own local shell.",
+    "shellServerHint": "Terminals run on the server here, so the shell is the server’s to set — not a per-user preference.",
     "shellCustom": "A shell we didn't find (full path)"
   },
   "sshKeepAlive": {

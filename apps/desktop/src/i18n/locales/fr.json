@@ -184,6 +184,10 @@
     "toolbarLayoutsDesc": "Le bouton à côté des onglets. Il se masque déjà tout seul quand tu n'as aucune disposition.",
     "editPresets": "Modifier les préréglages…",
     "shellHint": "Ce qu'ouvre un nouveau terminal local. C'est le même réglage que le sélecteur de la barre d'outils — le changer ici le change là, et inversement.",
+    "shellInstalled": "Installés sur ce poste",
+    "shellServer": "Shell du serveur",
+    "shellServerDesc": "Défini par ton administrateur pour tous les terminaux de ce serveur. Les utilisateurs desktop choisissent leur shell local.",
+    "shellServerHint": "Ici les terminaux tournent sur le serveur : le shell est à lui de le définir, ce n’est pas une préférence par utilisateur.",
     "shellCustom": "Un shell que nous n'avons pas trouvé (chemin complet)"
   },
   "sshKeepAlive": {

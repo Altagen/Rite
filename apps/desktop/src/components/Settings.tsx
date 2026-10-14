@@ -12,6 +12,13 @@ import { useTranslation } from '../i18n/i18n';
 import { SplitsModal } from './SplitsModal';
 import { LayoutsModal } from './LayoutsModal';
 import { LayoutCards } from './LayoutCards';
+import {
+  SettingsControl,
+  SettingsField,
+  SettingsHead,
+  SettingsRow,
+  SettingsToggle,
+} from './SettingsRow';
 import { Dropdown } from './Dropdown';
 import { useToolbar, type ToolbarPrefs } from '../store/toolbar';
 import { useLayouts } from '../store/layouts';
@@ -112,7 +119,11 @@ const RAIL: {
   // a layout is what opens when you sit down, and it lives in a file.
   { id: 'splits', i18n: 'split.presets', file: true },
   { id: 'layouts', i18n: 'layouts.title', file: true },
-  { id: 'shell', i18n: 'settings.sec.shell', local: true },
+  // Not `local`: on a server the shell is the server's, and "which shell do my
+  // terminals use" is a question a web user has as much as anyone. They get the answer
+  // read-only instead of no section at all — the information was only in a tooltip on
+  // the New-terminal button.
+  { id: 'shell', i18n: 'settings.sec.shell' },
   { id: 'machines', i18n: 'settings.sec.machines' },
   { id: 'security', i18n: 'settings.security' },
   { id: 'ssh', i18n: 'settings.sec.ssh' },
@@ -176,19 +187,13 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   }, [isLocalContext]);
 
   const toolbarRow = (key: keyof ToolbarPrefs, labelKey: string, descKey: string) => (
-    <label className="flex cursor-pointer items-center gap-3">
-      <input
-        type="checkbox"
-        checked={toolbar[key]}
-        onChange={(e) => toolbar.set(key, e.target.checked)}
-        className="h-5 w-5 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary"
-        data-testid={`toolbar-${key}`}
-      />
-      <div>
-        <div className="font-medium">{t(labelKey)}</div>
-        <div className="text-sm text-muted-foreground">{t(descKey)}</div>
-      </div>
-    </label>
+    <SettingsToggle
+      title={t(labelKey)}
+      hint={t(descKey)}
+      checked={toolbar[key]}
+      onChange={(next) => toolbar.set(key, next)}
+      testId={`toolbar-${key}`}
+    />
   );
 
   /**
@@ -306,16 +311,6 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
     }
   };
 
-  const getTimeoutLabel = () => {
-    if (selectedTimeout === 0) return t('settings.disabled');
-    if (selectedTimeout === 1) return t('settings.oneMinute');
-    if (selectedTimeout === 3) return t('settings.threeMinutes');
-    if (selectedTimeout === 5) return t('settings.fiveMinutes');
-    if (selectedTimeout === -1) {
-      return customTimeout ? `${customTimeout} ${t('settings.customMinutes')}` : t('settings.custom');
-    }
-    return t('settings.disabled');
-  };
 
 
 
@@ -378,86 +373,82 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
           <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
           {/* Appearance */}
           <section hidden={shown !== 'appearance'} className="pb-2">
-            <h3 className="mb-4 text-lg font-semibold">Appearance</h3>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Terminal theme</label>
-              <Dropdown<TerminalThemeName>
-                value={terminalTheme}
-                label="Terminal theme"
-                testId="terminal-theme"
-                options={[
-                  { value: 'dark', label: 'Dark (default)' },
-                  { value: 'grey', label: 'Grey' },
-                  { value: 'translucent', label: 'Translucent' },
-                ]}
-                onChange={(name) => {
-                  setTerminalTheme(name);
-                  terminalPool.setTheme(name);
-                }}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Applies live; translucency shows on terminals opened afterwards.
-              </p>
-            </div>
-            <label className="mt-4 flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showMemberCount}
-                onChange={(e) => setShowMemberCount(e.target.checked)}
-                className="h-4 w-4"
-              />
-              <span>
-                <span className="text-sm font-medium">Show member count on collections</span>
-                <span className="block text-xs text-muted-foreground">The number next to shared collections (the icon stays)</span>
-              </span>
-            </label>
+            <SettingsHead title="Appearance" />
+            <SettingsRow
+              title="Terminal theme"
+              hint="Applies live; translucency shows on terminals opened afterwards."
+            >
+              <SettingsControl>
+                <Dropdown<TerminalThemeName>
+                  value={terminalTheme}
+                  label="Terminal theme"
+                  testId="terminal-theme"
+                  options={[
+                    { value: 'dark', label: 'Dark (default)' },
+                    { value: 'grey', label: 'Grey' },
+                    { value: 'translucent', label: 'Translucent' },
+                  ]}
+                  onChange={(name) => {
+                    setTerminalTheme(name);
+                    terminalPool.setTheme(name);
+                  }}
+                />
+              </SettingsControl>
+            </SettingsRow>
+            <SettingsToggle
+              title="Show member count on collections"
+              hint="The number next to shared collections (the icon stays)"
+              checked={showMemberCount}
+              onChange={setShowMemberCount}
+            />
           </section>
 
           {/* Machine status (ADR 0017) — a client-side narrowing of the server's health policy. */}
           <section hidden={shown !== 'machines'} className="pb-2">
-            <h3 className="mb-4 text-lg font-semibold">Machine status</h3>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Health-check</label>
-              <Dropdown<HealthPref>
-                value={healthPref}
-                label="Health-check"
-                testId="health-pref"
-                options={[
-                  { value: 'inherit', label: 'Follow the server policy' },
-                  { value: 'off', label: 'Off — no status' },
-                  { value: 'passive', label: 'Passive — last seen only' },
-                  { value: 'on-demand', label: 'On-demand checks' },
-                  { value: 'full', label: 'Background polling' },
-                ]}
-                onChange={setHealthPref}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                <span className="text-amber-500">Governed by your server</span> — you can only narrow it.
-                Passive “last seen” costs no network traffic; active probing does.
-              </p>
-            </div>
-            <label className="mt-4 flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={machineProbes}
-                onChange={(e) => setMachineProbes(e.target.checked)}
-                className="h-4 w-4"
-              />
-              <span>
-                <span className="text-sm font-medium">Container and service cards on the machine dashboard</span>
-                <span className="block text-xs text-muted-foreground">
+            <SettingsHead title="Machine status" />
+            <SettingsRow
+              title="Health-check"
+              hint={
+                <>
+                  <span className="text-amber-500">Governed by your server</span> — you can only narrow
+                  it. Passive “last seen” costs no network traffic; active probing does.
+                </>
+              }
+            >
+              <SettingsControl>
+                <Dropdown<HealthPref>
+                  value={healthPref}
+                  label="Health-check"
+                  testId="health-pref"
+                  options={[
+                    { value: 'inherit', label: 'Follow the server policy' },
+                    { value: 'off', label: 'Off — no status' },
+                    { value: 'passive', label: 'Passive — last seen only' },
+                    { value: 'on-demand', label: 'On-demand checks' },
+                    { value: 'full', label: 'Background polling' },
+                  ]}
+                  onChange={setHealthPref}
+                />
+              </SettingsControl>
+            </SettingsRow>
+            <SettingsToggle
+              title="Container and service cards on the machine dashboard"
+              hint={
+                <>
                   These two cards run a command on the host each time they refresh. Turning them off
                   leaves the rest of the dashboard — address, port forwarding, the Board — untouched.
                   {probesRefusedByServer && (
                     <>
                       {' '}
-                      <span className="text-amber-500">Your server turns them off for this client</span>, so
-                      this setting changes nothing here.
+                      <span className="text-amber-500">Your server turns them off for this client</span>,
+                      so this setting changes nothing here.
                     </>
                   )}
-                </span>
-              </span>
-            </label>
+                </>
+              }
+              checked={machineProbes}
+              onChange={setMachineProbes}
+            />
           </section>
 
           {/* Default shell — local terminals only (a server governs its own shell).
@@ -466,12 +457,23 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               used to be a path you typed, while the toolbar listed the shells actually
               installed: one stored value, two editors, and the worse one was the one in
               the preferences. The field below stays for a shell we did not find. */}
-          {isLocalContext && (
-            <section hidden={shown !== 'shell'} className="pb-2">
-              <h3 className="mb-1 text-lg font-semibold">{t('settings.sec.shell')}</h3>
-              <p className="mb-4 text-xs text-muted-foreground">{t('settings.shellHint')}</p>
-              <div className="space-y-3">
+          <section hidden={shown !== 'shell'} className="pb-2">
+            <SettingsHead
+              title={t('settings.sec.shell')}
+              hint={isLocalContext ? t('settings.shellHint') : t('settings.shellServerHint')}
+            />
+            {!isLocalContext && (
+              <SettingsRow title={t('settings.shellServer')} hint={t('settings.shellServerDesc')}>
+                <code className="font-mono text-sm text-muted-foreground" data-testid="server-shell">
+                  {serverMode?.defaultShell ?? 'bash'}
+                </code>
+              </SettingsRow>
+            )}
+            {isLocalContext && (
+            <>
+              <div>
                 {shellChoices.length > 0 && (
+                  <SettingsField label={t('settings.shellInstalled')}>
                   <ul className="flex flex-col gap-1.5" data-testid="shell-choices">
                     {shellChoices.map((shell) => (
                       <li key={shell.path}>
@@ -492,9 +494,9 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                       </li>
                     ))}
                   </ul>
+                  </SettingsField>
                 )}
-                <div>
-                  <label className="mb-1 block text-xs text-muted-foreground">{t('settings.shellCustom')}</label>
+                <SettingsField label={t('settings.shellCustom')}>
                   <input
                     value={shellDraft}
                     onChange={(e) => setShellDraft(e.target.value)}
@@ -506,14 +508,15 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm"
                     data-testid="shell-path"
                   />
-                </div>
+                </SettingsField>
               </div>
-            </section>
-          )}
+            </>
+            )}
+          </section>
 
           {/* Keyboard — one table owning every binding. */}
           <section hidden={shown !== 'keyboard'} className="pb-2">
-            <h3 className="mb-4 text-lg font-semibold">{t('settings.keyboard')}</h3>
+            <SettingsHead title={t('settings.keyboard')} />
             <ShortcutsSettings />
             <ul className="mt-3 flex flex-col gap-1">
               {FIXED_CHORDS.filter((c) => native || !c.nativeOnly).map((c) => (
@@ -528,8 +531,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
           {/* Split presets: one command, one pane. Layouts are next door, in their
               own section, because they are not a bigger preset — see LayoutsModal. */}
           <section hidden={shown !== 'splits'} className="pb-2">
-            <h3 className="mb-4 text-lg font-semibold">{t('split.presets')}</h3>
-            <p className="mb-3 text-xs text-muted-foreground">{t('settings.splitsHint')}</p>
+            <SettingsHead title={t('split.presets')} hint={t('settings.splitsHint')} />
             <button
               type="button"
               onClick={() => setPresetsOpen(true)}
@@ -545,8 +547,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               sent you somewhere else, while what you wanted to know — what do I have
               — was behind that button and below a textarea. */}
           <section hidden={shown !== 'layouts'} className="pb-2">
-            <h3 className="mb-4 text-lg font-semibold">{t('layouts.title')}</h3>
-            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{t('layouts.lede')}</p>
+            <SettingsHead title={t('layouts.title')} hint={t('layouts.lede')} />
 
             {/* A broken file is reported where you look first, not only inside the
                 editor: "no layouts" and "your file has a typo on line 12" are very
@@ -591,10 +592,13 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
           {/* The toolbar is the person's own row. Hiding never grants or revokes. */}
           <section hidden={shown !== 'toolbar'} className="pb-2">
-            <h3 className="mb-1 text-lg font-semibold">{t('settings.sec.toolbar')}</h3>
-            <p className="mb-4 text-xs leading-relaxed text-muted-foreground">{t('settings.toolbarHint')}</p>
-            <div className="space-y-3">
-              {toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
+            <SettingsHead title={t('settings.sec.toolbar')} hint={t('settings.toolbarHint')} />
+            <div>
+              {/* The shell picker is a LOCAL control: a server sets the shell for its own
+                  terminals, so in a browser this row governed a button that never renders
+                  (`Workspace.tsx`, `!isServerCtx`). A switch for something that cannot
+                  appear is worse than a missing switch — it says you have a choice. */}
+              {isLocalContext && toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
               {native && toolbarRow('focusMode', 'settings.toolbarFocus', 'settings.toolbarFocusDesc')}
               {toolbarRow('quickSsh', 'settings.toolbarQuickSsh', 'settings.toolbarQuickSshDesc')}
               {hasWorkspaceFile && toolbarRow('layouts', 'settings.toolbarLayouts', 'settings.toolbarLayoutsDesc')}
@@ -603,33 +607,32 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
           {/* Auto-lock settings */}
           <section hidden={shown !== 'security'} className="pb-2">
-            <h3 className="text-lg font-semibold mb-4">{t('settings.security')}</h3>
+            <SettingsHead title={t('settings.security')} />
 
-            <div className="space-y-4">
+            <div>
               {/* Auto-lock. One dropdown component for every choice in this dialog:
                   see Dropdown.tsx for why there used to be two. */}
-              <div>
-                <label className="mb-1 block text-sm font-medium">{t('settings.autoLockTimeout')}</label>
-                <Dropdown<number>
-                  value={selectedTimeout}
-                  label={t('settings.autoLockTimeout')}
-                  testId="auto-lock"
-                  options={[
-                    { value: 0, label: t('settings.disabled') },
-                    { value: 1, label: t('settings.oneMinute') },
-                    { value: 3, label: t('settings.threeMinutes') },
-                    { value: 5, label: t('settings.fiveMinutes') },
-                    { value: -1, label: getTimeoutLabel() === t('settings.custom') ? t('settings.custom') : t('settings.custom') },
-                  ]}
-                  onChange={handleTimeoutChange}
-                />
-                <p className="text-sm text-muted-foreground mt-2">{t('settings.autoLockEnabledDesc')}</p>
-              </div>
+              <SettingsRow title={t('settings.autoLockTimeout')} hint={t('settings.autoLockEnabledDesc')}>
+                <SettingsControl>
+                  <Dropdown<number>
+                    value={selectedTimeout}
+                    label={t('settings.autoLockTimeout')}
+                    testId="auto-lock"
+                    options={[
+                      { value: 0, label: t('settings.disabled') },
+                      { value: 1, label: t('settings.oneMinute') },
+                      { value: 3, label: t('settings.threeMinutes') },
+                      { value: 5, label: t('settings.fiveMinutes') },
+                      { value: -1, label: t('settings.custom') },
+                    ]}
+                    onChange={handleTimeoutChange}
+                  />
+                </SettingsControl>
+              </SettingsRow>
 
-              {/* Custom Timeout Input */}
+              {/* The custom delay only exists once "Custom" is the answer. */}
               {selectedTimeout === -1 && (
-                <div>
-                  <label className="mb-1 block text-sm font-medium">{t('settings.customMinutes')}</label>
+                <SettingsRow title={t('settings.customMinutes')}>
                   <input
                     type="number"
                     value={customTimeout}
@@ -639,80 +642,76 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     }}
                     placeholder={t('settings.customMinutes')}
                     min="1"
-                    className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
+                    className="w-24 rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
                   />
-                </div>
+                </SettingsRow>
               )}
 
-              {/* Host-key verification */}
-              <div>
-                <label className="mb-1 block text-sm font-medium">{t('settings.hostKeyVerification')}</label>
-                <Dropdown<'strict' | 'warn' | 'accept'>
-                  value={hostKeyVerificationMode}
-                  label={t('settings.hostKeyVerification')}
-                  testId="host-key-mode"
-                  options={[
-                    { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
-                    { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
-                    { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
-                  ]}
-                  onChange={(mode) => {
-                    setHostKeyVerificationMode(mode);
-                    void updateSettings({ hostKeyVerificationMode: mode });
-                  }}
-                />
-                <p className="text-sm text-muted-foreground mt-2">{t('settings.hostKeyVerificationDesc')}</p>
-              </div>
+              <SettingsRow
+                title={t('settings.hostKeyVerification')}
+                hint={t('settings.hostKeyVerificationDesc')}
+              >
+                <SettingsControl>
+                  <Dropdown<'strict' | 'warn' | 'accept'>
+                    value={hostKeyVerificationMode}
+                    label={t('settings.hostKeyVerification')}
+                    testId="host-key-mode"
+                    options={[
+                      { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
+                      { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
+                      { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
+                    ]}
+                    onChange={(mode) => {
+                      setHostKeyVerificationMode(mode);
+                      void updateSettings({ hostKeyVerificationMode: mode });
+                    }}
+                  />
+                </SettingsControl>
+              </SettingsRow>
             </div>
           </section>
 
           {/* Clipboard settings */}
           <section hidden={shown !== 'clipboard'} className="pb-2">
-            <h3 className="text-lg font-semibold mb-4">{t('settings.clipboard')}</h3>
-
-            <div className="space-y-4">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={clipboardClearEnabled}
-                  onChange={(e) => {
-                    setClipboardClearEnabled(e.target.checked);
-                    void updateSettings({ clipboardClearEnabled: e.target.checked });
-                  }}
-                  className="h-5 w-5 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary"
-                />
-                <div>
-                  <div className="font-medium">{t('settings.clipboardClearEnabled')}</div>
-                  <div className="text-sm text-muted-foreground">{t('settings.clipboardClearEnabledDesc')}</div>
-                </div>
-              </label>
-            </div>
+            <SettingsHead title={t('settings.clipboard')} />
+            <SettingsToggle
+              title={t('settings.clipboardClearEnabled')}
+              hint={t('settings.clipboardClearEnabledDesc')}
+              checked={clipboardClearEnabled}
+              onChange={(next) => {
+                setClipboardClearEnabled(next);
+                void updateSettings({ clipboardClearEnabled: next });
+              }}
+            />
           </section>
 
           {/* Language settings */}
           <section hidden={shown !== 'language'} className="pb-2">
-            <h3 className="text-lg font-semibold mb-4">{t('settings.language')}</h3>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium">{t('settings.languageLabel')}</label>
-              <Dropdown<'en' | 'fr'>
-                value={locale}
-                label={t('settings.languageLabel')}
-                testId="locale"
-                options={[
-                  { value: 'en', label: 'English' },
-                  { value: 'fr', label: 'Français' },
-                ]}
-                onChange={setLocale}
-              />
-            </div>
+            <SettingsHead title={t('settings.language')} />
+            <SettingsRow title={t('settings.languageLabel')}>
+              <SettingsControl>
+                <Dropdown<'en' | 'fr'>
+                  value={locale}
+                  label={t('settings.languageLabel')}
+                  testId="locale"
+                  options={[
+                    { value: 'en', label: 'English' },
+                    { value: 'fr', label: 'Français' },
+                  ]}
+                  onChange={setLocale}
+                />
+              </SettingsControl>
+            </SettingsRow>
           </section>
 
           {/* Master password — change it (local vault). Re-keys every connection. */}
           {isLocalContext && (
             <section hidden={shown !== 'password'} className="pb-2">
-              <h3 className="mb-4 text-lg font-semibold">Master password</h3>
-              <div className="max-w-sm space-y-2">
+              <SettingsHead
+                title="Master password"
+                hint="It encrypts every connection in this vault, so changing it re-keys them all."
+              />
+              <div className="max-w-sm space-y-2 pt-1">
                 <input
                   type="password"
                   value={pwCurrent}
@@ -757,7 +756,10 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
           {/* Danger zone — reset this local vault (wipe + reboot to first-run). Local only. */}
           {isLocalContext && (
             <section hidden={shown !== 'danger'} className="pb-2">
-              <h3 className="mb-4 text-lg font-semibold text-red-500">Danger zone</h3>
+              <h3 className="text-lg font-semibold text-red-500">Danger zone</h3>
+              <p className="mb-3 mt-1 text-xs leading-relaxed text-muted-foreground">
+                One action, and it cannot be undone.
+              </p>
               <div className="rounded-md border border-red-500/30 bg-red-500/5 p-4">
                 <div className="font-medium">Reset vault</div>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -787,43 +789,31 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
           {/* SSH connections */}
           <section hidden={shown !== 'ssh'} className="pb-2">
-            <h3 className="mb-4 text-lg font-semibold">SSH connections</h3>
-            <label className="flex cursor-pointer items-center gap-3">
-              <input
-                type="checkbox"
-                checked={autoReconnect}
-                onChange={(e) => setAutoReconnect(e.target.checked)}
-                className="h-5 w-5 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary"
-              />
-              <div>
-                <div className="font-medium">Auto-reconnect lost SSH connections</div>
-                <div className="text-sm text-muted-foreground">
+            <SettingsHead title="SSH connections" />
+            <SettingsToggle
+              title="Auto-reconnect lost SSH connections"
+              hint={
+                <>
                   Off by default. When on, a dropped session reconnects automatically — a new shell,
                   so your history, on-screen output and any running job are lost. When off, the pane
                   shows a Reconnect button instead. Either way you&apos;re told you were disconnected.
-                </div>
-              </div>
-            </label>
+                </>
+              }
+              checked={autoReconnect}
+              onChange={setAutoReconnect}
+            />
           </section>
 
           {/* Focus mode (client/native only) */}
           {native && (
             <section hidden={shown !== 'focus'} className="pb-2">
-              <h3 className="mb-4 text-lg font-semibold">Focus mode</h3>
-              <label className="flex cursor-pointer items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={focusAutoCollapse}
-                  onChange={(e) => setFocusAutoCollapse(e.target.checked)}
-                  className="h-5 w-5 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary"
-                />
-                <div>
-                  <div className="font-medium">Auto-collapse sidebar in focus mode</div>
-                  <div className="text-sm text-muted-foreground">
-                    When you enter focus mode (F11), also hide the library sidebar for a terminals-only view.
-                  </div>
-                </div>
-              </label>
+              <SettingsHead title="Focus mode" />
+              <SettingsToggle
+                title="Auto-collapse sidebar in focus mode"
+                hint="When you enter focus mode (F11), also hide the library sidebar for a terminals-only view."
+                checked={focusAutoCollapse}
+                onChange={setFocusAutoCollapse}
+              />
             </section>
           )}
 
