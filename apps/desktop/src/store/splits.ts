@@ -1,24 +1,23 @@
 /**
- * Split presets and layouts: what a divider can open.
+ * Split presets: what a divider can open.
  *
  * Splitting a pane opens a plain terminal — that is the button, and it stays the
  * button, because a plain divider is what most people want and they should not pay
  * for the minority who want `top` on the right.
  *
- * These are what the chevron beside it offers as well. A **preset** is a name and a
- * command, nothing more. A **layout** opens several at once — the "five terminals
- * arranged like this" case. A layout holds its panes *by value* rather than by
- * preset id, so editing a preset never silently rewrites a layout someone relies on;
- * that is a deliberate copy, not an oversight.
+ * A preset is a name and a command, nothing more: the same divider, running one
+ * thing. It is what the chevron beside the button offers.
+ *
+ * Layouts used to live here too, and that was the mistake. A preset is a reflex you
+ * type in four seconds; a layout is what opens when you sit down — it names machines,
+ * it has an order, people keep it in version control. It is a file now: see
+ * `store/layouts.ts` and docs/LAYOUTS.md.
  *
  * Like snippets, running one only types the command into the new session's stdin, so
  * there is no backend and the library lives per-device in localStorage.
  */
 import { create } from 'zustand';
-import { parseStored, parseLayoutPanes, isPreset, isLayout, type LayoutPane } from './splitsFormat';
-
-export { parseLayoutPanes };
-export type { LayoutPane };
+import { parseStored, isPreset } from './splitsFormat';
 
 /** One pane a split can open: a name to show, and the command to run in it. */
 export interface SplitPreset {
@@ -28,15 +27,7 @@ export interface SplitPreset {
   command: string;
 }
 
-export interface SplitLayout {
-  id: string;
-  name: string;
-  /** Copied by value when the layout is saved — see the note above. */
-  panes: LayoutPane[];
-}
-
 const PRESETS_KEY = 'rite-split-presets';
-const LAYOUTS_KEY = 'rite-split-layouts';
 
 /** The plain split, always present and never removable: it is what the button does. */
 export const PLAIN_PRESET: SplitPreset = { id: 'plain', name: 'Terminal', command: '' };
@@ -56,8 +47,6 @@ const DEFAULT_PRESETS: SplitPreset[] = [
   { id: 'sp-load', name: 'Load', command: 'top' },
   { id: 'sp-disk', name: 'Disk', command: 'df -h' },
 ];
-
-const DEFAULT_LAYOUTS: SplitLayout[] = [];
 
 const read = <T>(key: string, fallback: T[], keep: (entry: unknown) => boolean): T[] => {
   try {
@@ -79,20 +68,14 @@ const newId = (p: string) => `${p}-${Math.random().toString(36).slice(2, 9)}`;
 
 interface SplitsState {
   presets: SplitPreset[];
-  layouts: SplitLayout[];
   addPreset: (name: string, command: string) => void;
-  /** Change a preset in place. The id is kept, so a layout built from it is unaffected
-   *  — layouts hold their panes by value, which is the point of that copy. */
+  /** Change a preset in place, keeping its id. */
   updatePreset: (id: string, name: string, command: string) => void;
   removePreset: (id: string) => void;
-  addLayout: (name: string, panes: LayoutPane[]) => void;
-  updateLayout: (id: string, name: string, panes: LayoutPane[]) => void;
-  removeLayout: (id: string) => void;
 }
 
 export const useSplits = create<SplitsState>((set) => ({
   presets: read(PRESETS_KEY, DEFAULT_PRESETS, isPreset),
-  layouts: read(LAYOUTS_KEY, DEFAULT_LAYOUTS, isLayout),
   addPreset: (name, command) =>
     set((s) => {
       const next = [...s.presets, { id: newId('sp'), name, command }];
@@ -110,28 +93,5 @@ export const useSplits = create<SplitsState>((set) => ({
       const next = s.presets.filter((x) => x.id !== id);
       write(PRESETS_KEY, next);
       return { presets: next };
-    }),
-  addLayout: (name, panes) =>
-    set((s) => {
-      // Copied here, so a later edit to a preset cannot reach into this layout.
-      const next = [...s.layouts, { id: newId('sl'), name, panes: panes.map((p) => ({ ...p })) }];
-      write(LAYOUTS_KEY, next);
-      return { layouts: next };
-    }),
-  updateLayout: (id, name, panes) =>
-    set((s) => {
-      // Copied here too, for the same reason `addLayout` copies: the caller's array
-      // must not stay reachable from the stored layout.
-      const next = s.layouts.map((x) =>
-        x.id === id ? { ...x, name, panes: panes.map((p) => ({ ...p })) } : x,
-      );
-      write(LAYOUTS_KEY, next);
-      return { layouts: next };
-    }),
-  removeLayout: (id) =>
-    set((s) => {
-      const next = s.layouts.filter((x) => x.id !== id);
-      write(LAYOUTS_KEY, next);
-      return { layouts: next };
     }),
 }));

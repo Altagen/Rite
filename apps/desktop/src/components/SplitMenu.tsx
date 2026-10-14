@@ -6,6 +6,10 @@
  * the plain split again (so the menu is a superset of the button rather than a
  * different feature), the user's presets, their snippets, and their layouts.
  *
+ * The layouts come from the layouts file (docs/LAYOUTS.md), not from this menu's own
+ * store: they have their own button beside the tabs now, and they are listed here as
+ * well because someone who learned the chevron should not have to unlearn it.
+ *
  * Opening a layout splits once per pane, in order and one after another, because
  * each split has to see the tree the previous one left behind — and the direction
  * alternates as it goes. Five panes all split the same way is six columns, which is
@@ -17,11 +21,14 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { useSnippets } from '../store/snippets';
 import { useSplits, PLAIN_PRESET } from '../store/splits';
+import { useLayouts } from '../store/layouts';
 import { layoutDirections } from '../store/splitsFormat';
+import type { LayoutPane } from '../store/layoutsFormat';
+import type { SplitTarget } from '../types/pane';
 
 interface Props {
   /** Split and run something in the new pane. */
-  onSplitWith: (direction: 'horizontal' | 'vertical', preset: { name: string; command: string }) => Promise<void>;
+  onSplitWith: (direction: 'horizontal' | 'vertical', target: SplitTarget) => Promise<void>;
   /**
    * Where a single new pane goes.
    *
@@ -36,7 +43,8 @@ interface Props {
 
 export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Props) {
   const { t } = useTranslation();
-  const { presets, layouts } = useSplits();
+  const { presets } = useSplits();
+  const { layouts } = useLayouts();
   const { snippets } = useSnippets();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -55,12 +63,12 @@ export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Prop
     };
   }, [onClose]);
 
-  const run = (preset: { name: string; command: string }) => {
+  const run = (target: SplitTarget) => {
     onClose();
-    void onSplitWith(direction, preset);
+    void onSplitWith(direction, target);
   };
 
-  const openLayout = (panes: { name: string; command: string }[]) => {
+  const openLayout = (panes: LayoutPane[]) => {
     onClose();
     void (async () => {
       const dirs = layoutDirections(panes.length, direction);

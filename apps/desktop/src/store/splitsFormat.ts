@@ -31,12 +31,6 @@ export function layoutDirections(count: number, first: SplitAxis): SplitAxis[] {
   return out;
 }
 
-/** One pane of a layout: a name to show, and what to run in it. */
-export interface LayoutPane {
-  name: string;
-  command: string;
-}
-
 /**
  * Read a stored library, falling back to the defaults on anything unexpected.
  *
@@ -77,48 +71,3 @@ export function isPreset(entry: unknown): boolean {
   return named(e.id) && named(e.name) && typeof e.command === 'string';
 }
 
-/** Is this a layout? A name, and panes that are each a preset's two fields. */
-export function isLayout(entry: unknown): boolean {
-  if (typeof entry !== 'object' || entry === null) return false;
-  const e = entry as Record<string, unknown>;
-  if (!named(e.id) || !named(e.name) || !Array.isArray(e.panes)) return false;
-  return e.panes.every((pane) => {
-    if (typeof pane !== 'object' || pane === null) return false;
-    const p = pane as Record<string, unknown>;
-    return named(p.name) && typeof p.command === 'string';
-  });
-}
-
-/**
- * A layout's panes, written one per line as `name = command`.
- *
- * A line with no `=` is a pane with that name and a plain shell, so the simplest
- * useful layout ("shell, logs, containers") needs no punctuation at all. A command
- * may itself contain `=`, so only the first one separates. A line with an empty
- * name is dropped rather than producing a nameless pane.
- */
-export function parseLayoutPanes(text: string): LayoutPane[] {
-  return text
-    .split('\n')
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const at = line.indexOf('=');
-      if (at < 0) return { name: line, command: '' };
-      return { name: line.slice(0, at).trim(), command: line.slice(at + 1).trim() };
-    })
-    .filter((p) => p.name !== '');
-}
-
-/**
- * A layout's panes back as text, for the editor to put in the textarea.
- *
- * The inverse of `parseLayoutPanes`, and it has to be an exact one: a layout the user
- * opens, does not touch and saves must come back the same, or editing one pane of five
- * quietly rewrites the other four. A pane with no command is written with a trailing
- * `=`, the way the placeholder shows it, rather than as a bare name — both parse to
- * the same thing, and the explicit form shows the field exists.
- */
-export function formatLayoutPanes(panes: LayoutPane[]): string {
-  return panes.map((p) => `${p.name} = ${p.command}`.trimEnd()).join('\n');
-}

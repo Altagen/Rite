@@ -11,7 +11,10 @@ import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react'
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { disposeAllPanes, paneKind } from '../panes/registry';
-import { layoutDirections, type LayoutPane } from '../store/splitsFormat';
+import { layoutDirections } from '../store/splitsFormat';
+import type { LayoutPane } from '../store/layoutsFormat';
+import { useLayouts } from '../store/layouts';
+import { useToolbar } from '../store/toolbar';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useFocusMode } from '../store/focusMode';
@@ -63,7 +66,7 @@ import { CreateVaultDialog } from './CreateVaultDialog';
 import { transport } from '../utils/transport';
 import { Toast } from './Toast';
 import { ErrorBoundary } from './ErrorBoundary';
-import { AnyPaneNode, SplitDirection, Tab } from '../types/pane';
+import { AnyPaneNode, SplitDirection, Tab, type SplitTarget } from '../types/pane';
 import {
   createTerminalPane,
   splitPane,
@@ -217,6 +220,17 @@ export function Workspace({
   // (no local-shell picker); locally, the user picks their own shell.
   const isServerCtx = !!serverKeys.mode?.accounts;
   const serverShell = serverKeys.mode?.defaultShell ?? 'bash';
+  // The layouts file (docs/LAYOUTS.md). Read here for `startup = true`; the menu
+  // beside the tabs reads the same store for the rest.
+  // Which toolbar buttons this person keeps. Hiding one hides it and nothing else:
+  // the shortcut still fires, and a server's Quick SSH policy still decides.
+  const toolbarPrefs = useToolbar();
+  const layoutsFromFile = useLayouts((s) => s.layouts);
+  const layoutsLoaded = useLayouts((s) => s.loaded);
+  const loadLayouts = useLayouts((s) => s.load);
+  useEffect(() => {
+    if (!layoutsLoaded) void loadLayouts();
+  }, [layoutsLoaded, loadLayouts]);
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{ id: string; name: string } | null>(null);
   // Top-level library folders (ADR 0016 view hierarchy) — the encrypted per-user tree.
   const tree = useLibraryTree();
@@ -771,24 +785,54 @@ export function Workspace({
    * session and the pane runs it once it is readable, so a preset adds a name and a
    * first command and nothing else.
    */
-  const handleSplitPane = async (paneId: string, direction: SplitDirection, preset?: { name: string; command: string }) => {
-    console.log('[MainScreen] Splitting pane:', paneId, 'direction:', direction, preset ? `preset: ${preset.name}` : '');
+  /**
+   * The session a split should open, from what was asked for.
+   *
+   * A layout may name a machine, and this computer may not be able to open it:
+   * renamed, a locked vault whose names cannot even be read, or a file written on
+   * another computer. None of those cancel the pane — it opens as a plain shell and
+   * carries a `note` saying what was asked for, because a layout that silently drops
+   * a pane costs you the workspace you asked for and tells you nothing.
+   */
+  const sessionForTarget = async (target?: SplitTarget): Promise<TerminalSession> => {
+    const local = async (note?: string): Promise<TerminalSession> => {
+      const shellToUse = settings.defaultShell;
+      const sessionId = await Backend.Terminal.connectLocalTerminal(shellToUse);
+      const shellName = shellToUse.split('/').pop() || 'shell';
+      return {
+        id: sessionId,
+        connectionId: 'local',
+        connectionName: target?.name || `Local Terminal (${shellName})`,
+        // Run by the pane once its session is readable — see TerminalSession.
+        initialCommand: target?.command || undefined,
+        note,
+      };
+    };
 
+    const machine = target?.machine?.trim();
+    if (!machine) return local();
+
+    // A locked vault is not a wrong name: the names are encrypted, so there is
+    // nothing to compare against, and saying so is the honest message.
+    if (isLocked) return local(t('layouts.fellBackLocked', { machine }));
+
+    const connection = (conns.connections ?? []).find((c) => c.name === machine);
+    if (!connection) return local(t('layouts.fellBackMissing', { machine }));
+
+    const sessionId = await conns.connect(connection);
+    return {
+      id: sessionId,
+      connectionId: connection.id,
+      connectionName: target?.name?.trim() || connection.name,
+      initialCommand: target?.command || undefined,
+    };
+  };
+
+  const handleSplitPane = async (paneId: string, direction: SplitDirection, target?: SplitTarget) => {
     if (!activeTabId) return;
 
     try {
-      // Create a new local terminal session for the new pane
-      const shellToUse = settings.defaultShell;
-      const sessionId = await Backend.Terminal.connectLocalTerminal(shellToUse);
-
-      const shellName = shellToUse.split('/').pop() || 'shell';
-      const newSession: TerminalSession = {
-        id: sessionId,
-        connectionId: 'local',
-        connectionName: preset?.name || `Local Terminal (${shellName})`,
-        // Run by the pane once its session is readable — see TerminalSession.
-        initialCommand: preset?.command || undefined,
-      };
+      const newSession = await sessionForTarget(target);
 
       // Split the pane in the active tab's tree
       setTabGroups(prev => prev.map(tab => {
@@ -805,6 +849,7 @@ export function Workspace({
       setToastMessage(errorMsg);
     }
   };
+
 
   /**
    * Open a saved layout in the active tab, from the Layouts button in the tab strip.
@@ -825,6 +870,28 @@ export function Workspace({
       await handleSplitPane(target.id, dirs[i], pane);
     }
   };
+
+  /**
+   * The layouts marked `startup = true` open themselves, once, when the workspace
+   * first has a tab to put them in.
+   *
+   * Once per run, not once per render and not once per context: a guard ref rather
+   * than a dependency list, because the layouts arrive asynchronously and the active
+   * tab changes all day. Switching vault re-mounts this workspace, which is the one
+   * case where opening them again is the right answer.
+   */
+  const startupOpened = useRef(false);
+  useEffect(() => {
+    if (startupOpened.current) return;
+    if (!layoutsLoaded || !activeTabId) return;
+    const atStartup = layoutsFromFile.filter((l) => l.startup);
+    startupOpened.current = true;
+    if (atStartup.length === 0) return;
+    void (async () => {
+      for (const layout of atStartup) await handleApplyLayout(layout.panes);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutsLoaded, activeTabId, layoutsFromFile]);
 
   // Handle close pane
   const handleClosePane = (paneId: string) => {
@@ -1294,8 +1361,9 @@ export function Workspace({
           <span className="hidden md:inline">Terminal</span>
         </button>
 
-        {/* Local-shell selector — hidden in a server context (the server sets the shell) */}
-        {!isServerCtx && (
+        {/* Local-shell selector — hidden in a server context (the server sets the
+            shell), and hidden when this person took it out of their toolbar. */}
+        {!isServerCtx && toolbarPrefs.shellPicker && (
         <button
           ref={defaultShellButtonRef}
           onClick={async () => {
@@ -1311,8 +1379,9 @@ export function Workspace({
         </button>
         )}
 
-        {/* Focus mode (client/native only): hide the toolbar, terminals fill the screen (F11). */}
-        {native && (
+        {/* Focus mode (client/native only): hide the toolbar, terminals fill the screen.
+            F11 keeps working with the button hidden — that is the point of hiding. */}
+        {native && toolbarPrefs.focusMode && (
           <button
             onClick={toggleFocus}
             className={`m-btn m-btn-sm${focusActive ? ' text-primary' : ''}`}
@@ -1325,8 +1394,10 @@ export function Workspace({
           </button>
         )}
 
-        {/* Quick SSH — hidden when the server forbids it (server-governed capability) */}
-        {allowQuickSsh && (
+        {/* Quick SSH — hidden when the server forbids it (server-governed capability),
+            and when this person hid it. The two are not the same thing: the first is
+            a rule, the second is a view, and only the rule decides what is allowed. */}
+        {allowQuickSsh && toolbarPrefs.quickSsh && (
           <button onClick={() => setShowQuickSSH(true)} className="m-btn m-btn-sm" title="Quick SSH Connect">
             <IconBolt className="h-4 w-4" />
             <span className="hidden md:inline">Quick SSH</span>
@@ -1683,7 +1754,9 @@ export function Workspace({
             onFocusPane={handleFocusPane}
             onSplitRatioChange={handleSplitRatioChange}
             onSwitchTab={handleSwitchTab}
-            onApplyLayout={handleApplyLayout}
+            onApplyLayout={toolbarPrefs.layouts ? handleApplyLayout : undefined}
+            layoutConnections={conns.connections ?? []}
+            layoutLibraryReadable={!isLocked}
             onReorderTabs={handleReorderTabs}
             onDetachPane={handleDetachPane}
             onRenameTab={handleRenameTab}
@@ -1970,7 +2043,11 @@ export function Workspace({
       {/* Settings Modal — local mode only. In a server session AccountsShell renders it (once,
           above the overlay pages) since it drives the same global store. */}
       {showSettings && !identity && (
-        <Settings onClose={() => setShowSettings(false)} />
+        <Settings
+          onClose={() => setShowSettings(false)}
+          connections={conns.connections ?? []}
+          libraryReadable={!isLocked}
+        />
       )}
 
       {/* Quick SSH Modal */}

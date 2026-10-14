@@ -231,6 +231,19 @@ export const BackendAuth = {
   resetDatabase: () => invokeWithValidation('reset_database', z.null()),
 } as const;
 
+// Layouts (docs/LAYOUTS.md) — the file that says what opens when you sit down.
+// `path` is null wherever there is no file the caller may edit by hand (a shared
+// server), and the UI shows the editor without a path rather than a path that lies.
+const LayoutsFileSchema = z.object({
+  text: z.string(),
+  path: z.string().nullable(),
+});
+
+export const BackendLayouts = {
+  get: () => invokeWithValidation('get_layouts', LayoutsFileSchema),
+  put: (text: string) => invokeWithValidation('set_layouts', z.null(), { text }),
+} as const;
+
 // Settings Commands
 export const BackendSettings = {
   /**
@@ -1160,6 +1173,7 @@ export const BackendLocal = {
 export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
+  Layouts: BackendLayouts,
   Connections: BackendConnections,
   Terminal: BackendTerminal,
   Ssh: BackendSsh,

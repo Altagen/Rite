@@ -4,6 +4,7 @@
  * Displays an interactive terminal using xterm.js connected to an SSH session
  */
 
+import type { SplitTarget } from '../types/pane';
 import { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -34,9 +35,11 @@ interface TerminalProps {
   onSplitVertical?: () => void; // Optional - callback to split this terminal vertically
   // Split and run something in the new pane — the chevron beside the split buttons.
   // Absent for a kind that cannot split, exactly like the two above.
-  onSplitWith?: (direction: 'horizontal' | 'vertical', preset: { name: string; command: string }) => Promise<void>;
+  onSplitWith?: (direction: 'horizontal' | 'vertical', target: SplitTarget) => Promise<void>;
   // Run once, as soon as this session is streaming — see TerminalSession.initialCommand.
   initialCommand?: string;
+  /** Why this pane is not what was asked for — see TerminalSession.note. */
+  note?: string;
   onDetach?: () => void; // Optional - callback to detach this pane into a new tab
   onDragStart?: (e: React.DragEvent) => void; // Optional - callback when pane drag starts
   onDragEnd?: () => void; // Optional - callback when pane drag ends
@@ -64,7 +67,7 @@ interface ConnectionDeadEvent {
   reason: string;
 }
 
-export function Terminal({ connectionId, connectionName, onClose, sessionId: existingSessionId, isFocused, onSplitHorizontal, onSplitVertical, onSplitWith, initialCommand, onDetach, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: TerminalProps) {
+export function Terminal({ connectionId, connectionName, onClose, sessionId: existingSessionId, isFocused, onSplitHorizontal, onSplitVertical, onSplitWith, initialCommand, note, onDetach, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: TerminalProps) {
   const { t } = useTranslation();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
@@ -88,6 +91,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   // The split menu and the splits library, each open or not. Both are small enough
   // to live beside the snippets panel rather than in a store.
   const [splitMenuOpen, setSplitMenuOpen] = useState(false);
+  const [noteDismissed, setNoteDismissed] = useState(false);
   const [splitsLibraryOpen, setSplitsLibraryOpen] = useState(false);
 
   // The live session id captured when the snippets panel is opened (null = closed).
@@ -800,6 +804,27 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           </button>
         </div>
       </div>
+
+      {/* Why this pane is not what was asked for. A layout named a machine this
+          computer could not open, so the pane is a plain shell instead — and nothing
+          else on screen would say so. Dismissible, because once read it is noise. */}
+      {note && !noteDismissed && (
+        <div
+          className="flex w-full items-start gap-2 border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs leading-relaxed flex-shrink-0"
+          data-testid="pane-note"
+        >
+          <span aria-hidden>⚠</span>
+          <span className="min-w-0 flex-1">{note}</span>
+          <button
+            onClick={() => setNoteDismissed(true)}
+            className="flex-none rounded px-1 text-muted-foreground hover:text-foreground"
+            aria-label="Dismiss"
+            title="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Search Bar */}
       {showSearch && (

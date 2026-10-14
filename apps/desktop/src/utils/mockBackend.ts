@@ -91,6 +91,18 @@ const mockSettings: Record<string, string> = {
   theme: 'dark',
 };
 
+/** A layout that exercises the shape without assuming the dev mock has any machine. */
+let mockLayoutsFile = `[[layout]]
+name = "Deploy watch"
+
+  [[layout.pane]]
+  command = "top"
+
+  [[layout.pane]]
+  command = "df -h"
+`;
+
+
 const commonShells = ['/bin/bash', '/bin/zsh', '/usr/bin/fish', '/bin/sh'];
 
 function toConnection(input: Record<string, unknown>): MockConnection {
@@ -146,6 +158,14 @@ export async function mockInvoke(
       return mockSettings[String(args?.key ?? '')] ?? null;
     case 'set_setting':
       mockSettings[String(args?.key ?? '')] = String(args?.value ?? '');
+      return null;
+
+    // The layouts file. The dev mock has no filesystem, so it behaves like a server:
+    // the text is kept in memory and there is no path to show.
+    case 'get_layouts':
+      return { text: mockLayoutsFile, path: null };
+    case 'set_layouts':
+      mockLayoutsFile = String(args?.text ?? '');
       return null;
 
     // --- Connections ---

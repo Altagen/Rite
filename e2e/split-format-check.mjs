@@ -1,27 +1,26 @@
 /**
- * The two parses behind split presets and layouts.
+ * The parse behind split presets.
  *
  * Loads apps/desktop/src/store/splitsFormat.ts directly: Node strips the types and
  * the module imports nothing at runtime, so this tests the shipped code rather than
  * a copy of it — the same arrangement pane-tree-check uses.
  *
- * Both functions exist because of a failure mode rather than a feature:
+ * `parseStored` exists because of a failure mode rather than a feature: it decides
+ * what happens when the stored key is corrupt, and the wrong answer there silently
+ * empties someone's presets.
  *
- *   * `parseStored` decides what happens when the stored key is corrupt, and the
- *     wrong answer there silently empties someone's presets;
- *   * `parseLayoutPanes` decides what a hand-written layout means, and the wrong
- *     answer there produces a pane with no name or a command cut in half.
+ * The layout half of this file is gone with the feature it tested. A layout is a file
+ * now, parsed by `store/layoutsFormat.ts` and checked in `e2e/layout-file-check.mjs`;
+ * what stays here is `layoutDirections`, which is still how any multi-pane open
+ * decides its directions.
  *
  * Run: node e2e/split-format-check.mjs
  */
 import assert from 'node:assert/strict';
 import {
   parseStored,
-  parseLayoutPanes,
-  formatLayoutPanes,
   layoutDirections,
   isPreset,
-  isLayout,
 } from '../apps/desktop/src/store/splitsFormat.ts';
 
 let passed = 0;
@@ -66,82 +65,6 @@ check('valid JSON that is not a list falls back', () => {
   assert.deepEqual(parseStored('{"a":1}', DEFAULTS), DEFAULTS);
   assert.deepEqual(parseStored('"hello"', DEFAULTS), DEFAULTS);
   assert.deepEqual(parseStored('null', DEFAULTS), DEFAULTS);
-});
-
-console.log('\nparseLayoutPanes — what a hand-written layout means:');
-
-check('a bare name is a pane with a plain shell', () => {
-  assert.deepEqual(parseLayoutPanes('shell'), [{ name: 'shell', command: '' }]);
-});
-
-check('name = command splits on the first equals, and trims both sides', () => {
-  assert.deepEqual(parseLayoutPanes('  logs   =   journalctl -fu app  '), [
-    { name: 'logs', command: 'journalctl -fu app' },
-  ]);
-});
-
-check('a command containing = keeps all of it', () => {
-  // Splitting on every equals would quietly truncate this to `RUST_LOG`.
-  assert.deepEqual(parseLayoutPanes('env = RUST_LOG=debug cargo run'), [
-    { name: 'env', command: 'RUST_LOG=debug cargo run' },
-  ]);
-});
-
-check('order is the order written', () => {
-  const panes = parseLayoutPanes('shell\nlogs = journalctl -f\ncontainers = docker ps');
-  assert.deepEqual(panes.map((p) => p.name), ['shell', 'logs', 'containers']);
-});
-
-check('blank lines and whitespace-only lines are dropped', () => {
-  assert.equal(parseLayoutPanes('shell\n\n   \nlogs').length, 2);
-});
-
-check('a line with no name is dropped, not kept as a nameless pane', () => {
-  // `= top` has a command and nothing to call it; a pane with an empty header is
-  // worse than no pane.
-  assert.deepEqual(parseLayoutPanes('= top'), []);
-  assert.deepEqual(parseLayoutPanes('shell\n= top'), [{ name: 'shell', command: '' }]);
-});
-
-check('an empty layout is an empty list, not one blank pane', () => {
-  assert.deepEqual(parseLayoutPanes(''), []);
-  assert.deepEqual(parseLayoutPanes('\n\n'), []);
-});
-
-check('a trailing equals is a named pane with a plain shell', () => {
-  // How the placeholder itself writes the first line: `shell =`.
-  assert.deepEqual(parseLayoutPanes('shell ='), [{ name: 'shell', command: '' }]);
-});
-
-console.log('\nwriting a layout back out, for the editor:');
-
-check('a layout survives a round trip untouched', () => {
-  // The whole point of being able to edit one: a layout opened, not touched and
-  // saved must come back the same, or correcting one pane of five quietly rewrites
-  // the other four.
-  const panes = [
-    { name: 'shell', command: '' },
-    { name: 'logs', command: 'journalctl -fu app' },
-    { name: 'disk', command: 'df -h' },
-  ];
-  assert.deepEqual(parseLayoutPanes(formatLayoutPanes(panes)), panes);
-});
-
-check('a command containing an equals sign survives it too', () => {
-  // `parseLayoutPanes` splits on the FIRST equals, so this is the case that breaks
-  // if the writer ever decides to quote or escape.
-  const panes = [{ name: 'env', command: 'FOO=bar make run' }];
-  assert.deepEqual(parseLayoutPanes(formatLayoutPanes(panes)), panes);
-});
-
-check('a pane with no command is written with its equals sign', () => {
-  // Both forms parse the same; the explicit one shows the field exists.
-  assert.equal(formatLayoutPanes([{ name: 'shell', command: '' }]), 'shell =');
-});
-
-check('an empty layout writes an empty string, not a blank line', () => {
-  assert.equal(formatLayoutPanes([]), '');
-  assert.deepEqual(parseLayoutPanes(formatLayoutPanes([])), []);
 });
 
 console.log('\nhow a layout divides the tab:');
@@ -189,14 +112,6 @@ check('nothing that is not an object is a preset', () => {
   }
 });
 
-check('a layout needs a name and panes, and each pane needs its two fields', () => {
-  assert.equal(isLayout({ id: 'l', name: 'L', panes: [{ name: 'shell', command: '' }] }), true);
-  assert.equal(isLayout({ id: 'l', name: 'L', panes: [] }), true, 'an empty layout is still a layout');
-  assert.equal(isLayout({ id: 'l', name: 'L' }), false, 'no panes');
-  assert.equal(isLayout({ id: 'l', name: 'L', panes: 'shell' }), false, 'panes that are not a list');
-  assert.equal(isLayout({ id: 'l', name: 'L', panes: [{ name: 'shell' }] }), false, 'a pane with no command');
-  assert.equal(isLayout({ id: 'l', name: 'L', panes: [null] }), false, 'a pane that is nothing');
-});
 
 check('one bad entry costs one entry, not the whole library', () => {
   // The alternative is that a single mistyped row sends the user back to the

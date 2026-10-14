@@ -72,6 +72,16 @@ const routes: Record<string, Route> = {
     return null;
   },
 
+  get_layouts: () => json('/api/layouts'),
+  set_layouts: async (a) => {
+    await json('/api/layouts', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value: a.text }),
+    });
+    return null;
+  },
+
   get_all_connections: () => json('/api/connections'),
   create_connection: (a) => json('/api/connections', post(a.input)),
   update_connection: (a) => {

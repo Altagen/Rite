@@ -4,12 +4,16 @@
  * Modal for application settings configuration
  */
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
 import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
 import { SplitsModal } from './SplitsModal';
+import { LayoutsModal } from './LayoutsModal';
+import { Dropdown } from './Dropdown';
+import { useToolbar, type ToolbarPrefs } from '../store/toolbar';
+import { installedShells, type ShellChoice } from '../utils/shells';
 import { ShortcutsSettings } from './ShortcutsSettings';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
 import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
@@ -43,6 +47,17 @@ const FIXED_CHORDS: { key: string; i18n: string; nativeOnly?: boolean }[] = [
 
 interface SettingsProps {
   onClose: () => void;
+  /**
+   * The machines a layout can name, for the layouts editor to resolve against.
+   *
+   * Passed in rather than read from a store: which machines exist depends on the
+   * context this workspace is on, and the editor would rather show nothing than
+   * show the wrong library. Absent (the accounts shell) ⇒ the editor says it cannot
+   * check the names, which is true there.
+   */
+  connections?: { name: string }[];
+  /** False when the vault is locked: the names are encrypted and cannot be read. */
+  libraryReadable?: boolean;
 }
 
 /**
@@ -64,8 +79,10 @@ interface SettingsProps {
  */
 type SectionId =
   | 'appearance'
+  | 'toolbar'
   | 'keyboard'
   | 'splits'
+  | 'layouts'
   | 'shell'
   | 'machines'
   | 'security'
@@ -78,8 +95,12 @@ type SectionId =
 
 const RAIL: { id: SectionId; i18n: string; local?: true; native?: true; vault?: true; danger?: true }[] = [
   { id: 'appearance', i18n: 'settings.sec.appearance' },
+  { id: 'toolbar', i18n: 'settings.sec.toolbar' },
   { id: 'keyboard', i18n: 'settings.keyboard' },
-  { id: 'splits', i18n: 'settings.splits' },
+  // Two entries, because they are two features. A preset is one command in one pane;
+  // a layout is what opens when you sit down, and it lives in a file.
+  { id: 'splits', i18n: 'split.presets' },
+  { id: 'layouts', i18n: 'layouts.title' },
   { id: 'shell', i18n: 'settings.sec.shell', local: true },
   { id: 'machines', i18n: 'settings.sec.machines' },
   { id: 'security', i18n: 'settings.security' },
@@ -91,9 +112,9 @@ const RAIL: { id: SectionId; i18n: string; local?: true; native?: true; vault?: 
   { id: 'danger', i18n: 'settings.sec.danger', local: true, vault: true, danger: true },
 ];
 
-export function Settings({ onClose }: SettingsProps) {
+export function Settings({ onClose, connections, libraryReadable }: SettingsProps) {
   const { t, locale, setLocale } = useTranslation();
-  const { settings, fetchSettings, updateSettings, isLoading } = useSettingsStore();
+  const { settings, fetchSettings, updateSettings } = useSettingsStore();
   const native = isNativeShell();
   const focusAutoCollapse = useFocusMode((s) => s.autoCollapse);
   const setFocusAutoCollapse = useFocusMode((s) => s.setAutoCollapse);
@@ -122,9 +143,36 @@ export function Settings({ onClose }: SettingsProps) {
     setShellDraft(settings.defaultShell);
   }, [settings.defaultShell]);
 
-  // The splits library, opened from here and from the foot of a pane's split menu.
-  // `splitsOpen` carries which tab of it to land on.
-  const [splitsOpen, setSplitsOpen] = useState<'presets' | 'layouts' | null>(null);
+  // Two libraries, two dialogs. They shared one and that is what made them look
+  // like one feature.
+  const [presetsOpen, setPresetsOpen] = useState(false);
+  const [layoutsOpen, setLayoutsOpen] = useState(false);
+
+  // The toolbar is a view preference: hiding a button changes nothing but the view.
+  const toolbar = useToolbar();
+
+  // The shells this computer has, for the picker that used to be a path you typed.
+  const [shellChoices, setShellChoices] = useState<ShellChoice[]>([]);
+  useEffect(() => {
+    if (!isLocalContext) return;
+    void installedShells().then(setShellChoices);
+  }, [isLocalContext]);
+
+  const toolbarRow = (key: keyof ToolbarPrefs, labelKey: string, descKey: string) => (
+    <label className="flex cursor-pointer items-center gap-3">
+      <input
+        type="checkbox"
+        checked={toolbar[key]}
+        onChange={(e) => toolbar.set(key, e.target.checked)}
+        className="h-5 w-5 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary"
+        data-testid={`toolbar-${key}`}
+      />
+      <div>
+        <div className="font-medium">{t(labelKey)}</div>
+        <div className="text-sm text-muted-foreground">{t(descKey)}</div>
+      </div>
+    </label>
+  );
 
   /**
    * Which section the rail is showing.
@@ -184,13 +232,7 @@ export function Settings({ onClose }: SettingsProps) {
   const [customTimeout, setCustomTimeout] = useState('');
   const [clipboardClearEnabled, setClipboardClearEnabled] = useState(settings.clipboardClearEnabled);
   const [hostKeyVerificationMode, setHostKeyVerificationMode] = useState<'strict' | 'warn' | 'accept'>(settings.hostKeyVerificationMode);
-  const [showTimeoutDropdown, setShowTimeoutDropdown] = useState(false);
-  const [showLanguageDropdown, setShowLanguageDropdown] = useState(false);
-  const [showHostKeyDropdown, setShowHostKeyDropdown] = useState(false);
   const [terminalTheme, setTerminalTheme] = useState<TerminalThemeName>(getTerminalThemeName());
-  const timeoutDropdownRef = useRef<HTMLDivElement>(null);
-  const languageDropdownRef = useRef<HTMLDivElement>(null);
-  const hostKeyDropdownRef = useRef<HTMLDivElement>(null);
 
 
   useEffect(() => {
@@ -217,60 +259,33 @@ export function Settings({ onClose }: SettingsProps) {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [settings]);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (timeoutDropdownRef.current && !timeoutDropdownRef.current.contains(event.target as Node)) {
-        setShowTimeoutDropdown(false);
-      }
-      if (languageDropdownRef.current && !languageDropdownRef.current.contains(event.target as Node)) {
-        setShowLanguageDropdown(false);
-      }
-      if (hostKeyDropdownRef.current && !hostKeyDropdownRef.current.contains(event.target as Node)) {
-        setShowHostKeyDropdown(false);
-      }
-    };
+  // Closing on an outside click now belongs to the dropdown itself — one place
+  // instead of one effect per dropdown in every dialog that has one.
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleSave = async () => {
-    let autoLockEnabled = false;
-    let autoLockTimeout = 0;
-
-    if (selectedTimeout === 0) {
-      // Disabled
-      autoLockEnabled = false;
-      autoLockTimeout = 0;
-    } else if (selectedTimeout === -1) {
-      // Custom value
-      const customValue = parseInt(customTimeout, 10);
-      if (customValue > 0) {
-        autoLockEnabled = true;
-        autoLockTimeout = customValue;
-      }
-    } else {
-      // Preset value (1, 3, or 5 minutes)
-      autoLockEnabled = true;
-      autoLockTimeout = selectedTimeout;
-    }
-
-    await updateSettings({
-      autoLockEnabled,
-      autoLockTimeout,
-      clipboardClearEnabled,
-      hostKeyVerificationMode,
-    });
-
-    onClose();
-  };
-
+  /**
+   * Everything in this dialog applies the moment it is changed.
+   *
+   * Four settings used not to: the auto-lock switch, its delay, the clipboard
+   * auto-clear and the SSH host-key mode waited for a Save button at the bottom,
+   * while every other control here wrote immediately. Closing with the ✕ — the
+   * control that closes every other dialog in the app — therefore threw those four
+   * away without a word, including the host-key policy, which is a security setting.
+   * One rule now: change it, it is stored. That is also why there is no footer.
+   */
   const handleTimeoutChange = (value: number) => {
     setSelectedTimeout(value);
-    setShowTimeoutDropdown(false);
     if (value !== -1) {
       setCustomTimeout('');
+      void updateSettings({ autoLockEnabled: value !== 0, autoLockTimeout: value === 0 ? 0 : value });
+    }
+    // `-1` is "custom": there is no delay to store until a number is typed, so the
+    // input below persists it rather than this storing a zero in the meantime.
+  };
+
+  const applyCustomTimeout = (text: string) => {
+    const minutes = parseInt(text, 10);
+    if (Number.isFinite(minutes) && minutes > 0) {
+      void updateSettings({ autoLockEnabled: true, autoLockTimeout: minutes });
     }
   };
 
@@ -285,12 +300,7 @@ export function Settings({ onClose }: SettingsProps) {
     return t('settings.disabled');
   };
 
-  const getHostKeyLabel = () => {
-    if (hostKeyVerificationMode === 'strict') return t('settings.hostKeyVerificationStrict');
-    if (hostKeyVerificationMode === 'warn') return t('settings.hostKeyVerificationWarn');
-    if (hostKeyVerificationMode === 'accept') return t('settings.hostKeyVerificationAccept');
-    return t('settings.hostKeyVerificationStrict');
-  };
+
 
   // A section the current context does not have is not reachable from the rail.
   const rail = RAIL.filter(
@@ -348,19 +358,20 @@ export function Settings({ onClose }: SettingsProps) {
             <h3 className="mb-4 text-lg font-semibold">Appearance</h3>
             <div>
               <label className="mb-1 block text-sm font-medium">Terminal theme</label>
-              <select
+              <Dropdown<TerminalThemeName>
                 value={terminalTheme}
-                onChange={(e) => {
-                  const name = e.target.value as TerminalThemeName;
+                label="Terminal theme"
+                testId="terminal-theme"
+                options={[
+                  { value: 'dark', label: 'Dark (default)' },
+                  { value: 'grey', label: 'Grey' },
+                  { value: 'translucent', label: 'Translucent' },
+                ]}
+                onChange={(name) => {
                   setTerminalTheme(name);
                   terminalPool.setTheme(name);
                 }}
-                className="w-full rounded border border-border bg-input px-3 py-2 text-sm"
-              >
-                <option value="dark">Dark (default)</option>
-                <option value="grey">Grey</option>
-                <option value="translucent">Translucent</option>
-              </select>
+              />
               <p className="mt-1 text-xs text-muted-foreground">
                 Applies live; translucency shows on terminals opened afterwards.
               </p>
@@ -384,17 +395,19 @@ export function Settings({ onClose }: SettingsProps) {
             <h3 className="mb-4 text-lg font-semibold">Machine status</h3>
             <div>
               <label className="mb-1 block text-sm font-medium">Health-check</label>
-              <select
+              <Dropdown<HealthPref>
                 value={healthPref}
-                onChange={(e) => setHealthPref(e.target.value as HealthPref)}
-                className="w-full rounded border border-border bg-input px-3 py-2 text-sm"
-              >
-                <option value="inherit">Follow the server policy</option>
-                <option value="off">Off — no status</option>
-                <option value="passive">Passive — last seen only</option>
-                <option value="on-demand">On-demand checks</option>
-                <option value="full">Background polling</option>
-              </select>
+                label="Health-check"
+                testId="health-pref"
+                options={[
+                  { value: 'inherit', label: 'Follow the server policy' },
+                  { value: 'off', label: 'Off — no status' },
+                  { value: 'passive', label: 'Passive — last seen only' },
+                  { value: 'on-demand', label: 'On-demand checks' },
+                  { value: 'full', label: 'Background polling' },
+                ]}
+                onChange={setHealthPref}
+              />
               <p className="mt-1 text-xs text-muted-foreground">
                 <span className="text-amber-500">Governed by your server</span> — you can only narrow it.
                 Passive “last seen” costs no network traffic; active probing does.
@@ -424,23 +437,53 @@ export function Settings({ onClose }: SettingsProps) {
             </label>
           </section>
 
-          {/* Default shell — local terminals only (a server governs its own shell). */}
+          {/* Default shell — local terminals only (a server governs its own shell).
+
+              The same setting as the toolbar's picker, and now the same control. This
+              used to be a path you typed, while the toolbar listed the shells actually
+              installed: one stored value, two editors, and the worse one was the one in
+              the preferences. The field below stays for a shell we did not find. */}
           {isLocalContext && (
             <section hidden={shown !== 'shell'} className="pb-2">
-              <h3 className="mb-4 text-lg font-semibold">Default shell</h3>
-              <div>
-                <label className="mb-1 block text-sm font-medium">Shell for new local terminals</label>
-                <input
-                  value={shellDraft}
-                  onChange={(e) => setShellDraft(e.target.value)}
-                  onBlur={() => {
-                    const v = shellDraft.trim();
-                    if (v && v !== settings.defaultShell) void updateSettings({ defaultShell: v });
-                  }}
-                  placeholder="/usr/bin/bash"
-                  className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm"
-                />
-                <p className="mt-1 text-xs text-muted-foreground">Path to the shell, e.g. /usr/bin/zsh or /usr/bin/fish.</p>
+              <h3 className="mb-1 text-lg font-semibold">{t('settings.sec.shell')}</h3>
+              <p className="mb-4 text-xs text-muted-foreground">{t('settings.shellHint')}</p>
+              <div className="space-y-3">
+                {shellChoices.length > 0 && (
+                  <ul className="flex flex-col gap-1.5" data-testid="shell-choices">
+                    {shellChoices.map((shell) => (
+                      <li key={shell.path}>
+                        <button
+                          type="button"
+                          onClick={() => void updateSettings({ defaultShell: shell.path })}
+                          aria-pressed={settings.defaultShell === shell.path}
+                          className={`flex w-full items-center gap-2 rounded border px-3 py-2 text-left text-sm transition-colors ${
+                            settings.defaultShell === shell.path
+                              ? 'border-primary bg-primary/10'
+                              : 'border-border hover:bg-muted'
+                          }`}
+                          data-testid={`shell-${shell.name}`}
+                        >
+                          <span className="font-medium">{shell.name}</span>
+                          <code className="truncate font-mono text-xs text-muted-foreground">{shell.path}</code>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div>
+                  <label className="mb-1 block text-xs text-muted-foreground">{t('settings.shellCustom')}</label>
+                  <input
+                    value={shellDraft}
+                    onChange={(e) => setShellDraft(e.target.value)}
+                    onBlur={() => {
+                      const v = shellDraft.trim();
+                      if (v && v !== settings.defaultShell) void updateSettings({ defaultShell: v });
+                    }}
+                    placeholder="/usr/bin/fish"
+                    className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm"
+                    data-testid="shell-path"
+                  />
+                </div>
               </div>
             </section>
           )}
@@ -459,29 +502,45 @@ export function Settings({ onClose }: SettingsProps) {
           </section>
 
           {/* Splits — what a divider can open, beyond a plain terminal. */}
+          {/* Split presets: one command, one pane. Layouts are next door, in their
+              own section, because they are not a bigger preset — see LayoutsModal. */}
           <section hidden={shown !== 'splits'} className="pb-2">
-            <h3 className="mb-4 text-lg font-semibold">{t('settings.splits')}</h3>
+            <h3 className="mb-4 text-lg font-semibold">{t('split.presets')}</h3>
             <p className="mb-3 text-xs text-muted-foreground">{t('settings.splitsHint')}</p>
-            {/* Two buttons into one dialog: a preset is one command in one pane, a
-                layout arranges a whole tab, and landing on the wrong list is a step
-                the person has to notice and undo. */}
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setSplitsOpen('presets')}
-                className="flex-none rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
-                data-testid="open-splits-settings"
-              >
-                {t('split.presets')}…
-              </button>
-              <button
-                type="button"
-                onClick={() => setSplitsOpen('layouts')}
-                className="flex-none rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
-                data-testid="open-layouts-settings"
-              >
-                {t('split.layouts')}…
-              </button>
+            <button
+              type="button"
+              onClick={() => setPresetsOpen(true)}
+              className="rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+              data-testid="open-splits-settings"
+            >
+              {t('settings.editPresets')}
+            </button>
+          </section>
+
+          {/* Layouts: a file (docs/LAYOUTS.md). What opens, where, on which machine. */}
+          <section hidden={shown !== 'layouts'} className="pb-2">
+            <h3 className="mb-4 text-lg font-semibold">{t('layouts.title')}</h3>
+            <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{t('layouts.lede')}</p>
+            <button
+              type="button"
+              onClick={() => setLayoutsOpen(true)}
+              className="rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+              data-testid="open-layouts-settings"
+            >
+              {t('layouts.openFile')}
+            </button>
+            <p className="mt-3 text-xs text-muted-foreground">{t('layouts.startupHint')}</p>
+          </section>
+
+          {/* The toolbar is the person's own row. Hiding never grants or revokes. */}
+          <section hidden={shown !== 'toolbar'} className="pb-2">
+            <h3 className="mb-1 text-lg font-semibold">{t('settings.sec.toolbar')}</h3>
+            <p className="mb-4 text-xs leading-relaxed text-muted-foreground">{t('settings.toolbarHint')}</p>
+            <div className="space-y-3">
+              {toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
+              {native && toolbarRow('focusMode', 'settings.toolbarFocus', 'settings.toolbarFocusDesc')}
+              {toolbarRow('quickSsh', 'settings.toolbarQuickSsh', 'settings.toolbarQuickSshDesc')}
+              {toolbarRow('layouts', 'settings.toolbarLayouts', 'settings.toolbarLayoutsDesc')}
             </div>
           </section>
 
@@ -490,62 +549,23 @@ export function Settings({ onClose }: SettingsProps) {
             <h3 className="text-lg font-semibold mb-4">{t('settings.security')}</h3>
 
             <div className="space-y-4">
-              {/* Auto-lock Timeout Dropdown */}
-              <div ref={timeoutDropdownRef}>
+              {/* Auto-lock. One dropdown component for every choice in this dialog:
+                  see Dropdown.tsx for why there used to be two. */}
+              <div>
                 <label className="mb-1 block text-sm font-medium">{t('settings.autoLockTimeout')}</label>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowTimeoutDropdown(!showTimeoutDropdown)}
-                    className="w-full rounded border border-border bg-input px-3 py-2 text-left text-foreground focus:border-primary focus:outline-none flex justify-between items-center"
-                  >
-                    <span>{getTimeoutLabel()}</span>
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  {/* Dropdown Menu */}
-                  {showTimeoutDropdown && (
-                    <div className="absolute z-10 mt-1 w-full rounded border border-border bg-background shadow-lg divide-y divide-border">
-                      <button
-                        type="button"
-                        onClick={() => handleTimeoutChange(0)}
-                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                      >
-                        {t('settings.disabled')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTimeoutChange(1)}
-                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                      >
-                        {t('settings.oneMinute')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTimeoutChange(3)}
-                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                      >
-                        {t('settings.threeMinutes')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTimeoutChange(5)}
-                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                      >
-                        {t('settings.fiveMinutes')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleTimeoutChange(-1)}
-                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                      >
-                        {t('settings.custom')}
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <Dropdown<number>
+                  value={selectedTimeout}
+                  label={t('settings.autoLockTimeout')}
+                  testId="auto-lock"
+                  options={[
+                    { value: 0, label: t('settings.disabled') },
+                    { value: 1, label: t('settings.oneMinute') },
+                    { value: 3, label: t('settings.threeMinutes') },
+                    { value: 5, label: t('settings.fiveMinutes') },
+                    { value: -1, label: getTimeoutLabel() === t('settings.custom') ? t('settings.custom') : t('settings.custom') },
+                  ]}
+                  onChange={handleTimeoutChange}
+                />
                 <p className="text-sm text-muted-foreground mt-2">{t('settings.autoLockEnabledDesc')}</p>
               </div>
 
@@ -556,7 +576,10 @@ export function Settings({ onClose }: SettingsProps) {
                   <input
                     type="number"
                     value={customTimeout}
-                    onChange={(e) => setCustomTimeout(e.target.value)}
+                    onChange={(e) => {
+                      setCustomTimeout(e.target.value);
+                      applyCustomTimeout(e.target.value);
+                    }}
                     placeholder={t('settings.customMinutes')}
                     min="1"
                     className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
@@ -564,57 +587,23 @@ export function Settings({ onClose }: SettingsProps) {
                 </div>
               )}
 
-              {/* Host Key Verification Dropdown */}
-              <div ref={hostKeyDropdownRef}>
+              {/* Host-key verification */}
+              <div>
                 <label className="mb-1 block text-sm font-medium">{t('settings.hostKeyVerification')}</label>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowHostKeyDropdown(!showHostKeyDropdown)}
-                    className="w-full rounded border border-border bg-input px-3 py-2 text-left text-foreground focus:border-primary focus:outline-none flex justify-between items-center"
-                  >
-                    <span>{getHostKeyLabel()}</span>
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-
-                  {/* Dropdown Menu */}
-                  {showHostKeyDropdown && (
-                    <div className="absolute z-10 mt-1 w-full rounded border border-border bg-background shadow-lg divide-y divide-border">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setHostKeyVerificationMode('strict');
-                          setShowHostKeyDropdown(false);
-                        }}
-                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                      >
-                        {t('settings.hostKeyVerificationStrict')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setHostKeyVerificationMode('warn');
-                          setShowHostKeyDropdown(false);
-                        }}
-                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                      >
-                        {t('settings.hostKeyVerificationWarn')}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setHostKeyVerificationMode('accept');
-                          setShowHostKeyDropdown(false);
-                        }}
-                        className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                      >
-                        {t('settings.hostKeyVerificationAccept')}
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <Dropdown<'strict' | 'warn' | 'accept'>
+                  value={hostKeyVerificationMode}
+                  label={t('settings.hostKeyVerification')}
+                  testId="host-key-mode"
+                  options={[
+                    { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
+                    { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
+                    { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
+                  ]}
+                  onChange={(mode) => {
+                    setHostKeyVerificationMode(mode);
+                    void updateSettings({ hostKeyVerificationMode: mode });
+                  }}
+                />
                 <p className="text-sm text-muted-foreground mt-2">{t('settings.hostKeyVerificationDesc')}</p>
               </div>
             </div>
@@ -629,7 +618,10 @@ export function Settings({ onClose }: SettingsProps) {
                 <input
                   type="checkbox"
                   checked={clipboardClearEnabled}
-                  onChange={(e) => setClipboardClearEnabled(e.target.checked)}
+                  onChange={(e) => {
+                    setClipboardClearEnabled(e.target.checked);
+                    void updateSettings({ clipboardClearEnabled: e.target.checked });
+                  }}
                   className="h-5 w-5 rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary"
                 />
                 <div>
@@ -644,46 +636,18 @@ export function Settings({ onClose }: SettingsProps) {
           <section hidden={shown !== 'language'} className="pb-2">
             <h3 className="text-lg font-semibold mb-4">{t('settings.language')}</h3>
 
-            <div ref={languageDropdownRef}>
+            <div>
               <label className="mb-1 block text-sm font-medium">{t('settings.languageLabel')}</label>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setShowLanguageDropdown(!showLanguageDropdown)}
-                  className="w-full rounded border border-border bg-input px-3 py-2 text-left text-foreground focus:border-primary focus:outline-none flex justify-between items-center"
-                >
-                  <span>{locale === 'en' ? 'English' : 'Français'}</span>
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-
-                {/* Dropdown Menu */}
-                {showLanguageDropdown && (
-                  <div className="absolute z-10 mt-1 w-full rounded border border-border bg-background shadow-lg divide-y divide-border">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLocale('en');
-                        setShowLanguageDropdown(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                    >
-                      English
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLocale('fr');
-                        setShowLanguageDropdown(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-muted transition-colors"
-                    >
-                      Français
-                    </button>
-                  </div>
-                )}
-              </div>
+              <Dropdown<'en' | 'fr'>
+                value={locale}
+                label={t('settings.languageLabel')}
+                testId="locale"
+                options={[
+                  { value: 'en', label: 'English' },
+                  { value: 'fr', label: 'Français' },
+                ]}
+                onChange={setLocale}
+              />
             </div>
           </section>
 
@@ -809,28 +773,17 @@ export function Settings({ onClose }: SettingsProps) {
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-none justify-end gap-3 border-t border-border px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isLoading}
-            className="rounded bg-secondary px-4 py-2 font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
-          >
-            {t('settings.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isLoading}
-            className="rounded bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {t('settings.save')}
-          </button>
-        </div>
+
       </div>
-      {/* The splits library sits above this dialog, not inside its scroll area. */}
-      {splitsOpen && <SplitsModal section={splitsOpen} onClose={() => setSplitsOpen(null)} />}
+      {/* Both libraries sit above this dialog, not inside its scroll area. */}
+      {presetsOpen && <SplitsModal onClose={() => setPresetsOpen(false)} />}
+      {layoutsOpen && (
+        <LayoutsModal
+          connections={connections ?? []}
+          libraryReadable={libraryReadable ?? false}
+          onClose={() => setLayoutsOpen(false)}
+        />
+      )}
     </div>
   );
 }

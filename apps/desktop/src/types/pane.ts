@@ -10,10 +10,36 @@
  * describe a data shape — and so the module stays free of runtime imports, which
  * is what lets `e2e/pane-tree-check.mjs` load it with Node's type stripping.
  */
+/**
+ * What a split should open, beyond "a plain terminal".
+ *
+ * One shape for the chevron's presets, a snippet, and one pane of a layout, because
+ * from the splitter's side they are the same request: a name to show, a command to
+ * run, and — layouts only — the machine to run it on. Widening this one type is what
+ * gave layouts their machines without a new callback threaded through every pane.
+ */
+export interface SplitTarget {
+  /** Shown in the pane header. Absent ⇒ the usual local-terminal name. */
+  name?: string;
+  /** Typed into the new pane once it is ready. Empty ⇒ a plain shell. */
+  command: string;
+  /** A machine from the library, by name (layouts). Absent ⇒ this computer. */
+  machine?: string;
+}
+
 export interface TerminalSession {
   id: string;
   connectionId: string;
   connectionName: string;
+  /**
+   * Why this pane is not what was asked for.
+   *
+   * A layout names a machine and this computer may not have it — renamed, a locked
+   * vault, a file from another computer. The pane still opens, as a plain shell, and
+   * this is the only thing on screen that would ever say so, so it travels with the
+   * session rather than being toasted once and lost.
+   */
+  note?: string;
   /**
    * A command to run once, as soon as this session is ready to read one.
    *

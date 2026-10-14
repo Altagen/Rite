@@ -4,6 +4,7 @@
  * Recursive component that renders the pane tree structure
  */
 
+import type { SplitTarget } from '../types/pane';
 import { useRef, useEffect } from 'react';
 import { AnyPaneNode } from '../types/pane';
 import { SplitPane } from './SplitPane';
@@ -17,7 +18,7 @@ export interface PaneContainerProps {
   onSplitRatioChange: (splitId: string, newRatio: number) => void;
   onClosePane: (paneId: string) => void;
   onFocusPane: (paneId: string) => void;
-  onSplitPane: (paneId: string, direction: 'horizontal' | 'vertical', preset?: { name: string; command: string }) => Promise<void>;
+  onSplitPane: (paneId: string, direction: 'horizontal' | 'vertical', target?: SplitTarget) => Promise<void>;
   onDetachPane?: (paneId: string) => void;
   onReorganizePane?: (sourcePaneId: string, targetPaneId: string, position: 'top' | 'bottom' | 'left' | 'right') => void;
 }
@@ -160,7 +161,7 @@ export function PaneContainer({ node, onSplitRatioChange, onClosePane, onFocusPa
       onClose: () => onClosePane(node.id),
       onSplitHorizontal: canSplit ? () => onSplitPane(node.id, 'horizontal') : undefined,
       onSplitVertical: canSplit ? () => onSplitPane(node.id, 'vertical') : undefined,
-      onSplitWith: canSplit ? (direction, preset) => onSplitPane(node.id, direction, preset) : undefined,
+      onSplitWith: canSplit ? (direction, target) => onSplitPane(node.id, direction, target) : undefined,
       onDetach: onDetachPane ? () => onDetachPane(node.id) : undefined,
       onDragStart: handleDragStart,
       onDragEnd: handleDragEnd,

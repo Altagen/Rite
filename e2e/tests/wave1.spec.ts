@@ -261,15 +261,15 @@ test('a split opens a plain terminal, and a preset opens a named one', async ({ 
   await page.getByTestId('split-more').first().click();
   const menu = page.getByRole('menu');
   await expect(menu).toBeVisible();
-  await menu.getByText('Configure splits…').click();
+  await menu.getByText('Split presets…').click();
 
-  const dialog = page.getByRole('dialog', { name: 'Splits' });
+  const dialog = page.getByRole('dialog', { name: 'Split presets' });
   await expect(dialog).toBeVisible();
   await dialog.getByTestId('preset-name').fill('e2e-preset');
   await dialog.getByTestId('preset-command').fill('echo RITE_PRESET_OK');
   await dialog.getByTestId('add-preset').click();
   await expect(dialog.getByText('e2e-preset')).toBeVisible();
-  await dialog.getByRole('button', { name: 'Close' }).click();
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 
   await page.getByTestId('split-more').first().click();
   await page.getByRole('menu').getByText('e2e-preset').click();
@@ -325,7 +325,7 @@ test('a shortcut can be remapped, and it is the new chord that fires', async ({ 
   await expect(page.getByText(/belongs to the terminal/)).toBeVisible();
   await page.keyboard.press('Escape');
 
-  await page.getByRole('button', { name: /^(Cancel|Close)$/ }).first().click();
+  await page.getByRole('button', { name: 'Close settings' }).click();
 
   // The new chord splits; the old one no longer does.
   await page.locator('.xterm-screen').first().click();
@@ -398,12 +398,27 @@ test('settings shows one section at a time, chosen from the rail', async ({ page
   await expect(page.getByRole('heading', { name: 'Clipboard', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Appearance' })).toBeHidden();
 
-  // Keyboard and Splits are reachable from it rather than scrolled to.
+  // Keyboard is reachable from it rather than scrolled to.
   await page.getByTestId('settings-nav-keyboard').click();
   await expect(page.getByTestId('shortcut-row-pane.close')).toBeVisible();
+
+  // Split presets and Layouts are two entries, because they are two features: one
+  // command in one pane against what opens when you sit down. They shared a section
+  // and a dialog, and that is what made them look like one thing with two halves.
+  // Hidden, not absent: every section is rendered and `hidden` is what keeps one of
+  // them in view, so "the other section is not showing" is a visibility question.
   await page.getByTestId('settings-nav-splits').click();
   await expect(page.getByTestId('open-splits-settings')).toBeVisible();
+  await expect(page.getByTestId('open-layouts-settings')).toBeHidden();
+  await page.getByTestId('settings-nav-layouts').click();
   await expect(page.getByTestId('open-layouts-settings')).toBeVisible();
+  await expect(page.getByTestId('open-splits-settings')).toBeHidden();
+
+  // No footer. Everything here applies as it is changed, so there is nothing to
+  // confirm and nothing to cancel — see the auto-lock test below for what the Save
+  // button used to cost.
+  await expect(page.getByRole('button', { name: /^Save$/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Cancel$/ })).toHaveCount(0);
 
   // Focus mode belongs to the native shell; the browser must not be offered it.
   await expect(page.getByTestId('settings-nav-focus')).toHaveCount(0);
@@ -431,8 +446,8 @@ test('a preset is editable, and a layout opens from the tab strip', async ({ pag
   await expect(page.getByTestId('layouts-button')).toHaveCount(0);
 
   await page.getByTestId('split-more').first().click();
-  await page.getByRole('menu').getByText('Configure splits…').click();
-  const dialog = page.getByRole('dialog', { name: 'Splits' });
+  await page.getByRole('menu').getByText('Split presets…').click();
+  const dialog = page.getByRole('dialog', { name: 'Split presets' });
   await expect(dialog).toBeVisible();
 
   // Make one, then change both of its fields in place.
@@ -458,32 +473,183 @@ test('a preset is editable, and a layout opens from the tab strip', async ({ pag
   await expect(rows).toHaveCount(before);
   await expect(dialog.getByText('echo RITE_EDITED_OK')).toBeVisible();
 
-  // A layout, in its own section of the same dialog.
-  await dialog.getByTestId('splits-tab-layouts').click();
-  await dialog.getByTestId('layout-name').fill('e2e-layout');
-  await dialog.getByTestId('layout-panes').fill('one = echo RITE_PANE_ONE\ntwo = echo RITE_PANE_TWO');
-  await dialog.getByTestId('add-layout').click();
-  await expect(dialog.getByText('e2e-layout')).toBeVisible();
+  // A preset dialog is presets only, and it closes with its ✕ because it saves as
+  // it goes: a footer "Close" answers the question the corner already answers, and a
+  // "Cancel" beside it would be a lie.
+  await expect(dialog.getByTestId('layout-panes')).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+});
 
-  // Re-opening it shows the panes as written — the editor must not rewrite what it
-  // was only asked to display.
-  await dialog.getByTestId(/^edit-layout-/).click();
-  await expect(dialog.getByTestId('layout-panes')).toHaveValue(
-    'one = echo RITE_PANE_ONE\ntwo = echo RITE_PANE_TWO',
+/**
+ * A layout is a file, and a machine it names may not be there.
+ *
+ * The file is the feature (docs/LAYOUTS.md): what opens, where, and on which machine.
+ * The part worth pinning is not the parser — `e2e/layout-file-check.mjs` has that —
+ * but what happens when the file asks for something this computer cannot give. A
+ * machine that is not in the library must NOT cancel the layout: the pane opens as a
+ * plain shell, runs what it was told to run, and says in the pane what it was looking
+ * for. Anything else means a renamed machine silently costs you your workspace.
+ */
+test('a layout opens from its file, and a missing machine falls back in place', async ({
+  page,
+  request,
+}) => {
+  await machine(request, { name: 'e2e-layout-host' });
+
+  // The file is server-side state shared by the whole suite, so this test owns it
+  // from a known empty rather than inheriting whatever ran before it.
+  await request.put('/api/layouts', { data: { value: '' } });
+
+  await page.goto('/');
+  await expect(page.getByText('e2e-layout-host')).toBeVisible({ timeout: 20_000 });
+
+  // A layout arranges a tab, so there has to be one: open a local terminal first,
+  // which is also what a person has open when they reach for a layout.
+  await page.getByRole('button', { name: /Terminal/ }).first().click();
+  await expect(page.locator('.xterm-screen')).toHaveCount(1, { timeout: 20_000 });
+
+  // Nothing declared, so the tab strip offers no Layouts button: an empty dropdown
+  // beside the tabs is a permanent invitation to find out it is empty.
+  await expect(page.getByTestId('layouts-button')).toHaveCount(0);
+
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-layouts').click();
+  await page.getByTestId('open-layouts-settings').click();
+
+  const editor = page.getByRole('dialog', { name: 'Layouts' });
+  await expect(editor).toBeVisible();
+
+  // A file that does not parse loads nothing and names the line, and says so where
+  // the file is, not in a toast that is gone before it is read.
+  await editor.getByTestId('layouts-file').fill('[[layout]]\nname = "Broken"\n\n  [[layout.pane]]\n  machine = e2e-layout-host\n');
+  await editor.getByTestId('layouts-save').click();
+  await expect(editor.getByTestId('layouts-error')).toContainText('Line 5');
+
+  // Three panes: one plain, one on a machine that exists, one on a machine that does
+  // not. Written as the documented file, not through a form.
+  await editor.getByTestId('layouts-file').fill(
+    '[[layout]]\nname = "e2e-layout"\n\n' +
+      '  [[layout.pane]]\n  command = "echo RITE_PANE_ONE"\n\n' +
+      '  [[layout.pane]]\n  machine = "e2e-layout-host"\n  command = "echo RITE_PANE_TWO"\n\n' +
+      '  [[layout.pane]]\n  machine = "nope-01"\n  command = "echo RITE_PANE_THREE"\n',
   );
-  await dialog.getByTestId('cancel-edit').click();
-  await dialog.getByRole('button', { name: 'Close' }).click();
+  await editor.getByTestId('layouts-save').click();
+  await expect(editor.getByTestId('layouts-error')).toHaveCount(0);
+  await expect(editor.getByTestId('layouts-ok')).toContainText('1 layout');
+
+  // The editor resolves the names against the library you actually have, before you
+  // open anything: the question is not "is my TOML valid" but "will this open what I
+  // think it opens, on this computer".
+  await expect(editor).toContainText('nope-01 — not in your library');
+
+  await editor.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: 'Close settings' }).click();
 
   // Now the tab strip has the button, and it opens the whole arrangement.
   await page.getByTestId('layouts-button').click();
-  await page.getByRole('menu', { name: /Layouts/ }).getByText('e2e-layout').click();
-  await expect(page.locator('.xterm-screen')).toHaveCount(3, { timeout: 20_000 });
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'RITE_PANE_ONE' })).toHaveCount(1, {
-    timeout: 20_000,
+  // Exact: the row underneath lists the machines, one of which is `e2e-layout-host`,
+  // so a substring match finds the layout and its own subtitle.
+  await page.getByRole('menu', { name: /Layouts/ }).getByText('e2e-layout', { exact: true }).click();
+  // Three panes added to the one that was open: a layout divides the tab it is
+  // opened in rather than replacing what is there.
+  await expect(page.locator('.xterm-screen')).toHaveCount(4, { timeout: 30_000 });
+
+  for (const marker of ['RITE_PANE_ONE', 'RITE_PANE_TWO', 'RITE_PANE_THREE']) {
+    await expect(page.locator('.xterm-rows').filter({ hasText: marker })).toHaveCount(1, {
+      timeout: 30_000,
+    });
+  }
+
+  // The pane that could not be what it was asked to be says so, naming what it
+  // looked for — and it is the only one that does.
+  await expect(page.getByTestId('pane-note')).toHaveCount(1);
+  await expect(page.getByTestId('pane-note')).toContainText('nope-01');
+
+  // Put the file back as it was found.
+  await request.put('/api/layouts', { data: { value: '' } });
+});
+
+/**
+ * A setting you changed is a setting that is stored.
+ *
+ * Four of them were not. The auto-lock switch, its delay, the clipboard auto-clear
+ * and the SSH host-key mode waited for a Save button at the foot of the dialog, while
+ * every other control wrote immediately — so closing with the ✕, the control that
+ * closes every other dialog in the app, threw those four away without a word. The
+ * host-key mode is a security setting; losing it silently is the worst case of a bad
+ * pattern, which is why the footer is gone and this test exists.
+ */
+test('a preference survives closing the dialog with the corner ✕', async ({ page, request }) => {
+  // From a known state, and to values that are NOT it. An assertion that agrees with
+  // what was already stored passes whether or not anything was saved — the first
+  // version of this test asked for `accept`, which another spec in this file leaves
+  // behind, and it survived a mutation that removed the write entirely.
+  await request.put('/api/settings/auto_lock_timeout', { data: { value: '0' } });
+  await request.put('/api/settings/auto_lock_enabled', { data: { value: 'false' } });
+  await request.put('/api/settings/host_key_verification_mode', { data: { value: 'accept' } });
+
+  await page.goto('/');
+
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-security').click();
+  await expect(page.getByTestId('auto-lock')).toContainText('Disabled');
+  await expect(page.getByTestId('host-key-mode')).toContainText('Accept');
+
+  await page.getByTestId('auto-lock').click();
+  await page.getByTestId('auto-lock-3').click();
+  await page.getByTestId('host-key-mode').click();
+  await page.getByTestId('host-key-mode-strict').click();
+
+  // The ✕, not a Save button — there is no Save button.
+  await page.getByRole('button', { name: 'Close settings' }).click();
+
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-security').click();
+  await expect(page.getByTestId('auto-lock')).toContainText('3 minutes');
+  await expect(page.getByTestId('host-key-mode')).toContainText('Strict');
+
+  // And it reached the server, not just this dialog's state.
+  const stored = await request.get('/api/settings');
+  expect(await stored.json()).toMatchObject({
+    auto_lock_enabled: 'true',
+    auto_lock_timeout: '3',
+    host_key_verification_mode: 'strict',
   });
-  await expect(page.locator('.xterm-rows').filter({ hasText: 'RITE_PANE_TWO' })).toHaveCount(1, {
-    timeout: 20_000,
-  });
+
+  // Leave the suite's SSH policy as the other specs expect to find it.
+  await request.put('/api/settings/host_key_verification_mode', { data: { value: 'accept' } });
+});
+
+/**
+ * The toolbar is the person's own row.
+ *
+ * It is the one row everyone sees all day, and the right contents differ per person.
+ * Hiding is all this does: the shortcut still fires, and what the server forbids stays
+ * forbidden — a view preference must never read as a way around a policy.
+ */
+test('a toolbar button can be hidden, and stays hidden', async ({ page }) => {
+  await page.goto('/');
+
+  const quickSsh = page.getByRole('button', { name: /Quick SSH/ });
+  await expect(quickSsh).toBeVisible();
+
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-toolbar').click();
+  await page.getByTestId('toolbar-quickSsh').uncheck();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+
+  await expect(quickSsh).toHaveCount(0);
+
+  // Per device, so it survives a reload rather than lasting until the next launch.
+  await page.reload();
+  await expect(page.getByRole('button', { name: /Quick SSH/ })).toHaveCount(0);
+
+  // Put it back, so the specs that follow see the toolbar they expect.
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-toolbar').click();
+  await page.getByTestId('toolbar-quickSsh').check();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await expect(page.getByRole('button', { name: /Quick SSH/ })).toBeVisible();
 });
 
 /**

@@ -6,36 +6,43 @@
  * first shipped. That menu still offers them, because someone who learned the chevron
  * should not have to unlearn it; this is the obvious place, not the only one.
  *
- * The button hides itself when nothing is configured and nothing is open: an empty
- * dropdown beside the tabs is a permanent invitation to find out it is empty. The
- * split menu's "Configure…" is where a first layout comes from.
+ * The button hides itself when the file declares nothing: an empty dropdown beside
+ * the tabs is a permanent invitation to find out it is empty. A file that does not
+ * parse is the opposite — that is exactly when you want the button, so it stays and
+ * says so.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '../i18n/i18n';
-import { useSplits } from '../store/splits';
-import { SplitsModal } from './SplitsModal';
-import type { LayoutPane } from '../store/splitsFormat';
+import { useLayouts } from '../store/layouts';
+import { LayoutsModal } from './LayoutsModal';
+import type { LayoutPane } from '../store/layoutsFormat';
 
 interface Props {
   /** Open a layout: one pane after another, in the active tab. */
   onApplyLayout: (panes: LayoutPane[]) => Promise<void>;
+  connections: { name: string }[];
+  libraryReadable: boolean;
 }
 
-export function LayoutsMenu({ onApplyLayout }: Props) {
+export function LayoutsMenu({ onApplyLayout, connections, libraryReadable }: Props) {
   const { t } = useTranslation();
-  const { layouts } = useSplits();
+  const { layouts, error, loaded, load } = useLayouts();
   const [open, setOpen] = useState(false);
   const [configuring, setConfiguring] = useState(false);
   const [at, setAt] = useState({ top: 0, left: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
 
+  useEffect(() => {
+    if (!loaded) void load();
+  }, [loaded, load]);
+
   // Positioned from the button rather than anchored to it: the tab strip scrolls
   // horizontally and clips its own overflow, so a menu inside it gets cut off.
   const place = () => {
     const r = btnRef.current?.getBoundingClientRect();
-    if (r) setAt({ top: r.bottom + 4, left: Math.max(8, r.right - 260) });
+    if (r) setAt({ top: r.bottom + 4, left: Math.max(8, r.right - 280) });
   };
 
   useEffect(() => {
@@ -45,8 +52,8 @@ export function LayoutsMenu({ onApplyLayout }: Props) {
     return () => document.removeEventListener('keydown', onKey);
   }, [open]);
 
-  // Nothing configured → no button. See the note at the top of this file.
-  if (layouts.length === 0 && !configuring) return null;
+  // Nothing declared and nothing wrong → no button. See the note at the top.
+  if (layouts.length === 0 && !error && !configuring) return null;
 
   return (
     <>
@@ -56,8 +63,10 @@ export function LayoutsMenu({ onApplyLayout }: Props) {
           place();
           setOpen((v) => !v);
         }}
-        className="flex flex-shrink-0 items-center gap-1 rounded px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        title={t('split.layoutsTitle')}
+        className={`flex flex-shrink-0 items-center gap-1 rounded px-2 py-1.5 text-sm transition-colors hover:bg-muted hover:text-foreground ${
+          error ? 'text-amber-500' : 'text-muted-foreground'
+        }`}
+        title={error ? t('layouts.fileHasError') : t('split.layoutsTitle')}
         aria-haspopup="menu"
         aria-expanded={open}
         data-testid="layouts-button"
@@ -82,9 +91,27 @@ export function LayoutsMenu({ onApplyLayout }: Props) {
             <div
               role="menu"
               aria-label={t('split.layoutsTitle')}
-              className="fixed z-[110] max-h-[70vh] w-[260px] overflow-auto rounded-lg border border-border bg-card p-1 shadow-xl"
+              className="fixed z-[110] max-h-[70vh] w-[280px] overflow-auto rounded-lg border border-border bg-card p-1 shadow-xl"
               style={{ top: `${at.top}px`, left: `${at.left}px` }}
             >
+              {error && (
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    setConfiguring(true);
+                  }}
+                  className="w-full rounded px-3 py-2 text-left transition-colors hover:bg-muted"
+                  data-testid="layouts-menu-error"
+                >
+                  <div className="truncate text-sm font-medium text-amber-500">
+                    {t('layouts.fileHasError')}
+                  </div>
+                  <div className="truncate text-[11px] text-muted-foreground">
+                    {error.line > 0 ? `${t('layouts.atLine', { line: error.line })} ` : ''}
+                    {error.message}
+                  </div>
+                </button>
+              )}
               {layouts.map((l) => (
                 <button
                   key={l.id}
@@ -97,7 +124,7 @@ export function LayoutsMenu({ onApplyLayout }: Props) {
                   <div className="truncate text-sm font-medium text-foreground">{l.name}</div>
                   <div className="truncate text-[11px] text-muted-foreground">
                     {t('split.panesCount', { count: l.panes.length })} ·{' '}
-                    {l.panes.map((p) => p.name).join(' · ')}
+                    {l.panes.map((p) => p.machine ?? p.name ?? p.command ?? '').join(' · ')}
                   </div>
                 </button>
               ))}
@@ -110,14 +137,20 @@ export function LayoutsMenu({ onApplyLayout }: Props) {
                 className="w-full rounded px-3 py-2 text-left text-sm font-medium text-foreground transition-colors hover:bg-muted"
                 data-testid="configure-layouts"
               >
-                {t('split.configureLayouts')}
+                {t('layouts.openFile')}
               </button>
             </div>
           </>,
           document.body,
         )}
 
-      {configuring && <SplitsModal section="layouts" onClose={() => setConfiguring(false)} />}
+      {configuring && (
+        <LayoutsModal
+          connections={connections}
+          libraryReadable={libraryReadable}
+          onClose={() => setConfiguring(false)}
+        />
+      )}
     </>
   );
 }

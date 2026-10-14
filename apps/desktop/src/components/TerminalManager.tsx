@@ -4,13 +4,14 @@
  * Manages multiple terminal sessions with split panes and tabs
  */
 
+import type { SplitTarget } from '../types/pane';
+import type { LayoutPane } from '../store/layoutsFormat';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { PaneContainer } from './PaneContainer';
 import { LayoutsMenu } from './LayoutsMenu';
 import { Tab } from '../types/pane';
-import type { LayoutPane } from '../store/splitsFormat';
 import { getAllSessions, getFocusedPane, getFirstLeafPane } from '../utils/paneTree';
 import { useShortcut } from '../shortcuts/useShortcut';
 import { PaneDragProvider } from '../contexts/PaneDragContext';
@@ -23,7 +24,7 @@ export type { TerminalSession } from '../types/pane';
 interface TerminalManagerProps {
   tabGroups: Tab[];
   activeTabId: string | null;
-  onSplitPane: (paneId: string, direction: 'horizontal' | 'vertical', preset?: { name: string; command: string }) => Promise<void>;
+  onSplitPane: (paneId: string, direction: 'horizontal' | 'vertical', target?: SplitTarget) => Promise<void>;
   onClosePane: (paneId: string) => void;
   onFocusPane: (paneId: string) => void;
   onSplitRatioChange: (splitId: string, newRatio: number) => void;
@@ -40,6 +41,9 @@ interface TerminalManagerProps {
    * layout arranges the whole tab, which is also why its button sits in this strip.
    */
   onApplyLayout?: (panes: LayoutPane[]) => Promise<void>;
+  /** The machines a layout can name, and whether their names can be read at all. */
+  layoutConnections?: { name: string }[];
+  layoutLibraryReadable?: boolean;
   /**
    * The collection / machine tabs, rendered in this strip after the terminal tabs
    * and before the "+", which is where the mock puts them (`#mtabs`). They used to
@@ -62,6 +66,8 @@ export function TerminalManager({
   onSplitRatioChange,
   onSwitchTab,
   onApplyLayout,
+  layoutConnections,
+  layoutLibraryReadable,
   onReorderTabs,
   onDetachPane,
   onRenameTab,
@@ -474,7 +480,13 @@ export function TerminalManager({
         {viewTabs}
 
         {/* Layouts — a whole-tab arrangement, so it belongs beside the tabs. */}
-        {onApplyLayout && <LayoutsMenu onApplyLayout={onApplyLayout} />}
+        {onApplyLayout && (
+          <LayoutsMenu
+            onApplyLayout={onApplyLayout}
+            connections={layoutConnections ?? []}
+            libraryReadable={layoutLibraryReadable ?? false}
+          />
+        )}
 
         {/* New Terminal Dropdown Button */}
         {onNewLocalTerminal && (

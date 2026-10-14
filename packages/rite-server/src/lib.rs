@@ -701,6 +701,8 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/auth/validate-password", post(validate_password))
         .route("/api/settings", get(settings))
         .route("/api/settings/{key}", get(get_setting).put(set_setting))
+        // Layouts (docs/LAYOUTS.md): what opens when you sit down.
+        .route("/api/layouts", get(get_layouts).put(put_layouts))
         // Local-vault collections (ADR 0018): collections, their machines and their
         // boards, all decrypted in rite-core with the master key. Plaintext over
         // loopback to the local webview, which never receives credentials — the
@@ -3325,6 +3327,117 @@ async fn set_setting(
 ) -> Result<StatusCode, AppError> {
     state.db.set_setting(&key, &req.value).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// The settings key the layouts file falls back to when there is no file to use.
+const LAYOUTS_KEY: &str = "layouts_toml";
+
+/// Where this computer keeps its layouts file. `None` when the platform has no config
+/// directory, which is also how a deployment with no filesystem to offer behaves.
+fn layouts_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("rite").join("layouts.toml"))
+}
+
+/// Should this instance keep layouts in a FILE, or in its settings table?
+///
+/// A layout names machines and has an order, and people keep it next to the rest of
+/// their setup, so on a desktop it is a file you can also open in your own editor and
+/// `path` tells the UI where. A shared server has no filesystem to offer a browser,
+/// and one file could not belong to several accounts anyway, so there the same text
+/// lives in the instance settings store and the UI shows no path.
+fn layouts_file(accounts: bool) -> Option<std::path::PathBuf> {
+    if accounts { None } else { layouts_path() }
+}
+
+/// What a new installation sees instead of an empty box: the shape of the file, as
+/// documented. Nothing is written to disk until the user saves, so Reload on an
+/// untouched installation shows this again rather than an empty file.
+const LAYOUTS_TEMPLATE: &str = r##"# Layouts: what opens, where, and on which machine.
+# Every key is documented in docs/LAYOUTS.md.
+
+# [[layout]]
+# name = "Morning"
+# startup = true
+#
+#   [[layout.pane]]
+#   command = ""                   # no machine = this computer, a plain shell
+#
+#   [[layout.pane]]
+#   machine = "web-01"             # a machine from your library, by name
+#   command = "journalctl -fu app"
+"##;
+
+#[derive(Serialize)]
+struct LayoutsFile {
+    text: String,
+    /// Where the text came from, when it came from a file the user can also edit.
+    path: Option<String>,
+}
+
+async fn get_layouts(State(state): State<ServerState>) -> Result<Json<LayoutsFile>, AppError> {
+    if let Some(path) = layouts_file(state.accounts) {
+        let text = match tokio::fs::read_to_string(&path).await {
+            Ok(t) => t,
+            // A missing file is the normal state of a fresh install, not a failure.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => LAYOUTS_TEMPLATE.to_string(),
+            Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display()).into()),
+        };
+        return Ok(Json(LayoutsFile {
+            text,
+            path: Some(path.display().to_string()),
+        }));
+    }
+    Ok(Json(LayoutsFile {
+        text: state
+            .db
+            .get_setting(LAYOUTS_KEY)
+            .await?
+            .unwrap_or_else(|| LAYOUTS_TEMPLATE.to_string()),
+        path: None,
+    }))
+}
+
+async fn put_layouts(
+    State(state): State<ServerState>,
+    Json(req): Json<ValueReq>,
+) -> Result<StatusCode, AppError> {
+    if let Some(path) = layouts_file(state.accounts) {
+        if let Some(dir) = path.parent() {
+            tokio::fs::create_dir_all(dir)
+                .await
+                .map_err(|e| anyhow::anyhow!("creating {}: {e}", dir.display()))?;
+        }
+        tokio::fs::write(&path, &req.value)
+            .await
+            .map_err(|e| anyhow::anyhow!("writing {}: {e}", path.display()))?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    state.db.set_setting(LAYOUTS_KEY, &req.value).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[cfg(test)]
+mod layouts_tests {
+    use super::*;
+
+    /// The two modes, pinned. A desktop hands out a path so the file can also be
+    /// edited by hand; a shared server must not, because the file it would name is
+    /// the operator's, not the account holder's.
+    #[test]
+    fn a_server_has_no_file_to_offer() {
+        assert_eq!(layouts_file(true), None);
+        assert_eq!(layouts_file(false), layouts_path());
+    }
+
+    /// The template is a comment block: valid TOML that declares no layout, so a
+    /// fresh install parses to zero layouts instead of to an error.
+    #[test]
+    fn the_template_parses_to_nothing() {
+        let t: toml::Table = LAYOUTS_TEMPLATE
+            .parse()
+            .expect("the template must be TOML");
+        assert!(t.is_empty(), "the template must declare no layout: {t:?}");
+    }
 }
 
 // --- connections ------------------------------------------------------------
