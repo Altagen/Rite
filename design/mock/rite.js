@@ -39,24 +39,91 @@ function toast(html){
   t.innerHTML=html; t.classList.add('show'); clearTimeout(t._to); t._to=setTimeout(()=>t.classList.remove('show'),2600);
 }
 
+/* Dialogs come in two shapes, and the shape says what the dialog does.
+
+   A DECISION dialog commits something when you press its button — add a server,
+   reset a vault — so it keeps a footer: Cancel on the left, the verb on the right.
+   Cancel there means something: nothing has happened yet.
+
+   A PREFERENCES dialog applies every change the moment you make it. There is
+   nothing to confirm and nothing to cancel, so a footer "Close" is just a second
+   answer to the question the ✕ already answers — and a "Cancel" beside it is a
+   lie, because the changes are already saved. Those dialogs pass `confirm:null`
+   and get no footer at all.
+
+   The ✕ is in the same corner either way. It is the one control whose meaning
+   never changes, so it is never the one that moves. */
 function showModal({title,subtitle,body,confirm='Confirm',onConfirm,wide,width}){
   const bd=document.createElement('div'); bd.className='backdrop show';
   const mw=width?`style="max-width:${width}"`:(wide?'style="max-width:520px"':'');
+  const foot = confirm===null ? ''
+    : `<div class="foot"><button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-ok>${confirm}</button></div>`;
   bd.innerHTML=`<div class="modal" ${mw}>
+    <button class="modal-x" data-close title="Close" aria-label="Close">✕</button>
     <header><h3>${title}</h3>${subtitle?`<p>${subtitle}</p>`:''}</header>
     <div class="body">${body}</div>
-    <div class="foot"><button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-ok>${confirm}</button></div>
+    ${foot}
   </div>`;
   document.body.appendChild(bd);
   const close=()=>bd.remove();
   bd.addEventListener('click',e=>{if(e.target===bd)close();});
-  bd.querySelector('[data-x]').onclick=close;
-  bd.querySelector('[data-ok]').onclick=()=>{ if(!onConfirm||onConfirm(bd)!==false) close(); };
+  bd.querySelectorAll('[data-x],[data-close]').forEach(b=>{b.onclick=close;});
+  const ok=bd.querySelector('[data-ok]');
+  if(ok) ok.onclick=()=>{ if(!onConfirm||onConfirm(bd)!==false) close(); };
+  document.addEventListener('keydown',function esc(e){
+    if(e.key!=='Escape')return;
+    document.removeEventListener('keydown',esc);
+    if(document.body.contains(bd))close();
+  });
   const first=bd.querySelector('input,select'); if(first)setTimeout(()=>first.focus(),30);
-  bd.querySelectorAll('input').forEach(i=>i.addEventListener('keydown',e=>{if(e.key==='Enter')bd.querySelector('[data-ok]').click();}));
+  // Enter confirms only where there is something to confirm.
+  if(ok) bd.querySelectorAll('input').forEach(i=>i.addEventListener('keydown',e=>{if(e.key==='Enter')ok.click();}));
   // live strength meter
   const pw=bd.querySelector('[data-pw]'), meter=bd.querySelector('.strength>i');
   if(pw&&meter)pw.addEventListener('input',()=>{const s=Math.min(100,pw.value.length*12);meter.style.width=s+'%';meter.style.background=s<40?'#f7768e':s<70?'#e5b567':'#9ece6a';});
+  return bd;
+}
+
+/* ================= preferences chrome =================
+
+   A rail, not a scroll. Settings had grown past the point where scrolling could find
+   anything: the only way to know whether a setting existed was to read all of them.
+   The rail names every section at once and renders one of them.
+
+   The SECTIONS differ per shell and per context — the browser has no focus mode and
+   no local shell; a master password and a danger zone only mean something once there
+   is a vault to hold one — so each shell owns its own list and declares when a
+   section applies. A section that does not apply is ABSENT, not greyed out: a
+   disabled row still implies you are missing out on something.
+
+   There is no footer. Everything here applies the moment you change it, so there is
+   nothing to confirm and nothing to cancel — the ✕ closes it. See showModal(). */
+function prefRow(title,sub,control){
+  return `<div class="settings-row"><div><b>${title}</b>${sub?`<div class="muted" style="font-size:12px">${sub}</div>`:''}</div>${control}</div>`;
+}
+function prefGet(path){ return path.split('.').reduce((o,k)=>o&&o[k],STATE); }
+function prefToggle(path,extra){
+  return `<div class="toggle ${prefGet(path)?'on':''}" onclick="this.classList.toggle('on');STATE.${path}=this.classList.contains('on');${extra||''}"><i></i></div>`;
+}
+let PREF_AT=null;
+function prefsHTML(prefs){
+  const shown=prefs.filter(s=>!s.when||s.when());
+  if(!shown.length) return '';
+  if(!shown.some(s=>s.id===PREF_AT)) PREF_AT=shown[0].id;
+  const sec=shown.find(s=>s.id===PREF_AT);
+  return `<div class="prefs">
+    <nav class="prefs-nav">${shown.map(s=>`<button class="${s.id===PREF_AT?'on':''}${s.danger?' danger':''}" data-pref="${s.id}">${s.label}</button>`).join('')}</nav>
+    <div class="prefs-pane">${sec.body()}</div></div>`;
+}
+function openPrefs(prefs,at){
+  if(at)PREF_AT=at;
+  const bd=showModal({title:'Settings',width:'760px',confirm:null,body:prefsHTML(prefs)});
+  const body=bd.querySelector('.body');
+  body.style.padding='14px 20px 18px';
+  body.addEventListener('click',e=>{
+    const b=e.target.closest('[data-pref]'); if(!b)return;
+    PREF_AT=b.dataset.pref; body.innerHTML=prefsHTML(prefs);
+  });
   return bd;
 }
 
@@ -152,7 +219,7 @@ function openInNewWindow(name){toast(`${ICON.win} <span class="accent">${name}</
    lives behind the chevron beside it, and all of it is the user's to configure. */
 const PANE_KINDS = {};
 function registerPaneKind(type, render){ PANE_KINDS[type] = render; }
-registerPaneKind('term', (p,i) => termHTML(p.host, { name:p.name, cmd:p.cmd, lines:p.lines, close:`closePaneAt(${i})` }));
+registerPaneKind('term', (p,i) => termHTML(p.host, { name:p.name, cmd:p.cmd, lines:p.lines, warn:p.warn, close:`closePaneAt(${i})` }));
 
 /* What a split can open. `plain` is first and is the default action: the preset list
    is for the minority who want `top` on the right, not a tax on everyone else.
@@ -162,15 +229,138 @@ let SPLIT_PRESETS = [
   { id:'p-load',   name:'Load',       command:'top' },
   { id:'p-disk',   name:'Disk',       command:'df -h' },
 ];
-/* A layout opens several panes at once — the "five terminals arranged like this"
-   case. It is a list of presets by value, so editing a preset never silently
-   rewrites a layout someone relies on. */
-let PANE_LAYOUTS = [
-  { id:'l-deploy', name:'Deploy watch', panes:[
-      { name:'shell',      command:'' },
-      { name:'logs',       command:'journalctl -fu app' },
-      { name:'disk',       command:'df -h' } ] },
-];
+/* ================= Layouts: a file =================
+
+   A split preset and a layout were in the same dialog because they are the same two
+   fields. They are not the same feature, and sharing a form made that hard to see.
+
+   A preset is a reflex: the pane you are in, divided, running one command. It belongs
+   next to the divider, it is one line long, and a list in the preferences is the right
+   home for it.
+
+   A layout is the start of a working day: what opens, where, and on which machine. It
+   names machines, it has an order, it can be the thing that runs when Rite starts, and
+   it is the kind of thing people keep in version control and copy between computers.
+   That is a FILE — `layouts.toml`, read on startup, edited here or in your own editor.
+   Settings ▸ Layouts shows the file, not a form pretending the file is not there.
+
+   A layout names a machine; the library may not have it. The file is not a contract
+   the app can enforce — a machine gets renamed, a vault stays locked, the file comes
+   from another computer. So an unresolvable pane is not an error that cancels the
+   layout: it opens a PLAIN SHELL and says so in the pane. You get your workspace,
+   minus what could not be found, and you can see exactly what was missing. */
+const LAYOUT_PATH = '~/.config/rite/layouts.toml';
+let LAYOUT_FILE = `# Layouts — what opens, where, and on which machine.
+# Rite reads this file at startup. Settings ▸ Layouts edits it; so does your editor.
+
+[[layout]]
+name = "Morning"
+startup = true            # open this layout when Rite starts
+
+  [[layout.pane]]
+  command = ""            # no machine = this computer, a plain shell
+
+  [[layout.pane]]
+  machine = "web-01"      # a machine from your library, by name
+  command = "journalctl -fu app"
+
+  [[layout.pane]]
+  machine = "pg-prod"
+  command = "top"
+
+[[layout]]
+name = "Deploy watch"
+
+  [[layout.pane]]
+  machine = "web-01"
+  command = "journalctl -fu app"
+
+  [[layout.pane]]
+  machine = "lb-01"
+  command = "tail -f /var/log/nginx/access.log"
+
+  [[layout.pane]]
+  command = "df -h"
+`;
+
+/* A deliberately small TOML subset: [[layout]], [[layout.pane]], and quoted or
+   boolean values. The real one uses a TOML parser (ADR 0020 already made TOML the
+   house format for config-as-code); what matters in the mock is the shape of the
+   file and what a BAD file looks like.
+
+   A file that does not parse loads NOTHING, and the dialog names the line. Half a
+   file is worse than no file: you would not know which half you got. */
+function parseLayoutFile(text){
+  const layouts=[]; let cur=null, pane=null;
+  const fail=(line,message)=>({layouts:[],error:{line,message}});
+  const lines=(text||'').split('\n');
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i].replace(/#.*$/,'').trim();
+    if(!line) continue;
+    if(line==='[[layout]]'){ cur={id:'l'+(layouts.length+1),name:'',startup:false,panes:[]}; layouts.push(cur); pane=null; continue; }
+    if(line==='[[layout.pane]]'){
+      if(!cur) return fail(i+1,'[[layout.pane]] before any [[layout]]');
+      pane={machine:null,command:'',name:''}; cur.panes.push(pane); continue; }
+    if(line.startsWith('[')) return fail(i+1,`unknown table ${line} — only [[layout]] and [[layout.pane]] exist`);
+    const m=line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if(!m) return fail(i+1,`not a key or a table header: ${line}`);
+    const key=m[1]; const rawv=m[2].trim(); let v;
+    if(/^".*"$/.test(rawv)) v=rawv.slice(1,-1);
+    else if(rawv==='true'||rawv==='false') v=(rawv==='true');
+    else return fail(i+1,`a value is a quoted string or true/false, not ${rawv||'nothing'}`);
+    if(pane){
+      if(key==='machine') pane.machine=String(v);
+      else if(key==='command') pane.command=String(v);
+      else if(key==='name') pane.name=String(v);
+      else return fail(i+1,`a pane takes machine, command and name — not ${key}`);
+    } else if(cur){
+      if(key==='name') cur.name=String(v);
+      else if(key==='startup') cur.startup=!!v;
+      else return fail(i+1,`a layout takes name and startup — not ${key}`);
+    } else return fail(i+1,`${key} is outside any [[layout]]`);
+  }
+  const nameless=layouts.findIndex(l=>!l.name);
+  if(nameless>=0) return fail(0,`layout #${nameless+1} has no name`);
+  const empty=layouts.find(l=>!l.panes.length);
+  if(empty) return fail(0,`layout "${empty.name}" has no [[layout.pane]]`);
+  return {layouts,error:null};
+}
+
+let PANE_LAYOUTS=[], LAYOUT_ERROR=null;
+function reloadLayouts(){
+  const r=parseLayoutFile(LAYOUT_FILE);
+  // A broken file keeps the layouts you had running; it does not empty the menu
+  // under you. It only stops NEW ones from loading, and says why.
+  if(!r.error) PANE_LAYOUTS=r.layouts;
+  LAYOUT_ERROR=r.error;
+  return r;
+}
+reloadLayouts();
+
+/* A machine by name, anywhere in the collection tree. */
+function findMachine(name){
+  let hit=null;
+  (function rec(list){ (list||[]).forEach(c=>{
+    (c.conns||[]).forEach(m=>{ if(!hit && m.name===name) hit=m; });
+    if(c.children) rec(c.children); }); })(typeof COLL==='undefined'?[]:COLL);
+  return hit;
+}
+
+/* Where a pane of a layout actually opens. Everything that can go wrong ends the
+   same way — a plain shell plus a sentence in the pane saying what was asked for. */
+function layoutTarget(p){
+  if(!p.machine) return { host:null, warn:null };
+  const ctx = (typeof STATE==='undefined') ? null : STATE.ctx;
+  // The browser shell has no context pill: it is always signed in to one server, so
+  // no context at all means "the library is reachable", not "there is no library".
+  const openVault = !ctx || ctx.type==='server' || (ctx.type==='vault' && !ctx.locked);
+  if(!openVault) return { host:null,
+    warn:`<b>${p.machine}</b> needs an open vault — your machines are encrypted, so this pane opened a plain shell.` };
+  const m=findMachine(p.machine);
+  if(!m) return { host:null,
+    warn:`<b>${p.machine}</b> isn't in your library — renamed, or from another computer. This pane opened a plain shell.` };
+  return { host:m.name, warn:null };
+}
 
 /* The tab the controls act on: whichever one is on screen. The mock has two (the
    terminal tab and a resumed agent's), and every pane control is drawn inside one
@@ -196,9 +386,18 @@ function splitWith(presetId){ const t=curTab(); const p=SPLIT_PRESETS.find(x=>x.
   if(p) addPane(paneFromPreset(p,t&&t.host));
 }
 function applyLayout(id){ const l=PANE_LAYOUTS.find(x=>x.id===id); const t=curTab(); if(!l||!t) return;
-  l.panes.forEach(p=>t.panes.push(Object.assign({kind:'term',host:t.host||null},paneFromPreset(p,t.host))));
+  let fellBack=0;
+  l.panes.forEach(p=>{
+    const tgt=layoutTarget(p);
+    if(tgt.warn) fellBack++;
+    t.panes.push({ kind:'term', host:tgt.host, warn:tgt.warn,
+      name:p.name || (tgt.host||null) || (p.command? p.command.split(/\s+/)[0] : null),
+      cmd:p.command||'', lines:p.command?['(running — this is an ordinary terminal pane)']:null });
+  });
   t.focus=t.panes.length-1; renderMain();
-  toast(`Layout <span class="accent">${l.name}</span> — ${l.panes.length} panes opened`);}
+  toast(fellBack
+    ? `Layout <span class="accent">${l.name}</span> — ${l.panes.length} panes, ${fellBack} fell back to a plain shell`
+    : `Layout <span class="accent">${l.name}</span> — ${l.panes.length} panes opened`);}
 
 /* Everything a split can be, behind the chevron. The plain one is also here, first,
    so the menu is a superset of the button rather than a different feature. */
@@ -212,7 +411,7 @@ function splitMenu(e){
   PANE_LAYOUTS.forEach(l=>items.push({ icon:EXICON.panel,
     label:`${l.name}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes</div>`,
     onclick:()=>applyLayout(l.id) }));
-  items.push({ icon:EXICON.gear, label:'Configure splits…', onclick:()=>dlgSplitPrefs() });
+  items.push({ icon:EXICON.gear, label:'Split presets…', onclick:()=>dlgSplitPrefs() });
   floatMenu(e, items);
 }
 
@@ -227,82 +426,135 @@ function splitMenu(e){
    permanent invitation to find out that it is empty; the split menu's
    "Configure splits…" is where a first layout comes from. */
 function layoutsBtnHTML(){
-  if(!PANE_LAYOUTS.length) return '';
-  return `<button class="mtab-new" title="Layouts — open a saved arrangement in this tab" onclick="layoutsMenu(event)">${EXICON.panel}${EXICON.chevD}</button>`;
+  if(typeof STATE!=='undefined' && STATE.toolbar && STATE.toolbar.layouts===false) return '';
+  if(!PANE_LAYOUTS.length && !LAYOUT_ERROR) return '';
+  const bad=!!LAYOUT_ERROR;
+  return `<button class="mtab-new" title="${bad?'Layouts — your layouts.toml has an error':'Layouts — open a saved arrangement in this tab'}"
+    onclick="layoutsMenu(event)"${bad?' style="color:var(--amber)"':''}>${EXICON.panel}${EXICON.chevD}</button>`;
 }
 function layoutsMenu(e){
   e.stopPropagation();
   const items = PANE_LAYOUTS.map(l=>({ icon:EXICON.panel,
     label:`${l.name}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes · ${l.panes.map(p=>p.name).join(' · ')}</div>`,
     onclick:()=>applyLayout(l.id) }));
-  items.push({ icon:EXICON.gear, label:'Configure layouts…', onclick:()=>dlgSplitPrefs() });
+  if(LAYOUT_ERROR) items.unshift({ icon:'⚠',
+    label:`<span style="color:var(--amber)">layouts.toml has an error</span><div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${LAYOUT_ERROR.line?`line ${LAYOUT_ERROR.line} · `:''}${LAYOUT_ERROR.message}</div>`,
+    onclick:()=>dlgLayouts() });
+  items.push({ icon:EXICON.gear, label:'Layouts file…', onclick:()=>dlgLayouts() });
   floatMenu(e, items);
 }
 
-/* Where the name and the command are the user's. Presets and layouts are the same
-   two fields twice, so they are edited in one place rather than two half-places. */
+/* ===== Split presets: the small dialog =====
+   One command, one pane, one line each. No layouts here any more: a preset you can
+   type in four seconds and a file you keep in version control are not two halves of
+   one screen. This dialog saves as you go, so it has no footer (see showModal). */
 function splitPrefsBody(){
   const preset = (p,i) => `<div class="snip-row">
     <div class="snip-meta"><div class="snip-name">${p.name}${p.builtin?' <span class="snip-count">always there</span>':''}</div>
       <code class="snip-cmd">${p.command||'a plain shell — no command'}</code></div>
     ${p.builtin?'':`<button class="btn btn-ghost btn-sm" data-sp-edit="${i}" title="Edit">Edit</button>
     <button class="btn btn-ghost btn-sm" data-sp-del="${i}" title="Remove">✕</button>`}</div>`;
-  const layout = (l,i) => `<div class="snip-row">
-    <div class="snip-meta"><div class="snip-name">${l.name} <span class="snip-count">${l.panes.length} panes</span></div>
-      <code class="snip-cmd">${l.panes.map(p=>p.name).join(' · ')}</code></div>
-    <button class="btn btn-ghost btn-sm" data-sl-edit="${i}" title="Edit">Edit</button>
-    <button class="btn btn-ghost btn-sm" data-sl-del="${i}" title="Remove">✕</button></div>`;
   return `<p class="muted" style="font-size:12px;margin:0 0 10px">Splitting a pane opens a <b>plain terminal</b> — that is the button.
-    These are what the chevron beside it offers as well: a named command, or a whole layout at once.</p>
-    <div class="sec"><span class="eyebrow">Split presets</span><span class="line"></span></div>
+    A preset is the same divider running one named command, offered by the chevron beside it.
+    Arranging a whole tab is a <b>layout</b>, and layouts live in a file: ${'' /* keep the two apart */}
+    <button class="btn btn-ghost btn-sm" style="padding:1px 7px" onclick="this.closest('.backdrop').remove();dlgLayouts()">Layouts…</button></p>
     <div class="snip-list">${SPLIT_PRESETS.map(preset).join('')}</div>
     <div class="snip-add">
       <label class="field"><span>Name</span><input class="inp" id="sp-name" placeholder="Containers"></label>
       <label class="field"><span>Command</span><input class="inp mono" id="sp-cmd" placeholder="df -h"></label>
-      <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sp-add>${EDITING.preset>=0?'Save preset':'Add preset'}</button></div></div>
-    <div class="sec"><span class="eyebrow">Layouts</span><span class="line"></span></div>
-    <div class="snip-list">${PANE_LAYOUTS.map(layout).join('')||'<p class="muted" style="font-size:13px;margin:2px 0 10px">No layout yet.</p>'}</div>
-    <div class="snip-add">
-      <label class="field"><span>Name</span><input class="inp" id="sl-name" placeholder="Deploy watch"></label>
-      <label class="field"><span>Panes <span class="muted" style="font-weight:400">· one per line, <code>name = command</code></span></span><textarea class="inp mono" id="sl-panes" rows="4" spellcheck="false" style="resize:vertical;line-height:1.6" placeholder="shell =&#10;load = top&#10;disk = df -h"></textarea></label>
-      <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sl-add>${EDITING.layout>=0?'Save layout':'Add layout'}</button></div></div>`;
+      <div class="snip-add-foot"><button class="btn btn-primary btn-sm" data-sp-add>${EDITING.preset>=0?'Save preset':'Add preset'}</button></div></div>`;
 }
 /* Add AND edit. The first version could only add and remove, so fixing a typo in a
-   command meant deleting the entry and retyping the other field — and for a five-pane
-   layout, five lines retyped to fix one. `EDITING` is the index being changed, or -1
-   for the add form, and the two forms are the same two fields either way. */
-let EDITING={preset:-1,layout:-1};
+   command meant deleting the entry and retyping the other field. `EDITING.preset` is
+   the index being changed, or -1 for the add form; both are the same two fields. */
+let EDITING={preset:-1};
 function dlgSplitPrefs(){
-  EDITING={preset:-1,layout:-1};
-  const bd=showModal({title:'Splits',subtitle:'What a divider can open',wide:true,confirm:'Done',body:splitPrefsBody()});
+  EDITING={preset:-1};
+  const bd=showModal({title:'Split presets',subtitle:'What the chevron beside the divider offers',wide:true,confirm:null,body:splitPrefsBody()});
   const body=bd.querySelector('.body');
-  const panesText=panes=>panes.map(p=>`${p.name} = ${p.command}`.trimEnd()).join('\n');
-  const readPanes=v=>(v||'').split('\n').map(x=>x.trim()).filter(Boolean)
-    .map(line=>{const k=line.indexOf('=');return k<0?{name:line,command:''}:{name:line.slice(0,k).trim(),command:line.slice(k+1).trim()};});
   const redraw=()=>{body.innerHTML=splitPrefsBody();
     if(EDITING.preset>=0){const p=SPLIT_PRESETS[EDITING.preset];
-      body.querySelector('#sp-name').value=p.name; body.querySelector('#sp-cmd').value=p.command;}
-    if(EDITING.layout>=0){const l=PANE_LAYOUTS[EDITING.layout];
-      body.querySelector('#sl-name').value=l.name; body.querySelector('#sl-panes').value=panesText(l.panes);}};
+      body.querySelector('#sp-name').value=p.name; body.querySelector('#sp-cmd').value=p.command;}};
   body.addEventListener('click',e=>{
-    const t=e.target.closest('[data-sp-del],[data-sp-add],[data-sp-edit],[data-sl-del],[data-sl-add],[data-sl-edit]');
+    const t=e.target.closest('[data-sp-del],[data-sp-add],[data-sp-edit]');
     if(!t)return;
     if(t.dataset.spEdit!==undefined){EDITING.preset=+t.dataset.spEdit;}
-    else if(t.dataset.slEdit!==undefined){EDITING.layout=+t.dataset.slEdit;}
     else if(t.dataset.spDel!==undefined){SPLIT_PRESETS.splice(+t.dataset.spDel,1);EDITING.preset=-1;}
-    else if(t.dataset.slDel!==undefined){PANE_LAYOUTS.splice(+t.dataset.slDel,1);EDITING.layout=-1;}
     else if(t.dataset.spAdd!==undefined){
       const n=(body.querySelector('#sp-name').value||'').trim(), c=(body.querySelector('#sp-cmd').value||'').trim();
       if(!n){toast('Give the preset a name');return;}
       if(EDITING.preset>=0){Object.assign(SPLIT_PRESETS[EDITING.preset],{name:n,command:c});EDITING.preset=-1;}
       else SPLIT_PRESETS.push({id:'p'+Math.random().toString(36).slice(2,7),name:n,command:c});}
-    else if(t.dataset.slAdd!==undefined){
-      const n=(body.querySelector('#sl-name').value||'').trim();
-      const panes=readPanes(body.querySelector('#sl-panes').value);
-      if(!n||!panes.length){toast('A layout needs a name and at least one pane');return;}
-      if(EDITING.layout>=0){Object.assign(PANE_LAYOUTS[EDITING.layout],{name:n,panes});EDITING.layout=-1;}
-      else PANE_LAYOUTS.push({id:'l'+Math.random().toString(36).slice(2,7),name:n,panes});}
     redraw();});
+  return bd;
+}
+
+/* ===== Layouts: the file, shown as the file =====
+
+   Not a form over a file. A form would have to invent a widget for every key the
+   file grows, and the file is the thing people copy between computers, mail to a
+   colleague and commit — so the file is what the dialog shows. Save parses it; a
+   bad file is refused with its line number and the layouts you had keep working.
+
+   What it opens is listed underneath, resolved against the library you actually
+   have, because the interesting question is not "is my TOML valid" but "will this
+   open what I think it opens, on this computer, today". */
+function layoutsBody(){
+  const rows = PANE_LAYOUTS.map(l=>{
+    const panes = l.panes.map(p=>{
+      const tgt=layoutTarget(p);
+      const where = p.machine
+        ? (tgt.host? `<span class="ok">${p.machine}</span>` : `<span style="color:var(--amber)">${p.machine} → plain shell</span>`)
+        : '<span class="muted">this computer</span>';
+      return `<div style="display:flex;gap:8px;font-size:12px;padding:2px 0">
+        <span style="flex:0 0 150px">${where}</span>
+        <code class="mono" style="color:var(--fg-dim);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.command||'(plain shell)'}</code></div>`;
+    }).join('');
+    return `<div class="snip-row" style="display:block">
+      <div class="snip-name" style="margin-bottom:4px">${l.name}
+        <span class="snip-count">${l.panes.length} panes</span>
+        ${l.startup?'<span class="snip-count" style="color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,transparent)">at startup</span>':''}
+        <button class="btn btn-ghost btn-sm" style="float:right;padding:1px 8px" data-lay-open="${l.id}">Open now</button></div>
+      ${panes}</div>`;
+  }).join('');
+  const err = LAYOUT_ERROR
+    ? `<div class="lay-err">⚠ <b>Not loaded.</b> ${LAYOUT_ERROR.line?`Line ${LAYOUT_ERROR.line}: `:''}${LAYOUT_ERROR.message}<br>
+       <span class="muted">The layouts already loaded keep working until the file parses again.</span></div>`
+    : `<p class="lay-ok">✓ ${PANE_LAYOUTS.length} layout${PANE_LAYOUTS.length===1?'':'s'} loaded.</p>`;
+  return `<p class="muted" style="font-size:12.5px;margin:0 0 10px;line-height:1.55">
+      A layout is what you open when you sit down: which terminals, in what order, on which machines.
+      It is a file, so you can keep it in version control and carry it between computers.
+      A machine this computer doesn't have opens a <b>plain shell</b> with a note in the pane — the layout still opens.</p>
+    <div class="lay-path">${EXICON.coll} <code>${LAYOUT_PATH}</code>
+      <span class="grow" style="flex:1"></span>
+      <button class="btn btn-ghost btn-sm" data-lay-editor>Open in my editor</button>
+      <button class="btn btn-ghost btn-sm" data-lay-reload title="Re-read the file from disk">↻ Reload</button></div>
+    <textarea class="lay-file" id="lay-file" spellcheck="false">${LAYOUT_FILE.replace(/</g,'&lt;')}</textarea>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
+      <button class="btn btn-primary btn-sm" data-lay-save>Save file</button>
+      <a href="#" onclick="toast('docs/LAYOUTS.md');return false" class="muted" style="font-size:12px">What can go in this file →</a></div>
+    ${err}
+    <div class="sec" style="margin-top:16px"><span class="eyebrow">What it opens</span><span class="line"></span></div>
+    <div class="snip-list">${rows||'<p class="muted" style="font-size:13px;margin:2px 0 10px">Nothing loaded.</p>'}</div>`;
+}
+function dlgLayouts(){
+  const bd=showModal({title:'Layouts',subtitle:'What opens when you sit down',width:'620px',confirm:null,body:layoutsBody()});
+  const body=bd.querySelector('.body');
+  const redraw=()=>{body.innerHTML=layoutsBody();};
+  body.addEventListener('click',e=>{
+    const t=e.target.closest('[data-lay-save],[data-lay-reload],[data-lay-editor],[data-lay-open]');
+    if(!t)return;
+    if(t.dataset.layEditor!==undefined){ toast(`${LAYOUT_PATH} — opened in your editor`); return; }
+    if(t.dataset.layOpen!==undefined){ bd.remove(); applyLayout(t.dataset.layOpen); return; }
+    if(t.dataset.layReload!==undefined){ reloadLayouts(); redraw();
+      toast(LAYOUT_ERROR?'File re-read — it still has an error':'File re-read'); if(typeof renderMain==='function')renderMain(); return; }
+    // Save: the textarea is the file. Parse first, keep the old layouts if it fails.
+    LAYOUT_FILE=body.querySelector('#lay-file').value;
+    const r=reloadLayouts(); redraw();
+    toast(r.error?`<span style="color:var(--amber)">Saved, but not loaded — line ${r.error.line||'?'}</span>`:'Saved — layouts reloaded');
+    if(typeof renderMain==='function')renderMain();
+  });
+  return bd;
 }
 
 /* The tab renderer, one for every kind. */
@@ -356,8 +608,11 @@ function termHTML(host, opts){
     ? `<button onclick="reconnectPane()" title="Reconnect — opens a new shell" style="display:flex;align-items:center;gap:5px;padding:3px 10px;border-radius:7px;border:1px solid color-mix(in oklab,var(--accent) 40%,transparent);background:color-mix(in oklab,var(--accent) 12%,transparent);color:var(--accent);font-weight:600;font-size:12px;cursor:pointer">⟳ Reconnect</button>`
     : '';
   let banner='';
-  if(lost && auto) banner=`<div style="background:color-mix(in oklab,var(--amber) 12%,transparent);border:1px solid color-mix(in oklab,var(--amber) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ Connection lost — <b>automatically reconnected</b>. This is a new shell: your previous history, on-screen output and any running job were lost.</div>`;
-  else if(lost) banner=`<div style="background:color-mix(in oklab,var(--red) 10%,transparent);border:1px solid color-mix(in oklab,var(--red) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ <b>Connection lost.</b> Reconnecting opens a <b>new shell</b> (history & on-screen output are lost) — use <b>Reconnect ↗</b> when you're ready.</div>`;
+  // A layout asked for a machine we could not open. The pane works — it just is not
+  // the pane that was asked for, and nothing else on screen would ever say so.
+  if(opts.warn) banner=`<div class="pane-warn"><span>⚠</span><span>${opts.warn}</span></div>`;
+  if(lost && auto) banner+=`<div style="background:color-mix(in oklab,var(--amber) 12%,transparent);border:1px solid color-mix(in oklab,var(--amber) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ Connection lost — <b>automatically reconnected</b>. This is a new shell: your previous history, on-screen output and any running job were lost.</div>`;
+  else if(lost) banner+=`<div style="background:color-mix(in oklab,var(--red) 10%,transparent);border:1px solid color-mix(in oklab,var(--red) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ <b>Connection lost.</b> Reconnecting opens a <b>new shell</b> (history & on-screen output are lost) — use <b>Reconnect ↗</b> when you're ready.</div>`;
   const body = opts.lines
     ? `${banner}<div class="ln di"># ${opts.cmd || ''}</div>${opts.lines.map((l)=>`<div class="ln di">${l}</div>`).join('')}<div class="ln"><span class="pr">${who} ~ ❯</span> <span class="cursor"></span></div>`
     : (lost && auto)
