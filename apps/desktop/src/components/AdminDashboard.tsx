@@ -128,6 +128,10 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
           </span>
         )}
         <span className="m-spacer" />
+        {/* No Teams/Collections nav here, unlike the other overlay pages (accountsNav.tsx):
+            this console's own left rail already says Teams and Collections — the
+            organisation's, not yours — and the same two words twice on one screen, meaning
+            two different things, is worse than a Close. */}
         {!hideBack && (
           <button onClick={() => navigate('/')} className="m-btn m-btn-sm" title="Close — back to the app (Esc)">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

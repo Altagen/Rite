@@ -820,3 +820,81 @@ for (const shell of ['web', 'desktop'] as const) {
     expect(errs, 'the mock must not log errors').toEqual([]);
   });
 }
+
+/**
+ * An overlay page carries the nav, so you travel without closing first.
+ *
+ * Teams, Collections and Notifications are pages you move between, and their bar used
+ * to hold Close and your avatar and nothing else: Collections → Teams meant closing,
+ * then finding the button you had just left. The bar is the emptiest in the app, so
+ * the nav costs nothing to carry, and Close stays where it was for the trip back to
+ * the terminals.
+ *
+ * The admin console is the deliberate exception: its own left rail already says Teams
+ * and Collections — the organisation's, not yours — and the same two words twice on one
+ * screen, meaning two different things, is worse than a Close.
+ */
+for (const page_ of ['collections', 'teams', 'notifications'] as const) {
+  test(`mock: the ${page_} page carries the nav, with its own entry marked`, async ({ page }) => {
+    const errs = watchErrors(page);
+    await page.goto(mock(page_));
+
+    const nav = page.locator('#onav button');
+    // Teams, Collections, Administration (this account is an admin), and the bell —
+    // except on the inbox page itself, where a bell would open what you are reading.
+    await expect(nav).toHaveCount(page_ === 'notifications' ? 3 : 4);
+    await expect(nav.filter({ hasText: 'Teams' })).toHaveCount(1);
+    await expect(nav.filter({ hasText: 'Collections' })).toHaveCount(1);
+    await expect(nav.filter({ hasText: 'Administration' })).toHaveCount(1);
+
+    // The entry for this page is marked and goes nowhere: it is where you are. Dropping
+    // it instead would shift the other two under the cursor on every hop.
+    //
+    // The inbox is the exception and has nothing marked, because it is not one of the
+    // three: you reach it from the bell, and the bell is not a nav entry.
+    const here = page.locator('#onav [aria-current="page"]');
+    if (page_ === 'notifications') {
+      await expect(here).toHaveCount(0);
+    } else {
+      await expect(here).toHaveCount(1);
+      await expect(here).toHaveText(new RegExp(page_, 'i'));
+      await expect(here).toHaveClass(/nav-on/);
+      await expect(here).not.toHaveAttribute('onclick', /./);
+    }
+
+    // Close is untouched — the nav is what was missing, not what replaces it.
+    await expect(page.locator('.appbar button', { hasText: 'Close' })).toHaveCount(1);
+    expect(errs, 'the mock must not log errors').toEqual([]);
+  });
+}
+
+test('mock: the nav travels between the overlay pages, and the console does not carry it', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('collections'));
+
+  // One hop, no Close in between — the whole point.
+  await page.locator('#onav button', { hasText: 'Teams' }).click();
+  await expect(page).toHaveURL(/teams\.html$/);
+  await expect(page.locator('#onav [aria-current="page"]')).toHaveText(/Teams/);
+
+  // Administration is a role gate, not decoration: a plain user is not offered it.
+  const asUser = await page.evaluate(() => {
+    const me = ORG.users.find((u: { u: string }) => u.u === ME)!;
+    const was = me.role;
+    me.role = 'user';
+    const html = overlayNavHTML('teams');
+    me.role = was;
+    return html;
+  });
+  expect(asUser).not.toContain('Administration');
+  expect(asUser).toContain('Collections');
+
+  // The console is the exception, on purpose.
+  await page.goto(mock('admin'));
+  await expect(page.locator('#onav')).toHaveCount(0);
+  await expect(page.locator('.appbar button', { hasText: 'Collections' })).toHaveCount(0);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});

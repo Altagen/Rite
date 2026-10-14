@@ -238,6 +238,23 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
 .prefs-pane>.lede{color:var(--muted);font-size:12.5px;margin:0 0 12px;line-height:1.5}
 .prefs-pane .settings-row:last-child{border-bottom:none}
 
+/* ===== the accounts nav, carried by every surface ===== */
+/* Teams, Collections and Administration are pages you travel between, so the nav that
+   reaches them belongs in the bar of each one, not only in the workspace's. Before
+   this, an overlay's bar held Close and your avatar and nothing else: going from
+   Collections to Teams meant closing first, which is a click spent on getting back to
+   a bar you were about to use. */
+/* The page you are already on. MARKED rather than dropped: a nav that hides its own
+   entry shifts the others under your cursor as you travel. */
+.btn.nav-on{background:color-mix(in oklab,var(--accent) 15%,transparent);
+  border-color:color-mix(in oklab,var(--accent) 35%,transparent);color:var(--fg);cursor:default}
+.btn.nav-on:hover{background:color-mix(in oklab,var(--accent) 15%,transparent);
+  border-color:color-mix(in oklab,var(--accent) 35%,transparent)}
+/* The bell's unread dot. It lived inside web.html, which was fine while the bell did
+   too; the overlays carry the same bell now, so the rule is shared. */
+.notif{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;
+  background:var(--amber);box-shadow:0 0 0 2px var(--bg)}
+
 /* ===== layouts: the cards first, then the file ===== */
 /* The startup switch on a card. A checkbox, because the file lets several layouts
    open at once — a radio would be a narrower format pretending to be a widget. */

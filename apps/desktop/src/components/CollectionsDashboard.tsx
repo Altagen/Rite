@@ -5,7 +5,7 @@
  * matching design/mock/collections.html.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { CollectionsPanel } from './CollectionsPanel';
 import { DiscoverPanel } from './DiscoverPanel';
@@ -15,9 +15,11 @@ import riteLogo from '../assets/rite.png';
 export function CollectionsDashboard() {
   const { mode } = useServerSession();
   const [tab, setTab] = useState<'mine' | 'discover'>('mine');
+  // The header, for OverflowNav's fit measurement (see OverlayHeaderControls).
+  const appbarRef = useRef<HTMLElement>(null);
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
-      <header className="m-appbar">
+      <header ref={appbarRef} className="m-appbar m-appbar-fit">
         <div className="m-brand flex items-center gap-2.5">
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
@@ -28,7 +30,7 @@ export function CollectionsDashboard() {
           </span>
         )}
         <span className="m-spacer" />
-        <OverlayHeaderControls />
+        <OverlayHeaderControls appbarRef={appbarRef} />
       </header>
       <nav className="flex gap-1 border-b border-border bg-input px-4 pt-1.5">
         {(['mine', 'discover'] as const).map((t) => (

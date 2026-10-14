@@ -23,8 +23,7 @@ import { AccessRequestsBell } from './AccessRequestsInbox';
 import { ForcePasswordChange } from './ForcePasswordChange';
 import { Settings } from './Settings';
 import { useSettingsModal } from '../store/settingsModal';
-import { IconCollection, IconShield, IconUsers } from './icons';
-import { isNativeShell } from '../utils/nativeShell';
+import { useAccountsNav } from './accountsNav';
 
 /** Reload without the password left no keys in RAM — re-auth to decrypt. */
 function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
@@ -52,6 +51,9 @@ export function AccountsShell() {
   const path = useRoutePath();
   const settingsOpen = useSettingsModal((s) => s.open);
   const setSettingsOpen = useSettingsModal((s) => s.setOpen);
+  // The one nav list, shared with every overlay page's bar (accountsNav.tsx). Called
+  // here with the other hooks, above the early returns below.
+  const nav = useAccountsNav();
   if (!user) return null;
 
   // A user without the unwrapped vault key (token-only resume) must re-auth.
@@ -104,35 +106,7 @@ export function AccountsShell() {
         conns={conns}
         instanceName={mode?.instanceName}
         identity={{ username: user.username, role: user.role }}
-        navActions={[
-          {
-            id: 'teams',
-            label: 'Teams',
-            icon: <IconUsers className="h-4 w-4" />,
-            onClick: () => navigate('/teams'),
-          },
-          {
-            id: 'collections',
-            label: 'Collections',
-            title: 'Collections — yours + Discover (offered to your teams)',
-            icon: <IconCollection className="h-4 w-4" />,
-            onClick: () => navigate('/collections'),
-          },
-          ...(canManage
-            ? [
-                {
-                  id: 'admin',
-                  label: isNativeShell() || user.role === 'manager' ? 'Organization' : 'Admin',
-                  title:
-                    isNativeShell() || user.role === 'manager'
-                      ? 'Organization (server settings are in the web console)'
-                      : 'Administration',
-                  icon: <IconShield className="h-4 w-4" />,
-                  onClick: () => navigate('/admin'),
-                },
-              ]
-            : []),
-        ]}
+        navActions={nav}
         headerExtra={<AccessRequestsBell />}
       />
       {path === '/teams' && <TeamsDashboard />}

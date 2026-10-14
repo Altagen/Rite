@@ -6,7 +6,7 @@
  * view. Mirrors design/mock/teams.html.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Backend,
   type UserTeam,
@@ -119,9 +119,11 @@ export function TeamsDashboard() {
   // A member (not the last manager) can leave; the last manager is locked.
   const iAmLastManager = iManage && managerCount <= 1;
 
+  // The header, for OverflowNav's fit measurement (see OverlayHeaderControls).
+  const appbarRef = useRef<HTMLElement>(null);
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
-      <header className="m-appbar">
+      <header ref={appbarRef} className="m-appbar m-appbar-fit">
         <div className="m-brand flex items-center gap-2.5">
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
@@ -132,7 +134,7 @@ export function TeamsDashboard() {
           </span>
         )}
         <span className="m-spacer" />
-        <OverlayHeaderControls />
+        <OverlayHeaderControls appbarRef={appbarRef} />
       </header>
 
       <div className="flex min-h-0 flex-1">

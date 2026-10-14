@@ -7,7 +7,7 @@
  * today is a collection access request).
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { useAccessRequests } from '../store/accessRequests';
 import { RequestRow } from './AccessRequestsInbox';
@@ -29,9 +29,11 @@ export function NotificationsDashboard() {
   if (safePage !== page) setPage(safePage);
   const slice = requests.slice(safePage * PER_PAGE, safePage * PER_PAGE + PER_PAGE);
 
+  // The header, for OverflowNav's fit measurement (see OverlayHeaderControls).
+  const appbarRef = useRef<HTMLElement>(null);
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
-      <header className="m-appbar">
+      <header ref={appbarRef} className="m-appbar m-appbar-fit">
         <div className="m-brand flex items-center gap-2.5">
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
@@ -42,7 +44,7 @@ export function NotificationsDashboard() {
           </span>
         )}
         <span className="m-spacer" />
-        <OverlayHeaderControls />
+        <OverlayHeaderControls appbarRef={appbarRef} />
       </header>
 
       <main className="min-w-0 flex-1 overflow-y-auto px-6 py-7">

@@ -180,6 +180,20 @@ the same structure, so a split, a preset or a layout is **one** feature rather t
 two implementations of it — exactly what `apps/desktop/src/panes/registry.ts` buys in
 the real client.
 
+### An overlay page carries the nav
+
+Teams, Collections and Notifications are **pages you travel between**, and their bar used
+to hold Close and your avatar and nothing else: Collections → Teams meant Close, then
+finding the button you had just left. The bar is the emptiest one in the app, so the nav
+rides along — Teams / Collections / Administration + the bell — and **Close stays exactly
+where it was** for the trip back to the terminals.
+
+The page you are on is **marked, not dropped**: hiding the current entry would shift the
+other two under the cursor on every hop. Two deliberate exceptions: the **inbox** page
+has no bell (it *is* the inbox), and the **admin console** carries no nav at all — its own
+left rail already says Teams and Collections, the organisation's rather than yours, and
+the same two words twice on one screen is worse than a Close.
+
 ### Skills, commands and hooks — read-only, on purpose
 
 The product is the answer to **"what is actually in effect?"**, which no tool gives
@@ -249,7 +263,9 @@ its agents the way you come at its containers.
   server's own host, what a broken adapter says — is identical in both, on purpose.
 - `rite.css` — shared design tokens + components (dark, terminal-forward).
 - `rite.js` — shared helpers (toast, modal, mini-terminal) + generic dialogs.
-- `full-data.js` — mock data (org directory, teams, collections) + extra icons.
+- `full-data.js` — mock data (org directory, teams, collections), extra icons, and
+  `overlayNavHTML()` — the **one** Teams / Collections / Administration list, so the
+  workspace bar and each overlay page's bar cannot disagree about what exists.
 
 ## Model it encodes (see the `rite-ux-target` project memory for the full rationale)
 - **Base-first**: local terminal + Quick SSH work with no auth.

@@ -762,3 +762,59 @@ test('the probing cards refresh on their own, never faster than the client floor
     data: { webui: true, clients: true, minInterval: 30 },
   });
 });
+
+/**
+ * An overlay page carries the nav, so Collections → Teams costs no Close.
+ *
+ * Teams, Collections and the console are pages you travel between, and an overlay's bar
+ * used to hold Close and the identity pastille and nothing else: every hop was Close,
+ * then find the button you had just left. The bar is the emptiest one in the app, so the
+ * nav costs nothing to carry, and Close stays where it was for the trip back.
+ *
+ * `design/mock/full-data.js` (`overlayNavHTML`) is the same list in the prototype, and
+ * `mock.spec.ts` holds it to the same rules.
+ */
+test('an overlay page carries the nav, and Close still returns to the terminals', async ({ page }) => {
+  // Wide enough that OverflowNav keeps the entries inline: this test is about what the
+  // bar offers, not about when it folds into "⋯".
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  // Independent of what ran before: bootstrap on a fresh server, sign in otherwise.
+  if (await page.getByText('Create the server administrator').isVisible().catch(() => false)) {
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /create administrator/i }).click();
+  } else {
+    await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+  }
+  await expectWorkspace(page);
+
+  // The overlay's own bar, not the workspace's behind it.
+  const bar = page.locator('.fixed.inset-0.z-50 > header.m-appbar');
+  await page.getByRole('button', { name: 'Collections', exact: true }).click();
+  await expect(bar).toHaveCount(1);
+
+  // The page you are on is marked, and goes nowhere. Dropping the entry instead would
+  // shift the other two under the cursor on every hop.
+  const here = bar.locator('[aria-current="page"]');
+  await expect(here).toHaveCount(1);
+  await expect(here).toHaveText(/Collections/);
+  await expect(here).toHaveClass(/nav-on/);
+  // Marked, and it looks it: `navigate()` already no-ops on the path you are on, so the
+  // cursor is the part a reader can see.
+  await expect(here).toHaveCSS('cursor', 'default');
+
+  // One hop, no Close in between — the whole point.
+  await bar.getByRole('button', { name: 'Teams', exact: true }).click();
+  await expect(page.locator('.fixed.inset-0.z-50 > header.m-appbar [aria-current="page"]')).toHaveText(/Teams/);
+  // …and the admin console is reachable from here too, by the name this shell gives it.
+  await expect(bar.getByRole('button', { name: /^(Admin|Organization)$/ })).toHaveCount(1);
+
+  // Close is untouched: the nav is what was missing, not what replaces it.
+  await bar.getByRole('button', { name: /^close$/i }).click();
+  await expect(page.locator('.fixed.inset-0.z-50 > header.m-appbar')).toHaveCount(0);
+  await expectWorkspace(page);
+});

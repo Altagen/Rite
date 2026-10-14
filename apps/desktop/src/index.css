@@ -127,6 +127,16 @@
     font-size: 13px;
     border-radius: 7px;
   }
+  /* The nav entry for the surface you are already on (design/mock/rite.css .btn.nav-on).
+     Marked rather than dropped: a nav that hides its own entry shifts the others under
+     the cursor each time you move. */
+  .m-btn.nav-on,
+  .m-btn.nav-on:hover {
+    background: hsl(var(--primary) / 0.15);
+    border-color: hsl(var(--primary) / 0.35);
+    color: hsl(var(--foreground));
+    cursor: default;
+  }
 
   /* pill / chip + status dot + tag */
   .m-chip {
