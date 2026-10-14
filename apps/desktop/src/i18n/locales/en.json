@@ -452,6 +452,7 @@
     "fellBackMissing": "{machine} isn't in your library — renamed, or from another computer. This pane opened a plain shell.",
     "fellBackPreconnect": "{machine}'s pre-connect hook did not pass, so this pane opened a plain shell.",
     "fellBackFailed": "{machine} would not open ({why}), so this pane opened a plain shell.",
-    "startupHint": "Set startup = true on a layout in the file and it opens itself when Rite starts."
+    "startupHint": "Tick “at startup” and the layout opens itself when Rite starts — several may, each in its own tabs. The switch writes startup into the file.",
+    "noneYet": "No layouts yet. Open the file and describe what should open when you sit down."
   }
 }

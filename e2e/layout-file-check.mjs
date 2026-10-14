@@ -25,6 +25,7 @@ import {
   parseLayoutFile,
   formatLayoutFile,
   replacePresetBlocks,
+  setLayoutStartup,
   planLayout,
   paneLabel,
 } from '../apps/desktop/src/store/layoutsFormat.ts';
@@ -530,6 +531,102 @@ check('two scattered preset blocks collapse into one library', () => {
   );
   assert.deepEqual(parse.presets.map((p) => p.name), ['A', 'B']);
   assert.equal(parse.layouts.length, 1);
+});
+
+console.log('\nthe startup switch, spliced into the file:');
+
+// The file the toggle will actually meet: comments, blank lines, indentation, and a
+// layout that already declares the key.
+const WITH_STARTUP = `# my workspace
+[[preset]]
+name = "Load"
+command = "top"
+
+[[layout]]
+name = "Morning"
+startup = true
+
+  [[layout.pane]]
+  command = "uptime"
+
+[[layout]]
+name = "Warroom"   # the big one
+
+  [[layout.pane]]
+  command = "top"
+`;
+
+check('turning it on adds the key under name', () => {
+  const out = setLayoutStartup(WITH_STARTUP, 1, true);
+  assert.match(out, /name = "Warroom".*\nstartup = true\n/);
+  const parse = parseLayoutFile(out);
+  assert.equal(parse.error, null, JSON.stringify(parse.error));
+  assert.deepEqual(parse.layouts.map((l) => l.startup), [true, true]);
+});
+
+check('turning it off removes the key rather than writing false', () => {
+  const out = setLayoutStartup(WITH_STARTUP, 0, false);
+  assert.ok(!out.includes('startup'), 'the key should be gone, not set to false');
+  assert.deepEqual(parseLayoutFile(out).layouts.map((l) => l.startup), [false, false]);
+});
+
+check('turning it on when it is already on changes nothing that matters', () => {
+  const out = setLayoutStartup(WITH_STARTUP, 0, true);
+  assert.deepEqual(parseLayoutFile(out).layouts.map((l) => l.startup), [true, false]);
+});
+
+check('turning it off when it is already off is a no-op', () => {
+  assert.equal(setLayoutStartup(WITH_STARTUP, 1, false), WITH_STARTUP);
+});
+
+check('the comments, the preset and the other layout survive the edit', () => {
+  const out = setLayoutStartup(WITH_STARTUP, 1, true);
+  assert.ok(out.startsWith('# my workspace'), 'the preamble comment');
+  assert.ok(out.includes('# the big one'), 'a trailing comment on the line above');
+  assert.ok(out.includes('name = "Load"'), 'the preset block');
+  assert.equal(parseLayoutFile(out).presets.length, 1);
+  // Exactly one line added, and it is the one we asked for. Counted rather than
+  // diffed: the file already carries one `startup = true`, so a set difference
+  // reports nothing and would pass against a splicer that added no line at all.
+  const lineCount = (text, want) => text.split('\n').filter((l) => l === want).length;
+  assert.equal(out.split('\n').length, WITH_STARTUP.split('\n').length + 1);
+  assert.equal(lineCount(WITH_STARTUP, 'startup = true'), 1);
+  assert.equal(lineCount(out, 'startup = true'), 2);
+});
+
+check('it targets the position in the file, not the name', () => {
+  const twins = '[[layout]]\nname = "Same"\n\n  [[layout.pane]]\n  command = "a"\n\n[[layout]]\nname = "Same"\n\n  [[layout.pane]]\n  command = "b"\n';
+  const out = setLayoutStartup(twins, 1, true);
+  assert.deepEqual(parseLayoutFile(out).layouts.map((l) => l.startup), [false, true]);
+});
+
+check('a layout with no name takes the key under its header', () => {
+  const out = setLayoutStartup('[[layout]]\n\n  [[layout.pane]]\n  command = "a"\n', 0, true);
+  assert.match(out, /^\[\[layout\]\]\nstartup = true\n/);
+});
+
+check('an index no layout occupies leaves the file alone', () => {
+  assert.equal(setLayoutStartup(WITH_STARTUP, 7, true), WITH_STARTUP);
+  assert.equal(setLayoutStartup(WITH_STARTUP, -1, true), WITH_STARTUP);
+});
+
+check('a key after the first pane is not mistaken for the layout own key', () => {
+  // `startup` is a layout key; a pane cannot carry it, so the scan must stop at the
+  // first [[layout.pane]]. If it did not, this would edit the pane's line.
+  const sneaky = '[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  command = "a"\n  startup = true\n';
+  const out = setLayoutStartup(sneaky, 0, true);
+  assert.match(out, /name = "A"\nstartup = true/);
+  assert.ok(out.includes('  startup = true'), 'the pane line is left exactly as it was');
+});
+
+check('indentation follows the line the key is written under', () => {
+  const indented = '[[layout]]\n  name = "A"\n\n  [[layout.pane]]\n  command = "a"\n';
+  assert.ok(setLayoutStartup(indented, 0, true).includes('\n  startup = true'));
+});
+
+check('an empty file is not a crash', () => {
+  assert.equal(setLayoutStartup('', 0, true), '');
+  assert.equal(setLayoutStartup(null, 0, true), '');
 });
 
 console.log(`\n${passed} checks passed`);

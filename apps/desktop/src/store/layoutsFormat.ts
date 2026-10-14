@@ -483,6 +483,70 @@ export function replacePresetBlocks(text: string, presets: Preset[]): string {
   return out.join('\n');
 }
 
+/**
+ * Turn one layout's `startup` on or off, touching nothing else in the file.
+ *
+ * Same contract as `replacePresetBlocks`, for the same reason: the file is written and
+ * commented by hand, so an edit made from the UI splices one key rather than
+ * regenerating the document and throwing away the comments and the order someone
+ * chose. The target is the layout's **position in the file**, not its name — two
+ * layouts may legitimately share a name, and the position is what the parse returns.
+ *
+ * Switching it off removes the line rather than writing `startup = false`, which
+ * matches what `formatLayoutFile` emits and keeps the file free of a key that states
+ * the default. Switching it on adds the line under `name`, where the documentation
+ * shows it.
+ *
+ * An index no layout occupies returns the text unchanged: the file may have been
+ * edited under the dialog, and silently rewriting the wrong layout would be worse
+ * than doing nothing.
+ */
+export function setLayoutStartup(text: string, index: number, startup: boolean): string {
+  const lines = (text ?? '').split('\n');
+  const isHeader = (line: string) => stripComment(line).trim().startsWith('[');
+  const keyOf = (line: string) =>
+    /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(stripComment(line).trim())?.[1];
+
+  // Find the header that opens the layout we were asked about.
+  let seen = -1;
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (stripComment(lines[i]).trim() !== '[[layout]]') continue;
+    seen++;
+    if (seen === index) {
+      start = i;
+      break;
+    }
+  }
+  if (start < 0) return text ?? '';
+
+  // Its keys run to the next table — `[[layout.pane]]` included, which is exactly
+  // right: `startup` belongs to the layout, so it cannot live past the first pane.
+  let end = start + 1;
+  while (end < lines.length && !isHeader(lines[end])) end++;
+
+  const at = lines.slice(start + 1, end).findIndex((l) => keyOf(l) === 'startup');
+  const out = lines.slice();
+
+  if (at >= 0) {
+    if (startup) out[start + 1 + at] = indentOf(lines[start + 1 + at]) + 'startup = true';
+    else out.splice(start + 1 + at, 1);
+    return out.join('\n');
+  }
+  if (!startup) return text ?? '';
+
+  // No key yet: under `name` if there is one, otherwise straight under the header.
+  const nameAt = lines.slice(start + 1, end).findIndex((l) => keyOf(l) === 'name');
+  const insertAt = nameAt >= 0 ? start + 2 + nameAt : start + 1;
+  out.splice(insertAt, 0, indentOf(lines[insertAt - 1]) + 'startup = true');
+  return out.join('\n');
+}
+
+/** The leading whitespace of a line, so a spliced key lines up with its neighbours. */
+function indentOf(line: string): string {
+  return /^\s*/.exec(line ?? '')?.[0] ?? '';
+}
+
 /** The pane header a layout asks for, when it does not name one itself. */
 export function paneLabel(pane: LayoutPane): string {
   if (pane.name?.trim()) return pane.name.trim();

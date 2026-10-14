@@ -19,6 +19,7 @@ import {
   parseLayoutFile,
   formatLayoutFile,
   replacePresetBlocks,
+  setLayoutStartup,
   type Layout,
   type LayoutError,
   type Preset,
@@ -131,6 +132,8 @@ interface LayoutsState {
   save: (text: string) => Promise<LayoutError | null>;
   /** Rewrite just the `[[preset]]` blocks, leaving the rest of the file as typed. */
   savePresets: (presets: Preset[]) => Promise<void>;
+  /** Turn one layout's `startup` on or off, by its position in the file. */
+  setStartup: (index: number, startup: boolean) => Promise<void>;
 }
 
 /** The presets to offer: what the file declares, or the shipped two when the file
@@ -193,6 +196,12 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
     await get().save(replacePresetBlocks(get().text, presets));
   },
 
+  // By position, because that is what the file has: `Layout.id` is assigned by the
+  // parse (`l1`, `l2`, …) and means nothing to the document.
+  setStartup: async (index: number, startup: boolean) => {
+    await get().save(setLayoutStartup(get().text, index, startup));
+  },
+
   save: async (text: string) => {
     const parse = parseLayoutFile(text);
     // The text is saved even when it does not parse: it is the user's file, and
@@ -208,8 +217,3 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
     return parse.error;
   },
 }));
-
-/** The layouts marked `startup = true`, in file order. */
-export function startupLayouts(layouts: Layout[]): Layout[] {
-  return layouts.filter((l) => l.startup);
-}

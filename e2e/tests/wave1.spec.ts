@@ -804,3 +804,124 @@ test('settings are reachable with the vault locked', async ({ page, request }) =
   await expect(page.getByTestId('settings-nav-password')).toBeVisible();
   await expect(page.getByTestId('settings-nav-danger')).toBeVisible();
 });
+
+/**
+ * Settings ▸ Layouts leads with what you have, and the switch writes the file.
+ *
+ * The section used to be a heading, a paragraph and a button that sent you to the
+ * editor — while the only answer to "what do I have" was inside that editor, below a
+ * textarea. The cards are the section now, and the editor is for changing the file.
+ *
+ * The switch is the part worth pinning: it must change the FILE, not just the view.
+ * A toggle that only moved a checkbox would look identical in the UI and be gone on
+ * the next launch, which is the one thing a startup setting must not be.
+ */
+test('Settings leads with the layout cards, and the startup switch writes the file', async ({
+  page,
+  request,
+}) => {
+  await request.put('/api/layouts', { data: { value: '' } });
+
+  await page.goto('/');
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-layouts').click();
+
+  // Nothing in the file: say so plainly. "No layouts" and "your file has a typo" are
+  // different facts and used to look the same here — both were simply nothing.
+  await expect(page.getByTestId('settings-layouts-empty')).toBeVisible();
+  await expect(page.getByTestId('layout-cards')).toHaveCount(0);
+
+  await page.getByTestId('open-layouts-settings').click();
+  const editor = page.getByRole('dialog', { name: 'Layouts' });
+  await editor.getByTestId('layouts-file').fill(
+    '[[layout]]\nname = "Alpha"\n\n  [[layout.pane]]\n  command = "echo A"\n\n' +
+      '[[layout]]\nname = "Beta"\n\n  [[layout.pane]]\n  command = "echo B"\n',
+  );
+  await editor.getByTestId('layouts-save').click();
+  await expect(editor.getByTestId('layouts-ok')).toContainText('2 layout');
+  await editor.getByRole('button', { name: 'Close', exact: true }).click();
+
+  // Back in the section, without reopening anything: the cards are the first thing.
+  const cards = page.getByTestId('layout-cards');
+  await expect(cards).toBeVisible();
+  await expect(cards).toContainText('Alpha');
+  await expect(cards).toContainText('Beta');
+
+  // The switch, on the second layout only.
+  await expect(page.getByTestId('startup-toggle-0')).not.toBeChecked();
+  await expect(page.getByTestId('startup-toggle-1')).not.toBeChecked();
+  // `click`, not `check`: the box is controlled by the store, which is only true once
+  // the file has been written, so the state that matters arrives a round trip after
+  // the click. The auto-retrying assertion is the one that states that contract.
+  await page.getByTestId('startup-toggle-1').click();
+  await expect(page.getByTestId('startup-toggle-1')).toBeChecked();
+  await expect(page.getByTestId('startup-toggle-0')).not.toBeChecked();
+
+  // And in the file itself — read back from the server, because a startup setting
+  // that lives only in this tab's memory is the one kind that cannot work.
+  const saved = await (await request.get('/api/layouts')).json();
+  expect(saved.text).toContain('name = "Beta"\nstartup = true');
+  expect(saved.text).not.toContain('name = "Alpha"\nstartup = true');
+  // Spliced, not regenerated: the rest of the file is exactly as it was typed.
+  expect(saved.text).toContain('  [[layout.pane]]\n  command = "echo A"');
+
+  // Off again removes the key rather than writing `startup = false`.
+  await page.getByTestId('startup-toggle-1').click();
+  await expect(page.getByTestId('startup-toggle-1')).not.toBeChecked();
+  const cleared = await (await request.get('/api/layouts')).json();
+  expect(cleared.text).not.toContain('startup');
+
+  // A file that does not parse is reported in the section, with its line — not only
+  // behind the button, where you would go looking for layouts and find none.
+  await request.put('/api/layouts', {
+    data: { value: '[[layout]]\nname = "X"\n\n  [[layout.pane]]\n  size = 40\n' },
+  });
+  await page.reload();
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-layouts').click();
+  await expect(page.getByTestId('settings-layouts-error')).toContainText('Line 5');
+  await expect(page.getByTestId('settings-layouts-empty')).toHaveCount(0);
+});
+
+/**
+ * The layouts menu stays on screen, wherever its button is.
+ *
+ * The empty state puts the Layouts button at the vertical centre — the first button
+ * in this app not in a header — and the menu was placed with `rect.bottom + 4` and no
+ * reference to the viewport height, so it opened below mid-screen, ran past the bottom
+ * edge, and scrolled inside a region that was itself off screen. With enough layouts
+ * the last ones were unreachable. `placeMenu` owns the rule now; this holds the
+ * result in a real browser, which the standalone check cannot do.
+ */
+test('the layouts menu fits on screen when its button is mid-page', async ({ page, request }) => {
+  // Enough layouts that the menu wants more room than half a screen.
+  const many = Array.from(
+    { length: 12 },
+    (_, i) => `[[layout]]\nname = "L${i + 1}"\n\n  [[layout.pane]]\n  command = "echo ${i + 1}"\n`,
+  ).join('\n');
+  await request.put('/api/layouts', { data: { value: many } });
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/');
+
+  // No tabs: the button is the one in the empty state, vertically centred.
+  const button = page.getByTestId('layouts-button');
+  await expect(button).toBeVisible({ timeout: 20_000 });
+  const anchor = await button.boundingBox();
+  expect(anchor, 'the button should be laid out').toBeTruthy();
+  expect(anchor!.y, 'this test is only meaningful for a button away from the top').toBeGreaterThan(200);
+
+  await button.click();
+  const menu = page.getByTestId('layouts-menu');
+  await expect(menu).toBeVisible();
+
+  const box = await menu.boundingBox();
+  expect(box).toBeTruthy();
+  expect(box!.y, 'the menu starts on screen').toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height, 'and ends on screen').toBeLessThanOrEqual(720);
+
+  // The last layout is reachable: the regression was a scroll region below the fold.
+  const last = menu.getByText('L12', { exact: true });
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+});

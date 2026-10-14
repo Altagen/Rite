@@ -26,8 +26,13 @@ startup = true
 ```
 
 Presets are in the chevron beside a pane's divider, and in **Settings ▸ Split
-presets**. Layouts are on the **Layouts** button beside the tabs, in **Settings ▸
-Layouts**, or they open themselves at startup.
+presets**. Layouts are on the **Layouts** button beside the tabs — which also appears
+in the middle of an empty workspace, since a layout opens its own tabs — in **Settings
+▸ Layouts**, or they open themselves at startup.
+
+**Settings ▸ Layouts** leads with a card per layout: what it opens, in which tab, on
+which machine, resolved against the library you actually have. Editing the file is the
+button underneath.
 
 ## Why a file
 
@@ -37,9 +42,13 @@ two features, with two buttons — but they are the same kind of fact. They belo
 *this machine*, they are worth keeping in version control next to the rest of your
 setup, and nothing in them is a secret. That is a file.
 
-Both dialogs show you the file and save it back; so does your own editor. The preset
-dialog rewrites only the `[[preset]]` blocks, so your layouts, your comments and your
-blank lines survive an edit made with the mouse.
+Both dialogs show you the file and save it back; so does your own editor. The edits
+made with the mouse splice one thing and leave the rest as typed: the preset dialog
+rewrites only the `[[preset]]` blocks, and the startup switch rewrites only that one
+key. Your layouts, your comments and your blank lines survive either.
+
+Saving from the **file editor** is the exception, and the only one: it stores the whole
+textarea, so press **↻ Reload** before editing if the file may have changed under it.
 
 **On a shared server there is no file**, and no substitute — not a row in a settings
 table, which would be readable by that server and shared with every other account on
@@ -75,7 +84,7 @@ offers the plain split and your snippets.
 | Key | Type | Meaning |
 | --- | --- | --- |
 | `name` | string, **required** | What the menu shows, and the tab's name. |
-| `startup` | boolean | `true` opens this layout when Rite starts. Several layouts may set it; each opens its own tabs. |
+| `startup` | boolean | `true` opens this layout when Rite starts. Several layouts may set it; each opens its own tabs. The **at startup** switch on the card in Settings ▸ Layouts writes this key for you. |
 
 A layout opens **its own tabs**. It does not divide whatever happens to be on screen,
 which is what lets a file with eight panes produce exactly eight panes.

@@ -12,12 +12,16 @@
  * says so.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from '../i18n/i18n';
 import { useLayouts } from '../store/layouts';
+import { placeMenu } from '../utils/placeMenu';
 import { LayoutsModal } from './LayoutsModal';
 import type { Layout } from '../store/layoutsFormat';
+
+/** Matches the `w-[280px]` below: the placement rule needs the width as a number. */
+const MENU_WIDTH = 280;
 
 interface Props {
   /** Open a layout: one pane after another, in the active tab. */
@@ -31,8 +35,9 @@ export function LayoutsMenu({ onApplyLayout, connections, libraryReadable }: Pro
   const { layouts, error, loaded, load } = useLayouts();
   const [open, setOpen] = useState(false);
   const [configuring, setConfiguring] = useState(false);
-  const [at, setAt] = useState({ top: 0, left: 0 });
+  const [at, setAt] = useState({ top: 0, left: 0, maxHeight: 0 });
   const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!loaded) void load();
@@ -40,10 +45,34 @@ export function LayoutsMenu({ onApplyLayout, connections, libraryReadable }: Pro
 
   // Positioned from the button rather than anchored to it: the tab strip scrolls
   // horizontally and clips its own overflow, so a menu inside it gets cut off.
-  const place = () => {
+  //
+  // Where exactly is `placeMenu`'s to decide, not this component's. This used to be
+  // `top: r.bottom + 4` with no reference to the viewport height, which is fine for
+  // a button in a header and wrong for the one in the empty state, where the button
+  // is vertically centred: the list opened below mid-screen and ran off the bottom.
+  const place = (desiredHeight?: number) => {
     const r = btnRef.current?.getBoundingClientRect();
-    if (r) setAt({ top: r.bottom + 4, left: Math.max(8, r.right - 280) });
+    if (!r) return;
+    setAt(
+      placeMenu(
+        r,
+        // Before the menu exists there is nothing to measure, so the first pass asks
+        // for the most it could want and the effect below corrects it from the real
+        // content — in a layout effect, so the correction lands before paint.
+        { width: MENU_WIDTH, height: desiredHeight ?? Math.round(window.innerHeight * 0.7) },
+        { width: window.innerWidth, height: window.innerHeight },
+      ),
+    );
   };
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const measure = () => place(menuRef.current?.scrollHeight);
+    measure();
+    // A resize while the menu is open moves the button and changes the room.
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [open, layouts.length, error]);
 
   useEffect(() => {
     if (!open) return;
@@ -89,10 +118,12 @@ export function LayoutsMenu({ onApplyLayout, connections, libraryReadable }: Pro
           <>
             <div className="fixed inset-0 z-[100]" onClick={() => setOpen(false)} />
             <div
+              ref={menuRef}
               role="menu"
               aria-label={t('split.layoutsTitle')}
-              className="fixed z-[110] max-h-[70vh] w-[280px] overflow-auto rounded-lg border border-border bg-card p-1 shadow-xl"
-              style={{ top: `${at.top}px`, left: `${at.left}px` }}
+              data-testid="layouts-menu"
+              className="fixed z-[110] w-[280px] overflow-auto rounded-lg border border-border bg-card p-1 shadow-xl"
+              style={{ top: `${at.top}px`, left: `${at.left}px`, maxHeight: `${at.maxHeight}px` }}
             >
               {error && (
                 <button

@@ -452,6 +452,7 @@
     "fellBackMissing": "{machine} est absente de ta bibliothèque — renommée, ou venue d'un autre poste. Ce panneau a ouvert un shell simple.",
     "fellBackPreconnect": "Le hook pre-connect de {machine} n'est pas passé, donc ce panneau a ouvert un shell simple.",
     "fellBackFailed": "{machine} n'a pas pu s'ouvrir ({why}), donc ce panneau a ouvert un shell simple.",
-    "startupHint": "Mets startup = true sur une disposition dans le fichier et elle s'ouvrira au lancement de Rite."
+    "startupHint": "Cochez « au démarrage » et la disposition s’ouvre d’elle-même au lancement de Rite — plusieurs peuvent l’être, chacune dans ses propres onglets. L’interrupteur écrit startup dans le fichier.",
+    "noneYet": "Aucune disposition pour l’instant. Ouvrez le fichier et décrivez ce qui doit s’ouvrir quand vous vous installez."
   }
 }

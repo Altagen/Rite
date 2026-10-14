@@ -7,16 +7,16 @@
  * a file that does not parse keeps the layouts you already had, and says which line
  * stopped making sense.
  *
- * Underneath, what it opens, resolved against the library you actually have. The
- * interesting question is not "is my TOML valid" but "will this open what I think it
- * opens, on this computer, today" — so a machine the file names and the library does
- * not have is called out here, before you open the layout and find out.
+ * Underneath, what it opens, resolved against the library you actually have — the
+ * same cards `Settings ▸ Layouts` leads with now, from `LayoutCards`. They are
+ * read-only here: this screen holds an unsaved draft of the file in its textarea, and
+ * a startup switch that rewrote the file underneath would discard it.
  */
 
 import { useEffect, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { useLayouts } from '../store/layouts';
-import { paneLabel, planLayout, type Layout } from '../store/layoutsFormat';
+import { LayoutCards } from './LayoutCards';
 
 interface Props {
   onClose: () => void;
@@ -59,57 +59,6 @@ export function LayoutsModal({ onClose, connections, libraryReadable }: Props) {
       setBusy(false);
     }
   };
-
-  const known = new Set(connections.map((c) => c.name));
-  const paneWhere = (machine: string | undefined) => {
-    if (!machine) return { label: t('layouts.thisComputer'), ok: true };
-    if (!libraryReadable) return { label: `${machine} — ${t('layouts.needsVault')}`, ok: false };
-    if (!known.has(machine)) return { label: `${machine} — ${t('layouts.notInLibrary')}`, ok: false };
-    return { label: machine, ok: true };
-  };
-
-  const row = (layout: Layout) => (
-    <li key={layout.id} className="rounded border border-border bg-muted/40 px-2.5 py-2">
-      <div className="mb-1 flex items-center gap-2">
-        <span className="truncate text-sm font-medium">{layout.name}</span>
-        <span className="flex-none rounded border border-border px-1 text-[10px] font-semibold text-muted-foreground">
-          {t('split.panesCount', { count: layout.panes.length })}
-        </span>
-        {layout.startup && (
-          <span className="flex-none rounded border border-primary px-1 text-[10px] font-semibold text-primary">
-            {t('layouts.atStartup')}
-          </span>
-        )}
-      </div>
-      {/* Grouped the way it will open: a layout may name tabs, and a pane listed
-          under the wrong one would be the opposite of what this list is for. */}
-      {planLayout(layout).map((plan, p) => (
-        <div key={p}>
-          {plan.tab && (
-            <div className="pt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {t('layouts.inTab', { tab: plan.tab })}
-            </div>
-          )}
-          {plan.panes.map((pane, i) => {
-            const where = paneWhere(pane.machine);
-            return (
-              <div key={i} className="flex gap-2 py-0.5 text-xs">
-                <span
-                  className={`w-44 flex-none truncate ${where.ok ? 'text-muted-foreground' : 'text-amber-500'}`}
-                >
-                  {where.label}
-                </span>
-                <code className="min-w-0 flex-1 truncate font-mono text-muted-foreground">
-                  {pane.command || t('layouts.plainShell')}
-                </code>
-                <span className="flex-none text-muted-foreground">{paneLabel(pane)}</span>
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </li>
-  );
 
   return (
     <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 p-4">
@@ -201,7 +150,13 @@ export function LayoutsModal({ onClose, connections, libraryReadable }: Props) {
           <div className="mt-4 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             {t('layouts.whatItOpens')}
           </div>
-          <ul className="mt-1.5 flex flex-col gap-1.5">{layouts.map(row)}</ul>
+          <div className="mt-1.5">
+            <LayoutCards
+              layouts={layouts}
+              connections={connections}
+              libraryReadable={libraryReadable}
+            />
+          </div>
         </div>
       </div>
     </div>

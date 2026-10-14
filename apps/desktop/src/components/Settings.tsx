@@ -11,6 +11,7 @@ import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
 import { SplitsModal } from './SplitsModal';
 import { LayoutsModal } from './LayoutsModal';
+import { LayoutCards } from './LayoutCards';
 import { Dropdown } from './Dropdown';
 import { useToolbar, type ToolbarPrefs } from '../store/toolbar';
 import { useLayouts } from '../store/layouts';
@@ -156,6 +157,11 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   // Two libraries, two dialogs. They shared one and that is what made them look
   // like one feature.
   const hasWorkspaceFile = useLayouts((st) => st.available);
+  // The cards, and the switch that writes `startup` back into the file. Selected one
+  // by one so a change to the file's text does not re-render this whole dialog.
+  const fileLayouts = useLayouts((st) => st.layouts);
+  const layoutsError = useLayouts((st) => st.error);
+  const setLayoutStartup = useLayouts((st) => st.setStartup);
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [layoutsOpen, setLayoutsOpen] = useState(false);
 
@@ -534,14 +540,48 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
             </button>
           </section>
 
-          {/* Layouts: a file (docs/LAYOUTS.md). What opens, where, on which machine. */}
+          {/* Layouts: a file (docs/LAYOUTS.md). What opens, where, on which machine.
+              The cards lead, because the section used to be a title and a button that
+              sent you somewhere else, while what you wanted to know — what do I have
+              — was behind that button and below a textarea. */}
           <section hidden={shown !== 'layouts'} className="pb-2">
             <h3 className="mb-4 text-lg font-semibold">{t('layouts.title')}</h3>
             <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{t('layouts.lede')}</p>
+
+            {/* A broken file is reported where you look first, not only inside the
+                editor: "no layouts" and "your file has a typo on line 12" are very
+                different facts and used to look identical here. */}
+            {layoutsError && (
+              <p
+                className="mb-3 rounded border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed"
+                data-testid="settings-layouts-error"
+              >
+                <span className="font-semibold">{t('layouts.notLoaded')}</span>{' '}
+                {layoutsError.line > 0 ? t('layouts.atLine', { line: layoutsError.line }) : null}{' '}
+                {layoutsError.message}
+                <span className="mt-1 block text-muted-foreground">{t('layouts.keptRunning')}</span>
+              </p>
+            )}
+
+            {fileLayouts.length > 0 ? (
+              <LayoutCards
+                layouts={fileLayouts}
+                connections={connections ?? []}
+                libraryReadable={libraryReadable ?? false}
+                onToggleStartup={(index, on) => void setLayoutStartup(index, on)}
+              />
+            ) : (
+              !layoutsError && (
+                <p className="mb-3 text-xs text-muted-foreground" data-testid="settings-layouts-empty">
+                  {t('layouts.noneYet')}
+                </p>
+              )
+            )}
+
             <button
               type="button"
               onClick={() => setLayoutsOpen(true)}
-              className="rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+              className="mt-3 rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
               data-testid="open-layouts-settings"
             >
               {t('layouts.openFile')}
