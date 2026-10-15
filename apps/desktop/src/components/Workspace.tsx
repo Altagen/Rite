@@ -60,6 +60,7 @@ import {
   onCreateVault,
   type NativeVault,
 } from '../utils/nativeShell';
+import { SHELL_CANDIDATES } from '../utils/shells';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 import { CreateVaultDialog } from './CreateVaultDialog';
 import { transport } from '../utils/transport';
@@ -335,13 +336,10 @@ export function Workspace({
   // Installed shells state
   const [installedShells, setInstalledShells] = useState<string[]>([]);
 
-  // Define all possible shells for default shell selector
-  const shells = [
-    { name: 'Fish', path: '/usr/bin/fish', icon: '🐠' },
-    { name: 'Bash', path: '/usr/bin/bash', icon: '🐚' },
-    { name: 'Zsh', path: '/usr/bin/zsh', icon: '⚡' },
-    { name: 'Sh', path: '/usr/bin/sh', icon: '📜' },
-  ];
+  // The shells this picker offers. One list for the whole app (`utils/shells.ts`),
+  // which is also the mock's (design/mock/desktop.html SHELLS) — this is the second
+  // time these two have drifted, and last time it was the names and the icons.
+  const shells = SHELL_CANDIDATES;
 
   // Store Quick SSH connection info for later saving
   const [quickSSHConnections, setQuickSSHConnections] = useState<Map<string, QuickSSHConnectionInfo>>(new Map());
@@ -2479,8 +2477,11 @@ export function Workspace({
                     </div>
                     <span className="text-xs text-muted-foreground">{shell.path}</span>
                   </div>
-                  <span className={`text-lg ${settings.defaultShell === shell.path ? 'text-yellow-500' : 'text-muted-foreground/30'}`}>
-                    {settings.defaultShell === shell.path ? '⭐' : '☆'}
+                  {/* The default is marked, the others are not — and with the mock's ★,
+                      a text glyph, rather than ⭐, which is an emoji and therefore the
+                      platform's picture rather than this design's mark. */}
+                  <span className="text-lg text-yellow-500">
+                    {settings.defaultShell === shell.path ? '★' : ''}
                   </span>
                 </button>
               );

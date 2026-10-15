@@ -60,7 +60,7 @@ export function LayoutCards({ layouts, connections, libraryReadable, onToggleSta
               <label className="ml-auto flex flex-none items-center gap-1.5 text-[10px] font-semibold text-muted-foreground">
                 <input
                   type="checkbox"
-                  className="h-3 w-3 accent-primary"
+                  className="h-3 w-3"
                   checked={layout.startup}
                   onChange={(e) => onToggleStartup(index, e.target.checked)}
                   data-testid={`startup-toggle-${index}`}

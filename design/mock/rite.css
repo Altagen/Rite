@@ -11,6 +11,8 @@
      match the served app on every system — no divergent fallback (Roboto/Segoe). */
   --font:ui-sans-serif,system-ui,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
   --mono:ui-monospace,"JetBrains Mono","SFMono-Regular",Menlo,monospace;
+  /* A checkbox's tick, as a mask: it takes the box's colour and scales with it. */
+  --tick:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.8l5 5 10-10.6'/%3E%3C/svg%3E");
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
@@ -115,6 +117,22 @@ label.field{display:block;margin:12px 0}
 label.field span{display:block;font-size:12px;font-weight:600;color:var(--fg-dim);margin-bottom:6px}
 input.inp,select.inp{width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:9px;padding:10px 12px;color:var(--fg);font-family:inherit;font-size:14px}
 input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
+/* The controls an engine draws itself, drawn here instead. The app ships in two engines
+   from one bundle (WebKitGTK in the desktop window, the browser's own in a tab), so a
+   native checkbox or select button is the one thing guaranteed to look different in each.
+   Mirrors apps/desktop/src/index.css. What stays the engine's either way: a select's
+   OPEN list, which is why the palette declares color-scheme. */
+select{appearance:none;background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23858da3' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;background-size:13px;padding-right:30px}
+input[type=checkbox],input[type=radio]{appearance:none;flex:none;display:inline-grid;place-content:center;width:16px;height:16px;
+  border:1px solid var(--border2);background:var(--bg2);border-radius:5px}
+input[type=radio]{border-radius:50%}
+input[type=checkbox]:checked,input[type=radio]:checked{background:var(--accent);border-color:var(--accent)}
+input[type=checkbox]:checked::after,input[type=radio]:checked::after{content:'';width:100%;height:100%;background:var(--bg)}
+input[type=checkbox]:checked::after{-webkit-mask:var(--tick) center/72% 72% no-repeat;mask:var(--tick) center/72% 72% no-repeat}
+input[type=radio]:checked::after{-webkit-mask:radial-gradient(circle at center,#000 0 27%,transparent 28%);mask:radial-gradient(circle at center,#000 0 27%,transparent 28%)}
+input[type=number]{appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{appearance:none;margin:0}
 .strength{height:6px;border-radius:999px;background:var(--card2);margin-top:8px;overflow:hidden}
 .strength>i{display:block;height:100%;width:0;background:var(--green);transition:.2s}
 
@@ -264,7 +282,7 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
    open at once — a radio would be a narrower format pretending to be a widget. */
 .lay-startup{display:inline-flex;align-items:center;gap:4px;font-weight:600;font-size:10.5px;
   text-transform:lowercase;letter-spacing:0;color:var(--muted);cursor:pointer;margin-left:5px}
-.lay-startup input{accent-color:var(--accent);width:12px;height:12px;margin:0;cursor:pointer}
+.lay-startup input{width:12px;height:12px;margin:0;cursor:pointer}
 .lay-startup:hover{color:var(--fg)}
 .lay-path{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin:0 0 8px}
 .lay-path code{font-size:12px}

@@ -485,7 +485,7 @@ function CustomizeModal({
                     </span>
                   )}
                 </span>
-                <input type="checkbox" checked={!isHidden(id)} onChange={() => onToggle(id)} className="h-4 w-4 accent-primary" />
+                <input type="checkbox" checked={!isHidden(id)} onChange={() => onToggle(id)} className="h-4 w-4" />
               </label>
             );
           })}
