@@ -175,7 +175,7 @@
     },
     "toolbarHint": "Ce qui s'affiche en haut de la fenêtre. Masquer un bouton ne change rien à ce que tu as le droit de faire — le raccourci clavier et les menus y mènent toujours, et ce que ton serveur interdit reste interdit.",
     "toolbarShell": "Sélecteur de shell",
-    "toolbarShellDesc": "La liste à côté de Terminal, pour le shell qu'ouvre un nouveau terminal local.",
+    "toolbarShellDesc": "La liste à côté de Terminal, pour le shell qu'ouvre un nouveau terminal local. La masquer laisse le réglage lui-même dans Paramètres ▸ Terminaux.",
     "toolbarFocus": "Mode focus",
     "toolbarFocusDesc": "Le bouton F11. La touche fonctionne dans les deux cas.",
     "toolbarQuickSsh": "Quick SSH",

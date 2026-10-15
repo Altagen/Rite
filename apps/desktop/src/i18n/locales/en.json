@@ -175,7 +175,7 @@
     },
     "toolbarHint": "What sits along the top of the window. Hiding a button never changes what you're allowed to do — the keyboard shortcut and the menus still reach it, and what your server forbids stays forbidden.",
     "toolbarShell": "Shell picker",
-    "toolbarShellDesc": "The dropdown beside New Terminal, for the shell a new local terminal opens.",
+    "toolbarShellDesc": "The dropdown beside New Terminal, for the shell a new local terminal opens. Hiding it leaves the setting itself in Settings ▸ Terminals.",
     "toolbarFocus": "Focus mode",
     "toolbarFocusDesc": "The F11 button. The key works either way.",
     "toolbarQuickSsh": "Quick SSH",

@@ -767,6 +767,57 @@ test('a toolbar button can be hidden, and stays hidden', async ({ page }) => {
 });
 
 /**
+ * Hiding the toolbar's shell picker hides a button, not the setting.
+ *
+ * That switch is the one place where the difference matters most, because the thing it
+ * hides is the only *editor* on the toolbar: everything else there opens something that
+ * a menu or a shortcut also opens. The shell a new local terminal runs is set in two
+ * places on purpose (`utils/shells.ts` says why — they drifted once already), and the
+ * one in Settings ▸ Terminals has to keep working precisely when the toolbar's is off.
+ */
+test('hiding the toolbar shell picker leaves the setting in Settings', async ({ page, request }) => {
+  const before = ((await (await request.get('/api/settings')).json()) as Record<string, string>).default_shell;
+  await page.goto('/');
+  await expect(page.getByTitle('Select default shell')).toBeVisible();
+
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-toolbar').click();
+  await page.getByTestId('toolbar-shellPicker').click();
+  await expect(page.getByTestId('toolbar-shellPicker')).toHaveAttribute('aria-checked', 'false');
+
+  // Without closing the dialog: the picker is a section of its own, and it is still here.
+  await page.getByTestId('settings-nav-shell').click();
+  const choices = page.getByTestId('shell-choices').getByRole('button');
+  const count = await choices.count();
+  expect(count, 'this machine has at least one shell to offer').toBeGreaterThan(0);
+  // Whichever is not already the default, so the click has something to do.
+  let target = choices.first();
+  for (let i = 0; i < count; i++) {
+    if ((await choices.nth(i).getAttribute('aria-pressed')) !== 'true') {
+      target = choices.nth(i);
+      break;
+    }
+  }
+  const chosen = (await target.locator('code').innerText()).trim();
+  await target.click();
+  await expect(target).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Close settings' }).click();
+
+  // The button is gone, and the setting it used to edit took the change anyway.
+  await expect(page.getByTitle('Select default shell')).toHaveCount(0);
+  const stored = (await (await request.get('/api/settings')).json()) as Record<string, string>;
+  expect(stored.default_shell, 'the shell chosen in Settings is the one that is stored').toBe(chosen);
+
+  // Put the toolbar back, and the shell as it was, for the specs that follow.
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-toolbar').click();
+  await page.getByTestId('toolbar-shellPicker').click();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await expect(page.getByTitle('Select default shell')).toBeVisible();
+  if (before) await request.put('/api/settings/default_shell', { data: { value: before } });
+});
+
+/**
  * A locked vault does not take the preferences with it.
  *
  * Base-first (ADR 0014): this workspace runs local terminals and Quick SSH with no

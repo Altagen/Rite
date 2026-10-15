@@ -966,7 +966,7 @@ const PREFS=[
      not allowed to use is not the same promise as turning the rule off. */
   { id:'toolbar', label:'Toolbar', body:()=>
       `<h4>Toolbar</h4><p class="lede">What sits along the top of the window. Hiding a button never changes what you're allowed to do — a shortcut or a menu still reaches it.</p>`
-    + prefRow('Shell picker','The dropdown next to <b>Terminal</b>, for picking the shell a new local terminal opens',prefToggle('toolbar.shell','renderActs()'))
+    + prefRow('Shell picker','The dropdown next to <b>Terminal</b>, for picking the shell a new local terminal opens. Hiding it leaves the setting itself in <b>Terminals</b>, above.',prefToggle('toolbar.shell','renderActs()'))
     + prefRow('Focus mode','The F11 button. The key works either way.',prefToggle('toolbar.focus','renderActs()'))
     + prefRow('Quick SSH','One-off connections that aren\'t in a collection.'
         + (STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK?' <span style="color:var(--amber)">Your server turns this off</span>, so it is hidden regardless.':''),
