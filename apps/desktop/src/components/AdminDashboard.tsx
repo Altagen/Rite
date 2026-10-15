@@ -34,6 +34,7 @@ import { IconUsers, IconShield, IconGear, IconCollection } from './icons';
 import { ProfilePastille } from './ProfilePastille';
 import { useSettingsModal } from '../store/settingsModal';
 import { isNativeShell } from '../utils/nativeShell';
+import { Switch } from './Switch';
 import riteLogo from '../assets/rite.png';
 
 type Sec = 'overview' | 'users' | 'invitations' | 'teams' | 'collections' | 'instance';
@@ -290,20 +291,6 @@ const DEFAULT_COLL_POLICY: CollectionPolicy = {
   defaultRole: 'viewer',
 };
 
-function PolicyToggle({ on, disabled, onClick }: { on: boolean; disabled?: boolean; onClick: () => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={on}
-      disabled={disabled}
-      onClick={onClick}
-      className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${on ? 'bg-primary' : 'bg-muted'}`}
-    >
-      <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${on ? 'translate-x-5' : 'translate-x-0'}`} />
-    </button>
-  );
-}
-
 /** Server-wide collection governance (mock admin → Collections): who may create, share, how
  *  many members, and the default role. Optimistic saves; reverts on failure. */
 function CollectionPolicyPanel() {
@@ -347,17 +334,23 @@ function CollectionPolicyPanel() {
           <div className="font-medium">Allow users to create collections</div>
           <p className="mt-1 text-sm text-muted-foreground">When off, only admins provision collections.</p>
         </div>
-        <PolicyToggle on={p.allowCreate} disabled={!!managedBy} onClick={() => save({ ...p, allowCreate: !p.allowCreate })} />
+        <Switch
+          checked={p.allowCreate}
+          label="Allow users to create collections"
+          disabled={!!managedBy}
+          onChange={() => save({ ...p, allowCreate: !p.allowCreate })}
+        />
       </div>
       <div className={row}>
         <div>
           <div className="font-medium">Allow sharing outside teams</div>
           <p className="mt-1 text-sm text-muted-foreground">Members can add anyone in the directory, not just teammates.</p>
         </div>
-        <PolicyToggle
-          on={p.allowSharingOutsideTeams}
+        <Switch
+          checked={p.allowSharingOutsideTeams}
+          label="Allow sharing outside teams"
           disabled={!!managedBy}
-          onClick={() => save({ ...p, allowSharingOutsideTeams: !p.allowSharingOutsideTeams })}
+          onChange={() => save({ ...p, allowSharingOutsideTeams: !p.allowSharingOutsideTeams })}
         />
       </div>
       <div className={row}>

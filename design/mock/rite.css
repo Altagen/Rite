@@ -164,8 +164,12 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
 .mrow{display:flex;align-items:center;gap:11px;padding:8px 6px;border-radius:8px;cursor:pointer}.mrow:hover{background:var(--card2)}
 .teamchip{cursor:pointer}
 .settings-row{display:flex;align-items:center;justify-content:space-between;padding:12px 2px;border-bottom:1px solid var(--border)}
-.toggle{width:40px;height:22px;border-radius:999px;background:var(--card2);border:1px solid var(--border2);position:relative;cursor:pointer}
-.toggle.on{background:var(--accent);border-color:var(--accent)} .toggle i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}.toggle.on i{left:20px}
+/* The boolean control, everywhere. Sized to the shipped one (apps/desktop/src/components/
+   Switch.tsx): 44x24 with a 20px knob. The app drew a native checkbox in its settings for a
+   while, which each engine renders its own way — so the two shells disagreed about what a
+   switch looks like while serving the same bundle. */
+.toggle{width:44px;height:24px;border-radius:999px;background:var(--card2);border:1px solid var(--border2);position:relative;cursor:pointer}
+.toggle.on{background:var(--accent);border-color:var(--accent)} .toggle i{position:absolute;top:1px;left:1px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}.toggle.on i{left:22px}
 .navtab{padding:8px 4px;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-weight:600;font-size:13px}.navtab.on{color:var(--fg);border-color:var(--accent)}
 
 /* ---- unified collections tree (v2) ---- */

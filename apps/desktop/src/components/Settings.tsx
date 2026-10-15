@@ -600,10 +600,26 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   appear is worse than a missing switch — it says you have a choice. */}
               {isLocalContext && toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
               {native && toolbarRow('focusMode', 'settings.toolbarFocus', 'settings.toolbarFocusDesc')}
-              {/* Same gate as the button itself (`quickSshAllowed`): a server that forbids
-                  Quick SSH renders no button, so the row that shows it has nothing to show. */}
-              {quickSshAllowed(serverMode) &&
-                toolbarRow('quickSsh', 'settings.toolbarQuickSsh', 'settings.toolbarQuickSshDesc')}
+              {/* Quick SSH is the server's to forbid (`quickSshAllowed`), and when it does the
+                  row says so instead of vanishing: the preference is still this person's, the
+                  button stays hidden either way, and someone looking for it gets an answer. The
+                  probe-cards row above answers the same way, and so does design/mock/web.html. */}
+              <SettingsToggle
+                title={t('settings.toolbarQuickSsh')}
+                hint={
+                  quickSshAllowed(serverMode) ? (
+                    t('settings.toolbarQuickSshDesc')
+                  ) : (
+                    <>
+                      <span className="text-amber-500">{t('settings.toolbarQuickSshOff')}</span>
+                      {t('settings.toolbarQuickSshOffWhy')}
+                    </>
+                  )
+                }
+                checked={toolbar.quickSsh}
+                onChange={(next) => toolbar.set('quickSsh', next)}
+                testId="toolbar-quickSsh"
+              />
               {hasWorkspaceFile && toolbarRow('layouts', 'settings.toolbarLayouts', 'settings.toolbarLayoutsDesc')}
             </div>
           </section>

@@ -747,7 +747,8 @@ test('a toolbar button can be hidden, and stays hidden', async ({ page }) => {
 
   await page.getByTitle('Settings').click();
   await page.getByTestId('settings-nav-toolbar').click();
-  await page.getByTestId('toolbar-quickSsh').uncheck();
+  await page.getByTestId('toolbar-quickSsh').click();
+  await expect(page.getByTestId('toolbar-quickSsh')).toHaveAttribute('aria-checked', 'false');
   await page.getByRole('button', { name: 'Close settings' }).click();
 
   await expect(quickSsh).toHaveCount(0);
@@ -759,7 +760,8 @@ test('a toolbar button can be hidden, and stays hidden', async ({ page }) => {
   // Put it back, so the specs that follow see the toolbar they expect.
   await page.getByTitle('Settings').click();
   await page.getByTestId('settings-nav-toolbar').click();
-  await page.getByTestId('toolbar-quickSsh').check();
+  await page.getByTestId('toolbar-quickSsh').click();
+  await expect(page.getByTestId('toolbar-quickSsh')).toHaveAttribute('aria-checked', 'true');
   await page.getByRole('button', { name: 'Close settings' }).click();
   await expect(page.getByRole('button', { name: /Quick SSH/ })).toBeVisible();
 });

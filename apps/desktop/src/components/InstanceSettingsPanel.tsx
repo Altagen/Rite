@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Backend, type DashboardPolicy, type HealthcheckPolicy } from '../utils/backend';
+import { Switch } from './Switch';
 
 const DEFAULT_HC: HealthcheckPolicy = {
   passiveStatus: true,
@@ -265,23 +266,12 @@ export function InstanceSettingsPanel() {
             </p>
             {managed.session_persistence && <ManagedBy origin={managed.session_persistence} />}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={persistence}
-            aria-label="Keep users signed in across reloads"
+          <Switch
+            checked={persistence}
+            label="Keep users signed in across reloads"
             disabled={!!managed.session_persistence}
-            onClick={togglePersistence}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
-              persistence ? 'bg-primary' : 'bg-muted'
-            }`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                persistence ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+            onChange={togglePersistence}
+          />
         </div>
       </div>
 
@@ -296,23 +286,12 @@ export function InstanceSettingsPanel() {
             </p>
             {managed.open_registration && <ManagedBy origin={managed.open_registration} />}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={openReg}
-            aria-label="Open registration"
+          <Switch
+            checked={openReg}
+            label="Open registration"
             disabled={!!managed.open_registration}
-            onClick={toggleOpenReg}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
-              openReg ? 'bg-primary' : 'bg-muted'
-            }`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                openReg ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+            onChange={toggleOpenReg}
+          />
         </div>
       </div>
 
@@ -327,23 +306,12 @@ export function InstanceSettingsPanel() {
             </p>
             {managed.allow_invitations && <ManagedBy origin={managed.allow_invitations} />}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={allowInv}
-            aria-label="Allow invitations"
+          <Switch
+            checked={allowInv}
+            label="Allow invitations"
             disabled={!!managed.allow_invitations}
-            onClick={toggleAllowInv}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
-              allowInv ? 'bg-primary' : 'bg-muted'
-            }`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                allowInv ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+            onChange={toggleAllowInv}
+          />
         </div>
       </div>
 
@@ -357,23 +325,12 @@ export function InstanceSettingsPanel() {
             </p>
             {managed.confirm_role_change && <ManagedBy origin={managed.confirm_role_change} />}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={confirmRole}
-            aria-label="Confirm role changes"
+          <Switch
+            checked={confirmRole}
+            label="Confirm role changes"
             disabled={!!managed.confirm_role_change}
-            onClick={toggleConfirmRole}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
-              confirmRole ? 'bg-primary' : 'bg-muted'
-            }`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                confirmRole ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+            onChange={toggleConfirmRole}
+          />
         </div>
       </div>
 
@@ -415,21 +372,12 @@ export function InstanceSettingsPanel() {
             </p>
             {managed.allow_quick_ssh && <ManagedBy origin={managed.allow_quick_ssh} />}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={quickSsh}
-            aria-label="Allow Quick SSH"
+          <Switch
+            checked={quickSsh}
+            label="Allow Quick SSH"
             disabled={!!managed.allow_quick_ssh}
-            onClick={toggleQuickSsh}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${quickSsh ? 'bg-primary' : 'bg-muted'}`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                quickSsh ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+            onChange={toggleQuickSsh}
+          />
         </div>
 
         {/* Machine health-check (ADR 0017): passive "last seen" is free; active is governed. */}
@@ -447,16 +395,11 @@ export function InstanceSettingsPanel() {
             <div className="font-medium">Show status</div>
             <p className="mt-1 text-sm text-muted-foreground">The passive “last seen” pastille. No probing.</p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={hc.passiveStatus}
-            aria-label="Show machine status"
-            onClick={() => saveHc({ ...hc, passiveStatus: !hc.passiveStatus })}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${hc.passiveStatus ? 'bg-primary' : 'bg-muted'}`}
-          >
-            <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hc.passiveStatus ? 'translate-x-5' : 'translate-x-0'}`} />
-          </button>
+          <Switch
+            checked={hc.passiveStatus}
+            label="Show machine status"
+            onChange={() => saveHc({ ...hc, passiveStatus: !hc.passiveStatus })}
+          />
         </div>
 
         <div className="flex flex-wrap items-start justify-between gap-4 border-t border-border p-4">
@@ -600,17 +543,12 @@ export function InstanceSettingsPanel() {
               not a matter of preference.
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={dash.webui}
+          <Switch
+            checked={dash.webui}
+            label="Allow the dashboard probing cards in the web UI"
             disabled={!!managed.dashboard_policy}
-            aria-label="Allow the dashboard probing cards in the web UI"
-            onClick={() => saveDash({ ...dash, webui: !dash.webui })}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${dash.webui ? 'bg-primary' : 'bg-muted'}`}
-          >
-            <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${dash.webui ? 'translate-x-5' : 'translate-x-0'}`} />
-          </button>
+            onChange={() => saveDash({ ...dash, webui: !dash.webui })}
+          />
         </div>
 
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
@@ -621,17 +559,12 @@ export function InstanceSettingsPanel() {
               also turn the cards off for themselves; neither side can override the other upward.
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={dash.clients}
+          <Switch
+            checked={dash.clients}
+            label="Allow the dashboard probing cards in attached clients"
             disabled={!!managed.dashboard_policy}
-            aria-label="Allow the dashboard probing cards in attached clients"
-            onClick={() => saveDash({ ...dash, clients: !dash.clients })}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${dash.clients ? 'bg-primary' : 'bg-muted'}`}
-          >
-            <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${dash.clients ? 'translate-x-5' : 'translate-x-0'}`} />
-          </button>
+            onChange={() => saveDash({ ...dash, clients: !dash.clients })}
+          />
         </div>
 
         <div

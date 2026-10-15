@@ -28,12 +28,12 @@ async function setProbes(page: Page, on: boolean) {
   // Settings is a rail of sections and only the chosen one is rendered, so the
   // section has to be selected rather than scrolled to.
   await page.getByTestId('settings-nav-machines').click();
-  const check = page
-    .locator('label', { hasText: 'Container and service cards on the machine dashboard' })
-    .locator('input[type="checkbox"]');
+  // One control for every boolean in the app (Switch.tsx): the whole row is the switch, and
+  // its accessible name is the setting's title alone — the sentence under it is the reason.
+  const check = page.getByRole('switch', { name: 'Container and service cards on the machine dashboard' });
   await expect(check).toBeVisible({ timeout: 15_000 });
-  if ((await check.isChecked()) !== on) await check.click();
-  await expect(check).toBeChecked({ checked: on });
+  if ((await check.getAttribute('aria-checked')) !== String(on)) await check.click();
+  await expect(check).toHaveAttribute('aria-checked', String(on));
   await page.getByRole('button', { name: 'Close settings' }).click();
 }
 

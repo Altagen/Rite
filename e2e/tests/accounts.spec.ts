@@ -834,14 +834,15 @@ test('an overlay page carries the nav, which is also the way back', async ({ pag
 /**
  * The web UI's settings say what they can, and offer nothing they cannot do.
  *
- * Three holes found by comparing the rail against the desktop's, all of the same kind.
- * The browser was offered a switch for the **shell picker**, a toolbar button that only
- * renders outside a server context — a switch for something that cannot appear says you
- * have a choice you do not have. **Quick SSH** was the same hole with an owner: a server
- * governs the capability and forbids it unless configured otherwise, so on most instances
- * that switch governed a button nobody could see. And the UI was told nothing at all about
- * **which shell its terminals use**, although the server sets it for everyone: the answer
- * existed only in the tooltip of the New-terminal button.
+ * Three holes found by comparing the rail against the desktop's. The browser was offered a
+ * switch for the **shell picker**, a toolbar button that only renders outside a server
+ * context — a switch for something that cannot appear says you have a choice you do not
+ * have, so that row is gone here. **Quick SSH** reads the same way at first and is not the
+ * same case: the button exists, a server merely forbids it, and someone who goes looking
+ * for the switch deserves to be told that rather than to find nothing — so that row stays
+ * and names the policy, like the probe-cards row beside it. And the UI was told nothing at
+ * all about **which shell its terminals use**, although the server sets it for everyone:
+ * the answer existed only in the tooltip of the New-terminal button.
  *
  * So the Shell section exists in both shells now, and answers the question each one can
  * actually answer: the picker on a machine, the server's choice read-only here. The other
@@ -881,8 +882,17 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   // rather than assumed, because the switch must follow the policy and not the default.
   await page.getByTestId('settings-nav-toolbar').click();
   await expect(page.getByTestId('toolbar-shellPicker')).toHaveCount(0);
+  // Quick SSH is the server's to forbid, and this one does. The row stays and says so: the
+  // preference is still this person's, and the button is hidden either way.
   expect(mode.allowQuickSsh ?? false).toBe(false);
-  await expect(page.getByTestId('toolbar-quickSsh')).toHaveCount(0);
+  const quick = page.getByTestId('toolbar-quickSsh');
+  await expect(quick).toBeVisible();
+  await expect(quick).toContainText('Your server turns this off');
+  // And the control is ours rather than the engine's. A native checkbox is drawn by
+  // WebKitGTK in the desktop shell and by the browser here — the same bundle showing two
+  // different switches, which is the one thing these two surfaces must never do.
+  await expect(quick).toHaveAttribute('role', 'switch');
+  await expect(quick.locator('input[type="checkbox"]')).toHaveCount(0);
   // Focus mode belongs to the native window, and the workspace file to a machine.
   await expect(page.getByTestId('toolbar-focusMode')).toHaveCount(0);
   await expect(page.getByTestId('toolbar-layouts')).toHaveCount(0);

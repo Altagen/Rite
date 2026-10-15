@@ -15,6 +15,7 @@
  */
 
 import type { ReactNode } from 'react';
+import { SwitchPill } from './Switch';
 
 /** The row geometry, shared by all three so they stack into one list. */
 const ROW = 'flex items-center justify-between gap-4 border-b border-border py-3 last:border-b-0';
@@ -55,36 +56,46 @@ export function SettingsRow({
 }
 
 /**
- * The same row for a checkbox, as a `<label>` — so the text toggles it too, which is
- * both the a11y answer and a bigger target than a 20px box.
+ * The same row for a boolean, as the switch itself — the whole row is the button, so the
+ * text toggles it too, which is both the a11y answer and a far bigger target than a 24px
+ * pill. `SwitchPill` draws it, so a preference and an instance setting are the same
+ * control (`Switch.tsx` says why that is not a detail).
+ *
+ * `title` is a string, not a node: it is also the accessible name, and the row's visible
+ * text is title plus explanation — a sentence, which is no name at all.
  */
 export function SettingsToggle({
   title,
   hint,
   checked,
   onChange,
+  disabled,
   testId,
 }: {
-  title: ReactNode;
+  title: string;
   hint?: ReactNode;
   checked: boolean;
   onChange: (next: boolean) => void;
+  disabled?: boolean;
   testId?: string;
 }) {
   return (
-    <label className={`${ROW} cursor-pointer`}>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={title}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      data-testid={testId}
+      className={`${ROW} w-full text-left disabled:cursor-not-allowed`}
+    >
       <span className="min-w-0">
         <span className="block text-sm font-medium">{title}</span>
         {hint && <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{hint}</span>}
       </span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-5 w-5 flex-none rounded border-border bg-background text-primary focus:ring-2 focus:ring-primary"
-        data-testid={testId}
-      />
-    </label>
+      <SwitchPill checked={checked} />
+    </button>
   );
 }
 

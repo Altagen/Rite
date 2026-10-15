@@ -188,7 +188,9 @@
     "shellServer": "Server shell",
     "shellServerDesc": "Set by your administrator for every terminal on this server. Desktop users pick their own local shell.",
     "shellServerHint": "Terminals run on the server here, so the shell is the server’s to set — not a per-user preference.",
-    "shellCustom": "A shell we didn't find (full path)"
+    "shellCustom": "A shell we didn't find (full path)",
+    "toolbarQuickSshOff": "Your server turns this off",
+    "toolbarQuickSshOffWhy": ", so the button stays hidden whatever this says."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",

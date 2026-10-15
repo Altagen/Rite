@@ -108,5 +108,8 @@ test('the Quick SSH switch is offered on an instance that allows Quick SSH', asy
   await page.getByRole('button', { name: /^CF / }).click();
   await page.getByRole('button', { name: /^settings$/i }).click();
   await page.getByTestId('settings-nav-toolbar').click();
-  await expect(page.getByTestId('toolbar-quickSsh')).toBeVisible();
+  const quick = page.getByTestId('toolbar-quickSsh');
+  await expect(quick).toBeVisible();
+  // …and here it carries its ordinary explanation, not the server's refusal.
+  await expect(quick).not.toContainText('Your server turns this off');
 });

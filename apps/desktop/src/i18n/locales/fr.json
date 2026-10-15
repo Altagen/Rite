@@ -188,7 +188,9 @@
     "shellServer": "Shell du serveur",
     "shellServerDesc": "Défini par ton administrateur pour tous les terminaux de ce serveur. Les utilisateurs desktop choisissent leur shell local.",
     "shellServerHint": "Ici les terminaux tournent sur le serveur : le shell est à lui de le définir, ce n’est pas une préférence par utilisateur.",
-    "shellCustom": "Un shell que nous n'avons pas trouvé (chemin complet)"
+    "shellCustom": "Un shell que nous n'avons pas trouvé (chemin complet)",
+    "toolbarQuickSshOff": "Votre serveur le désactive",
+    "toolbarQuickSshOffWhy": ", le bouton reste donc masqué quoi que dise ce réglage."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
