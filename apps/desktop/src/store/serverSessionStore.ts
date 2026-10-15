@@ -112,6 +112,17 @@ interface ServerSessionState {
   clearError: () => void;
 }
 
+/**
+ * May this endpoint offer Quick SSH? A shared server governs the capability and forbids
+ * it by default (`allow_quick_ssh`, ADR 0020); in a local vault the user is their own
+ * authority. One function because two readers must not disagree: the toolbar button
+ * (`Workspace.tsx`) and the preference that shows it (`Settings.tsx`). A preference for
+ * a button the server will never render says you have a choice you do not have.
+ */
+export function quickSshAllowed(mode: ServerMode | null | undefined): boolean {
+  return !mode?.accounts || mode.allowQuickSsh === true;
+}
+
 export const useServerSession = create<ServerSessionState>((set, get) => ({
   mode: null,
   user: null,

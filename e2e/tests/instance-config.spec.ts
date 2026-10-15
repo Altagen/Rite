@@ -85,3 +85,28 @@ test('a setting the configuration leaves alone is still the console\'s', async (
   expect((await saved).status(), 'an undeclared key saves normally').toBe(204);
   await expect(toggle).not.toHaveAttribute('aria-checked', before ?? '');
 });
+
+/**
+ * The other half of the Quick SSH pair (`accounts.spec.ts`): a switch for a button that
+ * does exist. A server governs the capability and forbids it unless told otherwise, and
+ * this instance tells it otherwise — so here the toolbar button renders and the preference
+ * that hides it has something to hide. Both sides read the same gate (`quickSshAllowed`),
+ * which is the only reason the preference and the button cannot drift apart.
+ */
+test('the Quick SSH switch is offered on an instance that allows Quick SSH', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByText(/Sign in to the server/i)).toBeVisible({ timeout: 30_000 });
+  await page.locator('#username').fill(ADMIN.username);
+  await page.locator('#password').fill(ADMIN.password);
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+
+  // The premise, from the server rather than from the file this suite already read.
+  const mode = await (await page.request.get('/api/server/mode')).json();
+  expect(mode.allowQuickSsh).toBe(true);
+
+  await page.getByRole('button', { name: /^CF / }).click();
+  await page.getByRole('button', { name: /^settings$/i }).click();
+  await page.getByTestId('settings-nav-toolbar').click();
+  await expect(page.getByTestId('toolbar-quickSsh')).toBeVisible();
+});

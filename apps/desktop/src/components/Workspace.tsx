@@ -35,7 +35,7 @@ import { LibraryFolderDialog } from './LibraryFolderDialog';
 import { MoveToFolderDialog } from './MoveToFolderDialog';
 import { MoveMachineDialog } from './MoveMachineDialog';
 import { useLibraryTree } from '../store/libraryTree';
-import { useServerSession } from '../store/serverSessionStore';
+import { useServerSession, quickSshAllowed } from '../store/serverSessionStore';
 import { deleteCollectionFolder } from '../utils/collectionHeader';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
@@ -213,7 +213,7 @@ export function Workspace({
   const serverKeys = useServerSession();
   // Quick SSH is a server-governed capability: forbidden when a server says so (off by
   // default). In a local vault (not accounts) the user is their own authority → allowed.
-  const allowQuickSsh = !serverKeys.mode?.accounts || serverKeys.mode?.allowQuickSsh === true;
+  const allowQuickSsh = quickSshAllowed(serverKeys.mode);
   // In a server context terminals run on the server, so the shell is the server's default
   // (no local-shell picker); locally, the user picks their own shell.
   const isServerCtx = !!serverKeys.mode?.accounts;

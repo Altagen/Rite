@@ -834,15 +834,18 @@ test('an overlay page carries the nav, which is also the way back', async ({ pag
 /**
  * The web UI's settings say what they can, and offer nothing they cannot do.
  *
- * Two holes found by comparing the rail against the desktop's, both of the same kind.
+ * Three holes found by comparing the rail against the desktop's, all of the same kind.
  * The browser was offered a switch for the **shell picker**, a toolbar button that only
  * renders outside a server context — a switch for something that cannot appear says you
- * have a choice you do not have. And it was told nothing at all about **which shell its
- * terminals use**, although the server sets it for everyone: the answer existed only in
- * the tooltip of the New-terminal button.
+ * have a choice you do not have. **Quick SSH** was the same hole with an owner: a server
+ * governs the capability and forbids it unless configured otherwise, so on most instances
+ * that switch governed a button nobody could see. And the UI was told nothing at all about
+ * **which shell its terminals use**, although the server sets it for everyone: the answer
+ * existed only in the tooltip of the New-terminal button.
  *
  * So the Shell section exists in both shells now, and answers the question each one can
- * actually answer: the picker on a machine, the server's choice read-only here.
+ * actually answer: the picker on a machine, the server's choice read-only here. The other
+ * half of the Quick SSH pair is in `instance-config.spec.ts`, on the instance that allows it.
  */
 test('the web UI is told which shell the server sets, and is not offered the local picker', async ({
   page,
@@ -873,11 +876,13 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   await expect(page.getByTestId('shell-choices')).toHaveCount(0);
   await expect(page.getByTestId('shell-path')).toHaveCount(0);
 
-  // The toolbar section offers switches for buttons that exist. The shell picker is not
-  // one of them in a browser; Quick SSH is.
+  // The toolbar section offers switches for buttons that exist. The shell picker is not one
+  // of them in a browser, and neither is Quick SSH here: the premise is read from the server
+  // rather than assumed, because the switch must follow the policy and not the default.
   await page.getByTestId('settings-nav-toolbar').click();
   await expect(page.getByTestId('toolbar-shellPicker')).toHaveCount(0);
-  await expect(page.getByTestId('toolbar-quickSsh')).toBeVisible();
+  expect(mode.allowQuickSsh ?? false).toBe(false);
+  await expect(page.getByTestId('toolbar-quickSsh')).toHaveCount(0);
   // Focus mode belongs to the native window, and the workspace file to a machine.
   await expect(page.getByTestId('toolbar-focusMode')).toHaveCount(0);
   await expect(page.getByTestId('toolbar-layouts')).toHaveCount(0);

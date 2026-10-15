@@ -26,7 +26,7 @@ import { installedShells, type ShellChoice } from '../utils/shells';
 import { ShortcutsSettings } from './ShortcutsSettings';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
 import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
-import { useServerSession } from '../store/serverSessionStore';
+import { useServerSession, quickSshAllowed } from '../store/serverSessionStore';
 import { useFocusMode } from '../store/focusMode';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { isNativeShell } from '../utils/nativeShell';
@@ -600,7 +600,10 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   appear is worse than a missing switch — it says you have a choice. */}
               {isLocalContext && toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
               {native && toolbarRow('focusMode', 'settings.toolbarFocus', 'settings.toolbarFocusDesc')}
-              {toolbarRow('quickSsh', 'settings.toolbarQuickSsh', 'settings.toolbarQuickSshDesc')}
+              {/* Same gate as the button itself (`quickSshAllowed`): a server that forbids
+                  Quick SSH renders no button, so the row that shows it has nothing to show. */}
+              {quickSshAllowed(serverMode) &&
+                toolbarRow('quickSsh', 'settings.toolbarQuickSsh', 'settings.toolbarQuickSshDesc')}
               {hasWorkspaceFile && toolbarRow('layouts', 'settings.toolbarLayouts', 'settings.toolbarLayoutsDesc')}
             </div>
           </section>
