@@ -1166,8 +1166,14 @@ async fn locked(State(state): State<ServerState>) -> Json<bool> {
 
 async fn settings(
     State(state): State<ServerState>,
-) -> Result<Json<HashMap<String, String>>, AppError> {
-    Ok(Json(state.db.get_all_settings().await?))
+    user: Option<Extension<Arc<User>>>,
+) -> Result<Response, AppError> {
+    // Same owner as the per-key route: on a shared server this is the instance's
+    // configuration, not a person's preferences (`settings_route_refusal`).
+    if let Some(refusal) = settings_route_refusal(&state, &user) {
+        return Ok(refusal);
+    }
+    Ok(Json(state.db.get_all_settings().await?).into_response())
 }
 
 async fn list_sessions(
@@ -1276,6 +1282,12 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
     // for terminals opened on this server (web users don't pick their own); and whether ad-hoc
     // Quick SSH is allowed (off by default — connections should live in collections).
     let default_shell = state.setting_text("default_shell", "bash").await?;
+    // How this server verifies host keys for the connections it opens — a policy, not a
+    // preference, since every terminal here runs on it. The client shows it read-only
+    // rather than offering a dropdown it is not allowed to use.
+    let host_key_verification = state
+        .setting_text("host_key_verification_mode", "strict")
+        .await?;
     let allow_quick_ssh = state.setting_bool("allow_quick_ssh", false).await?;
     // Self-service registration (ADR 0015 phase 1). Off by default — an invite-only instance
     // leaves it off; turning it on lets the sign-in screen offer "Create an account".
@@ -1295,6 +1307,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "serveAdmin": state.serve_admin,
         "serveWebui": state.serve_webui,
         "defaultShell": default_shell,
+        "hostKeyVerification": host_key_verification,
         "allowQuickSsh": allow_quick_ssh,
         "openRegistration": open_registration,
         "allowInvitations": allow_invitations,
@@ -3308,11 +3321,60 @@ async fn delete_collection_item_ep(
 
 // --- settings (per-key) -----------------------------------------------------
 
+/// Instance settings that belong to a validated `/api/admin/*` route.
+///
+/// Those routes check the value and honour the configuration lock (ADR 0020); this one
+/// takes a string. `default_shell` is the clearest case — four names are allowed there,
+/// and any path at all would be allowed here — but each of these is a policy the whole
+/// instance obeys, so none of them is this route's to write.
+const ADMIN_ROUTE_SETTINGS: &[&str] = &[
+    "allow_invitations",
+    "allow_quick_ssh",
+    "collection_policy",
+    "confirm_role_change",
+    "dashboard_policy",
+    "default_shell",
+    "healthcheck",
+    "instance_name",
+    "open_registration",
+    "session_persistence",
+];
+
+/// Who may read and write this table through the generic route.
+///
+/// In a local vault it is the person's own machine and their own settings file: anyone
+/// who got past the loopback token is that person (ADR 0009). On a shared server the
+/// same table is the INSTANCE's — `rite-core` reads `host_key_verification_mode` from it
+/// for every connection it opens, for everyone — and the role check only ever covered
+/// `/api/admin`, so any account could write any key here: a regular user could turn
+/// host-key verification off for the whole instance, or hand the server a `default_shell`
+/// the admin route would have refused. Device preferences (auto-lock, clipboard) are the
+/// client's own and no longer travel here at all (`settingsStore.ts`).
+fn settings_route_refusal(state: &ServerState, user: &Option<Extension<Arc<User>>>) -> Option<Response> {
+    if !state.accounts {
+        return None;
+    }
+    match as_user(user).map(|u| u.role) {
+        Some(Role::Admin) => None,
+        _ => Some(
+            (
+                StatusCode::FORBIDDEN,
+                "on a shared server these are instance settings: an administrator changes                  them in the console (/api/admin/*), and this client keeps its own                  preferences for itself",
+            )
+                .into_response(),
+        ),
+    }
+}
+
 async fn get_setting(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Path(key): Path<String>,
-) -> Result<Json<Option<String>>, AppError> {
-    Ok(Json(state.db.get_setting(&key).await?))
+) -> Result<Response, AppError> {
+    if let Some(refusal) = settings_route_refusal(&state, &user) {
+        return Ok(refusal);
+    }
+    Ok(Json(state.db.get_setting(&key).await?).into_response())
 }
 
 #[derive(Deserialize)]
@@ -3322,11 +3384,27 @@ struct ValueReq {
 
 async fn set_setting(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Path(key): Path<String>,
     Json(req): Json<ValueReq>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if let Some(refusal) = settings_route_refusal(&state, &user) {
+        return Ok(refusal);
+    }
+    if state.accounts {
+        if ADMIN_ROUTE_SETTINGS.contains(&key.as_str()) {
+            return Ok((
+                StatusCode::CONFLICT,
+                format!("`{key}` is an instance policy with its own validated route under /api/admin"),
+            )
+                .into_response());
+        }
+        if let Some(refusal) = managed_refusal(&state, &key) {
+            return Ok(refusal);
+        }
+    }
     state.db.set_setting(&key, &req.value).await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// Where this computer keeps its workspace file. `None` when the platform has no
@@ -4091,10 +4169,44 @@ struct ShellsReq {
     shells: Vec<String>,
 }
 
+/// Paths this route will admit to knowing about.
+///
+/// It used to answer for whatever paths the caller sent, which made it an existence
+/// oracle for any authenticated account: ask about `/etc/shadow` or `/root/.ssh/id_rsa`
+/// and the answer came back. The client only ever asks about shells
+/// (`apps/desktop/src/utils/shells.ts`), so that is all it can ask about.
+const KNOWN_SHELL_PATHS: &[&str] = &[
+    "/bin/bash",
+    "/bin/csh",
+    "/bin/dash",
+    "/bin/fish",
+    "/bin/ksh",
+    "/bin/sh",
+    "/bin/zsh",
+    "/usr/bin/bash",
+    "/usr/bin/csh",
+    "/usr/bin/dash",
+    "/usr/bin/elvish",
+    "/usr/bin/fish",
+    "/usr/bin/ksh",
+    "/usr/bin/nu",
+    "/usr/bin/pwsh",
+    "/usr/bin/sh",
+    "/usr/bin/tcsh",
+    "/usr/bin/xonsh",
+    "/usr/bin/zsh",
+    "/usr/local/bin/bash",
+    "/usr/local/bin/fish",
+    "/usr/local/bin/nu",
+    "/usr/local/bin/pwsh",
+    "/usr/local/bin/zsh",
+];
+
 async fn installed_shells(Json(req): Json<ShellsReq>) -> Json<Vec<String>> {
     Json(
         req.shells
             .into_iter()
+            .filter(|p| KNOWN_SHELL_PATHS.contains(&p.as_str()))
             .filter(|p| std::path::Path::new(p).exists())
             .collect(),
     )
@@ -4107,17 +4219,55 @@ struct LocalReq {
     shell: Option<String>,
 }
 
+/// The instance's shell, as something a PTY can spawn.
+///
+/// `default_shell` holds a bare name, restricted to four by its admin route, so look for
+/// it in the usual places; `LocalSession` resolves what it cannot find against its own
+/// fallback list.
+fn clamped_shell_name(raw: &str) -> &str {
+    match raw.trim() {
+        n @ ("bash" | "sh" | "zsh" | "fish") => n,
+        // Anything else was written by something other than the admin route — which only
+        // accepts those four — so it is not a shell this server agreed to run.
+        _ => "bash",
+    }
+}
+
+async fn server_shell_path(state: &ServerState) -> Result<String, AppError> {
+    let setting = state.setting_text("default_shell", "bash").await?;
+    let name = clamped_shell_name(&setting);
+    for dir in ["/usr/bin", "/bin", "/usr/local/bin"] {
+        let candidate = format!("{dir}/{name}");
+        if std::path::Path::new(&candidate).exists() {
+            return Ok(candidate);
+        }
+    }
+    Ok(name.to_string())
+}
+
 async fn create_local(
     State(state): State<ServerState>,
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<LocalReq>,
 ) -> Result<Json<Value>, AppError> {
+    // On a shared server the shell is the instance's choice, which is what the client is
+    // told (`defaultShell` in /api/server/mode, shown read-only). The caller used to name
+    // the program instead: any path that existed in the container was spawned in a PTY it
+    // could then drive, for any account and whatever the administrator had chosen. On a
+    // local vault the shell stays the person's own — it is their machine.
+    let shell = if state.accounts {
+        Some(server_shell_path(&state).await?)
+    } else {
+        req.shell
+    };
     let id = state
         .sessions
-        .create_local_session(state.events_sink(), req.shell)
+        .create_local_session(state.events_sink(), shell.clone())
         .await?;
     state.record_session_owner(&id, as_user(&user));
-    Ok(Json(json!({ "sessionId": id })))
+    // The shell the session was given, so a client (and a test) can see that on a server
+    // the answer is the instance's and not whatever was asked for.
+    Ok(Json(json!({ "sessionId": id, "shell": shell })))
 }
 
 #[derive(Deserialize)]
@@ -4131,11 +4281,24 @@ struct StartForwardReq {
     remote_port: u16,
 }
 
+/// Where a forward may listen.
+///
+/// On a shared server the listening socket is the SERVER's, so a caller-chosen bind host
+/// would publish a tunnel into whatever that machine can reach, to whoever can reach the
+/// machine. Loopback there, whatever was asked. On a local vault it is the person's own
+/// computer and their own choice.
+fn forward_bind_host(accounts: bool, asked: Option<&str>) -> &str {
+    if accounts {
+        return "127.0.0.1";
+    }
+    asked.unwrap_or("127.0.0.1")
+}
+
 async fn start_forward(
     State(state): State<ServerState>,
     Json(req): Json<StartForwardReq>,
 ) -> Result<Json<rite_core::terminal::PortForwardInfo>, AppError> {
-    let bind_host = req.bind_host.as_deref().unwrap_or("127.0.0.1");
+    let bind_host = forward_bind_host(state.accounts, req.bind_host.as_deref());
     let info = state
         .sessions
         .start_local_forward(
@@ -4177,7 +4340,7 @@ async fn start_quick_forward(
     State(state): State<ServerState>,
     Json(req): Json<StartQuickForwardReq>,
 ) -> Result<Json<rite_core::terminal::PortForwardInfo>, AppError> {
-    let bind_host = req.bind_host.as_deref().unwrap_or("127.0.0.1");
+    let bind_host = forward_bind_host(state.accounts, req.bind_host.as_deref());
     let auth: AuthMethod = req.auth_method.into();
     let mut connection = quick_connection("fwd", &req.host, req.port, &req.username, auth.clone());
     connection.id = req.connection_id;
@@ -4616,13 +4779,47 @@ struct QuickSshReq {
     /// Resolved jump chain, outermost-first. Absent/empty ⇒ direct.
     #[serde(default)]
     jumps: Vec<QuickHop>,
+    /// Where this target came from, when it came from a collection: the item the client
+    /// decrypted and the collection holding it. Absent ⇒ ad-hoc, which a server may
+    /// forbid. Checked against membership, so claiming an item is not a way in.
+    #[serde(default)]
+    collection_id: Option<String>,
+    #[serde(default)]
+    item_id: Option<String>,
 }
 
 async fn quick_ssh(
     State(state): State<ServerState>,
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<QuickSshReq>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Response, AppError> {
+    // `allow_quick_ssh` is off unless an instance says otherwise, and it was enforced
+    // nowhere: the client hid its button while this route accepted any host and port from
+    // any account — an outbound SSH connection from the server into whatever it can reach.
+    //
+    // It was missed because this is also how a SAVED connection opens: zero-knowledge
+    // means the browser decrypts the target and hands it over (ADR 0011), so the two
+    // requests look alike. They are told apart now by what the saved one can prove — the
+    // collection item it came from, checked against this caller's membership.
+    if state.accounts && !state.setting_bool("allow_quick_ssh", false).await? {
+        let from_a_collection = match (&req.collection_id, &req.item_id, as_user(&user)) {
+            (Some(collection), Some(item), Some(caller)) => {
+                coll_role(&state, caller, collection).await?.is_some()
+                    && coll::list_items(state.db.pool(), collection)
+                        .await?
+                        .iter()
+                        .any(|i| &i.id == item)
+            }
+            _ => false,
+        };
+        if !from_a_collection {
+            return Ok((
+                StatusCode::FORBIDDEN,
+                "ad-hoc Quick SSH is disabled by this server",
+            )
+                .into_response());
+        }
+    }
     // Ad-hoc connection, never persisted (mirrors the desktop quick_ssh_connect).
     let auth: AuthMethod = req.auth_method.clone().into();
     let mut connection =
@@ -4640,7 +4837,7 @@ async fn quick_ssh(
         )
         .await?;
     state.record_session_owner(&id, as_user(&user));
-    Ok(Json(json!({ "sessionId": id })))
+    Ok(Json(json!({ "sessionId": id })).into_response())
 }
 
 /// Run a one-shot command on a saved connection (agentless dashboard detection) and
@@ -5185,5 +5382,30 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    /// A forward's listening socket belongs to whoever runs the process: the person's own
+    /// computer in a local vault, the shared machine on a server. Asking for 0.0.0.0 there
+    /// would publish a tunnel into whatever that machine can reach.
+    #[test]
+    fn a_server_forward_listens_on_loopback_whatever_was_asked() {
+        assert_eq!(forward_bind_host(true, Some("0.0.0.0")), "127.0.0.1");
+        assert_eq!(forward_bind_host(true, Some("10.0.0.5")), "127.0.0.1");
+        assert_eq!(forward_bind_host(true, None), "127.0.0.1");
+        // A local vault is the person's own machine, and their own choice.
+        assert_eq!(forward_bind_host(false, Some("0.0.0.0")), "0.0.0.0");
+        assert_eq!(forward_bind_host(false, None), "127.0.0.1");
+    }
+
+    /// `default_shell` is written by a route that accepts four names. Anything else in
+    /// that row was put there by something that bypassed it, so it is not run.
+    #[test]
+    fn only_the_four_agreed_shells_are_run() {
+        for ok in ["bash", "sh", "zsh", "fish", " fish "] {
+            assert_eq!(clamped_shell_name(ok), ok.trim());
+        }
+        for not_ok in ["/usr/bin/env", "/bin/bash", "env", "", "python3"] {
+            assert_eq!(clamped_shell_name(not_ok), "bash");
+        }
     }
 }

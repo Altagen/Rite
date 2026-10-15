@@ -190,7 +190,8 @@
     "shellServerHint": "Terminals run on the server here, so the shell is the server’s to set — not a per-user preference.",
     "shellCustom": "A shell we didn't find (full path)",
     "toolbarQuickSshOff": "Your server turns this off",
-    "toolbarQuickSshOffWhy": ", so the button stays hidden whatever this says."
+    "toolbarQuickSshOffWhy": ", so the button stays hidden whatever this says.",
+    "hostKeyServerDesc": "Set by your administrator for every connection this server opens."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",

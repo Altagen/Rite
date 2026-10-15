@@ -872,7 +872,9 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   await page.getByTestId('settings-nav-shell').click();
   const mode = await (await page.request.get(`${BASE}/api/server/mode`)).json();
   await expect(page.getByTestId('server-shell')).toHaveText(mode.defaultShell ?? 'bash');
-  await expect(page.getByText('Set by your administrator', { exact: false })).toBeVisible();
+  // Precise: the host-key row says the same thing about its own policy, and both rows
+  // are in the DOM at once (the rail hides the other sections rather than unmounting).
+  await expect(page.getByText('Set by your administrator for every terminal', { exact: false })).toBeVisible();
   // …and no picker: the choice is not this user's to make here.
   await expect(page.getByTestId('shell-choices')).toHaveCount(0);
   await expect(page.getByTestId('shell-path')).toHaveCount(0);
@@ -893,7 +895,16 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   // different switches, which is the one thing these two surfaces must never do.
   await expect(quick).toHaveAttribute('role', 'switch');
   await expect(quick.locator('input[type="checkbox"]')).toHaveCount(0);
+
   // Focus mode belongs to the native window, and the workspace file to a machine.
   await expect(page.getByTestId('toolbar-focusMode')).toHaveCount(0);
   await expect(page.getByTestId('toolbar-layouts')).toHaveCount(0);
+
+  // Host-key verification is the instance's on a server: every connection runs there, so
+  // the policy is reported and not offered. It used to be a dropdown writing one shared
+  // row, so anyone who chose "accept" turned verification off for every account on the
+  // instance — and `/api/settings` let any account write that row directly.
+  await page.getByTestId('settings-nav-security').click();
+  await expect(page.getByTestId('server-host-key')).toHaveText(mode.hostKeyVerification ?? 'strict');
+  await expect(page.getByTestId('host-key-mode')).toHaveCount(0);
 });

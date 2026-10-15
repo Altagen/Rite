@@ -392,6 +392,11 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       record.port,
       record.authMethod,
       resolveJumpChain(entries.current, record),
+      // Which item this is. An instance that forbids ad-hoc Quick SSH must still open
+      // what its members saved, and this is the part of the request the server can check.
+      // No collection (a local-vault machine) means no claim to make: there the policy
+      // does not apply, because there is no server to set it.
+      entry.collectionId ? { collectionId: entry.collectionId, itemId: conn.id } : undefined,
     );
     // Record this user's own "last connected" locally (passive status, ADR 0017).
     recordLastUsed(conn.id);

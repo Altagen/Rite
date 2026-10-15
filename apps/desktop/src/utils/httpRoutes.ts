@@ -562,6 +562,8 @@ const routes: Record<string, Route> = {
           username: a.username,
           authMethod: a.authMethod,
           jumps: a.jumps ?? [],
+          collectionId: a.collectionId,
+          itemId: a.itemId,
         }),
       )
     ).sessionId,

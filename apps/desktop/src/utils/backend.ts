@@ -445,7 +445,12 @@ export const BackendTerminal = {
     },
     // Resolved ProxyJump chain, outermost-first. Quick SSH proper has none; the
     // accounts source passes the hops it decrypted client-side.
-    jumps: QuickEndpoint[] = []
+    jumps: QuickEndpoint[] = [],
+    // Where the target came from, when it came from a collection. A server that forbids
+    // ad-hoc Quick SSH still has to open saved connections, and zero-knowledge means both
+    // arrive here as a decrypted host — so a saved one says which item it is, and the
+    // server checks that against this caller's membership (`quick_ssh` in rite-server).
+    origin?: { collectionId: string; itemId: string }
   ) =>
     invokeWithValidation('quick_ssh_connect', StringSchema, {
       host,
@@ -453,6 +458,8 @@ export const BackendTerminal = {
       port,
       authMethod,
       jumps,
+      collectionId: origin?.collectionId,
+      itemId: origin?.itemId,
     }),
 
   /**
@@ -523,6 +530,8 @@ const ServerModeSchema = z.object({
   // terminals on this server, and whether ad-hoc Quick SSH is allowed (off by default).
   defaultShell: z.string().optional(),
   allowQuickSsh: z.boolean().optional(),
+  /** How the server verifies host keys for the connections it opens, for everyone. */
+  hostKeyVerification: z.string().optional(),
   // Self-service registration (ADR 0015): when on, the sign-in screen offers "Create an
   // account". Off/absent ⇒ invite-only (admin-provisioned or enrollment token).
   openRegistration: z.boolean().optional(),

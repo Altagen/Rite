@@ -666,27 +666,43 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 </SettingsRow>
               )}
 
-              <SettingsRow
-                title={t('settings.hostKeyVerification')}
-                hint={t('settings.hostKeyVerificationDesc')}
-              >
-                <SettingsControl>
-                  <Dropdown<'strict' | 'warn' | 'accept'>
-                    value={hostKeyVerificationMode}
-                    label={t('settings.hostKeyVerification')}
-                    testId="host-key-mode"
-                    options={[
-                      { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
-                      { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
-                      { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
-                    ]}
-                    onChange={(mode) => {
-                      setHostKeyVerificationMode(mode);
-                      void updateSettings({ hostKeyVerificationMode: mode });
-                    }}
-                  />
-                </SettingsControl>
-              </SettingsRow>
+              {/* Host-key verification is the connection's, and on a shared server every
+                  connection is the server's — so there the policy is the instance's and
+                  this row reports it instead of offering a dropdown. It used to offer one
+                  to everyone, writing a single shared row: one person choosing "accept"
+                  turned verification off for every account on the instance. */}
+              {isLocalContext ? (
+                <SettingsRow
+                  title={t('settings.hostKeyVerification')}
+                  hint={t('settings.hostKeyVerificationDesc')}
+                >
+                  <SettingsControl>
+                    <Dropdown<'strict' | 'warn' | 'accept'>
+                      value={hostKeyVerificationMode}
+                      label={t('settings.hostKeyVerification')}
+                      testId="host-key-mode"
+                      options={[
+                        { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
+                        { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
+                        { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
+                      ]}
+                      onChange={(mode) => {
+                        setHostKeyVerificationMode(mode);
+                        void updateSettings({ hostKeyVerificationMode: mode });
+                      }}
+                    />
+                  </SettingsControl>
+                </SettingsRow>
+              ) : (
+                <SettingsRow
+                  title={t('settings.hostKeyVerification')}
+                  hint={t('settings.hostKeyServerDesc')}
+                >
+                  <code className="font-mono text-sm text-muted-foreground" data-testid="server-host-key">
+                    {serverMode?.hostKeyVerification ?? 'strict'}
+                  </code>
+                </SettingsRow>
+              )}
             </div>
           </section>
 

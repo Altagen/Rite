@@ -817,8 +817,11 @@ export function Workspace({
    * pane that fell back is built exactly like a pane that was asked for.
    */
   const localSession = async (target?: SplitTarget, note?: string): Promise<TerminalSession> => {
-    const shellToUse = settings.defaultShell;
-    const sessionId = await Backend.Terminal.connectLocalTerminal(shellToUse);
+    // In a server context the shell is the instance's (`defaultShell`), so ask for
+    // nothing and let the server use it: sending one made the administrator's choice
+    // advisory, and the server would spawn whatever path it was handed.
+    const shellToUse = isServerCtx ? serverShell : settings.defaultShell;
+    const sessionId = await Backend.Terminal.connectLocalTerminal(isServerCtx ? undefined : shellToUse);
     const shellName = shellToUse.split('/').pop() || 'shell';
     return {
       id: sessionId,
