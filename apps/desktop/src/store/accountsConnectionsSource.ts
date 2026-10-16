@@ -22,10 +22,12 @@ import {
   type ConnectionInfo,
   type ConnectionsSource,
   type CreateConnectionInput,
+  type RevealedSecret,
   type UpdateConnectionInput,
 } from './connectionsStore';
 import { encryptString, decryptString } from '../utils/vaultCrypto';
 import { getLastUsed, recordLastUsed } from '../utils/lastUsed';
+import { askPassphrase } from '../utils/passphrasePrompt';
 import {
   unwrapCollectionKeys,
   decryptCollectionField,
@@ -72,6 +74,13 @@ export interface StoredRecord {
   jump?: string | null;
   // Saved port forwards. Sealed inside the blob (non-secret metadata).
   forwards?: import('./connectionsStore').PortForwardConfig[];
+  /**
+   * This key has a passphrase that Rite was told not to keep (ADR 0024 §4), so connecting
+   * asks for it. A fact about the key, not a secret: it records what the member said when
+   * they saved it, which beats guessing — a key with no passphrase must not prompt, and
+   * parsing the key to find out would mean implementing the OpenSSH format in the page.
+   */
+  needsPassphrase?: boolean;
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   // Sealed inside the blob, so the opt-out is zero-knowledge like everything else.
   hc?: boolean | null;
@@ -182,6 +191,7 @@ function toInfo(
     port: r.port,
     username: r.username,
     authType: r.authMethod.type,
+    keyPath: r.authMethod.type === 'publicKey' ? r.authMethod.keyPath : null,
     color: r.color,
     icon: r.icon,
     folder: folder ?? r.folder ?? null,
@@ -217,6 +227,7 @@ function recordFromCreate(input: CreateConnectionInput): StoredRecord {
     jump: input.jump ?? null,
     forwards: input.forwards ?? [],
     hc: input.hc ?? null,
+    needsPassphrase: input.needsPassphrase ?? false,
   };
 }
 
@@ -387,11 +398,19 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     // Server-execute: the decrypted target is handed to the server to run SSH; it
     // is never persisted server-side (ADR 0011 / 0012 client-execute). The jump
     // chain travels with it — the server can't resolve hops it can't decrypt.
+    // A key whose passphrase was not kept: ask now, use it for this call, write nothing.
+    // Cancelling is not a failure to report as an error — the person said no.
+    let authMethod = record.authMethod;
+    if (record.needsPassphrase && 'key' in authMethod && !authMethod.passphrase) {
+      const passphrase = await askPassphrase(record.name || conn.name);
+      if (passphrase === null) throw new Error('cancelled');
+      authMethod = { ...authMethod, passphrase };
+    }
     const sessionId = await Backend.Terminal.quickSshConnect(
       record.hostname,
       record.username,
       record.port,
-      record.authMethod,
+      authMethod,
       resolveJumpChain(entries.current, record),
       // Which item this is. An instance that forbids ad-hoc Quick SSH must still open
       // what its members saved, and this is the part of the request the server can check.
@@ -402,6 +421,39 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     // Record this user's own "last connected" locally (passive status, ADR 0017).
     recordLastUsed(conn.id);
     return sessionId;
+  }, []);
+
+  /**
+   * Hand back what this machine stores (ADR 0024 §5).
+   *
+   * No request is made: the browser decrypted this record to be able to connect at all,
+   * which is also why neither check below is a boundary the server could hold. They stop
+   * the accidents that actually happen — a secret on screen in a screen share, a casual
+   * copy — and the boundary that holds is membership, because sharing an item shares its
+   * secret by construction.
+   */
+  const reveal = useCallback(async (conn: ConnectionInfo): Promise<RevealedSecret> => {
+    if (useServerSession.getState().mode?.allowSecretReveal === false) {
+      throw new Error('this server keeps its stored secrets unreadable');
+    }
+    // A viewer may use a credential and not extract it — what the role means, so not a
+    // setting. An administrator may turn reveal off for everyone and cannot turn it on here.
+    if (conn.collectionRole === 'viewer') {
+      throw new Error('a viewer can connect with this machine but not read its secret');
+    }
+    const entry = entries.current.get(conn.id);
+    if (!entry) throw new Error('connection is not available');
+    const auth = entry.record.authMethod;
+    switch (auth.type) {
+      case 'password':
+        return { password: auth.password };
+      case 'publicKey':
+        return { keyPath: auth.keyPath, passphrase: auth.passphrase ?? null };
+      case 'vaultKey':
+        return { key: auth.key, passphrase: auth.passphrase ?? null };
+      default:
+        return {};
+    }
   }, []);
 
   const remove = useCallback(
@@ -531,6 +583,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     connect,
     create,
     update,
+    reveal,
     writableCollections,
     collections: collectionList,
     readBoard,

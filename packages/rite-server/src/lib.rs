@@ -559,6 +559,8 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/default-shell", patch(set_default_shell))
         .route("/api/admin/shell-choice", patch(set_shell_choice))
+        .route("/api/admin/passphrase-storage", patch(set_passphrase_storage))
+        .route("/api/admin/secret-reveal", patch(set_secret_reveal))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
         .route("/api/admin/registration", patch(set_open_registration))
         .route("/api/admin/invitations", patch(set_allow_invitations))
@@ -724,6 +726,10 @@ pub fn build_router(state: ServerState) -> Router {
         .route(
             "/api/local/collections/{id}/machines/{item}",
             put(local_update_machine).delete(local_delete_machine),
+        )
+        .route(
+            "/api/local/collections/{id}/machines/{item}/secret",
+            get(local_reveal_machine_secret),
         )
         .route(
             "/api/local/collections/{id}/board",
@@ -1288,6 +1294,12 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
     // until they say otherwise, so an instance that upgrades and says nothing is unchanged.
     let shells = offered_shells();
     let allow_shell_choice = state.setting_bool("allow_shell_choice", false).await?;
+    // ADR 0024 §4. Permissive by default, because Rite already stores SSH passwords in the
+    // vault and has since it existed: forbidding a stored passphrase while allowing a
+    // stored password would be the appearance of hardening rather than hardening. The
+    // member's own default is the careful one — the "remember" box starts unchecked.
+    let allow_passphrase_storage = state.setting_bool("allow_passphrase_storage", true).await?;
+    let allow_secret_reveal = state.setting_bool("allow_secret_reveal", true).await?;
     // How this server verifies host keys for the connections it opens — a policy, not a
     // preference, since every terminal here runs on it. The client shows it read-only
     // rather than offering a dropdown it is not allowed to use.
@@ -1315,6 +1327,8 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "defaultShell": default_shell,
         "shells": shells,
         "allowShellChoice": allow_shell_choice,
+        "allowPassphraseStorage": allow_passphrase_storage,
+        "allowSecretReveal": allow_secret_reveal,
         "hostKeyVerification": host_key_verification,
         "allowQuickSsh": allow_quick_ssh,
         "openRegistration": open_registration,
@@ -1480,6 +1494,46 @@ async fn set_shell_choice(
     state
         .db
         .set_setting("allow_shell_choice", if req.enabled { "1" } else { "0" })
+        .await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Whether a member may keep a key passphrase in their vault (org-admin only, ADR 0024 §4).
+/// Off: the passphrase is asked at each connection and never written.
+async fn set_passphrase_storage(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "allow_passphrase_storage") {
+        return Ok(refusal);
+    }
+    state
+        .db
+        .set_setting(
+            "allow_passphrase_storage",
+            if req.enabled { "1" } else { "0" },
+        )
+        .await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Whether a stored secret may be read back (org-admin only, ADR 0024 §4-5).
+///
+/// On a shared server this binds the UI and not the data: a client decrypts the record it
+/// connects with, so a member holds their own plaintext and a viewer holds a shared item's.
+/// It stops the accidents — a secret on screen during a screen share, a casual copy — and
+/// the boundary that does hold is membership. On a local vault it is a real refusal,
+/// because there the key lives in rite-core and the caller is another process.
+async fn set_secret_reveal(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "allow_secret_reveal") {
+        return Ok(refusal);
+    }
+    state
+        .db
+        .set_setting("allow_secret_reveal", if req.enabled { "1" } else { "0" })
         .await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -3363,7 +3417,9 @@ async fn delete_collection_item_ep(
 /// instance obeys, so none of them is this route's to write.
 const ADMIN_ROUTE_SETTINGS: &[&str] = &[
     "allow_invitations",
+    "allow_passphrase_storage",
     "allow_quick_ssh",
+    "allow_secret_reveal",
     "allow_shell_choice",
     "collection_policy",
     "confirm_role_change",
@@ -4496,6 +4552,11 @@ struct LocalMachine {
     port: u16,
     username: String,
     auth_type: String,
+    /// The key file this machine uses, when it names one (ADR 0024 §6). A path is not a
+    /// secret, and withholding it meant a key-based machine reopened as "Password" — so
+    /// typing a password there silently converted it to password authentication.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key_path: Option<String>,
     color: Option<String>,
     icon: Option<String>,
     folder: Option<String>,
@@ -4524,6 +4585,10 @@ impl LocalMachine {
             id: m.id,
             collection_id: collection_id.to_string(),
             auth_type: r.auth_method.type_str().to_string(),
+            key_path: match &r.auth_method {
+                AuthMethod::PublicKey { key_path, .. } => Some(key_path.clone()),
+                _ => None,
+            },
             name: r.name,
             protocol: r.protocol,
             hostname: r.hostname,
@@ -4650,6 +4715,44 @@ async fn local_create_machine(
 
 /// A partial edit: the UI never receives credentials, so it cannot send a whole
 /// record back. Absent fields keep what is stored (see `MachinePatch`).
+/// Read back one machine's stored secret (ADR 0024 §5-6).
+///
+/// Only here. In accounts mode the client already holds the plaintext it connects with,
+/// so there is nothing for a server route to hand over — and nothing for it to withhold,
+/// which the ADR says plainly. On a local vault the key lives in this process, so
+/// `allow_secret_reveal` is a refusal rather than a convention.
+///
+/// A path is not a secret and comes back regardless; it is what tells the form which key a
+/// machine uses. What is secret comes back only here, only on this explicit request.
+async fn local_reveal_machine_secret(
+    State(state): State<ServerState>,
+    Path((id, item)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    if !state.setting_bool("allow_secret_reveal", true).await? {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            "this vault is set to keep its secrets unreadable",
+        )
+            .into_response());
+    }
+    let key = master_key(&state).await?;
+    let machines = rite_core::local_collections::list_machines(state.db.pool(), &key, &id).await?;
+    let Some(machine) = machines.into_iter().find(|m| m.id == item) else {
+        return Ok((StatusCode::NOT_FOUND, "unknown machine").into_response());
+    };
+    Ok(Json(match machine.record.auth_method {
+        AuthMethod::Password { password } => json!({ "password": password }),
+        AuthMethod::PublicKey {
+            key_path,
+            passphrase,
+        } => json!({ "keyPath": key_path, "passphrase": passphrase }),
+        AuthMethod::VaultKey { key, passphrase } => json!({ "key": key, "passphrase": passphrase }),
+        // Nothing is stored for an agent, which is the point of using one.
+        AuthMethod::Agent { .. } => json!({}),
+    })
+    .into_response())
+}
+
 async fn local_update_machine(
     State(state): State<ServerState>,
     Path((id, item)): Path<(String, String)>,

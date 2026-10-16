@@ -38,6 +38,10 @@ export interface MachineOpts {
   port?: number;
   username?: string;
   password?: string;
+  /** Authenticate with a key file at this path instead of a password (ADR 0024). */
+  keyPath?: string;
+  /** The key's passphrase, when it is stored. */
+  passphrase?: string;
   preconnect?: string | null;
   jump?: string | null;
   folder?: string | null;
@@ -57,7 +61,9 @@ export async function createMachine(
       hostname: o.hostname ?? SSH.hostname,
       port: o.port ?? SSH.port,
       username: o.username ?? SSH.username,
-      authMethod: { type: 'password', password: o.password ?? SSH.password },
+      authMethod: o.keyPath
+        ? { type: 'publicKey', keyPath: o.keyPath, ...(o.passphrase ? { passphrase: o.passphrase } : {}) }
+        : { type: 'password', password: o.password ?? SSH.password },
       color: null,
       icon: null,
       folder: o.folder ?? null,

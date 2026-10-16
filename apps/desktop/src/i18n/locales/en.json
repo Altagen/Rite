@@ -129,7 +129,23 @@
       "usernameRequired": "Username is required",
       "passwordRequired": "Password is required",
       "keyPathRequired": "Private key path is required"
-    }
+    },
+    "keyFile": "Private key file",
+    "keyFileHint": "Read in this page and stored in your encrypted vault — it is never uploaded as a file. Terminals here run on the server, so a path on your computer would mean nothing to it.",
+    "keyFileLoaded": "Loaded from {{name}}. It is encrypted with your vault key before it leaves this page.",
+    "keyFileUnnamed": "the file you chose",
+    "keyUnreadable": "That file could not be read.",
+    "keyLooksPublic": "That looks like a public key (.pub). Choose the private key — the file without the extension.",
+    "keyRemember": "Remember this passphrase",
+    "keyRememberWhy": "Otherwise it is asked each time you connect. Kept here it rides with the key it protects, so it stops being a second barrier.",
+    "keyRememberOff": "Your server does not keep passphrases",
+    "keyRememberOffWhy": " — you will be asked for it each time you connect.",
+    "passphraseAsk": "Passphrase needed",
+    "passphraseAskFor": "To unlock the key for {{name}}.",
+    "passphraseAskWhy": "Used for this connection only. Rite is not keeping it — tick “Remember this passphrase” when editing the machine if you would rather it did.",
+    "passphraseUnlock": "Connect",
+    "reveal": "Reveal what is stored",
+    "revealFailed": "That could not be revealed."
   },
   "errors": {
     "setupFailed": "Setup failed: {error}",

@@ -6,12 +6,20 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
-import { type CreateConnectionInput, type UpdateConnectionInput, type ConnectionInfo, type Protocol } from '../store/connectionsStore';
+import {
+  type CreateConnectionInput,
+  type UpdateConnectionInput,
+  type ConnectionInfo,
+  type Protocol,
+  type RevealedSecret,
+} from '../store/connectionsStore';
 import type { QuickSSHConnectionInfo } from './QuickSSHModal';
 import { AuthSection } from './AuthSection';
-import { makeAuthState, toAuthMethodInput, type AuthState } from '../utils/authMethod';
+import { makeAuthState, storedAuthType, toAuthMethodInput, type AuthState } from '../utils/authMethod';
 
 interface ConnectionFormProps {
+  /** Read a stored secret back into the fields (ADR 0024 §5). Absent ⇒ not offered. */
+  reveal?: (conn: ConnectionInfo) => Promise<RevealedSecret>;
   connection?: ConnectionInfo | null;
   prefillData?: QuickSSHConnectionInfo | null;
   onClose: () => void;
@@ -41,6 +49,7 @@ export function ConnectionForm({
   onSuccess,
   create,
   update,
+  reveal,
   jumpCandidates,
   collectionTargets,
   defaultCollectionId,
@@ -55,12 +64,20 @@ export function ConnectionForm({
   const [port, setPort] = useState(connection?.port || prefillData?.port || 22);
   const [username, setUsername] = useState(connection?.username || prefillData?.username || '');
   // Authentication state — shared shape with Quick SSH via <AuthSection>.
+  // Seeded from the connection being edited, not only from a prefill (ADR 0024 §6). It
+  // used to take the prefill alone, so every saved machine reopened as "Password" with
+  // empty fields: you could not see which key it used, and typing a password in what
+  // looked like the password field converted a key-based machine to password auth without
+  // a word. Secrets stay absent — "leave empty to keep" — and a path is not a secret.
   const [auth, setAuth] = useState<AuthState>(
     makeAuthState({
-      authType: prefillData?.authType ?? 'password',
+      authType: (prefillData?.authType ?? storedAuthType(connection)) as AuthState['authType'],
       password: prefillData?.password ?? '',
-      keyPath: prefillData?.keyPath ?? '',
+      keyPath: prefillData?.keyPath ?? connection?.keyPath ?? '',
       passphrase: prefillData?.passphrase ?? '',
+      // A machine whose passphrase is stored keeps it stored unless this is changed; one
+      // that never stored it keeps being asked. Either way nothing is read back here.
+      rememberPassphrase: false,
     }),
   );
   const [folder, setFolder] = useState(connection?.folder || defaultFolder || '');
@@ -158,7 +175,10 @@ export function ConnectionForm({
       newErrors.password = t('connections.validation.passwordRequired');
     }
 
-    if (auth.authType === 'publicKey' && !auth.keyPath.trim()) {
+    // A key from either field (a path here, the file's text on a server), and an edit
+    // that already stores one needs neither: the update keeps what it does not mention.
+    const hasStoredKey = !!connection && (connection.authType === 'publicKey' || connection.authType === 'vaultKey');
+    if (auth.authType === 'publicKey' && !auth.keyPath.trim() && !auth.key && !hasStoredKey) {
       newErrors.keyPath = t('connections.validation.keyPathRequired');
     }
 
@@ -234,7 +254,12 @@ export function ConnectionForm({
         if (auth.authType === 'password') {
           if (auth.password) input.authMethod = { type: 'password', password: auth.password };
         } else if (auth.authType === 'publicKey') {
-          if (auth.keyPath) input.authMethod = toAuthMethodInput(auth);
+          // Nothing new given ⇒ no `authMethod` in the update, so the core keeps the
+          // stored one. This is what lets you rename a key-based machine.
+          if (auth.keyPath || auth.key) input.authMethod = toAuthMethodInput(auth);
+          // A passphrase typed and not kept: the record says to ask next time, so a key
+          // with no passphrase at all is never prompted for.
+          input.needsPassphrase = !!auth.passphrase && !auth.rememberPassphrase;
         } else {
           input.authMethod = toAuthMethodInput(auth);
         }
@@ -249,6 +274,8 @@ export function ConnectionForm({
           port,
           username,
           authMethod: toAuthMethodInput(auth),
+          // See the update path: a passphrase typed and not kept means ask next time.
+          needsPassphrase: auth.authType === 'publicKey' && !!auth.passphrase && !auth.rememberPassphrase,
           ...(folder && { folder }),
           ...(collectionTargetId && { collectionId: collectionTargetId }),
           ...(color && { color }),
@@ -412,6 +439,9 @@ export function ConnectionForm({
             onChange={setAuth}
             isEdit={!!connection}
             errors={{ password: errors.password, keyPath: errors.keyPath }}
+            // Only on an existing machine, and only where the source offers it: a machine
+            // being created has nothing stored, and a viewer's source refuses.
+            onReveal={connection && reveal ? () => reveal(connection) : undefined}
           />
 
           {/* Jump host (ProxyJump): reach this machine through another saved one (a

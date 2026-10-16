@@ -16,6 +16,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Backend, type LocalCollection } from '../utils/backend';
 import {
   type ConnectionInfo,
+  type RevealedSecret,
   type ConnectionsSource,
   type CreateConnectionInput,
   type UpdateConnectionInput,
@@ -83,6 +84,18 @@ export function useLocalCollectionsSource(): ConnectionsSource {
     },
     [refresh],
   );
+
+  /**
+   * Ask rite-core for this machine's stored secret (ADR 0024 §5).
+   *
+   * The only context where the refusal is real: the key lives in that process, so
+   * `allow_secret_reveal` off means the route answers 403 and that is the end of it.
+   */
+  const reveal = useCallback(async (conn: ConnectionInfo): Promise<RevealedSecret> => {
+    const collectionId = owner.current.get(conn.id);
+    if (!collectionId) throw new Error('connection is not available');
+    return Backend.Local.machineSecret(collectionId, conn.id);
+  }, []);
 
   const update = useCallback(
     async (input: UpdateConnectionInput) => {
@@ -251,6 +264,7 @@ export function useLocalCollectionsSource(): ConnectionsSource {
     connect,
     create,
     update,
+    reveal,
     // Every local collection is writable: there are no roles without members.
     writableCollections: collectionList.map((c) => ({ id: c.id, name: c.name })),
     collections: collectionList.map((c) => ({

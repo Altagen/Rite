@@ -70,6 +70,64 @@ test('a listed machine never carries its credentials', async ({ request }) => {
   expect(JSON.parse(raw)[0].authType).toBe('password');
 });
 
+/**
+ * A path comes back; what it protects does not (ADR 0024 §6).
+ *
+ * A key path is not a secret — it names a file. Withholding it meant you could not see
+ * which key a machine used, and the form reopened on "Password" with empty fields: typing
+ * a password there converted a key-based machine to password authentication, silently, and
+ * nothing broke until the next connection.
+ */
+test('a key-based machine says which key, and never its passphrase', async ({ request }) => {
+  const collectionId = await createCollection(request, 'e2e-keypath');
+  await createMachine(request, collectionId, {
+    name: 'e2e-key-machine',
+    keyPath: '/home/someone/.ssh/id_ed25519',
+    passphrase: 'do-not-leak-this-passphrase',
+  });
+
+  const raw = await (await request.get(`/api/local/collections/${collectionId}/machines`)).text();
+  const [machine] = JSON.parse(raw);
+  expect(machine.authType).toBe('publicKey');
+  expect(machine.keyPath, 'the path names a file, so it comes back').toBe('/home/someone/.ssh/id_ed25519');
+  expect(raw).not.toContain('do-not-leak-this-passphrase');
+  expect(raw).not.toContain('authMethod');
+});
+
+/**
+ * Reveal is a request, and a vault may refuse it (ADR 0024 §5).
+ *
+ * This is the one context where refusing is the end of it: the key lives in rite-core, so
+ * a client that wants a secret has to ask another process. On a shared server the browser
+ * already holds the plaintext it connects with, and the same switch binds its UI instead.
+ */
+test('a stored secret comes back only when asked, and only if the vault allows it', async ({ request }) => {
+  const collectionId = await createCollection(request, 'e2e-reveal');
+  const machineId = await createMachine(request, collectionId, {
+    name: 'e2e-reveal-machine',
+    password: 'reveal-me-on-request',
+  });
+  const secretUrl = `/api/local/collections/${collectionId}/machines/${machineId}/secret`;
+
+  // Not on the listing, on this request — and the listing above has already been asserted
+  // to carry nothing, which is what makes this a reveal rather than a second copy.
+  const shown = await request.get(secretUrl);
+  expect(shown.status()).toBe(200);
+  expect((await shown.json()).password).toBe('reveal-me-on-request');
+
+  // A vault set to keep its secrets unreadable refuses, and says so rather than
+  // answering with an empty object a caller would render as "no password".
+  expect((await request.put('/api/settings/allow_secret_reveal', { data: { value: '0' } })).status()).toBe(204);
+  const refused = await request.get(secretUrl);
+  expect(refused.status()).toBe(403);
+  expect(await refused.text()).toContain('unreadable');
+
+  // …and it is the setting that did it, not the machine going missing.
+  await request.put('/api/settings/allow_secret_reveal', { data: { value: '1' } });
+  expect((await request.get(secretUrl)).status()).toBe(200);
+  await request.delete(`/api/local/collections/${collectionId}`);
+});
+
 /** The retired path must be plainly gone rather than quietly half-working. */
 test('the legacy connections endpoint is retired for a local vault', async ({ request }) => {
   const res = await request.get('/api/connections');
@@ -90,6 +148,37 @@ test('a created machine shows up in the sidebar list', async ({ page, request })
   // Vault is already set up (smoke test) and unlocked in the server → main screen.
   await expect(page.getByText('e2e-visible')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByText('root@example.com:22')).toBeVisible();
+});
+
+/**
+ * The form opens on what the machine actually is (ADR 0024 §6).
+ *
+ * It seeded its auth state from a prefill only, never from the record being edited, so
+ * every saved machine reopened as "Password" with empty fields. Two costs: you could not
+ * see which key a key-based machine used, and typing a password into what looked like the
+ * password field converted it to password authentication without a word — nothing broke
+ * until the next connection, on a machine that had been working for months.
+ */
+test('editing a key-based machine opens on the key, not on a password field', async ({ page, request }) => {
+  const collectionId = await createCollection(request, 'e2e-edit-key');
+  await createMachine(request, collectionId, {
+    name: 'e2e-edit-key-machine',
+    keyPath: '/home/someone/.ssh/id_edit_test',
+  });
+
+  await page.goto('/');
+  // The sidebar row, scoped by its machine: "Edit" is a per-row button and there is one
+  // beside every machine and every collection.
+  const row = page.locator('.m-tnode.leaf', { hasText: 'e2e-edit-key-machine' });
+  await expect(row).toBeVisible({ timeout: 15_000 });
+  await row.getByRole('button', { name: 'Edit' }).click();
+
+  // The radio the record implies, and the path it names. Pinned to the exact path rather
+  // than "not empty": the field defaulting to something would pass that.
+  await expect(page.getByRole('radio', { name: /public key/i })).toBeChecked();
+  await expect(page.getByTestId('auth-key-path')).toHaveValue('/home/someone/.ssh/id_edit_test');
+  // And the password field is not the one on screen, which is the part that cost a machine.
+  await expect(page.getByPlaceholder('••••••••')).toHaveCount(0);
 });
 
 /**

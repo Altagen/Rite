@@ -129,7 +129,23 @@
       "usernameRequired": "Le nom d'utilisateur est requis",
       "passwordRequired": "Le mot de passe est requis",
       "keyPathRequired": "Le chemin de la clé privée est requis"
-    }
+    },
+    "keyFile": "Fichier de clé privée",
+    "keyFileHint": "Lu dans cette page et rangé dans ton coffre chiffré — il n'est jamais envoyé en tant que fichier. Les terminaux ici tournent sur le serveur, donc un chemin sur ton ordinateur ne lui dirait rien.",
+    "keyFileLoaded": "Chargé depuis {{name}}. Chiffré avec la clé de ton coffre avant de quitter cette page.",
+    "keyFileUnnamed": "le fichier choisi",
+    "keyUnreadable": "Ce fichier n'a pas pu être lu.",
+    "keyLooksPublic": "Cela ressemble à une clé publique (.pub). Choisis la clé privée — le fichier sans extension.",
+    "keyRemember": "Retenir cette passphrase",
+    "keyRememberWhy": "Sinon elle est demandée à chaque connexion. Conservée ici, elle voyage avec la clé qu'elle protège et cesse d'être une seconde barrière.",
+    "keyRememberOff": "Ton serveur ne conserve pas les passphrases",
+    "keyRememberOffWhy": " — elle te sera demandée à chaque connexion.",
+    "passphraseAsk": "Passphrase requise",
+    "passphraseAskFor": "Pour déverrouiller la clé de {{name}}.",
+    "passphraseAskWhy": "Utilisée pour cette connexion seulement. Rite ne la conserve pas — coche « Retenir cette passphrase » en éditant la machine si tu préfères qu'il le fasse.",
+    "passphraseUnlock": "Se connecter",
+    "reveal": "Révéler ce qui est enregistré",
+    "revealFailed": "Impossible de révéler cela."
   },
   "errors": {
     "setupFailed": "Erreur lors de la création: {error}",

@@ -52,6 +52,9 @@ export function InstanceSettingsPanel() {
   // about. Empty until loaded, and on an older server that never probed.
   const [shells, setShells] = useState<string[]>([]);
   const [shellChoice, setShellChoice] = useState(false);
+  // ADR 0024 §4: what may rest in a member's vault, and whether it can be read back.
+  const [passphraseStorage, setPassphraseStorage] = useState(true);
+  const [secretReveal, setSecretReveal] = useState(true);
   const [quickSsh, setQuickSsh] = useState(false);
   const [openReg, setOpenReg] = useState(false);
   const [allowInv, setAllowInv] = useState(true);
@@ -75,6 +78,8 @@ export function InstanceSettingsPanel() {
       setShell(mode.defaultShell ?? 'bash');
       setShells(mode.shells ?? []);
       setShellChoice(mode.allowShellChoice === true);
+      setPassphraseStorage(mode.allowPassphraseStorage !== false);
+      setSecretReveal(mode.allowSecretReveal !== false);
       setQuickSsh(mode.allowQuickSsh === true);
       setOpenReg(mode.openRegistration === true);
       setAllowInv(mode.allowInvitations !== false);
@@ -129,6 +134,28 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setShellChoice(next);
     } catch (err) {
       setShellChoice(!next);
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
+
+  const togglePassphraseStorage = async () => {
+    const next = !passphraseStorage;
+    setPassphraseStorage(next);
+    try {
+      await Backend.Admin.setPassphraseStorage(next);
+    } catch (err) {
+      setPassphraseStorage(!next);
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
+
+  const toggleSecretReveal = async () => {
+    const next = !secretReveal;
+    setSecretReveal(next);
+    try {
+      await Backend.Admin.setSecretReveal(next);
+    } catch (err) {
+      setSecretReveal(!next);
       setError(err instanceof Error ? err.message : 'Failed to save');
     }
   };
@@ -421,6 +448,58 @@ export function InstanceSettingsPanel() {
             label="Allow Quick SSH"
             disabled={!!managed.allow_quick_ssh}
             onChange={toggleQuickSsh}
+          />
+        </div>
+
+        {/* Stored secrets (ADR 0024 §4). Both permissive by default, because Rite already
+            stores SSH passwords in the vault and has since it existed: forbidding a stored
+            passphrase while allowing a stored password is the appearance of hardening. */}
+        <div className="border-t border-border p-4">
+          <div className="font-medium">Stored secrets</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            What may rest in a member&apos;s own vault, and whether they can read it back.
+          </p>
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-b border-border px-4 pb-4">
+          <div>
+            <div className="font-medium">Members may remember a key passphrase</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <b>On by default</b>, and the member&apos;s own default is still to be asked — the box is unticked
+              when they save a machine. Off: a passphrase is never written on this instance and is asked at each
+              connection. A passphrase kept beside the key it protects is no longer a second barrier, which is
+              why the choice is named rather than implied.
+            </p>
+            {managed.allow_passphrase_storage && <ManagedBy origin={managed.allow_passphrase_storage} />}
+          </div>
+          <Switch
+            checked={passphraseStorage}
+            label="Members may remember a key passphrase"
+            disabled={!!managed.allow_passphrase_storage}
+            onChange={togglePassphraseStorage}
+            testId="instance-passphrase-storage"
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 p-4">
+          <div>
+            <div className="font-medium">Members may read a stored secret back</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <b>On by default</b>, on an explicit action and never on screen by itself. Off: the vault is
+              write-only here — a secret can be used and not read.{' '}
+              <b>This binds the client, not the data</b>: a browser decrypts the record it connects with, so a
+              member holds their own plaintext and a viewer holds a shared item&apos;s. It stops the accidents —
+              a secret on screen in a screen share, a casual copy — and the boundary that holds is who the
+              collection is shared with.
+            </p>
+            {managed.allow_secret_reveal && <ManagedBy origin={managed.allow_secret_reveal} />}
+          </div>
+          <Switch
+            checked={secretReveal}
+            label="Members may read a stored secret back"
+            disabled={!!managed.allow_secret_reveal}
+            onChange={toggleSecretReveal}
+            testId="instance-secret-reveal"
           />
         </div>
 

@@ -46,6 +46,12 @@ export interface ConnectionInfo {
   port: number;
   username: string;
   authType: string;
+  /**
+   * The key file this machine names, when it names one (ADR 0024 §6). A path is not a
+   * secret: withholding it meant you could not see which key a machine used, and the form
+   * reopened on "Password" — so typing one there converted the machine silently.
+   */
+  keyPath?: string | null;
   color?: string | null;
   icon?: string | null;
   folder?: string | null;
@@ -94,6 +100,12 @@ export interface CreateConnectionInput {
   jump?: string | null; // jump-host connection id (see ConnectionInfo.jump)
   forwards?: PortForwardConfig[]; // saved port forwards (see ConnectionInfo.forwards)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
+  /**
+   * This key's passphrase is not being stored, so connecting must ask for it (ADR 0024
+   * §4). Not a secret — it records what the person said when they saved the machine, so a
+   * key with no passphrase is never prompted for.
+   */
+  needsPassphrase?: boolean;
   // ADR 0016: save this machine into a shared collection (encrypted with the
   // collection key) instead of the personal vault. Absent ⇒ personal vault.
   collectionId?: string | null;
@@ -117,6 +129,7 @@ export interface UpdateConnectionInput {
   jump?: string | null; // jump-host connection id (see ConnectionInfo.jump)
   forwards?: PortForwardConfig[]; // saved port forwards (Some ⇒ replace the whole list)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
+  needsPassphrase?: boolean; // see CreateConnectionInput
 }
 
 /**
@@ -125,6 +138,14 @@ export interface UpdateConnectionInput {
  * with browser-decrypted per-user + team connections. `connect` opens a terminal
  * session for a saved connection and returns its id.
  */
+/** What a reveal hands back. Only the fields the stored method actually has. */
+export interface RevealedSecret {
+  password?: string;
+  key?: string;
+  keyPath?: string;
+  passphrase?: string | null;
+}
+
 export interface ConnectionsSource {
   connections: ConnectionInfo[];
   selectedConnectionId: string | null;
@@ -134,6 +155,16 @@ export interface ConnectionsSource {
   connect: (conn: ConnectionInfo) => Promise<string>;
   create: (input: CreateConnectionInput) => Promise<void>;
   update: (input: UpdateConnectionInput) => Promise<void>;
+  /**
+   * Read one machine's stored secret back (ADR 0024 §5), on an explicit request and never
+   * on render. Each context answers from where the plaintext already is: the browser holds
+   * the record it decrypted to connect with, and a local vault asks rite-core — which is
+   * also the only context where `allowSecretReveal` is a refusal rather than a convention.
+   *
+   * Throws when the policy says no, or when the caller's role may use the credential
+   * without extracting it (a viewer, ADR 0016).
+   */
+  reveal?: (conn: ConnectionInfo) => Promise<RevealedSecret>;
   // ADR 0016: collections the caller may write into (owner/editor), for the
   // machine form's "save to collection" target. Undefined in the local vault
   // context (no collections there); populated by the accounts source.

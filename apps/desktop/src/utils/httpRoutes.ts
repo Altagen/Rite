@@ -278,6 +278,22 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_set_passphrase_storage: async (a) => {
+    await json('/api/admin/passphrase-storage', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: a.enabled }),
+    });
+    return null;
+  },
+  admin_set_secret_reveal: async (a) => {
+    await json('/api/admin/secret-reveal', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: a.enabled }),
+    });
+    return null;
+  },
   admin_set_quick_ssh: async (a) => {
     await json('/api/admin/quick-ssh', {
       method: 'PATCH',
@@ -626,6 +642,8 @@ const routes: Record<string, Route> = {
     json(`/api/local/collections/${a.id}`, { method: 'DELETE' }),
 
   local_machines: (a) => json(`/api/local/collections/${a.collectionId}/machines`),
+  local_machine_secret: async (a) =>
+    json(`/api/local/collections/${a.collectionId}/machines/${a.item}/secret`),
   local_create_machine: (a) =>
     json(`/api/local/collections/${a.collectionId}/machines`, post(a.record)),
   local_update_machine: (a) =>

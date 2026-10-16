@@ -95,6 +95,8 @@ const ConnectionInfoSchema = z.object({
   port: z.number(),
   username: z.string(),
   authType: z.string(),
+  // ADR 0024 §6: a path names a file and is not a secret, so it comes back.
+  keyPath: z.string().nullable().optional(),
   folder: z.string().nullable().optional(),
   color: z.string().nullable().optional(),
   icon: z.string().nullable().optional(),
@@ -527,6 +529,10 @@ const ServerModeSchema = z.object({
   // Whether a member may deviate from `defaultShell` within `shells`. Off/absent ⇒ the
   // default is the only shell, which is how every server behaved before this existed.
   allowShellChoice: z.boolean().optional(),
+  // ADR 0024 §4. Permissive when absent, which is also the server's default: forbidding a
+  // stored passphrase while Rite stores passwords would be the appearance of hardening.
+  allowPassphraseStorage: z.boolean().optional(),
+  allowSecretReveal: z.boolean().optional(),
   allowQuickSsh: z.boolean().optional(),
   /** How the server verifies host keys for the connections it opens, for everyone. */
   hostKeyVerification: z.string().optional(),
@@ -797,6 +803,12 @@ export const BackendAdmin = {
   /** Let members pick their own shell among the ones this instance offers (org-admin). */
   setShellChoice: (enabled: boolean) =>
     invokeWithValidation('admin_set_shell_choice', z.null(), { enabled }),
+  /** Let members keep a key passphrase in their vault, or have it asked each time. */
+  setPassphraseStorage: (enabled: boolean) =>
+    invokeWithValidation('admin_set_passphrase_storage', z.null(), { enabled }),
+  /** Let a member read a stored secret back (ADR 0024 §4-5). */
+  setSecretReveal: (enabled: boolean) =>
+    invokeWithValidation('admin_set_secret_reveal', z.null(), { enabled }),
   /** Allow/forbid ad-hoc Quick SSH from the toolbar (org-admin). */
   setQuickSsh: (enabled: boolean) =>
     invokeWithValidation('admin_set_quick_ssh', z.null(), { enabled }),
@@ -1124,6 +1136,14 @@ const LocalCollectionSchema = z.object({
 export type LocalCollection = z.infer<typeof LocalCollectionSchema>;
 
 /** A machine in a local collection: credential-free, like every other read path. */
+/** What a reveal answers with: only the fields the stored method has. */
+const RevealedSecretSchema = z.object({
+  password: z.string().optional(),
+  key: z.string().optional(),
+  keyPath: z.string().optional(),
+  passphrase: z.string().nullable().optional(),
+});
+
 const LocalMachineSchema = ConnectionInfoSchema.extend({
   collectionId: z.string(),
   hc: z.boolean().nullable().optional(),
@@ -1155,6 +1175,13 @@ export const BackendLocal = {
 
   machines: (collectionId: string) =>
     invokeWithValidation('local_machines', z.array(LocalMachineSchema), { collectionId }),
+  /**
+   * One machine's stored secret (ADR 0024 §5). Refused with 403 when this vault is set to
+   * keep its secrets unreadable — the one context where that is a refusal and not a
+   * convention, because the key lives in the process being asked.
+   */
+  machineSecret: (collectionId: string, item: string) =>
+    invokeWithValidation('local_machine_secret', RevealedSecretSchema, { collectionId, item }),
   createMachine: (collectionId: string, record: unknown) =>
     invokeWithValidation('local_create_machine', z.object({ id: z.string() }), {
       collectionId,

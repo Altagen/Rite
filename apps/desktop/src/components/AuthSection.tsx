@@ -9,8 +9,10 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { isNativeShell } from '../utils/nativeShell';
+import { useServerSession } from '../store/serverSessionStore';
 import { Backend, type AgentIdentity } from '../utils/backend';
 import type { AuthState } from '../utils/authMethod';
+import type { RevealedSecret } from '../store/connectionsStore';
 
 const INPUT_CLS =
   'w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none';
@@ -44,11 +46,75 @@ interface AuthSectionProps {
   /** Edit mode: password is optional (leave blank to keep the current one). */
   isEdit?: boolean;
   errors?: { password?: string; keyPath?: string };
+  /**
+   * Read this machine's stored secret back into the fields (ADR 0024 §5). Absent ⇒ no
+   * reveal is offered: a machine being created has nothing to reveal, a viewer may use a
+   * credential without extracting it, and an instance may turn it off for everyone.
+   */
+  onReveal?: () => Promise<RevealedSecret>;
 }
 
-export function AuthSection({ value, onChange, isEdit, errors }: AuthSectionProps) {
+export function AuthSection({ value, onChange, isEdit, errors, onReveal }: AuthSectionProps) {
   const { t } = useTranslation();
   const native = isNativeShell();
+  // Where SSH will run decides what a key field can mean (ADR 0024 §2). On this machine's
+  // own vault, a path: the key stays on disk and Rite keeps a reference, which is better
+  // than a copy. Pointed at a server, SSH runs there — a path would name a file in its
+  // container, which no member can put there — so the key travels with the record.
+  const serverMode = useServerSession((st) => st.mode);
+  const sshRunsHere = !serverMode?.accounts;
+  const mayRemember = serverMode?.allowPassphraseStorage !== false;
+  const [keyError, setKeyError] = useState<string | null>(null);
+  const [revealError, setRevealError] = useState<string | null>(null);
+
+  // On a click and never on render: nothing stored is on screen until it is asked for.
+  const doReveal = async (field: 'password' | 'passphrase') => {
+    if (!onReveal) return;
+    setRevealError(null);
+    try {
+      const secret = await onReveal();
+      if (field === 'password') {
+        set({ password: secret.password ?? '' });
+        setShowPassword(true);
+      } else {
+        set({ passphrase: secret.passphrase ?? '', rememberPassphrase: !!secret.passphrase });
+        setShowPassphrase(true);
+      }
+    } catch (err) {
+      setRevealError(err instanceof Error ? err.message : t('connections.revealFailed'));
+    }
+  };
+
+  const RevealButton = ({ field }: { field: 'password' | 'passphrase' }) =>
+    onReveal ? (
+      <button
+        type="button"
+        onClick={() => void doReveal(field)}
+        className="mt-1 text-sm text-primary hover:underline"
+        data-testid={`auth-reveal-${field}`}
+      >
+        {t('connections.reveal')}
+      </button>
+    ) : null;
+
+  // Read in the page and nowhere else: there is no upload endpoint for a private key, and
+  // there is not going to be one — an endpoint that accepts a key is one that has held it.
+  const readKeyFile = (file: File) => {
+    setKeyError(null);
+    const reader = new FileReader();
+    reader.onerror = () => setKeyError(t('connections.keyUnreadable'));
+    reader.onload = () => {
+      const text = String(reader.result ?? '');
+      if (!/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(text)) {
+        // The public half is the file people reach for first, and it fails much later —
+        // at authentication, as "permission denied", with nothing naming the cause.
+        setKeyError(t('connections.keyLooksPublic'));
+        return;
+      }
+      set({ key: text, keyName: file.name });
+    };
+    reader.readAsText(file);
+  };
   const [showPassword, setShowPassword] = useState(false);
   const [showPassphrase, setShowPassphrase] = useState(false);
   const set = (patch: Partial<AuthState>) => onChange({ ...value, ...patch });
@@ -110,25 +176,60 @@ export function AuthSection({ value, onChange, isEdit, errors }: AuthSectionProp
           </div>
           {errors?.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
           {isEdit && <p className="mt-1 text-sm text-muted-foreground">Leave empty to keep current password</p>}
+          <RevealButton field="password" />
+          {revealError && (
+            <p className="mt-1 text-sm text-amber-500" data-testid="auth-reveal-error">
+              {revealError}
+            </p>
+          )}
         </div>
       )}
 
-      {/* Public key (file) */}
+      {/* Public key — a file on this machine, or the key itself (ADR 0024 §2) */}
       {value.authType === 'publicKey' && (
         <div className="space-y-4">
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              {t('connections.keyPath')} <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={value.keyPath}
-              onChange={(e) => set({ keyPath: e.target.value })}
-              placeholder={t('connections.keyPathPlaceholder')}
-              className={INPUT_CLS}
-            />
-            {errors?.keyPath && <p className="mt-1 text-sm text-red-500">{errors.keyPath}</p>}
-          </div>
+          {sshRunsHere ? (
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                {t('connections.keyPath')} <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={value.keyPath}
+                onChange={(e) => set({ keyPath: e.target.value })}
+                placeholder={t('connections.keyPathPlaceholder')}
+                className={INPUT_CLS}
+                data-testid="auth-key-path"
+              />
+              {errors?.keyPath && <p className="mt-1 text-sm text-red-500">{errors.keyPath}</p>}
+            </div>
+          ) : (
+            <div>
+              <label className="mb-1 block text-sm font-medium">
+                {t('connections.keyFile')} <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) readKeyFile(file);
+                }}
+                className={`${INPUT_CLS} file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1 file:text-foreground`}
+                data-testid="auth-key-file"
+              />
+              <p className="mt-1 text-sm text-muted-foreground">
+                {value.key
+                  ? t('connections.keyFileLoaded', { name: value.keyName || t('connections.keyFileUnnamed') })
+                  : t('connections.keyFileHint')}
+              </p>
+              {keyError && (
+                <p className="mt-1 text-sm text-red-500" data-testid="auth-key-error">
+                  {keyError}
+                </p>
+              )}
+              {errors?.keyPath && !value.key && <p className="mt-1 text-sm text-red-500">{errors.keyPath}</p>}
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-sm font-medium">{t('connections.keyPassphrase')}</label>
             <div className="relative">
@@ -138,9 +239,38 @@ export function AuthSection({ value, onChange, isEdit, errors }: AuthSectionProp
                 onChange={(e) => set({ passphrase: e.target.value })}
                 placeholder={t('connections.keyPassphrasePlaceholder')}
                 className={`${INPUT_CLS} pr-10`}
+                data-testid="auth-passphrase"
               />
               <EyeButton shown={showPassphrase} onToggle={() => setShowPassphrase(!showPassphrase)} />
             </div>
+            <RevealButton field="passphrase" />
+            {revealError && (
+              <p className="mt-1 text-sm text-amber-500" data-testid="auth-reveal-error">
+                {revealError}
+              </p>
+            )}
+            {/* Unchecked by default, and gone where the instance says so. A passphrase kept
+                beside the key it protects is no longer a second barrier — so the row says
+                what it does instead of implying one. */}
+            {mayRemember ? (
+              <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={value.rememberPassphrase}
+                  onChange={(e) => set({ rememberPassphrase: e.target.checked })}
+                  data-testid="auth-remember-passphrase"
+                />
+                <span>
+                  {t('connections.keyRemember')}
+                  <span className="block text-muted-foreground">{t('connections.keyRememberWhy')}</span>
+                </span>
+              </label>
+            ) : (
+              <p className="mt-2 text-sm" data-testid="auth-remember-forbidden">
+                <span className="text-amber-500">{t('connections.keyRememberOff')}</span>
+                {t('connections.keyRememberOffWhy')}
+              </p>
+            )}
           </div>
         </div>
       )}
