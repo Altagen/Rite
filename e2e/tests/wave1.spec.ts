@@ -882,6 +882,28 @@ test('hiding the "+" shell menu leaves "+" opening the default shell', async ({ 
 });
 
 /**
+ * A tab says what a click will do.
+ *
+ * The tabs carried `cursor-move`, so hovering one promised a drag and every click to
+ * switch tabs looked like the start of one — while the pane's grip, which exists only
+ * to drag, says the same thing. One of those is a selector and one is a handle, and
+ * the mock has had `cursor:pointer` on `.mtab` all along.
+ */
+test('a terminal tab reads as a selector, and only the pane grip reads as a handle', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+
+  const tab = page.getByTestId('tab-select').first();
+  await expect(tab).toBeVisible({ timeout: 15_000 });
+  await expect(tab).toHaveCSS('cursor', 'pointer');
+
+  // The contrast, in the same breath: the grip drags and nothing else, so it keeps
+  // saying move. Without this the assertion above would pass on a page with no
+  // draggable anything.
+  await expect(page.getByTitle('Drag to reorganize pane').first()).toHaveCSS('cursor', 'move');
+});
+
+/**
  * A locked vault does not take the preferences with it.
  *
  * Base-first (ADR 0014): this workspace runs local terminals and Quick SSH with no

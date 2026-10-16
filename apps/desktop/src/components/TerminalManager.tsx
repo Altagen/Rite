@@ -408,7 +408,14 @@ export function TerminalManager({
                   e.stopPropagation();
                   handleStartRename(tab);
                 }}
-                className="flex items-center gap-2 cursor-move select-none"
+                /* A tab is a selector first: one click switches to it, and the mock
+                   says `cursor:pointer`. `cursor-move` promised a drag on hover and
+                   made every click look like the start of one. Dragging says so while
+                   it happens, which is when it is true. */
+                className={`flex items-center gap-2 select-none ${
+                  draggedTabId === tab.id ? 'cursor-grabbing' : 'cursor-pointer'
+                }`}
+                data-testid="tab-select"
               >
                 <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 17l6-5-6-5M12 19h8" />
