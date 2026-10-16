@@ -70,6 +70,12 @@ test('the console locks what the configuration owns, and names where it is set',
   const reveal = page.getByRole('switch', { name: 'Members may read a stored secret back' });
   await expect(reveal).toBeDisabled();
   await expect(reveal).toHaveAttribute('aria-checked', 'false');
+  // And the host-key policy, which had no console row and no validated route at all while
+  // the web UI reported it read-only: declared here at `warn`, so the row shows the
+  // declared value rather than the default and cannot be changed from the console.
+  const hostKey = page.getByTestId('instance-host-key-mode');
+  await expect(hostKey).toBeDisabled();
+  await expect(hostKey).toHaveValue('warn');
   // …while one the file leaves alone is untouched by the lock.
   await expect(page.getByRole('switch', { name: 'Allow invitations' })).toBeEnabled();
 });

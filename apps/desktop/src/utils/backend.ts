@@ -803,6 +803,9 @@ export const BackendAdmin = {
   /** Let members pick their own shell among the ones this instance offers (org-admin). */
   setShellChoice: (enabled: boolean) =>
     invokeWithValidation('admin_set_shell_choice', z.null(), { enabled }),
+  /** How this server verifies host keys, for every connection it opens (org-admin). */
+  setHostKeyMode: (mode: 'strict' | 'warn' | 'accept') =>
+    invokeWithValidation('admin_set_host_key_mode', z.null(), { mode }),
   /** Let members keep a key passphrase in their vault, or have it asked each time. */
   setPassphraseStorage: (enabled: boolean) =>
     invokeWithValidation('admin_set_passphrase_storage', z.null(), { enabled }),

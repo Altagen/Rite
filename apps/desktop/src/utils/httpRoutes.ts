@@ -278,6 +278,14 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_set_host_key_mode: async (a) => {
+    await json('/api/admin/host-key-mode', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: a.mode }),
+    });
+    return null;
+  },
   admin_set_passphrase_storage: async (a) => {
     await json('/api/admin/passphrase-storage', {
       method: 'PATCH',

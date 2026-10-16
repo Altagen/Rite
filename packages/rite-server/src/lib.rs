@@ -559,6 +559,7 @@ pub fn build_router(state: ServerState) -> Router {
         )
         .route("/api/admin/default-shell", patch(set_default_shell))
         .route("/api/admin/shell-choice", patch(set_shell_choice))
+        .route("/api/admin/host-key-mode", patch(set_host_key_mode))
         .route("/api/admin/passphrase-storage", patch(set_passphrase_storage))
         .route("/api/admin/secret-reveal", patch(set_secret_reveal))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
@@ -1304,7 +1305,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
     // What this instance can run, and whether a member may deviate from the default within
     // it. Off by default: on a shared server the terminals are the administrator's business
     // until they say otherwise, so an instance that upgrades and says nothing is unchanged.
-    let shells = offered_shells();
+    let shells = offered_shells().to_vec();
     let allow_shell_choice = state.setting_bool("allow_shell_choice", false).await?;
     // ADR 0024 §4. Permissive by default, because Rite already stores SSH passwords in the
     // vault and has since it existed: forbidding a stored passphrase while allowing a
@@ -1463,6 +1464,11 @@ async fn set_session_persistence(
 }
 
 #[derive(Deserialize)]
+struct ModeReq {
+    mode: String,
+}
+
+#[derive(Deserialize)]
 struct ShellReq {
     shell: String,
 }
@@ -1506,6 +1512,35 @@ async fn set_shell_choice(
     state
         .db
         .set_setting("allow_shell_choice", if req.enabled { "1" } else { "0" })
+        .await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// How this server verifies host keys, for every connection it opens (org-admin only).
+///
+/// It had no validated route and no console row, although the web UI reports it read-only
+/// and `rite-core` reads it for every connection: the only way to set it on a server was
+/// the generic settings route, which is also how a regular account used to be able to turn
+/// verification off for everyone. A security policy the console cannot show is a policy
+/// nobody audits.
+async fn set_host_key_mode(
+    State(state): State<ServerState>,
+    Json(req): Json<ModeReq>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "host_key_verification_mode") {
+        return Ok(refusal);
+    }
+    let mode = req.mode.trim();
+    if !HOST_KEY_MODES.contains(&mode) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            format!("expected one of {}", HOST_KEY_MODES.join(", ")),
+        )
+            .into_response());
+    }
+    state
+        .db
+        .set_setting("host_key_verification_mode", mode)
         .await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -3438,6 +3473,7 @@ const ADMIN_ROUTE_SETTINGS: &[&str] = &[
     "dashboard_policy",
     "default_shell",
     "healthcheck",
+    "host_key_verification_mode",
     "instance_name",
     "open_registration",
     "session_persistence",
@@ -4336,6 +4372,11 @@ fn clamped_shell_name(raw: &str) -> &str {
     }
 }
 
+/// How a host key may be treated, in the order the console offers them. `strict` is the
+/// default and the only one that refuses an unknown host; the others exist for a first
+/// connection to a machine whose key nobody has recorded yet.
+const HOST_KEY_MODES: [&str; 3] = ["strict", "warn", "accept"];
+
 /// The four agreed shell names, in the order the console offers them.
 const AGREED_SHELLS: [&str; 4] = ["bash", "sh", "zsh", "fish"];
 
@@ -4365,12 +4406,21 @@ fn shell_path_of(name: &str) -> Option<String> {
 /// image has two of them: picking one of the others set every terminal on the instance to
 /// a program that is not installed. So the offer is a probe, not a list — and it is also
 /// the set a member may choose from, which is why nothing downstream has to re-derive it.
-fn offered_shells() -> Vec<String> {
-    AGREED_SHELLS
-        .iter()
-        .filter(|name| shell_path_of(name).is_some())
-        .map(|name| (*name).to_string())
-        .collect()
+fn offered_shells() -> &'static [String] {
+    // Probed once. Not for the syscalls — `/api/server/mode` is fetched a handful of times
+    // per client, not polled — but because the answer must not move under the feature: the
+    // console offers this set, a member picks from it and `chosen_shell_path` resolves
+    // against it, and a set that changed between two of those calls would turn a valid
+    // pick into a fallback with nothing to explain it. A container gains a shell by being
+    // rebuilt, which restarts this process anyway.
+    static OFFERED: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    OFFERED.get_or_init(|| {
+        AGREED_SHELLS
+            .iter()
+            .filter(|name| shell_path_of(name).is_some())
+            .map(|name| (*name).to_string())
+            .collect()
+    })
 }
 
 /// The shell this server runs for a member who asked for `asked`.

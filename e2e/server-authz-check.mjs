@@ -126,10 +126,15 @@ try {
   assert.equal((await put('/api/settings/open_registration', { value: '1' }, admin)).status, 409, 'likewise a declared key');
   assert.equal((await mode(admin)).defaultShell, 'bash', 'so the shell is still the default');
   assert.equal((await mode(admin)).openRegistration, false, 'and the file still owns registration');
-  // What an admin may still do: an instance default with no route of its own.
-  assert.equal((await put('/api/settings/host_key_verification_mode', { value: 'warn' }, admin)).status, 204);
-  assert.equal((await mode(admin)).hostKeyVerification, 'warn', 'an admin sets the instance default');
-  await put('/api/settings/host_key_verification_mode', { value: 'strict' }, admin);
+  // The host-key policy used to be the example here, as an instance default with no route
+  // of its own. It has one now (and its own group below), so it answers 409 like its
+  // neighbours — the refusal has to be specific rather than a blanket no to the table, so
+  // a key that is NOT an instance policy still goes through.
+  assert.equal((await put('/api/settings/host_key_verification_mode', { value: 'warn' }, admin)).status, 409,
+    'a policy with a validated route is refused here too');
+  assert.equal((await mode(admin)).hostKeyVerification, 'strict', 'and the refusal changed nothing');
+  assert.equal((await put('/api/settings/clipboard_clear_timeout', { value: '45' }, admin)).status, 204,
+    'a key that is nobody else\'s business is still an admin\'s to write');
   ok('the generic route is no way around a validated route or the configuration lock');
 
   step = 'local-terminal-runs-the-instance-shell';
@@ -172,6 +177,20 @@ try {
   // machine, and a shared server has no such vault. They are reachable by any session in
   // accounts mode, so what they answer there decides whether the reveal route added for a
   // local vault became a way to read someone's secrets on a server.
+  // The host-key policy had no validated route at all: the only way to set it on a server
+  // was the generic settings table, which is where the hole this check exists for was.
+  step = 'the-host-key-policy-has-a-route-of-its-own';
+  assert.equal((await patch('/api/admin/host-key-mode', { mode: 'warn' }, admin)).status, 204);
+  assert.equal((await mode(admin)).hostKeyVerification, 'warn', 'an admin sets it through its own route');
+  assert.equal((await patch('/api/admin/host-key-mode', { mode: 'trust-me' }, admin)).status, 400,
+    'a value outside the three is refused rather than stored');
+  assert.equal((await mode(admin)).hostKeyVerification, 'warn', 'and the refusal changed nothing');
+  assert.equal((await patch('/api/admin/host-key-mode', { mode: 'accept' }, pleb)).status, 403,
+    'a regular account cannot reach it, route or no route');
+  await patch('/api/admin/host-key-mode', { mode: 'strict' }, admin);
+  assert.equal((await mode(admin)).hostKeyVerification, 'strict');
+  ok('the host-key policy is set through a validated admin route, by an admin');
+
   step = 'local-vault-routes-serve-nothing-on-a-shared-server';
   for (const [label, res] of [
     ['list collections', await get('/api/local/collections', pleb)],

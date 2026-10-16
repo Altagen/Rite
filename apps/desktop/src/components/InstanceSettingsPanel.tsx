@@ -55,6 +55,9 @@ export function InstanceSettingsPanel() {
   // ADR 0024 §4: what may rest in a member's vault, and whether it can be read back.
   const [passphraseStorage, setPassphraseStorage] = useState(true);
   const [secretReveal, setSecretReveal] = useState(true);
+  // How this server verifies host keys, for every connection it opens. It was reported to
+  // clients and shown read-only there, with nowhere here to set it.
+  const [hostKeyMode, setHostKeyMode] = useState<'strict' | 'warn' | 'accept'>('strict');
   const [quickSsh, setQuickSsh] = useState(false);
   const [openReg, setOpenReg] = useState(false);
   const [allowInv, setAllowInv] = useState(true);
@@ -80,6 +83,7 @@ export function InstanceSettingsPanel() {
       setShellChoice(mode.allowShellChoice === true);
       setPassphraseStorage(mode.allowPassphraseStorage !== false);
       setSecretReveal(mode.allowSecretReveal !== false);
+      setHostKeyMode((mode.hostKeyVerification as 'strict' | 'warn' | 'accept') ?? 'strict');
       setQuickSsh(mode.allowQuickSsh === true);
       setOpenReg(mode.openRegistration === true);
       setAllowInv(mode.allowInvitations !== false);
@@ -134,6 +138,17 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setShellChoice(next);
     } catch (err) {
       setShellChoice(!next);
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
+
+  const changeHostKeyMode = async (next: 'strict' | 'warn' | 'accept') => {
+    const prev = hostKeyMode;
+    setHostKeyMode(next);
+    try {
+      await Backend.Admin.setHostKeyMode(next);
+    } catch (err) {
+      setHostKeyMode(prev);
       setError(err instanceof Error ? err.message : 'Failed to save');
     }
   };
@@ -449,6 +464,33 @@ export function InstanceSettingsPanel() {
             disabled={!!managed.allow_quick_ssh}
             onChange={toggleQuickSsh}
           />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">Host key verification</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              How this server treats an SSH host key it has not seen before — <b>every</b> connection on this
+              instance runs here, so this is one policy for everyone. <b>Strict</b> refuses an unknown host;{' '}
+              <b>warn</b> and <b>accept</b> exist for a first connection to a machine whose key nobody has
+              recorded yet, and both mean a man-in-the-middle would not be refused. Clients are told what this
+              says and show it read-only.
+            </p>
+            {managed.host_key_verification_mode && <ManagedBy origin={managed.host_key_verification_mode} />}
+          </div>
+          <select
+            value={hostKeyMode}
+            onChange={(e) => changeHostKeyMode(e.target.value as 'strict' | 'warn' | 'accept')}
+            disabled={!!managed.host_key_verification_mode}
+            data-testid="instance-host-key-mode"
+            className="flex-none rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {['strict', 'warn', 'accept'].map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Stored secrets (ADR 0024 §4). Both permissive by default, because Rite already

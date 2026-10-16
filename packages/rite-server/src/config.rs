@@ -57,6 +57,7 @@ pub const SETTINGS: &[(&str, Shape)] = &[
     ("instance_name", Shape::Text),
     ("session_persistence", Shape::Bool),
     ("default_shell", Shape::Text),
+    ("host_key_verification_mode", Shape::Text),
     ("allow_quick_ssh", Shape::Bool),
     ("allow_shell_choice", Shape::Bool),
     ("allow_passphrase_storage", Shape::Bool),
@@ -334,6 +335,16 @@ pub fn validate(key: &str, value: &Value) -> Result<()> {
         "instance_name" | "default_shell" => {
             if !value.is_string() {
                 bail!("expected a string");
+            }
+        }
+        "host_key_verification_mode" => {
+            // Validated by value, not merely by type: an instance that declares a typo
+            // here would come up with `rite-core` falling back to strict and the console
+            // showing the typo, which reads as a policy that is set and is not.
+            match value.as_str() {
+                Some("strict") | Some("warn") | Some("accept") => {}
+                Some(other) => bail!("expected strict, warn or accept, not `{other}`"),
+                None => bail!("expected a string"),
             }
         }
         "session_persistence"
