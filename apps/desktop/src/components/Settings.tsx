@@ -599,6 +599,12 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   (`Workspace.tsx`, `!isServerCtx`). A switch for something that cannot
                   appear is worse than a missing switch — it says you have a choice. */}
               {isLocalContext && toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
+              {/* Two shell controls, two questions: the picker above sets the default, this
+                  menu overrides it for one terminal. Hiding the first was leaving the second,
+                  which is why switching "the shell picker" off still asked which shell. Local
+                  only, for the same reason the picker is. */}
+              {isLocalContext &&
+                toolbarRow('newTerminalMenu', 'settings.toolbarNewTermMenu', 'settings.toolbarNewTermMenuDesc')}
               {native && toolbarRow('focusMode', 'settings.toolbarFocus', 'settings.toolbarFocusDesc')}
               {/* Quick SSH is the server's to forbid (`quickSshAllowed`), and when it does the
                   row says so instead of vanishing: the preference is still this person's, the

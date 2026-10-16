@@ -884,6 +884,9 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   // rather than assumed, because the switch must follow the policy and not the default.
   await page.getByTestId('settings-nav-toolbar').click();
   await expect(page.getByTestId('toolbar-shellPicker')).toHaveCount(0);
+  // Nor the other shell control: the "+" beside the tabs cannot offer a one-off shell
+  // here either, for the same reason — the instance picks the shell for every terminal.
+  await expect(page.getByTestId('toolbar-newTerminalMenu')).toHaveCount(0);
   // Quick SSH is the server's to forbid, and this one does. The row stays and says so: the
   // preference is still this person's, and the button is hidden either way.
   expect(mode.allowQuickSsh ?? false).toBe(false);
@@ -907,4 +910,12 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   await page.getByTestId('settings-nav-security').click();
   await expect(page.getByTestId('server-host-key')).toHaveText(mode.hostKeyVerification ?? 'strict');
   await expect(page.getByTestId('host-key-mode')).toHaveCount(0);
+
+  // And the control itself is absent, not merely its switch: "+" opens a terminal here
+  // rather than asking which shell, because the answer is not this user's to give.
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  await expect(page.getByRole('tablist', { name: 'Open tabs' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('tab-new-terminal')).toBeVisible();
+  await expect(page.getByTestId('tab-new-terminal-chevron')).toHaveCount(0);
 });

@@ -818,6 +818,70 @@ test('hiding the toolbar shell picker leaves the setting in Settings', async ({ 
 });
 
 /**
+ * The other shell control: the chevron on the tab strip's "+".
+ *
+ * Switching the toolbar picker off still left this one asking which shell, because
+ * they are two surfaces for two different questions — the picker sets the default,
+ * the "+" overrides it for one terminal — and only the first had a preference. So
+ * this one gets its own, and switching it off leaves "+" doing the obvious thing
+ * rather than disappearing: the button is how you get a terminal.
+ */
+test('hiding the "+" shell menu leaves "+" opening the default shell', async ({ page, request }) => {
+  // Pin a default that is NOT the client's fallback (`/usr/bin/bash`, settingsStore),
+  // so "+ opened the default" cannot be a terminal that opened on the fallback.
+  const candidates = ['/usr/bin/fish', '/usr/bin/zsh', '/usr/bin/sh', '/usr/bin/bash'];
+  const installed = (await (await request.post('/api/shells', { data: { shells: candidates } })).json()) as string[];
+  const pinned = installed.find((p) => p !== '/usr/bin/bash');
+  expect(pinned, 'this machine has a shell other than the fallback').toBeTruthy();
+  const before = ((await (await request.get('/api/settings')).json()) as Record<string, string>).default_shell;
+  await request.put('/api/settings/default_shell', { data: { value: pinned } });
+
+  await page.goto('/');
+  // The strip (and its "+") exist once there is a session: with none, the workspace
+  // shows its empty state instead.
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  const strip = page.getByRole('tablist', { name: 'Open tabs' });
+  await expect(strip).toBeVisible({ timeout: 15_000 });
+  const plus = page.getByTestId('tab-new-terminal');
+  const tabsBefore = await strip.getByRole('button').count();
+
+  // With the menu: "+" asks, and asking is not opening.
+  await expect(page.getByTestId('tab-new-terminal-chevron')).toBeVisible();
+  await plus.click();
+  await expect(page.getByTestId('tab-shell-menu')).toBeVisible();
+  await page.mouse.click(5, 5);
+  await expect(page.getByTestId('tab-shell-menu')).toHaveCount(0);
+  expect(await strip.getByRole('button').count(), 'opening the menu opened no terminal').toBe(tabsBefore);
+
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-toolbar').click();
+  await page.getByTestId('toolbar-newTerminalMenu').click();
+  await expect(page.getByTestId('toolbar-newTerminalMenu')).toHaveAttribute('aria-checked', 'false');
+  await page.getByRole('button', { name: 'Close settings' }).click();
+
+  // Without it: no chevron, and "+" is the action. The shell the server was asked for
+  // is the assertion — the tab's label is computed client-side and would read the same
+  // whatever ran.
+  await expect(page.getByTestId('tab-new-terminal-chevron')).toHaveCount(0);
+  await expect(plus).toBeVisible();
+  const [created] = await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith('/api/terminal/local') && r.request().method() === 'POST'),
+    plus.click(),
+  ]);
+  await expect(page.getByTestId('tab-shell-menu')).toHaveCount(0);
+  expect(((await created.json()) as { shell: string }).shell, 'the terminal ran the pinned default').toBe(pinned);
+  await expect(strip.getByRole('button').nth(tabsBefore)).toBeVisible({ timeout: 15_000 });
+
+  // Put the menu and the shell back for the specs that follow.
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-toolbar').click();
+  await page.getByTestId('toolbar-newTerminalMenu').click();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await expect(page.getByTestId('tab-new-terminal-chevron')).toBeVisible();
+  if (before) await request.put('/api/settings/default_shell', { data: { value: before } });
+});
+
+/**
  * A locked vault does not take the preferences with it.
  *
  * Base-first (ADR 0014): this workspace runs local terminals and Quick SSH with no

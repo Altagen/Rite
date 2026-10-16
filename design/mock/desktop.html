@@ -318,7 +318,7 @@ function probeGoverned(){return STATE.ctx.type==='server';}
 let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false,
   // Which toolbar buttons this person wants. Hiding one never grants or revokes
   // anything: the server policies and the keyboard shortcuts are unchanged.
-  toolbar:{shell:true,focus:true,quick:true,agents:true,layouts:true}};
+  toolbar:{shell:true,newTermMenu:true,focus:true,quick:true,agents:true,layouts:true}};
 /* This shell IS a machine, so it has the workspace file — the presets and the layouts
    both live in it (ADR 0023). `web.html` says false, and that one line is the whole
    difference between the two shells here. */
@@ -566,7 +566,9 @@ function renderMain(){
     ${mach?`<div class="mtab view ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
     ${agentTabsHTML()}
     ${layoutsBtnHTML()}
-    <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
+    ${STATE.toolbar.newTermMenu
+      ? `<button class="mtab-new" title="New terminal — pick a shell for this one" onclick="newTermMenu(event)">${ICON.plus}${EXICON.chevD}</button>`
+      : `<button class="mtab-new" title="New terminal (${STATE.defaultShell})" onclick="toast('New terminal · ${STATE.defaultShell}')">${ICON.plus}</button>`}`;
   const b=document.getElementById('mbody');
   if(STATE.mainTab==='agents'){ b.innerHTML=agentsViewHTML(); return; }
   if(STATE.mainTab==='agent'&&STATE.agentTab){ b.innerHTML=paneTabHTML(STATE.agentTab); return; }
@@ -967,6 +969,7 @@ const PREFS=[
   { id:'toolbar', label:'Toolbar', body:()=>
       `<h4>Toolbar</h4><p class="lede">What sits along the top of the window. Hiding a button never changes what you're allowed to do — a shortcut or a menu still reaches it.</p>`
     + prefRow('Shell picker','The dropdown next to <b>Terminal</b>, for picking the shell a new local terminal opens. Hiding it leaves the setting itself in <b>Terminals</b>, above.',prefToggle('toolbar.shell','renderActs()'))
+    + prefRow('Shell menu on “+”','The chevron on the <b>+</b> beside the tabs, to open one terminal with another shell without changing your default. Hiding it leaves <b>+</b> opening the default shell.',prefToggle('toolbar.newTermMenu','renderMain()'))
     + prefRow('Focus mode','The F11 button. The key works either way.',prefToggle('toolbar.focus','renderActs()'))
     + prefRow('Quick SSH','One-off connections that aren\'t in a collection.'
         + (STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK?' <span style="color:var(--amber)">Your server turns this off</span>, so it is hidden regardless.':''),
@@ -1098,6 +1101,10 @@ function discReq(label){DREQ.add(label);toast('Requested access to <span class="
 
 /* ================= wire ================= */
 function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on this system`);return;}STATE.defaultShell=s.name;renderActs();toast(`${s.name} set as default shell`);}})));}
+/* The tab strip's "+" opens ONE terminal with a shell and leaves the default alone;
+   `shellMenu` above sets the default. Two questions, which is why they are two
+   preferences: hiding the picker used to leave this one still asking. */
+function newTermMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on this system`);return;}toast(`New terminal · ${s.name}`);}})));}
 function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHELLS[0];
   document.getElementById('acts').innerHTML=`<button class="btn btn-primary btn-sm" title="New local terminal (${sh.name})" onclick="toast('New local terminal · ${sh.name}')">${ICON.plus} <span class="lbl">Terminal</span></button>
   ${STATE.toolbar.shell?`<button class="btn btn-sm" title="Shell for new local terminals — the same setting as Settings ▸ Terminals" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>`:''}

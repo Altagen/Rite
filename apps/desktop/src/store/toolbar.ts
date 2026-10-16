@@ -19,8 +19,14 @@
 import { create } from 'zustand';
 
 export interface ToolbarPrefs {
-  /** The shell dropdown beside New Terminal. */
+  /** The shell dropdown beside New Terminal, which sets the default shell. */
   shellPicker: boolean;
+  /**
+   * The shell menu on the tab strip's "+", which opens one terminal with a shell
+   * without making it the default. Hiding it leaves "+" opening the default — the
+   * button is how you get a terminal, the chevron is only the one-off.
+   */
+  newTerminalMenu: boolean;
   /** The focus-mode button (native shell only). F11 works either way. */
   focusMode: boolean;
   quickSsh: boolean;
@@ -30,6 +36,7 @@ export interface ToolbarPrefs {
 
 export const TOOLBAR_DEFAULTS: ToolbarPrefs = {
   shellPicker: true,
+  newTerminalMenu: true,
   focusMode: true,
   quickSsh: true,
   layouts: true,
@@ -78,6 +85,7 @@ export const useToolbar = create<ToolbarState>((set) => ({
 function pick(s: ToolbarPrefs): ToolbarPrefs {
   return {
     shellPicker: s.shellPicker,
+    newTerminalMenu: s.newTerminalMenu,
     focusMode: s.focusMode,
     quickSsh: s.quickSsh,
     layouts: s.layouts,

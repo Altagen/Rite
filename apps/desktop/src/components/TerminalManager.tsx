@@ -16,6 +16,7 @@ import { getAllSessions, getFocusedPane, getFirstLeafPane } from '../utils/paneT
 import { useShortcut } from '../shortcuts/useShortcut';
 import { PaneDragProvider } from '../contexts/PaneDragContext';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
+import { SHELL_CANDIDATES } from '../utils/shells';
 
 // Moved to ../types/pane (a data shape does not belong in a component). Re-exported
 // here because callers already import it from this module.
@@ -36,6 +37,12 @@ interface TerminalManagerProps {
   onCloseTab?: (tabId: string) => void;
   onReorganizePane?: (sourcePaneId: string, targetPaneId: string, position: 'top' | 'bottom' | 'left' | 'right') => void;
   onNewLocalTerminal?: (shell?: string) => void;
+  /**
+   * Whether "+" offers a shell menu, or just opens a terminal. Absent in a server
+   * context (the instance sets the shell) and when this person hid the menu. The
+   * button itself is never hidden: it is the only "new terminal" in the strip.
+   */
+  shellMenu?: boolean;
   /**
    * Open a saved layout in the active tab. Here rather than on a pane because a
    * layout arranges the whole tab, which is also why its button sits in this strip.
@@ -75,6 +82,7 @@ export function TerminalManager({
   onCloseTab,
   onReorganizePane,
   onNewLocalTerminal,
+  shellMenu = false,
   viewTabs,
   onSaveQuickSSH,
   quickSSHSessions = [],
@@ -99,13 +107,9 @@ export function TerminalManager({
     setIsDroppingOnPane(false);
   };
 
-  // Define all possible shells
-  const shells = [
-    { name: 'Fish', path: '/usr/bin/fish', icon: '🐠' },
-    { name: 'Bash', path: '/usr/bin/bash', icon: '🐚' },
-    { name: 'Zsh', path: '/usr/bin/zsh', icon: '⚡' },
-    { name: 'Sh', path: '/usr/bin/sh', icon: '📜' },
-  ];
+  // The shells on offer — the shared list, because this menu is the third surface
+  // that offers the choice and the first two had already drifted (see ../utils/shells).
+  const shells = SHELL_CANDIDATES;
 
   // Check which shells are installed
   const checkInstalledShells = async () => {
@@ -507,6 +511,12 @@ export function TerminalManager({
             <button
               ref={dropdownButtonRef}
               onClick={async () => {
+                // Without the menu the button is the action: a terminal, in the shell
+                // the default names. With it, it asks which shell just this once.
+                if (!shellMenu) {
+                  onNewLocalTerminal();
+                  return;
+                }
                 if (!showShellDropdown) {
                   // Check installed shells before opening dropdown
                   await checkInstalledShells();
@@ -515,16 +525,19 @@ export function TerminalManager({
               }}
               className="flex items-center gap-1 rounded px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex-shrink-0"
               title="New terminal"
+              data-testid="tab-new-terminal"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              {shellMenu && (
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" data-testid="tab-new-terminal-chevron">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              )}
             </button>
 
-            {showShellDropdown && createPortal(
+            {shellMenu && showShellDropdown && createPortal(
               <>
                 <div
                   className="fixed inset-0 z-[100]"
@@ -537,6 +550,7 @@ export function TerminalManager({
                     top: `${dropdownPosition.top}px`,
                     left: `${dropdownPosition.left}px`,
                   }}
+                  data-testid="tab-shell-menu"
                 >
                   {shells.map((shell, index) => {
                     const isInstalled = installedShells.includes(shell.path);

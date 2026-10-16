@@ -749,12 +749,12 @@ export function Workspace({
   // Handle new local terminal
   const handleNewLocalTerminal = async (shell?: string) => {
     // Use provided shell or fall back to settings default
-    const shellToUse = shell || settings.defaultShell;
-    console.log('[MainScreen] Creating local terminal session with shell:', shellToUse);
+    const shellToUse = isServerCtx ? serverShell : shell || settings.defaultShell;
 
     try {
-      // Call backend to create local terminal session with selected shell
-      const sessionId = await Backend.Terminal.connectLocalTerminal(shellToUse);
+      // In a server context the instance's shell is the one that runs, so ask for
+      // nothing — same rule as `localSession`, and the name above is for the label.
+      const sessionId = await Backend.Terminal.connectLocalTerminal(isServerCtx ? undefined : shellToUse);
 
       // Create terminal session
       const shellName = shellToUse.split('/').pop() || 'shell';
@@ -764,7 +764,6 @@ export function Workspace({
         connectionName: `Local Terminal (${shellName})`,
       };
 
-      console.log('[MainScreen] Local terminal session created:', sessionId);
       addTerminalToTree(session);
     } catch (error) {
       console.error('[MainScreen] Failed to create local terminal:', error);
@@ -1421,7 +1420,7 @@ export function Workspace({
 
         {/* New Terminal — server shell in a server context, the local pick otherwise */}
         <button
-          onClick={() => handleNewLocalTerminal(isServerCtx ? serverShell : undefined)}
+          onClick={() => handleNewLocalTerminal()}
           className="m-btn m-btn-primary m-btn-sm"
           title={
             isServerCtx
@@ -1836,6 +1835,7 @@ export function Workspace({
             onCloseTab={handleCloseTab}
             onReorganizePane={handleReorganizePane}
             onNewLocalTerminal={handleNewLocalTerminal}
+            shellMenu={!isServerCtx && toolbarPrefs.newTerminalMenu}
             onSaveQuickSSH={handleSaveQuickSSH}
             quickSSHSessions={Array.from(quickSSHConnections.keys())}
           />
