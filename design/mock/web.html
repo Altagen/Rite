@@ -224,7 +224,8 @@ function isLocal(){return false;}
 // …and the server always governs here: it is the one running the commands.
 function probeGoverned(){return true;}
 let STATE={sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},
-  toolbar:{quick:true,agents:true,library:true}};
+  myShell:'', /* '' = whatever the instance defaults to */
+  toolbar:{quick:true,agents:true,library:true,newTermMenu:true}};
 /* No workspace file in a browser: this shell talks to a shared server, and the file
    belongs to a machine (ADR 0023). `rite.js` reads this to hide the Layouts button
    and the "Split presets…" row the same way the app hides them when `/api/layouts`
@@ -234,6 +235,21 @@ const WORKSPACE_FILE=false;
 // admin in Instance settings), not a per-user pick. Choosing between local shells (fish/zsh/…)
 // is a DESKTOP feature (local terminals). Comes from the server mode in the real app.
 const SERVER_SHELL='bash';
+/* The shells this instance HAS, as the server reports them, and whether it lets a
+   member deviate from the default within that list (Administration ▸ Instance). The
+   member's pick is per browser, like the toolbar preferences: it is an ergonomic choice
+   with a server-side fallback, not something worth a per-account settings table. Empty
+   pick = the instance default. The client sends a NAME from this list, never a path. */
+const SERVER_SHELLS=['bash','sh'];
+const ALLOW_SHELL_CHOICE=true;
+/* What a new terminal opens: this member's pick when the instance allows one, the
+   instance default otherwise. A pick the instance has since stopped offering falls
+   back here rather than anywhere else — the server resolves the name, so a stale
+   choice cannot survive as a path. */
+function myShell(){return (ALLOW_SHELL_CHOICE&&STATE.myShell&&SERVER_SHELLS.includes(STATE.myShell))?STATE.myShell:SERVER_SHELL;}
+/* One terminal, one shell, and the pick above is left alone — the same split the
+   desktop has between its toolbar picker and this menu. */
+function webTermMenu(e){e.stopPropagation();floatMenu(e,SERVER_SHELLS.map(sh=>({icon:`<span style="width:16px;display:inline-block">⬢</span>`,label:`${sh}${sh===myShell()?' ★':''}`,onclick:()=>toast(`New terminal · ${sh}`)})));}
 // Quick SSH (ad-hoc one-off) is a server policy, OFF by default: connections on a server
 // should live in collections (saved/auditable). The admin flips it in Instance settings.
 const ALLOW_QUICK_SSH=false;
@@ -244,7 +260,7 @@ function renderActs(){
   // .tb-item buttons collapse into the "⋯" overflow menu (fitBar) when the bar runs out of room —
   // gradually, one at a time, so the header stays smooth and the instance name never gets crushed.
   document.getElementById('acts').innerHTML=`
-    <button class="btn btn-primary btn-sm" title="New terminal on the server (${SERVER_SHELL})" onclick="toast('New terminal · ${SERVER_SHELL}')">${ICON.term} <span class="lbl">Terminal</span></button>
+    <button class="btn btn-primary btn-sm" title="New terminal on the server (${myShell()})" onclick="toast('New terminal · ${myShell()}')">${ICON.term} <span class="lbl">Terminal</span></button>
     ${ALLOW_QUICK_SSH&&STATE.toolbar.quick?`<button class="btn btn-sm tb-item" data-label="Quick SSH" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`:''}
     ${STATE.toolbar.agents?`<button class="btn btn-ghost btn-sm tb-item" data-label="Agents" title="Agents — the AI sessions running on your machines" onclick="openAgents()">${M.agent} <span class="lbl">Agents</span></button>`:''}
     ${STATE.toolbar.library?`<button class="btn btn-ghost btn-sm tb-item" data-label="Teams" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
@@ -351,14 +367,16 @@ function renderMain(){
   const mt=document.getElementById('mtabs'); const coll=STATE.selColl?find(STATE.selColl):null;
   const tabActs=`<button class="mtab-act" title="Rename tab" onclick="event.stopPropagation();toast('Rename tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button><button class="mtab-act mtab-close" title="Close tab" onclick="event.stopPropagation();toast('Close tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>`;
   const mach=STATE.machineView?machineByName(STATE.machineView):null;
-  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Server terminal (${SERVER_SHELL})</span>${tabActs}</div>
+  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Server terminal (${myShell()})</span>${tabActs}</div>
     ${coll?`<div class="mtab view ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
     ${mach?`<div class="mtab view ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
     ${agentTabsHTML()}
     ${layoutsBtnHTML()}
-    <!-- No chevron here: the instance sets the shell (SERVER_SHELL), so there is no
-         shell to pick for one terminal. Same reason the toolbar has no picker. -->
-    <button class="mtab-new" title="New terminal on the server (${SERVER_SHELL})" onclick="toast('New terminal · ${SERVER_SHELL}')">${ICON.plus}</button>`;
+    <!-- The chevron exists only when the instance lets members choose: otherwise there
+         is no shell to pick for one terminal, and "+" is the whole gesture. -->
+    ${ALLOW_SHELL_CHOICE&&STATE.toolbar.newTermMenu
+      ? `<button class="mtab-new" title="New terminal — pick a shell for this one" onclick="webTermMenu(event)">${ICON.plus}${EXICON.chevD}</button>`
+      : `<button class="mtab-new" title="New terminal on the server (${myShell()})" onclick="toast('New terminal · ${myShell()}')">${ICON.plus}</button>`}`;
   const b=document.getElementById('mbody');
   // The dashboard is shell-agnostic (ADR 0019) — same cards, same markup as the desktop.
   if(STATE.mainTab==='agents'){ b.innerHTML=agentsViewHTML(); return; }
@@ -558,7 +576,10 @@ const PREFS=[
     + prefRow('Quick SSH', ALLOW_QUICK_SSH?'One-off connections that aren\'t in a collection.':'<span style="color:var(--amber)">Your server turns this off</span>, so it is hidden regardless.',
         prefToggle('toolbar.quick','renderActs()'))
     + prefRow('Agents','The AI sessions running on your machines.',prefToggle('toolbar.agents','renderActs()'))
-    + prefRow('Teams and Collections','The two library shortcuts.',prefToggle('toolbar.library','renderActs()')) },
+    + prefRow('Teams and Collections','The two library shortcuts.',prefToggle('toolbar.library','renderActs()'))
+    + (ALLOW_SHELL_CHOICE
+        ? prefRow('Shell menu on “+”','The chevron on the <b>+</b> beside the tabs, to open one terminal with another of the server\'s shells without changing your pick in <b>Terminals</b>. Hiding it leaves <b>+</b> opening your shell.',prefToggle('toolbar.newTermMenu','renderMain()'))
+        : '') },
 
   { id:'keyboard', label:'Keyboard', body:()=>
       `<h4>Keyboard</h4><p class="lede">Click a chord to record a new one. <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd> and <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>C</kbd> belong to the terminal and are refused. <kbd>F11</kbd> is not here: focus mode belongs to the desktop window.</p>
@@ -570,9 +591,15 @@ const PREFS=[
       </tbody></table>` },
 
   { id:'terminals', label:'Terminals', body:()=>
-      `<h4>Terminals</h4><p class="lede">Terminals run on the server here, so the shell is the server's to set — not a per-user preference. The desktop app is where you pick your own.</p>`
-    + prefRow('Server shell','Set by your administrator for every terminal on this server. Desktop users pick their own local shell.',
-        `<code class="mono" style="font-size:13px;color:var(--muted)">${SERVER_SHELL}</code>`) },
+      `<h4>Terminals</h4><p class="lede">Terminals run on the server here, so the shells on offer are the server's — ${ALLOW_SHELL_CHOICE?'which of them you open is yours.':"and which one you open is your administrator's."}</p>`
+    + (ALLOW_SHELL_CHOICE
+        ? prefRow('Your shell',`Among the shells this server has installed. <b>${SERVER_SHELL}</b> is the instance default — pick it and you follow the administrator if they change it. Saved in this browser, so another browser starts on the default again.`,
+            `<select class="inp" style="width:auto" onchange="STATE.myShell=this.value;renderMain();toast(this.value?('Your shell: '+this.value):'Following the instance default')">
+               <option value="" ${STATE.myShell?'':'selected'}>Instance default (${SERVER_SHELL})</option>
+               ${SERVER_SHELLS.map(s=>`<option value="${s}" ${STATE.myShell===s?'selected':''}>${s}</option>`).join('')}
+             </select>`)
+        : prefRow('Server shell','Set by your administrator for every terminal on this server. Desktop users pick their own local shell.',
+            `<code class="mono" style="font-size:13px;color:var(--muted)">${SERVER_SHELL}</code>`)) },
 
   /* No "Split presets" and no "Layouts" here, and that is the ADR 0023 rule showing
      through: both live in a workspace file, the file belongs to a MACHINE, and this
