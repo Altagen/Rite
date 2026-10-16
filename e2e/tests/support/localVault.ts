@@ -9,12 +9,24 @@
  */
 
 import { expect, type APIRequestContext } from '@playwright/test';
+import { resolve } from 'node:path';
 
 export const SSH = {
   hostname: '127.0.0.1',
   port: 2222,
   username: 'riteuser',
   password: 'ritepass123',
+  /**
+   * The key pairs `e2e/sshd-setup.sh` generates and puts in the harness user's
+   * `authorized_keys` — one with a passphrase and one without, because "ask at connect
+   * time" and "never prompt for a key that has none" are two different behaviours.
+   *
+   * Generated rather than committed: a private key in a public repository is a finding
+   * whatever it opens. Absent until `sh e2e/harness-up.sh` has run.
+   */
+  keyPlain: resolve(__dirname, '../../.keys/e2e_plain'),
+  keyLocked: resolve(__dirname, '../../.keys/e2e_locked'),
+  keyPassphrase: 'rite-e2e-passphrase',
 };
 
 /** Create a collection and return its id. */

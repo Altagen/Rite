@@ -1,5 +1,7 @@
 import { test, expect, type APIRequestContext, type Page } from '@playwright/test';
 import { createRequire } from 'node:module';
+// The harness's key pairs and sshd coordinates, shared with the local-vault specs.
+import { SSH } from './support/localVault';
 import { resolve } from 'node:path';
 
 // hash-wasm + libsodium live in the desktop package (pnpm doesn't hoist them to the repo
@@ -1003,4 +1005,73 @@ test('an instance can hand the shell choice to its members, and take it back', a
     page.getByRole('button', { name: 'Terminal', exact: true }).click(),
   ]);
   expect(((await again.json()) as { shell: string }).shell).toMatch(new RegExp(`/${mode.defaultShell}$`));
+});
+
+/**
+ * A key, from a browser, all the way to a shell (ADR 0024 §1-2).
+ *
+ * The path a password cannot test and a desktop cannot either: `FileReader` reads the key
+ * in the page, it goes into the record the browser encrypts, the server is handed the
+ * material for that session and decodes it in memory. Before this, public-key
+ * authentication from the web UI could not work at all — the form offered a *path*, which
+ * on a server names a file in its container that no member can put there.
+ *
+ * Driven through the real form rather than the API, because the file input and the
+ * `vaultKey` mapping are the two things under test, and both live in the page.
+ */
+test('a key chosen in the browser opens a real session on the server', async ({ page }) => {
+  await page.goto('/');
+  if (await page.getByText('Create the server administrator').isVisible().catch(() => false)) {
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /create administrator/i }).click();
+  } else {
+    await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+  }
+  await expectWorkspace(page);
+
+  // The host key is the instance's business here (ADR 0024 consequences), and this test is
+  // about the key that authenticates, not about trusting the host. Set through the console
+  // row rather than by an out-of-band request: a test's own `page.request` carries no
+  // session, and the row is the thing an administrator actually has.
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Instance', exact: true }).click();
+  await page.getByTestId('instance-host-key-mode').selectOption('accept');
+  await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('accept');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expectWorkspace(page);
+
+  // A machine is always created inside a collection (ADR 0016); on a server that is
+  // Personal, and its own "+" is where the form opens from.
+  await page.getByRole('button', { name: 'Add to collection' }).first().click();
+  await page.getByRole('button', { name: 'New machine here' }).click();
+  await page.getByPlaceholder('My Server').fill('e2e-browser-key');
+  await page.getByPlaceholder('example.com or 192.168.1.1').fill(SSH.hostname);
+  // The port has no id of its own; it is the form's only number input.
+  await page.locator('input[type="number"]').first().fill(String(SSH.port));
+  await page.getByPlaceholder('user').fill(SSH.username);
+
+  // A path is not offered here at all — that is the fix. The file input is.
+  await page.getByRole('radio', { name: /public key/i }).click();
+  await expect(page.getByTestId('auth-key-path')).toHaveCount(0);
+  await page.getByTestId('auth-key-file').setInputFiles(SSH.keyPlain);
+  // The page says what it read, and says the key never leaves it as a file.
+  await expect(page.getByText(/Loaded from e2e_plain/)).toBeVisible();
+
+  await page.getByRole('button', { name: /save connection/i }).click();
+  await expect(page.getByText('e2e-browser-key')).toBeVisible({ timeout: 15_000 });
+
+  // And it opens. The shell prompt, not a connected-looking UI: a key that did not reach
+  // the server, or reached it unusable, fails here with "Permission denied".
+  await page.getByText('e2e-browser-key').last().dblclick();
+  await expect(page.locator('.xterm-rows')).toContainText(`${SSH.username}@`, { timeout: 25_000 });
+
+  // Put the instance's policy back for whatever runs next.
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Instance', exact: true }).click();
+  await page.getByTestId('instance-host-key-mode').selectOption('strict');
+  await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('strict');
 });
