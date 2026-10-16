@@ -23,6 +23,10 @@ export type AuthType = 'password' | 'publicKey' | 'agent';
 export type AuthMethodInput =
   | { type: 'password'; password: string }
   | { type: 'publicKey'; keyPath: string; passphrase?: string }
+  // ADR 0024: the key itself, carried in the (encrypted) record. `keyPath` names a file on
+  // whichever machine opens SSH — the person's own on a desktop, the container on a server,
+  // where a browser cannot put one. `passphrase` absent ⇒ asked at connect and never stored.
+  | { type: 'vaultKey'; key: string; passphrase?: string }
   | { type: 'agent'; identity?: string; forward?: boolean };
 
 /** A saved port-forward config on a connection (started/stopped at runtime). */

@@ -4523,12 +4523,7 @@ impl LocalMachine {
         Self {
             id: m.id,
             collection_id: collection_id.to_string(),
-            auth_type: match r.auth_method {
-                AuthMethod::Password { .. } => "password",
-                AuthMethod::PublicKey { .. } => "publicKey",
-                AuthMethod::Agent { .. } => "agent",
-            }
-            .to_string(),
+            auth_type: r.auth_method.type_str().to_string(),
             name: r.name,
             protocol: r.protocol,
             hostname: r.hostname,
@@ -4769,6 +4764,13 @@ enum QuickAuthMethod {
         key_path: String,
         passphrase: Option<String>,
     },
+    /// A key the client carried, for this session only (ADR 0024). The server decodes it
+    /// in memory to authenticate and stores nothing — the same rule the password above
+    /// has followed since ADR 0011.
+    VaultKey {
+        key: String,
+        passphrase: Option<String>,
+    },
     Agent {
         identity: Option<String>,
         #[serde(default)]
@@ -4780,6 +4782,9 @@ impl From<QuickAuthMethod> for AuthMethod {
     fn from(quick: QuickAuthMethod) -> Self {
         match quick {
             QuickAuthMethod::Password { password } => AuthMethod::Password { password },
+            QuickAuthMethod::VaultKey { key, passphrase } => {
+                AuthMethod::VaultKey { key, passphrase }
+            }
             QuickAuthMethod::PublicKey {
                 key_path,
                 passphrase,

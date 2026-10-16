@@ -18,6 +18,7 @@ import { useCallback, useRef, useState } from 'react';
 import { Backend } from '../utils/backend';
 import { useServerSession } from './serverSessionStore';
 import {
+  type AuthMethodInput,
   type ConnectionInfo,
   type ConnectionsSource,
   type CreateConnectionInput,
@@ -55,10 +56,10 @@ export interface StoredRecord {
   hostname: string;
   port: number;
   username: string;
-  authMethod:
-    | { type: 'password'; password: string }
-    | { type: 'publicKey'; keyPath: string; passphrase?: string }
-    | { type: 'agent'; identity?: string; forward?: boolean };
+  // The whole record is encrypted client-side before it leaves (ADR 0011), so a key
+  // carried here (ADR 0024 §1) is ciphertext to the server like everything else. The
+  // shared union, because this was one of four copies and they had drifted.
+  authMethod: AuthMethodInput;
   color: string | null;
   icon: string | null;
   folder: string | null;

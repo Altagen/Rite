@@ -60,11 +60,7 @@ struct BlobRow {
 }
 
 fn auth_type(a: &AuthMethod) -> &'static str {
-    match a {
-        AuthMethod::Password { .. } => "password",
-        AuthMethod::PublicKey { .. } => "publicKey",
-        AuthMethod::Agent { .. } => "agent",
-    }
+    a.type_str()
 }
 
 fn now() -> i64 {

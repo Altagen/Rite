@@ -8,6 +8,9 @@
 import { z } from 'zod';
 import { errorHandler, ErrorSeverity, ErrorCategory } from './errorHandler';
 import { transport } from './transport';
+// Type-only, so it is erased at build time and the store ↔ backend cycle stays a
+// documentation one rather than a runtime one.
+import type { AuthMethodInput } from '../store/connectionsStore';
 
 /**
  * Generic wrapper for Backend invoke with Zod validation
@@ -143,10 +146,7 @@ export interface QuickEndpoint {
   host: string;
   port: number;
   username: string;
-  authMethod:
-    | { type: 'password'; password: string }
-    | { type: 'publicKey'; keyPath: string; passphrase?: string }
-    | { type: 'agent'; identity?: string; forward?: boolean };
+  authMethod: AuthMethodInput;
 }
 
 /**
@@ -431,18 +431,9 @@ export const BackendTerminal = {
     host: string,
     username: string,
     port: number,
-    authMethod: {
-      type: 'password';
-      password: string;
-    } | {
-      type: 'publicKey';
-      keyPath: string;
-      passphrase?: string;
-    } | {
-      type: 'agent';
-      identity?: string;
-      forward?: boolean;
-    },
+    // The shared union (`AuthMethodInput`), not a fourth copy of it: this one had drifted
+    // out of date the moment a variant was added, and the compiler said so.
+    authMethod: AuthMethodInput,
     // Resolved ProxyJump chain, outermost-first. Quick SSH proper has none; the
     // accounts source passes the hops it decrypted client-side.
     jumps: QuickEndpoint[] = [],

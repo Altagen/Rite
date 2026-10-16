@@ -410,15 +410,25 @@ async fn authenticate_session(
         AuthMethod::Password { password } => {
             session.authenticate_password(username, password).await?
         }
+        // Two sources, one key: a file this process can read (a desktop, where the key
+        // stays on the person's disk) or the record itself (a browser, whose files the
+        // server cannot reach — ADR 0024). Everything after decoding is identical, so it
+        // is written once: the RSA hash rule is easy to get right in one branch and wrong
+        // in the other.
         AuthMethod::PublicKey {
             key_path,
             passphrase,
+        }
+        | AuthMethod::VaultKey {
+            key: key_path,
+            passphrase,
         } => {
-            let key_data = tokio::fs::read(key_path).await?;
-            let key = russh::keys::decode_secret_key(
-                &String::from_utf8(key_data)?,
-                passphrase.as_deref(),
-            )?;
+            let pem = match auth_method {
+                AuthMethod::VaultKey { key, .. } => key.clone(),
+                // `key_path` is the path here; read it from this machine.
+                _ => String::from_utf8(tokio::fs::read(key_path).await?)?,
+            };
+            let key = russh::keys::decode_secret_key(&pem, passphrase.as_deref())?;
             // RSA keys must be signed with rsa-sha2-256/512: modern OpenSSH rejects
             // the legacy SHA-1 "ssh-rsa" signature. Non-RSA keys ignore the hash.
             let hash_alg = if matches!(key.algorithm(), russh::keys::Algorithm::Rsa { .. }) {
