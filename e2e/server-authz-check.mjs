@@ -168,6 +168,26 @@ try {
   assert.match(withdrawn, /\/sh$/, `a withdrawn choice stops being honoured (got ${withdrawn})`);
   ok('a delegated shell is a name off the instance list, and the instance can take it back');
 
+  // A probe, not a known hole: the local-vault routes (ADR 0018) belong to a person's own
+  // machine, and a shared server has no such vault. They are reachable by any session in
+  // accounts mode, so what they answer there decides whether the reveal route added for a
+  // local vault became a way to read someone's secrets on a server.
+  step = 'local-vault-routes-serve-nothing-on-a-shared-server';
+  for (const [label, res] of [
+    ['list collections', await get('/api/local/collections', pleb)],
+    ['list machines', await get('/api/local/collections/any/machines', pleb)],
+    ['reveal a secret', await get('/api/local/collections/any/machines/any/secret', pleb)],
+  ]) {
+    // 410, not merely "not 200": these answered 500 before, which is a refusal held up by
+    // the vault having no key rather than by the server knowing what it is.
+    assert.equal(res.status, 410, `${label} must be refused as not-here (got ${res.status})`);
+    const body = await res.text();
+    for (const leak of ['password', 'passphrase', 'PRIVATE KEY']) {
+      assert.ok(!body.includes(leak), `${label} answered with "${leak}" in it: ${body.slice(0, 200)}`);
+    }
+  }
+  ok('the local-vault routes hand nothing to a session on a shared server');
+
   step = 'quick-ssh-policy';
   assert.equal((await mode(admin)).allowQuickSsh, false, 'ad-hoc Quick SSH is off by default');
   const adhoc = { host: '127.0.0.1', port: 65001, username: 'x', authMethod: { type: 'password', password: 'x' } };

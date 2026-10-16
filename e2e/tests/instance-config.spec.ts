@@ -64,6 +64,12 @@ test('the console locks what the configuration owns, and names where it is set',
   // A switch the file declares cannot be thrown, and its row says so too.
   await expect(page.getByRole('switch', { name: 'Open registration' })).toBeDisabled();
   await expect(page.getByRole('switch', { name: 'Allow Quick SSH' })).toBeDisabled();
+  // A secrets policy declares the same way (ADR 0024 §4) — and declaring it at all was
+  // the gap: the three new policies had their console rows and their routes, and were
+  // missing from `config::SETTINGS`, so a file naming one was refused as a typo.
+  const reveal = page.getByRole('switch', { name: 'Members may read a stored secret back' });
+  await expect(reveal).toBeDisabled();
+  await expect(reveal).toHaveAttribute('aria-checked', 'false');
   // …while one the file leaves alone is untouched by the lock.
   await expect(page.getByRole('switch', { name: 'Allow invitations' })).toBeEnabled();
 });

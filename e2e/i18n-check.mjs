@@ -80,6 +80,22 @@ check('no value is empty', () => {
   }
 });
 
+check('a placeholder is written the way the interpolator reads it', () => {
+  // `i18n.tsx` fills `/\{(\w+)\}/` — single braces. A string written `{{name}}` in the
+  // i18next spelling has its inner braces filled and the outer ones rendered, so the user
+  // reads "Loaded from {Ancien.pub}". The check above compares the two locales and both
+  // were wrong in the same way, which is exactly why it saw nothing.
+  for (const locale of ['en', 'fr']) {
+    for (const key of KEYS[locale]) {
+      const value = resolve(LOCALES[locale], key);
+      assert.ok(
+        !value.includes('{{') && !value.includes('}}'),
+        `${locale} ${key}: use {name}, not {{name}} — the interpolator reads single braces`,
+      );
+    }
+  }
+});
+
 check('both locales interpolate the same parameters', () => {
   // `t('shortcuts.reserved', { chord })` fills `{chord}`; a translation that spells
   // it `{accord}` renders the braces to the user.

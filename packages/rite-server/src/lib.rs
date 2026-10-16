@@ -951,6 +951,18 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
                 return (StatusCode::FORBIDDEN, "insufficient role").into_response();
             }
         }
+        // A local vault is one person's own machine (ADR 0018), and a shared server is not
+        // that. These routes were reachable by any session here and failed only because
+        // `master_key` had nothing to give — a 500 held up by the deployment rather than by
+        // the code, on a family of routes that now includes reading a stored secret. Say no
+        // instead, so the answer is a property of the server and not of its vault's state.
+        if path.starts_with("/api/local") {
+            return (
+                StatusCode::GONE,
+                "this is a shared server; /api/local/* is a local vault's own store",
+            )
+                .into_response();
+        }
         req.extensions_mut().insert(Arc::new(user));
     }
 

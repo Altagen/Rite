@@ -67,3 +67,39 @@ test('a password set in the UI unlocks the vault again', async ({ page, request 
   await page.getByRole('button', { name: /change password/i }).click();
   await expect(page.getByText(/password changed/i)).toBeVisible({ timeout: 15_000 });
 });
+
+/**
+ * The first screen anyone sees answers in the language the app is set to.
+ *
+ * `authStore` wrote its own prose — in French, whatever the app was set to — and the
+ * unlock and setup screens render that string raw. So an English user who mistyped their
+ * master password was told "Mot de passe incorrect", and the strings sat outside the
+ * locale files where `i18n-check` could not see them at all.
+ *
+ * Asserted on the English wording with the French one explicitly absent: asserting only
+ * that *something* red appears would have passed before the fix.
+ */
+test('a wrong master password is refused in the language the app is set to', async ({ page, request }) => {
+  await request.post('/api/auth/lock');
+  await page.goto('/');
+
+  // The header's Unlock opens the dialog, which has an Unlock of its own.
+  await page.getByRole('button', { name: 'Unlock' }).first().click();
+  const field = page.locator('#password');
+  await expect(field).toBeVisible({ timeout: 15_000 });
+  await field.fill('definitely-not-the-password');
+  await page.locator('button[type="submit"]').click();
+
+  const shown = page.getByTestId('auth-error');
+  await expect(shown).toBeVisible({ timeout: 15_000 });
+  await expect(shown).toHaveText('Wrong password.');
+
+  // And the vault is still shut, so the message is about a refusal and not about a
+  // failure to ask: an unlock that threw would also have printed something red.
+  await expect(field).toBeVisible();
+
+  // Leave it open for the specs that follow.
+  await field.fill('Rite-E2E-Str0ng!pass');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByPlaceholder('Search connections…')).toBeVisible({ timeout: 15_000 });
+});

@@ -160,7 +160,9 @@ export function UnlockScreen({ asModal = false, onClose }: UnlockScreenProps = {
       <form onSubmit={handleSubmit} className={`space-y-6 ${asModal ? '' : 'rounded-lg border border-border bg-card p-6'}`}>
         {error && (
           <div className="rounded-md bg-red-500/10 border border-red-500/20 p-3">
-            <p className="text-sm text-red-600">{error}</p>
+            {/* The store names the message, this says it: it used to set French prose, so
+                  the first screen anyone sees answered in one language whatever was set. */}
+              <p className="text-sm text-red-600" data-testid="auth-error">{t(error.key, error.params)}</p>
           </div>
         )}
 

@@ -132,7 +132,7 @@
     },
     "keyFile": "Fichier de clé privée",
     "keyFileHint": "Lu dans cette page et rangé dans ton coffre chiffré — il n'est jamais envoyé en tant que fichier. Les terminaux ici tournent sur le serveur, donc un chemin sur ton ordinateur ne lui dirait rien.",
-    "keyFileLoaded": "Chargé depuis {{name}}. Chiffré avec la clé de ton coffre avant de quitter cette page.",
+    "keyFileLoaded": "Chargé depuis {name}. Chiffré avec la clé de ton coffre avant de quitter cette page.",
     "keyFileUnnamed": "le fichier choisi",
     "keyUnreadable": "Ce fichier n'a pas pu être lu.",
     "keyLooksPublic": "Cela ressemble à une clé publique (.pub). Choisis la clé privée — le fichier sans extension.",
@@ -141,7 +141,7 @@
     "keyRememberOff": "Ton serveur ne conserve pas les passphrases",
     "keyRememberOffWhy": " — elle te sera demandée à chaque connexion.",
     "passphraseAsk": "Passphrase requise",
-    "passphraseAskFor": "Pour déverrouiller la clé de {{name}}.",
+    "passphraseAskFor": "Pour déverrouiller la clé de {name}.",
     "passphraseAskWhy": "Utilisée pour cette connexion seulement. Rite ne la conserve pas — coche « Retenir cette passphrase » en éditant la machine si tu préfères qu'il le fasse.",
     "passphraseUnlock": "Se connecter",
     "reveal": "Révéler ce qui est enregistré",
@@ -207,7 +207,7 @@
     "shellServerDesc": "Défini par ton administrateur pour tous les terminaux de ce serveur. Les utilisateurs desktop choisissent leur shell local.",
     "shellYours": "Ton shell",
     "shellYoursDesc": "Parmi les shells installés sur ce serveur. Enregistré dans ce navigateur : un autre navigateur repart sur le défaut de l'instance.",
-    "shellFollowInstance": "Défaut de l'instance ({{shell}})",
+    "shellFollowInstance": "Défaut de l'instance ({shell})",
     "shellServerHint": "Ici les terminaux tournent sur le serveur : le shell est à lui de le définir, ce n’est pas une préférence par utilisateur.",
     "shellCustom": "Un shell que nous n'avons pas trouvé (chemin complet)",
     "toolbarQuickSshOff": "Votre serveur le désactive",
@@ -482,5 +482,14 @@
     "fellBackFailed": "{machine} n'a pas pu s'ouvrir ({why}), donc ce panneau a ouvert un shell simple.",
     "startupHint": "Cochez « au démarrage » et la disposition s’ouvre d’elle-même au lancement de Rite — plusieurs peuvent l’être, chacune dans ses propres onglets. L’interrupteur écrit startup dans le fichier.",
     "noneYet": "Aucune disposition pour l’instant. Ouvrez le fichier et décrivez ce qui doit s’ouvrir quand vous vous installez."
+  },
+  "auth": {
+    "checkFailed": "Impossible de savoir si ce coffre existe déjà : {error}",
+    "passwordsDiffer": "Les deux mots de passe ne sont pas identiques.",
+    "passwordTooShort": "Un mot de passe maître demande au moins {count} caractères.",
+    "setupFailed": "Le coffre n'a pas pu être créé : {error}",
+    "wrongPassword": "Mot de passe incorrect.",
+    "unlockFailed": "Le coffre n'a pas pu être déverrouillé : {error}",
+    "lockFailed": "Le coffre n'a pas pu être verrouillé : {error}"
   }
 }
