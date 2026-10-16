@@ -919,3 +919,88 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   await expect(page.getByTestId('tab-new-terminal')).toBeVisible();
   await expect(page.getByTestId('tab-new-terminal-chevron')).toHaveCount(0);
 });
+
+/**
+ * An instance may hand the shell choice to its members, and take it back.
+ *
+ * Three levels, and this walks all three. The offer is a probe: the console used to list
+ * bash, sh, zsh and fish whatever the machine had, and picking one it lacked pointed every
+ * terminal on the instance at a program that is not there. The delegation is a switch, off
+ * by default, so a server that upgrades and says nothing behaves exactly as before. And the
+ * member's pick travels as a NAME the server resolves — the asserted value is what the
+ * server answers it ran, not what the client believes, because the two used to differ.
+ */
+test('an instance can hand the shell choice to its members, and take it back', async ({ page }) => {
+  await page.goto('/');
+  if (await page.getByText('Create the server administrator').isVisible().catch(() => false)) {
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /create administrator/i }).click();
+  } else {
+    await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+  }
+  await expectWorkspace(page);
+
+  const mode = await (await page.request.get(`${BASE}/api/server/mode`)).json();
+  expect(mode.allowShellChoice ?? false, 'the choice is the instance\'s until it says otherwise').toBe(false);
+  // Against the filesystem rather than against the report. On a developer machine with all
+  // four shells this agrees either way — the run that discriminates is the unit test in the
+  // CI image, which has two. Here it catches the opposite mistake: a probe that under-reports.
+  const { existsSync } = await import('node:fs');
+  for (const name of ['bash', 'sh', 'zsh', 'fish']) {
+    const onDisk = ['/usr/bin', '/bin', '/usr/local/bin'].some((dir) => existsSync(`${dir}/${name}`));
+    expect((mode.shells as string[]).includes(name), `${name} is offered iff this machine has it`).toBe(onDisk);
+  }
+  const other = (mode.shells as string[]).find((s) => s !== mode.defaultShell);
+  expect(other, 'this machine has a second shell to pick').toBeTruthy();
+
+  // The administrator delegates.
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Instance', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Instance' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('instance-shell').locator('option')).toHaveText(mode.shells);
+  await page.getByTestId('instance-shell-choice').click();
+  await expect(page.getByTestId('instance-shell-choice')).toHaveAttribute('aria-checked', 'true');
+
+  // The member picks — the same person here, but it is the member's surface that changes.
+  // Out of the console first: it is an overlay over the workspace, so until it closes
+  // both headers are on the page and every header locator matches twice.
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.reload();
+  await expectWorkspace(page);
+  await page.getByRole('button', { name: /^AD / }).click();
+  await page.getByRole('button', { name: /^settings$/i }).click();
+  await page.getByTestId('settings-nav-shell').click();
+  await expect(page.getByTestId('server-shell-choices')).toBeVisible();
+  await page.getByTestId(`server-shell-${other}`).click();
+  await expect(page.getByTestId(`server-shell-${other}`)).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Close settings' }).click();
+
+  // …and the server runs it. Its own answer, because the tab's label is computed here and
+  // would read the same whatever ran.
+  const [created] = await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith('/api/terminal/local') && r.request().method() === 'POST'),
+    page.getByRole('button', { name: 'Terminal', exact: true }).click(),
+  ]);
+  expect(((await created.json()) as { shell: string }).shell).toMatch(new RegExp(`/${other}$`));
+
+  // The instance takes it back: the picker goes, and the next terminal is the default's
+  // again although this browser still remembers the pick. This half is the CLIENT's —
+  // it stops offering and stops sending. What the server does with a name it is sent
+  // anyway is asserted in e2e/server-authz-check.mjs, where no client can soften it.
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Instance', exact: true }).click();
+  await page.getByTestId('instance-shell-choice').click();
+  await expect(page.getByTestId('instance-shell-choice')).toHaveAttribute('aria-checked', 'false');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.reload();
+  await expectWorkspace(page);
+  const [again] = await Promise.all([
+    page.waitForResponse((r) => r.url().endsWith('/api/terminal/local') && r.request().method() === 'POST'),
+    page.getByRole('button', { name: 'Terminal', exact: true }).click(),
+  ]);
+  expect(((await again.json()) as { shell: string }).shell).toMatch(new RegExp(`/${mode.defaultShell}$`));
+});

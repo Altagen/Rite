@@ -26,7 +26,7 @@ import { installedShells, type ShellChoice } from '../utils/shells';
 import { ShortcutsSettings } from './ShortcutsSettings';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
 import { useHealthPref, type HealthPref } from '../store/healthPrefStore';
-import { useServerSession, quickSshAllowed } from '../store/serverSessionStore';
+import { useServerSession, quickSshAllowed, serverShellChoices } from '../store/serverSessionStore';
 import { useFocusMode } from '../store/focusMode';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { isNativeShell } from '../utils/nativeShell';
@@ -148,9 +148,12 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const setMachineProbes = useDisplayPrefs((s) => s.setMachineProbes);
   const healthPref = useHealthPref((s) => s.pref);
   const setHealthPref = useHealthPref((s) => s.setPref);
-  // Local terminals only: on a server the shell is server-governed (no per-user picker).
+  // Local terminals only: on a server the shell is server-governed (no per-user picker),
+  // unless the instance says otherwise — then these are the shells it offers, and empty
+  // means the decision is not this person's to make.
   const serverMode = useServerSession((s) => s.mode);
   const isLocalContext = !serverMode?.accounts;
+  const serverShells = serverShellChoices(serverMode);
   // Does a vault exist at all? `isFirstRun` means there is none yet, so the two
   // sections that act on one have nothing to act on. A vault that exists but is
   // locked is a different thing and hides nothing — see the note on RAIL.
@@ -462,12 +465,45 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               title={t('settings.sec.shell')}
               hint={isLocalContext ? t('settings.shellHint') : t('settings.shellServerHint')}
             />
-            {!isLocalContext && (
+            {/* On a server the shells are the instance's; which of them you open is yours
+                only if it says so. So: a value when it keeps the decision, a picker when
+                it delegates — and the picker's first entry follows the default rather
+                than copying it, so an administrator who changes it carries you along. */}
+            {!isLocalContext && serverShells.length === 0 && (
               <SettingsRow title={t('settings.shellServer')} hint={t('settings.shellServerDesc')}>
                 <code className="font-mono text-sm text-muted-foreground" data-testid="server-shell">
                   {serverMode?.defaultShell ?? 'bash'}
                 </code>
               </SettingsRow>
+            )}
+            {!isLocalContext && serverShells.length > 0 && (
+              <SettingsField
+                label={t('settings.shellYours')}
+                hint={t('settings.shellYoursDesc')}
+              >
+                <ul className="flex flex-col gap-1.5" data-testid="server-shell-choices">
+                  {['', ...serverShells].map((name) => (
+                    <li key={name || 'default'}>
+                      <button
+                        type="button"
+                        aria-pressed={(settings.defaultShell || '') === name}
+                        data-testid={`server-shell-${name || 'default'}`}
+                        onClick={() => void updateSettings({ defaultShell: name })}
+                        className={`flex w-full items-center gap-2 rounded border px-3 py-2 text-left text-sm transition-colors ${
+                          (settings.defaultShell || '') === name
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border hover:bg-muted'
+                        }`}
+                      >
+                        <span>
+                          {name || t('settings.shellFollowInstance', { shell: serverMode?.defaultShell ?? 'bash' })}
+                        </span>
+                        {name === serverMode?.defaultShell && <span aria-hidden="true">★</span>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </SettingsField>
             )}
             {isLocalContext && (
             <>
@@ -601,9 +637,10 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               {isLocalContext && toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
               {/* Two shell controls, two questions: the picker above sets the default, this
                   menu overrides it for one terminal. Hiding the first was leaving the second,
-                  which is why switching "the shell picker" off still asked which shell. Local
-                  only, for the same reason the picker is. */}
-              {isLocalContext &&
+                  which is why switching "the shell picker" off still asked which shell. On a
+                  server the menu exists only where the instance offers a choice — and then
+                  the switch does too, because there is a button to hide. */}
+              {(isLocalContext || serverShells.length > 0) &&
                 toolbarRow('newTerminalMenu', 'settings.toolbarNewTermMenu', 'settings.toolbarNewTermMenuDesc')}
               {native && toolbarRow('focusMode', 'settings.toolbarFocus', 'settings.toolbarFocusDesc')}
               {/* Quick SSH is the server's to forbid (`quickSshAllowed`), and when it does the

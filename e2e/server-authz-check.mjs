@@ -140,6 +140,34 @@ try {
   assert.match(used, /\/sh$/, `the session runs the instance's shell, not the caller's (got ${used})`);
   ok('the caller does not choose which program the server spawns');
 
+  // An instance may now DELEGATE the choice. What it delegates is a name from its own
+  // list, and nothing else — so this walks the three ways a caller can try to widen it,
+  // and then the withdrawal. The withdrawal is asserted here rather than through the UI
+  // because the UI stops sending a name at all: that tests the client, and the question
+  // is what the server does with a name it is still sent.
+  step = 'a-delegated-shell-choice-is-still-the-instance-s-list';
+  const offered = (await mode(admin)).shells;
+  assert.ok(Array.isArray(offered) && offered.includes('sh'), `the instance reports its shells (got ${JSON.stringify(offered)})`);
+  const otherShell = offered.find((name) => name !== 'sh');
+  assert.ok(otherShell, 'this machine has a second shell to ask for');
+
+  assert.equal((await post('/api/terminal/local', { shell: otherShell }, pleb)).status, 200);
+  assert.match((await (await post('/api/terminal/local', { shell: otherShell }, pleb)).json()).shell, /\/sh$/,
+    'a name is ignored while the instance keeps the choice');
+
+  await patch('/api/admin/shell-choice', { enabled: true }, admin);
+  const picked = (await (await post('/api/terminal/local', { shell: otherShell }, pleb)).json()).shell;
+  assert.match(picked, new RegExp(`/${otherShell}$`), `a delegated choice is honoured (got ${picked})`);
+  for (const forged of [`/usr/bin/${otherShell}`, '/usr/bin/env', 'python3', '../bin/sh']) {
+    const got = (await (await post('/api/terminal/local', { shell: forged }, pleb)).json()).shell;
+    assert.match(got, /\/sh$/, `"${forged}" is not a shell this instance offered (got ${got})`);
+  }
+
+  await patch('/api/admin/shell-choice', { enabled: false }, admin);
+  const withdrawn = (await (await post('/api/terminal/local', { shell: otherShell }, pleb)).json()).shell;
+  assert.match(withdrawn, /\/sh$/, `a withdrawn choice stops being honoured (got ${withdrawn})`);
+  ok('a delegated shell is a name off the instance list, and the instance can take it back');
+
   step = 'quick-ssh-policy';
   assert.equal((await mode(admin)).allowQuickSsh, false, 'ad-hoc Quick SSH is off by default');
   const adhoc = { host: '127.0.0.1', port: 65001, username: 'x', authMethod: { type: 'password', password: 'x' } };

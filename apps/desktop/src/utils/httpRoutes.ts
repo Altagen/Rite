@@ -270,6 +270,14 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_set_shell_choice: async (a) => {
+    await json('/api/admin/shell-choice', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ enabled: a.enabled }),
+    });
+    return null;
+  },
   admin_set_quick_ssh: async (a) => {
     await json('/api/admin/quick-ssh', {
       method: 'PATCH',

@@ -119,6 +119,30 @@ interface ServerSessionState {
  * (`Workspace.tsx`) and the preference that shows it (`Settings.tsx`). A preference for
  * a button the server will never render says you have a choice you do not have.
  */
+/**
+ * The shells a member may pick from on this server, newest-policy-first.
+ *
+ * Empty in every case where the choice is not theirs: a local vault (their machine, their
+ * shell — this is not that question), an instance that keeps the decision, and a server
+ * too old to have probed. So a caller can render a picker on a non-empty list and needs
+ * no second condition.
+ */
+export function serverShellChoices(mode: ServerMode | null | undefined): string[] {
+  if (!mode?.accounts || mode.allowShellChoice !== true) return [];
+  return mode.shells ?? [];
+}
+
+/**
+ * The shell a new terminal opens on this server: this person's pick when the instance
+ * allows one and still offers it, the instance default otherwise. A pick the instance has
+ * since withdrawn falls back here rather than travelling — and it could not survive as a
+ * path anyway, since the server resolves the name itself.
+ */
+export function effectiveServerShell(mode: ServerMode | null | undefined, picked: string | undefined): string {
+  const offered = serverShellChoices(mode);
+  return picked && offered.includes(picked) ? picked : (mode?.defaultShell ?? 'bash');
+}
+
 export function quickSshAllowed(mode: ServerMode | null | undefined): boolean {
   return !mode?.accounts || mode.allowQuickSsh === true;
 }

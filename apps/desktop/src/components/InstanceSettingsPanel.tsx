@@ -48,6 +48,10 @@ export function InstanceSettingsPanel() {
   const [hostKey, setHostKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [shell, setShell] = useState('bash');
+  // What this instance can run, from the server's own probe — not the four Rite knows
+  // about. Empty until loaded, and on an older server that never probed.
+  const [shells, setShells] = useState<string[]>([]);
+  const [shellChoice, setShellChoice] = useState(false);
   const [quickSsh, setQuickSsh] = useState(false);
   const [openReg, setOpenReg] = useState(false);
   const [allowInv, setAllowInv] = useState(true);
@@ -69,6 +73,8 @@ export function InstanceSettingsPanel() {
       setPersistence(mode.sessionPersistence !== false);
       setHostKey(mode.hostKey ?? null);
       setShell(mode.defaultShell ?? 'bash');
+      setShells(mode.shells ?? []);
+      setShellChoice(mode.allowShellChoice === true);
       setQuickSsh(mode.allowQuickSsh === true);
       setOpenReg(mode.openRegistration === true);
       setAllowInv(mode.allowInvitations !== false);
@@ -112,6 +118,17 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setDefaultShell(next);
     } catch (err) {
       setShell(prev);
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    }
+  };
+
+  const toggleShellChoice = async () => {
+    const next = !shellChoice;
+    setShellChoice(next);
+    try {
+      await Backend.Admin.setShellChoice(next);
+    } catch (err) {
+      setShellChoice(!next);
       setError(err instanceof Error ? err.message : 'Failed to save');
     }
   };
@@ -345,22 +362,49 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Default shell</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              The shell for terminals opened on this server. Web-UI users don&apos;t pick their own — this is it.
-              (Desktop users choose their own <b>local</b> shell.)
+              The shell a terminal on this server opens.{' '}
+              {shellChoice
+                ? 'What a member gets until they choose otherwise.'
+                : 'Every terminal, for everyone — web-UI members do not pick their own.'}{' '}
+              (Desktop users run their own machine&apos;s shell; nothing here reaches it.) The list is what this
+              server has installed: <b data-testid="instance-shells">{shells.join(', ')}</b>.
             </p>
             {managed.default_shell && <ManagedBy origin={managed.default_shell} />}
           </div>
+          {/* Only what the probe found. Offering all four set the instance to a program the
+              container did not have, and every terminal on it then opened nothing. */}
           <select
             value={shell}
             onChange={(e) => changeShell(e.target.value)}
+            data-testid="instance-shell"
             className="flex-none rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            {['bash', 'sh', 'zsh', 'fish'].map((s) => (
+            {shells.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-b border-border p-4">
+          <div>
+            <div className="font-medium">Let members choose their shell</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <b>Off by default</b> — the default above is then the only shell. On: a member picks among the
+              installed shells in their own <b>Settings ▸ Terminals</b>, and one terminal at a time from the{' '}
+              <b>+</b> beside the tabs. They choose a shell, never a path: the server resolves the name itself,
+              so the choice cannot name a program this instance did not offer.
+            </p>
+            {managed.allow_shell_choice && <ManagedBy origin={managed.allow_shell_choice} />}
+          </div>
+          <Switch
+            checked={shellChoice}
+            label="Let members choose their shell"
+            onChange={toggleShellChoice}
+            disabled={!!managed.allow_shell_choice}
+            testId="instance-shell-choice"
+          />
         </div>
 
         <div className="flex items-start justify-between gap-4 p-4">

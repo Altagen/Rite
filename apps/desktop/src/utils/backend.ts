@@ -529,6 +529,13 @@ const ServerModeSchema = z.object({
   // Server-governed client capabilities (mock "Client capabilities"): the shell used for
   // terminals on this server, and whether ad-hoc Quick SSH is allowed (off by default).
   defaultShell: z.string().optional(),
+  // The shells this instance actually has, probed rather than assumed: a minimal server
+  // image holds two of the four Rite knows about. Absent ⇒ an older server that never
+  // probed, and the client offers no choice rather than guessing.
+  shells: z.array(z.string()).optional(),
+  // Whether a member may deviate from `defaultShell` within `shells`. Off/absent ⇒ the
+  // default is the only shell, which is how every server behaved before this existed.
+  allowShellChoice: z.boolean().optional(),
   allowQuickSsh: z.boolean().optional(),
   /** How the server verifies host keys for the connections it opens, for everyone. */
   hostKeyVerification: z.string().optional(),
@@ -796,6 +803,9 @@ export const BackendAdmin = {
   /** Set the server's default shell for terminals (org-admin). */
   setDefaultShell: (shell: string) =>
     invokeWithValidation('admin_set_default_shell', z.null(), { shell }),
+  /** Let members pick their own shell among the ones this instance offers (org-admin). */
+  setShellChoice: (enabled: boolean) =>
+    invokeWithValidation('admin_set_shell_choice', z.null(), { enabled }),
   /** Allow/forbid ad-hoc Quick SSH from the toolbar (org-admin). */
   setQuickSsh: (enabled: boolean) =>
     invokeWithValidation('admin_set_quick_ssh', z.null(), { enabled }),

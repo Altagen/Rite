@@ -35,7 +35,12 @@ import { LibraryFolderDialog } from './LibraryFolderDialog';
 import { MoveToFolderDialog } from './MoveToFolderDialog';
 import { MoveMachineDialog } from './MoveMachineDialog';
 import { useLibraryTree } from '../store/libraryTree';
-import { useServerSession, quickSshAllowed } from '../store/serverSessionStore';
+import {
+  useServerSession,
+  quickSshAllowed,
+  serverShellChoices,
+  effectiveServerShell,
+} from '../store/serverSessionStore';
 import { deleteCollectionFolder } from '../utils/collectionHeader';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
@@ -218,7 +223,26 @@ export function Workspace({
   // In a server context terminals run on the server, so the shell is the server's default
   // (no local-shell picker); locally, the user picks their own shell.
   const isServerCtx = !!serverKeys.mode?.accounts;
-  const serverShell = serverKeys.mode?.defaultShell ?? 'bash';
+  // …unless the instance delegates the choice, in which case these are the shells it
+  // offers and `serverShell` is this person's pick within them. Empty list ⇒ the
+  // instance keeps the decision, which is every server that says nothing.
+  const serverShellChoiceList = serverShellChoices(serverKeys.mode);
+  const serverShell = effectiveServerShell(serverKeys.mode, settings.defaultShell);
+  /**
+   * What the "+" beside the tabs offers for one terminal.
+   *
+   * A machine: the shells Rite looks for, greyed out where absent. A server: the ones it
+   * reported, by name — a name is what the request carries there, so the "path" is the
+   * name. Empty on a server that keeps the shell to itself, which is why the chevron is
+   * absent there without a second condition anywhere.
+   */
+  const newTerminalShells = isServerCtx
+    ? serverShellChoiceList.map((name) => ({
+        name,
+        path: name,
+        icon: SHELL_CANDIDATES.find((c) => c.name === name)?.icon ?? '🐚',
+      }))
+    : SHELL_CANDIDATES;
   // The layouts file (docs/LAYOUTS.md). Read here for `startup = true`; the menu
   // beside the tabs reads the same store for the rest.
   // Which toolbar buttons this person keeps. Hiding one hides it and nothing else:
@@ -749,12 +773,16 @@ export function Workspace({
   // Handle new local terminal
   const handleNewLocalTerminal = async (shell?: string) => {
     // Use provided shell or fall back to settings default
-    const shellToUse = isServerCtx ? serverShell : shell || settings.defaultShell;
+    const asked = isServerCtx && shell && serverShellChoiceList.includes(shell) ? shell : undefined;
+    const shellToUse = isServerCtx ? (asked ?? serverShell) : shell || settings.defaultShell;
 
     try {
-      // In a server context the instance's shell is the one that runs, so ask for
-      // nothing — same rule as `localSession`, and the name above is for the label.
-      const sessionId = await Backend.Terminal.connectLocalTerminal(isServerCtx ? undefined : shellToUse);
+      // On a server the client sends a NAME and only one the instance offers — the server
+      // resolves it to a path itself, so nothing here can name a program it did not offer.
+      // Nothing asked (or nothing offered) leaves the instance to apply its own rule.
+      const sessionId = await Backend.Terminal.connectLocalTerminal(
+        isServerCtx ? (asked ?? (serverShellChoiceList.length > 0 ? serverShell : undefined)) : shellToUse,
+      );
 
       // Create terminal session
       const shellName = shellToUse.split('/').pop() || 'shell';
@@ -818,7 +846,9 @@ export function Workspace({
     // nothing and let the server use it: sending one made the administrator's choice
     // advisory, and the server would spawn whatever path it was handed.
     const shellToUse = isServerCtx ? serverShell : settings.defaultShell;
-    const sessionId = await Backend.Terminal.connectLocalTerminal(isServerCtx ? undefined : shellToUse);
+    const sessionId = await Backend.Terminal.connectLocalTerminal(
+      isServerCtx ? (serverShellChoiceList.length > 0 ? serverShell : undefined) : shellToUse,
+    );
     const shellName = shellToUse.split('/').pop() || 'shell';
     return {
       id: sessionId,
@@ -1835,7 +1865,8 @@ export function Workspace({
             onCloseTab={handleCloseTab}
             onReorganizePane={handleReorganizePane}
             onNewLocalTerminal={handleNewLocalTerminal}
-            shellMenu={!isServerCtx && toolbarPrefs.newTerminalMenu}
+            shellMenu={toolbarPrefs.newTerminalMenu ? newTerminalShells : undefined}
+            probeShells={!isServerCtx}
             onSaveQuickSSH={handleSaveQuickSSH}
             quickSSHSessions={Array.from(quickSSHConnections.keys())}
           />

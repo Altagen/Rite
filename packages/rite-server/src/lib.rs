@@ -558,6 +558,7 @@ pub fn build_router(state: ServerState) -> Router {
             patch(set_session_persistence),
         )
         .route("/api/admin/default-shell", patch(set_default_shell))
+        .route("/api/admin/shell-choice", patch(set_shell_choice))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
         .route("/api/admin/registration", patch(set_open_registration))
         .route("/api/admin/invitations", patch(set_allow_invitations))
@@ -1282,6 +1283,11 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
     // for terminals opened on this server (web users don't pick their own); and whether ad-hoc
     // Quick SSH is allowed (off by default — connections should live in collections).
     let default_shell = state.setting_text("default_shell", "bash").await?;
+    // What this instance can run, and whether a member may deviate from the default within
+    // it. Off by default: on a shared server the terminals are the administrator's business
+    // until they say otherwise, so an instance that upgrades and says nothing is unchanged.
+    let shells = offered_shells();
+    let allow_shell_choice = state.setting_bool("allow_shell_choice", false).await?;
     // How this server verifies host keys for the connections it opens — a policy, not a
     // preference, since every terminal here runs on it. The client shows it read-only
     // rather than offering a dropdown it is not allowed to use.
@@ -1307,6 +1313,8 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "serveAdmin": state.serve_admin,
         "serveWebui": state.serve_webui,
         "defaultShell": default_shell,
+        "shells": shells,
+        "allowShellChoice": allow_shell_choice,
         "hostKeyVerification": host_key_verification,
         "allowQuickSsh": allow_quick_ssh,
         "openRegistration": open_registration,
@@ -1443,10 +1451,36 @@ async fn set_default_shell(
         return Ok(refusal);
     }
     let shell = req.shell.trim();
-    if !["bash", "sh", "zsh", "fish"].contains(&shell) {
-        return Ok((StatusCode::BAD_REQUEST, "unsupported shell").into_response());
+    // Against what the machine HAS, not against the four Rite knows about: setting the
+    // instance to a shell the container lacks pointed every terminal on it at a program
+    // that is not there.
+    let offered = offered_shells();
+    if !offered.iter().any(|name| name == shell) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            format!("this server runs {}", offered.join(", ")),
+        )
+            .into_response());
     }
     state.db.set_setting("default_shell", shell).await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Let members pick their own shell among the ones this instance offers (org-admin only).
+/// Off by default: the default shell is then the only shell, which is how a server behaved
+/// before this existed. The choice is always a name from `offered_shells`, resolved server
+/// side, so delegating it hands over no path.
+async fn set_shell_choice(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "allow_shell_choice") {
+        return Ok(refusal);
+    }
+    state
+        .db
+        .set_setting("allow_shell_choice", if req.enabled { "1" } else { "0" })
+        .await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -3330,6 +3364,7 @@ async fn delete_collection_item_ep(
 const ADMIN_ROUTE_SETTINGS: &[&str] = &[
     "allow_invitations",
     "allow_quick_ssh",
+    "allow_shell_choice",
     "collection_policy",
     "confirm_role_change",
     "dashboard_policy",
@@ -4233,16 +4268,66 @@ fn clamped_shell_name(raw: &str) -> &str {
     }
 }
 
+/// The four agreed shell names, in the order the console offers them.
+const AGREED_SHELLS: [&str; 4] = ["bash", "sh", "zsh", "fish"];
+
+/// Where a shell name is looked for. One list, so the probe below and the path the
+/// session is given can never disagree about what "zsh" means.
+const SHELL_DIRS: [&str; 3] = ["/usr/bin", "/bin", "/usr/local/bin"];
+
+/// The resolved path for an agreed shell name, if this machine has it.
+///
+/// The membership test lives here rather than in the callers, so the only way to obtain
+/// a path is to have named one of the four: `shell_path_of("../bin/sh")` would otherwise
+/// join to `/usr/bin/../bin/sh`, which exists. A caller that forgets to check is then
+/// still safe, and the property is testable in one place.
+fn shell_path_of(name: &str) -> Option<String> {
+    if !AGREED_SHELLS.contains(&name) {
+        return None;
+    }
+    SHELL_DIRS
+        .iter()
+        .map(|dir| format!("{dir}/{name}"))
+        .find(|candidate| std::path::Path::new(candidate).exists())
+}
+
+/// The shells this instance can actually run.
+///
+/// The console used to offer all four whatever the container held, and a minimal server
+/// image has two of them: picking one of the others set every terminal on the instance to
+/// a program that is not installed. So the offer is a probe, not a list — and it is also
+/// the set a member may choose from, which is why nothing downstream has to re-derive it.
+fn offered_shells() -> Vec<String> {
+    AGREED_SHELLS
+        .iter()
+        .filter(|name| shell_path_of(name).is_some())
+        .map(|name| (*name).to_string())
+        .collect()
+}
+
+/// The shell this server runs for a member who asked for `asked`.
+///
+/// `asked` is a NAME, never a path: a path from a client is how any binary in the
+/// container became a PTY the caller could drive. A name this instance does not offer —
+/// a stale pick, a client that guessed — falls back to the instance default rather than
+/// failing, because the default is always something this machine has.
+async fn chosen_shell_path(state: &ServerState, asked: Option<&str>) -> Result<String, AppError> {
+    if state.setting_bool("allow_shell_choice", false).await? {
+        if let Some(path) = asked.map(str::trim).and_then(shell_path_of) {
+            return Ok(path);
+        }
+    }
+    server_shell_path(state).await
+}
+
 async fn server_shell_path(state: &ServerState) -> Result<String, AppError> {
     let setting = state.setting_text("default_shell", "bash").await?;
     let name = clamped_shell_name(&setting);
-    for dir in ["/usr/bin", "/bin", "/usr/local/bin"] {
-        let candidate = format!("{dir}/{name}");
-        if std::path::Path::new(&candidate).exists() {
-            return Ok(candidate);
-        }
-    }
-    Ok(name.to_string())
+    // An administrator who picked a shell this machine has since lost (or never had, from
+    // before the console probed) still gets a terminal: bash is in every image we ship.
+    Ok(shell_path_of(name)
+        .or_else(|| shell_path_of("bash"))
+        .unwrap_or_else(|| name.to_string()))
 }
 
 async fn create_local(
@@ -4256,7 +4341,7 @@ async fn create_local(
     // could then drive, for any account and whatever the administrator had chosen. On a
     // local vault the shell stays the person's own — it is their machine.
     let shell = if state.accounts {
-        Some(server_shell_path(&state).await?)
+        Some(chosen_shell_path(&state, req.shell.as_deref()).await?)
     } else {
         req.shell
     };
@@ -5406,6 +5491,47 @@ mod tests {
         }
         for not_ok in ["/usr/bin/env", "/bin/bash", "env", "", "python3"] {
             assert_eq!(clamped_shell_name(not_ok), "bash");
+        }
+    }
+
+    /// The offer is a probe, not a list.
+    ///
+    /// The console used to offer four shells whatever the container had; the two it did
+    /// not have pointed every terminal on the instance at a missing program. Pinned
+    /// against the filesystem rather than against a constant, because a test that agrees
+    /// with `AGREED_SHELLS` would pass on the bug.
+    #[test]
+    fn a_shell_is_offered_only_where_it_exists() {
+        let offered = offered_shells();
+        for name in AGREED_SHELLS {
+            let on_disk = ["/usr/bin", "/bin", "/usr/local/bin"]
+                .iter()
+                .any(|dir| std::path::Path::new(&format!("{dir}/{name}")).exists());
+            assert_eq!(
+                offered.iter().any(|o| o == name),
+                on_disk,
+                "{name} is offered iff this machine has it"
+            );
+        }
+        // Whatever else is true of this machine, the shell every image ships is runnable.
+        assert!(shell_path_of("sh").is_some(), "no /bin/sh on the test machine");
+    }
+
+    /// A name resolves to the path the session is given; anything shaped like a path
+    /// resolves to nothing. This is the property that keeps a delegated choice safe:
+    /// `chosen_shell_path` can only ever hand over what `shell_path_of` found.
+    #[test]
+    fn a_shell_is_named_never_pathed() {
+        let sh = shell_path_of("sh").expect("sh");
+        assert!(sh.ends_with("/sh"), "{sh} is a resolved path");
+        // `/usr/bin/../bin/sh` exists, so "it did not resolve" has to be asserted on the
+        // resolver itself and not inferred from the input not being an agreed name — that
+        // reading is true of every path and tests nothing.
+        for not_a_name in ["/bin/sh", "../bin/sh", "sh ", "/usr/bin/env", "sh;id", ""] {
+            assert!(
+                shell_path_of(not_a_name).is_none(),
+                "{not_a_name} must not resolve to a shell"
+            );
         }
     }
 }
