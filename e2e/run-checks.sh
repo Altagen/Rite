@@ -35,6 +35,7 @@ run "place-menu-check" node "e2e/place-menu-check.mjs"
 run "shortcut-binding-check" node "e2e/shortcut-binding-check.mjs"
 run "machine-command-check" node "e2e/machine-command-check.mjs"
 run "i18n-check" node "e2e/i18n-check.mjs"
+run "board-markup-check" node "e2e/board-markup-check.mjs"
 
 echo
 echo "crypto parity (Rust ↔ browser):"
