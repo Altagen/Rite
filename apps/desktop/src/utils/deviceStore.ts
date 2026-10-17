@@ -16,6 +16,13 @@
  *
  * The API is `localStorage`'s on purpose: every call site was already written against it.
  *
+ * One thing it does NOT do that `localStorage` does: tell the other windows. Two desktop
+ * windows each hold their own injected snapshot, and the shell's write is
+ * read-modify-write, so nothing is lost — but a preference changed in one window is not
+ * visible in another until that one is reopened. `localStorage` fires a `storage` event
+ * across tabs and this has no equivalent yet. It is a staleness, not a loss, and it is
+ * worth less than the relaunch it fixes.
+ *
  * Nothing is imported here, deliberately: every store imports this module, and a check can
  * load it directly to drive both worlds (`e2e/device-prefs-check.mjs`). The one thing it
  * would want — `isNativeShell()` — is a read of the same injected global, and the question
