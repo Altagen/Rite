@@ -156,14 +156,28 @@ by TOFU instead.
 
 ## Configuring the instance as code
 
-Ten settings govern how an instance behaves. Declare any of them in a TOML file, point
-`RITE_CONFIG` at it, and they stop being something an administrator has to click:
+Fourteen settings govern how an instance behaves. Declare any of them in a TOML file,
+point `RITE_CONFIG` at it, and they stop being something an administrator has to click:
 
 ```toml
 instance_name     = "Acme Corp"
 open_registration = false
 allow_quick_ssh   = false
 default_shell     = "bash"
+
+# What a terminal on this server opens, and whether a member may deviate. The console
+# offers only the shells this server has installed; `allow_shell_choice` is off by
+# default, which makes `default_shell` the only shell.
+allow_shell_choice = false
+
+# How an unknown SSH host key is treated — one policy for everyone, since every
+# connection runs here. `strict` refuses it; `warn` and `accept` do not.
+host_key_verification_mode = "strict"
+
+# What may rest in a member's own vault (ADR 0024). Both on by default: Rite already
+# stores SSH passwords, so forbidding a stored passphrase alone hardens nothing.
+allow_passphrase_storage = true
+allow_secret_reveal      = true
 
 [dashboard_policy]        # ADR 0019
 webui       = false       # the web UI may not run the probing cards
@@ -176,10 +190,13 @@ maxMembers  = 25
 ```
 
 The full list: `instance_name`, `session_persistence`, `default_shell`,
-`allow_quick_ssh`, `open_registration`, `allow_invitations`, `confirm_role_change`,
-`healthcheck_policy`, `collection_policy`, `dashboard_policy`. A key outside that list
-stops the server, named — a typo should be heard at start-up, not discovered months later
-as a setting that never applied.
+`allow_shell_choice`, `host_key_verification_mode`, `allow_quick_ssh`,
+`allow_passphrase_storage`, `allow_secret_reveal`, `open_registration`,
+`allow_invitations`, `confirm_role_change`, `healthcheck_policy`, `collection_policy`,
+`dashboard_policy`. A key outside that list stops the server, named — a typo should be
+heard at start-up, not discovered months later as a setting that never applied. So does a
+value outside what a key accepts: `host_key_verification_mode = "trust-me"` is refused at
+start-up rather than falling back to strict while the console shows the typo.
 
 Any key can also be set from the environment, which wins over the file:
 

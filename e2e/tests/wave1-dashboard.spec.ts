@@ -87,11 +87,18 @@ test('pinning a container survives switching to the Pinned view', async ({ page,
 });
 
 test('services card surfaces failed units and filters on them', async ({ page, request }) => {
+  // See the pre-connect test in wave1.spec.ts: the per-test budget is what runs out
+  // first when the machine is busy, and it fails naming an assertion that did not.
+  test.slow();
   await createConnection(request, 'e2e-dash-d');
   await page.goto('/');
   await page.getByText('e2e-dash-d').click();
 
-  await expect(page.getByText('nginx.service')).toBeVisible({ timeout: 30_000 });
+  // A long wait on purpose: this asserts that output ARRIVES, not how fast. The card runs
+  // a command over SSH and parses it, and on a machine that is also compiling something
+  // the first paint has taken longer than 30s — which failed the suite while saying
+  // nothing about the product.
+  await expect(page.getByText('nginx.service')).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText('postgresql.service')).toBeVisible();
   // A failed unit is counted on the card header — the thing a sysadmin looks for.
   await expect(page.getByText('1 failed')).toBeVisible();
@@ -116,7 +123,7 @@ test('expanding the containers card reveals the wide table with live stats', asy
   await createConnection(request, 'e2e-dash-e');
   await page.goto('/');
   await page.getByText('e2e-dash-e').click();
-  await expect(page.getByText('web', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('web', { exact: true })).toBeVisible({ timeout: 90_000 });
 
   // Collapsed: no table columns.
   await expect(page.getByRole('columnheader', { name: 'CPU' })).toBeHidden();

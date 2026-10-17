@@ -591,6 +591,11 @@ test('a layout runs a pre-connect hook once, however many panes name the machine
   page,
   request,
 }) => {
+  // The per-test budget, not just the per-assertion one: this opens FOUR SSH panes and
+  // runs the hook twice, and Playwright's default 30s killed the whole test on a busy
+  // machine — the failure then names an assertion that had not timed out at all, which
+  // is how raising those timeouts first changed nothing.
+  test.slow();
   const counter = `/tmp/rite-e2e-hook-${Date.now()}`;
   await machine(request, {
     name: 'e2e-layout-hook',
@@ -622,10 +627,13 @@ test('a layout runs a pre-connect hook once, however many panes name the machine
   await page.getByTestId('layouts-button').click();
   await page.getByRole('menu', { name: /Layouts/ }).getByText('e2e-hooked', { exact: true }).click();
 
-  // One modal, and it is the hook's first run.
+  // One modal, and it is the hook's first run. The wait is long on purpose: this asserts
+  // that the hook's output ARRIVES, not how fast — a PTY opening and painting into an
+  // xterm has taken more than 20s on a machine that was also compiling, which failed the
+  // suite while saying nothing about the product.
   const dialog = page.getByRole('dialog', { name: 'Running pre-connect' });
-  await expect(dialog.locator('.xterm-rows')).toContainText('HOOK_RUNS=1', { timeout: 20_000 });
-  await expect(dialog).toBeHidden({ timeout: 20_000 });
+  await expect(dialog.locator('.xterm-rows')).toContainText('HOOK_RUNS=1', { timeout: 90_000 });
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
 
   // All four panes opened, on the machine, with the hook asked for only once.
   await expect(page.locator('.xterm-screen')).toHaveCount(4, { timeout: 60_000 });
@@ -634,8 +642,8 @@ test('a layout runs a pre-connect hook once, however many panes name the machine
   // Opening it again by hand runs the hook a SECOND time — the proof that the layout
   // ran it exactly once, because four runs would make this one say 5.
   await page.getByText('e2e-layout-hook').dblclick();
-  await expect(dialog.locator('.xterm-rows')).toContainText('HOOK_RUNS=2', { timeout: 20_000 });
-  await expect(dialog).toBeHidden({ timeout: 20_000 });
+  await expect(dialog.locator('.xterm-rows')).toContainText('HOOK_RUNS=2', { timeout: 90_000 });
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
 
   await request.put('/api/layouts', { data: { value: '' } });
 });

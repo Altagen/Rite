@@ -35,6 +35,7 @@ export default defineConfig({
       name: 'chromium',
       testIgnore: [
         /smoke\.spec\.ts/,
+        /screenshots\.spec\.ts/,
         /mock\.spec\.ts/,
         /instance-config\.spec\.ts/,
         /accounts\.spec\.ts/,
@@ -42,6 +43,22 @@ export default defineConfig({
         /proxy\.spec\.ts/,
         /tls-proxy\.spec\.ts/,
       ],
+      use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
+    },
+    // The README's images, taken by driving the real UI (`e2e/tests/screenshots.spec.ts`):
+    //
+    //   sh e2e/harness-up.sh
+    //   RITE_SHOTS=1 npx playwright test --project=shots
+    //
+    // Behind a flag, and not part of a plain `playwright test`. They are a generator
+    // rather than a guarantee: they seed a presentable library and drive it to a chosen
+    // moment, which the state left by the rest of the suite (a locked vault, a signed-out
+    // session) breaks — without saying anything about the product. A test that fails for
+    // reasons outside what it asserts teaches you to ignore red.
+    {
+      name: 'shots',
+      testMatch: process.env.RITE_SHOTS ? /screenshots\.spec\.ts/ : /$^/,
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
     },
