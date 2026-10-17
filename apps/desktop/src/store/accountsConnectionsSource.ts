@@ -192,6 +192,9 @@ function toInfo(
     username: r.username,
     authType: r.authMethod.type,
     keyPath: r.authMethod.type === 'publicKey' ? r.authMethod.keyPath : null,
+    hasStoredPassphrase:
+      (r.authMethod.type === 'publicKey' || r.authMethod.type === 'vaultKey') &&
+      !!r.authMethod.passphrase,
     color: r.color,
     icon: r.icon,
     folder: folder ?? r.folder ?? null,
@@ -250,6 +253,14 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   if (input.jump !== undefined) merged.jump = input.jump;
   if (input.forwards !== undefined) merged.forwards = input.forwards;
   if (input.hc !== undefined) merged.hc = input.hc;
+  if (input.needsPassphrase !== undefined) merged.needsPassphrase = input.needsPassphrase;
+  // After `authMethod` above, so replacing the key and dropping its passphrase in one edit
+  // does both. Here the client holds the whole record, so it can do this itself — the
+  // local vault needs the core's help because there the key never leaves rite-core.
+  if (input.forgetPassphrase && 'passphrase' in merged.authMethod) {
+    const { passphrase: _dropped, ...rest } = merged.authMethod;
+    merged.authMethod = rest as typeof merged.authMethod;
+  }
   return merged;
 }
 

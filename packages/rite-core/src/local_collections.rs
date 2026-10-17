@@ -326,6 +326,11 @@ pub struct MachinePatch {
     pub jump: Option<Option<String>>,
     pub forwards: Option<Vec<PortForwardConfig>>,
     pub hc: Option<Option<bool>>,
+    /// Drop the stored key passphrase and keep the key (ADR 0024 §4). A client editing a
+    /// machine does not hold its secrets, so it cannot send an `auth_method` with the
+    /// passphrase removed — it never had the key.
+    #[serde(default)]
+    pub forget_passphrase: bool,
 }
 
 /// Apply a partial edit to a machine, keeping everything the caller left out.
@@ -361,6 +366,17 @@ pub async fn patch_machine(
     }
     if let Some(v) = patch.auth_method {
         record.auth_method = v;
+    }
+    // After the assignment above, so replacing the key and dropping its passphrase in one
+    // edit does both rather than one of the two.
+    if patch.forget_passphrase {
+        record.auth_method = std::mem::replace(
+            &mut record.auth_method,
+            AuthMethod::Password {
+                password: String::new(),
+            },
+        )
+        .without_passphrase();
     }
     if let Some(v) = patch.color {
         record.color = v;

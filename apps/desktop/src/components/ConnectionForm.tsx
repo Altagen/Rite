@@ -75,9 +75,10 @@ export function ConnectionForm({
       password: prefillData?.password ?? '',
       keyPath: prefillData?.keyPath ?? connection?.keyPath ?? '',
       passphrase: prefillData?.passphrase ?? '',
-      // A machine whose passphrase is stored keeps it stored unless this is changed; one
-      // that never stored it keeps being asked. Either way nothing is read back here.
-      rememberPassphrase: false,
+      // Ticked when one is in fact stored, so the box states the machine's condition
+      // rather than a default: it rendered unticked on a machine whose passphrase Rite
+      // was holding, which reads as "nothing is kept" and is the opposite of the truth.
+      rememberPassphrase: connection?.hasStoredPassphrase === true,
     }),
   );
   const [folder, setFolder] = useState(connection?.folder || defaultFolder || '');
@@ -109,6 +110,18 @@ export function ConnectionForm({
   // UI state
   const [showProtocolDropdown, setShowProtocolDropdown] = useState(false);
   const protocolDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Esc is the keyboard way out, now that a click outside is not one (see the backdrop).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -260,6 +273,12 @@ export function ConnectionForm({
           // A passphrase typed and not kept: the record says to ask next time, so a key
           // with no passphrase at all is never prompted for.
           input.needsPassphrase = !!auth.passphrase && !auth.rememberPassphrase;
+          // Unticking the box on a machine that stores one has to remove it. The client
+          // does not hold the key, so it cannot send an `authMethod` without the
+          // passphrase — it says what it wants instead, and the core does it.
+          if (connection?.hasStoredPassphrase && !auth.rememberPassphrase && !auth.passphrase) {
+            input.forgetPassphrase = true;
+          }
         } else {
           input.authMethod = toAuthMethodInput(auth);
         }
@@ -301,8 +320,14 @@ export function ConnectionForm({
   };
 
   return (
-    <div className="m-backdrop" onClick={onClose}>
-      <div className="m-modal max-w-2xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+    // No `onClick={onClose}` on the backdrop: this form holds typed work, and a stray
+    // click outside it threw all of it away. Worse, it did so for clicks nobody aimed at
+    // the backdrop — a native `<select>` (the jump host, the protocol, keep-alive) opens an
+    // OS-level popup in the desktop shell, and the click that dismisses the popup lands on
+    // the page. So choosing a jump host closed the whole dialog. Esc and Cancel are the
+    // ways out, both deliberate.
+    <div className="m-backdrop">
+      <div className="m-modal max-w-2xl max-h-[90vh] overflow-y-auto p-6">
         {/* Header */}
         <div className="mb-5 flex items-start justify-between">
           <div>
@@ -442,6 +467,7 @@ export function ConnectionForm({
             // Only on an existing machine, and only where the source offers it: a machine
             // being created has nothing stored, and a viewer's source refuses.
             onReveal={connection && reveal ? () => reveal(connection) : undefined}
+            hasStoredPassphrase={connection?.hasStoredPassphrase === true}
           />
 
           {/* Jump host (ProxyJump): reach this machine through another saved one (a

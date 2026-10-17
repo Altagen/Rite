@@ -98,6 +98,17 @@ pub fn merge_update(
     if let Some(v) = u.auth_method {
         c.auth_method = v;
     }
+    // After the assignment above, so replacing the key and dropping its passphrase in one
+    // edit does both rather than one of the two.
+    if u.forget_passphrase {
+        c.auth_method = std::mem::replace(
+            &mut c.auth_method,
+            AuthMethod::Password {
+                password: String::new(),
+            },
+        )
+        .without_passphrase();
+    }
     if let Some(v) = u.color {
         c.color = Some(v);
     }

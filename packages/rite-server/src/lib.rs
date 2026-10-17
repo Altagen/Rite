@@ -4619,6 +4619,11 @@ struct LocalMachine {
     /// typing a password there silently converted it to password authentication.
     #[serde(skip_serializing_if = "Option::is_none")]
     key_path: Option<String>,
+    /// Whether a key passphrase is kept with this machine (ADR 0024 §4). Not a secret: it
+    /// is the difference between "this key has no passphrase" and "it has one and Rite
+    /// holds it", and without it the form's "remember this passphrase" box could only ever
+    /// render unticked — on a machine whose passphrase is in fact stored.
+    has_stored_passphrase: bool,
     color: Option<String>,
     icon: Option<String>,
     folder: Option<String>,
@@ -4651,6 +4656,7 @@ impl LocalMachine {
                 AuthMethod::PublicKey { key_path, .. } => Some(key_path.clone()),
                 _ => None,
             },
+            has_stored_passphrase: r.auth_method.has_stored_passphrase(),
             name: r.name,
             protocol: r.protocol,
             hostname: r.hostname,

@@ -145,7 +145,9 @@
     "passphraseAskWhy": "Utilisée pour cette connexion seulement. Rite ne la conserve pas — coche « Retenir cette passphrase » en éditant la machine si tu préfères qu'il le fasse.",
     "passphraseUnlock": "Se connecter",
     "reveal": "Révéler ce qui est enregistré",
-    "revealFailed": "Impossible de révéler cela."
+    "revealFailed": "Impossible de révéler cela.",
+    "keyPassphraseStored": "Une passphrase est enregistrée pour cette clé. Laisse ce champ vide pour la garder, tape-en une nouvelle pour la remplacer, ou décoche en dessous pour que Rite l'oublie.",
+    "keyRememberForget": "Enregistrée. Décoche pour que Rite l'oublie — elle te sera alors demandée à chaque connexion."
   },
   "errors": {
     "setupFailed": "Erreur lors de la création: {error}",

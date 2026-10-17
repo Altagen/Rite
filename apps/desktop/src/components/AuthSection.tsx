@@ -52,9 +52,22 @@ interface AuthSectionProps {
    * credential without extracting it, and an instance may turn it off for everyone.
    */
   onReveal?: () => Promise<RevealedSecret>;
+  /**
+   * A key passphrase is already stored for this machine. The field stays empty — a secret
+   * is not re-displayed without being asked for — so the row has to SAY one is there, or
+   * an empty box beside a ticked "remember this passphrase" reads as a contradiction.
+   */
+  hasStoredPassphrase?: boolean;
 }
 
-export function AuthSection({ value, onChange, isEdit, errors, onReveal }: AuthSectionProps) {
+export function AuthSection({
+  value,
+  onChange,
+  isEdit,
+  errors,
+  onReveal,
+  hasStoredPassphrase,
+}: AuthSectionProps) {
   const { t } = useTranslation();
   const native = isNativeShell();
   // Where SSH will run decides what a key field can mean (ADR 0024 §2). On this machine's
@@ -237,12 +250,23 @@ export function AuthSection({ value, onChange, isEdit, errors, onReveal }: AuthS
                 type={showPassphrase ? 'text' : 'password'}
                 value={value.passphrase}
                 onChange={(e) => set({ passphrase: e.target.value })}
-                placeholder={t('connections.keyPassphrasePlaceholder')}
+                // The same dots the password field shows when one is stored: an empty box
+                // with a neutral hint cannot tell "nothing is kept" from "something is".
+                placeholder={
+                  hasStoredPassphrase && !value.passphrase
+                    ? '••••••••'
+                    : t('connections.keyPassphrasePlaceholder')
+                }
                 className={`${INPUT_CLS} pr-10`}
                 data-testid="auth-passphrase"
               />
               <EyeButton shown={showPassphrase} onToggle={() => setShowPassphrase(!showPassphrase)} />
             </div>
+            {hasStoredPassphrase && (
+              <p className="mt-1 text-sm text-muted-foreground" data-testid="auth-passphrase-stored">
+                {t('connections.keyPassphraseStored')}
+              </p>
+            )}
             <RevealButton field="passphrase" />
             {revealError && (
               <p className="mt-1 text-sm text-amber-500" data-testid="auth-reveal-error">
@@ -262,7 +286,9 @@ export function AuthSection({ value, onChange, isEdit, errors, onReveal }: AuthS
                 />
                 <span>
                   {t('connections.keyRemember')}
-                  <span className="block text-muted-foreground">{t('connections.keyRememberWhy')}</span>
+                  <span className="block text-muted-foreground">
+                    {hasStoredPassphrase ? t('connections.keyRememberForget') : t('connections.keyRememberWhy')}
+                  </span>
                 </span>
               </label>
             ) : (

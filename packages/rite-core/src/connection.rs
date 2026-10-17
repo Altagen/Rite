@@ -266,6 +266,50 @@ pub struct UpdateConnectionInput {
     pub jump: Option<Option<String>>,                    // Nested Option to allow clearing
     #[serde(default)]
     pub forwards: Option<Vec<PortForwardConfig>>, // Some ⇒ replace the whole list
+    /// Drop the stored key passphrase, keeping everything else about the key (ADR 0024 §4).
+    ///
+    /// Needed because a client editing a machine does not hold its secrets: it cannot send
+    /// an `auth_method` with the passphrase removed, since it never had the key. Without
+    /// it, unticking "remember this passphrase" changed nothing — the update omitted
+    /// `auth_method`, so the stored one was kept, passphrase included.
+    ///
+    /// Honoured where this struct is actually applied: `vault_conn::merge_update` (a
+    /// desktop editing a machine on a server) and `local_collections::patch_machine` (its
+    /// own vault). `Connection::update` below does not read it, because no route has
+    /// called `ConnectionsManager` since ADR 0018 moved local vaults into collections —
+    /// handling it there would be code no test could reach.
+    #[serde(default)]
+    pub forget_passphrase: bool,
+}
+
+impl AuthMethod {
+    /// Whether a key passphrase is kept with this method.
+    ///
+    /// Not a secret — it is the difference between "this key has no passphrase" and "it
+    /// has one and Rite holds it", which the form has to show or its checkbox lies.
+    pub fn has_stored_passphrase(&self) -> bool {
+        match self {
+            AuthMethod::PublicKey { passphrase, .. } | AuthMethod::VaultKey { passphrase, .. } => {
+                passphrase.is_some()
+            }
+            _ => false,
+        }
+    }
+
+    /// The same method with no passphrase kept.
+    pub fn without_passphrase(self) -> Self {
+        match self {
+            AuthMethod::PublicKey { key_path, .. } => AuthMethod::PublicKey {
+                key_path,
+                passphrase: None,
+            },
+            AuthMethod::VaultKey { key, .. } => AuthMethod::VaultKey {
+                key,
+                passphrase: None,
+            },
+            other => other,
+        }
+    }
 }
 
 impl Connection {

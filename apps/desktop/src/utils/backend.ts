@@ -95,8 +95,10 @@ const ConnectionInfoSchema = z.object({
   port: z.number(),
   username: z.string(),
   authType: z.string(),
-  // ADR 0024 §6: a path names a file and is not a secret, so it comes back.
+  // ADR 0024 §6: a path names a file and is not a secret, so it comes back. Nor is the
+  // fact that a passphrase is kept — only the passphrase itself is.
   keyPath: z.string().nullable().optional(),
+  hasStoredPassphrase: z.boolean().optional(),
   folder: z.string().nullable().optional(),
   color: z.string().nullable().optional(),
   icon: z.string().nullable().optional(),

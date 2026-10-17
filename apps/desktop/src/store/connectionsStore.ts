@@ -52,6 +52,13 @@ export interface ConnectionInfo {
    * reopened on "Password" — so typing one there converted the machine silently.
    */
   keyPath?: string | null;
+  /**
+   * A key passphrase is kept with this machine (ADR 0024 §4). Not a secret: it is the
+   * difference between "this key has no passphrase" and "it has one and Rite holds it".
+   * Without it the form's "remember this passphrase" box could only render unticked, on a
+   * machine whose passphrase is in fact stored — a checkbox that lies about its own state.
+   */
+  hasStoredPassphrase?: boolean;
   color?: string | null;
   icon?: string | null;
   folder?: string | null;
@@ -130,6 +137,12 @@ export interface UpdateConnectionInput {
   forwards?: PortForwardConfig[]; // saved port forwards (Some ⇒ replace the whole list)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
   needsPassphrase?: boolean; // see CreateConnectionInput
+  /**
+   * Drop the stored passphrase, keeping the key (ADR 0024 §4). Unticking "remember" needs
+   * this: the client editing a machine does not hold its key, so it cannot send an
+   * `authMethod` with the passphrase taken out.
+   */
+  forgetPassphrase?: boolean;
 }
 
 /**
