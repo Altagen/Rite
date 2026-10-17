@@ -277,12 +277,17 @@ export function AuthSection({
                 beside the key it protects is no longer a second barrier — so the row says
                 what it does instead of implying one. */}
             {mayRemember ? (
-              <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm">
+              <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm leading-5">
+                {/* `items-start` aligns the box with the top of a two-line label, which
+                    leaves it sitting above the first line's text: the box is 1rem and the
+                    line is 1.25rem. Half the difference puts it on the line, and
+                    `flex-none` keeps it square when the label wraps. */}
                 <input
                   type="checkbox"
                   checked={value.rememberPassphrase}
                   onChange={(e) => set({ rememberPassphrase: e.target.checked })}
                   data-testid="auth-remember-passphrase"
+                  className="mt-0.5 flex-none"
                 />
                 <span>
                   {t('connections.keyRemember')}

@@ -15,6 +15,7 @@
  * governs are the instance's and are read from `/api/server/mode`, not set here.
  */
 
+import { deviceStore } from '../utils/deviceStore';
 import { create } from 'zustand';
 import { Backend } from '../utils/backend';
 import { useServerSession } from './serverSessionStore';
@@ -60,7 +61,7 @@ const onSharedServer = () => useServerSession.getState().mode?.accounts === true
 
 function readDeviceSettings(): Settings {
   try {
-    const raw = localStorage.getItem(DEVICE_STORE_KEY);
+    const raw = deviceStore.getItem(DEVICE_STORE_KEY);
     return raw ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) } : DEFAULT_SETTINGS;
   } catch {
     // Private window, blocked storage, or something else wrote nonsense there.
@@ -70,7 +71,7 @@ function readDeviceSettings(): Settings {
 
 function writeDeviceSettings(settings: Settings): void {
   try {
-    localStorage.setItem(DEVICE_STORE_KEY, JSON.stringify(settings));
+    deviceStore.setItem(DEVICE_STORE_KEY, JSON.stringify(settings));
   } catch {
     // Not persisting is a worse session, not a broken one.
   }

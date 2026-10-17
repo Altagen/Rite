@@ -6,6 +6,7 @@
  * then reaches everyone who never touched it, instead of being frozen into their
  * settings the first time they opened this screen.
  */
+import { deviceStore } from '../utils/deviceStore';
 import { create } from 'zustand';
 import { parseBinding, formatBinding, type Binding } from './binding';
 import { SHORTCUT_COMMANDS, isReservedText } from './commands';
@@ -37,7 +38,7 @@ export const IS_MAC =
  *  rather than thrown, since a corrupt key must not cost the user every shortcut. */
 function readOverrides(): Record<string, string> {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = deviceStore.getItem(KEY);
     if (raw === null) return {};
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
@@ -53,7 +54,7 @@ function readOverrides(): Record<string, string> {
 
 function writeOverrides(overrides: Record<string, string>) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(overrides));
+    deviceStore.setItem(KEY, JSON.stringify(overrides));
   } catch {
     /* storage unavailable — keep it in memory only */
   }

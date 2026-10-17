@@ -7,6 +7,7 @@
  * still connects; card actions open a terminal pane running the command.
  */
 
+import { deviceStore } from '../utils/deviceStore';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { forwardKey, useRunningForwards } from '../utils/forwards';
@@ -60,7 +61,7 @@ interface Props {
 const PIN_KEY = 'rite.pinnedContainers';
 function readPins(connId: string): Set<string> {
   try {
-    const all = JSON.parse(localStorage.getItem(PIN_KEY) || '{}') as Record<string, string[]>;
+    const all = JSON.parse(deviceStore.getItem(PIN_KEY) || '{}') as Record<string, string[]>;
     return new Set(all[connId] ?? []);
   } catch {
     return new Set();
@@ -68,9 +69,9 @@ function readPins(connId: string): Set<string> {
 }
 function writePins(connId: string, pins: Set<string>): void {
   try {
-    const all = JSON.parse(localStorage.getItem(PIN_KEY) || '{}') as Record<string, string[]>;
+    const all = JSON.parse(deviceStore.getItem(PIN_KEY) || '{}') as Record<string, string[]>;
     all[connId] = [...pins];
-    localStorage.setItem(PIN_KEY, JSON.stringify(all));
+    deviceStore.setItem(PIN_KEY, JSON.stringify(all));
   } catch {
     // storage unavailable — pins just won't persist; not fatal.
   }
@@ -86,7 +87,7 @@ interface DashPrefs {
 }
 function readDashPrefs(connId: string): DashPrefs {
   try {
-    const all = JSON.parse(localStorage.getItem(DASH_KEY) || '{}') as Record<string, DashPrefs>;
+    const all = JSON.parse(deviceStore.getItem(DASH_KEY) || '{}') as Record<string, DashPrefs>;
     return { wide: all[connId]?.wide ?? [], hidden: all[connId]?.hidden ?? [] };
   } catch {
     return { wide: [], hidden: [] };
@@ -94,9 +95,9 @@ function readDashPrefs(connId: string): DashPrefs {
 }
 function writeDashPrefs(connId: string, prefs: DashPrefs): void {
   try {
-    const all = JSON.parse(localStorage.getItem(DASH_KEY) || '{}') as Record<string, DashPrefs>;
+    const all = JSON.parse(deviceStore.getItem(DASH_KEY) || '{}') as Record<string, DashPrefs>;
     all[connId] = prefs;
-    localStorage.setItem(DASH_KEY, JSON.stringify(all));
+    deviceStore.setItem(DASH_KEY, JSON.stringify(all));
   } catch {
     // storage unavailable — layout just won't persist; not fatal.
   }

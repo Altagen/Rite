@@ -51,6 +51,9 @@ export const DEFAULT_PRESETS: Preset[] = [
  * typed those panes in by hand. Carried over once, the key is then dropped so this
  * cannot fight with the file afterwards.
  */
+// Deliberately `localStorage` and not `deviceStore`: these keys were written by the
+// release candidate, in localStorage, before preferences moved to a file the shell owns.
+// The carry-over has to read where the old build wrote.
 const LEGACY_KEY = 'rite-split-layouts';
 const LEGACY_PRESETS_KEY = 'rite-split-presets';
 function readLegacy(key: string): string | null {

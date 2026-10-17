@@ -5,6 +5,7 @@
  * Supports English and French with language switching via settings.
  */
 
+import { deviceStore } from '../utils/deviceStore';
 import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import en from './locales/en.json';
 import fr from './locales/fr.json';
@@ -37,13 +38,13 @@ interface I18nProviderProps {
 export function I18nProvider({ children }: I18nProviderProps) {
   // Load locale from localStorage or use default
   const [locale, setLocaleState] = useState<Locale>(() => {
-    const stored = localStorage.getItem(LOCALE_STORAGE_KEY);
+    const stored = deviceStore.getItem(LOCALE_STORAGE_KEY);
     return (stored === 'en' || stored === 'fr') ? stored : DEFAULT_LOCALE;
   });
 
   // Save to localStorage when locale changes
   useEffect(() => {
-    localStorage.setItem(LOCALE_STORAGE_KEY, locale);
+    deviceStore.setItem(LOCALE_STORAGE_KEY, locale);
   }, [locale]);
 
   const setLocale = (newLocale: Locale) => {

@@ -41,6 +41,13 @@ interface Window {
   __RITE_VAULTS__?: RiteNativeVault[];
   /** Where a new vault would be written by default (shown in the create dialog, ADR 0014). */
   __RITE_SUGGESTED_VAULT_PATH__?: string;
+  /**
+   * This machine's UI preferences, as the shell holds them in `device.json`. Present only
+   * in the desktop shell, where `localStorage` cannot be used: the server binds a random
+   * port, so the window's origin — and everything keyed by it — is new on every launch.
+   * Read and written through `utils/deviceStore`, never directly.
+   */
+  __RITE_DEVICE__?: Record<string, unknown>;
 }
 
 declare module '*.png' {

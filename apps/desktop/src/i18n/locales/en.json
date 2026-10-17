@@ -144,7 +144,7 @@
     "passphraseAskFor": "To unlock the key for {name}.",
     "passphraseAskWhy": "Used for this connection only. Rite is not keeping it — tick “Remember this passphrase” when editing the machine if you would rather it did.",
     "passphraseUnlock": "Connect",
-    "reveal": "Reveal what is stored",
+    "reveal": "Reveal Pass",
     "revealFailed": "That could not be revealed.",
     "keyPassphraseStored": "A passphrase is stored for this key. Leave this empty to keep it, type a new one to replace it, or untick below to have Rite forget it.",
     "keyRememberForget": "Stored. Untick to have Rite forget it — you will be asked for it at each connection instead."

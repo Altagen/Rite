@@ -5,6 +5,7 @@
  * to every open pane. Running just types the command (+ Enter) into the session's
  * stdin, so there's no backend: the library lives per-device in localStorage.
  */
+import { deviceStore } from '../utils/deviceStore';
 import { create } from 'zustand';
 
 export interface Snippet {
@@ -25,7 +26,7 @@ const DEFAULTS: Snippet[] = [
 
 const read = (): Snippet[] => {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = deviceStore.getItem(KEY);
     if (raw === null) return DEFAULTS;
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : DEFAULTS;
@@ -36,7 +37,7 @@ const read = (): Snippet[] => {
 
 const write = (snippets: Snippet[]) => {
   try {
-    localStorage.setItem(KEY, JSON.stringify(snippets));
+    deviceStore.setItem(KEY, JSON.stringify(snippets));
   } catch {
     /* storage unavailable — keep it in memory only */
   }

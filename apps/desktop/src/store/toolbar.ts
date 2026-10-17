@@ -16,6 +16,7 @@
  * the vault, and a vault carried to another computer should not rearrange its UI.
  */
 
+import { deviceStore } from '../utils/deviceStore';
 import { create } from 'zustand';
 
 export interface ToolbarPrefs {
@@ -57,7 +58,7 @@ export function acceptedPrefs(stored: unknown): ToolbarPrefs {
 
 function read(): ToolbarPrefs {
   try {
-    return acceptedPrefs(JSON.parse(localStorage.getItem(KEY) ?? 'null'));
+    return acceptedPrefs(JSON.parse(deviceStore.getItem(KEY) ?? 'null'));
   } catch {
     return { ...TOOLBAR_DEFAULTS };
   }
@@ -94,7 +95,7 @@ function pick(s: ToolbarPrefs): ToolbarPrefs {
 
 function write(prefs: ToolbarPrefs) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(prefs));
+    deviceStore.setItem(KEY, JSON.stringify(prefs));
   } catch {
     /* storage unavailable — keep it in memory only */
   }
