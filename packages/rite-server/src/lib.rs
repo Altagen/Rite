@@ -5582,6 +5582,14 @@ mod tests {
     }
 
     #[tokio::test]
+    /// The handshake ADR 0008 rests on, pinned to exact values.
+    ///
+    /// This test asserted only that the route answered 200 — under a name that claims it
+    /// reports a version. A release could have shipped reporting anything, or nothing, and
+    /// this would have stayed green. Pinned now, so a bump has to come through here on
+    /// purpose: `version` is the release, `apiVersion` moves ONLY on a breaking change
+    /// (0.2.4 added routes and fields, which are additive, so it does not move), and
+    /// `minClient` is the oldest client this server still talks to.
     async fn capabilities_reports_version() {
         let app = build_router(test_state().await);
         let res = app
@@ -5593,6 +5601,15 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            payload["version"], "0.2.4",
+            "the release this server reports (Cargo.toml's workspace version)"
+        );
+        assert_eq!(payload["apiVersion"], 1, "additive changes do not move this");
+        assert_eq!(payload["minClient"], "0.1.2", "the oldest client still supported");
     }
 
     #[tokio::test]

@@ -37,6 +37,7 @@ run "machine-command-check" node "e2e/machine-command-check.mjs"
 run "i18n-check" node "e2e/i18n-check.mjs"
 run "board-markup-check" node "e2e/board-markup-check.mjs"
 run "device-prefs-check" node "e2e/device-prefs-check.mjs"
+run "version-check" node "e2e/version-check.mjs"
 
 echo
 echo "crypto parity (Rust ↔ browser):"
