@@ -200,6 +200,8 @@ export async function mockInvoke(
     // --- Server accounts ---
     // Default: behave as a local vault (no accounts). Under the dev harness (?harness=…) behave
     // as a shared server so the accounts/admin surfaces are browsable in the backend-less mock.
+    case 'server_capabilities':
+      return { version: '0.0.0-mock', commit: 'mock', builtAt: '2026-01-01', apiVersion: 1, minClient: '0.1.2' };
     case 'server_mode':
       return { accounts: harnessOn(), needsBootstrap: false, instanceName: harnessOn() ? 'Acme Corp' : null, sessionPersistence: true, defaultShell: 'bash', shells: ['bash', 'sh'], allowShellChoice: false, allowPassphraseStorage: true, allowSecretReveal: true, allowQuickSsh: false, openRegistration: false, allowInvitations: true, confirmRoleChange: false, healthcheck: { passiveStatus: true, active: 'off', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 }, dashboardPolicy: { webui: true, clients: true, minInterval: 30 }, managed: {}, collectionPolicy: { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 0, defaultRole: 'viewer' } };
     case 'admin_set_instance':

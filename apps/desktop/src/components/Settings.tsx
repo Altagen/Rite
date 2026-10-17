@@ -31,7 +31,7 @@ import { useFocusMode } from '../store/focusMode';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { isNativeShell } from '../utils/nativeShell';
 import { probeVerdict } from '../utils/dashboardProbes';
-import { Backend } from '../utils/backend';
+import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
 
 /**
@@ -99,6 +99,7 @@ type SectionId =
   | 'clipboard'
   | 'focus'
   | 'language'
+  | 'system'
   | 'password'
   | 'danger';
 
@@ -130,6 +131,7 @@ const RAIL: {
   { id: 'clipboard', i18n: 'settings.clipboard' },
   { id: 'focus', i18n: 'settings.sec.focus', native: true },
   { id: 'language', i18n: 'settings.language' },
+  { id: 'system', i18n: 'settings.sec.system' },
   { id: 'password', i18n: 'settings.sec.password', local: true, vault: true },
   { id: 'danger', i18n: 'settings.sec.danger', local: true, vault: true, danger: true },
 ];
@@ -154,6 +156,22 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const serverMode = useServerSession((s) => s.mode);
   const isLocalContext = !serverMode?.accounts;
   const serverShells = serverShellChoices(serverMode);
+  // Asked for once when Settings opens. It cannot change while the page is up: a new
+  // build means a new page.
+  const [build, setBuild] = useState<Capabilities | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    Backend.Server.capabilities()
+      .then((c) => {
+        if (!cancelled) setBuild(c);
+      })
+      .catch(() => {
+        /* an older server has no such route — the rows then read "…" and say nothing false */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Does a vault exist at all? `isFirstRun` means there is none yet, so the two
   // sections that act on one have nothing to act on. A vault that exists but is
   // locked is a different thing and hides nothing — see the note on RAIL.
@@ -779,6 +797,35 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   onChange={setLocale}
                 />
               </SettingsControl>
+            </SettingsRow>
+          </section>
+
+          {/* What is running, and what it talks to (ADR 0008). The first thing anyone is
+              asked for in a bug report, and nothing showed it: not the version, not the
+              build, not whether this client and its server are compatible at all. Read
+              from the binary that served this page rather than compiled into the bundle,
+              so the two cannot disagree about which they are. */}
+          <section hidden={shown !== 'system'} className="pb-2">
+            <SettingsHead title={t('settings.sec.system')} hint={t('settings.systemHint')} />
+            <SettingsRow title={t('settings.systemRelease')} hint={t('settings.systemReleaseDesc')}>
+              <code className="font-mono text-sm" data-testid="system-version">
+                {build ? build.version : '…'}
+              </code>
+            </SettingsRow>
+            <SettingsRow title={t('settings.systemBuild')} hint={t('settings.systemBuildDesc')}>
+              <code className="font-mono text-sm text-muted-foreground" data-testid="system-build">
+                {build ? `${build.commit ?? 'unknown'} · ${build.builtAt ?? '—'}` : '…'}
+              </code>
+            </SettingsRow>
+            <SettingsRow title={t('settings.systemShell')} hint={t('settings.systemShellDesc')}>
+              <code className="font-mono text-sm text-muted-foreground" data-testid="system-shell">
+                {native ? t('settings.systemShellDesktop') : t('settings.systemShellBrowser')}
+              </code>
+            </SettingsRow>
+            <SettingsRow title={t('settings.systemApi')} hint={t('settings.systemApiDesc')}>
+              <code className="font-mono text-sm text-muted-foreground" data-testid="system-api">
+                {build ? `v${build.apiVersion} · min ${build.minClient}` : '…'}
+              </code>
             </SettingsRow>
           </section>
 

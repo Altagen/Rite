@@ -33,8 +33,15 @@ COPY . .
 RUN pnpm --filter desktop build:frontend
 
 # --- Stage 2: compile rite-server with the embedded frontend ---
+# `.containerignore` excludes `.git`, so the build cannot ask what commit it is: a release
+# passes it. Without it the binary reports `unknown`, which is the honest answer and the
+# one a bug report can still work with.
+#   podman build -f Containerfile.server --build-arg RITE_COMMIT=$(git rev-parse --short HEAD) .
+ARG RITE_COMMIT=unknown
 ARG RUST_VERSION
 FROM rust:${RUST_VERSION}-bookworm AS builder
+ARG RITE_COMMIT
+ENV RITE_COMMIT=${RITE_COMMIT}
 WORKDIR /src
 
 # The dependency graph, in a layer of its own. Manifests and a stub source tree are

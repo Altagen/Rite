@@ -599,7 +599,12 @@ test('a layout runs a pre-connect hook once, however many panes name the machine
   const counter = `/tmp/rite-e2e-hook-${Date.now()}`;
   await machine(request, {
     name: 'e2e-layout-hook',
-    preconnect: `echo x >> ${counter}; echo HOOK_RUNS=$(wc -l < ${counter} | tr -d ' ')`,
+    // The `sleep` is the fix for a race, not padding. The modal closes as soon as the hook
+    // exits, and this test asserts on what is INSIDE it — so a hook that finished before
+    // Playwright looked made the assertion fail with "element not found", which reads as
+    // "the hook never ran". It failed about one full run in three that way, and raising
+    // the timeouts made it worse: more time meant more chances to arrive late.
+    preconnect: `sleep 2; echo x >> ${counter}; echo HOOK_RUNS=$(wc -l < ${counter} | tr -d ' ')`,
   });
   await request.put('/api/layouts', { data: { value: '' } });
 
@@ -909,6 +914,41 @@ test('a terminal tab reads as a selector, and only the pane grip reads as a hand
   // saying move. Without this the assertion above would pass on a page with no
   // draggable anything.
   await expect(page.getByTitle('Drag to reorganize pane').first()).toHaveCSS('cursor', 'move');
+});
+
+/**
+ * What is running, and what it talks to.
+ *
+ * Nothing showed it: not the release, not the build, not whether this client and the
+ * server it is talking to are compatible at all — which is the whole point of ADR 0008's
+ * handshake, and it existed only on the wire. The first question a bug report asks had no
+ * answer in the product.
+ *
+ * Read from the binary that served the page rather than compiled into the bundle, so the
+ * two cannot disagree about which they are: this asserts the page shows what
+ * `/api/capabilities` says, not that it shows something version-shaped.
+ */
+test('Settings says which build is running, and agrees with the server', async ({ page, request }) => {
+  const reported = await (await request.get('/api/capabilities')).json();
+
+  await page.goto('/');
+  await page.getByTitle('Settings').click();
+  await page.getByTestId('settings-nav-system').click();
+
+  // The version row agrees with the server, and that agreement proves little on its own:
+  // a page that hard-coded `0.2.4` would pass it, because the server says 0.2.4 too. The
+  // commit row below is what discriminates — a git sha the bundle has no way to contain,
+  // and it is also why these are asserted against the server's answer rather than against
+  // values (they differ between a checkout and a release image by design).
+  await expect(page.getByTestId('system-version')).toHaveText(reported.version);
+  await expect(page.getByTestId('system-api')).toHaveText(`v${reported.apiVersion} · min ${reported.minClient}`);
+  await expect(page.getByTestId('system-build')).toHaveText(`${reported.commit} · ${reported.builtAt}`);
+  // Never blank: an empty row reads like a bug in the page rather than a build that does
+  // not know its commit, which is what `unknown` is for.
+  await expect(page.getByTestId('system-build')).not.toHaveText('·');
+  await expect(page.getByTestId('system-shell')).toHaveText('browser');
+
+  await page.getByRole('button', { name: 'Close settings' }).click();
 });
 
 /**

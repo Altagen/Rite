@@ -1171,6 +1171,11 @@ const MIN_CLIENT: &str = "0.1.2";
 async fn capabilities() -> Json<Value> {
     Json(json!({
         "version": env!("CARGO_PKG_VERSION"),
+        // What this build is, for a bug report and for the Settings ▸ System section.
+        // `unknown` is honest: a build made outside a checkout and given no build argument
+        // does not know its commit, and guessing would be worse than saying so.
+        "commit": env!("RITE_COMMIT"),
+        "builtAt": env!("RITE_BUILT_AT"),
         "apiVersion": API_VERSION,
         "minClient": MIN_CLIENT,
     }))
@@ -5610,6 +5615,18 @@ mod tests {
         );
         assert_eq!(payload["apiVersion"], 1, "additive changes do not move this");
         assert_eq!(payload["minClient"], "0.1.2", "the oldest client still supported");
+
+        // What the build is, which Settings ▸ System shows and a bug report asks for.
+        // Asserted as shapes rather than values — they differ between a checkout and a
+        // release image by design — but never empty and never missing: an absent field
+        // renders as a blank row that reads like a bug in the page.
+        let commit = payload["commit"].as_str().expect("commit is a string");
+        assert!(!commit.is_empty(), "a build says what it is, or says `unknown`");
+        let built = payload["builtAt"].as_str().expect("builtAt is a string");
+        assert!(
+            built.len() == 10 && built.split('-').count() == 3,
+            "a build date is YYYY-MM-DD, got {built}"
+        );
     }
 
     #[tokio::test]

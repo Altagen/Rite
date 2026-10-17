@@ -102,6 +102,7 @@ const routes: Record<string, Route> = {
   parse_ssh_config: (a) => json('/api/ssh-config/parse', post({ configPath: a.configPath })),
 
   server_mode: () => json('/api/server/mode'),
+  server_capabilities: () => json('/api/capabilities'),
   server_prelogin: (a) => json('/api/server/prelogin', post({ username: a.username })),
   server_login: (a) =>
     json('/api/server/login', post({ username: a.username, authHash: a.authHash })),

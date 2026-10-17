@@ -189,7 +189,8 @@
       "focus": "Focus mode",
       "password": "Master password",
       "danger": "Danger zone",
-      "toolbar": "Toolbar"
+      "toolbar": "Toolbar",
+      "system": "System"
     },
     "toolbarHint": "What sits along the top of the window. Hiding a button never changes what you're allowed to do — the keyboard shortcut and the menus still reach it, and what your server forbids stays forbidden.",
     "toolbarShell": "Shell picker",
@@ -214,7 +215,18 @@
     "shellCustom": "A shell we didn't find (full path)",
     "toolbarQuickSshOff": "Your server turns this off",
     "toolbarQuickSshOffWhy": ", so the button stays hidden whatever this says.",
-    "hostKeyServerDesc": "Set by your administrator for every connection this server opens."
+    "hostKeyServerDesc": "Set by your administrator for every connection this server opens.",
+    "systemHint": "What is running, and what it talks to. The first thing a bug report asks for.",
+    "systemRelease": "Rite",
+    "systemReleaseDesc": "The release serving this page.",
+    "systemBuild": "Build",
+    "systemBuildDesc": "The commit it was made from, and when. `unknown` means the build was made outside a checkout.",
+    "systemShell": "Shell",
+    "systemShellDesc": "Where this interface is running. The same bundle runs in both.",
+    "systemShellDesktop": "desktop window",
+    "systemShellBrowser": "browser",
+    "systemApi": "API",
+    "systemApiDesc": "What this server speaks, and the oldest client it still accepts."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",

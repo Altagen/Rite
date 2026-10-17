@@ -235,6 +235,10 @@ const WORKSPACE_FILE=false;
 // admin in Instance settings), not a per-user pick. Choosing between local shells (fish/zsh/…)
 // is a DESKTOP feature (local terminals). Comes from the server mode in the real app.
 const SERVER_SHELL='bash';
+/* What this build knows about itself. In the app it comes from `/api/capabilities` — the
+   server that served this page — so the bundle and the binary cannot disagree. */
+const BUILD = { version: '0.2.4', commit: '3e60b68', date: '2026-10-17', api: 1, minClient: '0.1.2' };
+function copyDiagnostics(){toast('Copied: Rite '+BUILD.version+' ('+BUILD.commit+') \u00b7 browser');}
 /* The shells this instance HAS, as the server reports them, and whether it lets a
    member deviate from the default within that list (Administration ▸ Instance). The
    member's pick is per browser, like the toolbar preferences: it is an ergonomic choice
@@ -589,6 +593,14 @@ const PREFS=[
       <tr><td>Close terminal pane</td><td><kbd>Ctrl</kbd> <kbd>W</kbd></td><td class="d">Close the focused split pane.</td></tr>
       <tr><td>Find in terminal</td><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>F</kbd></td><td class="d">Search the focused pane's scrollback.</td></tr>
       </tbody></table>` },
+
+  { id:'system', label:'System', body:()=>
+      `<h4>System</h4><p class="lede">What is running, and what it talks to. The first thing anyone is asked for in a bug report, and the only place a version mismatch between a client and its server is visible (ADR 0008).</p>`
+    + prefRow('Rite','The build serving this page.',`<code class="mono" style="font-size:13px">${BUILD.version} <span style="color:var(--muted)">(${BUILD.commit})</span></code>`)
+    + prefRow('Built','When this build was made.',`<code class="mono" style="font-size:13px;color:var(--muted)">${BUILD.date}</code>`)
+    + prefRow('Shell','Where the interface is running. The same bundle runs in the desktop window.',`<code class="mono" style="font-size:13px;color:var(--muted)">browser</code>`)
+    + prefRow('API','What this server speaks, and the oldest client it still accepts.',`<code class="mono" style="font-size:13px;color:var(--muted)">v${BUILD.api} \u00b7 min client ${BUILD.minClient}</code>`)
+    + `<p class="lede" style="margin-top:14px">Nothing here is sent anywhere. <a href="#" onclick="copyDiagnostics();return false">Copy as text</a> for a bug report.</p>` },
 
   { id:'terminals', label:'Terminals', body:()=>
       `<h4>Terminals</h4><p class="lede">Terminals run on the server here, so the shells on offer are the server's — ${ALLOW_SHELL_CHOICE?'which of them you open is yours.':"and which one you open is your administrator's."}</p>`

@@ -1032,6 +1032,17 @@ const PREFS=[
   { id:'language', label:'Language', body:()=>
       prefRow('Interface language','English / Français',`<select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select>`) },
 
+  { id:'system', label:'System', body:()=>
+      `<h4>System</h4><p class="lede">What is running, and what it talks to. The first thing anyone is asked for in a bug report, and the only place a version mismatch between a client and its server is visible (ADR 0008).</p>`
+    + prefRow('Rite','This build.',`<code class="mono" style="font-size:13px">${BUILD.version} <span style="color:var(--muted)">(${BUILD.commit})</span></code>`)
+    + prefRow('Built','When this build was made.',`<code class="mono" style="font-size:13px;color:var(--muted)">${BUILD.date}</code>`)
+    + prefRow('Shell','Where the interface is running. The same bundle runs in both.',`<code class="mono" style="font-size:13px;color:var(--muted)">desktop window</code>`)
+    + (STATE.ctx.type==='server'
+        ? prefRow('Server','The instance this window is connected to, and the API it speaks.',
+            `<code class="mono" style="font-size:13px">${SERVER_BUILD.version} <span style="color:var(--muted)">· API v${SERVER_BUILD.api}</span></code>`)
+        : '')
+    + `<p class="lede" style="margin-top:14px">Nothing here is sent anywhere. <a href="#" onclick="copyDiagnostics();return false">Copy as text</a> for a bug report.</p>` },
+
   { id:'password', label:'Master password', when:prefsHasVault, body:()=>
       `<h4>Master password</h4><p class="lede">The password that opens <b>${(STATE.ctx&&STATE.ctx.name)||'this vault'}</b>. Changing it re-wraps the vault key; your machines are not re-encrypted.</p>
       <label class="field"><span>Current password</span><input class="inp" type="password" placeholder="••••••••"></label>
@@ -1100,6 +1111,11 @@ function discToggleAll(){const my=ORG.teams.filter(t=>t.members.includes(ORG.me)
 function discReq(label){DREQ.add(label);toast('Requested access to <span class="accent">'+label+'</span> — a member will grant you the key');discRefresh();}
 
 /* ================= wire ================= */
+/* What a build knows about itself. In the app these come from the binary that serves the
+   page — one source, so the bundle and the binary cannot disagree about which they are. */
+const BUILD = { version: '0.2.4', commit: '3e60b68', date: '2026-10-17' };
+const SERVER_BUILD = { version: '0.2.4', api: 1 };
+function copyDiagnostics(){toast('Copied: Rite '+BUILD.version+' ('+BUILD.commit+') \u00b7 desktop');}
 function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on this system`);return;}STATE.defaultShell=s.name;renderActs();toast(`${s.name} set as default shell`);}})));}
 /* The tab strip's "+" opens ONE terminal with a shell and leaves the default alone;
    `shellMenu` above sets the default. Two questions, which is why they are two

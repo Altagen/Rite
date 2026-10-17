@@ -86,6 +86,18 @@ const UnlockResponseSchema = z.object({
 // Settings schemas
 const SettingsRecordSchema = z.record(z.string(), z.string());
 
+/** The version handshake (ADR 0008), plus what the build is. */
+const CapabilitiesSchema = z.object({
+  version: z.string(),
+  // `unknown` on a build made outside a checkout with no build argument — honest rather
+  // than absent, so the row renders either way.
+  commit: z.string().optional(),
+  builtAt: z.string().optional(),
+  apiVersion: z.number(),
+  minClient: z.string(),
+});
+export type Capabilities = z.infer<typeof CapabilitiesSchema>;
+
 // Connection schemas
 const ConnectionInfoSchema = z.object({
   id: z.string(),
@@ -636,6 +648,12 @@ export type VaultKeyBlob = z.infer<typeof VaultSchema>;
 export const BackendServer = {
   /** Whether this endpoint is a shared server and if it still needs its admin. */
   mode: () => invokeWithValidation('server_mode', ServerModeSchema),
+  /**
+   * What is serving this page: its release, the build it was made from, and the API it
+   * speaks (ADR 0008). One source — the binary that served the bundle — so the two cannot
+   * disagree about which they are, which a version compiled into the frontend would allow.
+   */
+  capabilities: () => invokeWithValidation('server_capabilities', CapabilitiesSchema),
   /** KDF salt + params for a username (to derive the auth hash client-side). */
   prelogin: (username: string) =>
     invokeWithValidation('server_prelogin', PreloginSchema, { username }),
