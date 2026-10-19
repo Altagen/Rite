@@ -66,9 +66,9 @@ if [ "$want" != "$have" ]; then
 fi
 
 say "1/5  build what the gates run against"
-# `build:frontend` type-checks on its way through, but eslint is a separate pass and
-# nothing else in this repository runs it, so a rule violation reaches the branch with
-# every gate green behind it. Here, before the slow steps.
+# `build:frontend` type-checks on its way through, but eslint is a separate pass that
+# only `task check` ran — so a rule violation reached the branch with this gate green
+# behind it. Here, before the slow steps.
 pnpm --filter desktop lint
 pnpm --filter desktop build:frontend
 if command -v cargo >/dev/null 2>&1; then

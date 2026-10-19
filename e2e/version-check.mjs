@@ -79,4 +79,14 @@ check('and it is a release number, not a placeholder', () => {
   assert.notEqual(version, '0.0.0');
 });
 
+// INSTALL.md gives a reader commands to copy, and they carry a version: the tarball to
+// download and the image tag to pull. A stale number there sends them to a URL that 404s
+// or, worse, to a release two versions old that installs cleanly.
+check('the version INSTALL.md tells a reader to fetch is this one', () => {
+  const version = sources['Cargo.toml'];
+  const found = [...new Set([...read('INSTALL.md').matchAll(/\b\d+\.\d+\.\d+\b/g)].map((m) => m[0]))];
+  assert.ok(found.length > 0, 'INSTALL.md names no version at all — it used to name the commands');
+  assert.deepEqual(found, [version], `INSTALL.md says ${found.join(', ')} and this is ${version}`);
+});
+
 console.log(`\n${passed} checks passed (version ${sources['Cargo.toml']})`);

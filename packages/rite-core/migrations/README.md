@@ -232,4 +232,4 @@ VALUES (3, strftime('%s', 'now'));
 ## See Also
 
 - [SQLite ALTER TABLE docs](https://www.sqlite.org/lang_altertable.html)
-- [Database Schema Documentation](../../docs/ARCHITECTURE.md#database)
+- [Database Schema Documentation](../../../docs/ARCHITECTURE.md#database)

@@ -145,9 +145,10 @@ See [RELEASE.md](docs/RELEASE.md) for the release process.
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/rite/config.toml` | User configuration |
-| `~/.config/rite/themes/` | Custom themes |
-| `~/.local/share/rite/vault.db` | Encrypted database |
+| `~/.config/rite/layouts.toml` | The workspace file: presets and layouts ([Layouts](docs/LAYOUTS.md)) |
+| `~/.local/share/rite/vault.db` | Encrypted vault: machines, collections, secrets |
+| `~/.local/share/rite/device.json` | This machine's UI preferences |
+| `~/.local/share/rite/vaults.json` | The vaults this client knows about |
 
 ---
 
@@ -162,15 +163,16 @@ rite/
 ├── packages/
 │   ├── rite-core/        # UI-agnostic core: auth, connections, terminals (Rust)
 │   ├── rite-server/      # Axum HTTP/WS server + embedded frontend (Rust)
-│   ├── crypto/           # Cryptography module (Rust)
-│   └── protocols/        # Protocol implementations (Rust)
-├── e2e/                  # Playwright end-to-end suite
+│   └── crypto/           # Cryptography module (Rust)
+├── e2e/                  # Playwright end-to-end suite + standalone checks
 ├── Containerfile.server  # Production rite-server image
 ├── docs/
 │   ├── ARCHITECTURE.md
+│   ├── LAYOUTS.md
 │   ├── RELEASE.md
 │   ├── ROADMAP.md
-│   └── SECURITY.md
+│   ├── SECURITY.md
+│   └── SERVER.md
 ├── Cargo.toml            # Rust workspace
 ├── pnpm-workspace.yaml
 └── Taskfile.yaml
@@ -180,6 +182,8 @@ rite/
 
 ## Documentation
 
+- [Install](INSTALL.md) — Running a release: the client binary, the server image, where state lives
+- [Quick start](QUICKSTART.md) — A working checkout and the commands that matter
 - [Architecture](docs/ARCHITECTURE.md) — Technical architecture
 - [Server](docs/SERVER.md) — Running an instance for a team: TLS, the container, policies as code
 - [Layouts](docs/LAYOUTS.md) — The workspace file: presets and layouts
