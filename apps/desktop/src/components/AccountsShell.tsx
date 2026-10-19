@@ -10,11 +10,23 @@
  * asks the user to sign in again rather than showing an empty shell.
  */
 
+import { lazy, Suspense } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { useAccountsConnectionsSource } from '../store/accountsConnectionsSource';
 import { useRoutePath, navigate } from '../store/route';
 import { Workspace } from './Workspace';
-import { AdminDashboard } from './AdminDashboard';
+/**
+ * The admin console, fetched when someone opens it.
+ *
+ * It is a whole surface — users, teams, invitations, collections, the instance's policies
+ * — that most members never open, and on an instance with `serveWebui` off it is the only
+ * surface there is. Carrying it in the first chunk charged everyone for it; `lazy` charges
+ * whoever asks. `Suspense` renders nothing while it arrives: the console mounts over the
+ * workspace, and a spinner over a working page is worse than a beat of nothing.
+ */
+const AdminDashboard = lazy(() =>
+  import('./AdminDashboard').then((m) => ({ default: m.AdminDashboard })),
+);
 import { AdminOnlyNotice } from './AdminOnlyNotice';
 import { CollectionsDashboard } from './CollectionsDashboard';
 import { TeamsDashboard } from './TeamsDashboard';
@@ -81,7 +93,13 @@ export function AccountsShell() {
   if (!serveWebui) {
     return (
       <>
-        {canManage ? <AdminDashboard hideBack /> : <AdminOnlyNotice onSignOut={() => logout()} />}
+        {canManage ? (
+          <Suspense fallback={null}>
+            <AdminDashboard hideBack />
+          </Suspense>
+        ) : (
+          <AdminOnlyNotice onSignOut={() => logout()} />
+        )}
         {settingsModal}
       </>
     );
@@ -112,7 +130,11 @@ export function AccountsShell() {
       {path === '/teams' && <TeamsDashboard />}
       {path === '/collections' && <CollectionsDashboard />}
       {path === '/notifications' && <NotificationsDashboard />}
-      {path === '/admin' && canManage && <AdminDashboard />}
+      {path === '/admin' && canManage && (
+        <Suspense fallback={null}>
+          <AdminDashboard />
+        </Suspense>
+      )}
       {settingsModal}
     </>
   );

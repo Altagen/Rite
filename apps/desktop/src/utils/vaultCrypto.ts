@@ -15,7 +15,16 @@
  * 16-byte tag appended to the ciphertext, as WebCrypto/`aes-gcm` both produce).
  */
 
-import { argon2id } from 'hash-wasm';
+/**
+ * Argon2id, loaded on demand.
+ *
+ * `hash-wasm` is a WASM blob needed only where a password is turned into a key: signing
+ * in to a server, and unlocking a vault. Neither happens before the page is on screen, so
+ * carrying it in the first chunk charged every reader for a step some of them never take.
+ * The call sites were already `async`.
+ */
+const argon2id = async (...args: Parameters<typeof import('hash-wasm').argon2id>) =>
+  (await import('hash-wasm')).argon2id(...args);
 
 /** Argon2id params for the master key — identical to the auth-hash KDF (ADR 0010). */
 const KDF = { mem: 19456, iter: 2, par: 1 } as const;
