@@ -2010,7 +2010,7 @@ export function Workspace({
                       : undefined
                   }
                   onOpenBoard={
-                    hasCollections && conns.readBoard && openCollectionId
+                    hasCollections && conns.readBoard
                       ? () => setBoardCollectionId(openCollectionId)
                       : undefined
                   }
