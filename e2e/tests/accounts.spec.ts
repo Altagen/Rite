@@ -1075,3 +1075,96 @@ test('a key chosen in the browser opens a real session on the server', async ({ 
   await page.getByTestId('instance-host-key-mode').selectOption('strict');
   await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('strict');
 });
+
+/**
+ * A passphrase the member chose not to keep is asked for, and used (ADR 0024 §4).
+ *
+ * The other half of the key story, and the one with no test: ticking "remember" stores
+ * the passphrase, and NOT ticking it has to mean something — the record says so
+ * (`needsPassphrase`) and connecting raises a dialog whose answer serves that session and
+ * is written nowhere. Both halves of that sentence are asserted here, because a dialog
+ * that appears and whose answer is ignored looks identical to one that works until the
+ * connection fails.
+ */
+test('a passphrase that was not kept is asked for at connect time', async ({ page }) => {
+  await page.goto('/');
+  if (await page.getByText('Create the server administrator').isVisible().catch(() => false)) {
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /create administrator/i }).click();
+  } else {
+    await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+  }
+  await expectWorkspace(page);
+
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Instance', exact: true }).click();
+  await page.getByTestId('instance-host-key-mode').selectOption('accept');
+  await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('accept');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expectWorkspace(page);
+
+  // A fresh name per run: this vault persists between runs, so a stale row from an
+  // earlier attempt would satisfy the "it was saved" assertion below and the test would
+  // then connect with whatever that older row holds.
+  const name = `e2e-asks-${Date.now()}`;
+  await page.getByRole('button', { name: 'Add to collection' }).first().click();
+  await page.getByRole('button', { name: 'New machine here' }).click();
+  await page.getByPlaceholder('My Server').fill(name);
+  await page.getByPlaceholder('example.com or 192.168.1.1').fill(SSH.hostname);
+  await page.locator('input[type="number"]').first().fill(String(SSH.port));
+  await page.getByPlaceholder('user').fill(SSH.username);
+
+  await page.getByRole('radio', { name: /public key/i }).click();
+  await page.getByTestId('auth-key-file').setInputFiles(SSH.keyLocked);
+  await page.getByTestId('auth-passphrase').fill(SSH.keyPassphrase);
+  // Left unticked on purpose — that is what this test is about. It is also the default,
+  // so this asserts the default rather than assuming it.
+  await expect(page.getByTestId('auth-remember-passphrase')).not.toBeChecked();
+  await page.getByRole('button', { name: /save connection/i }).click();
+  await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 });
+
+  // Connecting asks, and cancelling is not a connection. Connect from the row's button:
+  // a double-click opens the machine's DASHBOARD first, whose cards are themselves a
+  // client-execute path — they ask too, which is the fix this test found, but it makes
+  // for two prompts and this assertion is about the connection.
+  const row = page.locator('.m-tnode.leaf', { hasText: name });
+  await row.getByRole('button', { name: 'Connect' }).click();
+  const prompt = page.getByTestId('passphrase-prompt');
+  await expect(prompt).toBeVisible({ timeout: 20_000 });
+  await expect(prompt).toContainText(name);
+  await page.keyboard.press('Escape');
+  await expect(prompt).toHaveCount(0);
+  await expect(page.locator('.xterm-rows')).toHaveCount(0);
+
+  // Asking again and answering opens the session — the proof that the typed answer is
+  // what authenticates, since the record holds no passphrase to fall back on.
+  await row.getByRole('button', { name: 'Connect' }).click();
+  await expect(prompt).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('passphrase-input').fill(SSH.keyPassphrase);
+  await page.getByTestId('passphrase-submit').click();
+  await expect(page.locator('.xterm-rows')).toContainText(`${SSH.username}@`, { timeout: 25_000 });
+
+  // And it is remembered for this page: the machine's dashboard runs one request per
+  // card, so asking per operation would have asked four times over. Opening it now must
+  // not ask again.
+  await page.getByText(name).first().click();
+  await expect(page.getByText('Overview').first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('passphrase-prompt')).toHaveCount(0);
+  // And the cards actually ran: each is an `exec-quick` of its own, which before this
+  // asked nothing and failed with "The key is encrypted" in red. Asserting only that no
+  // second prompt appeared would pass on that failure too — it asks nothing either.
+  await expect(page.getByText('web', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/Couldn't detect/)).toHaveCount(0);
+
+  // Back to the terminals first: the machine dashboard has an "Overview" heading of its
+  // own, and `openAdmin` waits for the console's.
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Instance', exact: true }).click();
+  await page.getByTestId('instance-host-key-mode').selectOption('strict');
+  await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('strict');
+});

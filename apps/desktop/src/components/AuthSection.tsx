@@ -6,7 +6,7 @@
  * (file) are always offered; SSH agent is offered only in the native shell —
  * a browser can't reach $SSH_AUTH_SOCK.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { isNativeShell } from '../utils/nativeShell';
 import { useServerSession } from '../store/serverSessionStore';
@@ -130,7 +130,18 @@ export function AuthSection({
   };
   const [showPassword, setShowPassword] = useState(false);
   const [showPassphrase, setShowPassphrase] = useState(false);
-  const set = (patch: Partial<AuthState>) => onChange({ ...value, ...patch });
+  /**
+   * Patch the auth state from the LATEST value, not the one this render captured.
+   *
+   * `readKeyFile` finishes asynchronously, and its callback used to spread the `value`
+   * frozen when the file was chosen — so a passphrase typed in the meantime was wiped by
+   * the read completing. Silently: the field emptied, the machine saved without one, and
+   * the next connection failed with "The key is encrypted" and nothing to explain it.
+   * A ref holds the newest state so a late callback cannot undo what was typed after it.
+   */
+  const latest = useRef(value);
+  latest.current = value;
+  const set = (patch: Partial<AuthState>) => onChange({ ...latest.current, ...patch });
 
   // Live SSH-agent identities (native only). `null` = still querying; an empty
   // list = no agent / no keys (a normal, graceful state — not an error).

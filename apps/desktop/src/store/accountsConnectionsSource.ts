@@ -264,13 +264,45 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   return merged;
 }
 
+/**
+ * Passphrases typed this session, by connection id.
+ *
+ * Asking once per OPERATION is not the promise the dialog makes: a machine dashboard
+ * fires one request per card, so opening it asked four times. The dialog says "used for
+ * this connection only", and this is that sentence — in memory, for the life of the page,
+ * written nowhere. A reload asks again, which is the point.
+ */
+const answered = new Map<string, string>();
+
+/**
+ * The record's auth method, with a passphrase if one is needed and not stored.
+ *
+ * Every client-execute path needs this, not just `connect`: the dashboard's cards run
+ * `exec-quick` and a port forward runs `quick-forward`, and both failed on a machine whose
+ * passphrase was not kept — the card said "The key is encrypted" and nothing asked. One
+ * resolver, so a path added later cannot forget.
+ *
+ * Returns null when the person cancels, which callers must treat as "they said no" rather
+ * than as a failure to report.
+ */
+async function authFor(id: string, record: StoredRecord, label: string): Promise<AuthMethodInput | null> {
+  const auth = record.authMethod;
+  if (!record.needsPassphrase || !('key' in auth) || auth.passphrase) return auth;
+  const known = answered.get(id);
+  if (known) return { ...auth, passphrase: known };
+  const typed = await askPassphrase(label);
+  if (typed === null) return null;
+  answered.set(id, typed);
+  return { ...auth, passphrase: typed };
+}
+
 /** The endpoint shape the server takes for an ad-hoc target or hop. */
-function endpointOf(record: StoredRecord): QuickEndpoint {
+function endpointOf(record: StoredRecord, authMethod: AuthMethodInput = record.authMethod): QuickEndpoint {
   return {
     host: record.hostname,
     port: record.port,
     username: record.username,
-    authMethod: record.authMethod,
+    authMethod,
   };
 }
 
@@ -409,14 +441,10 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     // Server-execute: the decrypted target is handed to the server to run SSH; it
     // is never persisted server-side (ADR 0011 / 0012 client-execute). The jump
     // chain travels with it — the server can't resolve hops it can't decrypt.
-    // A key whose passphrase was not kept: ask now, use it for this call, write nothing.
-    // Cancelling is not a failure to report as an error — the person said no.
-    let authMethod = record.authMethod;
-    if (record.needsPassphrase && 'key' in authMethod && !authMethod.passphrase) {
-      const passphrase = await askPassphrase(record.name || conn.name);
-      if (passphrase === null) throw new Error('cancelled');
-      authMethod = { ...authMethod, passphrase };
-    }
+    // A key whose passphrase was not kept: ask now (or reuse this session's answer), use
+    // it for this call, write nothing. Cancelling is the person saying no, not a failure.
+    const authMethod = await authFor(conn.id, record, record.name || conn.name);
+    if (authMethod === null) throw new Error('cancelled');
     const sessionId = await Backend.Terminal.quickSshConnect(
       record.hostname,
       record.username,
@@ -560,8 +588,10 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     const entry = entries.current.get(conn.id);
     if (!entry) throw new Error('connection is not available');
     const { record } = entry;
+    const auth = await authFor(conn.id, record, record.name || conn.name);
+    if (auth === null) throw new Error('cancelled');
     return Backend.Terminal.machineExecQuick(
-      { ...endpointOf(record), jumps: resolveJumpChain(entries.current, record) },
+      { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
       command,
     );
   }, []);
@@ -573,9 +603,11 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       const entry = entries.current.get(conn.id);
       if (!entry) throw new Error('connection is not available');
       const { record } = entry;
+      const auth = await authFor(conn.id, record, record.name || conn.name);
+      if (auth === null) throw new Error('cancelled');
       return Backend.Terminal.startQuickForward({
         connectionId: conn.id,
-        target: { ...endpointOf(record), jumps: resolveJumpChain(entries.current, record) },
+        target: { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
         bindHost: forward.bindHost ?? undefined,
         localPort: forward.localPort,
         remoteHost: forward.remoteHost,
