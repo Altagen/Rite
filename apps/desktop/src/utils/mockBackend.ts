@@ -102,7 +102,6 @@ name = "Deploy watch"
   command = "df -h"
 `;
 
-
 const commonShells = ['/bin/bash', '/bin/zsh', '/usr/bin/fish', '/bin/sh'];
 
 function toConnection(input: Record<string, unknown>): MockConnection {
@@ -130,7 +129,7 @@ function toConnection(input: Record<string, unknown>): MockConnection {
 /** Return a mock response for a Backend command. */
 export async function mockInvoke(
   command: string,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
 ): Promise<unknown> {
   switch (command) {
     // --- Auth ---
@@ -178,9 +177,7 @@ export async function mockInvoke(
     }
     case 'update_connection': {
       const c = toConnection(args ?? {});
-      mockConnections = mockConnections.map((existing) =>
-        existing.id === c.id ? c : existing
-      );
+      mockConnections = mockConnections.map((existing) => (existing.id === c.id ? c : existing));
       return c;
     }
     case 'delete_connection':
@@ -201,9 +198,44 @@ export async function mockInvoke(
     // Default: behave as a local vault (no accounts). Under the dev harness (?harness=…) behave
     // as a shared server so the accounts/admin surfaces are browsable in the backend-less mock.
     case 'server_capabilities':
-      return { version: '0.0.0-mock', commit: 'mock', builtAt: '2026-01-01', apiVersion: 1, minClient: '0.1.2' };
+      return {
+        version: '0.0.0-mock',
+        commit: 'mock',
+        builtAt: '2026-01-01',
+        apiVersion: 1,
+        minClient: '0.1.2',
+      };
     case 'server_mode':
-      return { accounts: harnessOn(), needsBootstrap: false, instanceName: harnessOn() ? 'Acme Corp' : null, sessionPersistence: true, defaultShell: 'bash', shells: ['bash', 'sh'], allowShellChoice: false, allowPassphraseStorage: true, allowSecretReveal: true, allowQuickSsh: false, openRegistration: false, allowInvitations: true, confirmRoleChange: false, healthcheck: { passiveStatus: true, active: 'off', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 }, dashboardPolicy: { webui: true, clients: true, minInterval: 30 }, managed: {}, collectionPolicy: { allowCreate: true, allowSharingOutsideTeams: true, maxMembers: 0, defaultRole: 'viewer' } };
+      return {
+        accounts: harnessOn(),
+        needsBootstrap: false,
+        instanceName: harnessOn() ? 'Acme Corp' : null,
+        sessionPersistence: true,
+        defaultShell: 'bash',
+        shells: ['bash', 'sh'],
+        allowShellChoice: false,
+        allowPassphraseStorage: true,
+        allowSecretReveal: true,
+        allowQuickSsh: false,
+        openRegistration: false,
+        allowInvitations: true,
+        confirmRoleChange: false,
+        healthcheck: {
+          passiveStatus: true,
+          active: 'off',
+          methods: ['tcp-connect'],
+          restrictUsers: [],
+          minInterval: 60,
+        },
+        dashboardPolicy: { webui: true, clients: true, minInterval: 30 },
+        managed: {},
+        collectionPolicy: {
+          allowCreate: true,
+          allowSharingOutsideTeams: true,
+          maxMembers: 0,
+          defaultRole: 'viewer',
+        },
+      };
     case 'admin_set_instance':
     case 'admin_set_session_persistence':
     case 'admin_set_default_shell':
@@ -291,11 +323,46 @@ export async function mockInvoke(
     case 'admin_list_users': {
       const day = 86400;
       return [
-        { id: 'mock-admin', username: 'alex', role: 'admin', status: 'active', createdAt: now() - 270 * day, mustChangePassword: false },
-        { id: 'mock-carol', username: 'carol', role: 'user', status: 'active', createdAt: now() - 200 * day, mustChangePassword: false },
-        { id: 'mock-dan', username: 'dan', role: 'user', status: 'active', createdAt: now() - 160 * day, mustChangePassword: false },
-        { id: 'mock-erin', username: 'erin', role: 'user', status: 'active', createdAt: now() - 5 * day, mustChangePassword: true },
-        { id: 'mock-frank', username: 'frank', role: 'user', status: 'disabled', createdAt: now() - 2 * day, mustChangePassword: false },
+        {
+          id: 'mock-admin',
+          username: 'alex',
+          role: 'admin',
+          status: 'active',
+          createdAt: now() - 270 * day,
+          mustChangePassword: false,
+        },
+        {
+          id: 'mock-carol',
+          username: 'carol',
+          role: 'user',
+          status: 'active',
+          createdAt: now() - 200 * day,
+          mustChangePassword: false,
+        },
+        {
+          id: 'mock-dan',
+          username: 'dan',
+          role: 'user',
+          status: 'active',
+          createdAt: now() - 160 * day,
+          mustChangePassword: false,
+        },
+        {
+          id: 'mock-erin',
+          username: 'erin',
+          role: 'user',
+          status: 'active',
+          createdAt: now() - 5 * day,
+          mustChangePassword: true,
+        },
+        {
+          id: 'mock-frank',
+          username: 'frank',
+          role: 'user',
+          status: 'disabled',
+          createdAt: now() - 2 * day,
+          mustChangePassword: false,
+        },
       ];
     }
     case 'admin_create_user':
@@ -330,12 +397,21 @@ export async function mockInvoke(
     case 'vault_conn_list':
       return [];
     case 'vault_conn_create':
-      return { id: `vc-${Math.random().toString(36).slice(2, 8)}`, blob: String(args?.blob ?? ''), createdAt: now(), updatedAt: now() };
+      return {
+        id: `vc-${Math.random().toString(36).slice(2, 8)}`,
+        blob: String(args?.blob ?? ''),
+        createdAt: now(),
+        updatedAt: now(),
+      };
     case 'vault_conn_update':
     case 'vault_conn_delete':
       return null;
     case 'admin_create_team':
-      return { id: `team-${Math.random().toString(36).slice(2, 8)}`, name: String(args?.name ?? ''), createdAt: now() };
+      return {
+        id: `team-${Math.random().toString(36).slice(2, 8)}`,
+        name: String(args?.name ?? ''),
+        createdAt: now(),
+      };
     case 'admin_delete_team':
     case 'team_add_member':
     case 'team_remove_member':
@@ -346,8 +422,13 @@ export async function mockInvoke(
     case 'admin_list_collections': {
       const day = 86400;
       const mk = (id: string, members: number, items: number, ageDays: number) => ({
-        id, createdAt: now() - ageDays * day, memberCount: members, itemCount: items,
-        nameEnc: '', metaKeyGroupEnc: null, groupEpoch: null,
+        id,
+        createdAt: now() - ageDays * day,
+        memberCount: members,
+        itemCount: items,
+        nameEnc: '',
+        metaKeyGroupEnc: null,
+        groupEpoch: null,
       });
       return [
         mk('c-infra', 4, 1, 180),
@@ -358,9 +439,27 @@ export async function mockInvoke(
     }
     case 'admin_collection_members':
       return [
-        { userId: 'mock-admin', username: 'alex', role: 'owner', publicKey: null, hasItemsKey: true },
-        { userId: 'mock-carol', username: 'carol', role: 'editor', publicKey: null, hasItemsKey: true },
-        { userId: 'mock-dan', username: 'dan', role: 'viewer', publicKey: null, hasItemsKey: false },
+        {
+          userId: 'mock-admin',
+          username: 'alex',
+          role: 'owner',
+          publicKey: null,
+          hasItemsKey: true,
+        },
+        {
+          userId: 'mock-carol',
+          username: 'carol',
+          role: 'editor',
+          publicKey: null,
+          hasItemsKey: true,
+        },
+        {
+          userId: 'mock-dan',
+          username: 'dan',
+          role: 'viewer',
+          publicKey: null,
+          hasItemsKey: false,
+        },
       ];
     case 'admin_list_admins':
       return [];
@@ -377,7 +476,19 @@ export async function mockInvoke(
     case 'collections_requests': {
       if (!harnessOn()) return [];
       const teams = ['Eng', 'Ops', 'Design', null];
-      const names = ['carol', 'dan', 'erin', 'frank', 'grace', 'heidi', 'ivan', 'judy', 'mallory', 'niaj', 'olivia'];
+      const names = [
+        'carol',
+        'dan',
+        'erin',
+        'frank',
+        'grace',
+        'heidi',
+        'ivan',
+        'judy',
+        'mallory',
+        'niaj',
+        'olivia',
+      ];
       return names.map((u, i) => ({
         collectionId: `c-${i % 3}`,
         userId: `mock-${u}`,
@@ -390,7 +501,12 @@ export async function mockInvoke(
     case 'collection_create':
       return { id: `col-${Math.random().toString(36).slice(2, 8)}` };
     case 'collection_item_create':
-      return { id: `ci-${Math.random().toString(36).slice(2, 8)}`, blob: String(args?.blob ?? ''), createdAt: now(), updatedAt: now() };
+      return {
+        id: `ci-${Math.random().toString(36).slice(2, 8)}`,
+        blob: String(args?.blob ?? ''),
+        createdAt: now(),
+        updatedAt: now(),
+      };
     case 'collection_update':
     case 'collection_delete':
     case 'collection_add_member':
@@ -445,8 +561,18 @@ export async function mockInvoke(
     case 'list_agent_identities':
       // Mirrors the design mock's AGENT fixture (a plain key + a hardware key).
       return [
-        { name: 'id_ed25519', fingerprint: 'SHA256:aB3k9…Qz', algo: 'ssh-ed25519', hardware: false },
-        { name: 'YubiKey 5C', fingerprint: 'SHA256:xY9m2…Lp', algo: 'sk-ssh-ed25519@openssh.com', hardware: true },
+        {
+          name: 'id_ed25519',
+          fingerprint: 'SHA256:aB3k9…Qz',
+          algo: 'ssh-ed25519',
+          hardware: false,
+        },
+        {
+          name: 'YubiKey 5C',
+          fingerprint: 'SHA256:xY9m2…Lp',
+          algo: 'sk-ssh-ed25519@openssh.com',
+          hardware: true,
+        },
       ];
     case 'connect_terminal':
     case 'connect_local_terminal':

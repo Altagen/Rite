@@ -18,7 +18,7 @@ import type { AuthMethodInput } from '../store/connectionsStore';
 async function invokeWithValidation<T>(
   command: string,
   schema: z.ZodType<T>,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
 ): Promise<T> {
   try {
     // Route through the active transport (Backend IPC, HTTP to rite-server, or the
@@ -222,13 +222,15 @@ export const BackendAuth = {
   /** Change the local-vault master password (re-keys all connections). Throws a typed
    *  RiteHttpError on a wrong current password (401) or a too-weak new one (400). */
   changeMasterPassword: (oldPassword: string, newPassword: string) =>
-    invokeWithValidation('change_master_password', z.null(), { old: oldPassword, new: newPassword }),
+    invokeWithValidation('change_master_password', z.null(), {
+      old: oldPassword,
+      new: newPassword,
+    }),
 
   /**
    * Unlock the application with the master password
    */
-  unlock: (password: string) =>
-    invokeWithValidation('unlock', UnlockResponseSchema, { password }),
+  unlock: (password: string) => invokeWithValidation('unlock', UnlockResponseSchema, { password }),
 
   /**
    * Lock the application
@@ -307,15 +309,13 @@ export const BackendConnections = {
   /**
    * Get default SSH config path (~/.ssh/config)
    */
-  getDefaultSshConfigPath: () =>
-    invokeWithValidation('get_default_ssh_config_path', StringSchema),
+  getDefaultSshConfigPath: () => invokeWithValidation('get_default_ssh_config_path', StringSchema),
 
   /**
    * Parse SSH config file and return entries for preview
    */
   parseSshConfig: (configPath: string) =>
     invokeWithValidation('parse_ssh_config', SshConfigEntryArraySchema, { configPath }),
-
 } as const;
 
 // SSH host-key confirmation
@@ -457,7 +457,7 @@ export const BackendTerminal = {
     // ad-hoc Quick SSH still has to open saved connections, and zero-knowledge means both
     // arrive here as a decrypted host — so a saved one says which item it is, and the
     // server checks that against this caller's membership (`quick_ssh` in rite-server).
-    origin?: { collectionId: string; itemId: string }
+    origin?: { collectionId: string; itemId: string },
   ) =>
     invokeWithValidation('quick_ssh_connect', StringSchema, {
       host,
@@ -749,7 +749,11 @@ export type CollectionSummary = z.infer<typeof CollectionSummarySchema>;
 // Admin-group escrow schemas (ADR 0016 split-key model).
 const AdminGroupKeySchema = z.object({ epoch: z.number(), publicKey: z.string() });
 const AdminGroupGrantSchema = z.object({ epoch: z.number(), protectedPrivateKey: z.string() });
-const AdminKeySchema = z.object({ userId: z.string(), username: z.string(), publicKey: z.string() });
+const AdminKeySchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+  publicKey: z.string(),
+});
 export type AdminGroupKey = z.infer<typeof AdminGroupKeySchema>;
 export type AdminKey = z.infer<typeof AdminKeySchema>;
 
@@ -854,26 +858,44 @@ export const BackendAdmin = {
     teams: { teamId: string; teamRole: 'admin' | 'member' }[];
     expiresInSecs: number | null;
   }) =>
-    invokeWithValidation('admin_create_enrollment_token', MintedTokenSchema, spec as unknown as Record<string, unknown>),
+    invokeWithValidation(
+      'admin_create_enrollment_token',
+      MintedTokenSchema,
+      spec as unknown as Record<string, unknown>,
+    ),
   revokeEnrollmentToken: (id: string) =>
     invokeWithValidation('admin_revoke_enrollment_token', z.null(), { id }),
   /** Set the machine health-check policy (org-admin). Sends the whole policy object. */
   setHealthcheck: (policy: HealthcheckPolicy) =>
-    invokeWithValidation('admin_set_healthcheck', z.null(), policy as unknown as Record<string, unknown>),
+    invokeWithValidation(
+      'admin_set_healthcheck',
+      z.null(),
+      policy as unknown as Record<string, unknown>,
+    ),
   /** Set the machine-dashboard policy (org-admin, ADR 0019). Sends the whole policy object. */
   setDashboardPolicy: (policy: DashboardPolicy) =>
-    invokeWithValidation('admin_set_dashboard_policy', z.null(), policy as unknown as Record<string, unknown>),
+    invokeWithValidation(
+      'admin_set_dashboard_policy',
+      z.null(),
+      policy as unknown as Record<string, unknown>,
+    ),
   /** Set the collection governance policy (org-admin). Sends the whole policy object. */
   setCollectionPolicy: (policy: CollectionPolicy) =>
-    invokeWithValidation('admin_set_collection_policy', z.null(), policy as unknown as Record<string, unknown>),
+    invokeWithValidation(
+      'admin_set_collection_policy',
+      z.null(),
+      policy as unknown as Record<string, unknown>,
+    ),
 
   // Collections governance (admin). Names stay encrypted — counts/membership only.
-  listCollections: () => invokeWithValidation('admin_list_collections', z.array(CollectionSummarySchema)),
+  listCollections: () =>
+    invokeWithValidation('admin_list_collections', z.array(CollectionSummarySchema)),
   collectionMembers: (id: string) =>
     invokeWithValidation('admin_collection_members', z.array(CollectionMemberSchema), { id }),
   removeCollectionMember: (id: string, userId: string) =>
     invokeWithValidation('admin_remove_collection_member', z.null(), { id, userId }),
-  deleteCollection: (id: string) => invokeWithValidation('admin_delete_collection', z.null(), { id }),
+  deleteCollection: (id: string) =>
+    invokeWithValidation('admin_delete_collection', z.null(), { id }),
 
   // Admin-group escrow (ADR 0016 split-key). Lets admins read collection names +
   // roster-add without ever holding item keys. The server stores only sealed blobs.
@@ -1071,8 +1093,7 @@ export const BackendCollections = {
   /** Collections I belong to, each with my sealed collection key. */
   mine: () => invokeWithValidation('collections_mine', z.array(UserCollectionSchema)),
   /** The Admin-group public key (member-readable) to escrow a new collection's metaKey to. */
-  groupKey: () =>
-    invokeWithValidation('collections_group_key', AdminGroupKeySchema.nullable()),
+  groupKey: () => invokeWithValidation('collections_group_key', AdminGroupKeySchema.nullable()),
   create: (
     nameEnc: string,
     protectedMetaKey: string,
@@ -1110,7 +1131,8 @@ export const BackendCollections = {
   removeMember: (id: string, userId: string) =>
     invokeWithValidation('collection_remove_member', z.null(), { id, userId }),
   /** A collection's item blobs (opaque; the caller decrypts with the collection key). */
-  items: (id: string) => invokeWithValidation('collection_items', z.array(CollectionItemSchema), { id }),
+  items: (id: string) =>
+    invokeWithValidation('collection_items', z.array(CollectionItemSchema), { id }),
   createItem: (id: string, blob: string) =>
     invokeWithValidation('collection_item_create', CollectionItemSchema, { id, blob }),
   updateItem: (id: string, itemId: string, blob: string) =>
@@ -1128,7 +1150,8 @@ export const BackendCollections = {
   /** Stop offering a collection (owner). */
   clearOffer: (id: string) => invokeWithValidation('collection_clear_offer', z.null(), { id }),
   /** Request access to a collection offered to one of my teams. */
-  requestAccess: (id: string) => invokeWithValidation('collection_request_access', z.null(), { id }),
+  requestAccess: (id: string) =>
+    invokeWithValidation('collection_request_access', z.null(), { id }),
   /** Access requests I can grant (I own/edit the collection) — the inbox. */
   incomingRequests: () =>
     invokeWithValidation('collections_requests', z.array(IncomingRequestSchema)),
@@ -1182,8 +1205,7 @@ export type LocalMachine = z.infer<typeof LocalMachineSchema>;
  * endpoints are the other ones — there the client holds the keys.
  */
 export const BackendLocal = {
-  collections: () =>
-    invokeWithValidation('local_collections', z.array(LocalCollectionSchema), {}),
+  collections: () => invokeWithValidation('local_collections', z.array(LocalCollectionSchema), {}),
   createCollection: (name: string, color?: string | null) =>
     invokeWithValidation('local_create_collection', LocalCollectionSchema, { name, color }),
   updateCollection: (args: {

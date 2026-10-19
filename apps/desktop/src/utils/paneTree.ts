@@ -58,7 +58,7 @@ export function createSplitPane(
   direction: SplitDirection,
   left: AnyPaneNode,
   right: AnyPaneNode,
-  ratio = 0.5
+  ratio = 0.5,
 ): SplitPaneNode {
   return {
     id: generateId(),
@@ -132,7 +132,7 @@ export function splitPane(
   paneId: string,
   direction: SplitDirection,
   newSession: TerminalSession,
-  options: SplitOptions = {}
+  options: SplitOptions = {},
 ): LayoutTree {
   if (!tree) return null;
 
@@ -157,10 +157,7 @@ export function splitPane(
 
     return {
       ...tree,
-      children: [
-        newLeft || tree.children[0],
-        newRight || tree.children[1],
-      ],
+      children: [newLeft || tree.children[0], newRight || tree.children[1]],
     };
   }
 
@@ -282,10 +279,7 @@ export function getAllSessions(tree: LayoutTree): TerminalSession[] {
     return tree.type === 'terminal' ? [tree.session] : [];
   }
 
-  return [
-    ...getAllSessions(tree.children[0]),
-    ...getAllSessions(tree.children[1]),
-  ];
+  return [...getAllSessions(tree.children[0]), ...getAllSessions(tree.children[1])];
 }
 
 /**
@@ -321,10 +315,7 @@ export function getAllPanes(tree: LayoutTree): LeafPaneNode[] {
     return [tree];
   }
 
-  return [
-    ...getAllPanes(tree.children[0]),
-    ...getAllPanes(tree.children[1]),
-  ];
+  return [...getAllPanes(tree.children[0]), ...getAllPanes(tree.children[1])];
 }
 
 /**
@@ -362,7 +353,7 @@ export function updateSplitRatio(tree: LayoutTree, splitId: string, newRatio: nu
 export function updateSession(
   tree: LayoutTree,
   sessionId: string,
-  updater: (session: TerminalSession) => TerminalSession
+  updater: (session: TerminalSession) => TerminalSession,
 ): LayoutTree {
   if (!tree) return null;
 
@@ -391,7 +382,7 @@ export function updateSession(
  */
 export function extractPane(
   tree: LayoutTree,
-  paneId: string
+  paneId: string,
 ): { extractedPane: LeafPaneNode | null; remainingTree: LayoutTree } {
   if (!tree) {
     return { extractedPane: null, remainingTree: null };
@@ -469,7 +460,7 @@ export function reorganizePane(
   tree: LayoutTree,
   sourcePaneId: string,
   targetPaneId: string,
-  position: 'top' | 'bottom' | 'left' | 'right'
+  position: 'top' | 'bottom' | 'left' | 'right',
 ): LayoutTree {
   if (!tree || sourcePaneId === targetPaneId) return tree;
 
@@ -483,12 +474,12 @@ export function reorganizePane(
 
     if (node.id === targetPaneId && isLeaf(node)) {
       // Found the target pane - create a split with source and target
-      const direction = (position === 'left' || position === 'right') ? 'horizontal' : 'vertical';
+      const direction = position === 'left' || position === 'right' ? 'horizontal' : 'vertical';
       const ratio = 0.5;
 
       // Determine order based on position (extractedPane is guaranteed non-null by the guard above)
       const children: [AnyPaneNode, AnyPaneNode] =
-        (position === 'left' || position === 'top')
+        position === 'left' || position === 'top'
           ? [extractedPane!, node] // Source on left/top
           : [node, extractedPane!]; // Source on right/bottom
 
@@ -498,10 +489,10 @@ export function reorganizePane(
     if (node.type === 'split') {
       return {
         ...node,
-        children: [
-          replaceTargetPane(node.children[0]),
-          replaceTargetPane(node.children[1]),
-        ] as [AnyPaneNode, AnyPaneNode],
+        children: [replaceTargetPane(node.children[0]), replaceTargetPane(node.children[1])] as [
+          AnyPaneNode,
+          AnyPaneNode,
+        ],
       };
     }
 

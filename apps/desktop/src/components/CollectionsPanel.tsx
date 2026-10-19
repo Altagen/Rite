@@ -11,11 +11,24 @@ import { useCallback, useEffect, useState } from 'react';
 import { Backend, type UserCollection } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import { unwrapCollectionKeys, decryptCollectionField } from '../utils/collectionCrypto';
-import { readCollectionHeader, writeCollectionHeader, type CollectionHeader } from '../utils/collectionHeader';
+import {
+  readCollectionHeader,
+  writeCollectionHeader,
+  type CollectionHeader,
+} from '../utils/collectionHeader';
 import { MemberPicker } from './MemberPicker';
 import { IconCollection } from './icons';
 
-const COLLECTION_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#f472b6'];
+const COLLECTION_COLORS = [
+  '#6366f1',
+  '#0ea5e9',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#a855f7',
+  '#14b8a6',
+  '#f472b6',
+];
 const DEFAULT_COLOR = '#94a3b8';
 
 export function CollectionsPanel() {
@@ -71,7 +84,9 @@ export function CollectionsPanel() {
       setCollections(cols);
       setHeaders(hdrs);
       setMemberCounts(counts);
-      setSelectedId((prev) => (prev && cols.some((c) => c.id === prev) ? prev : (cols[0]?.id ?? null)));
+      setSelectedId((prev) =>
+        prev && cols.some((c) => c.id === prev) ? prev : (cols[0]?.id ?? null),
+      );
     } catch {
       setError('Failed to load collections');
     }
@@ -155,7 +170,13 @@ export function CollectionsPanel() {
             onClick={() => setShowNew(true)}
             className="flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90"
           >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
             </svg>
             New
@@ -170,11 +191,15 @@ export function CollectionsPanel() {
                 <button
                   onClick={() => setSelectedId(c.id)}
                   className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-sm transition ${
-                    on ? 'border-primary/30 bg-primary/[0.13]' : 'border-transparent hover:bg-secondary'
+                    on
+                      ? 'border-primary/30 bg-primary/[0.13]'
+                      : 'border-transparent hover:bg-secondary'
                   }`}
                 >
                   <IconCollection className="h-4 w-4 flex-none" color={h?.color ?? DEFAULT_COLOR} />
-                  <span className={`min-w-0 flex-1 truncate ${on ? 'font-semibold text-primary' : 'font-medium'}`}>
+                  <span
+                    className={`min-w-0 flex-1 truncate ${on ? 'font-semibold text-primary' : 'font-medium'}`}
+                  >
                     {h?.name ?? '…'}
                   </span>
                   {h?.personal ? (
@@ -183,8 +208,18 @@ export function CollectionsPanel() {
                     </span>
                   ) : (
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z" />
+                      <svg
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z"
+                        />
                       </svg>
                       {memberCounts[c.id] ?? '·'}
                     </span>
@@ -211,7 +246,10 @@ export function CollectionsPanel() {
           ) : (
             <>
               <div className="mb-1 flex items-center gap-2.5">
-                <IconCollection className="h-5 w-5 flex-none" color={header.color ?? DEFAULT_COLOR} />
+                <IconCollection
+                  className="h-5 w-5 flex-none"
+                  color={header.color ?? DEFAULT_COLOR}
+                />
                 <h1 className="text-[22px] font-bold">{header.name}</h1>
                 <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
                   {isPersonal ? 'Personal' : selected.role}
@@ -230,51 +268,54 @@ export function CollectionsPanel() {
 
               {/* Colour (writers only) */}
               {canWrite && (
-              <div className="mb-4 rounded-2xl border border-border bg-card p-4">
-                <div className="mb-3 text-sm font-semibold">Colour</div>
-                <div className="flex flex-wrap gap-2">
-                  {COLLECTION_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => patchHeader(selected.id, { color: c })}
-                      disabled={busy}
-                      aria-label={`colour ${c}`}
-                      className={`h-7 w-7 rounded-full disabled:opacity-50 ${
-                        header.color === c ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card' : ''
-                      }`}
-                      style={{ backgroundColor: c }}
-                    />
-                  ))}
+                <div className="mb-4 rounded-2xl border border-border bg-card p-4">
+                  <div className="mb-3 text-sm font-semibold">Colour</div>
+                  <div className="flex flex-wrap gap-2">
+                    {COLLECTION_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => patchHeader(selected.id, { color: c })}
+                        disabled={busy}
+                        aria-label={`colour ${c}`}
+                        className={`h-7 w-7 rounded-full disabled:opacity-50 ${
+                          header.color === c
+                            ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card'
+                            : ''
+                        }`}
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
               )}
 
               {/* Rename (owner only — settings action; the name is shared with all members) */}
               {canRename && (
-              <div className="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-border bg-card p-4">
-                <div>
-                  <div className="text-sm font-semibold">Rename</div>
-                  <div className="text-xs text-muted-foreground">
-                    {isPersonal ? 'Label your personal space.' : 'Shared — every member sees this name.'}
+                <div className="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-border bg-card p-4">
+                  <div>
+                    <div className="text-sm font-semibold">Rename</div>
+                    <div className="text-xs text-muted-foreground">
+                      {isPersonal
+                        ? 'Label your personal space.'
+                        : 'Shared — every member sees this name.'}
+                    </div>
                   </div>
-
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={renameVal}
+                      onChange={(e) => setRenameVal(e.target.value)}
+                      className="w-56 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      disabled={busy}
+                    />
+                    <button
+                      onClick={() => patchHeader(selected.id, { name: renameVal.trim() })}
+                      disabled={busy || !renameVal.trim() || renameVal.trim() === header.name}
+                      className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      Save
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    value={renameVal}
-                    onChange={(e) => setRenameVal(e.target.value)}
-                    className="w-56 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    disabled={busy}
-                  />
-                  <button
-                    onClick={() => patchHeader(selected.id, { name: renameVal.trim() })}
-                    disabled={busy || !renameVal.trim() || renameVal.trim() === header.name}
-                    className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
               )}
 
               {/* Members / sharing (shared collections only) */}
@@ -283,7 +324,8 @@ export function CollectionsPanel() {
                   <div>
                     <div className="text-sm font-semibold">Members &amp; sharing</div>
                     <div className="text-xs text-muted-foreground">
-                      {memberCounts[selected.id] ?? '·'} member{memberCounts[selected.id] === 1 ? '' : 's'} ·{' '}
+                      {memberCounts[selected.id] ?? '·'} member
+                      {memberCounts[selected.id] === 1 ? '' : 's'} ·{' '}
                       {canManage ? 'add or remove people and set roles' : 'you can view the roster'}
                     </div>
                   </div>
@@ -301,8 +343,8 @@ export function CollectionsPanel() {
                 <div className="mb-4 rounded-2xl border border-border bg-card p-4">
                   <div className="text-sm font-semibold">Offer to a team</div>
                   <div className="mb-3 text-xs text-muted-foreground">
-                    List this collection to a team so its members can discover it and request access. They still
-                    can&apos;t open it until you grant them.
+                    List this collection to a team so its members can discover it and request
+                    access. They still can&apos;t open it until you grant them.
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <select
@@ -336,9 +378,9 @@ export function CollectionsPanel() {
                   <div className="mt-2 flex items-start gap-2 text-xs text-amber-600">
                     <span>⚠</span>
                     <span>
-                      This label is <b>not encrypted</b> — visible to the team and the server so people can find
-                      it. Keep it non-sensitive; the collection&apos;s real name and its machines stay end-to-end
-                      encrypted.
+                      This label is <b>not encrypted</b> — visible to the team and the server so
+                      people can find it. Keep it non-sensitive; the collection&apos;s real name and
+                      its machines stay end-to-end encrypted.
                     </span>
                   </div>
                 </div>
@@ -384,18 +426,31 @@ export function CollectionsPanel() {
         />
       )}
       {deleteTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteTarget(null)}>
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="mb-2 text-lg font-semibold">Delete “{deleteTarget.name}”?</h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              This permanently deletes the collection and its machines for everyone. Members lose access. This cannot be
-              undone.
+              This permanently deletes the collection and its machines for everyone. Members lose
+              access. This cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setDeleteTarget(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+              >
                 Cancel
               </button>
-              <button onClick={confirmDelete} disabled={busy} className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
+              <button
+                onClick={confirmDelete}
+                disabled={busy}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
                 Delete
               </button>
             </div>

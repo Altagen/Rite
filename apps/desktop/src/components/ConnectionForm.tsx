@@ -15,7 +15,12 @@ import {
 } from '../store/connectionsStore';
 import type { QuickSSHConnectionInfo } from './QuickSSHModal';
 import { AuthSection } from './AuthSection';
-import { makeAuthState, storedAuthType, toAuthMethodInput, type AuthState } from '../utils/authMethod';
+import {
+  makeAuthState,
+  storedAuthType,
+  toAuthMethodInput,
+  type AuthState,
+} from '../utils/authMethod';
 
 interface ConnectionFormProps {
   /** Read a stored secret back into the fields (ADR 0024 §5). Absent ⇒ not offered. */
@@ -40,7 +45,16 @@ interface ConnectionFormProps {
   defaultFolder?: string | null;
 }
 
-const MACHINE_COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#8b93a7'];
+const MACHINE_COLORS = [
+  '#7c9cf5',
+  '#9ece6a',
+  '#e5b567',
+  '#f0a35e',
+  '#f7768e',
+  '#bb9af7',
+  '#56c7c0',
+  '#8b93a7',
+];
 
 export function ConnectionForm({
   connection,
@@ -58,7 +72,9 @@ export function ConnectionForm({
   const { t } = useTranslation();
 
   // Form state - use prefillData if provided, otherwise use connection data
-  const [name, setName] = useState(connection?.name || (prefillData ? `${prefillData.username}@${prefillData.host}` : ''));
+  const [name, setName] = useState(
+    connection?.name || (prefillData ? `${prefillData.username}@${prefillData.host}` : ''),
+  );
   const [protocol, setProtocol] = useState<Protocol>((connection?.protocol as Protocol) || 'SSH');
   const [hostname, setHostname] = useState(connection?.hostname || prefillData?.host || '');
   const [port, setPort] = useState(connection?.port || prefillData?.port || 22);
@@ -95,10 +111,10 @@ export function ConnectionForm({
   const [preconnect, setPreconnect] = useState(connection?.preconnect || '');
   const [jump, setJump] = useState(connection?.jump || '');
   const [sshKeepAliveOverride, setSshKeepAliveOverride] = useState<string | null>(
-    connection?.sshKeepAliveOverride ?? null
+    connection?.sshKeepAliveOverride ?? null,
   );
   const [sshKeepAliveInterval, setSshKeepAliveInterval] = useState<number | null>(
-    connection?.sshKeepAliveInterval ?? null
+    connection?.sshKeepAliveInterval ?? null,
   );
 
   // Dropdown state for keep-alive
@@ -152,10 +168,16 @@ export function ConnectionForm({
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (protocolDropdownRef.current && !protocolDropdownRef.current.contains(event.target as Node)) {
+      if (
+        protocolDropdownRef.current &&
+        !protocolDropdownRef.current.contains(event.target as Node)
+      ) {
         setShowProtocolDropdown(false);
       }
-      if (keepAliveDropdownRef.current && !keepAliveDropdownRef.current.contains(event.target as Node)) {
+      if (
+        keepAliveDropdownRef.current &&
+        !keepAliveDropdownRef.current.contains(event.target as Node)
+      ) {
         setShowKeepAliveDropdown(false);
       }
     };
@@ -190,7 +212,8 @@ export function ConnectionForm({
 
     // A key from either field (a path here, the file's text on a server), and an edit
     // that already stores one needs neither: the update keeps what it does not mention.
-    const hasStoredKey = !!connection && (connection.authType === 'publicKey' || connection.authType === 'vaultKey');
+    const hasStoredKey =
+      !!connection && (connection.authType === 'publicKey' || connection.authType === 'vaultKey');
     if (auth.authType === 'publicKey' && !auth.keyPath.trim() && !auth.key && !hasStoredKey) {
       newErrors.keyPath = t('connections.validation.keyPathRequired');
     }
@@ -206,7 +229,9 @@ export function ConnectionForm({
     if (selectedKeepAlive === 30) return `30 ${t('sshKeepAlive.seconds')}`;
     if (selectedKeepAlive === 60) return `60 ${t('sshKeepAlive.seconds')}`;
     if (selectedKeepAlive === -1) {
-      return customKeepAlive ? `${customKeepAlive} ${t('sshKeepAlive.seconds')}` : t('sshKeepAlive.custom');
+      return customKeepAlive
+        ? `${customKeepAlive} ${t('sshKeepAlive.seconds')}`
+        : t('sshKeepAlive.custom');
     }
     return t('sshKeepAlive.disabled');
   };
@@ -294,7 +319,8 @@ export function ConnectionForm({
           username,
           authMethod: toAuthMethodInput(auth),
           // See the update path: a passphrase typed and not kept means ask next time.
-          needsPassphrase: auth.authType === 'publicKey' && !!auth.passphrase && !auth.rememberPassphrase,
+          needsPassphrase:
+            auth.authType === 'publicKey' && !!auth.passphrase && !auth.rememberPassphrase,
           ...(folder && { folder }),
           ...(collectionTargetId && { collectionId: collectionTargetId }),
           ...(color && { color }),
@@ -334,11 +360,20 @@ export function ConnectionForm({
             <h2 className="text-xl font-semibold">
               {connection ? t('connections.titleEdit') : t('connections.titleNew')}
             </h2>
-            {defaultCollectionId && collectionTargets?.find((c) => c.id === (connection?.collectionId ?? defaultCollectionId)) && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                in “{collectionTargets.find((c) => c.id === (connection?.collectionId ?? defaultCollectionId))?.name}”
-              </p>
-            )}
+            {defaultCollectionId &&
+              collectionTargets?.find(
+                (c) => c.id === (connection?.collectionId ?? defaultCollectionId),
+              ) && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  in “
+                  {
+                    collectionTargets.find(
+                      (c) => c.id === (connection?.collectionId ?? defaultCollectionId),
+                    )?.name
+                  }
+                  ”
+                </p>
+              )}
           </div>
           <button
             onClick={onClose}
@@ -346,7 +381,12 @@ export function ConnectionForm({
             aria-label={t('connections.cancel')}
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -379,7 +419,12 @@ export function ConnectionForm({
               >
                 <span>{protocol}</span>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
                 </svg>
               </button>
 
@@ -475,7 +520,8 @@ export function ConnectionForm({
               on the bastion. Chainable when the jump itself has a jump. */}
           <div>
             <label htmlFor="jump-host" className="mb-1 block text-sm font-medium">
-              {t('jump.label')} <span className="font-normal text-muted-foreground">({t('jump.optional')})</span>
+              {t('jump.label')}{' '}
+              <span className="font-normal text-muted-foreground">({t('jump.optional')})</span>
             </label>
             <select
               id="jump-host"
@@ -534,14 +580,17 @@ export function ConnectionForm({
               <option value="off">Never probe this machine</option>
             </select>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              A machine can opt out of active probing; it can&apos;t opt into more than the server allows.
+              A machine can opt out of active probing; it can&apos;t opt into more than the server
+              allows.
             </p>
           </div>
 
           {/* Save-to-collection target (ADR 0016) — accounts context only */}
           {collectionTargets && collectionTargets.length > 0 && (
             <div>
-              <label className="mb-1 block text-sm font-medium">{t('connections.saveToCollection')}</label>
+              <label className="mb-1 block text-sm font-medium">
+                {t('connections.saveToCollection')}
+              </label>
               <select
                 value={collectionTargetId}
                 onChange={(e) => setCollectionTargetId(e.target.value)}
@@ -555,7 +604,9 @@ export function ConnectionForm({
                 ))}
               </select>
               {connection && (
-                <p className="mt-1 text-xs text-muted-foreground">{t('connections.collectionMoveUnsupported')}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('connections.collectionMoveUnsupported')}
+                </p>
               )}
             </div>
           )}
@@ -621,7 +672,12 @@ export function ConnectionForm({
                   >
                     <span>{getKeepAliveLabel()}</span>
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
                     </svg>
                   </button>
 
@@ -674,7 +730,9 @@ export function ConnectionForm({
               {/* Custom Keep-Alive Input */}
               {selectedKeepAlive === -1 && (
                 <div>
-                  <label className="mb-1 block text-sm font-medium">{t('sshKeepAlive.customLabel')}</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    {t('sshKeepAlive.customLabel')}
+                  </label>
                   <input
                     type="number"
                     value={customKeepAlive}

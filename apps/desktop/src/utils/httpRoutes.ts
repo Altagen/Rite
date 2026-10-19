@@ -36,7 +36,11 @@ async function json<T = unknown>(path: string, init: RequestInit = {}): Promise<
     }
     // A mid-session 401 means the token was revoked/expired → global sign-out + notice.
     if (res.status === 401) notifyUnauthorized();
-    throw new RiteHttpError(`rite-server ${path} failed: ${detail}`, res.status, kindFor(res.status));
+    throw new RiteHttpError(
+      `rite-server ${path} failed: ${detail}`,
+      res.status,
+      kindFor(res.status),
+    );
   }
   if (res.status === 204) return null as T;
   return res.json() as Promise<T>;
@@ -178,15 +182,24 @@ const routes: Record<string, Route> = {
   },
   context_probe: (a) => json('/api/context/probe', post({ url: a.url })),
   context_set_server_icon: async (a) => {
-    await json(`/api/context/servers/${encodeURIComponent(String(a.id))}/icon`, post({ icon: a.icon }));
+    await json(
+      `/api/context/servers/${encodeURIComponent(String(a.id))}/icon`,
+      post({ icon: a.icon }),
+    );
     return null;
   },
   context_pin_server: async (a) => {
-    await json(`/api/context/servers/${encodeURIComponent(String(a.id))}/pin`, post({ fingerprint: a.fingerprint }));
+    await json(
+      `/api/context/servers/${encodeURIComponent(String(a.id))}/pin`,
+      post({ fingerprint: a.fingerprint }),
+    );
     return null;
   },
   context_vault_unlock: async (a) => {
-    await json('/api/context/vault/unlock', post({ userKey: a.userKey, autoLockSecs: a.autoLockSecs }));
+    await json(
+      '/api/context/vault/unlock',
+      post({ userKey: a.userKey, autoLockSecs: a.autoLockSecs }),
+    );
     return null;
   },
   context_vault_status: () => json('/api/context/vault/status'),
@@ -337,9 +350,14 @@ const routes: Record<string, Route> = {
   },
   admin_list_enrollment_tokens: () => json('/api/admin/enrollment-tokens'),
   admin_create_enrollment_token: (a) =>
-    json('/api/admin/enrollment-tokens', post({ role: a.role, teams: a.teams, expiresInSecs: a.expiresInSecs })),
+    json(
+      '/api/admin/enrollment-tokens',
+      post({ role: a.role, teams: a.teams, expiresInSecs: a.expiresInSecs }),
+    ),
   admin_revoke_enrollment_token: async (a) => {
-    await json(`/api/admin/enrollment-tokens/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });
+    await json(`/api/admin/enrollment-tokens/${encodeURIComponent(String(a.id))}`, {
+      method: 'DELETE',
+    });
     return null;
   },
   admin_set_healthcheck: async (a) => {
@@ -403,11 +421,17 @@ const routes: Record<string, Route> = {
   },
   admin_list_admins: () => json('/api/admin/admins'),
   admin_set_group_key: async (a) => {
-    await json('/api/admin/group-key', post({ epoch: a.epoch, publicKey: a.publicKey, grants: a.grants }));
+    await json(
+      '/api/admin/group-key',
+      post({ epoch: a.epoch, publicKey: a.publicKey, grants: a.grants }),
+    );
     return null;
   },
   admin_grant_admin: async (a) => {
-    await json('/api/admin/group-grant', post({ userId: a.userId, protectedPrivateKey: a.protectedPrivateKey }));
+    await json(
+      '/api/admin/group-grant',
+      post({ userId: a.userId, protectedPrivateKey: a.protectedPrivateKey }),
+    );
     return null;
   },
   admin_set_escrow: async (a) => {
@@ -430,7 +454,10 @@ const routes: Record<string, Route> = {
   teams_mine: () => json('/api/teams'),
   team_members: (a) => json(`/api/teams/${encodeURIComponent(String(a.id))}/members`),
   team_add_member: async (a) => {
-    await json(`/api/teams/${encodeURIComponent(String(a.id))}/members`, post({ userId: a.userId, role: a.role }));
+    await json(
+      `/api/teams/${encodeURIComponent(String(a.id))}/members`,
+      post({ userId: a.userId, role: a.role }),
+    );
     return null;
   },
   team_remove_member: async (a) => {
@@ -499,7 +526,11 @@ const routes: Record<string, Route> = {
   collection_set_role: async (a) => {
     await json(
       `/api/collections/${encodeURIComponent(String(a.id))}/members/${encodeURIComponent(String(a.userId))}`,
-      { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role: a.role }) },
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ role: a.role }),
+      },
     );
     return null;
   },
@@ -516,7 +547,11 @@ const routes: Record<string, Route> = {
   collection_item_update: async (a) => {
     await json(
       `/api/collections/${encodeURIComponent(String(a.id))}/items/${encodeURIComponent(String(a.itemId))}`,
-      { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ blob: a.blob }) },
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ blob: a.blob }),
+      },
     );
     return null;
   },
@@ -583,7 +618,10 @@ const routes: Record<string, Route> = {
     return null;
   },
   kbd_interactive_respond: (a) =>
-    json('/api/ssh/kbd-interactive/respond', post({ challengeId: a.challengeId, responses: a.responses })),
+    json(
+      '/api/ssh/kbd-interactive/respond',
+      post({ challengeId: a.challengeId, responses: a.responses }),
+    ),
 
   quick_ssh_connect: async (a) =>
     (
@@ -619,23 +657,29 @@ const routes: Record<string, Route> = {
   machine_exec: (a) =>
     json('/api/terminal/exec', post({ connectionId: a.connectionId, command: a.command })),
   machine_exec_quick: (a) =>
-    json('/api/terminal/exec-quick', post({
-      host: a.host,
-      port: a.port,
-      username: a.username,
-      authMethod: a.authMethod,
-      jumps: a.jumps ?? [],
-      command: a.command,
-    })),
+    json(
+      '/api/terminal/exec-quick',
+      post({
+        host: a.host,
+        port: a.port,
+        username: a.username,
+        authMethod: a.authMethod,
+        jumps: a.jumps ?? [],
+        command: a.command,
+      }),
+    ),
 
   start_forward: (a) =>
-    json('/api/forwards', post({
-      connectionId: a.connectionId,
-      bindHost: a.bindHost,
-      localPort: a.localPort,
-      remoteHost: a.remoteHost,
-      remotePort: a.remotePort,
-    })),
+    json(
+      '/api/forwards',
+      post({
+        connectionId: a.connectionId,
+        bindHost: a.bindHost,
+        localPort: a.localPort,
+        remoteHost: a.remoteHost,
+        remotePort: a.remotePort,
+      }),
+    ),
   // Local-vault collections (ADR 0018). Plaintext over loopback: rite-core holds
   // the master key and decrypts, so these never carry credentials or key material.
   local_collections: () => json('/api/local/collections'),
@@ -673,18 +717,21 @@ const routes: Record<string, Route> = {
     }),
 
   start_quick_forward: (a) =>
-    json('/api/forwards/quick', post({
-      connectionId: a.connectionId,
-      host: a.host,
-      port: a.port,
-      username: a.username,
-      authMethod: a.authMethod,
-      jumps: a.jumps ?? [],
-      bindHost: a.bindHost,
-      localPort: a.localPort,
-      remoteHost: a.remoteHost,
-      remotePort: a.remotePort,
-    })),
+    json(
+      '/api/forwards/quick',
+      post({
+        connectionId: a.connectionId,
+        host: a.host,
+        port: a.port,
+        username: a.username,
+        authMethod: a.authMethod,
+        jumps: a.jumps ?? [],
+        bindHost: a.bindHost,
+        localPort: a.localPort,
+        remoteHost: a.remoteHost,
+        remotePort: a.remotePort,
+      }),
+    ),
   stop_forward: async (a) => {
     await json(`/api/forwards/${a.id}`, { method: 'DELETE' });
     return null;

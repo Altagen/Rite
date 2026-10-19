@@ -114,21 +114,46 @@ function LibraryFolderNode({
               sub-folder or a brand-new collection placed inside it. */}
           {hasAdd && (
             <div className="relative">
-              <button onClick={(e) => { e.stopPropagation(); setShowAdd((v) => !v); }} title="New here" aria-label="New here">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAdd((v) => !v);
+                }}
+                title="New here"
+                aria-label="New here"
+              >
                 <PlusIcon />
               </button>
               {showAdd && (
                 <>
-                  <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowAdd(false); }} />
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAdd(false);
+                    }}
+                  />
                   <div className="m-menu absolute right-0 top-full z-20 mt-1">
                     {onNewSubfolder && (
-                      <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewSubfolder(id); }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAdd(false);
+                          onNewSubfolder(id);
+                        }}
+                      >
                         <IconFolder className="h-4 w-4 flex-none" />
                         New sub-folder
                       </button>
                     )}
                     {onNewCollection && (
-                      <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewCollection(id); }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAdd(false);
+                          onNewCollection(id);
+                        }}
+                      >
                         <CollectionIcon color={null} />
                         New collection here…
                       </button>
@@ -139,17 +164,35 @@ function LibraryFolderNode({
             </div>
           )}
           <div className="relative">
-            <button onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }} aria-label="Folder menu">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowMenu((v) => !v);
+              }}
+              aria-label="Folder menu"
+            >
               <MoreIcon />
             </button>
             {showMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
                 <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded border border-border bg-background shadow-lg">
-                  <button onClick={() => { setShowMenu(false); onRename?.(id); }} className="w-full px-3 py-2 text-left text-sm hover:bg-muted">
+                  <button
+                    onClick={() => {
+                      setShowMenu(false);
+                      onRename?.(id);
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                  >
                     Rename…
                   </button>
-                  <button onClick={() => { setShowMenu(false); onDelete?.(id); }} className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-muted">
+                  <button
+                    onClick={() => {
+                      setShowMenu(false);
+                      onDelete?.(id);
+                    }}
+                    className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-muted"
+                  >
                     Delete folder
                   </button>
                 </div>
@@ -167,7 +210,12 @@ function LibraryFolderNode({
 function MoreIcon() {
   return (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+      />
     </svg>
   );
 }
@@ -232,7 +280,11 @@ function CollectionNode({
 
   return (
     <div>
-      <div onClick={onOpen} className={`m-tnode ${active ? 'sel' : ''}`} style={{ paddingLeft: '6px' }}>
+      <div
+        onClick={onOpen}
+        className={`m-tnode ${active ? 'sel' : ''}`}
+        style={{ paddingLeft: '6px' }}
+      >
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -268,20 +320,44 @@ function CollectionNode({
               </button>
               {showAdd && (
                 <>
-                  <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowAdd(false); }} />
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAdd(false);
+                    }}
+                  />
                   <div className="m-menu absolute right-0 top-full z-20 mt-1">
-                    <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewMachine(cid); }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAdd(false);
+                        onNewMachine(cid);
+                      }}
+                    >
                       <IconPlay className="h-4 w-4 flex-none" />
                       New machine here
                     </button>
                     {onNewFolder && (
-                      <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewFolder(cid); }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAdd(false);
+                          onNewFolder(cid);
+                        }}
+                      >
                         <IconFolder className="h-4 w-4 flex-none" />
                         New folder
                       </button>
                     )}
                     {onImport && (
-                      <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onImport(cid); }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAdd(false);
+                          onImport(cid);
+                        }}
+                      >
                         <IconImport className="h-4 w-4 flex-none" />
                         Import from ~/.ssh/config…
                       </button>
@@ -303,13 +379,23 @@ function CollectionNode({
             </button>
             {showMenu && (
               <>
-                <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }} />
+                <div
+                  className="fixed inset-0 z-10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenu(false);
+                  }}
+                />
                 <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded border border-border bg-background shadow-lg">
                   {/* Board — a members-only space of cards. Every member can open it
                       (viewers read-only); editors can add/remove cards. */}
                   {onOpenBoard && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onOpenBoard(cid); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowMenu(false);
+                        onOpenBoard(cid);
+                      }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                     >
                       Board…
@@ -319,7 +405,11 @@ function CollectionNode({
                       has no members at all, so the entry is absent there (ADR 0018). */}
                   {!isPersonal && onOpenMembers && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onOpenMembers(cid); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowMenu(false);
+                        onOpenMembers(cid);
+                      }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                     >
                       Members &amp; sharing…
@@ -327,7 +417,11 @@ function CollectionNode({
                   )}
                   {!isPersonal && onMove && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onMove(cid); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowMenu(false);
+                        onMove(cid);
+                      }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                     >
                       Move to folder…
@@ -335,7 +429,11 @@ function CollectionNode({
                   )}
                   {canManage && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onRename?.(cid); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowMenu(false);
+                        onRename?.(cid);
+                      }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                     >
                       Rename…
@@ -343,7 +441,11 @@ function CollectionNode({
                   )}
                   {!isPersonal && canManage && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onDelete?.(cid); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowMenu(false);
+                        onDelete?.(cid);
+                      }}
                       className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-muted"
                     >
                       Delete collection
@@ -361,7 +463,6 @@ function CollectionNode({
   );
 }
 
-
 function FolderIcon({ color }: { color?: string | null }) {
   return (
     <svg
@@ -372,7 +473,11 @@ function FolderIcon({ color }: { color?: string | null }) {
       stroke="currentColor"
       strokeWidth={2}
     >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+      />
     </svg>
   );
 }
@@ -380,16 +485,34 @@ function FolderIcon({ color }: { color?: string | null }) {
 /** Collection node icon — stacked layers, distinct from a folder and a machine. */
 function CollectionIcon({ color }: { color?: string | null }) {
   return (
-    <svg className="h-4 w-4 flex-none" style={{ color: color || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className="h-4 w-4 flex-none"
+      style={{ color: color || undefined }}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"
+      />
     </svg>
   );
 }
 
 function MachineIcon({ color }: { color?: string | null }) {
   return (
-    <svg className="h-4 w-4 flex-none" style={{ color: color || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className="h-4 w-4 flex-none"
+      style={{ color: color || undefined }}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
       <rect x="3" y="5" width="18" height="6" rx="1.5" />
       <rect x="3" y="13" width="18" height="6" rx="1.5" />
       <path strokeLinecap="round" d="M6.5 8h.01M6.5 16h.01M17 8h1.5M17 16h1.5" />
@@ -399,7 +522,13 @@ function MachineIcon({ color }: { color?: string | null }) {
 
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg className={`h-4 w-4 flex-none text-foreground transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className={`h-4 w-4 flex-none text-foreground transition-transform ${open ? 'rotate-90' : ''}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
     </svg>
   );
@@ -520,7 +649,14 @@ function MachineRow({
             aria-label="Port forwarding"
             title={t('pf.title')}
           >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <svg
+              className="h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+            >
               <path d="M4 9h13l-3.5-3.5M20 15H7l3.5 3.5" />
             </svg>
           </button>
@@ -534,8 +670,18 @@ function MachineRow({
             aria-label="Move to folder"
             title="Move to folder…"
           >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v2M3 7v11a2 2 0 002 2h6M16 16l3 3m0 0l-3 3m3-3h-8" />
+            <svg
+              className="h-3.5 w-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v2M3 7v11a2 2 0 002 2h6M16 16l3 3m0 0l-3 3m3-3h-8"
+              />
             </svg>
           </button>
         )}
@@ -601,7 +747,10 @@ function FolderNode({
             {hasAdd && (
               <div className="relative">
                 <button
-                  onClick={(e) => { e.stopPropagation(); setShowAdd((v) => !v); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowAdd((v) => !v);
+                  }}
                   title="New here"
                   aria-label="New here"
                 >
@@ -609,16 +758,34 @@ function FolderNode({
                 </button>
                 {showAdd && (
                   <>
-                    <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowAdd(false); }} />
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAdd(false);
+                      }}
+                    />
                     <div className="m-menu absolute right-0 top-full z-20 mt-1">
                       {onNewSubfolder && (
-                        <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewSubfolder(path); }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowAdd(false);
+                            onNewSubfolder(path);
+                          }}
+                        >
                           <IconFolder className="h-4 w-4 flex-none" />
                           New sub-folder
                         </button>
                       )}
                       {onNewMachine && (
-                        <button onClick={(e) => { e.stopPropagation(); setShowAdd(false); onNewMachine(path); }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowAdd(false);
+                            onNewMachine(path);
+                          }}
+                        >
                           <IconPlay className="h-4 w-4 flex-none" />
                           New connection…
                         </button>
@@ -630,21 +797,43 @@ function FolderNode({
             )}
             {hasMenu && (
               <div className="relative">
-                <button onClick={(e) => { e.stopPropagation(); setShowMenu((v) => !v); }} aria-label="Folder menu">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMenu((v) => !v);
+                  }}
+                  aria-label="Folder menu"
+                >
                   <MoreIcon />
                 </button>
                 {showMenu && (
                   <>
-                    <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setShowMenu(false); }} />
+                    <div
+                      className="fixed inset-0 z-10"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowMenu(false);
+                      }}
+                    />
                     <div className="m-menu absolute right-0 top-full z-20 mt-1">
                       {onRename && (
-                        <button onClick={(e) => { e.stopPropagation(); setShowMenu(false); onRename(path); }}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowMenu(false);
+                            onRename(path);
+                          }}
+                        >
                           Rename…
                         </button>
                       )}
                       {onDelete && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); setShowMenu(false); onDelete(path); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowMenu(false);
+                            onDelete(path);
+                          }}
                           style={{ color: '#f7768e' }}
                         >
                           Delete folder
@@ -753,7 +942,13 @@ export function LibrarySidebar({
         cur = cur ? `${cur}/${seg}` : seg;
         let n = level.get(seg);
         if (!n) {
-          n = { name: seg, path: cur, color: colorOf.get(cur) ?? null, children: new Map(), machines: [] };
+          n = {
+            name: seg,
+            path: cur,
+            color: colorOf.get(cur) ?? null,
+            children: new Map(),
+            machines: [],
+          };
           level.set(seg, n);
         }
         node = n;
@@ -787,10 +982,22 @@ export function LibrarySidebar({
               depth={depth}
               canWrite={canWrite}
               onToggle={() => toggle(key)}
-              onNewSubfolder={collectionId && onNewSubfolder ? (p) => onNewSubfolder(collectionId, p) : undefined}
-              onNewMachine={collectionId && onNewMachineInFolder ? (p) => onNewMachineInFolder(collectionId, p) : undefined}
-              onRename={collectionId && onRenameFolder ? (p) => onRenameFolder(collectionId, p, n.color) : undefined}
-              onDelete={collectionId && onDeleteFolder ? (p) => onDeleteFolder(collectionId, p) : undefined}
+              onNewSubfolder={
+                collectionId && onNewSubfolder ? (p) => onNewSubfolder(collectionId, p) : undefined
+              }
+              onNewMachine={
+                collectionId && onNewMachineInFolder
+                  ? (p) => onNewMachineInFolder(collectionId, p)
+                  : undefined
+              }
+              onRename={
+                collectionId && onRenameFolder
+                  ? (p) => onRenameFolder(collectionId, p, n.color)
+                  : undefined
+              }
+              onDelete={
+                collectionId && onDeleteFolder ? (p) => onDeleteFolder(collectionId, p) : undefined
+              }
             >
               {renderLevel(n.children, depth + 1)}
               {n.machines.map((c) => machineRow(c, depth + 1))}
@@ -823,7 +1030,9 @@ export function LibrarySidebar({
   const byCollection = new Map<string, ConnectionInfo[]>();
   for (const c of shown) {
     if (!c.collectionId) continue;
-    (byCollection.get(c.collectionId) ?? byCollection.set(c.collectionId, []).get(c.collectionId)!).push(c);
+    (
+      byCollection.get(c.collectionId) ?? byCollection.set(c.collectionId, []).get(c.collectionId)!
+    ).push(c);
   }
   // Node list: prefer the full collection list (shows empty collections too); fall
   // back to deriving from the connections when the source doesn't provide one.
@@ -846,7 +1055,15 @@ export function LibrarySidebar({
     // Personal first, then by name.
     .sort((a, b) => (a.isPersonal ? -1 : b.isPersonal ? 1 : a.name.localeCompare(b.name)));
 
-  const renderCollectionNode = (node: { id: string; name: string; color: string | null; role: string; folders: { name: string; color: string | null }[]; memberCount: number; isPersonal: boolean }) => {
+  const renderCollectionNode = (node: {
+    id: string;
+    name: string;
+    color: string | null;
+    role: string;
+    folders: { name: string; color: string | null }[];
+    memberCount: number;
+    isPersonal: boolean;
+  }) => {
     const cid = node.id;
     const machines = byCollection.get(cid) ?? [];
     const key = `col/${cid}`;
@@ -870,7 +1087,9 @@ export function LibrarySidebar({
         onImport={onImportToCollection}
         onOpenMembers={onOpenMembers}
         onOpenBoard={onOpenBoard}
-        onRename={onRenameCollection ? () => onRenameCollection(cid, node.name, node.color) : undefined}
+        onRename={
+          onRenameCollection ? () => onRenameCollection(cid, node.name, node.color) : undefined
+        }
         onDelete={onDeleteCollection ? () => onDeleteCollection(cid, node.name) : undefined}
         onMove={canMove ? () => onMoveCollection!(cid, node.name) : undefined}
       >
@@ -886,7 +1105,9 @@ export function LibrarySidebar({
   const placement = collectionPlacement ?? {};
   const libFolders = libraryFolders ?? [];
   const folderIds = new Set(libFolders.map((f) => f.id));
-  const rootNodes = collectionNodes.filter((n) => !placement[n.id] || !folderIds.has(placement[n.id]));
+  const rootNodes = collectionNodes.filter(
+    (n) => !placement[n.id] || !folderIds.has(placement[n.id]),
+  );
 
   // Personal organiser folders nest via `parent`; render them as a tree.
   const childFoldersOf = (parentId: string | null) =>
@@ -894,7 +1115,12 @@ export function LibrarySidebar({
   const subtreePlaced = (fid: string): number =>
     collectionNodes.filter((n) => placement[n.id] === fid).length +
     childFoldersOf(fid).reduce((s, c) => s + subtreePlaced(c.id), 0);
-  const renderLibraryFolder = (f: { id: string; name: string; color: string | null; parent?: string | null }): React.ReactNode => {
+  const renderLibraryFolder = (f: {
+    id: string;
+    name: string;
+    color: string | null;
+    parent?: string | null;
+  }): React.ReactNode => {
     const fkey = `lf/${f.id}`;
     const placed = collectionNodes.filter((n) => placement[n.id] === f.id);
     const subs = childFoldersOf(f.id);
@@ -910,7 +1136,9 @@ export function LibrarySidebar({
         onToggle={() => toggle(fkey)}
         onNewSubfolder={onNewLibrarySubfolder}
         onNewCollection={onNewCollectionInFolder}
-        onRename={onRenameLibraryFolder ? (id) => onRenameLibraryFolder(id, f.name, f.color) : undefined}
+        onRename={
+          onRenameLibraryFolder ? (id) => onRenameLibraryFolder(id, f.name, f.color) : undefined
+        }
         onDelete={onDeleteLibraryFolder ? (id) => onDeleteLibraryFolder(id, f.name) : undefined}
       >
         {subs.map(renderLibraryFolder)}
@@ -927,7 +1155,9 @@ export function LibrarySidebar({
             <p className="text-sm text-muted-foreground">
               {q ? 'No connections match your search.' : t('main.noConnections')}
             </p>
-            {!q && <p className="mt-1 text-xs text-muted-foreground">{t('main.noConnectionsHint')}</p>}
+            {!q && (
+              <p className="mt-1 text-xs text-muted-foreground">{t('main.noConnectionsHint')}</p>
+            )}
           </div>
         ) : (
           <>

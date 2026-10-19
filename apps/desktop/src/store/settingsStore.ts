@@ -62,7 +62,9 @@ const onSharedServer = () => useServerSession.getState().mode?.accounts === true
 function readDeviceSettings(): Settings {
   try {
     const raw = deviceStore.getItem(DEVICE_STORE_KEY);
-    return raw ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) } : DEFAULT_SETTINGS;
+    return raw
+      ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) }
+      : DEFAULT_SETTINGS;
   } catch {
     // Private window, blocked storage, or something else wrote nonsense there.
     return DEFAULT_SETTINGS;
@@ -100,7 +102,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         clipboardClearTimeout: parseInt(backendSettings.clipboard_clear_timeout || '30', 10),
         sshKeepAliveEnabled: backendSettings.ssh_keep_alive_enabled === 'true',
         sshKeepAliveInterval: parseInt(backendSettings.ssh_keep_alive_interval || '30', 10),
-        hostKeyVerificationMode: (backendSettings.host_key_verification_mode || 'strict') as 'strict' | 'warn' | 'accept',
+        hostKeyVerificationMode: (backendSettings.host_key_verification_mode || 'strict') as
+          'strict' | 'warn' | 'accept',
         defaultShell: backendSettings.default_shell || '/usr/bin/bash',
       };
 
@@ -133,19 +136,34 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         await Backend.Settings.setSetting('auto_lock_timeout', String(newSettings.autoLockTimeout));
       }
       if (newSettings.clipboardClearEnabled !== undefined) {
-        await Backend.Settings.setSetting('clipboard_clear_enabled', String(newSettings.clipboardClearEnabled));
+        await Backend.Settings.setSetting(
+          'clipboard_clear_enabled',
+          String(newSettings.clipboardClearEnabled),
+        );
       }
       if (newSettings.clipboardClearTimeout !== undefined) {
-        await Backend.Settings.setSetting('clipboard_clear_timeout', String(newSettings.clipboardClearTimeout));
+        await Backend.Settings.setSetting(
+          'clipboard_clear_timeout',
+          String(newSettings.clipboardClearTimeout),
+        );
       }
       if (newSettings.sshKeepAliveEnabled !== undefined) {
-        await Backend.Settings.setSetting('ssh_keep_alive_enabled', String(newSettings.sshKeepAliveEnabled));
+        await Backend.Settings.setSetting(
+          'ssh_keep_alive_enabled',
+          String(newSettings.sshKeepAliveEnabled),
+        );
       }
       if (newSettings.sshKeepAliveInterval !== undefined) {
-        await Backend.Settings.setSetting('ssh_keep_alive_interval', String(newSettings.sshKeepAliveInterval));
+        await Backend.Settings.setSetting(
+          'ssh_keep_alive_interval',
+          String(newSettings.sshKeepAliveInterval),
+        );
       }
       if (newSettings.hostKeyVerificationMode !== undefined) {
-        await Backend.Settings.setSetting('host_key_verification_mode', newSettings.hostKeyVerificationMode);
+        await Backend.Settings.setSetting(
+          'host_key_verification_mode',
+          newSettings.hostKeyVerificationMode,
+        );
       }
       if (newSettings.defaultShell !== undefined) {
         await Backend.Settings.setSetting('default_shell', newSettings.defaultShell);
@@ -157,5 +175,4 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({ error: String(error), isLoading: false });
     }
   },
-
 }));

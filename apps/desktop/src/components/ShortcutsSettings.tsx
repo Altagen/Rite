@@ -124,9 +124,7 @@ export function ShortcutsSettings() {
                   setRecording(isRecording ? null : command.id);
                 }}
                 className={`flex-none rounded border px-2 py-0.5 font-mono text-xs ${
-                  isRecording
-                    ? 'border-primary text-primary'
-                    : 'border-border hover:bg-muted'
+                  isRecording ? 'border-primary text-primary' : 'border-border hover:bg-muted'
                 }`}
                 data-testid={`shortcut-binding-${command.id}`}
               >

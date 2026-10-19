@@ -203,7 +203,12 @@ export function Workspace({
   const [boardCollectionId, setBoardCollectionId] = useState<string | null>(null);
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
   const [formDefaultFolder, setFormDefaultFolder] = useState<string | null>(null);
-  const [collectionEdit, setCollectionEdit] = useState<{ id?: string; name?: string; color?: string | null; hc?: boolean | null } | null>(null);
+  const [collectionEdit, setCollectionEdit] = useState<{
+    id?: string;
+    name?: string;
+    color?: string | null;
+    hc?: boolean | null;
+  } | null>(null);
   const [showNewCollection, setShowNewCollection] = useState(false);
   // When a new collection is created from a root folder's ＋, place it there.
   const [pendingCollectionFolder, setPendingCollectionFolder] = useState<string | null>(null);
@@ -215,7 +220,10 @@ export function Workspace({
     initialName?: string;
     initialColor?: string | null;
   } | null>(null);
-  const [deleteSubfolder, setDeleteSubfolder] = useState<{ collectionId: string; path: string } | null>(null);
+  const [deleteSubfolder, setDeleteSubfolder] = useState<{
+    collectionId: string;
+    path: string;
+  } | null>(null);
   // Server session keys (accounts context) for the folder-delete re-tag; null in local.
   const serverKeys = useServerSession();
   // Quick SSH is a server-governed capability: forbidden when a server says so (off by
@@ -255,13 +263,26 @@ export function Workspace({
   useEffect(() => {
     if (!layoutsLoaded) void loadLayouts();
   }, [layoutsLoaded, loadLayouts]);
-  const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   // Top-level library folders (ADR 0016 view hierarchy) — the encrypted per-user tree.
   const tree = useLibraryTree();
-  const [libraryFolderEdit, setLibraryFolderEdit] = useState<{ id?: string; name?: string; color?: string | null; parent?: string | null } | null>(null);
-  const [moveCollectionTarget, setMoveCollectionTarget] = useState<{ id: string; name: string } | null>(null);
+  const [libraryFolderEdit, setLibraryFolderEdit] = useState<{
+    id?: string;
+    name?: string;
+    color?: string | null;
+    parent?: string | null;
+  } | null>(null);
+  const [moveCollectionTarget, setMoveCollectionTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [moveMachineTarget, setMoveMachineTarget] = useState<ConnectionInfo | null>(null);
-  const [deleteFolderTarget, setDeleteFolderTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<{ id: string; name: string } | null>(
+    null,
+  );
 
   // Host-key confirmation (strict mode): the pending prompt + the connection that
   // triggered it, so accepting can retry that exact connection.
@@ -350,11 +371,16 @@ export function Workspace({
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'success' | 'error'>('error');
-  const [toastAction, setToastAction] = useState<{ label: string; onClick: () => void } | undefined>(undefined);
+  const [toastAction, setToastAction] = useState<
+    { label: string; onClick: () => void } | undefined
+  >(undefined);
 
   // Default shell selector state
   const [showDefaultShellDropdown, setShowDefaultShellDropdown] = useState(false);
-  const [defaultShellDropdownPosition, setDefaultShellDropdownPosition] = useState({ top: 0, left: 0 });
+  const [defaultShellDropdownPosition, setDefaultShellDropdownPosition] = useState({
+    top: 0,
+    left: 0,
+  });
   const defaultShellButtonRef = useRef<HTMLButtonElement>(null);
   const appbarRef = useRef<HTMLElement>(null);
 
@@ -367,13 +393,19 @@ export function Workspace({
   const shells = SHELL_CANDIDATES;
 
   // Store Quick SSH connection info for later saving
-  const [quickSSHConnections, setQuickSSHConnections] = useState<Map<string, QuickSSHConnectionInfo>>(new Map());
+  const [quickSSHConnections, setQuickSSHConnections] = useState<
+    Map<string, QuickSSHConnectionInfo>
+  >(new Map());
 
   // Store pre-fill data for connection form (when saving Quick SSH)
-  const [connectionFormPrefill, setConnectionFormPrefill] = useState<QuickSSHConnectionInfo | null>(null);
+  const [connectionFormPrefill, setConnectionFormPrefill] = useState<QuickSSHConnectionInfo | null>(
+    null,
+  );
 
   // Store pending action after unlock
-  const [pendingActionAfterUnlock, setPendingActionAfterUnlock] = useState<(() => void) | null>(null);
+  const [pendingActionAfterUnlock, setPendingActionAfterUnlock] = useState<(() => void) | null>(
+    null,
+  );
 
   // Execute pending action after unlock
   useEffect(() => {
@@ -399,13 +431,13 @@ export function Workspace({
   // Check which shells are installed
   const checkInstalledShells = async () => {
     try {
-      const allShellPaths = shells.map(s => s.path);
+      const allShellPaths = shells.map((s) => s.path);
       const installed = await Backend.Terminal.getInstalledShells(allShellPaths);
       setInstalledShells(installed);
     } catch (error) {
       console.error('[Workspace] Failed to check installed shells:', error);
       // If check fails, assume all shells are installed (backward compatibility)
-      setInstalledShells(shells.map(s => s.path));
+      setInstalledShells(shells.map((s) => s.path));
     }
   };
 
@@ -528,9 +560,12 @@ export function Workspace({
 
     const resetTimer = () => {
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        lock();
-      }, settings.autoLockTimeout * 60 * 1000); // Convert minutes to milliseconds
+      timeoutId = setTimeout(
+        () => {
+          lock();
+        },
+        settings.autoLockTimeout * 60 * 1000,
+      ); // Convert minutes to milliseconds
     };
 
     // Start the timer
@@ -538,14 +573,14 @@ export function Workspace({
 
     // Listen for user activity events
     const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
-    events.forEach(event => {
+    events.forEach((event) => {
       document.addEventListener(event, resetTimer);
     });
 
     // Cleanup on unmount or when settings change
     return () => {
       clearTimeout(timeoutId);
-      events.forEach(event => {
+      events.forEach((event) => {
         document.removeEventListener(event, resetTimer);
       });
     };
@@ -571,7 +606,6 @@ export function Workspace({
           console.error('[Clipboard] Failed to clear clipboard:', error);
         }
       }, settings.clipboardClearTimeout * 1000); // Convert seconds to milliseconds
-
     };
 
     // Listen for copy events
@@ -620,7 +654,7 @@ export function Workspace({
       paneTree: newPane,
     };
 
-    setTabGroups(prev => [...prev, newTab]);
+    setTabGroups((prev) => [...prev, newTab]);
     setActiveTabId(newTab.id);
     // Always surface the terminal that was just opened. A machine dashboard or a
     // collection covers the workspace, and double-clicking a machine row fires the
@@ -643,7 +677,9 @@ export function Workspace({
     if (!connection.preconnect?.trim()) return true;
     const remembered = gate?.get(connection.id);
     if (remembered !== undefined) return remembered;
-    const passed = await new Promise<boolean>((settle) => setPreconnectPrompt({ conn: connection, settle }));
+    const passed = await new Promise<boolean>((settle) =>
+      setPreconnectPrompt({ conn: connection, settle }),
+    );
     gate?.set(connection.id, passed);
     return passed;
   };
@@ -675,7 +711,12 @@ export function Workspace({
       addTerminalToTree(session);
     } catch (error) {
       console.error('[Workspace] Failed to connect to terminal:', error);
-      let errorMsg = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Failed to connect';
+      let errorMsg =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : 'Failed to connect';
 
       // Strict-mode host-key rejection ("Disconnected"): the backend also emits
       // ssh:host-key-unknown, which opens the confirmation modal — don't also toast.
@@ -711,9 +752,19 @@ export function Workspace({
       // that is: the backend buffers a session's first output until the pane claims
       // it, and a shell discards queued input while it sets the tty up, so a timer
       // here loses the command outright instead of merely running it late.
-      addTerminalToTree({ id: sessionId, connectionId: connection.id, connectionName: connection.name, initialCommand: command });
+      addTerminalToTree({
+        id: sessionId,
+        connectionId: connection.id,
+        connectionName: connection.name,
+        initialCommand: command,
+      });
     } catch (error) {
-      const msg = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Failed to connect';
+      const msg =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : 'Failed to connect';
       if (msg.includes('Disconnect')) return; // host-key modal handles it
       setToastType('error');
       setToastMessage(msg);
@@ -767,7 +818,9 @@ export function Workspace({
       // resolves it to a path itself, so nothing here can name a program it did not offer.
       // Nothing asked (or nothing offered) leaves the instance to apply its own rule.
       const sessionId = await Backend.Terminal.connectLocalTerminal(
-        isServerCtx ? (asked ?? (serverShellChoiceList.length > 0 ? serverShell : undefined)) : shellToUse,
+        isServerCtx
+          ? (asked ?? (serverShellChoiceList.length > 0 ? serverShell : undefined))
+          : shellToUse,
       );
 
       // Create terminal session
@@ -790,7 +843,6 @@ export function Workspace({
 
   // Handle Quick SSH connected
   const handleQuickSSHConnected = (sessionId: string, connectionInfo: QuickSSHConnectionInfo) => {
-
     // Store connection info for potential saving later
     setQuickSSHConnections(new Map(quickSSHConnections).set(sessionId, connectionInfo));
 
@@ -873,20 +925,26 @@ export function Workspace({
     };
   };
 
-  const handleSplitPane = async (paneId: string, direction: SplitDirection, target?: SplitTarget) => {
+  const handleSplitPane = async (
+    paneId: string,
+    direction: SplitDirection,
+    target?: SplitTarget,
+  ) => {
     if (!activeTabId) return;
 
     try {
       const newSession = await sessionForTarget(target);
 
       // Split the pane in the active tab's tree
-      setTabGroups(prev => prev.map(tab => {
-        if (tab.id === activeTabId) {
-          const newTree = splitPane(tab.paneTree, paneId, direction, newSession);
-          return { ...tab, paneTree: newTree };
-        }
-        return tab;
-      }));
+      setTabGroups((prev) =>
+        prev.map((tab) => {
+          if (tab.id === activeTabId) {
+            const newTree = splitPane(tab.paneTree, paneId, direction, newSession);
+            return { ...tab, paneTree: newTree };
+          }
+          return tab;
+        }),
+      );
     } catch (error) {
       console.error('[Workspace] Failed to split pane:', error);
       const errorMsg = typeof error === 'string' ? error : 'Failed to create terminal for split';
@@ -918,9 +976,13 @@ export function Workspace({
         } catch (error) {
           // A machine that refuses costs this pane's content, never the arrangement:
           // the pane opens as a plain shell carrying why (ADR 0023 §5).
-          const why = typeof error === 'string' ? error : error instanceof Error ? error.message : '';
+          const why =
+            typeof error === 'string' ? error : error instanceof Error ? error.message : '';
           const machine = plan.panes[index].machine?.trim();
-          return localSession(plan.panes[index], machine ? t('layouts.fellBackFailed', { machine, why }) : why);
+          return localSession(
+            plan.panes[index],
+            machine ? t('layouts.fellBackFailed', { machine, why }) : why,
+          );
         }
       };
 
@@ -980,11 +1042,10 @@ export function Workspace({
 
   // Handle close pane
   const handleClosePane = (paneId: string) => {
-
     if (!activeTabId) return;
 
     // Check how many terminals will be closed
-    const activeTab = tabGroups.find(t => t.id === activeTabId);
+    const activeTab = tabGroups.find((t) => t.id === activeTabId);
     if (!activeTab) return;
 
     // Check how many terminals are in this specific pane subtree
@@ -999,39 +1060,44 @@ export function Workspace({
       if (!confirmed) return;
     }
 
-    setTabGroups(prev => {
+    setTabGroups((prev) => {
       // Remember current tab index BEFORE any modifications
-      const currentTabIndex = prev.findIndex(t => t.id === activeTabId);
+      const currentTabIndex = prev.findIndex((t) => t.id === activeTabId);
 
-      const newTabs = prev.map(tab => {
-        if (tab.id !== activeTabId) return tab;
+      const newTabs = prev
+        .map((tab) => {
+          if (tab.id !== activeTabId) return tab;
 
-        const newTree = closePane(tab.paneTree, paneId);
+          const newTree = closePane(tab.paneTree, paneId);
 
-        // If tree becomes empty, mark tab for removal
-        if (!newTree) {
-          return null;
-        }
-
-        // Auto-focus another pane if the closed pane was focused
-        const focusedPane = getFocusedPane(newTree);
-        if (!focusedPane) {
-          // No pane is focused, focus the first available one
-          const allPanes = getAllPanes(newTree);
-          if (allPanes.length > 0) {
-            return { ...tab, paneTree: setFocusedPane(newTree, allPanes[0].id) };
+          // If tree becomes empty, mark tab for removal
+          if (!newTree) {
+            return null;
           }
-        }
 
-        return { ...tab, paneTree: newTree };
-      }).filter((tab): tab is Tab => tab !== null);
+          // Auto-focus another pane if the closed pane was focused
+          const focusedPane = getFocusedPane(newTree);
+          if (!focusedPane) {
+            // No pane is focused, focus the first available one
+            const allPanes = getAllPanes(newTree);
+            if (allPanes.length > 0) {
+              return { ...tab, paneTree: setFocusedPane(newTree, allPanes[0].id) };
+            }
+          }
+
+          return { ...tab, paneTree: newTree };
+        })
+        .filter((tab): tab is Tab => tab !== null);
 
       // If we removed the active tab, switch to the previous or next tab
-      const stillExists = newTabs.find(t => t.id === activeTabId);
+      const stillExists = newTabs.find((t) => t.id === activeTabId);
       if (!stillExists && newTabs.length > 0) {
         // Try to go to the previous tab, or next tab if we were at index 0
         // Make sure the index is valid after removal
-        const newIndex = Math.min(currentTabIndex > 0 ? currentTabIndex - 1 : 0, newTabs.length - 1);
+        const newIndex = Math.min(
+          currentTabIndex > 0 ? currentTabIndex - 1 : 0,
+          newTabs.length - 1,
+        );
         if (newTabs[newIndex]) {
           setActiveTabId(newTabs[newIndex].id);
         }
@@ -1045,27 +1111,30 @@ export function Workspace({
 
   // Handle focus pane
   const handleFocusPane = (paneId: string) => {
-
     if (!activeTabId) return;
 
-    setTabGroups(prev => prev.map(tab => {
-      if (tab.id === activeTabId) {
-        return { ...tab, paneTree: setFocusedPane(tab.paneTree, paneId) };
-      }
-      return tab;
-    }));
+    setTabGroups((prev) =>
+      prev.map((tab) => {
+        if (tab.id === activeTabId) {
+          return { ...tab, paneTree: setFocusedPane(tab.paneTree, paneId) };
+        }
+        return tab;
+      }),
+    );
   };
 
   // Handle split ratio change
   const handleSplitRatioChange = (splitId: string, newRatio: number) => {
     if (!activeTabId) return;
 
-    setTabGroups(prev => prev.map(tab => {
-      if (tab.id === activeTabId) {
-        return { ...tab, paneTree: updateSplitRatio(tab.paneTree, splitId, newRatio) };
-      }
-      return tab;
-    }));
+    setTabGroups((prev) =>
+      prev.map((tab) => {
+        if (tab.id === activeTabId) {
+          return { ...tab, paneTree: updateSplitRatio(tab.paneTree, splitId, newRatio) };
+        }
+        return tab;
+      }),
+    );
   };
 
   // Handle switch tab (now switches between tab groups)
@@ -1084,8 +1153,7 @@ export function Workspace({
 
   // Handle close tab - gracefully close all terminals in a tab and remove it
   const handleCloseTab = async (tabId: string) => {
-
-    const tabToClose = tabGroups.find(t => t.id === tabId);
+    const tabToClose = tabGroups.find((t) => t.id === tabId);
     if (!tabToClose) return;
 
     // Release what every pane in this tab held. Each kind knows what that means for
@@ -1098,12 +1166,12 @@ export function Workspace({
     }
 
     // Remove the tab
-    setTabGroups(prev => {
-      const newTabs = prev.filter(t => t.id !== tabId);
+    setTabGroups((prev) => {
+      const newTabs = prev.filter((t) => t.id !== tabId);
 
       // If we're closing the active tab, switch to another tab
       if (activeTabId === tabId && newTabs.length > 0) {
-        const closedTabIndex = prev.findIndex(t => t.id === tabId);
+        const closedTabIndex = prev.findIndex((t) => t.id === tabId);
         // Switch to the tab before, or the first tab if we closed the first one
         const newActiveIndex = Math.max(0, closedTabIndex - 1);
         setActiveTabId(newTabs[newActiveIndex].id);
@@ -1117,10 +1185,9 @@ export function Workspace({
 
   // Handle detach pane - extract a pane from current tab and create a new tab with it
   const handleDetachPane = (paneId: string) => {
-
     if (!activeTabId) return;
 
-    const activeTab = tabGroups.find(t => t.id === activeTabId);
+    const activeTab = tabGroups.find((t) => t.id === activeTabId);
     if (!activeTab) return;
 
     // Extract the pane from the current tab's tree
@@ -1139,15 +1206,15 @@ export function Workspace({
     };
 
     // Update tab groups
-    setTabGroups(prev => {
+    setTabGroups((prev) => {
       // If remaining tree is empty, remove the old tab
       if (!remainingTree) {
-        return [...prev.filter(t => t.id !== activeTabId), newTab];
+        return [...prev.filter((t) => t.id !== activeTabId), newTab];
       }
 
       // Otherwise, update the old tab and add the new one
       return [
-        ...prev.map(t => t.id === activeTabId ? { ...t, paneTree: remainingTree } : t),
+        ...prev.map((t) => (t.id === activeTabId ? { ...t, paneTree: remainingTree } : t)),
         newTab,
       ];
     });
@@ -1158,18 +1225,15 @@ export function Workspace({
 
   // Handle rename tab
   const handleRenameTab = (tabId: string, newName: string) => {
-    setTabGroups(prev => prev.map(tab =>
-      tab.id === tabId ? { ...tab, name: newName } : tab
-    ));
+    setTabGroups((prev) => prev.map((tab) => (tab.id === tabId ? { ...tab, name: newName } : tab)));
   };
 
   // Handle merge tab - drag a tab and drop it into another tab's pane area
   const handleMergeTab = (sourceTabId: string, targetTabId: string) => {
-
     if (sourceTabId === targetTabId) return;
 
-    const sourceTab = tabGroups.find(t => t.id === sourceTabId);
-    const targetTab = tabGroups.find(t => t.id === targetTabId);
+    const sourceTab = tabGroups.find((t) => t.id === sourceTabId);
+    const targetTab = tabGroups.find((t) => t.id === targetTabId);
 
     if (!sourceTab || !targetTab || !sourceTab.paneTree || !targetTab.paneTree) return;
 
@@ -1188,10 +1252,10 @@ export function Workspace({
     };
 
     // Update tabs: remove source, update target
-    setTabGroups(prev =>
+    setTabGroups((prev) =>
       prev
-        .filter(t => t.id !== sourceTabId)
-        .map(t => t.id === targetTabId ? { ...t, paneTree: mergedTree } : t)
+        .filter((t) => t.id !== sourceTabId)
+        .map((t) => (t.id === targetTabId ? { ...t, paneTree: mergedTree } : t)),
     );
 
     // Keep active tab on the merged one
@@ -1202,26 +1266,29 @@ export function Workspace({
   const handleReorganizePane = (
     sourcePaneId: string,
     targetPaneId: string,
-    position: 'top' | 'bottom' | 'left' | 'right'
+    position: 'top' | 'bottom' | 'left' | 'right',
   ) => {
-
     if (!activeTabId) return;
 
-    const activeTab = tabGroups.find(t => t.id === activeTabId);
+    const activeTab = tabGroups.find((t) => t.id === activeTabId);
     if (!activeTab || !activeTab.paneTree) return;
 
     // Use the reorganizePane utility to restructure the tree
-    const reorganizedTree = reorganizePane(activeTab.paneTree, sourcePaneId, targetPaneId, position);
+    const reorganizedTree = reorganizePane(
+      activeTab.paneTree,
+      sourcePaneId,
+      targetPaneId,
+      position,
+    );
 
     // Update the active tab with the new tree
-    setTabGroups(prev => prev.map(tab =>
-      tab.id === activeTabId ? { ...tab, paneTree: reorganizedTree } : tab
-    ));
+    setTabGroups((prev) =>
+      prev.map((tab) => (tab.id === activeTabId ? { ...tab, paneTree: reorganizedTree } : tab)),
+    );
   };
 
   // Handle save Quick SSH connection
   const handleSaveQuickSSH = (sessionId: string) => {
-
     // Get connection info for this session
     const connectionInfo = quickSSHConnections.get(sessionId);
     if (!connectionInfo) {
@@ -1231,7 +1298,6 @@ export function Workspace({
 
     // Check if app is locked
     if (isLocked) {
-
       // Store the action to execute after unlock
       setPendingActionAfterUnlock(() => () => {
         setConnectionFormPrefill(connectionInfo);
@@ -1308,7 +1374,9 @@ export function Workspace({
     : [];
   const openCollectionMeta = openCollectionMachines[0];
   const openCol = conns.collections?.find((c) => c.id === openCollectionId);
-  const openMachine = openMachineId ? conns.connections.find((c) => c.id === openMachineId) : undefined;
+  const openMachine = openMachineId
+    ? conns.connections.find((c) => c.id === openMachineId)
+    : undefined;
   const openCollectionName = openCol?.name ?? openCollectionMeta?.collectionName ?? 'Collection';
   const openCollectionColor = openCol?.color ?? openCollectionMeta?.collectionColor ?? null;
   const openCollectionRole = openCol?.role ?? openCollectionMeta?.collectionRole ?? null;
@@ -1326,7 +1394,8 @@ export function Workspace({
     if (m.collectionId) {
       const declared = conns.collections?.find((c) => c.id === m.collectionId)?.folders ?? [];
       for (const f of declared) if (f.name) add(f.name);
-      for (const c of conns.connections) if (c.collectionId === m.collectionId && c.folder) add(c.folder);
+      for (const c of conns.connections)
+        if (c.collectionId === m.collectionId && c.folder) add(c.folder);
     } else {
       for (const c of conns.connections) if (!c.collectionId && c.folder) add(c.folder);
     }
@@ -1338,59 +1407,92 @@ export function Workspace({
   // their own strip above it, so opening a machine produced two bars — and the
   // terminal one, `relative z-10` like the dashboard overlay and later in the DOM,
   // painted over the dashboard it has nothing to say about.
-  const viewTabs = (openCollectionId || openMachine) ? (
-    <>
-      {openCollectionId && (
-        <div
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
-            mainView === 'collection' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          <button onClick={() => setMainView('collection')} className="flex items-center gap-1.5">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
-            </svg>
-            <span className="max-w-[160px] truncate">{openCollectionName}</span>
-          </button>
-          <button
-            onClick={handleCloseCollection}
-            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-            aria-label="Close collection"
+  const viewTabs =
+    openCollectionId || openMachine ? (
+      <>
+        {openCollectionId && (
+          <div
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+              mainView === 'collection'
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
           >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
-      {openMachine && (
-        <div
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
-            mainView === 'machine' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          <button onClick={() => setMainView('machine')} className="flex items-center gap-1.5">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <rect x="3" y="5" width="18" height="6" rx="1.5" />
-              <rect x="3" y="13" width="18" height="6" rx="1.5" />
-              <path strokeLinecap="round" d="M6.5 8h.01M6.5 16h.01" />
-            </svg>
-            <span className="max-w-[160px] truncate">{openMachine.name}</span>
-          </button>
-          <button
-            onClick={handleCloseMachine}
-            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-            aria-label={t('dash.close')}
+            <button onClick={() => setMainView('collection')} className="flex items-center gap-1.5">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"
+                />
+              </svg>
+              <span className="max-w-[160px] truncate">{openCollectionName}</span>
+            </button>
+            <button
+              onClick={handleCloseCollection}
+              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+              aria-label="Close collection"
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+        {openMachine && (
+          <div
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+              mainView === 'machine'
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
           >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
-    </>
-  ) : null;
+            <button onClick={() => setMainView('machine')} className="flex items-center gap-1.5">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <rect x="3" y="5" width="18" height="6" rx="1.5" />
+                <rect x="3" y="13" width="18" height="6" rx="1.5" />
+                <path strokeLinecap="round" d="M6.5 8h.01M6.5 16h.01" />
+              </svg>
+              <span className="max-w-[160px] truncate">{openMachine.name}</span>
+            </button>
+            <button
+              onClick={handleCloseMachine}
+              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+              aria-label={t('dash.close')}
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </>
+    ) : null;
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -1436,19 +1538,21 @@ export function Workspace({
         {/* Local-shell selector — hidden in a server context (the server sets the
             shell), and hidden when this person took it out of their toolbar. */}
         {!isServerCtx && toolbarPrefs.shellPicker && (
-        <button
-          ref={defaultShellButtonRef}
-          onClick={async () => {
-            if (!showDefaultShellDropdown) await checkInstalledShells();
-            setShowDefaultShellDropdown(!showDefaultShellDropdown);
-          }}
-          className="m-btn m-btn-sm"
-          title="Select default shell"
-        >
-          <span>{shells.find((s) => s.path === settings.defaultShell)?.icon || '🐚'}</span>
-          <span className="hidden text-muted-foreground md:inline">{settings.defaultShell.split('/').pop()}</span>
-          <IconChevronDown className="h-3 w-3 text-muted-foreground" />
-        </button>
+          <button
+            ref={defaultShellButtonRef}
+            onClick={async () => {
+              if (!showDefaultShellDropdown) await checkInstalledShells();
+              setShowDefaultShellDropdown(!showDefaultShellDropdown);
+            }}
+            className="m-btn m-btn-sm"
+            title="Select default shell"
+          >
+            <span>{shells.find((s) => s.path === settings.defaultShell)?.icon || '🐚'}</span>
+            <span className="hidden text-muted-foreground md:inline">
+              {settings.defaultShell.split('/').pop()}
+            </span>
+            <IconChevronDown className="h-3 w-3 text-muted-foreground" />
+          </button>
         )}
 
         {/* Focus mode (client/native only): hide the toolbar, terminals fill the screen.
@@ -1460,8 +1564,18 @@ export function Workspace({
             title="Focus mode (F11) — hide the toolbar, terminals fill the screen"
             aria-pressed={focusActive}
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
+              />
             </svg>
           </button>
         )}
@@ -1470,7 +1584,11 @@ export function Workspace({
             and when this person hid it. The two are not the same thing: the first is
             a rule, the second is a view, and only the rule decides what is allowed. */}
         {allowQuickSsh && toolbarPrefs.quickSsh && (
-          <button onClick={() => setShowQuickSSH(true)} className="m-btn m-btn-sm" title="Quick SSH Connect">
+          <button
+            onClick={() => setShowQuickSSH(true)}
+            className="m-btn m-btn-sm"
+            title="Quick SSH Connect"
+          >
             <IconBolt className="h-4 w-4" />
             <span className="hidden md:inline">Quick SSH</span>
           </button>
@@ -1517,7 +1635,11 @@ export function Workspace({
           />
         ) : (
           <>
-            <button onClick={() => setShowSettings(true)} className="m-btn m-btn-ghost m-btn-sm" title={t('settings.title')}>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="m-btn m-btn-ghost m-btn-sm"
+              title={t('settings.title')}
+            >
               <IconGear className="h-4 w-4" />
             </button>
             <button onClick={() => lock()} className="m-btn m-btn-ghost m-btn-sm" title={lockLabel}>
@@ -1533,9 +1655,13 @@ export function Workspace({
       {focusActive && (
         <div className="pointer-events-none fixed bottom-4 left-1/2 z-[56] flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs text-muted-foreground opacity-90 shadow-lg">
           Focus mode ·{' '}
-          <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">Esc</kbd>{' '}
+          <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">
+            Esc
+          </kbd>{' '}
           or{' '}
-          <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">F11</kbd>{' '}
+          <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">
+            F11
+          </kbd>{' '}
           to exit · hover the top edge to reveal the toolbar
         </div>
       )}
@@ -1544,9 +1670,11 @@ export function Workspace({
       <main className="flex flex-1 overflow-hidden relative">
         {/* Sidebar: saved connections when a vault is open; otherwise a prompt to
             open one (the local terminal + Quick SSH in the header work without it). */}
-        <aside className={`m-side border-r border-border flex flex-col transition-all duration-300 overflow-hidden ${
-          isSidebarOpen ? 'w-[290px]' : 'w-0'
-        }`}>
+        <aside
+          className={`m-side border-r border-border flex flex-col transition-all duration-300 overflow-hidden ${
+            isSidebarOpen ? 'w-[290px]' : 'w-0'
+          }`}
+        >
           {isLocked ? (
             <div className="flex flex-1 flex-col overflow-hidden">
               {/* Collapse toggle — available locked too, so you can reclaim the space without
@@ -1560,7 +1688,12 @@ export function Workspace({
                   aria-label="Hide sidebar"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                    />
                   </svg>
                 </button>
               </div>
@@ -1578,153 +1711,238 @@ export function Workspace({
                   }}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  {isFirstRun && lockedVaults.length === 0 ? 'Create local vault' : 'Open local vault'}
+                  {isFirstRun && lockedVaults.length === 0
+                    ? 'Create local vault'
+                    : 'Open local vault'}
                 </button>
               </div>
             </div>
           ) : (
-          <>
-          {/* Search (design mock: at the top of the sidebar) */}
-          <div className="m-search">
-            <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
-            </svg>
-            <input
-              value={sidebarQuery}
-              onChange={(e) => setSidebarQuery(e.target.value)}
-              placeholder="Search connections…"
-            />
-          </div>
-
-          {/* Library header row: eyebrow · + menu · collapse */}
-          <div className="m-side-hdr">
-            <span className="m-eyebrow">Library</span>
-            <div className="relative ml-auto flex items-center gap-1">
-              <button
-                onClick={() => setShowNewMenu((v) => !v)}
-                aria-label="Add to library"
-                title="Add to library"
-                className="m-btn m-btn-ghost"
-                style={{ padding: '4px' }}
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
+            <>
+              {/* Search (design mock: at the top of the sidebar) */}
+              <div className="m-search">
+                <svg
+                  className="h-4 w-4 flex-none"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+                  />
                 </svg>
-              </button>
-              {showNewMenu && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
-                  <div className="m-menu absolute right-0 top-full z-20 mt-1">
-                    {/* No loose machines (ADR 0016): machines & import are
+                <input
+                  value={sidebarQuery}
+                  onChange={(e) => setSidebarQuery(e.target.value)}
+                  placeholder="Search connections…"
+                />
+              </div>
+
+              {/* Library header row: eyebrow · + menu · collapse */}
+              <div className="m-side-hdr">
+                <span className="m-eyebrow">Library</span>
+                <div className="relative ml-auto flex items-center gap-1">
+                  <button
+                    onClick={() => setShowNewMenu((v) => !v)}
+                    aria-label="Add to library"
+                    title="Add to library"
+                    className="m-btn m-btn-ghost"
+                    style={{ padding: '4px' }}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 5v14M5 12h14"
+                      />
+                    </svg>
+                  </button>
+                  {showNewMenu && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
+                      <div className="m-menu absolute right-0 top-full z-20 mt-1">
+                        {/* No loose machines (ADR 0016): machines & import are
                         collection-scoped, so the library + creates folders and
                         collections in both contexts. Since ADR 0018 a local vault
                         has collections too, so there is no longer a second branch
                         offering a machine with nowhere to put it. */}
-                    <>
-                      <button onClick={() => { setShowNewMenu(false); setLibraryFolderEdit({}); }}>
-                          <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-                          </svg>
-                          New folder…
-                        </button>
-                        <button onClick={() => { setShowNewMenu(false); setShowNewCollection(true); }}>
-                          <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
-                          </svg>
-                        New collection…
-                      </button>
+                        <>
+                          <button
+                            onClick={() => {
+                              setShowNewMenu(false);
+                              setLibraryFolderEdit({});
+                            }}
+                          >
+                            <svg
+                              className="h-4 w-4 flex-none"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+                              />
+                            </svg>
+                            New folder…
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowNewMenu(false);
+                              setShowNewCollection(true);
+                            }}
+                          >
+                            <svg
+                              className="h-4 w-4 flex-none"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M12 3l9 5-9 5-9-5 9-5z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"
+                              />
+                            </svg>
+                            New collection…
+                          </button>
+                        </>
+                      </div>
                     </>
-                  </div>
-                </>
-              )}
-              <button
-                onClick={() => setIsSidebarOpen(false)}
-                className="m-btn m-btn-ghost"
-                style={{ padding: '4px' }}
-                title="Hide sidebar"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-                </svg>
-              </button>
-            </div>
-          </div>
+                  )}
+                  <button
+                    onClick={() => setIsSidebarOpen(false)}
+                    className="m-btn m-btn-ghost"
+                    style={{ padding: '4px' }}
+                    title="Hide sidebar"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
 
-          {/* Library tree */}
-          <div className="flex-1 overflow-y-auto">
-            <LibrarySidebar
-              query={sidebarQuery}
-              connections={connections}
-              selectedId={selectedConnectionId}
-              onSelect={selectConnection}
-              onOpenMachine={handleOpenMachine}
-              onEdit={handleEditConnection}
-              onDelete={handleDeleteConnection}
-              onConnect={handleConnect}
-              onForward={setForwardTarget}
-              onMoveMachine={setMoveMachineTarget}
-              onOpenCollection={handleOpenCollection}
-              openCollectionId={mainView === 'collection' ? openCollectionId : null}
-              collections={conns.collections}
-              onNewMachineInCollection={hasCollections ? handleNewMachineInCollection : undefined}
-              onNewFolderInCollection={hasCollections ? (id) => setFolderDialog({ collectionId: id }) : undefined}
-              onNewSubfolder={
-                hasCollections
-                  ? (id, parentPath) => setFolderDialog({ collectionId: id, parentPath })
-                  : undefined
-              }
-              onNewMachineInFolder={
-                hasCollections ? (id, folderPath) => handleNewMachineInCollection(id, folderPath) : undefined
-              }
-              onRenameFolder={
-                hasCollections
-                  ? (id, path, color) =>
-                      setFolderDialog({
-                        collectionId: id,
-                        renamePath: path,
-                        initialName: path.split('/').pop() ?? path,
-                        initialColor: color,
-                      })
-                  : undefined
-              }
-              onDeleteFolder={hasCollections ? (id, path) => setDeleteSubfolder({ collectionId: id, path }) : undefined}
-              onImportToCollection={
-                hasCollections
-                  ? (id) => {
-                      setImportCollectionId(id);
-                      setShowImportSSH(true);
-                    }
-                  : undefined
-              }
-              onOpenMembers={isServerContext ? (id) => setMembersCollectionId(id) : undefined}
-              onOpenBoard={hasCollections && conns.readBoard ? (id) => setBoardCollectionId(id) : undefined}
-              onRenameCollection={
-                hasCollections
-                  ? (id, name, color) =>
-                      setCollectionEdit({ id, name, color, hc: conns.collections?.find((c) => c.id === id)?.hc })
-                  : undefined
-              }
-              onDeleteCollection={hasCollections ? (id, name) => setDeleteCollectionTarget({ id, name }) : undefined}
-              libraryFolders={hasCollections ? tree.folders : undefined}
-              collectionPlacement={hasCollections ? tree.placement : undefined}
-              onNewLibrarySubfolder={hasCollections ? (parent) => setLibraryFolderEdit({ parent }) : undefined}
-              onNewCollectionInFolder={
-                hasCollections
-                  ? (folderId) => {
-                      setPendingCollectionFolder(folderId);
-                      setShowNewCollection(true);
-                    }
-                  : undefined
-              }
-              onRenameLibraryFolder={
-                hasCollections ? (id, name, color) => setLibraryFolderEdit({ id, name, color }) : undefined
-              }
-              onDeleteLibraryFolder={hasCollections ? (id, name) => setDeleteFolderTarget({ id, name }) : undefined}
-              onMoveCollection={hasCollections ? (id, name) => setMoveCollectionTarget({ id, name }) : undefined}
-            />
-          </div>
-          </>
+              {/* Library tree */}
+              <div className="flex-1 overflow-y-auto">
+                <LibrarySidebar
+                  query={sidebarQuery}
+                  connections={connections}
+                  selectedId={selectedConnectionId}
+                  onSelect={selectConnection}
+                  onOpenMachine={handleOpenMachine}
+                  onEdit={handleEditConnection}
+                  onDelete={handleDeleteConnection}
+                  onConnect={handleConnect}
+                  onForward={setForwardTarget}
+                  onMoveMachine={setMoveMachineTarget}
+                  onOpenCollection={handleOpenCollection}
+                  openCollectionId={mainView === 'collection' ? openCollectionId : null}
+                  collections={conns.collections}
+                  onNewMachineInCollection={
+                    hasCollections ? handleNewMachineInCollection : undefined
+                  }
+                  onNewFolderInCollection={
+                    hasCollections ? (id) => setFolderDialog({ collectionId: id }) : undefined
+                  }
+                  onNewSubfolder={
+                    hasCollections
+                      ? (id, parentPath) => setFolderDialog({ collectionId: id, parentPath })
+                      : undefined
+                  }
+                  onNewMachineInFolder={
+                    hasCollections
+                      ? (id, folderPath) => handleNewMachineInCollection(id, folderPath)
+                      : undefined
+                  }
+                  onRenameFolder={
+                    hasCollections
+                      ? (id, path, color) =>
+                          setFolderDialog({
+                            collectionId: id,
+                            renamePath: path,
+                            initialName: path.split('/').pop() ?? path,
+                            initialColor: color,
+                          })
+                      : undefined
+                  }
+                  onDeleteFolder={
+                    hasCollections
+                      ? (id, path) => setDeleteSubfolder({ collectionId: id, path })
+                      : undefined
+                  }
+                  onImportToCollection={
+                    hasCollections
+                      ? (id) => {
+                          setImportCollectionId(id);
+                          setShowImportSSH(true);
+                        }
+                      : undefined
+                  }
+                  onOpenMembers={isServerContext ? (id) => setMembersCollectionId(id) : undefined}
+                  onOpenBoard={
+                    hasCollections && conns.readBoard ? (id) => setBoardCollectionId(id) : undefined
+                  }
+                  onRenameCollection={
+                    hasCollections
+                      ? (id, name, color) =>
+                          setCollectionEdit({
+                            id,
+                            name,
+                            color,
+                            hc: conns.collections?.find((c) => c.id === id)?.hc,
+                          })
+                      : undefined
+                  }
+                  onDeleteCollection={
+                    hasCollections
+                      ? (id, name) => setDeleteCollectionTarget({ id, name })
+                      : undefined
+                  }
+                  libraryFolders={hasCollections ? tree.folders : undefined}
+                  collectionPlacement={hasCollections ? tree.placement : undefined}
+                  onNewLibrarySubfolder={
+                    hasCollections ? (parent) => setLibraryFolderEdit({ parent }) : undefined
+                  }
+                  onNewCollectionInFolder={
+                    hasCollections
+                      ? (folderId) => {
+                          setPendingCollectionFolder(folderId);
+                          setShowNewCollection(true);
+                        }
+                      : undefined
+                  }
+                  onRenameLibraryFolder={
+                    hasCollections
+                      ? (id, name, color) => setLibraryFolderEdit({ id, name, color })
+                      : undefined
+                  }
+                  onDeleteLibraryFolder={
+                    hasCollections ? (id, name) => setDeleteFolderTarget({ id, name }) : undefined
+                  }
+                  onMoveCollection={
+                    hasCollections ? (id, name) => setMoveCollectionTarget({ id, name }) : undefined
+                  }
+                />
+              </div>
+            </>
           )}
         </aside>
 
@@ -1738,7 +1956,12 @@ export function Workspace({
             className="absolute left-0 top-1/2 z-30 -translate-y-1/2 rounded-r-md border border-l-0 border-border bg-card p-2 shadow-lg transition-colors hover:bg-muted"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 5l7 7-7 7M5 5l7 7-7 7"
+              />
             </svg>
           </button>
         )}
@@ -1771,7 +1994,8 @@ export function Workspace({
                     setShowForm(true);
                   }}
                   onNewFolder={(parentPath) =>
-                    openCollectionId && setFolderDialog({ collectionId: openCollectionId, parentPath })
+                    openCollectionId &&
+                    setFolderDialog({ collectionId: openCollectionId, parentPath })
                   }
                   onImport={() => {
                     setImportCollectionId(openCollectionId);
@@ -1815,33 +2039,33 @@ export function Workspace({
               </div>
             )}
 
-        {/* Main panel - Terminal Manager */}
-        <ErrorBoundary level="feature" name="TerminalManager">
-          <TerminalManager
-            viewTabs={viewTabs}
-            tabGroups={tabGroups}
-            activeTabId={activeTabId}
-            onSplitPane={handleSplitPane}
-            onClosePane={handleClosePane}
-            onFocusPane={handleFocusPane}
-            onSplitRatioChange={handleSplitRatioChange}
-            onSwitchTab={handleSwitchTab}
-            onApplyLayout={toolbarPrefs.layouts ? handleApplyLayout : undefined}
-            layoutConnections={conns.connections ?? []}
-            layoutLibraryReadable={!isLocked}
-            onReorderTabs={handleReorderTabs}
-            onDetachPane={handleDetachPane}
-            onRenameTab={handleRenameTab}
-            onMergeTab={handleMergeTab}
-            onCloseTab={handleCloseTab}
-            onReorganizePane={handleReorganizePane}
-            onNewLocalTerminal={handleNewLocalTerminal}
-            shellMenu={toolbarPrefs.newTerminalMenu ? newTerminalShells : undefined}
-            probeShells={!isServerCtx}
-            onSaveQuickSSH={handleSaveQuickSSH}
-            quickSSHSessions={Array.from(quickSSHConnections.keys())}
-          />
-        </ErrorBoundary>
+            {/* Main panel - Terminal Manager */}
+            <ErrorBoundary level="feature" name="TerminalManager">
+              <TerminalManager
+                viewTabs={viewTabs}
+                tabGroups={tabGroups}
+                activeTabId={activeTabId}
+                onSplitPane={handleSplitPane}
+                onClosePane={handleClosePane}
+                onFocusPane={handleFocusPane}
+                onSplitRatioChange={handleSplitRatioChange}
+                onSwitchTab={handleSwitchTab}
+                onApplyLayout={toolbarPrefs.layouts ? handleApplyLayout : undefined}
+                layoutConnections={conns.connections ?? []}
+                layoutLibraryReadable={!isLocked}
+                onReorderTabs={handleReorderTabs}
+                onDetachPane={handleDetachPane}
+                onRenameTab={handleRenameTab}
+                onMergeTab={handleMergeTab}
+                onCloseTab={handleCloseTab}
+                onReorganizePane={handleReorganizePane}
+                onNewLocalTerminal={handleNewLocalTerminal}
+                shellMenu={toolbarPrefs.newTerminalMenu ? newTerminalShells : undefined}
+                probeShells={!isServerCtx}
+                onSaveQuickSSH={handleSaveQuickSSH}
+                quickSSHSessions={Array.from(quickSSHConnections.keys())}
+              />
+            </ErrorBoundary>
           </div>
         </div>
       </main>
@@ -1886,54 +2110,66 @@ export function Workspace({
           onSaved={fetchConnections}
         />
       )}
-      {boardCollectionId && conns.readBoard && conns.saveBoard && (() => {
-        const col = conns.collections?.find((c) => c.id === boardCollectionId);
-        return (
-          <BoardModal
-            collectionId={boardCollectionId}
-            collectionName={col?.name ?? ''}
-            memberCount={col?.memberCount ?? 1}
-            isPersonal={col?.isPersonal ?? false}
-            shared={isServerContext}
-            canWrite={col?.role === 'owner' || col?.role === 'editor'}
-            readBoard={conns.readBoard}
-            saveBoard={conns.saveBoard}
-            onClose={() => setBoardCollectionId(null)}
-          />
-        );
-      })()}
+      {boardCollectionId &&
+        conns.readBoard &&
+        conns.saveBoard &&
+        (() => {
+          const col = conns.collections?.find((c) => c.id === boardCollectionId);
+          return (
+            <BoardModal
+              collectionId={boardCollectionId}
+              collectionName={col?.name ?? ''}
+              memberCount={col?.memberCount ?? 1}
+              isPersonal={col?.isPersonal ?? false}
+              shared={isServerContext}
+              canWrite={col?.role === 'owner' || col?.role === 'editor'}
+              readBoard={conns.readBoard}
+              saveBoard={conns.saveBoard}
+              onClose={() => setBoardCollectionId(null)}
+            />
+          );
+        })()}
       {/* Creating a collection: on a server it starts with members (MemberPicker, which
           seals the keys to them); in a vault there is nobody to add, so it is the plain
           name/colour form and the core wraps the keys with the master key (ADR 0018). */}
-      {showNewCollection && (() => {
-        const close = () => {
-          setShowNewCollection(false);
-          setPendingCollectionFolder(null);
-        };
-        const placeInFolder = (id: string) => {
-          if (pendingCollectionFolder) tree.moveCollection(id, pendingCollectionFolder);
-        };
-        if (isServerContext) {
+      {showNewCollection &&
+        (() => {
+          const close = () => {
+            setShowNewCollection(false);
+            setPendingCollectionFolder(null);
+          };
+          const placeInFolder = (id: string) => {
+            if (pendingCollectionFolder) tree.moveCollection(id, pendingCollectionFolder);
+          };
+          if (isServerContext) {
+            return (
+              <MemberPicker
+                mode="create"
+                onClose={close}
+                onSaved={fetchConnections}
+                onCreated={placeInFolder}
+              />
+            );
+          }
+          const create = conns.createCollection;
+          if (!create) return null;
           return (
-            <MemberPicker mode="create" onClose={close} onSaved={fetchConnections} onCreated={placeInFolder} />
+            <CollectionEditDialog
+              onClose={close}
+              onSaved={fetchConnections}
+              onPersist={async (name, color, hc) => {
+                placeInFolder(await create(name, color, hc));
+              }}
+            />
           );
-        }
-        const create = conns.createCollection;
-        if (!create) return null;
-        return (
-          <CollectionEditDialog
-            onClose={close}
-            onSaved={fetchConnections}
-            onPersist={async (name, color, hc) => {
-              placeInFolder(await create(name, color, hc));
-            }}
-          />
-        );
-      })()}
+        })()}
       {folderDialog && (
         <CollectionFolderDialog
           collectionId={folderDialog.collectionId}
-          collectionName={conns.collections?.find((c) => c.id === folderDialog.collectionId)?.name ?? openCollectionName}
+          collectionName={
+            conns.collections?.find((c) => c.id === folderDialog.collectionId)?.name ??
+            openCollectionName
+          }
           parentPath={folderDialog.parentPath}
           renamePath={folderDialog.renamePath}
           initialName={folderDialog.initialName}
@@ -1944,15 +2180,27 @@ export function Workspace({
         />
       )}
       {deleteSubfolder && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteSubfolder(null)}>
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-2 text-lg font-semibold">Delete folder “{deleteSubfolder.path.split('/').pop()}”?</h3>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDeleteSubfolder(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-2 text-lg font-semibold">
+              Delete folder “{deleteSubfolder.path.split('/').pop()}”?
+            </h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              The folder and its sub-folders are removed{isServerContext ? ' for everyone in the collection' : ''}.
-              Machines inside move up to the parent folder — nothing is deleted.
+              The folder and its sub-folders are removed
+              {isServerContext ? ' for everyone in the collection' : ''}. Machines inside move up to
+              the parent folder — nothing is deleted.
             </p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setDeleteSubfolder(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+              <button
+                onClick={() => setDeleteSubfolder(null)}
+                className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+              >
                 Cancel
               </button>
               <button
@@ -1964,7 +2212,12 @@ export function Workspace({
                       await conns.deleteFolder(target.collectionId, target.path);
                     } else {
                       if (!serverKeys.publicKey || !serverKeys.privateKey) return;
-                      await deleteCollectionFolder(target.collectionId, serverKeys.publicKey, serverKeys.privateKey, target.path);
+                      await deleteCollectionFolder(
+                        target.collectionId,
+                        serverKeys.publicKey,
+                        serverKeys.privateKey,
+                        target.path,
+                      );
                     }
                     await fetchConnections();
                   } catch (err) {
@@ -2016,15 +2269,26 @@ export function Workspace({
         />
       )}
       {deleteFolderTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteFolderTarget(null)}>
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-2 text-lg font-semibold">Delete folder “{deleteFolderTarget.name}”?</h3>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDeleteFolderTarget(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-2 text-lg font-semibold">
+              Delete folder “{deleteFolderTarget.name}”?
+            </h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              This only removes the folder from your view — the collections in it move back to the root. Nothing is
-              deleted or unshared.
+              This only removes the folder from your view — the collections in it move back to the
+              root. Nothing is deleted or unshared.
             </p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setDeleteFolderTarget(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+              <button
+                onClick={() => setDeleteFolderTarget(null)}
+                className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+              >
                 Cancel
               </button>
               <button
@@ -2060,12 +2324,18 @@ export function Workspace({
 
       {/* Delete collection confirmation (ADR 0016) */}
       {deleteCollectionTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteCollectionTarget(null)}>
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDeleteCollectionTarget(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="mb-2 text-lg font-semibold">Delete “{deleteCollectionTarget.name}”?</h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              This permanently deletes the collection and its machines{isServerContext ? ' for everyone. Members lose access.' : '.'} This
-              cannot be undone.
+              This permanently deletes the collection and its machines
+              {isServerContext ? ' for everyone. Members lose access.' : '.'} This cannot be undone.
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -2090,9 +2360,7 @@ export function Workspace({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="mx-4 w-full max-w-md rounded-lg bg-background p-6 shadow-xl">
             <h2 className="mb-4 text-xl font-bold">{t('connections.delete')}</h2>
-            <p className="mb-6 text-sm text-muted-foreground">
-              {t('connections.deleteConfirm')}
-            </p>
+            <p className="mb-6 text-sm text-muted-foreground">{t('connections.deleteConfirm')}</p>
             <p className="mb-6 font-medium">{connectionToDelete.name}</p>
             <div className="flex justify-end gap-3">
               <button
@@ -2167,9 +2435,7 @@ export function Workspace({
             setForwardTarget((prev) => (prev ? { ...prev, forwards } : prev));
             fetchConnections();
           }}
-          onStart={
-            conns.startForward && ((f) => conns.startForward!(forwardTarget, f))
-          }
+          onStart={conns.startForward && ((f) => conns.startForward!(forwardTarget, f))}
           onClose={() => setForwardTarget(null)}
         />
       )}
@@ -2242,12 +2508,20 @@ export function Workspace({
               title={t('common.close')}
               className="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
             <h2 className="text-lg font-semibold">Open a vault</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Pick a local vault, or create/open one.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Pick a local vault, or create/open one.
+            </p>
             <div className="mt-4 flex flex-col gap-2">
               {lockedVaults.map((v) => {
                 const isThisWindow = currentVaultPath != null && v.path === currentVaultPath;
@@ -2267,7 +2541,11 @@ export function Workspace({
                       className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-muted"
                     >
                       {v.icon?.startsWith('data:') ? (
-                        <img src={v.icon} alt="" className="h-6 w-6 flex-none rounded object-cover" />
+                        <img
+                          src={v.icon}
+                          alt=""
+                          className="h-6 w-6 flex-none rounded object-cover"
+                        />
                       ) : (
                         <span className="text-xl leading-none" aria-hidden>
                           {v.icon || '🔒'}
@@ -2275,7 +2553,9 @@ export function Workspace({
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium">{v.label}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{v.path}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {v.path}
+                        </span>
                       </span>
                       <span className="flex-none text-xs text-muted-foreground">
                         {isThisWindow ? 'Unlock' : 'Open'}
@@ -2291,8 +2571,18 @@ export function Workspace({
                         aria-label={`Open ${v.label} in a new window`}
                         className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
                       >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4"
+                          />
                         </svg>
                       </button>
                     )}
@@ -2302,8 +2592,18 @@ export function Workspace({
                       aria-label={`Remove ${v.label}`}
                       className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
                     >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"
+                        />
                       </svg>
                     </button>
                   </div>
@@ -2368,10 +2668,12 @@ export function Workspace({
           <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl">
             <h3 className="font-semibold">Abandon this new vault?</h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              You haven’t set a master password, so this vault isn’t saved. Its file was just created
-              at:
+              You haven’t set a master password, so this vault isn’t saved. Its file was just
+              created at:
             </p>
-            <p className="mt-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs">{pendingNewVaultPath}</p>
+            <p className="mt-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs">
+              {pendingNewVaultPath}
+            </p>
             <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/5 p-3">
               <input
                 type="checkbox"
@@ -2395,7 +2697,8 @@ export function Workspace({
               </button>
               <button
                 onClick={() => {
-                  if (abandonDeleteFile) sendVaultCommand({ type: 'vault-delete', path: pendingNewVaultPath });
+                  if (abandonDeleteFile)
+                    sendVaultCommand({ type: 'vault-delete', path: pendingNewVaultPath });
                   setAbandonNewVault(false);
                   setShowUnlockModal(false);
                   // Leave the abandoned vault and return to the base workspace on the default vault
@@ -2425,78 +2728,81 @@ export function Workspace({
       )}
 
       {/* Default Shell Dropdown (Portal) */}
-      {showDefaultShellDropdown && createPortal(
-        <>
-          <div
-            className="fixed inset-0 z-[100]"
-            onClick={() => setShowDefaultShellDropdown(false)}
-          />
+      {showDefaultShellDropdown &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[100]"
+              onClick={() => setShowDefaultShellDropdown(false)}
+            />
 
-          <div
-            className="fixed z-[110] min-w-[300px] rounded-md border border-border bg-card shadow-xl"
-            style={{
-              top: `${defaultShellDropdownPosition.top}px`,
-              left: `${defaultShellDropdownPosition.left}px`,
-            }}
-          >
-            <div className="p-2 border-b border-border">
-              <p className="text-xs font-medium text-muted-foreground">Default Shell</p>
-              <p className="text-xs text-muted-foreground/70 mt-1">
-                Used when clicking "+ Local Terminal"
-              </p>
-            </div>
-            {shells.map((shell, index) => {
-              const isInstalled = installedShells.includes(shell.path);
-              return (
-                <button
-                  key={shell.path}
-                  onClick={async () => {
-                    if (!isInstalled) {
-                      setToastType('error');
-                      setToastMessage(`${shell.name} is not installed on this system`);
+            <div
+              className="fixed z-[110] min-w-[300px] rounded-md border border-border bg-card shadow-xl"
+              style={{
+                top: `${defaultShellDropdownPosition.top}px`,
+                left: `${defaultShellDropdownPosition.left}px`,
+              }}
+            >
+              <div className="p-2 border-b border-border">
+                <p className="text-xs font-medium text-muted-foreground">Default Shell</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">
+                  Used when clicking "+ Local Terminal"
+                </p>
+              </div>
+              {shells.map((shell, index) => {
+                const isInstalled = installedShells.includes(shell.path);
+                return (
+                  <button
+                    key={shell.path}
+                    onClick={async () => {
+                      if (!isInstalled) {
+                        setToastType('error');
+                        setToastMessage(`${shell.name} is not installed on this system`);
+                        setShowDefaultShellDropdown(false);
+                        return;
+                      }
+                      await updateSettings({ defaultShell: shell.path });
                       setShowDefaultShellDropdown(false);
-                      return;
-                    }
-                    await updateSettings({ defaultShell: shell.path });
-                    setShowDefaultShellDropdown(false);
-                    setToastType('success');
-                    setToastMessage(`${shell.name} set as default shell`);
-                  }}
-                  disabled={!isInstalled}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-colors ${
-                    index === 0 ? 'rounded-t-md' : ''
-                  } ${index === shells.length - 1 ? 'rounded-b-md' : ''} ${
-                    settings.defaultShell === shell.path ? 'bg-primary/10' : ''
-                  } ${
-                    isInstalled ? 'hover:bg-muted cursor-pointer' : 'opacity-50 cursor-not-allowed'
-                  }`}
-                  title={!isInstalled ? `${shell.name} is not installed` : ''}
-                >
-                  <span className="text-lg">{shell.icon}</span>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{shell.name}</span>
-                      {!isInstalled && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 border border-red-500/30">
-                          Not installed
-                        </span>
-                      )}
+                      setToastType('success');
+                      setToastMessage(`${shell.name} set as default shell`);
+                    }}
+                    disabled={!isInstalled}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-colors ${
+                      index === 0 ? 'rounded-t-md' : ''
+                    } ${index === shells.length - 1 ? 'rounded-b-md' : ''} ${
+                      settings.defaultShell === shell.path ? 'bg-primary/10' : ''
+                    } ${
+                      isInstalled
+                        ? 'hover:bg-muted cursor-pointer'
+                        : 'opacity-50 cursor-not-allowed'
+                    }`}
+                    title={!isInstalled ? `${shell.name} is not installed` : ''}
+                  >
+                    <span className="text-lg">{shell.icon}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{shell.name}</span>
+                        {!isInstalled && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 border border-red-500/30">
+                            Not installed
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">{shell.path}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground">{shell.path}</span>
-                  </div>
-                  {/* The default is marked, the others are not — and with the mock's ★,
+                    {/* The default is marked, the others are not — and with the mock's ★,
                       a text glyph, rather than ⭐, which is an emoji and therefore the
                       platform's picture rather than this design's mark. */}
-                  <span className="text-lg text-yellow-500">
-                    {settings.defaultShell === shell.path ? '★' : ''}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </>,
-        document.body
-      )}
+                    <span className="text-lg text-yellow-500">
+                      {settings.defaultShell === shell.path ? '★' : ''}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }

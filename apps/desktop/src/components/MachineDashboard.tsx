@@ -104,7 +104,17 @@ function writeDashPrefs(connId: string, prefs: DashPrefs): void {
 }
 
 /** The expand/collapse toggle shown on each card header. */
-function ExpandBtn({ wide, onClick, expandLabel, collapseLabel }: { wide: boolean; onClick: () => void; expandLabel: string; collapseLabel: string }) {
+function ExpandBtn({
+  wide,
+  onClick,
+  expandLabel,
+  collapseLabel,
+}: {
+  wide: boolean;
+  onClick: () => void;
+  expandLabel: string;
+  collapseLabel: string;
+}) {
   return (
     <button
       onClick={onClick}
@@ -112,7 +122,15 @@ function ExpandBtn({ wide, onClick, expandLabel, collapseLabel }: { wide: boolea
       aria-label={wide ? collapseLabel : expandLabel}
       className="flex-none rounded border border-border p-1 text-muted-foreground hover:border-primary hover:text-foreground"
     >
-      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <svg
+        className="h-3.5 w-3.5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         {wide ? (
           <path d="M9 4v3a2 2 0 01-2 2H4M20 9h-3a2 2 0 01-2-2V4M4 15h3a2 2 0 012 2v3M15 20v-3a2 2 0 012-2h3" />
         ) : (
@@ -174,7 +192,14 @@ function JumpGlyph() {
 
 function MachineIcon({ color }: { color?: string | null }) {
   return (
-    <svg className="h-6 w-6 flex-none" style={{ color: color || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className="h-6 w-6 flex-none"
+      style={{ color: color || undefined }}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
       <rect x="3" y="5" width="18" height="6" rx="1.5" />
       <rect x="3" y="13" width="18" height="6" rx="1.5" />
       <path strokeLinecap="round" d="M6.5 8h.01M6.5 16h.01M17 8h1.5M17 16h1.5" />
@@ -279,7 +304,13 @@ export function MachineDashboard({
           onClick={() => setCustomize(true)}
           className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
             <path strokeLinecap="round" d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5" />
             <circle cx="15" cy="6" r="2" />
             <circle cx="7" cy="12" r="2" />
@@ -291,8 +322,18 @@ export function MachineDashboard({
           onClick={() => onEdit(connection)}
           className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+            />
           </svg>
           {t('dash.edit')}
         </button>
@@ -319,7 +360,9 @@ export function MachineDashboard({
             wide={isWide('overview')}
             onToggleWide={() => toggle('wide', 'overview')}
           >
-            <div className={`grid gap-1.5 ${isWide('overview') ? 'grid-cols-2 gap-x-8' : 'grid-cols-1'}`}>
+            <div
+              className={`grid gap-1.5 ${isWide('overview') ? 'grid-cols-2 gap-x-8' : 'grid-cols-1'}`}
+            >
               {overviewRows.map(([k, v]) => (
                 <div key={k} className="flex items-baseline justify-between gap-3 text-sm">
                   <span className="flex-none text-muted-foreground">{k}</span>
@@ -333,7 +376,14 @@ export function MachineDashboard({
         {!isHidden('forwards') && (
           <CardShell
             icon={
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+              >
                 <path d="M4 9h13l-3.5-3.5M20 15H7l3.5 3.5" />
               </svg>
             }
@@ -348,7 +398,10 @@ export function MachineDashboard({
               ) : undefined
             }
             actions={
-              <button onClick={() => onForward(connection)} className="rounded border border-border px-2.5 py-1 text-xs hover:bg-muted">
+              <button
+                onClick={() => onForward(connection)}
+                className="rounded border border-border px-2.5 py-1 text-xs hover:bg-muted"
+              >
                 {t('dash.manage')}
               </button>
             }
@@ -362,7 +415,9 @@ export function MachineDashboard({
                   const busy = fwdBusy === forwardKey(f);
                   return (
                     <div key={i} className="flex items-center gap-2 text-sm">
-                      <span className="flex-none rounded border border-border px-1 text-[10px] font-semibold text-muted-foreground">L</span>
+                      <span className="flex-none rounded border border-border px-1 text-[10px] font-semibold text-muted-foreground">
+                        L
+                      </span>
                       <span className="flex-1 truncate font-mono text-xs">
                         127.0.0.1:{f.localPort} → {f.remoteHost}:{f.remotePort}
                       </span>
@@ -420,7 +475,14 @@ export function MachineDashboard({
       </div>
 
       <div className="mt-4 flex items-start gap-2 border-t border-border pt-3 text-[11px] text-muted-foreground">
-        <svg className="mt-0.5 h-3.5 w-3.5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+        <svg
+          className="mt-0.5 h-3.5 w-3.5 flex-none"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+        >
           <circle cx="12" cy="12" r="9" />
           <path d="M12 11v5M12 7.5v.01" />
         </svg>
@@ -463,8 +525,14 @@ function CustomizeModal({
     ['services', t('dash.services')],
   ];
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="w-full max-w-sm overflow-hidden rounded-lg border border-border bg-background shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-lg border border-border bg-background shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="border-b border-border px-4 py-3">
           <div className="text-sm font-medium">{t('dash.customizeTitle')}</div>
           <div className="text-xs text-muted-foreground">{name}</div>
@@ -482,17 +550,27 @@ function CustomizeModal({
                   {label}
                   {governed && (
                     <span className="block text-xs font-normal text-muted-foreground">
-                      {probes.by === 'server' ? t('dash.probesCardServer') : t('dash.probesCardYou')}
+                      {probes.by === 'server'
+                        ? t('dash.probesCardServer')
+                        : t('dash.probesCardYou')}
                     </span>
                   )}
                 </span>
-                <input type="checkbox" checked={!isHidden(id)} onChange={() => onToggle(id)} className="h-4 w-4" />
+                <input
+                  type="checkbox"
+                  checked={!isHidden(id)}
+                  onChange={() => onToggle(id)}
+                  className="h-4 w-4"
+                />
               </label>
             );
           })}
         </div>
         <div className="flex justify-end border-t border-border px-4 py-3">
-          <button onClick={onClose} className="rounded border border-border px-3 py-1.5 text-sm hover:bg-muted">
+          <button
+            onClick={onClose}
+            className="rounded border border-border px-3 py-1.5 text-sm hover:bg-muted"
+          >
             {t('board.done')}
           </button>
         </div>
@@ -535,7 +613,12 @@ function CardShell({
         <div className="flex-1" />
         {actions}
         {onToggleWide && (
-          <ExpandBtn wide={!!wide} onClick={onToggleWide} expandLabel={t('dash.expand')} collapseLabel={t('dash.collapse')} />
+          <ExpandBtn
+            wide={!!wide}
+            onClick={onToggleWide}
+            expandLabel={t('dash.expand')}
+            collapseLabel={t('dash.collapse')}
+          />
         )}
       </div>
       {children}
@@ -567,7 +650,15 @@ function Segmented<T extends string>({
   );
 }
 
-function RefreshBtn({ busy, onClick, label }: { busy: boolean; onClick: () => void; label: string }) {
+function RefreshBtn({
+  busy,
+  onClick,
+  label,
+}: {
+  busy: boolean;
+  onClick: () => void;
+  label: string;
+}) {
   return (
     <button
       onClick={onClick}
@@ -576,16 +667,28 @@ function RefreshBtn({ busy, onClick, label }: { busy: boolean; onClick: () => vo
       aria-label={label}
       className="rounded border border-border p-1 text-muted-foreground hover:bg-muted disabled:opacity-50"
     >
-      <svg className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <svg
+        className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+      >
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="M20 9a8 8 0 00-14.3-3.3L4 9m0 6a8 8 0 0014.3 3.3L20 15" />
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M20 9a8 8 0 00-14.3-3.3L4 9m0 6a8 8 0 0014.3 3.3L20 15"
+        />
       </svg>
     </button>
   );
 }
 
 const Dot = ({ up }: { up: boolean }) => (
-  <span className={`h-1.5 w-1.5 flex-none rounded-full ${up ? 'bg-green-500' : 'bg-muted-foreground/50'}`} />
+  <span
+    className={`h-1.5 w-1.5 flex-none rounded-full ${up ? 'bg-green-500' : 'bg-muted-foreground/50'}`}
+  />
 );
 
 const RowBtn = ({
@@ -627,7 +730,8 @@ const RowBtn = ({
  */
 function useAutoProbe(refresh: () => Promise<void>, enabled: boolean) {
   const mode = useServerSession((s) => s.mode);
-  const every = Math.max(MIN_PROBE_INTERVAL, mode?.dashboardPolicy?.minInterval ?? MIN_PROBE_INTERVAL) * 1000;
+  const every =
+    Math.max(MIN_PROBE_INTERVAL, mode?.dashboardPolicy?.minInterval ?? MIN_PROBE_INTERVAL) * 1000;
   // The timer must not restart every time `refresh` changes identity, or a card that
   // re-renders often would never actually reach a tick.
   const latest = useRef(refresh);
@@ -723,7 +827,13 @@ function ContainersCard({
   return (
     <CardShell
       icon={
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
           <rect x="3" y="10" width="4" height="4" rx="0.5" />
           <rect x="8" y="10" width="4" height="4" rx="0.5" />
           <rect x="13" y="10" width="4" height="4" rx="0.5" />
@@ -734,13 +844,22 @@ function ContainersCard({
       title={t('dash.containers')}
       wide={wide}
       onToggleWide={onToggleWide}
-      badge={runtime !== 'none' ? <span className="rounded border border-border px-1 text-[10px] uppercase text-muted-foreground">{runtime}</span> : undefined}
+      badge={
+        runtime !== 'none' ? (
+          <span className="rounded border border-border px-1 text-[10px] uppercase text-muted-foreground">
+            {runtime}
+          </span>
+        ) : undefined
+      }
       actions={
         <div className="flex items-center gap-1.5">
           <Segmented
             value={mode}
             onChange={setMode}
-            options={[['live', t('dash.modeLive')], ['pinned', t('dash.modePinned')]]}
+            options={[
+              ['live', t('dash.modeLive')],
+              ['pinned', t('dash.modePinned')],
+            ]}
           />
           <RefreshBtn busy={busy} onClick={() => void refresh()} label={t('dash.refresh')} />
         </div>
@@ -753,7 +872,9 @@ function ContainersCard({
       ) : runtime === 'none' ? (
         <p className="text-xs text-muted-foreground">{t('dash.noRuntime')}</p>
       ) : visible.length === 0 ? (
-        <p className="text-xs text-muted-foreground">{mode === 'live' ? t('dash.noContainers') : t('dash.noPinned')}</p>
+        <p className="text-xs text-muted-foreground">
+          {mode === 'live' ? t('dash.noContainers') : t('dash.noPinned')}
+        </p>
       ) : wide ? (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -775,24 +896,59 @@ function ContainersCard({
                 const up = isRunning(c);
                 return (
                   <tr key={c.name} className="border-t border-border">
-                    <td className="px-2 py-1.5"><Dot up={up} /></td>
+                    <td className="px-2 py-1.5">
+                      <Dot up={up} />
+                    </td>
                     <td className="px-2 py-1.5 font-medium">
                       <span className="inline-flex items-center gap-1">
                         {c.name}
-                        <button onClick={() => togglePin(c.name)} title={pins.has(c.name) ? t('dash.unpin') : t('dash.pin')} className={pins.has(c.name) ? 'text-yellow-500' : 'text-muted-foreground/40 hover:text-muted-foreground'}>★</button>
+                        <button
+                          onClick={() => togglePin(c.name)}
+                          title={pins.has(c.name) ? t('dash.unpin') : t('dash.pin')}
+                          className={
+                            pins.has(c.name)
+                              ? 'text-yellow-500'
+                              : 'text-muted-foreground/40 hover:text-muted-foreground'
+                          }
+                        >
+                          ★
+                        </button>
                       </span>
                     </td>
                     <td className="px-2 py-1.5 font-mono text-muted-foreground">{c.image}</td>
-                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{c.ports || '—'}</td>
+                    <td className="px-2 py-1.5 font-mono text-muted-foreground">
+                      {c.ports || '—'}
+                    </td>
                     <td className="px-2 py-1.5 font-mono text-muted-foreground">{c.state}</td>
-                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{stats[c.name]?.cpu ?? '—'}</td>
-                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{stats[c.name]?.mem ?? '—'}</td>
+                    <td className="px-2 py-1.5 font-mono text-muted-foreground">
+                      {stats[c.name]?.cpu ?? '—'}
+                    </td>
+                    <td className="px-2 py-1.5 font-mono text-muted-foreground">
+                      {stats[c.name]?.mem ?? '—'}
+                    </td>
                     <td className="px-2 py-1.5 text-muted-foreground">{c.created || '—'}</td>
                     <td className="px-2 py-1.5">
                       <div className="flex justify-end gap-1.5">
-                        <RowBtn label={t('dash.shell')} disabled={!up} title={containerShellCmd(runtime, c.name)} onClick={() => onRunInPane(connection, containerShellCmd(runtime, c.name))} />
-                        <RowBtn label={t('dash.logs')} title={containerLogsCmd(runtime, c.name)} onClick={() => onRunInPane(connection, containerLogsCmd(runtime, c.name))} />
-                        <RowBtn label="↻" title={containerRestartCmd(runtime, c.name)} onClick={() => onRunInPane(connection, containerRestartCmd(runtime, c.name))} />
+                        <RowBtn
+                          label={t('dash.shell')}
+                          disabled={!up}
+                          title={containerShellCmd(runtime, c.name)}
+                          onClick={() =>
+                            onRunInPane(connection, containerShellCmd(runtime, c.name))
+                          }
+                        />
+                        <RowBtn
+                          label={t('dash.logs')}
+                          title={containerLogsCmd(runtime, c.name)}
+                          onClick={() => onRunInPane(connection, containerLogsCmd(runtime, c.name))}
+                        />
+                        <RowBtn
+                          label="↻"
+                          title={containerRestartCmd(runtime, c.name)}
+                          onClick={() =>
+                            onRunInPane(connection, containerRestartCmd(runtime, c.name))
+                          }
+                        />
                       </div>
                     </td>
                   </tr>
@@ -824,9 +980,22 @@ function ContainersCard({
                     {c.ports ? ` · ${c.ports}` : ''}
                   </code>
                 </div>
-                <RowBtn label={t('dash.shell')} disabled={!up} title={containerShellCmd(runtime, c.name)} onClick={() => onRunInPane(connection, containerShellCmd(runtime, c.name))} />
-                <RowBtn label={t('dash.logs')} title={containerLogsCmd(runtime, c.name)} onClick={() => onRunInPane(connection, containerLogsCmd(runtime, c.name))} />
-                <RowBtn label="↻" title={containerRestartCmd(runtime, c.name)} onClick={() => onRunInPane(connection, containerRestartCmd(runtime, c.name))} />
+                <RowBtn
+                  label={t('dash.shell')}
+                  disabled={!up}
+                  title={containerShellCmd(runtime, c.name)}
+                  onClick={() => onRunInPane(connection, containerShellCmd(runtime, c.name))}
+                />
+                <RowBtn
+                  label={t('dash.logs')}
+                  title={containerLogsCmd(runtime, c.name)}
+                  onClick={() => onRunInPane(connection, containerLogsCmd(runtime, c.name))}
+                />
+                <RowBtn
+                  label="↻"
+                  title={containerRestartCmd(runtime, c.name)}
+                  onClick={() => onRunInPane(connection, containerRestartCmd(runtime, c.name))}
+                />
               </div>
             );
           })}
@@ -900,13 +1069,22 @@ function ServicesCard({
 
   const failed = rows.filter((s) => s.active === 'failed').length;
   const visible = rows.filter(
-    (s) => filter === 'all' || (filter === 'failed' && s.active === 'failed') || (filter === 'active' && s.active === 'active'),
+    (s) =>
+      filter === 'all' ||
+      (filter === 'failed' && s.active === 'failed') ||
+      (filter === 'active' && s.active === 'active'),
   );
 
   return (
     <CardShell
       icon={
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l4 2" />
           <circle cx="12" cy="12" r="9" />
         </svg>
@@ -914,13 +1092,23 @@ function ServicesCard({
       title={t('dash.services')}
       wide={wide}
       onToggleWide={onToggleWide}
-      badge={failed > 0 ? <span className="rounded border border-red-500 px-1 text-[10px] text-red-500">{t('dash.nFailed', { n: failed })}</span> : undefined}
+      badge={
+        failed > 0 ? (
+          <span className="rounded border border-red-500 px-1 text-[10px] text-red-500">
+            {t('dash.nFailed', { n: failed })}
+          </span>
+        ) : undefined
+      }
       actions={
         <div className="flex items-center gap-1.5">
           <Segmented
             value={filter}
             onChange={setFilter}
-            options={[['all', t('dash.filterAll')], ['active', t('dash.filterActive')], ['failed', t('dash.filterFailed')]]}
+            options={[
+              ['all', t('dash.filterAll')],
+              ['active', t('dash.filterActive')],
+              ['failed', t('dash.filterFailed')],
+            ]}
           />
           <RefreshBtn busy={busy} onClick={() => void refresh()} label={t('dash.refresh')} />
         </div>
@@ -953,17 +1141,39 @@ function ServicesCard({
                 const on = s.active === 'active';
                 return (
                   <tr key={s.name} className="border-t border-border">
-                    <td className="px-2 py-1.5"><Dot up={on} /></td>
+                    <td className="px-2 py-1.5">
+                      <Dot up={on} />
+                    </td>
                     <td className="px-2 py-1.5 font-medium">{s.name}</td>
                     <td className="px-2 py-1.5 text-muted-foreground">{s.description}</td>
-                    <td className={`px-2 py-1.5 font-mono ${s.active === 'failed' ? 'text-red-500' : 'text-muted-foreground'}`}>{s.active} ({s.sub})</td>
-                    <td className="px-2 py-1.5 font-mono text-muted-foreground">{extra[s.name]?.mem ?? '—'}</td>
-                    <td className="px-2 py-1.5 text-muted-foreground">{extra[s.name]?.since ?? '—'}</td>
+                    <td
+                      className={`px-2 py-1.5 font-mono ${s.active === 'failed' ? 'text-red-500' : 'text-muted-foreground'}`}
+                    >
+                      {s.active} ({s.sub})
+                    </td>
+                    <td className="px-2 py-1.5 font-mono text-muted-foreground">
+                      {extra[s.name]?.mem ?? '—'}
+                    </td>
+                    <td className="px-2 py-1.5 text-muted-foreground">
+                      {extra[s.name]?.since ?? '—'}
+                    </td>
                     <td className="px-2 py-1.5">
                       <div className="flex justify-end gap-1.5">
-                        <RowBtn label="↻" title={serviceRestartCmd(s.name)} onClick={() => onRunInPane(connection, serviceRestartCmd(s.name))} />
-                        <RowBtn label={on ? t('dash.stop') : t('dash.start')} title={serviceToggleCmd(s.name, on)} onClick={() => onRunInPane(connection, serviceToggleCmd(s.name, on))} />
-                        <RowBtn label={t('dash.journal')} title={serviceJournalCmd(s.name)} onClick={() => onRunInPane(connection, serviceJournalCmd(s.name))} />
+                        <RowBtn
+                          label="↻"
+                          title={serviceRestartCmd(s.name)}
+                          onClick={() => onRunInPane(connection, serviceRestartCmd(s.name))}
+                        />
+                        <RowBtn
+                          label={on ? t('dash.stop') : t('dash.start')}
+                          title={serviceToggleCmd(s.name, on)}
+                          onClick={() => onRunInPane(connection, serviceToggleCmd(s.name, on))}
+                        />
+                        <RowBtn
+                          label={t('dash.journal')}
+                          title={serviceJournalCmd(s.name)}
+                          onClick={() => onRunInPane(connection, serviceJournalCmd(s.name))}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -982,12 +1192,27 @@ function ServicesCard({
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{s.name}</div>
                   <code className="block truncate text-[11px] text-muted-foreground">
-                    {s.description} · <span className={s.active === 'failed' ? 'text-red-500' : ''}>{s.active} ({s.sub})</span>
+                    {s.description} ·{' '}
+                    <span className={s.active === 'failed' ? 'text-red-500' : ''}>
+                      {s.active} ({s.sub})
+                    </span>
                   </code>
                 </div>
-                <RowBtn label="↻" title={serviceRestartCmd(s.name)} onClick={() => onRunInPane(connection, serviceRestartCmd(s.name))} />
-                <RowBtn label={on ? t('dash.stop') : t('dash.start')} title={serviceToggleCmd(s.name, on)} onClick={() => onRunInPane(connection, serviceToggleCmd(s.name, on))} />
-                <RowBtn label={t('dash.journal')} title={serviceJournalCmd(s.name)} onClick={() => onRunInPane(connection, serviceJournalCmd(s.name))} />
+                <RowBtn
+                  label="↻"
+                  title={serviceRestartCmd(s.name)}
+                  onClick={() => onRunInPane(connection, serviceRestartCmd(s.name))}
+                />
+                <RowBtn
+                  label={on ? t('dash.stop') : t('dash.start')}
+                  title={serviceToggleCmd(s.name, on)}
+                  onClick={() => onRunInPane(connection, serviceToggleCmd(s.name, on))}
+                />
+                <RowBtn
+                  label={t('dash.journal')}
+                  title={serviceJournalCmd(s.name)}
+                  onClick={() => onRunInPane(connection, serviceJournalCmd(s.name))}
+                />
               </div>
             );
           })}

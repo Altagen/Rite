@@ -36,7 +36,11 @@ export function MoveMachineDialog({
   };
 
   // A new folder is just a path we move into. Accept "A/B" to nest; trim each segment.
-  const cleanNew = newPath.split('/').map((s) => s.trim()).filter(Boolean).join('/');
+  const cleanNew = newPath
+    .split('/')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join('/');
   const createAndMove = () => {
     if (cleanNew) pick(cleanNew);
   };
@@ -53,11 +57,21 @@ export function MoveMachineDialog({
           isCurrent ? 'bg-primary/10' : ''
         }`}
       >
-        <svg className="h-4 w-4 flex-none text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg
+          className="h-4 w-4 flex-none text-muted-foreground"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
           {path === '' ? (
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9-9 9 9M5 10v10h14V10" />
           ) : (
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+            />
           )}
         </svg>
         <span className="truncate">{label}</span>
@@ -67,8 +81,14 @@ export function MoveMachineDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="flex max-h-[80vh] w-full max-w-sm flex-col rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[80vh] w-full max-w-sm flex-col rounded-lg border border-border bg-card p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 className="mb-1 text-lg font-semibold">Move “{machineName}”</h3>
         <p className="mb-3 text-xs text-muted-foreground">Pick a destination folder.</p>
         <div className="-mx-1 space-y-0.5 overflow-y-auto">
@@ -108,8 +128,18 @@ export function MoveMachineDialog({
               disabled={busy}
               className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted disabled:opacity-50"
             >
-              <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+              <svg
+                className="h-4 w-4 flex-none"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+                />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v4M10 13h4" />
               </svg>
               New folder…
@@ -118,7 +148,10 @@ export function MoveMachineDialog({
         </div>
 
         <div className="mt-3 flex justify-end">
-          <button onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+          <button
+            onClick={onClose}
+            className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+          >
             Cancel
           </button>
         </div>

@@ -7,7 +7,14 @@
  * paint, and only the menu contents are React state.
  */
 
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 
 export interface NavAction {
   id: string;
@@ -22,7 +29,13 @@ export interface NavAction {
   active?: boolean;
 }
 
-export function OverflowNav({ actions, appbarRef }: { actions: NavAction[]; appbarRef: RefObject<HTMLElement | null> }) {
+export function OverflowNav({
+  actions,
+  appbarRef,
+}: {
+  actions: NavAction[];
+  appbarRef: RefObject<HTMLElement | null>;
+}) {
   const itemRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
   const ovBtnRef = useRef<HTMLButtonElement>(null);
   const [menuIds, setMenuIds] = useState<string[]>([]);
@@ -43,7 +56,11 @@ export function OverflowNav({ actions, appbarRef }: { actions: NavAction[]; appb
       if (ovBtnRef.current) ovBtnRef.current.style.display = '';
       collapsed.unshift(actions[i].id);
     }
-    setMenuIds((prev) => (prev.length === collapsed.length && prev.every((id, i) => id === collapsed[i]) ? prev : collapsed));
+    setMenuIds((prev) =>
+      prev.length === collapsed.length && prev.every((id, i) => id === collapsed[i])
+        ? prev
+        : collapsed,
+    );
     if (collapsed.length === 0 && ovBtnRef.current) ovBtnRef.current.style.display = 'none';
   }, [actions, appbarRef]);
 
@@ -87,7 +104,13 @@ export function OverflowNav({ actions, appbarRef }: { actions: NavAction[]; appb
           title="More"
           style={{ display: 'none' }}
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
             <circle cx="5" cy="12" r="1.6" />
             <circle cx="12" cy="12" r="1.6" />
             <circle cx="19" cy="12" r="1.6" />

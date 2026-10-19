@@ -11,7 +11,11 @@ import { useEffect } from 'react';
 import { matchesBinding, displayBinding } from './binding';
 import { useShortcuts, IS_MAC } from './store';
 
-export function useShortcut(commandId: string, handler: (event: KeyboardEvent) => void, enabled = true) {
+export function useShortcut(
+  commandId: string,
+  handler: (event: KeyboardEvent) => void,
+  enabled = true,
+) {
   const binding = useShortcuts((s) => s.bindings[commandId]);
 
   useEffect(() => {

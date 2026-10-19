@@ -25,7 +25,11 @@ export type { TerminalSession } from '../types/pane';
 interface TerminalManagerProps {
   tabGroups: Tab[];
   activeTabId: string | null;
-  onSplitPane: (paneId: string, direction: 'horizontal' | 'vertical', target?: SplitTarget) => Promise<void>;
+  onSplitPane: (
+    paneId: string,
+    direction: 'horizontal' | 'vertical',
+    target?: SplitTarget,
+  ) => Promise<void>;
   onClosePane: (paneId: string) => void;
   onFocusPane: (paneId: string) => void;
   onSplitRatioChange: (splitId: string, newRatio: number) => void;
@@ -35,7 +39,11 @@ interface TerminalManagerProps {
   onRenameTab?: (tabId: string, newName: string) => void;
   onMergeTab?: (sourceTabId: string, targetTabId: string) => void;
   onCloseTab?: (tabId: string) => void;
-  onReorganizePane?: (sourcePaneId: string, targetPaneId: string, position: 'top' | 'bottom' | 'left' | 'right') => void;
+  onReorganizePane?: (
+    sourcePaneId: string,
+    targetPaneId: string,
+    position: 'top' | 'bottom' | 'left' | 'right',
+  ) => void;
   onNewLocalTerminal?: (shell?: string) => void;
   /**
    * What "+" offers for one terminal, or nothing — then it just opens one. Empty when
@@ -124,11 +132,11 @@ export function TerminalManager({
   // Check which shells are installed
   const checkInstalledShells = async () => {
     if (!probeShells) {
-      setInstalledShells(shells.map(s => s.path));
+      setInstalledShells(shells.map((s) => s.path));
       return;
     }
     try {
-      const allShellPaths = shells.map(s => s.path);
+      const allShellPaths = shells.map((s) => s.path);
       const installed = await Backend.Terminal.getInstalledShells(allShellPaths);
       setInstalledShells(installed);
     } catch (error) {
@@ -136,16 +144,16 @@ export function TerminalManager({
         severity: ErrorSeverity.WARNING,
         category: ErrorCategory.TERMINAL,
         originalError: error,
-        context: { component: 'TerminalManager', shellPaths: shells.map(s => s.path) },
+        context: { component: 'TerminalManager', shellPaths: shells.map((s) => s.path) },
         silent: true, // Don't notify user, fallback gracefully
       });
       // If check fails, assume all shells are installed (backward compatibility)
-      setInstalledShells(shells.map(s => s.path));
+      setInstalledShells(shells.map((s) => s.path));
     }
   };
 
   // Get active tab's pane tree
-  const activeTab = tabGroups.find(tab => tab.id === activeTabId);
+  const activeTab = tabGroups.find((tab) => tab.id === activeTabId);
   const paneTree = activeTab?.paneTree || null;
 
   // Get focused pane from active tab
@@ -363,7 +371,12 @@ export function TerminalManager({
     return (
       <div className="flex flex-1 w-full flex-col items-center justify-center bg-background text-muted-foreground">
         <svg className="mb-4 h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={1.5}
+            d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+          />
         </svg>
         <p className="text-lg">No active terminal sessions</p>
         <p className="mt-2 text-sm">Double-click a connection to open a terminal</p>
@@ -395,8 +408,10 @@ export function TerminalManager({
         {tabGroups.map((tab) => {
           // Get all sessions in this tab for Quick SSH detection
           const tabSessions = getAllSessions(tab.paneTree);
-          const hasQuickSSH = tabSessions.some(s => quickSSHSessions.includes(s.id));
-          const quickSSHSessionId = hasQuickSSH ? tabSessions.find(s => quickSSHSessions.includes(s.id))?.id : null;
+          const hasQuickSSH = tabSessions.some((s) => quickSSHSessions.includes(s.id));
+          const quickSSHSessionId = hasQuickSSH
+            ? tabSessions.find((s) => quickSSHSessions.includes(s.id))?.id
+            : null;
 
           return (
             <div
@@ -430,8 +445,18 @@ export function TerminalManager({
                 }`}
                 data-testid="tab-select"
               >
-                <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 17l6-5-6-5M12 19h8" />
+                <svg
+                  className="h-3.5 w-3.5 flex-shrink-0"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 17l6-5-6-5M12 19h8"
+                  />
                 </svg>
 
                 {/* Editable tab name */}
@@ -454,7 +479,9 @@ export function TerminalManager({
                   />
                 ) : (
                   <>
-                    <span className="max-w-[150px] truncate" title={tab.name}>{tab.name}</span>
+                    <span className="max-w-[150px] truncate" title={tab.name}>
+                      {tab.name}
+                    </span>
                     {/* Edit button - appears on hover */}
                     {onRenameTab && (
                       <button
@@ -465,8 +492,18 @@ export function TerminalManager({
                         className="rounded p-0.5 opacity-0 transition-opacity hover:bg-background/50 group-hover:opacity-100"
                         title="Rename tab (double-click also works)"
                       >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        <svg
+                          className="h-3 w-3"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                          />
                         </svg>
                       </button>
                     )}
@@ -489,8 +526,18 @@ export function TerminalManager({
                   className="rounded p-0.5 opacity-0 transition-opacity hover:bg-background/50 group-hover:opacity-100"
                   title="Save connection"
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"
+                    />
                   </svg>
                 </button>
               )}
@@ -503,10 +550,24 @@ export function TerminalManager({
                     handleCloseTabClick(tab);
                   }}
                   className="rounded p-0.5 opacity-0 transition-opacity hover:bg-red-500/20 hover:text-red-500 group-hover:opacity-100"
-                  title={tabSessions.length > 1 ? `Close tab (${tabSessions.length} terminals)` : 'Close tab'}
+                  title={
+                    tabSessions.length > 1
+                      ? `Close tab (${tabSessions.length} terminals)`
+                      : 'Close tab'
+                  }
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               )}
@@ -548,66 +609,88 @@ export function TerminalManager({
               data-testid="tab-new-terminal"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
               </svg>
               {hasMenu && (
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" data-testid="tab-new-terminal-chevron">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <svg
+                  className="h-3 w-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  data-testid="tab-new-terminal-chevron"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
                 </svg>
               )}
             </button>
 
-            {hasMenu && showShellDropdown && createPortal(
-              <>
-                <div
-                  className="fixed inset-0 z-[100]"
-                  onClick={() => setShowShellDropdown(false)}
-                />
+            {hasMenu &&
+              showShellDropdown &&
+              createPortal(
+                <>
+                  <div
+                    className="fixed inset-0 z-[100]"
+                    onClick={() => setShowShellDropdown(false)}
+                  />
 
-                <div
-                  className="fixed z-[110] min-w-[280px] rounded-md border border-border bg-card shadow-xl"
-                  style={{
-                    top: `${dropdownPosition.top}px`,
-                    left: `${dropdownPosition.left}px`,
-                  }}
-                  data-testid="tab-shell-menu"
-                >
-                  {shells.map((shell, index) => {
-                    const isInstalled = installedShells.includes(shell.path);
-                    return (
-                      <button
-                        key={shell.path}
-                        onClick={() => {
-                          if (isInstalled) {
-                            onNewLocalTerminal(shell.path);
-                            setShowShellDropdown(false);
-                          }
-                        }}
-                        disabled={!isInstalled}
-                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
-                          index === 0 ? 'rounded-t-md' : ''
-                        } ${index === shells.length - 1 ? 'rounded-b-md' : ''} ${
-                          isInstalled ? 'hover:bg-muted cursor-pointer' : 'opacity-50 cursor-not-allowed'
-                        }`}
-                        title={!isInstalled ? `${shell.name} is not installed` : ''}
-                      >
-                        <span>{shell.icon}</span>
-                        <div className="flex-1 flex items-center gap-2">
-                          <span className="font-medium">{shell.name}</span>
-                          {!isInstalled && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 border border-red-500/30">
-                              Not installed
-                            </span>
-                          )}
-                        </div>
-                        <span className="ml-auto text-xs text-muted-foreground">{shell.path}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </>,
-              document.body
-            )}
+                  <div
+                    className="fixed z-[110] min-w-[280px] rounded-md border border-border bg-card shadow-xl"
+                    style={{
+                      top: `${dropdownPosition.top}px`,
+                      left: `${dropdownPosition.left}px`,
+                    }}
+                    data-testid="tab-shell-menu"
+                  >
+                    {shells.map((shell, index) => {
+                      const isInstalled = installedShells.includes(shell.path);
+                      return (
+                        <button
+                          key={shell.path}
+                          onClick={() => {
+                            if (isInstalled) {
+                              onNewLocalTerminal(shell.path);
+                              setShowShellDropdown(false);
+                            }
+                          }}
+                          disabled={!isInstalled}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                            index === 0 ? 'rounded-t-md' : ''
+                          } ${index === shells.length - 1 ? 'rounded-b-md' : ''} ${
+                            isInstalled
+                              ? 'hover:bg-muted cursor-pointer'
+                              : 'opacity-50 cursor-not-allowed'
+                          }`}
+                          title={!isInstalled ? `${shell.name} is not installed` : ''}
+                        >
+                          <span>{shell.icon}</span>
+                          <div className="flex-1 flex items-center gap-2">
+                            <span className="font-medium">{shell.name}</span>
+                            {!isInstalled && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 border border-red-500/30">
+                                Not installed
+                              </span>
+                            )}
+                          </div>
+                          <span className="ml-auto text-xs text-muted-foreground">
+                            {shell.path}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>,
+                document.body,
+              )}
           </div>
         )}
       </div>
@@ -640,10 +723,22 @@ export function TerminalManager({
           <div className="absolute inset-0 pointer-events-none flex items-center justify-center bg-primary/5 backdrop-blur-[2px]">
             <div className="bg-card border-2 border-primary border-dashed rounded-lg px-6 py-4 shadow-2xl">
               <div className="flex items-center gap-3">
-                <svg className="h-6 w-6 text-primary animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                <svg
+                  className="h-6 w-6 text-primary animate-pulse"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
                 </svg>
-                <span className="text-base font-medium text-primary">Drop to merge into this tab</span>
+                <span className="text-base font-medium text-primary">
+                  Drop to merge into this tab
+                </span>
               </div>
             </div>
           </div>
@@ -651,54 +746,70 @@ export function TerminalManager({
       </div>
 
       {/* Close tab confirmation modal */}
-      {showCloseConfirm && tabToClose && createPortal(
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200]"
-            onClick={handleCancelCloseTab}
-          />
+      {showCloseConfirm &&
+        tabToClose &&
+        createPortal(
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[200]"
+              onClick={handleCancelCloseTab}
+            />
 
-          {/* Modal */}
-          <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[210] w-full max-w-md">
-            <div className="bg-card border border-border rounded-lg shadow-2xl p-6">
-              {/* Icon and title */}
-              <div className="flex items-start gap-4 mb-4">
-                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
-                  <svg className="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
+            {/* Modal */}
+            <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[210] w-full max-w-md">
+              <div className="bg-card border border-border rounded-lg shadow-2xl p-6">
+                {/* Icon and title */}
+                <div className="flex items-start gap-4 mb-4">
+                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
+                    <svg
+                      className="h-6 w-6 text-red-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                      />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-foreground mb-2">
+                      Close Multiple Terminals?
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      You are about to close{' '}
+                      <span className="font-semibold text-foreground">
+                        {tabToClose.terminalCount} terminals
+                      </span>
+                      . All active connections will be terminated. Are you sure?
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-foreground mb-2">
-                    Close Multiple Terminals?
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    You are about to close <span className="font-semibold text-foreground">{tabToClose.terminalCount} terminals</span>. All active connections will be terminated. Are you sure?
-                  </p>
-                </div>
-              </div>
 
-              {/* Actions */}
-              <div className="flex items-center justify-end gap-3">
-                <button
-                  onClick={handleCancelCloseTab}
-                  className="px-4 py-2 rounded-md text-sm font-medium text-foreground bg-muted hover:bg-muted/80 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmCloseTab}
-                  className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-colors"
-                >
-                  Close All
-                </button>
+                {/* Actions */}
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    onClick={handleCancelCloseTab}
+                    className="px-4 py-2 rounded-md text-sm font-medium text-foreground bg-muted hover:bg-muted/80 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmCloseTab}
+                    className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-colors"
+                  >
+                    Close All
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </>,
-        document.body
-      )}
+          </>,
+          document.body,
+        )}
     </div>
   );
 }

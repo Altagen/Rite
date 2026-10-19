@@ -97,7 +97,10 @@ test('a machine opens with a key named on disk', async ({ page, request }) => {
   await expect(page.locator('.xterm-rows')).toContainText(`${SSH.username}@`, { timeout: 25_000 });
 });
 
-test('a passphrase-protected key opens with the passphrase that was stored', async ({ page, request }) => {
+test('a passphrase-protected key opens with the passphrase that was stored', async ({
+  page,
+  request,
+}) => {
   // This test is about the key, not about trusting the host: the suite shares one vault,
   // so whether 127.0.0.1:2222 is already in known_hosts depends on what ran before.
   await request.put('/api/settings/host_key_verification_mode', { data: { value: 'accept' } });

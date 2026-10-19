@@ -11,12 +11,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
  * Requires the SSH harness: `sh e2e/harness-up.sh` (127.0.0.1:2222, riteuser/ritepass123).
  */
 
-import {
-  createCollection,
-  createMachine,
-  SSH,
-  type MachineOpts,
-} from './support/localVault';
+import { createCollection, createMachine, SSH, type MachineOpts } from './support/localVault';
 
 /** A collection for wave-1 machines; created once, reused by every test here. */
 async function machine(api: APIRequestContext, o: MachineOpts): Promise<string> {
@@ -165,7 +160,10 @@ test('the dashboard card starts and stops a forward inline', async ({ page, requ
   await page.getByText('e2e-fwd-card').click();
   await expect(page.getByText('Port forwarding')).toBeVisible({ timeout: 20_000 });
 
-  const card = page.locator('div').filter({ hasText: /^Port forwarding/ }).first();
+  const card = page
+    .locator('div')
+    .filter({ hasText: /^Port forwarding/ })
+    .first();
   await expect(card.getByText('127.0.0.1:15987 → 127.0.0.1:2222')).toBeVisible();
 
   // Start it from the card, without opening Manage…
@@ -241,7 +239,10 @@ test('the machine dashboard probes the host and degrades gracefully', async ({ p
  * few who want `top` on the right. Everything configurable lives behind the chevron
  * beside it, and a preset that only exists in the author's head is not configurable.
  */
-test('a split opens a plain terminal, and a preset opens a named one', async ({ page, request }) => {
+test('a split opens a plain terminal, and a preset opens a named one', async ({
+  page,
+  request,
+}) => {
   await machine(request, { name: 'e2e-splits' });
 
   await page.goto('/');
@@ -253,7 +254,10 @@ test('a split opens a plain terminal, and a preset opens a named one', async ({ 
   await expect(page.locator('.xterm-screen')).toHaveCount(1);
 
   // The plain button splits, with no menu in the way.
-  await page.getByTitle(/^Split horizontal/).first().click();
+  await page
+    .getByTitle(/^Split horizontal/)
+    .first()
+    .click();
   await expect(page.locator('.xterm-screen')).toHaveCount(2, { timeout: 20_000 });
   await expect(page.getByRole('menu')).toHaveCount(0);
 
@@ -293,7 +297,10 @@ test('a split opens a plain terminal, and a preset opens a named one', async ({ 
  * and the screen is the proof: a command is listed, remapped, and fires on the new
  * chord rather than the old one.
  */
-test('a shortcut can be remapped, and it is the new chord that fires', async ({ page, request }) => {
+test('a shortcut can be remapped, and it is the new chord that fires', async ({
+  page,
+  request,
+}) => {
   await machine(request, { name: 'e2e-keys' });
 
   await page.goto('/');
@@ -311,7 +318,9 @@ test('a shortcut can be remapped, and it is the new chord that fires', async ({ 
   await page.getByTestId('settings-nav-keyboard').click();
   const row = page.getByTestId('shortcut-row-pane.splitHorizontal');
   await expect(row).toBeVisible();
-  await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText('Ctrl+Shift+H');
+  await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText(
+    'Ctrl+Shift+H',
+  );
 
   // Remapped by pressing the keys, not by typing their name.
   await page.getByTestId('shortcut-binding-pane.splitHorizontal').click();
@@ -460,7 +469,10 @@ test('a preset is editable, and a layout opens from the tab strip', async ({ pag
   // selector that matches three of them would click whichever came first.
   const rows = dialog.locator('li');
   const before = await rows.count();
-  await rows.filter({ hasText: 'typo-name' }).getByTestId(/^edit-preset-/).click();
+  await rows
+    .filter({ hasText: 'typo-name' })
+    .getByTestId(/^edit-preset-/)
+    .click();
   await expect(dialog.getByTestId('preset-name')).toHaveValue('typo-name');
   await expect(dialog.getByTestId('preset-command')).toHaveValue('echo WRONG');
   await dialog.getByTestId('preset-name').fill('fixed-name');
@@ -505,7 +517,10 @@ test('a layout opens from its file, and a missing machine falls back in place', 
 
   // A layout opens its own tab, so it does not need one — but a person reaching for
   // a layout usually has something open, and what is open must survive it.
-  await page.getByRole('button', { name: /Terminal/ }).first().click();
+  await page
+    .getByRole('button', { name: /Terminal/ })
+    .first()
+    .click();
   await expect(page.locator('.xterm-screen')).toHaveCount(1, { timeout: 20_000 });
 
   // Nothing declared, so the tab strip offers no Layouts button: an empty dropdown
@@ -521,21 +536,25 @@ test('a layout opens from its file, and a missing machine falls back in place', 
 
   // A file that does not parse loads nothing and names the line, and says so where
   // the file is, not in a toast that is gone before it is read.
-  await editor.getByTestId('layouts-file').fill('[[layout]]\nname = "Broken"\n\n  [[layout.pane]]\n  machine = e2e-layout-host\n');
+  await editor
+    .getByTestId('layouts-file')
+    .fill('[[layout]]\nname = "Broken"\n\n  [[layout.pane]]\n  machine = e2e-layout-host\n');
   await editor.getByTestId('layouts-save').click();
   await expect(editor.getByTestId('layouts-error')).toContainText('Line 5');
 
   // Three panes: one plain, one on a machine that exists, one on a machine that does
   // not — arranged by the file, not by an alternating default: the third is cut out
   // of the FIRST pane, which only `of` can say.
-  await editor.getByTestId('layouts-file').fill(
-    '[[layout]]\nname = "e2e-layout"\n\n' +
-      '  [[layout.pane]]\n  command = "echo RITE_PANE_ONE"\n  name = "first"\n\n' +
-      '  [[layout.pane]]\n  machine = "e2e-layout-host"\n  command = "echo RITE_PANE_TWO"\n' +
-      '  split = "right"\n  size = "40%"\n\n' +
-      '  [[layout.pane]]\n  machine = "nope-01"\n  command = "echo RITE_PANE_THREE"\n' +
-      '  split = "down"\n  of = "first"\n',
-  );
+  await editor
+    .getByTestId('layouts-file')
+    .fill(
+      '[[layout]]\nname = "e2e-layout"\n\n' +
+        '  [[layout.pane]]\n  command = "echo RITE_PANE_ONE"\n  name = "first"\n\n' +
+        '  [[layout.pane]]\n  machine = "e2e-layout-host"\n  command = "echo RITE_PANE_TWO"\n' +
+        '  split = "right"\n  size = "40%"\n\n' +
+        '  [[layout.pane]]\n  machine = "nope-01"\n  command = "echo RITE_PANE_THREE"\n' +
+        '  split = "down"\n  of = "first"\n',
+    );
   await editor.getByTestId('layouts-save').click();
   await expect(editor.getByTestId('layouts-error')).toHaveCount(0);
   await expect(editor.getByTestId('layouts-ok')).toContainText('1 layout');
@@ -552,7 +571,10 @@ test('a layout opens from its file, and a missing machine falls back in place', 
   await page.getByTestId('layouts-button').click();
   // Exact: the row underneath lists the machines, one of which is `e2e-layout-host`,
   // so a substring match finds the layout and its own subtitle.
-  await page.getByRole('menu', { name: /Layouts/ }).getByText('e2e-layout', { exact: true }).click();
+  await page
+    .getByRole('menu', { name: /Layouts/ })
+    .getByText('e2e-layout', { exact: true })
+    .click();
   // A layout opens its OWN tab, named after itself, holding exactly the panes the
   // file declares — three, not three plus whatever was already on screen. That is
   // what lets a file describe an arrangement exactly (ADR 0023).
@@ -630,7 +652,10 @@ test('a layout runs a pre-connect hook once, however many panes name the machine
   await page.reload();
 
   await page.getByTestId('layouts-button').click();
-  await page.getByRole('menu', { name: /Layouts/ }).getByText('e2e-hooked', { exact: true }).click();
+  await page
+    .getByRole('menu', { name: /Layouts/ })
+    .getByText('e2e-hooked', { exact: true })
+    .click();
 
   // One modal, and it is the hook's first run. The wait is long on purpose: this asserts
   // that the hook's output ARRIVES, not how fast — a PTY opening and painting into an
@@ -788,8 +813,12 @@ test('a toolbar button can be hidden, and stays hidden', async ({ page }) => {
  * places on purpose (`utils/shells.ts` says why — they drifted once already), and the
  * one in Settings ▸ Terminals has to keep working precisely when the toolbar's is off.
  */
-test('hiding the toolbar shell picker leaves the setting in Settings', async ({ page, request }) => {
-  const before = ((await (await request.get('/api/settings')).json()) as Record<string, string>).default_shell;
+test('hiding the toolbar shell picker leaves the setting in Settings', async ({
+  page,
+  request,
+}) => {
+  const before = ((await (await request.get('/api/settings')).json()) as Record<string, string>)
+    .default_shell;
   await page.goto('/');
   await expect(page.getByTitle('Select default shell')).toBeVisible();
 
@@ -819,7 +848,9 @@ test('hiding the toolbar shell picker leaves the setting in Settings', async ({ 
   // The button is gone, and the setting it used to edit took the change anyway.
   await expect(page.getByTitle('Select default shell')).toHaveCount(0);
   const stored = (await (await request.get('/api/settings')).json()) as Record<string, string>;
-  expect(stored.default_shell, 'the shell chosen in Settings is the one that is stored').toBe(chosen);
+  expect(stored.default_shell, 'the shell chosen in Settings is the one that is stored').toBe(
+    chosen,
+  );
 
   // Put the toolbar back, and the shell as it was, for the specs that follow.
   await page.getByTitle('Settings').click();
@@ -839,14 +870,20 @@ test('hiding the toolbar shell picker leaves the setting in Settings', async ({ 
  * this one gets its own, and switching it off leaves "+" doing the obvious thing
  * rather than disappearing: the button is how you get a terminal.
  */
-test('hiding the "+" shell menu leaves "+" opening the default shell', async ({ page, request }) => {
+test('hiding the "+" shell menu leaves "+" opening the default shell', async ({
+  page,
+  request,
+}) => {
   // Pin a default that is NOT the client's fallback (`/usr/bin/bash`, settingsStore),
   // so "+ opened the default" cannot be a terminal that opened on the fallback.
   const candidates = ['/usr/bin/fish', '/usr/bin/zsh', '/usr/bin/sh', '/usr/bin/bash'];
-  const installed = (await (await request.post('/api/shells', { data: { shells: candidates } })).json()) as string[];
+  const installed = (await (
+    await request.post('/api/shells', { data: { shells: candidates } })
+  ).json()) as string[];
   const pinned = installed.find((p) => p !== '/usr/bin/bash');
   expect(pinned, 'this machine has a shell other than the fallback').toBeTruthy();
-  const before = ((await (await request.get('/api/settings')).json()) as Record<string, string>).default_shell;
+  const before = ((await (await request.get('/api/settings')).json()) as Record<string, string>)
+    .default_shell;
   await request.put('/api/settings/default_shell', { data: { value: pinned } });
 
   await page.goto('/');
@@ -864,12 +901,17 @@ test('hiding the "+" shell menu leaves "+" opening the default shell', async ({ 
   await expect(page.getByTestId('tab-shell-menu')).toBeVisible();
   await page.mouse.click(5, 5);
   await expect(page.getByTestId('tab-shell-menu')).toHaveCount(0);
-  expect(await strip.getByRole('button').count(), 'opening the menu opened no terminal').toBe(tabsBefore);
+  expect(await strip.getByRole('button').count(), 'opening the menu opened no terminal').toBe(
+    tabsBefore,
+  );
 
   await page.getByTitle('Settings').click();
   await page.getByTestId('settings-nav-toolbar').click();
   await page.getByTestId('toolbar-newTerminalMenu').click();
-  await expect(page.getByTestId('toolbar-newTerminalMenu')).toHaveAttribute('aria-checked', 'false');
+  await expect(page.getByTestId('toolbar-newTerminalMenu')).toHaveAttribute(
+    'aria-checked',
+    'false',
+  );
   await page.getByRole('button', { name: 'Close settings' }).click();
 
   // Without it: no chevron, and "+" is the action. The shell the server was asked for
@@ -878,11 +920,16 @@ test('hiding the "+" shell menu leaves "+" opening the default shell', async ({ 
   await expect(page.getByTestId('tab-new-terminal-chevron')).toHaveCount(0);
   await expect(plus).toBeVisible();
   const [created] = await Promise.all([
-    page.waitForResponse((r) => r.url().endsWith('/api/terminal/local') && r.request().method() === 'POST'),
+    page.waitForResponse(
+      (r) => r.url().endsWith('/api/terminal/local') && r.request().method() === 'POST',
+    ),
     plus.click(),
   ]);
   await expect(page.getByTestId('tab-shell-menu')).toHaveCount(0);
-  expect(((await created.json()) as { shell: string }).shell, 'the terminal ran the pinned default').toBe(pinned);
+  expect(
+    ((await created.json()) as { shell: string }).shell,
+    'the terminal ran the pinned default',
+  ).toBe(pinned);
   await expect(strip.getByRole('button').nth(tabsBefore)).toBeVisible({ timeout: 15_000 });
 
   // Put the menu and the shell back for the specs that follow.
@@ -902,7 +949,9 @@ test('hiding the "+" shell menu leaves "+" opening the default shell', async ({ 
  * to drag, says the same thing. One of those is a selector and one is a handle, and
  * the mock has had `cursor:pointer` on `.mtab` all along.
  */
-test('a terminal tab reads as a selector, and only the pane grip reads as a handle', async ({ page }) => {
+test('a terminal tab reads as a selector, and only the pane grip reads as a handle', async ({
+  page,
+}) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Terminal', exact: true }).click();
 
@@ -928,7 +977,10 @@ test('a terminal tab reads as a selector, and only the pane grip reads as a hand
  * two cannot disagree about which they are: this asserts the page shows what
  * `/api/capabilities` says, not that it shows something version-shaped.
  */
-test('Settings says which build is running, and agrees with the server', async ({ page, request }) => {
+test('Settings says which build is running, and agrees with the server', async ({
+  page,
+  request,
+}) => {
   const reported = await (await request.get('/api/capabilities')).json();
 
   await page.goto('/');
@@ -941,8 +993,12 @@ test('Settings says which build is running, and agrees with the server', async (
   // and it is also why these are asserted against the server's answer rather than against
   // values (they differ between a checkout and a release image by design).
   await expect(page.getByTestId('system-version')).toHaveText(reported.version);
-  await expect(page.getByTestId('system-api')).toHaveText(`v${reported.apiVersion} · min ${reported.minClient}`);
-  await expect(page.getByTestId('system-build')).toHaveText(`${reported.commit} · ${reported.builtAt}`);
+  await expect(page.getByTestId('system-api')).toHaveText(
+    `v${reported.apiVersion} · min ${reported.minClient}`,
+  );
+  await expect(page.getByTestId('system-build')).toHaveText(
+    `${reported.commit} · ${reported.builtAt}`,
+  );
   // Never blank: an empty row reads like a bug in the page rather than a build that does
   // not know its commit, which is what `unknown` is for.
   await expect(page.getByTestId('system-build')).not.toHaveText('·');
@@ -1020,10 +1076,12 @@ test('Settings leads with the layout cards, and the startup switch writes the fi
 
   await page.getByTestId('open-layouts-settings').click();
   const editor = page.getByRole('dialog', { name: 'Layouts' });
-  await editor.getByTestId('layouts-file').fill(
-    '[[layout]]\nname = "Alpha"\n\n  [[layout.pane]]\n  command = "echo A"\n\n' +
-      '[[layout]]\nname = "Beta"\n\n  [[layout.pane]]\n  command = "echo B"\n',
-  );
+  await editor
+    .getByTestId('layouts-file')
+    .fill(
+      '[[layout]]\nname = "Alpha"\n\n  [[layout.pane]]\n  command = "echo A"\n\n' +
+        '[[layout]]\nname = "Beta"\n\n  [[layout.pane]]\n  command = "echo B"\n',
+    );
   await editor.getByTestId('layouts-save').click();
   await expect(editor.getByTestId('layouts-ok')).toContainText('2 layout');
   await editor.getByRole('button', { name: 'Close', exact: true }).click();
@@ -1096,7 +1154,9 @@ test('the layouts menu fits on screen when its button is mid-page', async ({ pag
   await expect(button).toBeVisible({ timeout: 20_000 });
   const anchor = await button.boundingBox();
   expect(anchor, 'the button should be laid out').toBeTruthy();
-  expect(anchor!.y, 'this test is only meaningful for a button away from the top').toBeGreaterThan(200);
+  expect(anchor!.y, 'this test is only meaningful for a button away from the top').toBeGreaterThan(
+    200,
+  );
 
   await button.click();
   const menu = page.getByTestId('layouts-menu');

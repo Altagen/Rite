@@ -11,11 +11,24 @@
 import { useState } from 'react';
 import { Backend } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
-import { generateCollectionKeys, sealCollectionKey, encryptCollectionField } from '../utils/collectionCrypto';
+import {
+  generateCollectionKeys,
+  sealCollectionKey,
+  encryptCollectionField,
+} from '../utils/collectionCrypto';
 import { escrowForCreate } from '../utils/adminGroup';
 import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
 
-const COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#94a3b8'];
+const COLORS = [
+  '#6366f1',
+  '#0ea5e9',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#a855f7',
+  '#14b8a6',
+  '#94a3b8',
+];
 
 export function CollectionEditDialog({
   collectionId,
@@ -60,7 +73,11 @@ export function CollectionEditDialog({
       } else if (editing) {
         // Rename: re-encrypt the header (metaKey), preserving the collection's folders.
         if (!publicKey || !privateKey) throw new Error('session keys unavailable');
-        const { metaKey, header } = await readCollectionHeader(collectionId!, publicKey, privateKey);
+        const { metaKey, header } = await readCollectionHeader(
+          collectionId!,
+          publicKey,
+          privateKey,
+        );
         await writeCollectionHeader(collectionId!, metaKey, {
           ...header,
           name: name.trim(),
@@ -72,7 +89,11 @@ export function CollectionEditDialog({
         // encrypted with metaKey; items will use the separate itemsKey (ADR 0016).
         if (!publicKey) throw new Error('session keys unavailable');
         const { metaKey, itemsKey } = generateCollectionKeys();
-        const nameEnc = await encryptCollectionField(metaKey, { name: name.trim(), color, hc: hcOn ? null : false });
+        const nameEnc = await encryptCollectionField(metaKey, {
+          name: name.trim(),
+          color,
+          hc: hcOn ? null : false,
+        });
         await Backend.Collections.create(
           nameEnc,
           await sealCollectionKey(publicKey, metaKey),
@@ -90,13 +111,18 @@ export function CollectionEditDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
       <form
         onSubmit={save}
         className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-1 text-lg font-semibold">{editing ? 'Rename collection' : 'New collection'}</h3>
+        <h3 className="mb-1 text-lg font-semibold">
+          {editing ? 'Rename collection' : 'New collection'}
+        </h3>
         {/* Say why there is nobody to add here — the mock's local dialog does the same. */}
         <p className="mb-3 text-xs text-muted-foreground">
           {onPersist
@@ -105,7 +131,9 @@ export function CollectionEditDialog({
         </p>
 
         {error && (
-          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">{error}</div>
+          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">
+            {error}
+          </div>
         )}
 
         <label className="mb-1 block text-sm font-medium">Name</label>
@@ -143,7 +171,9 @@ export function CollectionEditDialog({
             disabled={busy}
           />
           <span>
-            <span className="block text-sm font-medium">Active health-check for this collection</span>
+            <span className="block text-sm font-medium">
+              Active health-check for this collection
+            </span>
             <span className="block text-xs text-muted-foreground">
               {onPersist
                 ? "When off, this collection's machines are never actively probed."
@@ -154,7 +184,11 @@ export function CollectionEditDialog({
         </label>
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+          >
             Cancel
           </button>
           <button

@@ -39,7 +39,11 @@ function RoleBadge({ role }: { role: EnrollmentToken['role'] }) {
         ? 'bg-amber-500/15 text-amber-600'
         : 'bg-secondary text-muted-foreground';
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cls}`}>{role}</span>
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cls}`}
+    >
+      {role}
+    </span>
   );
 }
 
@@ -108,22 +112,29 @@ export function InvitationsPanel() {
 
       <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3.5 text-[13px] text-foreground/80">
         <span>
-          A token grants <b>membership + role immediately</b> on redeem; access to a collection&apos;s encrypted machines
-          still follows the usual <b>member grant</b>. Tokens are <b>single-use</b>, <b>hashed at rest</b>, and the full
-          value is shown <b>once</b>.
+          A token grants <b>membership + role immediately</b> on redeem; access to a
+          collection&apos;s encrypted machines still follows the usual <b>member grant</b>. Tokens
+          are <b>single-use</b>, <b>hashed at rest</b>, and the full value is shown <b>once</b>.
         </span>
       </div>
 
-      {err && <div className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">{err}</div>}
+      {err && (
+        <div className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+          {err}
+        </div>
+      )}
 
       {reveal && (
         <div className="mb-4 rounded-2xl border border-dashed border-primary/50 bg-card p-4">
           <div className="mb-1 text-sm font-semibold">Copy this token now</div>
           <p className="mb-3 text-xs text-muted-foreground">
-            The server keeps only a hash — you won&apos;t be able to see it again. Share it out-of-band.
+            The server keeps only a hash — you won&apos;t be able to see it again. Share it
+            out-of-band.
           </p>
           <div className="flex items-center gap-2.5">
-            <code className="min-w-0 flex-1 break-all rounded-md bg-input px-3 py-2 font-mono text-sm">{reveal.token}</code>
+            <code className="min-w-0 flex-1 break-all rounded-md bg-input px-3 py-2 font-mono text-sm">
+              {reveal.token}
+            </code>
             <button
               onClick={() => copy(reveal.token)}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-secondary"
@@ -164,7 +175,9 @@ export function InvitationsPanel() {
                   st === 'active' ? '' : 'opacity-60'
                 }`}
               >
-                <code className="truncate rounded bg-input px-2 py-0.5 font-mono text-[13px]">{t.prefix}…</code>
+                <code className="truncate rounded bg-input px-2 py-0.5 font-mono text-[13px]">
+                  {t.prefix}…
+                </code>
                 <RoleBadge role={t.role} />
                 <span className="truncate text-[13px]">
                   {t.teams.length === 0 ? (
@@ -173,7 +186,8 @@ export function InvitationsPanel() {
                     t.teams.map((g, i) => (
                       <span key={g.teamId}>
                         {i > 0 && ', '}
-                        {teamName(g.teamId)} <span className="text-muted-foreground">· {g.teamRole}</span>
+                        {teamName(g.teamId)}{' '}
+                        <span className="text-muted-foreground">· {g.teamRole}</span>
                       </span>
                     ))
                   )}
@@ -268,10 +282,15 @@ function GenerateDialog({
       >
         <h3 className="text-lg font-semibold">Generate an invitation token</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          The holder self-registers with this recipe already applied. You&apos;ll see the token once.
+          The holder self-registers with this recipe already applied. You&apos;ll see the token
+          once.
         </p>
 
-        {err && <div className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">{err}</div>}
+        {err && (
+          <div className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+            {err}
+          </div>
+        )}
 
         <div className="mt-4 space-y-4">
           <div className="space-y-1.5">
@@ -312,7 +331,12 @@ function GenerateDialog({
                       {on && (
                         <select
                           value={picked[t.id]}
-                          onChange={(e) => setPicked((p) => ({ ...p, [t.id]: e.target.value as 'admin' | 'member' }))}
+                          onChange={(e) =>
+                            setPicked((p) => ({
+                              ...p,
+                              [t.id]: e.target.value as 'admin' | 'member',
+                            }))
+                          }
                           className="rounded border border-input bg-background px-1.5 py-1 text-xs"
                         >
                           <option value="member">member</option>
@@ -339,7 +363,9 @@ function GenerateDialog({
                     key={d}
                     onClick={() => setExpiry(addDaysISO(d))}
                     className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                      on ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-secondary'
+                      on
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border hover:bg-secondary'
                     }`}
                   >
                     {d} days
@@ -350,7 +376,9 @@ function GenerateDialog({
                 type="button"
                 onClick={() => setExpiry('')}
                 className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                  expiry === '' ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-secondary'
+                  expiry === ''
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border hover:bg-secondary'
                 }`}
               >
                 No expiration
@@ -365,13 +393,18 @@ function GenerateDialog({
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              {expiry ? `The token stops working after ${expiry}.` : 'The token never expires — revoke it manually.'}
+              {expiry
+                ? `The token stops working after ${expiry}.`
+                : 'The token never expires — revoke it manually.'}
             </p>
           </div>
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-secondary">
+          <button
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-secondary"
+          >
             Cancel
           </button>
           <button

@@ -11,12 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Backend,
-  type CollectionRole,
-  type DirectoryEntry,
-  type UserTeam,
-} from '../utils/backend';
+import { Backend, type CollectionRole, type DirectoryEntry, type UserTeam } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import {
   generateCollectionKeys,
@@ -28,8 +23,26 @@ import {
 import { escrowForCreate } from '../utils/adminGroup';
 
 const ROLES: CollectionRole[] = ['owner', 'editor', 'viewer'];
-const COLLECTION_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#f472b6'];
-const AVATAR_COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#e0af68'];
+const COLLECTION_COLORS = [
+  '#6366f1',
+  '#0ea5e9',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#a855f7',
+  '#14b8a6',
+  '#f472b6',
+];
+const AVATAR_COLORS = [
+  '#7c9cf5',
+  '#9ece6a',
+  '#e5b567',
+  '#f0a35e',
+  '#f7768e',
+  '#bb9af7',
+  '#56c7c0',
+  '#e0af68',
+];
 
 function avatarColor(name: string): string {
   let h = 0;
@@ -266,7 +279,7 @@ export function MemberPicker({
     (id: string): DirectoryEntry =>
       directory.find((d) => d.id === id) ?? {
         id,
-        username: id === me?.id ? me?.username ?? 'you' : id,
+        username: id === me?.id ? (me?.username ?? 'you') : id,
         publicKey: null,
       },
     [directory, me],
@@ -276,7 +289,9 @@ export function MemberPicker({
     () =>
       [...chosen.keys()]
         .map(entryFor)
-        .sort((a, b) => (a.id === me?.id ? -1 : b.id === me?.id ? 1 : a.username.localeCompare(b.username))),
+        .sort((a, b) =>
+          a.id === me?.id ? -1 : b.id === me?.id ? 1 : a.username.localeCompare(b.username),
+        ),
     [chosen, entryFor, me],
   );
   // Typeahead: only surface matches once you type a prefix — never the whole directory.
@@ -289,16 +304,30 @@ export function MemberPicker({
   }, [directory, chosen, search]);
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
       <div
         className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-1 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">{isCreate ? 'New collection' : `Share · ${initialName ?? ''}`}</h3>
-          <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Close">
+          <h3 className="text-lg font-semibold">
+            {isCreate ? 'New collection' : `Share · ${initialName ?? ''}`}
+          </h3>
+          <button
+            onClick={onClose}
+            className="rounded p-1 text-muted-foreground hover:bg-muted"
+            aria-label="Close"
+          >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -307,7 +336,9 @@ export function MemberPicker({
         </p>
 
         {error && (
-          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">{error}</div>
+          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">
+            {error}
+          </div>
         )}
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
@@ -352,8 +383,18 @@ export function MemberPicker({
                   disabled={busy}
                   className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50"
                 >
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z" />
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4z"
+                    />
                   </svg>
                   {tm.name}
                 </button>
@@ -363,7 +404,9 @@ export function MemberPicker({
 
           {/* Members — always shown, with role + remove; grant for roster-only members. */}
           <div>
-            <div className="mb-1 text-xs font-medium text-muted-foreground">Members · {chosen.size}</div>
+            <div className="mb-1 text-xs font-medium text-muted-foreground">
+              Members · {chosen.size}
+            </div>
             <ul className="space-y-1">
               {memberEntries.map((d) => {
                 const role = chosen.get(d.id);
@@ -418,8 +461,18 @@ export function MemberPicker({
                           title="Remove"
                           className="rounded p-1 text-red-500 hover:bg-muted disabled:opacity-50"
                         >
-                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.87 12.14A2 2 0 0116.14 21H7.86a2 2 0 01-1.99-1.86L5 7m5 4v6m4-6v6M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
+                          <svg
+                            className="h-4 w-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M19 7l-.87 12.14A2 2 0 0116.14 21H7.86a2 2 0 01-1.99-1.86L5 7m5 4v6m4-6v6M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"
+                            />
                           </svg>
                         </button>
                       </>
@@ -436,8 +489,18 @@ export function MemberPicker({
           {iManage && (
             <div>
               <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5">
-                <svg className="h-4 w-4 flex-none text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+                <svg
+                  className="h-4 w-4 flex-none text-muted-foreground"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+                  />
                 </svg>
                 <input
                   value={search}
@@ -460,7 +523,9 @@ export function MemberPicker({
                         className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left hover:bg-muted disabled:opacity-50"
                       >
                         <Avatar name={d.username} />
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{d.username}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                          {d.username}
+                        </span>
                         <span className="text-xs text-muted-foreground">Add</span>
                       </button>
                     </li>
@@ -476,14 +541,17 @@ export function MemberPicker({
           )}
 
           <p className="text-xs text-muted-foreground">
-            Members hold the collection key. <b className="text-foreground">Owner</b> manages sharing &amp; settings ·{' '}
-            <b className="text-foreground">Editor</b> adds/edits machines (re-encrypts) ·{' '}
-            <b className="text-foreground">Viewer</b> can only connect.
+            Members hold the collection key. <b className="text-foreground">Owner</b> manages
+            sharing &amp; settings · <b className="text-foreground">Editor</b> adds/edits machines
+            (re-encrypts) · <b className="text-foreground">Viewer</b> can only connect.
           </p>
         </div>
 
         <div className="mt-4 flex justify-end gap-2 border-t border-border pt-3">
-          <button onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+          <button
+            onClick={onClose}
+            className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+          >
             {isCreate ? 'Cancel' : 'Done'}
           </button>
           {isCreate && (

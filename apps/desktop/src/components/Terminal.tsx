@@ -67,14 +67,33 @@ interface ConnectionDeadEvent {
   reason: string;
 }
 
-export function Terminal({ connectionId, connectionName, onClose, sessionId: existingSessionId, isFocused, onSplitHorizontal, onSplitVertical, onSplitWith, initialCommand, note, onDetach, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: TerminalProps) {
+export function Terminal({
+  connectionId,
+  connectionName,
+  onClose,
+  sessionId: existingSessionId,
+  isFocused,
+  onSplitHorizontal,
+  onSplitVertical,
+  onSplitWith,
+  initialCommand,
+  note,
+  onDetach,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+  isDragging,
+}: TerminalProps) {
   const { t } = useTranslation();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>(
+    'connecting',
+  );
   const [error, setError] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
@@ -123,7 +142,9 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   // Helper to focus the terminal's textarea
   const focusTerminalTextarea = () => {
     if (!terminalRef.current) return;
-    const textarea = terminalRef.current.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement;
+    const textarea = terminalRef.current.querySelector(
+      '.xterm-helper-textarea',
+    ) as HTMLTextAreaElement;
     if (textarea) {
       textarea.focus();
     }
@@ -265,7 +286,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
       // First, dispose any existing I/O handlers to prevent duplicates
       if (instance.ioDisposables.length > 0) {
-        instance.ioDisposables.forEach(d => d.dispose());
+        instance.ioDisposables.forEach((d) => d.dispose());
         instance.ioDisposables = [];
       }
 
@@ -308,7 +329,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           // Decode base64 to get raw bytes, then decode bytes to UTF-8 string
           // This preserves terminal control sequences that would be lost with from_utf8_lossy
           const dataBase64 = payload.data;
-          const dataBytes = Uint8Array.from(atob(dataBase64), c => c.charCodeAt(0));
+          const dataBytes = Uint8Array.from(atob(dataBase64), (c) => c.charCodeAt(0));
           const decoder = new TextDecoder('utf-8', { fatal: false });
           const dataString = decoder.decode(dataBytes);
 
@@ -342,25 +363,30 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         }
       });
 
-      unlistenClosed = await transport().listen<TerminalClosedEvent>('terminal-closed', (payload) => {
-        if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
-          xtermRef.current.write('\r\n\nConnection closed\r\n');
-          setStatus('disconnected');
-          makeTerminalReadOnly(xtermRef.current);
-        }
-      });
+      unlistenClosed = await transport().listen<TerminalClosedEvent>(
+        'terminal-closed',
+        (payload) => {
+          if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
+            xtermRef.current.write('\r\n\nConnection closed\r\n');
+            setStatus('disconnected');
+            makeTerminalReadOnly(xtermRef.current);
+          }
+        },
+      );
 
       unlistenDead = await transport().listen<ConnectionDeadEvent>('connection-dead', (payload) => {
         if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
           // Auto-reconnect is opt-in (off by default): reconnecting opens a NEW
           // shell, losing history and on-screen output — so we never force it.
           if (!isLocalTerminal && useAutoReconnect.getState().enabled) {
-            xtermRef.current.write('\r\n\n\x1b[33mConnection lost — reconnecting automatically…\x1b[0m\r\n');
+            xtermRef.current.write(
+              '\r\n\n\x1b[33mConnection lost — reconnecting automatically…\x1b[0m\r\n',
+            );
             reconnectRef.current(true);
           } else {
             xtermRef.current.write(`\r\n\n\x1b[31mConnection lost: ${payload.reason}\x1b[0m\r\n`);
             xtermRef.current.write(
-              '\x1b[33mReconnecting opens a new shell (history and on-screen output are lost). Use Reconnect when you\'re ready.\x1b[0m\r\n',
+              "\x1b[33mReconnecting opens a new shell (history and on-screen output are lost). Use Reconnect when you're ready.\x1b[0m\r\n",
             );
             setError(`Connection lost: ${payload.reason}`);
             setStatus('error');
@@ -392,7 +418,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         try {
           const bufferedBase64 = await Backend.Terminal.claimSessionOutput(existingSessionId);
           if (bufferedBase64 && bufferedBase64.length > 0 && xtermRef.current) {
-            const dataBytes = Uint8Array.from(atob(bufferedBase64), c => c.charCodeAt(0));
+            const dataBytes = Uint8Array.from(atob(bufferedBase64), (c) => c.charCodeAt(0));
             const decoder = new TextDecoder('utf-8', { fatal: false });
             const dataString = decoder.decode(dataBytes);
             if (dataString.length > 0) {
@@ -425,12 +451,15 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           // that no data arrived yet), so a newline makes the shell re-display its
           // prompt. The initial command rides the same timer rather than starting a
           // second one — one readiness heuristic in this file, not two.
-          promptDetectionTimerRef.current = setTimeout(() => {
-            if (!promptDetectedRef.current && sessionIdRef.current && xtermRef.current) {
-              sendTerminalInput('\n');
-            }
-            runInitialCommand();
-          }, isLocalTerminal ? 150 : 400);
+          promptDetectionTimerRef.current = setTimeout(
+            () => {
+              if (!promptDetectedRef.current && sessionIdRef.current && xtermRef.current) {
+                sendTerminalInput('\n');
+              }
+              runInitialCommand();
+            },
+            isLocalTerminal ? 150 : 400,
+          );
         }
       } else {
         // Terminal already exists - reattaching to existing instance
@@ -482,7 +511,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         }
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only recreates on session ID change
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only recreates on session ID change
   }, [existingSessionId]);
 
   const handleClose = async () => {
@@ -627,15 +656,9 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
                 {status === 'connecting' && (
                   <div className="h-2 w-2 animate-pulse rounded-full bg-yellow-500" />
                 )}
-                {status === 'connected' && (
-                  <div className="h-2 w-2 rounded-full bg-green-500" />
-                )}
-                {status === 'disconnected' && (
-                  <div className="h-2 w-2 rounded-full bg-gray-500" />
-                )}
-                {status === 'error' && (
-                  <div className="h-2 w-2 rounded-full bg-red-500" />
-                )}
+                {status === 'connected' && <div className="h-2 w-2 rounded-full bg-green-500" />}
+                {status === 'disconnected' && <div className="h-2 w-2 rounded-full bg-gray-500" />}
+                {status === 'error' && <div className="h-2 w-2 rounded-full bg-red-500" />}
               </>
             )}
             <span className="text-sm font-medium">{connectionName}</span>
@@ -647,9 +670,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
                   {isReconnecting ? 'Reconnecting...' : 'Connecting...'}
                 </span>
               )}
-              {status === 'error' && error && (
-                <span className="text-xs text-red-500">{error}</span>
-              )}
+              {status === 'error' && error && <span className="text-xs text-red-500">{error}</span>}
               {status === 'disconnected' && (
                 <span className="text-xs text-muted-foreground">Disconnected</span>
               )}
@@ -698,7 +719,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             >
               <div className="flex items-center gap-1">
                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
                 </svg>
                 <span>Reconnect</span>
               </div>
@@ -713,7 +739,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
               title={`Split horizontal (${splitHChord})`}
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4"
+                />
               </svg>
             </button>
           )}
@@ -723,8 +754,19 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               title={`Split vertical (${splitVChord})`}
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ transform: 'rotate(90deg)' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                style={{ transform: 'rotate(90deg)' }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4"
+                />
               </svg>
             </button>
           )}
@@ -743,7 +785,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
                 data-testid="split-more"
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 9l6 6 6-6" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 9l6 6 6-6"
+                  />
                 </svg>
               </button>
               {splitMenuOpen && (
@@ -765,7 +812,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
               title="Detach to new tab"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
               </svg>
             </button>
           )}
@@ -777,7 +829,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             title="Snippets"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12"
+              />
             </svg>
           </button>
 
@@ -788,7 +845,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             title={`Search in terminal (${searchChord})`}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
           </button>
 
@@ -798,7 +860,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             title="Close terminal"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -849,7 +916,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             title="Previous (Shift+Enter)"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 15l7-7 7 7"
+              />
             </svg>
           </button>
           <button
@@ -859,7 +931,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             title="Next (Enter)"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </button>
           <button
@@ -871,7 +948,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             title="Close (Escape)"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>

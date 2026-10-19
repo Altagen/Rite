@@ -26,7 +26,13 @@ import {
   type NativeVault,
 } from '../utils/nativeShell';
 import { Hub } from './Hub';
-import { ContextBadge, ContextDot, ContextTag, CurrentMark, type ContextTagState } from './ContextTag';
+import {
+  ContextBadge,
+  ContextDot,
+  ContextTag,
+  CurrentMark,
+  type ContextTagState,
+} from './ContextTag';
 import { useAuthStore } from '../store/authStore';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 
@@ -87,7 +93,8 @@ export function ContextPill() {
   // window" (the split button) keeps the current context and opens the target beside it.
   const openVault = (path: string) => {
     setOpen(false);
-    if (!(isLocalActive && currentVaultPath === path)) requestSwitchContext({ kind: 'local', path });
+    if (!(isLocalActive && currentVaultPath === path))
+      requestSwitchContext({ kind: 'local', path });
   };
   const openServer = (s: RemoteServer) => {
     setOpen(false);
@@ -104,7 +111,12 @@ export function ContextPill() {
   };
 
   const chevron = (
-    <svg className="h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="h-3 w-3 text-muted-foreground"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
   );
@@ -123,12 +135,20 @@ export function ContextPill() {
   );
   const folderIcon = (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+      />
     </svg>
   );
   const shieldIcon = (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"
+      />
     </svg>
   );
   const footerRow = (icon: React.ReactNode, label: string, onClick: () => void) => (
@@ -145,7 +165,11 @@ export function ContextPill() {
   );
   const splitIcon = (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4"
+      />
     </svg>
   );
   // A row = a wide "switch this window" button, then its actions. Like the mock's menu they
@@ -175,19 +199,29 @@ export function ContextPill() {
     // behind DELETE ALL DATA, not one click from Open.
     if (isLocalActive && currentVaultPath === v.path) return null;
     return (
-    <button
-      onClick={() => {
-        setOpen(false);
-        setRemoveVault(v);
-      }}
-      title="Remove from list"
-      aria-label={`Remove ${v.label}`}
-      className="hidden flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500 group-hover:block"
-    >
-      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
-      </svg>
-    </button>
+      <button
+        onClick={() => {
+          setOpen(false);
+          setRemoveVault(v);
+        }}
+        title="Remove from list"
+        aria-label={`Remove ${v.label}`}
+        className="hidden flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500 group-hover:block"
+      >
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"
+          />
+        </svg>
+      </button>
     );
   };
 
@@ -239,7 +273,13 @@ export function ContextPill() {
                       aria-label={`Lock ${v.label}`}
                       className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
                     >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
                         <rect x="5" y="11" width="14" height="10" rx="2" />
                         <path strokeLinecap="round" d="M8 11V7a4 4 0 118 0v4" />
                       </svg>
@@ -273,7 +313,9 @@ export function ContextPill() {
                           <span className="truncate text-sm font-semibold">{s.label || s.url}</span>
                           {isCurrent && <CurrentMark />}
                         </span>
-                        <span className="block truncate text-xs text-muted-foreground">{s.url}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {s.url}
+                        </span>
                       </span>
                       <ContextTag state="server" />
                     </button>
@@ -287,7 +329,9 @@ export function ContextPill() {
           <div className="my-2 h-px bg-border" />
           {footerRow(gridIcon, 'Card view — manage all…', () => setShowManager(true))}
           {footerRow(plusIcon, 'New local vault…', openCreateVault)}
-          {footerRow(folderIcon, 'Open a vault file…', () => sendVaultCommand({ type: 'vault-open-file' }))}
+          {footerRow(folderIcon, 'Open a vault file…', () =>
+            sendVaultCommand({ type: 'vault-open-file' }),
+          )}
           {footerRow(shieldIcon, 'Add a server…', () => {
             setShowManager(true);
             setAddServer(true);

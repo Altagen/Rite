@@ -27,8 +27,8 @@ export function CertTrustModal({ url, fingerprint, busy, onTrust, onCancel }: Pr
         <h2 className="text-lg font-semibold">Untrusted certificate</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           <span className="font-medium text-foreground break-all">{url}</span> presents a
-          self-signed certificate that no public authority vouches for. Verify the fingerprint
-          below matches the server out-of-band before you trust it.
+          self-signed certificate that no public authority vouches for. Verify the fingerprint below
+          matches the server out-of-band before you trust it.
         </p>
         <div className="mt-3 rounded border border-border bg-muted/50 p-2">
           <p className="text-xs text-muted-foreground">SHA-256 fingerprint</p>

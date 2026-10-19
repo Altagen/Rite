@@ -48,7 +48,8 @@ import { RiteHttpError } from '../utils/httpError';
  *   * Escape dismisses. Making it remappable would let someone remove the only way
  *     out of a find bar that covers the terminal.
  */
-const KBD = 'rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground';
+const KBD =
+  'rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground';
 const FIXED_CHORDS: { key: string; i18n: string; nativeOnly?: boolean }[] = [
   { key: 'F11', i18n: 'shortcuts.fixed.focusMode', nativeOnly: true },
   { key: 'Esc', i18n: 'shortcuts.fixed.dismiss' },
@@ -273,10 +274,13 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
   const [selectedTimeout, setSelectedTimeout] = useState<number>(0);
   const [customTimeout, setCustomTimeout] = useState('');
-  const [clipboardClearEnabled, setClipboardClearEnabled] = useState(settings.clipboardClearEnabled);
-  const [hostKeyVerificationMode, setHostKeyVerificationMode] = useState<'strict' | 'warn' | 'accept'>(settings.hostKeyVerificationMode);
+  const [clipboardClearEnabled, setClipboardClearEnabled] = useState(
+    settings.clipboardClearEnabled,
+  );
+  const [hostKeyVerificationMode, setHostKeyVerificationMode] = useState<
+    'strict' | 'warn' | 'accept'
+  >(settings.hostKeyVerificationMode);
   const [terminalTheme, setTerminalTheme] = useState<TerminalThemeName>(getTerminalThemeName());
-
 
   useEffect(() => {
     fetchSettings();
@@ -319,7 +323,10 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
     setSelectedTimeout(value);
     if (value !== -1) {
       setCustomTimeout('');
-      void updateSettings({ autoLockEnabled: value !== 0, autoLockTimeout: value === 0 ? 0 : value });
+      void updateSettings({
+        autoLockEnabled: value !== 0,
+        autoLockTimeout: value === 0 ? 0 : value,
+      });
     }
     // `-1` is "custom": there is no delay to store until a number is typed, so the
     // input below persists it rather than this storing a zero in the meantime.
@@ -332,9 +339,6 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
     }
   };
 
-
-
-
   // A section the current context does not have is not reachable from the rail. The
   // workspace file is one of those: on a shared server there is no file, so presets
   // and layouts are absent rather than shown empty (ADR 0023).
@@ -346,7 +350,9 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
       (!r.file || hasWorkspaceFile),
   );
   // …and if the active one disappears (a context switch), fall back to the first.
-  const shown: SectionId = rail.some((r) => r.id === active) ? active : (rail[0]?.id ?? 'appearance');
+  const shown: SectionId = rail.some((r) => r.id === active)
+    ? active
+    : (rail[0]?.id ?? 'appearance');
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
@@ -360,7 +366,12 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
             aria-label={t('settings.close')}
           >
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -392,560 +403,596 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
           </nav>
 
           <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
-          {/* Appearance */}
-          <section hidden={shown !== 'appearance'} className="pb-2">
-            <SettingsHead title="Appearance" />
-            <SettingsRow
-              title="Terminal theme"
-              hint="Applies live; translucency shows on terminals opened afterwards."
-            >
-              <SettingsControl>
-                <Dropdown<TerminalThemeName>
-                  value={terminalTheme}
-                  label="Terminal theme"
-                  testId="terminal-theme"
-                  options={[
-                    { value: 'dark', label: 'Dark (default)' },
-                    { value: 'grey', label: 'Grey' },
-                    { value: 'translucent', label: 'Translucent' },
-                  ]}
-                  onChange={(name) => {
-                    setTerminalTheme(name);
-                    terminalPool.setTheme(name);
-                  }}
-                />
-              </SettingsControl>
-            </SettingsRow>
-            <SettingsToggle
-              title="Show member count on collections"
-              hint="The number next to shared collections (the icon stays)"
-              checked={showMemberCount}
-              onChange={setShowMemberCount}
-            />
-          </section>
+            {/* Appearance */}
+            <section hidden={shown !== 'appearance'} className="pb-2">
+              <SettingsHead title="Appearance" />
+              <SettingsRow
+                title="Terminal theme"
+                hint="Applies live; translucency shows on terminals opened afterwards."
+              >
+                <SettingsControl>
+                  <Dropdown<TerminalThemeName>
+                    value={terminalTheme}
+                    label="Terminal theme"
+                    testId="terminal-theme"
+                    options={[
+                      { value: 'dark', label: 'Dark (default)' },
+                      { value: 'grey', label: 'Grey' },
+                      { value: 'translucent', label: 'Translucent' },
+                    ]}
+                    onChange={(name) => {
+                      setTerminalTheme(name);
+                      terminalPool.setTheme(name);
+                    }}
+                  />
+                </SettingsControl>
+              </SettingsRow>
+              <SettingsToggle
+                title="Show member count on collections"
+                hint="The number next to shared collections (the icon stays)"
+                checked={showMemberCount}
+                onChange={setShowMemberCount}
+              />
+            </section>
 
-          {/* Machine status (ADR 0017) — a client-side narrowing of the server's health policy. */}
-          <section hidden={shown !== 'machines'} className="pb-2">
-            <SettingsHead title="Machine status" />
-            <SettingsRow
-              title="Health-check"
-              hint={
-                <>
-                  <span className="text-amber-500">Governed by your server</span> — you can only narrow
-                  it. Passive “last seen” costs no network traffic; active probing does.
-                </>
-              }
-            >
-              <SettingsControl>
-                <Dropdown<HealthPref>
-                  value={healthPref}
-                  label="Health-check"
-                  testId="health-pref"
-                  options={[
-                    { value: 'inherit', label: 'Follow the server policy' },
-                    { value: 'off', label: 'Off — no status' },
-                    { value: 'passive', label: 'Passive — last seen only' },
-                    { value: 'on-demand', label: 'On-demand checks' },
-                    { value: 'full', label: 'Background polling' },
-                  ]}
-                  onChange={setHealthPref}
-                />
-              </SettingsControl>
-            </SettingsRow>
-            <SettingsToggle
-              title="Container and service cards on the machine dashboard"
-              hint={
-                <>
-                  These two cards run a command on the host each time they refresh. Turning them off
-                  leaves the rest of the dashboard — address, port forwarding, the Board — untouched.
-                  {probesRefusedByServer && (
-                    <>
-                      {' '}
-                      <span className="text-amber-500">Your server turns them off for this client</span>,
-                      so this setting changes nothing here.
-                    </>
-                  )}
-                </>
-              }
-              checked={machineProbes}
-              onChange={setMachineProbes}
-            />
-          </section>
+            {/* Machine status (ADR 0017) — a client-side narrowing of the server's health policy. */}
+            <section hidden={shown !== 'machines'} className="pb-2">
+              <SettingsHead title="Machine status" />
+              <SettingsRow
+                title="Health-check"
+                hint={
+                  <>
+                    <span className="text-amber-500">Governed by your server</span> — you can only
+                    narrow it. Passive “last seen” costs no network traffic; active probing does.
+                  </>
+                }
+              >
+                <SettingsControl>
+                  <Dropdown<HealthPref>
+                    value={healthPref}
+                    label="Health-check"
+                    testId="health-pref"
+                    options={[
+                      { value: 'inherit', label: 'Follow the server policy' },
+                      { value: 'off', label: 'Off — no status' },
+                      { value: 'passive', label: 'Passive — last seen only' },
+                      { value: 'on-demand', label: 'On-demand checks' },
+                      { value: 'full', label: 'Background polling' },
+                    ]}
+                    onChange={setHealthPref}
+                  />
+                </SettingsControl>
+              </SettingsRow>
+              <SettingsToggle
+                title="Container and service cards on the machine dashboard"
+                hint={
+                  <>
+                    These two cards run a command on the host each time they refresh. Turning them
+                    off leaves the rest of the dashboard — address, port forwarding, the Board —
+                    untouched.
+                    {probesRefusedByServer && (
+                      <>
+                        {' '}
+                        <span className="text-amber-500">
+                          Your server turns them off for this client
+                        </span>
+                        , so this setting changes nothing here.
+                      </>
+                    )}
+                  </>
+                }
+                checked={machineProbes}
+                onChange={setMachineProbes}
+              />
+            </section>
 
-          {/* Default shell — local terminals only (a server governs its own shell).
+            {/* Default shell — local terminals only (a server governs its own shell).
 
               The same setting as the toolbar's picker, and now the same control. This
               used to be a path you typed, while the toolbar listed the shells actually
               installed: one stored value, two editors, and the worse one was the one in
               the preferences. The field below stays for a shell we did not find. */}
-          <section hidden={shown !== 'shell'} className="pb-2">
-            <SettingsHead
-              title={t('settings.sec.shell')}
-              hint={isLocalContext ? t('settings.shellHint') : t('settings.shellServerHint')}
-            />
-            {/* On a server the shells are the instance's; which of them you open is yours
+            <section hidden={shown !== 'shell'} className="pb-2">
+              <SettingsHead
+                title={t('settings.sec.shell')}
+                hint={isLocalContext ? t('settings.shellHint') : t('settings.shellServerHint')}
+              />
+              {/* On a server the shells are the instance's; which of them you open is yours
                 only if it says so. So: a value when it keeps the decision, a picker when
                 it delegates — and the picker's first entry follows the default rather
                 than copying it, so an administrator who changes it carries you along. */}
-            {!isLocalContext && serverShells.length === 0 && (
-              <SettingsRow title={t('settings.shellServer')} hint={t('settings.shellServerDesc')}>
-                <code className="font-mono text-sm text-muted-foreground" data-testid="server-shell">
-                  {serverMode?.defaultShell ?? 'bash'}
-                </code>
-              </SettingsRow>
-            )}
-            {!isLocalContext && serverShells.length > 0 && (
-              <SettingsField
-                label={t('settings.shellYours')}
-                hint={t('settings.shellYoursDesc')}
-              >
-                <ul className="flex flex-col gap-1.5" data-testid="server-shell-choices">
-                  {['', ...serverShells].map((name) => (
-                    <li key={name || 'default'}>
-                      <button
-                        type="button"
-                        aria-pressed={(settings.defaultShell || '') === name}
-                        data-testid={`server-shell-${name || 'default'}`}
-                        onClick={() => void updateSettings({ defaultShell: name })}
-                        className={`flex w-full items-center gap-2 rounded border px-3 py-2 text-left text-sm transition-colors ${
-                          (settings.defaultShell || '') === name
-                            ? 'border-primary bg-primary/10'
-                            : 'border-border hover:bg-muted'
-                        }`}
-                      >
-                        <span>
-                          {name || t('settings.shellFollowInstance', { shell: serverMode?.defaultShell ?? 'bash' })}
-                        </span>
-                        {name === serverMode?.defaultShell && <span aria-hidden="true">★</span>}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </SettingsField>
-            )}
-            {isLocalContext && (
-            <>
-              <div>
-                {shellChoices.length > 0 && (
-                  <SettingsField label={t('settings.shellInstalled')}>
-                  <ul className="flex flex-col gap-1.5" data-testid="shell-choices">
-                    {shellChoices.map((shell) => (
-                      <li key={shell.path}>
+              {!isLocalContext && serverShells.length === 0 && (
+                <SettingsRow title={t('settings.shellServer')} hint={t('settings.shellServerDesc')}>
+                  <code
+                    className="font-mono text-sm text-muted-foreground"
+                    data-testid="server-shell"
+                  >
+                    {serverMode?.defaultShell ?? 'bash'}
+                  </code>
+                </SettingsRow>
+              )}
+              {!isLocalContext && serverShells.length > 0 && (
+                <SettingsField label={t('settings.shellYours')} hint={t('settings.shellYoursDesc')}>
+                  <ul className="flex flex-col gap-1.5" data-testid="server-shell-choices">
+                    {['', ...serverShells].map((name) => (
+                      <li key={name || 'default'}>
                         <button
                           type="button"
-                          onClick={() => void updateSettings({ defaultShell: shell.path })}
-                          aria-pressed={settings.defaultShell === shell.path}
+                          aria-pressed={(settings.defaultShell || '') === name}
+                          data-testid={`server-shell-${name || 'default'}`}
+                          onClick={() => void updateSettings({ defaultShell: name })}
                           className={`flex w-full items-center gap-2 rounded border px-3 py-2 text-left text-sm transition-colors ${
-                            settings.defaultShell === shell.path
+                            (settings.defaultShell || '') === name
                               ? 'border-primary bg-primary/10'
                               : 'border-border hover:bg-muted'
                           }`}
-                          data-testid={`shell-${shell.name}`}
                         >
-                          <span className="font-medium">{shell.name}</span>
-                          <code className="truncate font-mono text-xs text-muted-foreground">{shell.path}</code>
+                          <span>
+                            {name ||
+                              t('settings.shellFollowInstance', {
+                                shell: serverMode?.defaultShell ?? 'bash',
+                              })}
+                          </span>
+                          {name === serverMode?.defaultShell && <span aria-hidden="true">★</span>}
                         </button>
                       </li>
                     ))}
                   </ul>
-                  </SettingsField>
-                )}
-                <SettingsField label={t('settings.shellCustom')}>
-                  <input
-                    value={shellDraft}
-                    onChange={(e) => setShellDraft(e.target.value)}
-                    onBlur={() => {
-                      const v = shellDraft.trim();
-                      if (v && v !== settings.defaultShell) void updateSettings({ defaultShell: v });
-                    }}
-                    placeholder="/usr/bin/fish"
-                    className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm"
-                    data-testid="shell-path"
-                  />
                 </SettingsField>
-              </div>
-            </>
-            )}
-          </section>
+              )}
+              {isLocalContext && (
+                <>
+                  <div>
+                    {shellChoices.length > 0 && (
+                      <SettingsField label={t('settings.shellInstalled')}>
+                        <ul className="flex flex-col gap-1.5" data-testid="shell-choices">
+                          {shellChoices.map((shell) => (
+                            <li key={shell.path}>
+                              <button
+                                type="button"
+                                onClick={() => void updateSettings({ defaultShell: shell.path })}
+                                aria-pressed={settings.defaultShell === shell.path}
+                                className={`flex w-full items-center gap-2 rounded border px-3 py-2 text-left text-sm transition-colors ${
+                                  settings.defaultShell === shell.path
+                                    ? 'border-primary bg-primary/10'
+                                    : 'border-border hover:bg-muted'
+                                }`}
+                                data-testid={`shell-${shell.name}`}
+                              >
+                                <span className="font-medium">{shell.name}</span>
+                                <code className="truncate font-mono text-xs text-muted-foreground">
+                                  {shell.path}
+                                </code>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </SettingsField>
+                    )}
+                    <SettingsField label={t('settings.shellCustom')}>
+                      <input
+                        value={shellDraft}
+                        onChange={(e) => setShellDraft(e.target.value)}
+                        onBlur={() => {
+                          const v = shellDraft.trim();
+                          if (v && v !== settings.defaultShell)
+                            void updateSettings({ defaultShell: v });
+                        }}
+                        placeholder="/usr/bin/fish"
+                        className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm"
+                        data-testid="shell-path"
+                      />
+                    </SettingsField>
+                  </div>
+                </>
+              )}
+            </section>
 
-          {/* Keyboard — one table owning every binding. */}
-          <section hidden={shown !== 'keyboard'} className="pb-2">
-            <SettingsHead title={t('settings.keyboard')} />
-            <ShortcutsSettings />
-            <ul className="mt-3 flex flex-col gap-1">
-              {FIXED_CHORDS.filter((c) => native || !c.nativeOnly).map((c) => (
-                <li key={c.key} className="text-xs text-muted-foreground">
-                  <kbd className={KBD}>{c.key}</kbd> <span className="ml-1">{t(c.i18n)}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
+            {/* Keyboard — one table owning every binding. */}
+            <section hidden={shown !== 'keyboard'} className="pb-2">
+              <SettingsHead title={t('settings.keyboard')} />
+              <ShortcutsSettings />
+              <ul className="mt-3 flex flex-col gap-1">
+                {FIXED_CHORDS.filter((c) => native || !c.nativeOnly).map((c) => (
+                  <li key={c.key} className="text-xs text-muted-foreground">
+                    <kbd className={KBD}>{c.key}</kbd> <span className="ml-1">{t(c.i18n)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
 
-          {/* Splits — what a divider can open, beyond a plain terminal. */}
-          {/* Split presets: one command, one pane. Layouts are next door, in their
+            {/* Splits — what a divider can open, beyond a plain terminal. */}
+            {/* Split presets: one command, one pane. Layouts are next door, in their
               own section, because they are not a bigger preset — see LayoutsModal. */}
-          <section hidden={shown !== 'splits'} className="pb-2">
-            <SettingsHead title={t('split.presets')} hint={t('settings.splitsHint')} />
-            <button
-              type="button"
-              onClick={() => setPresetsOpen(true)}
-              className="rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
-              data-testid="open-splits-settings"
-            >
-              {t('settings.editPresets')}
-            </button>
-          </section>
+            <section hidden={shown !== 'splits'} className="pb-2">
+              <SettingsHead title={t('split.presets')} hint={t('settings.splitsHint')} />
+              <button
+                type="button"
+                onClick={() => setPresetsOpen(true)}
+                className="rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                data-testid="open-splits-settings"
+              >
+                {t('settings.editPresets')}
+              </button>
+            </section>
 
-          {/* Layouts: a file (docs/LAYOUTS.md). What opens, where, on which machine.
+            {/* Layouts: a file (docs/LAYOUTS.md). What opens, where, on which machine.
               The cards lead, because the section used to be a title and a button that
               sent you somewhere else, while what you wanted to know — what do I have
               — was behind that button and below a textarea. */}
-          <section hidden={shown !== 'layouts'} className="pb-2">
-            <SettingsHead title={t('layouts.title')} hint={t('layouts.lede')} />
+            <section hidden={shown !== 'layouts'} className="pb-2">
+              <SettingsHead title={t('layouts.title')} hint={t('layouts.lede')} />
 
-            {/* A broken file is reported where you look first, not only inside the
+              {/* A broken file is reported where you look first, not only inside the
                 editor: "no layouts" and "your file has a typo on line 12" are very
                 different facts and used to look identical here. */}
-            {layoutsError && (
-              <p
-                className="mb-3 rounded border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed"
-                data-testid="settings-layouts-error"
-              >
-                <span className="font-semibold">{t('layouts.notLoaded')}</span>{' '}
-                {layoutsError.line > 0 ? t('layouts.atLine', { line: layoutsError.line }) : null}{' '}
-                {layoutsError.message}
-                <span className="mt-1 block text-muted-foreground">{t('layouts.keptRunning')}</span>
-              </p>
-            )}
-
-            {fileLayouts.length > 0 ? (
-              <LayoutCards
-                layouts={fileLayouts}
-                connections={connections ?? []}
-                libraryReadable={libraryReadable ?? false}
-                onToggleStartup={(index, on) => void setLayoutStartup(index, on)}
-              />
-            ) : (
-              !layoutsError && (
-                <p className="mb-3 text-xs text-muted-foreground" data-testid="settings-layouts-empty">
-                  {t('layouts.noneYet')}
+              {layoutsError && (
+                <p
+                  className="mb-3 rounded border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed"
+                  data-testid="settings-layouts-error"
+                >
+                  <span className="font-semibold">{t('layouts.notLoaded')}</span>{' '}
+                  {layoutsError.line > 0 ? t('layouts.atLine', { line: layoutsError.line }) : null}{' '}
+                  {layoutsError.message}
+                  <span className="mt-1 block text-muted-foreground">
+                    {t('layouts.keptRunning')}
+                  </span>
                 </p>
-              )
-            )}
+              )}
 
-            <button
-              type="button"
-              onClick={() => setLayoutsOpen(true)}
-              className="mt-3 rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
-              data-testid="open-layouts-settings"
-            >
-              {t('layouts.openFile')}
-            </button>
-            <p className="mt-3 text-xs text-muted-foreground">{t('layouts.startupHint')}</p>
-          </section>
+              {fileLayouts.length > 0 ? (
+                <LayoutCards
+                  layouts={fileLayouts}
+                  connections={connections ?? []}
+                  libraryReadable={libraryReadable ?? false}
+                  onToggleStartup={(index, on) => void setLayoutStartup(index, on)}
+                />
+              ) : (
+                !layoutsError && (
+                  <p
+                    className="mb-3 text-xs text-muted-foreground"
+                    data-testid="settings-layouts-empty"
+                  >
+                    {t('layouts.noneYet')}
+                  </p>
+                )
+              )}
 
-          {/* The toolbar is the person's own row. Hiding never grants or revokes. */}
-          <section hidden={shown !== 'toolbar'} className="pb-2">
-            <SettingsHead title={t('settings.sec.toolbar')} hint={t('settings.toolbarHint')} />
-            <div>
-              {/* The shell picker is a LOCAL control: a server sets the shell for its own
+              <button
+                type="button"
+                onClick={() => setLayoutsOpen(true)}
+                className="mt-3 rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                data-testid="open-layouts-settings"
+              >
+                {t('layouts.openFile')}
+              </button>
+              <p className="mt-3 text-xs text-muted-foreground">{t('layouts.startupHint')}</p>
+            </section>
+
+            {/* The toolbar is the person's own row. Hiding never grants or revokes. */}
+            <section hidden={shown !== 'toolbar'} className="pb-2">
+              <SettingsHead title={t('settings.sec.toolbar')} hint={t('settings.toolbarHint')} />
+              <div>
+                {/* The shell picker is a LOCAL control: a server sets the shell for its own
                   terminals, so in a browser this row governed a button that never renders
                   (`Workspace.tsx`, `!isServerCtx`). A switch for something that cannot
                   appear is worse than a missing switch — it says you have a choice. */}
-              {isLocalContext && toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
-              {/* Two shell controls, two questions: the picker above sets the default, this
+                {isLocalContext &&
+                  toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
+                {/* Two shell controls, two questions: the picker above sets the default, this
                   menu overrides it for one terminal. Hiding the first was leaving the second,
                   which is why switching "the shell picker" off still asked which shell. On a
                   server the menu exists only where the instance offers a choice — and then
                   the switch does too, because there is a button to hide. */}
-              {(isLocalContext || serverShells.length > 0) &&
-                toolbarRow('newTerminalMenu', 'settings.toolbarNewTermMenu', 'settings.toolbarNewTermMenuDesc')}
-              {native && toolbarRow('focusMode', 'settings.toolbarFocus', 'settings.toolbarFocusDesc')}
-              {/* Quick SSH is the server's to forbid (`quickSshAllowed`), and when it does the
+                {(isLocalContext || serverShells.length > 0) &&
+                  toolbarRow(
+                    'newTerminalMenu',
+                    'settings.toolbarNewTermMenu',
+                    'settings.toolbarNewTermMenuDesc',
+                  )}
+                {native &&
+                  toolbarRow('focusMode', 'settings.toolbarFocus', 'settings.toolbarFocusDesc')}
+                {/* Quick SSH is the server's to forbid (`quickSshAllowed`), and when it does the
                   row says so instead of vanishing: the preference is still this person's, the
                   button stays hidden either way, and someone looking for it gets an answer. The
                   probe-cards row above answers the same way, and so does design/mock/web.html. */}
-              <SettingsToggle
-                title={t('settings.toolbarQuickSsh')}
-                hint={
-                  quickSshAllowed(serverMode) ? (
-                    t('settings.toolbarQuickSshDesc')
-                  ) : (
-                    <>
-                      <span className="text-amber-500">{t('settings.toolbarQuickSshOff')}</span>
-                      {t('settings.toolbarQuickSshOffWhy')}
-                    </>
-                  )
-                }
-                checked={toolbar.quickSsh}
-                onChange={(next) => toolbar.set('quickSsh', next)}
-                testId="toolbar-quickSsh"
-              />
-              {hasWorkspaceFile && toolbarRow('layouts', 'settings.toolbarLayouts', 'settings.toolbarLayoutsDesc')}
-            </div>
-          </section>
+                <SettingsToggle
+                  title={t('settings.toolbarQuickSsh')}
+                  hint={
+                    quickSshAllowed(serverMode) ? (
+                      t('settings.toolbarQuickSshDesc')
+                    ) : (
+                      <>
+                        <span className="text-amber-500">{t('settings.toolbarQuickSshOff')}</span>
+                        {t('settings.toolbarQuickSshOffWhy')}
+                      </>
+                    )
+                  }
+                  checked={toolbar.quickSsh}
+                  onChange={(next) => toolbar.set('quickSsh', next)}
+                  testId="toolbar-quickSsh"
+                />
+                {hasWorkspaceFile &&
+                  toolbarRow('layouts', 'settings.toolbarLayouts', 'settings.toolbarLayoutsDesc')}
+              </div>
+            </section>
 
-          {/* Auto-lock settings */}
-          <section hidden={shown !== 'security'} className="pb-2">
-            <SettingsHead title={t('settings.security')} />
+            {/* Auto-lock settings */}
+            <section hidden={shown !== 'security'} className="pb-2">
+              <SettingsHead title={t('settings.security')} />
 
-            <div>
-              {/* Auto-lock. One dropdown component for every choice in this dialog:
+              <div>
+                {/* Auto-lock. One dropdown component for every choice in this dialog:
                   see Dropdown.tsx for why there used to be two. */}
-              <SettingsRow title={t('settings.autoLockTimeout')} hint={t('settings.autoLockEnabledDesc')}>
-                <SettingsControl>
-                  <Dropdown<number>
-                    value={selectedTimeout}
-                    label={t('settings.autoLockTimeout')}
-                    testId="auto-lock"
-                    options={[
-                      { value: 0, label: t('settings.disabled') },
-                      { value: 1, label: t('settings.oneMinute') },
-                      { value: 3, label: t('settings.threeMinutes') },
-                      { value: 5, label: t('settings.fiveMinutes') },
-                      { value: -1, label: t('settings.custom') },
-                    ]}
-                    onChange={handleTimeoutChange}
-                  />
-                </SettingsControl>
-              </SettingsRow>
-
-              {/* The custom delay only exists once "Custom" is the answer. */}
-              {selectedTimeout === -1 && (
-                <SettingsRow title={t('settings.customMinutes')}>
-                  <input
-                    type="number"
-                    value={customTimeout}
-                    onChange={(e) => {
-                      setCustomTimeout(e.target.value);
-                      applyCustomTimeout(e.target.value);
-                    }}
-                    placeholder={t('settings.customMinutes')}
-                    min="1"
-                    className="w-24 rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
-                  />
+                <SettingsRow
+                  title={t('settings.autoLockTimeout')}
+                  hint={t('settings.autoLockEnabledDesc')}
+                >
+                  <SettingsControl>
+                    <Dropdown<number>
+                      value={selectedTimeout}
+                      label={t('settings.autoLockTimeout')}
+                      testId="auto-lock"
+                      options={[
+                        { value: 0, label: t('settings.disabled') },
+                        { value: 1, label: t('settings.oneMinute') },
+                        { value: 3, label: t('settings.threeMinutes') },
+                        { value: 5, label: t('settings.fiveMinutes') },
+                        { value: -1, label: t('settings.custom') },
+                      ]}
+                      onChange={handleTimeoutChange}
+                    />
+                  </SettingsControl>
                 </SettingsRow>
-              )}
 
-              {/* Host-key verification is the connection's, and on a shared server every
+                {/* The custom delay only exists once "Custom" is the answer. */}
+                {selectedTimeout === -1 && (
+                  <SettingsRow title={t('settings.customMinutes')}>
+                    <input
+                      type="number"
+                      value={customTimeout}
+                      onChange={(e) => {
+                        setCustomTimeout(e.target.value);
+                        applyCustomTimeout(e.target.value);
+                      }}
+                      placeholder={t('settings.customMinutes')}
+                      min="1"
+                      className="w-24 rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
+                    />
+                  </SettingsRow>
+                )}
+
+                {/* Host-key verification is the connection's, and on a shared server every
                   connection is the server's — so there the policy is the instance's and
                   this row reports it instead of offering a dropdown. It used to offer one
                   to everyone, writing a single shared row: one person choosing "accept"
                   turned verification off for every account on the instance. */}
-              {isLocalContext ? (
-                <SettingsRow
-                  title={t('settings.hostKeyVerification')}
-                  hint={t('settings.hostKeyVerificationDesc')}
-                >
-                  <SettingsControl>
-                    <Dropdown<'strict' | 'warn' | 'accept'>
-                      value={hostKeyVerificationMode}
-                      label={t('settings.hostKeyVerification')}
-                      testId="host-key-mode"
-                      options={[
-                        { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
-                        { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
-                        { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
-                      ]}
-                      onChange={(mode) => {
-                        setHostKeyVerificationMode(mode);
-                        void updateSettings({ hostKeyVerificationMode: mode });
-                      }}
-                    />
-                  </SettingsControl>
-                </SettingsRow>
-              ) : (
-                <SettingsRow
-                  title={t('settings.hostKeyVerification')}
-                  hint={t('settings.hostKeyServerDesc')}
-                >
-                  <code className="font-mono text-sm text-muted-foreground" data-testid="server-host-key">
-                    {serverMode?.hostKeyVerification ?? 'strict'}
-                  </code>
-                </SettingsRow>
-              )}
-            </div>
-          </section>
+                {isLocalContext ? (
+                  <SettingsRow
+                    title={t('settings.hostKeyVerification')}
+                    hint={t('settings.hostKeyVerificationDesc')}
+                  >
+                    <SettingsControl>
+                      <Dropdown<'strict' | 'warn' | 'accept'>
+                        value={hostKeyVerificationMode}
+                        label={t('settings.hostKeyVerification')}
+                        testId="host-key-mode"
+                        options={[
+                          { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
+                          { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
+                          { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
+                        ]}
+                        onChange={(mode) => {
+                          setHostKeyVerificationMode(mode);
+                          void updateSettings({ hostKeyVerificationMode: mode });
+                        }}
+                      />
+                    </SettingsControl>
+                  </SettingsRow>
+                ) : (
+                  <SettingsRow
+                    title={t('settings.hostKeyVerification')}
+                    hint={t('settings.hostKeyServerDesc')}
+                  >
+                    <code
+                      className="font-mono text-sm text-muted-foreground"
+                      data-testid="server-host-key"
+                    >
+                      {serverMode?.hostKeyVerification ?? 'strict'}
+                    </code>
+                  </SettingsRow>
+                )}
+              </div>
+            </section>
 
-          {/* Clipboard settings */}
-          <section hidden={shown !== 'clipboard'} className="pb-2">
-            <SettingsHead title={t('settings.clipboard')} />
-            <SettingsToggle
-              title={t('settings.clipboardClearEnabled')}
-              hint={t('settings.clipboardClearEnabledDesc')}
-              checked={clipboardClearEnabled}
-              onChange={(next) => {
-                setClipboardClearEnabled(next);
-                void updateSettings({ clipboardClearEnabled: next });
-              }}
-            />
-          </section>
+            {/* Clipboard settings */}
+            <section hidden={shown !== 'clipboard'} className="pb-2">
+              <SettingsHead title={t('settings.clipboard')} />
+              <SettingsToggle
+                title={t('settings.clipboardClearEnabled')}
+                hint={t('settings.clipboardClearEnabledDesc')}
+                checked={clipboardClearEnabled}
+                onChange={(next) => {
+                  setClipboardClearEnabled(next);
+                  void updateSettings({ clipboardClearEnabled: next });
+                }}
+              />
+            </section>
 
-          {/* Language settings */}
-          <section hidden={shown !== 'language'} className="pb-2">
-            <SettingsHead title={t('settings.language')} />
-            <SettingsRow title={t('settings.languageLabel')}>
-              <SettingsControl>
-                <Dropdown<'en' | 'fr'>
-                  value={locale}
-                  label={t('settings.languageLabel')}
-                  testId="locale"
-                  options={[
-                    { value: 'en', label: 'English' },
-                    { value: 'fr', label: 'Français' },
-                  ]}
-                  onChange={setLocale}
-                />
-              </SettingsControl>
-            </SettingsRow>
-          </section>
+            {/* Language settings */}
+            <section hidden={shown !== 'language'} className="pb-2">
+              <SettingsHead title={t('settings.language')} />
+              <SettingsRow title={t('settings.languageLabel')}>
+                <SettingsControl>
+                  <Dropdown<'en' | 'fr'>
+                    value={locale}
+                    label={t('settings.languageLabel')}
+                    testId="locale"
+                    options={[
+                      { value: 'en', label: 'English' },
+                      { value: 'fr', label: 'Français' },
+                    ]}
+                    onChange={setLocale}
+                  />
+                </SettingsControl>
+              </SettingsRow>
+            </section>
 
-          {/* What is running, and what it talks to (ADR 0008). The first thing anyone is
+            {/* What is running, and what it talks to (ADR 0008). The first thing anyone is
               asked for in a bug report, and nothing showed it: not the version, not the
               build, not whether this client and its server are compatible at all. Read
               from the binary that served this page rather than compiled into the bundle,
               so the two cannot disagree about which they are. */}
-          <section hidden={shown !== 'system'} className="pb-2">
-            <SettingsHead title={t('settings.sec.system')} hint={t('settings.systemHint')} />
-            <SettingsRow title={t('settings.systemRelease')} hint={t('settings.systemReleaseDesc')}>
-              <code className="font-mono text-sm" data-testid="system-version">
-                {build ? build.version : '…'}
-              </code>
-            </SettingsRow>
-            <SettingsRow title={t('settings.systemBuild')} hint={t('settings.systemBuildDesc')}>
-              <code className="font-mono text-sm text-muted-foreground" data-testid="system-build">
-                {build ? `${build.commit ?? 'unknown'} · ${build.builtAt ?? '—'}` : '…'}
-              </code>
-            </SettingsRow>
-            <SettingsRow title={t('settings.systemShell')} hint={t('settings.systemShellDesc')}>
-              <code className="font-mono text-sm text-muted-foreground" data-testid="system-shell">
-                {native ? t('settings.systemShellDesktop') : t('settings.systemShellBrowser')}
-              </code>
-            </SettingsRow>
-            <SettingsRow title={t('settings.systemApi')} hint={t('settings.systemApiDesc')}>
-              <code className="font-mono text-sm text-muted-foreground" data-testid="system-api">
-                {build ? `v${build.apiVersion} · min ${build.minClient}` : '…'}
-              </code>
-            </SettingsRow>
-          </section>
-
-          {/* Master password — change it (local vault). Re-keys every connection. */}
-          {isLocalContext && (
-            <section hidden={shown !== 'password'} className="pb-2">
-              <SettingsHead
-                title="Master password"
-                hint="It encrypts every connection in this vault, so changing it re-keys them all."
-              />
-              <div className="max-w-sm space-y-2 pt-1">
-                <input
-                  type="password"
-                  value={pwCurrent}
-                  onChange={(e) => setPwCurrent(e.target.value)}
-                  placeholder="Current password"
-                  autoComplete="current-password"
-                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
-                />
-                <input
-                  type="password"
-                  value={pwNew}
-                  onChange={(e) => setPwNew(e.target.value)}
-                  placeholder="New password"
-                  autoComplete="new-password"
-                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
-                />
-                <input
-                  type="password"
-                  value={pwConfirm}
-                  onChange={(e) => setPwConfirm(e.target.value)}
-                  placeholder="Confirm new password"
-                  autoComplete="new-password"
-                  className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
-                />
-                {pwMsg && (
-                  <p className={`text-xs ${pwMsg.kind === 'ok' ? 'text-green-600' : 'text-red-500'}`}>
-                    {pwMsg.text}
-                  </p>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void changeMaster()}
-                  disabled={pwBusy || !pwCurrent || !pwNew || !pwConfirm}
-                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            <section hidden={shown !== 'system'} className="pb-2">
+              <SettingsHead title={t('settings.sec.system')} hint={t('settings.systemHint')} />
+              <SettingsRow
+                title={t('settings.systemRelease')}
+                hint={t('settings.systemReleaseDesc')}
+              >
+                <code className="font-mono text-sm" data-testid="system-version">
+                  {build ? build.version : '…'}
+                </code>
+              </SettingsRow>
+              <SettingsRow title={t('settings.systemBuild')} hint={t('settings.systemBuildDesc')}>
+                <code
+                  className="font-mono text-sm text-muted-foreground"
+                  data-testid="system-build"
                 >
-                  {pwBusy ? 'Changing…' : 'Change password'}
-                </button>
-              </div>
+                  {build ? `${build.commit ?? 'unknown'} · ${build.builtAt ?? '—'}` : '…'}
+                </code>
+              </SettingsRow>
+              <SettingsRow title={t('settings.systemShell')} hint={t('settings.systemShellDesc')}>
+                <code
+                  className="font-mono text-sm text-muted-foreground"
+                  data-testid="system-shell"
+                >
+                  {native ? t('settings.systemShellDesktop') : t('settings.systemShellBrowser')}
+                </code>
+              </SettingsRow>
+              <SettingsRow title={t('settings.systemApi')} hint={t('settings.systemApiDesc')}>
+                <code className="font-mono text-sm text-muted-foreground" data-testid="system-api">
+                  {build ? `v${build.apiVersion} · min ${build.minClient}` : '…'}
+                </code>
+              </SettingsRow>
             </section>
-          )}
 
-          {/* Danger zone — reset this local vault (wipe + reboot to first-run). Local only. */}
-          {isLocalContext && (
-            <section hidden={shown !== 'danger'} className="pb-2">
-              <h3 className="text-lg font-semibold text-red-500">Danger zone</h3>
-              <p className="mb-3 mt-1 text-xs leading-relaxed text-muted-foreground">
-                One action, and it cannot be undone.
-              </p>
-              <div className="rounded-md border border-red-500/30 bg-red-500/5 p-4">
-                <div className="font-medium">Reset vault</div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Erase the master password and all connections on this device. This is
-                  irreversible.
-                </p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
+            {/* Master password — change it (local vault). Re-keys every connection. */}
+            {isLocalContext && (
+              <section hidden={shown !== 'password'} className="pb-2">
+                <SettingsHead
+                  title="Master password"
+                  hint="It encrypts every connection in this vault, so changing it re-keys them all."
+                />
+                <div className="max-w-sm space-y-2 pt-1">
                   <input
-                    value={resetText}
-                    onChange={(e) => setResetText(e.target.value)}
-                    placeholder="Type DELETE ALL DATA"
-                    aria-label="Reset confirmation"
-                    className="w-52 rounded border border-input bg-background px-2 py-1.5 text-sm"
+                    type="password"
+                    value={pwCurrent}
+                    onChange={(e) => setPwCurrent(e.target.value)}
+                    placeholder="Current password"
+                    autoComplete="current-password"
+                    className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
                   />
+                  <input
+                    type="password"
+                    value={pwNew}
+                    onChange={(e) => setPwNew(e.target.value)}
+                    placeholder="New password"
+                    autoComplete="new-password"
+                    className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="password"
+                    value={pwConfirm}
+                    onChange={(e) => setPwConfirm(e.target.value)}
+                    placeholder="Confirm new password"
+                    autoComplete="new-password"
+                    className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
+                  />
+                  {pwMsg && (
+                    <p
+                      className={`text-xs ${pwMsg.kind === 'ok' ? 'text-green-600' : 'text-red-500'}`}
+                    >
+                      {pwMsg.text}
+                    </p>
+                  )}
                   <button
                     type="button"
-                    onClick={() => void resetVault()}
-                    disabled={resetText !== 'DELETE ALL DATA'}
-                    className="rounded-md border border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                    onClick={() => void changeMaster()}
+                    disabled={pwBusy || !pwCurrent || !pwNew || !pwConfirm}
+                    className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                   >
-                    Reset vault
+                    {pwBusy ? 'Changing…' : 'Change password'}
                   </button>
                 </div>
-              </div>
-            </section>
-          )}
+              </section>
+            )}
 
-          {/* SSH connections */}
-          <section hidden={shown !== 'ssh'} className="pb-2">
-            <SettingsHead title="SSH connections" />
-            <SettingsToggle
-              title="Auto-reconnect lost SSH connections"
-              hint={
-                <>
-                  Off by default. When on, a dropped session reconnects automatically — a new shell,
-                  so your history, on-screen output and any running job are lost. When off, the pane
-                  shows a Reconnect button instead. Either way you&apos;re told you were disconnected.
-                </>
-              }
-              checked={autoReconnect}
-              onChange={setAutoReconnect}
-            />
-          </section>
+            {/* Danger zone — reset this local vault (wipe + reboot to first-run). Local only. */}
+            {isLocalContext && (
+              <section hidden={shown !== 'danger'} className="pb-2">
+                <h3 className="text-lg font-semibold text-red-500">Danger zone</h3>
+                <p className="mb-3 mt-1 text-xs leading-relaxed text-muted-foreground">
+                  One action, and it cannot be undone.
+                </p>
+                <div className="rounded-md border border-red-500/30 bg-red-500/5 p-4">
+                  <div className="font-medium">Reset vault</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Erase the master password and all connections on this device. This is
+                    irreversible.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <input
+                      value={resetText}
+                      onChange={(e) => setResetText(e.target.value)}
+                      placeholder="Type DELETE ALL DATA"
+                      aria-label="Reset confirmation"
+                      className="w-52 rounded border border-input bg-background px-2 py-1.5 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void resetVault()}
+                      disabled={resetText !== 'DELETE ALL DATA'}
+                      className="rounded-md border border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-500/10 disabled:opacity-40"
+                    >
+                      Reset vault
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
 
-          {/* Focus mode (client/native only) */}
-          {native && (
-            <section hidden={shown !== 'focus'} className="pb-2">
-              <SettingsHead title="Focus mode" />
+            {/* SSH connections */}
+            <section hidden={shown !== 'ssh'} className="pb-2">
+              <SettingsHead title="SSH connections" />
               <SettingsToggle
-                title="Auto-collapse sidebar in focus mode"
-                hint="When you enter focus mode (F11), also hide the library sidebar for a terminals-only view."
-                checked={focusAutoCollapse}
-                onChange={setFocusAutoCollapse}
+                title="Auto-reconnect lost SSH connections"
+                hint={
+                  <>
+                    Off by default. When on, a dropped session reconnects automatically — a new
+                    shell, so your history, on-screen output and any running job are lost. When off,
+                    the pane shows a Reconnect button instead. Either way you&apos;re told you were
+                    disconnected.
+                  </>
+                }
+                checked={autoReconnect}
+                onChange={setAutoReconnect}
               />
             </section>
-          )}
 
+            {/* Focus mode (client/native only) */}
+            {native && (
+              <section hidden={shown !== 'focus'} className="pb-2">
+                <SettingsHead title="Focus mode" />
+                <SettingsToggle
+                  title="Auto-collapse sidebar in focus mode"
+                  hint="When you enter focus mode (F11), also hide the library sidebar for a terminals-only view."
+                  checked={focusAutoCollapse}
+                  onChange={setFocusAutoCollapse}
+                />
+              </section>
+            )}
           </div>
         </div>
-
-
       </div>
       {/* Both libraries sit above this dialog, not inside its scroll area. */}
       {presetsOpen && <SplitsModal onClose={() => setPresetsOpen(false)} />}

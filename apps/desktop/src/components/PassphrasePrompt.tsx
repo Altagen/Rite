@@ -66,7 +66,11 @@ export function PassphrasePrompt() {
           <button type="button" onClick={() => settle(null)} className="m-btn m-btn-sm">
             {t('connections.cancel')}
           </button>
-          <button type="submit" className="m-btn m-btn-primary m-btn-sm" data-testid="passphrase-submit">
+          <button
+            type="submit"
+            className="m-btn m-btn-primary m-btn-sm"
+            data-testid="passphrase-submit"
+          >
             {t('connections.passphraseUnlock')}
           </button>
         </div>

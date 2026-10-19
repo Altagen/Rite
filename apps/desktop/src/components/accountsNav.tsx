@@ -33,7 +33,8 @@ export function useAccountsNav({ includeWorkspace = false } = {}): NavAction[] {
 
   // Org management is open to admins AND managers; the console filters its own
   // sections by role. A deployment may also serve the client without the console.
-  const canManage = (user.role === 'admin' || user.role === 'manager') && mode?.serveAdmin !== false;
+  const canManage =
+    (user.role === 'admin' || user.role === 'manager') && mode?.serveAdmin !== false;
   // The desktop shell and managers say "Organization": server settings are web-only.
   const orgLabel = isNativeShell() || user.role === 'manager' ? 'Organization' : 'Admin';
 

@@ -97,7 +97,9 @@ export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Prop
 
       {snippets.length > 0 && heading(t('split.snippets'))}
       {snippets.map((s) =>
-        row(s.id, s.name, s.command.split('\n')[0], () => run({ name: s.name, command: s.command })),
+        row(s.id, s.name, s.command.split('\n')[0], () =>
+          run({ name: s.name, command: s.command }),
+        ),
       )}
 
       {hasWorkspaceFile && (

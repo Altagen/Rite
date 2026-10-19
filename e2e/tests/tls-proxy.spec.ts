@@ -20,7 +20,9 @@ test('pin a self-signed remote cert and log in through the TLS proxy', async ({ 
   await password.fill(strong);
   await page.locator('#confirmPassword').fill(strong);
   await page.locator('button[type="submit"]').click();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
 
   // Add the self-signed https remote: the probe reports it untrusted and returns
   // the fingerprint, which we pin (TOFU), then switch to it. The context hub is
@@ -28,10 +30,19 @@ test('pin a self-signed remote cert and log in through the TLS proxy', async ({ 
   // — the local server validates the pinned cert via rustls and proxies over TLS.
   const pinned = await page.evaluate(async () => {
     const post = (path: string, body: unknown) =>
-      fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const probe = await (await post('/api/context/probe', { url: 'https://127.0.0.1:1425' })).json();
-    const s = await (await post('/api/context/servers', { url: 'https://127.0.0.1:1425', label: 'TlsServer' })).json();
-    if (probe.fingerprint) await post(`/api/context/servers/${s.id}/pin`, { fingerprint: probe.fingerprint });
+      fetch(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const probe = await (
+      await post('/api/context/probe', { url: 'https://127.0.0.1:1425' })
+    ).json();
+    const s = await (
+      await post('/api/context/servers', { url: 'https://127.0.0.1:1425', label: 'TlsServer' })
+    ).json();
+    if (probe.fingerprint)
+      await post(`/api/context/servers/${s.id}/pin`, { fingerprint: probe.fingerprint });
     await post('/api/context/active', { server: s.id });
     return { fingerprint: probe.fingerprint as string | null, trusted: probe.trusted as boolean };
   });
@@ -46,5 +57,7 @@ test('pin a self-signed remote cert and log in through the TLS proxy', async ({ 
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
   // The proxied (TLS + pinned) login lands in the remote's workspace.
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 });

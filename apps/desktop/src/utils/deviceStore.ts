@@ -31,10 +31,10 @@
 
 /** The shell's injected snapshot, kept in memory and updated as we write. */
 function injected(): Record<string, string> | null {
-    if (typeof window === 'undefined') return null;
-    const raw = window.__RITE_DEVICE__;
-    if (!raw || typeof raw !== 'object') return null;
-    return raw as Record<string, string>;
+  if (typeof window === 'undefined') return null;
+  const raw = window.__RITE_DEVICE__;
+  if (!raw || typeof raw !== 'object') return null;
+  return raw as Record<string, string>;
 }
 
 /**

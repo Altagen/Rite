@@ -41,7 +41,8 @@ export const useHealth = create<HealthStore>((set) => ({
       const checkedAt = Math.floor(Date.now() / 1000);
       set((s) => {
         const next = { ...s.results };
-        for (const r of results) next[r.id] = { status: r.status, latencyMs: r.latencyMs, checkedAt };
+        for (const r of results)
+          next[r.id] = { status: r.status, latencyMs: r.latencyMs, checkedAt };
         return { results: next };
       });
     } catch (e) {

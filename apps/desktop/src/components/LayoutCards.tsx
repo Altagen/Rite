@@ -39,7 +39,8 @@ export function LayoutCards({ layouts, connections, libraryReadable, onToggleSta
   const paneWhere = (machine: string | undefined) => {
     if (!machine) return { label: t('layouts.thisComputer'), ok: true };
     if (!libraryReadable) return { label: `${machine} — ${t('layouts.needsVault')}`, ok: false };
-    if (!known.has(machine)) return { label: `${machine} — ${t('layouts.notInLibrary')}`, ok: false };
+    if (!known.has(machine))
+      return { label: `${machine} — ${t('layouts.notInLibrary')}`, ok: false };
     return { label: machine, ok: true };
   };
 

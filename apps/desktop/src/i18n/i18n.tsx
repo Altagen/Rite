@@ -39,7 +39,7 @@ export function I18nProvider({ children }: I18nProviderProps) {
   // Load locale from localStorage or use default
   const [locale, setLocaleState] = useState<Locale>(() => {
     const stored = deviceStore.getItem(LOCALE_STORAGE_KEY);
-    return (stored === 'en' || stored === 'fr') ? stored : DEFAULT_LOCALE;
+    return stored === 'en' || stored === 'fr' ? stored : DEFAULT_LOCALE;
   });
 
   // Save to localStorage when locale changes
@@ -74,11 +74,7 @@ export function I18nProvider({ children }: I18nProviderProps) {
     return value;
   };
 
-  return (
-    <I18nContext.Provider value={{ locale, setLocale, t }}>
-      {children}
-    </I18nContext.Provider>
-  );
+  return <I18nContext.Provider value={{ locale, setLocale, t }}>{children}</I18nContext.Provider>;
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- context hook co-located with provider

@@ -7,19 +7,23 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Backend,
-  type UserTeam,
-  type TeamMember,
-  type OfferedCollection,
-} from '../utils/backend';
+import { Backend, type UserTeam, type TeamMember, type OfferedCollection } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import { navigate } from '../store/route';
 import { IconLock, IconUsers, IconCollection } from './icons';
 import { OverlayHeaderControls } from './OverlayHeaderControls';
 import riteLogo from '../assets/rite.png';
 
-const AVATAR_COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#e0af68'];
+const AVATAR_COLORS = [
+  '#7c9cf5',
+  '#9ece6a',
+  '#e5b567',
+  '#f0a35e',
+  '#f7768e',
+  '#bb9af7',
+  '#56c7c0',
+  '#e0af68',
+];
 function avatarColor(name: string) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
@@ -56,7 +60,9 @@ export function TeamsDashboard() {
       ]);
       setTeams(mine);
       setOffered(offers);
-      setSelectedId((prev) => (prev && mine.some((t) => t.id === prev) ? prev : (mine[0]?.id ?? null)));
+      setSelectedId((prev) =>
+        prev && mine.some((t) => t.id === prev) ? prev : (mine[0]?.id ?? null),
+      );
     } catch {
       setError('Failed to load teams');
     }
@@ -149,7 +155,9 @@ export function TeamsDashboard() {
                 key={t.id}
                 onClick={() => setSelectedId(t.id)}
                 className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-sm transition ${
-                  selectedId === t.id ? 'border-primary/30 bg-primary/[0.13]' : 'border-transparent hover:bg-card'
+                  selectedId === t.id
+                    ? 'border-primary/30 bg-primary/[0.13]'
+                    : 'border-transparent hover:bg-card'
                 }`}
               >
                 <IconUsers className="h-4 w-4 flex-none text-primary" />
@@ -162,7 +170,9 @@ export function TeamsDashboard() {
               </button>
             ))}
             {teams.length === 0 && (
-              <p className="px-2 py-3 text-sm text-muted-foreground">You&apos;re not in any team yet.</p>
+              <p className="px-2 py-3 text-sm text-muted-foreground">
+                You&apos;re not in any team yet.
+              </p>
             )}
           </div>
         </aside>
@@ -196,15 +206,22 @@ export function TeamsDashboard() {
                     Members · {members.length}
                   </div>
                   {members.map((m) => (
-                    <div key={m.userId} className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
+                    <div
+                      key={m.userId}
+                      className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+                    >
                       <Avatar name={m.username} />
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">
                         {m.username}
-                        {m.userId === me?.id && <span className="text-xs text-muted-foreground"> (you)</span>}
+                        {m.userId === me?.id && (
+                          <span className="text-xs text-muted-foreground"> (you)</span>
+                        )}
                       </span>
                       <span
                         className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${
-                          m.role === 'admin' ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
+                          m.role === 'admin'
+                            ? 'bg-primary/15 text-primary'
+                            : 'bg-secondary text-muted-foreground'
                         }`}
                       >
                         {roleLabel(m.role)}
@@ -227,9 +244,14 @@ export function TeamsDashboard() {
                       const isMember = o.memberRole !== null;
                       const pending = requested.has(o.id);
                       return (
-                        <div key={o.id} className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
+                        <div
+                          key={o.id}
+                          className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+                        >
                           <IconCollection className="h-5 w-5 flex-none text-primary" />
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium">{o.discoveryLabel}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                            {o.discoveryLabel}
+                          </span>
                           {isMember ? (
                             <button
                               onClick={() => navigate('/collections')}
@@ -259,9 +281,10 @@ export function TeamsDashboard() {
                 <div className="flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3 text-xs text-foreground/80">
                   <IconLock className="mt-0.5 h-4 w-4 flex-none text-primary" />
                   <div>
-                    <b>Names here are for discovery, not secrets.</b> The labels above are visible to this team (and the
-                    server) so you can find and request access. The machines — and every private collection — stay
-                    end-to-end encrypted; you only see them once a member grants you access.
+                    <b>Names here are for discovery, not secrets.</b> The labels above are visible
+                    to this team (and the server) so you can find and request access. The machines —
+                    and every private collection — stay end-to-end encrypted; you only see them once
+                    a member grants you access.
                   </div>
                 </div>
 

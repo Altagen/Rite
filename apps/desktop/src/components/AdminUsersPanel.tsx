@@ -10,12 +10,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Backend, type ServerUser } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
-import { deriveAuthHash, randomSaltHex, DEFAULT_KDF_PARAMS, createVaultKey } from '../utils/serverAuth';
+import {
+  deriveAuthHash,
+  randomSaltHex,
+  DEFAULT_KDF_PARAMS,
+  createVaultKey,
+} from '../utils/serverAuth';
 import { ensureGroupKey, myGroupPrivateKey, rotateGroup, grantToAdmin } from '../utils/adminGroup';
 
 const fmtJoined = (epochSeconds: number) =>
   epochSeconds
-    ? new Date(epochSeconds * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    ? new Date(epochSeconds * 1000).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
     : '—';
 
 export function AdminUsersPanel() {
@@ -105,7 +114,9 @@ export function AdminUsersPanel() {
       // A new admin needs the Admin-group key to read collection names — grant it now
       // (O(1); if no group exists yet they'll bootstrap + self-grant on first visit).
       if (role === 'admin' && publicKey && privateKey) {
-        await grantToAdmin(publicKey, privateKey, created.id, vaultKey.publicKeyHex).catch(() => {});
+        await grantToAdmin(publicKey, privateKey, created.id, vaultKey.publicKeyHex).catch(
+          () => {},
+        );
       }
       setUsername('');
       setPassword('');
@@ -183,7 +194,9 @@ export function AdminUsersPanel() {
                 <tr key={u.id} className="border-t border-border">
                   <td className="px-4 py-2.5 font-medium">
                     {u.username}
-                    {isSelf && <span className="ml-2 text-xs font-normal text-muted-foreground">(you)</span>}
+                    {isSelf && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">(you)</span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     <span
@@ -216,7 +229,12 @@ export function AdminUsersPanel() {
                               return;
                           } else if (confirmRoleChange) {
                             // Instance policy: confirm any other role change too.
-                            if (!window.confirm(`Change ${u.username}'s role from ${u.role} to ${nr}?`)) return;
+                            if (
+                              !window.confirm(
+                                `Change ${u.username}'s role from ${u.role} to ${nr}?`,
+                              )
+                            )
+                              return;
                           }
                           act(async () => {
                             await Backend.Admin.setRole(u.id, nr);
@@ -255,7 +273,10 @@ export function AdminUsersPanel() {
                       </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-[13px] text-muted-foreground" title="Registered on this server">
+                  <td
+                    className="whitespace-nowrap px-4 py-2.5 text-[13px] text-muted-foreground"
+                    title="Registered on this server"
+                  >
                     {fmtJoined(u.createdAt)}
                   </td>
                   <td className="px-4 py-2.5 text-right">
@@ -321,83 +342,92 @@ export function AdminUsersPanel() {
       >
         <div className="text-sm font-semibold">Add a user</div>
         <div className="flex flex-wrap items-end gap-3">
-        <div className="flex-1 space-y-1">
-          <label htmlFor="new-username" className="text-xs font-medium text-muted-foreground">
-            Username
-          </label>
-          <input
-            id="new-username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            disabled={busy}
-          />
-        </div>
-        <div className="flex-1 space-y-1">
-          <label htmlFor="new-password" className="text-xs font-medium text-muted-foreground">
-            Initial password
-          </label>
-          <input
-            id="new-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            disabled={busy}
-          />
-        </div>
-        <div className="space-y-1">
-          <label htmlFor="new-role" className="text-xs font-medium text-muted-foreground">
-            Role
-          </label>
-          {meIsAdmin ? (
-            <select
-              id="new-role"
-              value={role}
-              onChange={(e) => setRole(e.target.value as 'user' | 'admin' | 'manager')}
-              className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+          <div className="flex-1 space-y-1">
+            <label htmlFor="new-username" className="text-xs font-medium text-muted-foreground">
+              Username
+            </label>
+            <input
+              id="new-username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               disabled={busy}
-            >
-              <option value="user">user</option>
-              <option value="manager">manager</option>
-              <option value="admin">admin</option>
-            </select>
-          ) : (
-            // A manager can only invite regular users.
-            <span className="rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
-              user
-            </span>
-          )}
-        </div>
-        <button
-          type="submit"
-          disabled={busy || !username.trim() || !password}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-        >
-          Add user
-        </button>
+            />
+          </div>
+          <div className="flex-1 space-y-1">
+            <label htmlFor="new-password" className="text-xs font-medium text-muted-foreground">
+              Initial password
+            </label>
+            <input
+              id="new-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              disabled={busy}
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="new-role" className="text-xs font-medium text-muted-foreground">
+              Role
+            </label>
+            {meIsAdmin ? (
+              <select
+                id="new-role"
+                value={role}
+                onChange={(e) => setRole(e.target.value as 'user' | 'admin' | 'manager')}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                disabled={busy}
+              >
+                <option value="user">user</option>
+                <option value="manager">manager</option>
+                <option value="admin">admin</option>
+              </select>
+            ) : (
+              // A manager can only invite regular users.
+              <span className="rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
+                user
+              </span>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={busy || !username.trim() || !password}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            Add user
+          </button>
         </div>
       </form>
 
       {resetTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setResetTarget(null)}>
-          <div className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setResetTarget(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-semibold">Reset access for {resetTarget.username}?</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use this when <b className="text-foreground">{resetTarget.username}</b> has lost their password. Verify
-              it&apos;s really them first (in person, phone…). Set a temporary password to relay to them — they&apos;ll
-              set their own at next login.
+              Use this when <b className="text-foreground">{resetTarget.username}</b> has lost their
+              password. Verify it&apos;s really them first (in person, phone…). Set a temporary
+              password to relay to them — they&apos;ll set their own at next login.
             </p>
             <div className="my-3 space-y-2 text-sm">
               <div className="rounded-md border border-green-500/30 bg-green-500/[0.08] p-2">
                 <b>Kept:</b> their username, role, and every team they&apos;re in.
               </div>
               <div className="rounded-md border border-red-500/30 bg-red-500/[0.08] p-2">
-                <b>Lost for good:</b> everything encrypted under the old password — personal connections and solo
-                collections. They&apos;ll re-request access to shared collections.
+                <b>Lost for good:</b> everything encrypted under the old password — personal
+                connections and solo collections. They&apos;ll re-request access to shared
+                collections.
               </div>
             </div>
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">Temporary password</label>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              Temporary password
+            </label>
             <input
               type="text"
               value={resetPw}
@@ -415,7 +445,10 @@ export function AdminUsersPanel() {
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
             <div className="mt-4 flex justify-end gap-2">
-              <button onClick={() => setResetTarget(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+              <button
+                onClick={() => setResetTarget(null)}
+                className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+              >
                 Cancel
               </button>
               <button

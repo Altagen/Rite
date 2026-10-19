@@ -79,7 +79,10 @@ test('a password set in the UI unlocks the vault again', async ({ page, request 
  * Asserted on the English wording with the French one explicitly absent: asserting only
  * that *something* red appears would have passed before the fix.
  */
-test('a wrong master password is refused in the language the app is set to', async ({ page, request }) => {
+test('a wrong master password is refused in the language the app is set to', async ({
+  page,
+  request,
+}) => {
   await request.post('/api/auth/lock');
   await page.goto('/');
 

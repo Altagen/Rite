@@ -38,8 +38,7 @@ test('the context menu offers no way to erase the vault you are in', async ({ pa
 
   // Row actions are display:none until the row is hovered, which also keeps them out
   // of the accessibility tree — so each row has to be hovered before it is judged.
-  const row = (label: string) =>
-    page.locator('.group').filter({ hasText: label }).first();
+  const row = (label: string) => page.locator('.group').filter({ hasText: label }).first();
 
   await row('Home lab').hover();
   // The other vault can be forgotten — a roster edit that keeps the file.

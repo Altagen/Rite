@@ -62,7 +62,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         isFirstRun,
         isLocked,
-        isLoading: false
+        isLoading: false,
       });
     } catch (error) {
       errorHandler.handle('Failed to check first run status', {
@@ -73,7 +73,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
       set({
         error: { key: 'auth.checkFailed', params: { error: String(error) } },
-        isLoading: false
+        isLoading: false,
       });
     }
   },
@@ -105,7 +105,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         isFirstRun: false,
         isLocked: false,
-        isLoading: false
+        isLoading: false,
       });
     } catch (error) {
       errorHandler.handle('Failed to setup master password', {
@@ -136,7 +136,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isLocked: false,
           isLoading: false,
           error: null,
-          rateLimitWaitSeconds: null
+          rateLimitWaitSeconds: null,
         });
         return true;
       }
@@ -144,7 +144,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (response.type === 'invalidPassword') {
         set({
           error: { key: 'auth.wrongPassword' },
-          isLoading: false
+          isLoading: false,
         });
         return false;
       }
@@ -153,7 +153,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({
           error: { key: 'unlock.rateLimited', params: { seconds: response.waitSeconds || 30 } },
           rateLimitWaitSeconds: response.waitSeconds || 30,
-          isLoading: false
+          isLoading: false,
         });
 
         // Countdown
@@ -183,7 +183,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
       set({
         error: { key: 'auth.unlockFailed', params: { error: String(error) } },
-        isLoading: false
+        isLoading: false,
       });
       return false;
     }
@@ -195,7 +195,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await Backend.Auth.lock();
       set({
         isLocked: true,
-        error: null
+        error: null,
       });
     } catch (error) {
       errorHandler.handle('Application lock failed', {
@@ -205,7 +205,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         context: { store: 'authStore', action: 'lock' },
       });
       set({
-        error: { key: 'auth.lockFailed', params: { error: String(error) } }
+        error: { key: 'auth.lockFailed', params: { error: String(error) } },
       });
     }
   },

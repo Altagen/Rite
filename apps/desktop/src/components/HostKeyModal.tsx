@@ -81,7 +81,9 @@ export function HostKeyModal({ prompt, onAccept, onReject, busy }: HostKeyModalP
             </div>
           )}
           <div className="flex justify-between gap-4">
-            <span className="text-muted-foreground">{changed ? 'New fingerprint' : 'Fingerprint'}</span>
+            <span className="text-muted-foreground">
+              {changed ? 'New fingerprint' : 'Fingerprint'}
+            </span>
             <span className={`break-all font-mono text-xs ${changed ? 'text-red-500' : ''}`}>
               {prompt.fingerprint}
             </span>

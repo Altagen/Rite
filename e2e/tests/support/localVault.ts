@@ -74,7 +74,11 @@ export async function createMachine(
       port: o.port ?? SSH.port,
       username: o.username ?? SSH.username,
       authMethod: o.keyPath
-        ? { type: 'publicKey', keyPath: o.keyPath, ...(o.passphrase ? { passphrase: o.passphrase } : {}) }
+        ? {
+            type: 'publicKey',
+            keyPath: o.keyPath,
+            ...(o.passphrase ? { passphrase: o.passphrase } : {}),
+          }
         : { type: 'password', password: o.password ?? SSH.password },
       color: null,
       icon: null,

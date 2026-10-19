@@ -110,9 +110,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                   </svg>
                 </div>
               </div>
-              <h1 className="mb-4 text-3xl font-bold text-foreground">
-                Application Error
-              </h1>
+              <h1 className="mb-4 text-3xl font-bold text-foreground">Application Error</h1>
               <p className="mb-6 text-lg text-muted-foreground">
                 The application encountered an unexpected error and needs to restart.
               </p>
@@ -165,9 +163,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 />
               </svg>
             </div>
-            <h3 className="mb-2 text-lg font-semibold text-foreground">
-              Feature Error
-            </h3>
+            <h3 className="mb-2 text-lg font-semibold text-foreground">Feature Error</h3>
             <p className="mb-4 text-sm text-muted-foreground">
               This feature encountered an error: {error.message}
             </p>
@@ -201,9 +197,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               </svg>
             </div>
             <div className="flex-1">
-              <h4 className="text-sm font-medium text-foreground">
-                Component Error
-              </h4>
+              <h4 className="text-sm font-medium text-foreground">Component Error</h4>
               <p className="mt-1 text-xs text-muted-foreground">
                 {name || 'This component'} failed to render: {error.message}
               </p>

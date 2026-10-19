@@ -15,7 +15,8 @@ import { resolve } from 'node:path';
  * the precedence table from the ADR walked row by row rather than trusted.
  */
 
-const mock = (name: string) => pathToFileURL(resolve(__dirname, `../../design/mock/${name}.html`)).href;
+const mock = (name: string) =>
+  pathToFileURL(resolve(__dirname, `../../design/mock/${name}.html`)).href;
 
 /** Fail on anything the page logged as an error — a mock that throws is a broken mock. */
 function watchErrors(page: Page): string[] {
@@ -28,7 +29,9 @@ function watchErrors(page: Page): string[] {
 const CARDS = ['Overview', 'Port forwarding', 'Containers', 'Services'];
 
 for (const shell of ['web', 'desktop'] as const) {
-  test(`${shell} mock: the machine dashboard and the Board render, with no console errors`, async ({ page }) => {
+  test(`${shell} mock: the machine dashboard and the Board render, with no console errors`, async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await page.goto(mock(shell));
 
@@ -40,7 +43,10 @@ for (const shell of ['web', 'desktop'] as const) {
     // `--line` variable nobody ever defined, so `border: 1px solid var(--line)`
     // collapsed to `border-style: none` and the cards were drawn edgeless in both
     // shells — invisible to a spec that only ever read text.
-    const border = await page.locator('.dcard').first().evaluate((el) => getComputedStyle(el).borderTopWidth);
+    const border = await page
+      .locator('.dcard')
+      .first()
+      .evaluate((el) => getComputedStyle(el).borderTopWidth);
     expect(border, 'the dashboard cards must actually have a border').not.toBe('0px');
 
     // The Board touches no host, so it is ungoverned and present in both shells.
@@ -62,7 +68,9 @@ for (const shell of ['web', 'desktop'] as const) {
  * cannot answer, and the one host Rite refuses to run an agent on at all.
  */
 for (const shell of ['web', 'desktop'] as const) {
-  test(`${shell} mock: the agent manager selects machine, then tool, then conversation`, async ({ page }) => {
+  test(`${shell} mock: the agent manager selects machine, then tool, then conversation`, async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await page.goto(mock(shell));
     await page.evaluate(() => openAgents());
@@ -70,14 +78,20 @@ for (const shell of ['web', 'desktop'] as const) {
     // The manager opens on a machine that can answer — not on an empty one, and not
     // on the local entry in a browser, which can never answer.
     await page.evaluate(() => agentPickScope('web-01'));
-    await expect(page.locator('.atool .dcard-t')).toHaveText(['Claude Code', 'Codex CLI', 'Gemini CLI']);
+    await expect(page.locator('.atool .dcard-t')).toHaveText([
+      'Claude Code',
+      'Codex CLI',
+      'Gemini CLI',
+    ]);
     await expect(page.locator('.arow')).toHaveCount(3);
 
     // A tool that is absent, and a tool that is present but cannot read its own
     // transcripts, both keep their block and say which they are. A session that
     // vanishes from a list is the failure this is here to prevent.
     await expect(page.locator('.atool.off')).toHaveCount(1);
-    await expect(page.locator('.anote')).toContainText(/installed but its sessions could not be read/);
+    await expect(page.locator('.anote')).toContainText(
+      /installed but its sessions could not be read/,
+    );
 
     // Discovery is one command per machine, so the view says when it was read.
     await expect(page.locator('.mdash-hd')).toContainText(/read /);
@@ -89,7 +103,9 @@ for (const shell of ['web', 'desktop'] as const) {
 
     // The refusal is on screen, in both shells, with its reason.
     await page.evaluate(() => agentPickScope('@server'));
-    await expect(page.locator('.dnote')).toContainText(/never runs an agent inside its own server container/);
+    await expect(page.locator('.dnote')).toContainText(
+      /never runs an agent inside its own server container/,
+    );
     await expect(page.locator('.arow')).toHaveCount(0);
 
     expect(errs, 'the mock must not log errors').toEqual([]);
@@ -101,14 +117,19 @@ for (const shell of ['web', 'desktop'] as const) {
  * question the mock exists to answer: an agent does not replace the list it was
  * chosen from, and does not split the pane the user was already working in.
  */
-test('desktop mock: resuming an agent opens a pane beside the manager, not over it', async ({ page }) => {
+test('desktop mock: resuming an agent opens a pane beside the manager, not over it', async ({
+  page,
+}) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
   await page.evaluate(() => openAgents());
   await page.evaluate(() => agentPickScope('@local'));
 
   const before = await page.locator('.mtab').count();
-  await page.locator('.arow', { hasText: 'Mock the agent manager' }).getByRole('button', { name: 'Resume' }).click();
+  await page
+    .locator('.arow', { hasText: 'Mock the agent manager' })
+    .getByRole('button', { name: 'Resume' })
+    .click();
 
   // One more tab, and the manager's own tab is still there to go back to.
   await expect(page.locator('.mtab')).toHaveCount(before + 1);
@@ -132,10 +153,15 @@ test('desktop mock: resuming an agent opens a pane beside the manager, not over 
  * giving it a tab it cannot share would be the same mistake as rebuilding a chat
  * UI over a TUI: the word would be right and the thing would not.
  */
-test('desktop mock: an agent pane splits with plain terminals, with the same chrome', async ({ page }) => {
+test('desktop mock: an agent pane splits with plain terminals, with the same chrome', async ({
+  page,
+}) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
-  await page.evaluate(() => { openAgents(); agentPickScope('@local'); });
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('@local');
+  });
   await page.locator('.arow').first().getByRole('button', { name: 'Resume' }).click();
 
   // One pane, no divider yet.
@@ -165,14 +191,21 @@ test('desktop mock: an agent pane splits with plain terminals, with the same chr
   // the drift this is here to catch. The agent's own controls are named here, so
   // adding one is a deliberate edit to this list rather than a silent divergence.
   const OWN = [/^Conversation id/, /^What is in effect/];
-  const titles = (sel: string) => page.locator(`${sel} .termpane-acts button`).evaluateAll(
-    (bs) => bs.map((b) => b.getAttribute('title') || ''),
-  );
+  const titles = (sel: string) =>
+    page
+      .locator(`${sel} .termpane-acts button`)
+      .evaluateAll((bs) => bs.map((b) => b.getAttribute('title') || ''));
   const agentActs = await titles('.agentpane');
   const termActs = await titles('.pane-wrap:not(:has(.agentpane)) .termpane');
   const isOwn = (t: string) => OWN.some((re) => re.test(t));
   expect(agentActs.filter((t) => !isOwn(t))).toEqual(
-    termActs.map((t) => (t === 'Close terminal' ? 'Close agent pane' : t === 'Detach to new tab' ? 'Detach to a new window' : t)),
+    termActs.map((t) =>
+      t === 'Close terminal'
+        ? 'Close agent pane'
+        : t === 'Detach to new tab'
+          ? 'Detach to a new window'
+          : t,
+    ),
   );
   expect(agentActs.filter(isOwn)).toHaveLength(OWN.length);
 
@@ -185,10 +218,15 @@ test('desktop mock: an agent pane splits with plain terminals, with the same chr
  * could type into.
  */
 for (const shell of ['web', 'desktop'] as const) {
-  test(`${shell} mock: view tabs and pane tabs are told apart, and no native dropdown`, async ({ page }) => {
+  test(`${shell} mock: view tabs and pane tabs are told apart, and no native dropdown`, async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await page.goto(mock(shell));
-    await page.evaluate(() => { openMachine('web-01'); openAgents(); });
+    await page.evaluate(() => {
+      openMachine('web-01');
+      openAgents();
+    });
 
     // The machine dashboard and the agent manager are views; the terminal is not.
     await expect(page.locator('.mtab.view')).toHaveCount(2);
@@ -217,7 +255,10 @@ for (const shell of ['web', 'desktop'] as const) {
 test('desktop mock: another agent CLI can be registered, and is looked for', async ({ page }) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
-  await page.evaluate(() => { openAgents(); agentPickScope('web-01'); });
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('web-01');
+  });
   const before = await page.locator('.atool').count();
 
   await page.evaluate(() => dlgAgentTools());
@@ -233,10 +274,15 @@ test('desktop mock: another agent CLI can be registered, and is looked for', asy
   // It appears, and says honestly that the last probe predates it rather than
   // claiming the machine does not have it.
   await expect(page.locator('.atool')).toHaveCount(before + 1);
-  await expect(page.locator('.atool', { hasText: 'Aider' })).toContainText(/added since the last probe/);
+  await expect(page.locator('.atool', { hasText: 'Aider' })).toContainText(
+    /added since the last probe/,
+  );
 
   // Switching an adapter off stops Rite looking for it at all.
-  await page.evaluate(() => { agentTool('gemini').on = false; renderMain(); });
+  await page.evaluate(() => {
+    agentTool('gemini').on = false;
+    renderMain();
+  });
   await expect(page.locator('.atool', { hasText: 'Gemini' })).toHaveCount(0);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
@@ -251,11 +297,18 @@ test('desktop mock: another agent CLI can be registered, and is looked for', asy
  * command that runs unattended, and on a shared account one person's hook runs for
  * everyone. Making that visible is the opposite of making it easy.
  */
-test('desktop mock: what is in effect is shown with its provenance, and never written', async ({ page }) => {
+test('desktop mock: what is in effect is shown with its provenance, and never written', async ({
+  page,
+}) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
-  await page.evaluate(() => { openAgents(); agentPickScope('@local'); });
-  await page.evaluate(() => dlgAgentContext('@local', 'claude', '41b9c8d7-6e52-4a19-83f0-9c1d5b2e7a44'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('@local');
+  });
+  await page.evaluate(() =>
+    dlgAgentContext('@local', 'claude', '41b9c8d7-6e52-4a19-83f0-9c1d5b2e7a44'),
+  );
 
   // Every row names the layer it came from and the file it is in: the answer to
   // "why did that happen?" is a path, so a row without one answers nothing.
@@ -281,18 +334,27 @@ test('desktop mock: what is in effect is shown with its provenance, and never wr
 });
 
 /** A shared account is the case the panel exists for, so it says so out loud. */
-test('desktop mock: a hook nobody here installed is visible, on a shared account', async ({ page }) => {
+test('desktop mock: a hook nobody here installed is visible, on a shared account', async ({
+  page,
+}) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
-  await page.evaluate(() => { openAgents(); agentPickScope('web-01'); });
-  await page.evaluate(() => dlgAgentContext('web-01', 'claude', '3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('web-01');
+  });
+  await page.evaluate(() =>
+    dlgAgentContext('web-01', 'claude', '3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11'),
+  );
 
   await expect(page.locator('.backdrop')).toContainText(/shared account/);
   await expect(page.locator('.backdrop')).toContainText(/hooks you did not install/);
   // The one under the shared home is marked apart from the project's own.
   await expect(page.locator('.backdrop .arow.hook')).toHaveCount(2);
   await expect(page.locator('.backdrop .arow.hook.foreign')).toHaveCount(1);
-  await expect(page.locator('.backdrop .arow.hook.foreign')).toContainText('/home/deploy/.claude/settings.json');
+  await expect(page.locator('.backdrop .arow.hook.foreign')).toContainText(
+    '/home/deploy/.claude/settings.json',
+  );
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
@@ -305,7 +367,9 @@ test('desktop mock: a hook nobody here installed is visible, on a shared account
  * silence this file exists to end — it is how the web UI shipped a dashboard
  * nobody had decided on.
  */
-test('desktop mock: every agent control can be used without the page throwing', async ({ page }) => {
+test('desktop mock: every agent control can be used without the page throwing', async ({
+  page,
+}) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
 
@@ -324,13 +388,20 @@ test('desktop mock: every agent control can be used without the page throwing', 
   await page.evaluate(() => agentPickScope('@local'));
 
   // Start a new agent: the dialog asks for the one thing it cannot guess.
-  await page.locator('.atool', { hasText: 'Claude Code' }).getByRole('button', { name: 'New' }).click();
+  await page
+    .locator('.atool', { hasText: 'Claude Code' })
+    .getByRole('button', { name: 'New' })
+    .click();
   await expect(page.locator('#na-cwd')).toBeVisible();
   await page.locator('.backdrop [data-ok]').click();
   await expect(page.locator('.backdrop')).toHaveCount(0);
 
   // Each entry of the row menu, one at a time.
-  for (const label of [/Copy conversation id/, /Copy the resume command/, /Resume in a new window/]) {
+  for (const label of [
+    /Copy conversation id/,
+    /Copy the resume command/,
+    /Resume in a new window/,
+  ]) {
     await page.locator('.arow').first().getByRole('button', { name: 'More' }).click();
     await page.locator('.menu .row', { hasText: label }).click();
   }
@@ -359,7 +430,9 @@ test('desktop mock: every agent control can be used without the page throwing', 
  * and none of the three should be something only the author can change.
  */
 for (const shell of ['web', 'desktop'] as const) {
-  test(`${shell} mock: a divider opens a plain terminal, and what else it opens is configurable`, async ({ page }) => {
+  test(`${shell} mock: a divider opens a plain terminal, and what else it opens is configurable`, async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await page.goto(mock(shell));
 
@@ -391,7 +464,9 @@ for (const shell of ['web', 'desktop'] as const) {
       await expect(rows).toHaveCount(2); // the plain terminal, and Snippets…
       await expect(rows.filter({ hasText: /Split presets/ })).toHaveCount(0);
       await expect(rows.filter({ hasText: /Deploy watch/ })).toHaveCount(0);
-      expect(await page.evaluate(() => [SPLIT_PRESETS.length, PANE_LAYOUTS.length])).toEqual([0, 0]);
+      expect(await page.evaluate(() => [SPLIT_PRESETS.length, PANE_LAYOUTS.length])).toEqual([
+        0, 0,
+      ]);
       // And no Layouts button beside the tabs, for the same reason.
       await expect(page.locator('button[title^="Layouts"]')).toHaveCount(0);
       await page.keyboard.press('Escape');
@@ -434,17 +509,59 @@ for (const shell of ['web', 'desktop'] as const) {
  * answered, and what the dashboard does — so a change to the rule has to change this
  * table too, instead of quietly changing what renders.
  */
-const ROWS: { shell: 'web' | 'desktop'; ctx?: string; policy: { webui: boolean; clients: boolean }; user: boolean; verdict: string }[] = [
-  { shell: 'desktop', ctx: 'vault',  policy: { webui: false, clients: false }, user: true,  verdict: 'run' },
-  { shell: 'desktop', ctx: 'vault',  policy: { webui: true,  clients: true },  user: false, verdict: 'off by you' },
-  { shell: 'desktop', ctx: 'server', policy: { webui: true,  clients: true },  user: true,  verdict: 'run' },
-  { shell: 'desktop', ctx: 'server', policy: { webui: true,  clients: false }, user: true,  verdict: 'off by server' },
-  { shell: 'desktop', ctx: 'server', policy: { webui: true,  clients: false }, user: false, verdict: 'off by server' },
-  { shell: 'desktop', ctx: 'server', policy: { webui: true,  clients: true },  user: false, verdict: 'off by you' },
-  { shell: 'web',                    policy: { webui: true,  clients: true },  user: true,  verdict: 'run' },
-  { shell: 'web',                    policy: { webui: false, clients: true },  user: true,  verdict: 'off by server' },
-  { shell: 'web',                    policy: { webui: false, clients: true },  user: false, verdict: 'off by server' },
-  { shell: 'web',                    policy: { webui: true,  clients: false }, user: false, verdict: 'off by you' },
+const ROWS: {
+  shell: 'web' | 'desktop';
+  ctx?: string;
+  policy: { webui: boolean; clients: boolean };
+  user: boolean;
+  verdict: string;
+}[] = [
+  {
+    shell: 'desktop',
+    ctx: 'vault',
+    policy: { webui: false, clients: false },
+    user: true,
+    verdict: 'run',
+  },
+  {
+    shell: 'desktop',
+    ctx: 'vault',
+    policy: { webui: true, clients: true },
+    user: false,
+    verdict: 'off by you',
+  },
+  {
+    shell: 'desktop',
+    ctx: 'server',
+    policy: { webui: true, clients: true },
+    user: true,
+    verdict: 'run',
+  },
+  {
+    shell: 'desktop',
+    ctx: 'server',
+    policy: { webui: true, clients: false },
+    user: true,
+    verdict: 'off by server',
+  },
+  {
+    shell: 'desktop',
+    ctx: 'server',
+    policy: { webui: true, clients: false },
+    user: false,
+    verdict: 'off by server',
+  },
+  {
+    shell: 'desktop',
+    ctx: 'server',
+    policy: { webui: true, clients: true },
+    user: false,
+    verdict: 'off by you',
+  },
+  { shell: 'web', policy: { webui: true, clients: true }, user: true, verdict: 'run' },
+  { shell: 'web', policy: { webui: false, clients: true }, user: true, verdict: 'off by server' },
+  { shell: 'web', policy: { webui: false, clients: true }, user: false, verdict: 'off by server' },
+  { shell: 'web', policy: { webui: true, clients: false }, user: false, verdict: 'off by you' },
 ];
 
 test('both mocks resolve ADR 0019 §5 the same way, row for row', async ({ page }) => {
@@ -601,7 +718,8 @@ test(`desktop mock: a layout opens from a file, and falls back pane by pane`, as
   // A machine the file names and the library does not have: one pane, a plain
   // shell, and the name it asked for printed in the pane.
   await page.evaluate(() => {
-    LAYOUT_FILE = '[[layout]]\nname = "Ghost"\n\n  [[layout.pane]]\n  machine = "nope-01"\n  command = "top"\n';
+    LAYOUT_FILE =
+      '[[layout]]\nname = "Ghost"\n\n  [[layout.pane]]\n  machine = "nope-01"\n  command = "top"\n';
     reloadLayouts();
   });
   const n = await page.locator('.pane-wrap').count();
@@ -623,7 +741,9 @@ test(`desktop mock: a layout opens from a file, and falls back pane by pane`, as
   // The dialog is the file, and saving it reloads.
   await page.evaluate(() => dlgLayouts());
   await expect(page.locator('.lay-err')).toContainText('Line 5');
-  await page.locator('#lay-file').fill('[[layout]]\nname = "Fixed"\n\n  [[layout.pane]]\n  command = "top"\n');
+  await page
+    .locator('#lay-file')
+    .fill('[[layout]]\nname = "Fixed"\n\n  [[layout.pane]]\n  command = "top"\n');
   await page.locator('[data-lay-save]').click();
   await expect(page.locator('.lay-err')).toHaveCount(0);
   expect(await page.evaluate(() => PANE_LAYOUTS.map((l) => l.name))).toEqual(['Fixed']);
@@ -665,14 +785,18 @@ test('desktop mock: Settings leads with the layout cards, and the startup switch
   // The cards are ABOVE the editor button — that is the whole change, so it is the
   // geometry that is checked and not merely that both exist.
   const cardsBox = await page.locator('[data-lay-cards]').boundingBox();
-  const btnBox = await page.locator('.prefs-pane button', { hasText: /Open the layouts file/ }).boundingBox();
+  const btnBox = await page
+    .locator('.prefs-pane button', { hasText: /Open the layouts file/ })
+    .boundingBox();
   expect(cardsBox!.y + cardsBox!.height).toBeLessThanOrEqual(btnBox!.y);
 
   // "Deploy watch" does not open at startup, and the file is where that is stored.
   const toggle = cards.nth(1).locator('input[type=checkbox]');
   await expect(toggle).not.toBeChecked();
   await toggle.click();
-  await expect(page.locator('[data-lay-cards] .snip-row').nth(1).locator('input[type=checkbox]')).toBeChecked();
+  await expect(
+    page.locator('[data-lay-cards] .snip-row').nth(1).locator('input[type=checkbox]'),
+  ).toBeChecked();
 
   // What the file says now. The key goes under `name`, where the documentation shows
   // it, and every other line is untouched: counted, because a comparison that only
@@ -695,7 +819,9 @@ test('desktop mock: Settings leads with the layout cards, and the startup switch
   // Off REMOVES the line rather than writing `startup = false`: the file stays free of
   // a key that states the default.
   await page.locator('[data-lay-cards] .snip-row').nth(1).locator('input[type=checkbox]').click();
-  await expect(page.locator('[data-lay-cards] .snip-row').nth(1).locator('input[type=checkbox]')).not.toBeChecked();
+  await expect(
+    page.locator('[data-lay-cards] .snip-row').nth(1).locator('input[type=checkbox]'),
+  ).not.toBeChecked();
   const off = await page.evaluate(() => ({
     file: LAYOUT_FILE,
     startups: PANE_LAYOUTS.map((l) => l.startup),
@@ -736,7 +862,9 @@ test('desktop mock: Settings leads with the layout cards, and the startup switch
  * and the order someone chose, along with every layout in the same file. So the dialog
  * SPLICES: its library becomes the file's preset blocks and nothing else moves.
  */
-test('desktop mock: the preset dialog rewrites the preset blocks and nothing else', async ({ page }) => {
+test('desktop mock: the preset dialog rewrites the preset blocks and nothing else', async ({
+  page,
+}) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
 
@@ -757,13 +885,18 @@ test('desktop mock: the preset dialog rewrites the preset blocks and nothing els
   expect(after.layouts).toEqual(['Morning', 'Deploy watch']);
   expect(after.panes).toBe(6);
   expect(after.file.startsWith('# Your workspace:')).toBe(true);
-  expect(after.file).toContain('  of = "logs"             # cut out of that pane, not the previous one');
+  expect(after.file).toContain(
+    '  of = "logs"             # cut out of that pane, not the previous one',
+  );
 
   // A pane citing a preset gets the preset's command at parse — one place to change it.
   expect(await page.evaluate(() => PANE_LAYOUTS[0].panes[2].command)).toBe('top');
 
   // Removing one leaves the rest of the file alone too.
-  await page.locator('.backdrop .snip-row', { hasText: /Journal/ }).locator('[data-sp-del]').click();
+  await page
+    .locator('.backdrop .snip-row', { hasText: /Journal/ })
+    .locator('[data-sp-del]')
+    .click();
   const removed = await page.evaluate(() => ({
     presets: SPLIT_PRESETS.map((p) => p.name),
     layouts: PANE_LAYOUTS.map((l) => l.name),
@@ -786,7 +919,9 @@ test('desktop mock: the preset dialog rewrites the preset blocks and nothing els
  * rather than greyed out, because a disabled row still implies you are missing out.
  */
 for (const shell of ['web', 'desktop'] as const) {
-  test(`${shell} mock: settings is a rail, and only the chosen section renders`, async ({ page }) => {
+  test(`${shell} mock: settings is a rail, and only the chosen section renders`, async ({
+    page,
+  }) => {
     const errs = watchErrors(page);
     await page.goto(mock(shell));
 
@@ -814,7 +949,10 @@ for (const shell of ['web', 'desktop'] as const) {
 
     // The toolbar is the person's: hiding a button hides it, and nothing else.
     const actsBefore = await page.locator('#acts button').count();
-    await page.locator('.prefs-pane .settings-row', { hasText: /Agents/ }).locator('.toggle').click();
+    await page
+      .locator('.prefs-pane .settings-row', { hasText: /Agents/ })
+      .locator('.toggle')
+      .click();
     expect(await page.locator('#acts button').count()).toBe(actsBefore - 1);
 
     expect(errs, 'the mock must not log errors').toEqual([]);

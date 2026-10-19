@@ -13,7 +13,16 @@ import { useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { addCollectionFolder, renameCollectionFolder } from '../utils/collectionHeader';
 
-const COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#94a3b8'];
+const COLORS = [
+  '#7c9cf5',
+  '#9ece6a',
+  '#e5b567',
+  '#f0a35e',
+  '#f7768e',
+  '#bb9af7',
+  '#56c7c0',
+  '#94a3b8',
+];
 
 /** The parent path of a folder path, or null at the top level. */
 function parentOf(path: string): string | null {
@@ -45,7 +54,12 @@ export function CollectionFolderDialog({
    * with the master key; a server context leaves it out and the folder is sealed
    * with the session keys below. The form is identical either way.
    */
-  onPersist?: (args: { collectionId: string; path: string; color: string | null; from?: string }) => Promise<void>;
+  onPersist?: (args: {
+    collectionId: string;
+    path: string;
+    color: string | null;
+    from?: string;
+  }) => Promise<void>;
 }) {
   const { publicKey, privateKey } = useServerSession();
   const editing = !!renamePath;
@@ -75,7 +89,14 @@ export function CollectionFolderDialog({
       } else {
         if (!publicKey || !privateKey) throw new Error('session keys unavailable');
         if (editing) {
-          await renameCollectionFolder(collectionId, publicKey, privateKey, renamePath!, path, color);
+          await renameCollectionFolder(
+            collectionId,
+            publicKey,
+            privateKey,
+            renamePath!,
+            path,
+            color,
+          );
         } else {
           await addCollectionFolder(collectionId, publicKey, privateKey, { name: path, color });
         }
@@ -98,7 +119,10 @@ export function CollectionFolderDialog({
         : undefined;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
       <form
         onSubmit={save}
         className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
@@ -108,7 +132,9 @@ export function CollectionFolderDialog({
         {subtitle && <p className="mb-3 text-xs text-muted-foreground">{subtitle}</p>}
 
         {error && (
-          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">{error}</div>
+          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">
+            {error}
+          </div>
         )}
 
         <label className="mb-1 block text-sm font-medium">Name</label>
@@ -136,7 +162,11 @@ export function CollectionFolderDialog({
         </div>
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+          >
             Cancel
           </button>
           <button

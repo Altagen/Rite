@@ -41,7 +41,10 @@ const MODIFIERS = new Set(['mod', 'shift', 'alt']);
  * is indistinguishable from a broken keyboard.
  */
 export function parseBinding(text: string): Binding | null {
-  const parts = text.split('+').map((p) => p.trim()).filter(Boolean);
+  const parts = text
+    .split('+')
+    .map((p) => p.trim())
+    .filter(Boolean);
   if (parts.length === 0) return null;
 
   const binding: Binding = { mod: false, shift: false, alt: false, key: '' };

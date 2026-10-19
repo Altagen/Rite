@@ -30,7 +30,12 @@ interface KbdInteractiveModalProps {
   busy?: boolean;
 }
 
-export function KbdInteractiveModal({ challenge, onSubmit, onCancel, busy }: KbdInteractiveModalProps) {
+export function KbdInteractiveModal({
+  challenge,
+  onSubmit,
+  onCancel,
+  busy,
+}: KbdInteractiveModalProps) {
   const [answers, setAnswers] = useState<string[]>(() => challenge.prompts.map(() => ''));
   const title = challenge.name.trim() || 'Server verification';
   const setAnswer = (i: number, v: string) =>

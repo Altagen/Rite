@@ -45,11 +45,32 @@ type Role = 'admin' | 'manager' | 'user';
 // Bitwarden/Vaultwarden model). The API guard is the real boundary; this is UX.
 const NAV: { id: Sec; label: string; icon: React.ReactNode; roles: Role[]; webOnly?: boolean }[] = [
   { id: 'overview', label: 'Overview', icon: <IconGrid />, roles: ['admin'], webOnly: true },
-  { id: 'users', label: 'Users', icon: <IconUsers className="h-4 w-4" />, roles: ['admin', 'manager'] },
+  {
+    id: 'users',
+    label: 'Users',
+    icon: <IconUsers className="h-4 w-4" />,
+    roles: ['admin', 'manager'],
+  },
   { id: 'invitations', label: 'Invitations', icon: <IconTicket />, roles: ['admin', 'manager'] },
-  { id: 'teams', label: 'Teams', icon: <IconUsers className="h-4 w-4" />, roles: ['admin', 'manager'] },
-  { id: 'collections', label: 'Collections', icon: <IconCollection className="h-4 w-4" />, roles: ['admin'] },
-  { id: 'instance', label: 'Instance', icon: <IconGear className="h-4 w-4" />, roles: ['admin'], webOnly: true },
+  {
+    id: 'teams',
+    label: 'Teams',
+    icon: <IconUsers className="h-4 w-4" />,
+    roles: ['admin', 'manager'],
+  },
+  {
+    id: 'collections',
+    label: 'Collections',
+    icon: <IconCollection className="h-4 w-4" />,
+    roles: ['admin'],
+  },
+  {
+    id: 'instance',
+    label: 'Instance',
+    icon: <IconGear className="h-4 w-4" />,
+    roles: ['admin'],
+    webOnly: true,
+  },
 ];
 
 function IconGrid() {
@@ -134,8 +155,18 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
             organisation's, not yours — and the same two words twice on one screen, meaning
             two different things, is worse than a Close. */}
         {!hideBack && (
-          <button onClick={() => navigate('/')} className="m-btn m-btn-sm" title="Close — back to the app (Esc)">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <button
+            onClick={() => navigate('/')}
+            className="m-btn m-btn-sm"
+            title="Close — back to the app (Esc)"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
             </svg>
             <span className="hidden md:inline">Close</span>
@@ -216,7 +247,9 @@ function activityAgo(seconds: number): string {
 function Overview({ onGo }: { onGo: (s: Sec) => void }) {
   const [users, setUsers] = useState<ServerUser[] | null>(null);
   useEffect(() => {
-    Backend.Admin.listUsers().then(setUsers).catch(() => setUsers([]));
+    Backend.Admin.listUsers()
+      .then(setUsers)
+      .catch(() => setUsers([]));
   }, []);
   const admins = users?.filter((u) => u.role === 'admin').length ?? 0;
   const active = users?.filter((u) => u.status === 'active').length ?? 0;
@@ -232,7 +265,11 @@ function Overview({ onGo }: { onGo: (s: Sec) => void }) {
       </div>
       <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
         <button onClick={() => onGo('users')} className="text-left">
-          <StatCard k="Users" v={users ? users.length : '…'} d={users ? `${active} active` : undefined} />
+          <StatCard
+            k="Users"
+            v={users ? users.length : '…'}
+            d={users ? `${active} active` : undefined}
+          />
         </button>
         <StatCard k="Admins" v={users ? admins : '…'} d="with full server access" />
         <button onClick={() => onGo('teams')} className="text-left">
@@ -242,14 +279,19 @@ function Overview({ onGo }: { onGo: (s: Sec) => void }) {
       </div>
 
       <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="border-b border-border px-4 py-3 text-sm font-semibold">Recent activity</div>
+        <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+          Recent activity
+        </div>
         {users === null ? (
           <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
         ) : recent.length === 0 ? (
           <div className="px-4 py-4 text-sm text-muted-foreground">No activity yet.</div>
         ) : (
           recent.map((u) => (
-            <div key={u.id} className="flex items-center gap-3 border-b border-border px-4 py-2.5 text-sm last:border-b-0">
+            <div
+              key={u.id}
+              className="flex items-center gap-3 border-b border-border px-4 py-2.5 text-sm last:border-b-0"
+            >
               <span className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/15 text-xs font-semibold uppercase text-primary">
                 {u.username.slice(0, 2)}
               </span>
@@ -270,10 +312,12 @@ function ZkBanner() {
     <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3.5 text-[13px] text-foreground/80">
       <IconShield className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
       <div>
-        <b>Zero-knowledge.</b> The server never sees a key. Collection <b>names</b> are readable here only through the
-        Admin-group escrow — machine credentials stay sealed to members and are never shown. Collections created before
-        the escrow existed appear by id until re-keyed. You can decrypt names, remove a member, delete a collection, and
-        grant a member <b>name/roster</b> access; full <b>machine</b> access still needs a member to seal the item key.
+        <b>Zero-knowledge.</b> The server never sees a key. Collection <b>names</b> are readable
+        here only through the Admin-group escrow — machine credentials stay sealed to members and
+        are never shown. Collections created before the escrow existed appear by id until re-keyed.
+        You can decrypt names, remove a member, delete a collection, and grant a member{' '}
+        <b>name/roster</b> access; full <b>machine</b> access still needs a member to seal the item
+        key.
       </div>
     </div>
   );
@@ -319,20 +363,27 @@ function CollectionPolicyPanel() {
       setErr(e instanceof Error ? e.message : 'Failed to save');
     }
   };
-  const row = 'flex flex-wrap items-center justify-between gap-4 border-t border-border p-4 first:border-t-0';
+  const row =
+    'flex flex-wrap items-center justify-between gap-4 border-t border-border p-4 first:border-t-0';
   return (
     <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
-      {err && <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-600">{err}</div>}
+      {err && (
+        <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-600">
+          {err}
+        </div>
+      )}
       {managedBy && (
         <div className="border-b border-border bg-muted/40 px-4 py-2 text-sm text-amber-500">
-          Set by this instance&apos;s configuration (<code className="font-mono">{managedBy}</code>) — change it there,
-          not here.
+          Set by this instance&apos;s configuration (<code className="font-mono">{managedBy}</code>)
+          — change it there, not here.
         </div>
       )}
       <div className={row}>
         <div>
           <div className="font-medium">Allow users to create collections</div>
-          <p className="mt-1 text-sm text-muted-foreground">When off, only admins provision collections.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            When off, only admins provision collections.
+          </p>
         </div>
         <Switch
           checked={p.allowCreate}
@@ -344,7 +395,9 @@ function CollectionPolicyPanel() {
       <div className={row}>
         <div>
           <div className="font-medium">Allow sharing outside teams</div>
-          <p className="mt-1 text-sm text-muted-foreground">Members can add anyone in the directory, not just teammates.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Members can add anyone in the directory, not just teammates.
+          </p>
         </div>
         <Switch
           checked={p.allowSharingOutsideTeams}
@@ -371,12 +424,16 @@ function CollectionPolicyPanel() {
       <div className={row}>
         <div>
           <div className="font-medium">Default role for new members</div>
-          <p className="mt-1 text-sm text-muted-foreground">Applied when someone is added to a collection.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Applied when someone is added to a collection.
+          </p>
         </div>
         <select
           value={p.defaultRole}
           disabled={!!managedBy}
-          onChange={(e) => save({ ...p, defaultRole: e.target.value as CollectionPolicy['defaultRole'] })}
+          onChange={(e) =>
+            save({ ...p, defaultRole: e.target.value as CollectionPolicy['defaultRole'] })
+          }
           className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
         >
           <option value="viewer">viewer</option>
@@ -413,7 +470,9 @@ function CollectionsGovernance() {
     if (!sec) return;
     setGroup(g);
     setSecret(sec);
-    Backend.Collections.directory().then(setDirectory).catch(() => setDirectory([]));
+    Backend.Collections.directory()
+      .then(setDirectory)
+      .catch(() => setDirectory([]));
     const map = new Map<string, CollName>();
     for (const c of all) {
       if (!c.metaKeyGroupEnc) continue;
@@ -436,7 +495,9 @@ function CollectionsGovernance() {
     setSel(id);
     setMembers(null);
     setAddTarget('');
-    Backend.Admin.collectionMembers(id).then(setMembers).catch(() => setMembers([]));
+    Backend.Admin.collectionMembers(id)
+      .then(setMembers)
+      .catch(() => setMembers([]));
   };
   const removeMember = async (id: string, userId: string) => {
     await Backend.Admin.removeCollectionMember(id, userId).catch(() => {});
@@ -453,7 +514,11 @@ function CollectionsGovernance() {
     if (!coll?.metaKeyGroupEnc || !group || !secret || !entry?.publicKey) return;
     try {
       const metaKey = await unsealMetaKey(group, secret, coll.metaKeyGroupEnc);
-      await Backend.Admin.addCollectionMemberMeta(id, userId, await sealCollectionKeyToHex(entry.publicKey, metaKey));
+      await Backend.Admin.addCollectionMemberMeta(
+        id,
+        userId,
+        await sealCollectionKeyToHex(entry.publicKey, metaKey),
+      );
       setAddTarget('');
       open(id);
     } catch {
@@ -461,7 +526,12 @@ function CollectionsGovernance() {
     }
   };
   const del = async (id: string) => {
-    if (!window.confirm('Force-delete this collection for every member? Its encrypted machines are lost.')) return;
+    if (
+      !window.confirm(
+        'Force-delete this collection for every member? Its encrypted machines are lost.',
+      )
+    )
+      return;
     await Backend.Admin.deleteCollection(id).catch(() => {});
     setSel(null);
     load();
@@ -472,8 +542,17 @@ function CollectionsGovernance() {
   if (sel) {
     return (
       <>
-        <button onClick={() => setSel(null)} className="mb-4 flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <button
+          onClick={() => setSel(null)}
+          className="mb-4 flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
           </svg>
           Collections
@@ -489,12 +568,31 @@ function CollectionsGovernance() {
             <div className="px-4 py-4 text-sm text-muted-foreground">No members.</div>
           ) : (
             members.map((m) => (
-              <div key={m.userId} className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
+              <div
+                key={m.userId}
+                className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+              >
                 <span className="flex-1 font-medium">{m.username}</span>
-                <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">{m.role}</span>
-                <button onClick={() => removeMember(sel, m.userId)} className="rounded p-1 text-red-500 hover:bg-red-500/10" title="Remove member">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
+                  {m.role}
+                </span>
+                <button
+                  onClick={() => removeMember(sel, m.userId)}
+                  className="rounded p-1 text-red-500 hover:bg-red-500/10"
+                  title="Remove member"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"
+                    />
                   </svg>
                 </button>
               </div>
@@ -599,7 +697,13 @@ function CollectionsGovernance() {
               </span>
               <span className="text-right text-sm">{c.memberCount}</span>
               <span className="text-right text-sm">{c.itemCount}</span>
-              <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg
+                className="h-4 w-4 text-muted-foreground"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
               </svg>
             </button>

@@ -26,7 +26,11 @@ import { ProfilePastille } from './ProfilePastille';
 import { OverflowNav } from './OverflowNav';
 import { useAccountsNav } from './accountsNav';
 
-export function OverlayHeaderControls({ appbarRef }: { appbarRef?: RefObject<HTMLElement | null> }) {
+export function OverlayHeaderControls({
+  appbarRef,
+}: {
+  appbarRef?: RefObject<HTMLElement | null>;
+}) {
   const { user, mode, logout } = useServerSession();
   const setSettingsOpen = useSettingsModal((s) => s.setOpen);
   const settingsOpen = useSettingsModal((s) => s.open);

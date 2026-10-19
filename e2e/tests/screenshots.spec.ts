@@ -56,9 +56,21 @@ async function seedLibrary(request: APIRequestContext): Promise<string> {
     // One machine really connects (it is the harness); the others show what a library
     // looks like. Names and targets are made up on purpose.
     await createMachine(request, infra, { name: 'web-01', hostname: SSH.hostname, port: SSH.port });
-    await createMachine(request, infra, { name: 'db-primary', hostname: '10.0.0.21', username: 'postgres' });
-    await createMachine(request, infra, { name: 'bastion', hostname: '10.0.0.2', username: 'deploy' });
-    await createMachine(request, infra, { name: 'worker-03', hostname: '10.0.0.31', username: 'deploy' });
+    await createMachine(request, infra, {
+      name: 'db-primary',
+      hostname: '10.0.0.21',
+      username: 'postgres',
+    });
+    await createMachine(request, infra, {
+      name: 'bastion',
+      hostname: '10.0.0.2',
+      username: 'deploy',
+    });
+    await createMachine(request, infra, {
+      name: 'worker-03',
+      hostname: '10.0.0.31',
+      username: 'deploy',
+    });
   }
   return infra;
 }
@@ -111,7 +123,10 @@ test('layouts: one file, three panes, opened at once', async ({ page, request })
 
   await page.goto('/');
   await page.getByTestId('layouts-button').click();
-  await page.getByRole('menu', { name: /Layouts/ }).getByText('Morning', { exact: true }).click();
+  await page
+    .getByRole('menu', { name: /Layouts/ })
+    .getByText('Morning', { exact: true })
+    .click();
   await expect(page.locator('.xterm-screen')).toHaveCount(3, { timeout: 40_000 });
   await page.waitForTimeout(1200);
 
@@ -147,7 +162,9 @@ test('administration: the policies an instance governs', async ({ page }) => {
     await page.locator('#password').fill('Rite-E2E-Str0ng!pass');
     await page.getByRole('button', { name: /^sign in$/i }).click();
   }
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   await page.getByRole('button', { name: 'Admin', exact: true }).click();
   await page.getByRole('button', { name: 'Instance', exact: true }).click();
@@ -158,7 +175,9 @@ test('administration: the policies an instance governs', async ({ page }) => {
   // the shell the instance runs, who may deviate, Quick SSH, host keys, stored secrets.
   // `scrollIntoViewIfNeeded` centres it, which starts the image on a half-sentence from
   // the row above. Put the heading at the top instead.
-  await page.getByText('Client capabilities').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await page
+    .getByText('Client capabilities')
+    .evaluate((el) => el.scrollIntoView({ block: 'start' }));
   await page.waitForTimeout(600);
 
   await page.screenshot({ path: `${SHOTS}/administration.png` });

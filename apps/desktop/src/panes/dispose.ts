@@ -24,7 +24,7 @@ export type DisposerLookup = (node: LeafPaneNode) => PaneDisposer | undefined;
  */
 export async function disposePanes(
   panes: readonly LeafPaneNode[],
-  lookup: DisposerLookup
+  lookup: DisposerLookup,
 ): Promise<{ disposed: number; failed: { pane: LeafPaneNode; error: unknown }[] }> {
   const outcomes = await Promise.all(
     panes.map(async (pane) => {
@@ -37,7 +37,7 @@ export async function disposePanes(
       } catch (error) {
         return { pane, error, skipped: false };
       }
-    })
+    }),
   );
 
   return {

@@ -28,7 +28,10 @@ test.beforeEach(async ({ request }) => {
   await request.put('/api/settings/host_key_verification_mode', { data: { value: 'accept' } });
 });
 
-test('containers card lists what the host runs, with per-row actions', async ({ page, request }) => {
+test('containers card lists what the host runs, with per-row actions', async ({
+  page,
+  request,
+}) => {
   await createConnection(request, 'e2e-dash-a');
   await page.goto('/');
   await page.getByText('e2e-dash-a').click();
@@ -128,7 +131,10 @@ test('expanding the containers card reveals the wide table with live stats', asy
   // Collapsed: no table columns.
   await expect(page.getByRole('columnheader', { name: 'CPU' })).toBeHidden();
 
-  const containersCard = page.locator('div').filter({ hasText: /^Containers/ }).first();
+  const containersCard = page
+    .locator('div')
+    .filter({ hasText: /^Containers/ })
+    .first();
   await containersCard.getByTitle('Expand for more detail').click();
 
   // Wide adds the columns, and CPU/Mem are fetched lazily only now.
@@ -139,7 +145,10 @@ test('expanding the containers card reveals the wide table with live stats', asy
   await expect(page.getByText('3 days ago').first()).toBeVisible();
 });
 
-test('Customize hides a card and the choice persists across a reload', async ({ page, request }) => {
+test('Customize hides a card and the choice persists across a reload', async ({
+  page,
+  request,
+}) => {
   await createConnection(request, 'e2e-dash-f');
   await page.goto('/');
   await page.getByText('e2e-dash-f').click();

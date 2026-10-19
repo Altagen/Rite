@@ -102,7 +102,7 @@ export function ImportSSHConfigModal({
 
   const handleToggle = (index: number) => {
     setEntries((prev) =>
-      prev.map((entry, i) => (i === index ? { ...entry, selected: !entry.selected } : entry))
+      prev.map((entry, i) => (i === index ? { ...entry, selected: !entry.selected } : entry)),
     );
   };
 
@@ -164,7 +164,12 @@ export function ImportSSHConfigModal({
             disabled={loading || importing}
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -175,9 +180,7 @@ export function ImportSSHConfigModal({
 
         {/* File Path Input */}
         <div className="mb-4">
-          <label className="mb-1 block text-sm font-medium">
-            Config File Path
-          </label>
+          <label className="mb-1 block text-sm font-medium">Config File Path</label>
           <div className="flex gap-2">
             <input
               type="text"
@@ -250,8 +253,15 @@ export function ImportSSHConfigModal({
               <p className="font-medium">Important - Workflow:</p>
               <ul className="mt-1 ml-4 list-disc text-muted-foreground">
                 <li>SSH config files never contain passwords (security)</li>
-                <li>Imported connections will have <span className="font-semibold text-foreground">empty passwords</span></li>
-                <li><span className="font-semibold text-foreground">To use them:</span> Click the 3 dots (⋮) on the connection card → Edit → Add password, OR use Quick SSH for temporary connections</li>
+                <li>
+                  Imported connections will have{' '}
+                  <span className="font-semibold text-foreground">empty passwords</span>
+                </li>
+                <li>
+                  <span className="font-semibold text-foreground">To use them:</span> Click the 3
+                  dots (⋮) on the connection card → Edit → Add password, OR use Quick SSH for
+                  temporary connections
+                </li>
               </ul>
             </div>
           </>
@@ -294,9 +304,7 @@ export function ImportSSHConfigModal({
             {importing && (
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent" />
             )}
-            {importing
-              ? `Importing ${selectedCount}...`
-              : `Import Selected (${selectedCount})`}
+            {importing ? `Importing ${selectedCount}...` : `Import Selected (${selectedCount})`}
           </button>
         </div>
       </div>

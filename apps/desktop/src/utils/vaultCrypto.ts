@@ -69,7 +69,11 @@ export async function encryptWithIv(
 ): Promise<string> {
   const ck = await importKey(key);
   const ct = new Uint8Array(
-    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, ck, plaintext as BufferSource),
+    await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: iv as BufferSource },
+      ck,
+      plaintext as BufferSource,
+    ),
   );
   return `v1.${b64urlEncode(iv)}.${b64urlEncode(ct)}`;
 }
@@ -83,7 +87,11 @@ export async function decryptString(key: Uint8Array, token: string): Promise<Uin
   if (iv.length !== IV_LEN) throw new Error('bad iv length');
   const ck = await importKey(key);
   return new Uint8Array(
-    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, ck, ct as BufferSource),
+    await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv as BufferSource },
+      ck,
+      ct as BufferSource,
+    ),
   );
 }
 
@@ -93,7 +101,10 @@ export function wrapUserKey(masterKey: Uint8Array, userKey: Uint8Array): Promise
 }
 
 /** Unwrap the stored `protectedUserKey` back to the 32-byte user key. */
-export async function unwrapUserKey(masterKey: Uint8Array, protectedKey: string): Promise<Uint8Array> {
+export async function unwrapUserKey(
+  masterKey: Uint8Array,
+  protectedKey: string,
+): Promise<Uint8Array> {
   const k = await decryptString(masterKey, protectedKey);
   if (k.length !== KEY_LEN) throw new Error('unwrapped user key has wrong length');
   return k;
@@ -102,7 +113,10 @@ export async function unwrapUserKey(masterKey: Uint8Array, protectedKey: string)
 // --- helpers ---------------------------------------------------------------
 
 function importKey(raw: Uint8Array): Promise<CryptoKey> {
-  return crypto.subtle.importKey('raw', raw as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']);
+  return crypto.subtle.importKey('raw', raw as BufferSource, 'AES-GCM', false, [
+    'encrypt',
+    'decrypt',
+  ]);
 }
 
 export function hexToBytes(hex: string): Uint8Array {

@@ -62,12 +62,15 @@ export function VaultRemoveDialog({
         <h3 className="font-semibold">“{vault.label}” is the vault you are in</h3>
         <p className="mt-1 truncate text-xs text-muted-foreground">{vault.path}</p>
         <p className="mt-3 text-sm text-muted-foreground">
-          It can't be removed from the list while this window holds it. Switch to another
-          context first, or open <strong>Settings ▸ Reset vault</strong> to erase this one and
-          start from scratch.
+          It can't be removed from the list while this window holds it. Switch to another context
+          first, or open <strong>Settings ▸ Reset vault</strong> to erase this one and start from
+          scratch.
         </p>
         <div className="mt-4 flex justify-end">
-          <button onClick={onClose} className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted">
+          <button
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
+          >
             Close
           </button>
         </div>
@@ -126,7 +129,10 @@ export function VaultRemoveDialog({
 
 function Shell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}

@@ -15,7 +15,14 @@ export interface SplitPaneProps {
   className?: string;
 }
 
-export function SplitPane({ direction, ratio, onRatioChange, left, right, className = '' }: SplitPaneProps) {
+export function SplitPane({
+  direction,
+  ratio,
+  onRatioChange,
+  left,
+  right,
+  className = '',
+}: SplitPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
@@ -69,7 +76,7 @@ export function SplitPane({ direction, ratio, onRatioChange, left, right, classN
       ref={containerRef}
       className={`flex ${isHorizontal ? 'flex-row' : 'flex-col'} w-full h-full ${className}`}
       style={{
-        cursor: (isDragging || isHovering) ? (isHorizontal ? 'col-resize' : 'row-resize') : undefined,
+        cursor: isDragging || isHovering ? (isHorizontal ? 'col-resize' : 'row-resize') : undefined,
       }}
     >
       {/* First pane */}

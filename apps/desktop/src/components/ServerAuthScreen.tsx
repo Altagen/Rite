@@ -78,8 +78,8 @@ export function ServerAuthScreen() {
 
         {sessionExpired && !isNewAccount && (
           <div className="rounded-md border border-primary/25 bg-primary/[0.08] p-3 text-sm text-foreground/80">
-            <b>Your session expired.</b> For your security you were signed out — sign in again to carry on. Your saved
-            connections stay safe and encrypted.
+            <b>Your session expired.</b> For your security you were signed out — sign in again to
+            carry on. Your saved connections stay safe and encrypted.
           </div>
         )}
 

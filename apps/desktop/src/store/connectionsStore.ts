@@ -286,7 +286,7 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       });
       set({
         error: `Failed to load connections: ${error}`,
-        isLoading: false
+        isLoading: false,
       });
     }
   },
@@ -298,9 +298,9 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       const connection = await Backend.Connections.createConnection(input);
 
       // Add to local state
-      set(state => ({
+      set((state) => ({
         connections: [...state.connections, connection],
-        isLoading: false
+        isLoading: false,
       }));
 
       return connection;
@@ -309,11 +309,15 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
         severity: ErrorSeverity.ERROR,
         category: ErrorCategory.DATABASE,
         originalError: error,
-        context: { store: 'connectionsStore', action: 'createConnection', connectionName: input.name },
+        context: {
+          store: 'connectionsStore',
+          action: 'createConnection',
+          connectionName: input.name,
+        },
       });
       set({
         error: `Failed to create connection: ${error}`,
-        isLoading: false
+        isLoading: false,
       });
       throw error;
     }
@@ -326,11 +330,11 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       const updatedConnection = await Backend.Connections.updateConnection(input);
 
       // Update in local state
-      set(state => ({
-        connections: state.connections.map(conn =>
-          conn.id === updatedConnection.id ? updatedConnection : conn
+      set((state) => ({
+        connections: state.connections.map((conn) =>
+          conn.id === updatedConnection.id ? updatedConnection : conn,
         ),
-        isLoading: false
+        isLoading: false,
       }));
 
       return updatedConnection;
@@ -343,7 +347,7 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       });
       set({
         error: `Failed to update connection: ${error}`,
-        isLoading: false
+        isLoading: false,
       });
       throw error;
     }
@@ -356,10 +360,10 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       await Backend.Connections.deleteConnection(id);
 
       // Remove from local state
-      set(state => ({
-        connections: state.connections.filter(conn => conn.id !== id),
+      set((state) => ({
+        connections: state.connections.filter((conn) => conn.id !== id),
         selectedConnectionId: state.selectedConnectionId === id ? null : state.selectedConnectionId,
-        isLoading: false
+        isLoading: false,
       }));
     } catch (error) {
       errorHandler.handle('Failed to delete connection', {
@@ -370,7 +374,7 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       });
       set({
         error: `Failed to delete connection: ${error}`,
-        isLoading: false
+        isLoading: false,
       });
       throw error;
     }

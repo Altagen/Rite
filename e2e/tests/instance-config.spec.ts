@@ -36,14 +36,18 @@ async function openInstancePanel(page: Page) {
   const confirm = page.locator('#confirmPassword');
   if (await confirm.count()) await confirm.fill(ADMIN.password);
   await page.locator('button[type="submit"]').click();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   await page.getByRole('button', { name: 'Admin', exact: true }).click();
   await page.getByRole('button', { name: 'Instance', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Instance' })).toBeVisible({ timeout: 15_000 });
 }
 
-test('the console locks what the configuration owns, and names where it is set', async ({ page }) => {
+test('the console locks what the configuration owns, and names where it is set', async ({
+  page,
+}) => {
   await openInstancePanel(page);
 
   // The name is set through a mounted secret, which outranks the `instance_name` the
@@ -58,8 +62,12 @@ test('the console locks what the configuration owns, and names where it is set',
   await expect(nameRow).toContainText('RITE__instance_name__FILE');
 
   // A key the file alone declares is attributed to the file, by path.
-  await expect(page.getByText(/Set by this instance's configuration/).filter({ hasText: 'rite.toml' }).first())
-    .toBeVisible();
+  await expect(
+    page
+      .getByText(/Set by this instance's configuration/)
+      .filter({ hasText: 'rite.toml' })
+      .first(),
+  ).toBeVisible();
 
   // A switch the file declares cannot be thrown, and its row says so too.
   await expect(page.getByRole('switch', { name: 'Open registration' })).toBeDisabled();
@@ -80,7 +88,7 @@ test('the console locks what the configuration owns, and names where it is set',
   await expect(page.getByRole('switch', { name: 'Allow invitations' })).toBeEnabled();
 });
 
-test('a setting the configuration leaves alone is still the console\'s', async ({ page }) => {
+test("a setting the configuration leaves alone is still the console's", async ({ page }) => {
   await openInstancePanel(page);
 
   // session_persistence appears in neither the file nor the environment. It must still
@@ -111,7 +119,9 @@ test('the Quick SSH switch is offered on an instance that allows Quick SSH', asy
   await page.locator('#username').fill(ADMIN.username);
   await page.locator('#password').fill(ADMIN.password);
   await page.locator('button[type="submit"]').click();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // The premise, from the server rather than from the file this suite already read.
   const mode = await (await page.request.get('/api/server/mode')).json();

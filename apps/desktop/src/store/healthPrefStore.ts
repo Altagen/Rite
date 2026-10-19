@@ -11,7 +11,12 @@ import type { HealthcheckPolicy } from '../utils/backend';
 
 // A single collapsed scale (least → most capable). `inherit` = follow the server.
 export type HealthPref = 'inherit' | 'off' | 'passive' | 'on-demand' | 'full';
-const RANK: Record<Exclude<HealthPref, 'inherit'>, number> = { off: 0, passive: 1, 'on-demand': 2, full: 3 };
+const RANK: Record<Exclude<HealthPref, 'inherit'>, number> = {
+  off: 0,
+  passive: 1,
+  'on-demand': 2,
+  full: 3,
+};
 const KEY = 'rite.healthPref';
 
 function load(): HealthPref {

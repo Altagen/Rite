@@ -36,7 +36,8 @@ const HC_METHODS: { id: string; label: string }[] = [
 function ManagedBy({ origin }: { origin: string }) {
   return (
     <p className="mt-1 text-xs text-amber-500">
-      Set by this instance&apos;s configuration (<code className="font-mono">{origin}</code>) — change it there, not here.
+      Set by this instance&apos;s configuration (<code className="font-mono">{origin}</code>) —
+      change it there, not here.
     </p>
   );
 }
@@ -254,16 +255,21 @@ export function InstanceSettingsPanel() {
       <div>
         <h2 className="text-xl font-semibold">Instance</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          A global name for this server (e.g. your company or team). Shown to everyone on the sign-in screen and in the
-          header, so users can tell instances apart.
+          A global name for this server (e.g. your company or team). Shown to everyone on the
+          sign-in screen and in the header, so users can tell instances apart.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">{error}</div>
+        <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">
+          {error}
+        </div>
       )}
 
-      <form onSubmit={save} className="flex items-end gap-3 rounded-lg border border-border bg-card p-4">
+      <form
+        onSubmit={save}
+        className="flex items-end gap-3 rounded-lg border border-border bg-card p-4"
+      >
         <div className="flex-1 space-y-1">
           <label htmlFor="instance-name" className="text-xs font-medium text-muted-foreground">
             Instance name
@@ -298,8 +304,12 @@ export function InstanceSettingsPanel() {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4">
           <div className="min-w-0">
             <div className="font-medium">Host key</div>
-            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">SHA256:{hostKey}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Share this so users can pin this server on first connect.</p>
+            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
+              SHA256:{hostKey}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Share this so users can pin this server on first connect.
+            </p>
           </div>
           <button
             onClick={() => {
@@ -319,9 +329,10 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Keep users signed in across reloads</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Stores each user's vault key in their browser's session storage so a page reload doesn't force a
-              re-login. Still zero-knowledge — the key never leaves the browser and is cleared when the tab closes.
-              Turn this off to enforce a RAM-only key (re-login on every reload).
+              Stores each user's vault key in their browser's session storage so a page reload
+              doesn't force a re-login. Still zero-knowledge — the key never leaves the browser and
+              is cleared when the tab closes. Turn this off to enforce a RAM-only key (re-login on
+              every reload).
             </p>
             {managed.session_persistence && <ManagedBy origin={managed.session_persistence} />}
           </div>
@@ -339,9 +350,10 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Open registration</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default.</b> When on, the sign-in screen offers <b>Create an account</b> — anyone who can reach
-              this server can self-register (role <b>user</b>, no team). They generate their own keys, so you never see
-              them. Leave off for an invite-only instance (admin-provisioned accounts or enrollment tokens).
+              <b>Off by default.</b> When on, the sign-in screen offers <b>Create an account</b> —
+              anyone who can reach this server can self-register (role <b>user</b>, no team). They
+              generate their own keys, so you never see them. Leave off for an invite-only instance
+              (admin-provisioned accounts or enrollment tokens).
             </p>
             {managed.open_registration && <ManagedBy origin={managed.open_registration} />}
           </div>
@@ -359,9 +371,10 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Allow invitations</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>On by default.</b> The master switch for enrollment-token invitations (Invitations tab). Turn it off to
-              close the invite path instance-wide — no new tokens can be minted and existing ones stop working, enforced
-              on the server. Independent of open registration (invitations are the invite-only path).
+              <b>On by default.</b> The master switch for enrollment-token invitations (Invitations
+              tab). Turn it off to close the invite path instance-wide — no new tokens can be minted
+              and existing ones stop working, enforced on the server. Independent of open
+              registration (invitations are the invite-only path).
             </p>
             {managed.allow_invitations && <ManagedBy origin={managed.allow_invitations} />}
           </div>
@@ -379,8 +392,9 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Confirm role changes</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default.</b> When on, changing an account&apos;s role in Users asks for a confirmation first — a
-              guard against an accidental promotion or demotion. A UX safety prompt, applied on every client.
+              <b>Off by default.</b> When on, changing an account&apos;s role in Users asks for a
+              confirmation first — a guard against an accidental promotion or demotion. A UX safety
+              prompt, applied on every client.
             </p>
             {managed.confirm_role_change && <ManagedBy origin={managed.confirm_role_change} />}
           </div>
@@ -397,7 +411,9 @@ export function InstanceSettingsPanel() {
       <div className="rounded-lg border border-border bg-card">
         <div className="border-b border-border px-4 py-3">
           <div className="text-base font-semibold">Client capabilities</div>
-          <p className="mt-0.5 text-xs text-muted-foreground">What connected clients may do on this server.</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            What connected clients may do on this server.
+          </p>
         </div>
 
         <div className="flex items-start justify-between gap-4 border-b border-border p-4">
@@ -408,8 +424,9 @@ export function InstanceSettingsPanel() {
               {shellChoice
                 ? 'What a member gets until they choose otherwise.'
                 : 'Every terminal, for everyone — web-UI members do not pick their own.'}{' '}
-              (Desktop users run their own machine&apos;s shell; nothing here reaches it.) The list is what this
-              server has installed: <b data-testid="instance-shells">{shells.join(', ')}</b>.
+              (Desktop users run their own machine&apos;s shell; nothing here reaches it.) The list
+              is what this server has installed:{' '}
+              <b data-testid="instance-shells">{shells.join(', ')}</b>.
             </p>
             {managed.default_shell && <ManagedBy origin={managed.default_shell} />}
           </div>
@@ -433,10 +450,11 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Let members choose their shell</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default</b> — the default above is then the only shell. On: a member picks among the
-              installed shells in their own <b>Settings ▸ Terminals</b>, and one terminal at a time from the{' '}
-              <b>+</b> beside the tabs. They choose a shell, never a path: the server resolves the name itself,
-              so the choice cannot name a program this instance did not offer.
+              <b>Off by default</b> — the default above is then the only shell. On: a member picks
+              among the installed shells in their own <b>Settings ▸ Terminals</b>, and one terminal
+              at a time from the <b>+</b> beside the tabs. They choose a shell, never a path: the
+              server resolves the name itself, so the choice cannot name a program this instance did
+              not offer.
             </p>
             {managed.allow_shell_choice && <ManagedBy origin={managed.allow_shell_choice} />}
           </div>
@@ -453,8 +471,9 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Allow Quick SSH</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Ad-hoc one-off SSH from the toolbar. <b>Off by default</b> — connections on a server should live in{' '}
-              <b>collections</b> (saved, shared, auditable). Turn on for teams that need quick throwaway sessions.
+              Ad-hoc one-off SSH from the toolbar. <b>Off by default</b> — connections on a server
+              should live in <b>collections</b> (saved, shared, auditable). Turn on for teams that
+              need quick throwaway sessions.
             </p>
             {managed.allow_quick_ssh && <ManagedBy origin={managed.allow_quick_ssh} />}
           </div>
@@ -470,13 +489,16 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Host key verification</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              How this server treats an SSH host key it has not seen before — <b>every</b> connection on this
-              instance runs here, so this is one policy for everyone. <b>Strict</b> refuses an unknown host;{' '}
-              <b>warn</b> and <b>accept</b> exist for a first connection to a machine whose key nobody has
-              recorded yet, and both mean a man-in-the-middle would not be refused. Clients are told what this
-              says and show it read-only.
+              How this server treats an SSH host key it has not seen before — <b>every</b>{' '}
+              connection on this instance runs here, so this is one policy for everyone.{' '}
+              <b>Strict</b> refuses an unknown host; <b>warn</b> and <b>accept</b> exist for a first
+              connection to a machine whose key nobody has recorded yet, and both mean a
+              man-in-the-middle would not be refused. Clients are told what this says and show it
+              read-only.
             </p>
-            {managed.host_key_verification_mode && <ManagedBy origin={managed.host_key_verification_mode} />}
+            {managed.host_key_verification_mode && (
+              <ManagedBy origin={managed.host_key_verification_mode} />
+            )}
           </div>
           <select
             value={hostKeyMode}
@@ -507,12 +529,14 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Members may remember a key passphrase</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>On by default</b>, and the member&apos;s own default is still to be asked — the box is unticked
-              when they save a machine. Off: a passphrase is never written on this instance and is asked at each
-              connection. A passphrase kept beside the key it protects is no longer a second barrier, which is
-              why the choice is named rather than implied.
+              <b>On by default</b>, and the member&apos;s own default is still to be asked — the box
+              is unticked when they save a machine. Off: a passphrase is never written on this
+              instance and is asked at each connection. A passphrase kept beside the key it protects
+              is no longer a second barrier, which is why the choice is named rather than implied.
             </p>
-            {managed.allow_passphrase_storage && <ManagedBy origin={managed.allow_passphrase_storage} />}
+            {managed.allow_passphrase_storage && (
+              <ManagedBy origin={managed.allow_passphrase_storage} />
+            )}
           </div>
           <Switch
             checked={passphraseStorage}
@@ -527,12 +551,12 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Members may read a stored secret back</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>On by default</b>, on an explicit action and never on screen by itself. Off: the vault is
-              write-only here — a secret can be used and not read.{' '}
-              <b>This binds the client, not the data</b>: a browser decrypts the record it connects with, so a
-              member holds their own plaintext and a viewer holds a shared item&apos;s. It stops the accidents —
-              a secret on screen in a screen share, a casual copy — and the boundary that holds is who the
-              collection is shared with.
+              <b>On by default</b>, on an explicit action and never on screen by itself. Off: the
+              vault is write-only here — a secret can be used and not read.{' '}
+              <b>This binds the client, not the data</b>: a browser decrypts the record it connects
+              with, so a member holds their own plaintext and a viewer holds a shared item&apos;s.
+              It stops the accidents — a secret on screen in a screen share, a casual copy — and the
+              boundary that holds is who the collection is shared with.
             </p>
             {managed.allow_secret_reveal && <ManagedBy origin={managed.allow_secret_reveal} />}
           </div>
@@ -549,8 +573,9 @@ export function InstanceSettingsPanel() {
         <div className="border-t border-border p-4">
           <div className="font-medium">Machine health-check</div>
           <p className="mt-1 text-sm text-muted-foreground">
-            <b>Passive “last seen”</b> (from users&apos; own connections) costs no traffic. <b>Active probing</b> makes
-            network requests from every client — a scan-like footprint at scale — so it&apos;s governed here.
+            <b>Passive “last seen”</b> (from users&apos; own connections) costs no traffic.{' '}
+            <b>Active probing</b> makes network requests from every client — a scan-like footprint
+            at scale — so it&apos;s governed here.
           </p>
           {managed.healthcheck_policy && <ManagedBy origin={managed.healthcheck_policy} />}
         </div>
@@ -558,7 +583,9 @@ export function InstanceSettingsPanel() {
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
           <div>
             <div className="font-medium">Show status</div>
-            <p className="mt-1 text-sm text-muted-foreground">The passive “last seen” pastille. No probing.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              The passive “last seen” pastille. No probing.
+            </p>
           </div>
           <Switch
             checked={hc.passiveStatus}
@@ -571,8 +598,8 @@ export function InstanceSettingsPanel() {
           <div className="min-w-[220px] flex-1">
             <div className="font-medium">Active probing</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off</b> passive only · <b>On-demand</b> only when a user asks · <b>Full</b> background polling allowed ·
-              <b>Client&apos;s choice</b> each client picks its cadence.
+              <b>Off</b> passive only · <b>On-demand</b> only when a user asks · <b>Full</b>{' '}
+              background polling allowed ·<b>Client&apos;s choice</b> each client picks its cadence.
             </p>
           </div>
           <div className="inline-flex flex-wrap overflow-hidden rounded-md border border-input">
@@ -581,7 +608,9 @@ export function InstanceSettingsPanel() {
                 key={m}
                 onClick={() => saveHc({ ...hc, active: m })}
                 className={`border-r border-input px-3 py-1.5 text-xs last:border-r-0 ${
-                  hc.active === m ? 'bg-primary/20 font-semibold text-primary' : 'bg-background text-muted-foreground hover:bg-muted'
+                  hc.active === m
+                    ? 'bg-primary/20 font-semibold text-primary'
+                    : 'bg-background text-muted-foreground hover:bg-muted'
                 }`}
               >
                 {m}
@@ -590,19 +619,27 @@ export function InstanceSettingsPanel() {
           </div>
         </div>
 
-        <div className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}>
+        <div
+          className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}
+        >
           <div>
             <div className="font-medium">Allowed methods</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              ICMP is blocked on some networks and required on others. Clients may use only a method enabled here.
+              ICMP is blocked on some networks and required on others. Clients may use only a method
+              enabled here.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
             {HC_METHODS.map((m) => {
               const on = hc.methods.includes(m.id);
               return (
-                <label key={m.id} className="flex cursor-pointer select-none items-center gap-1.5 text-sm">
-                  <span className={`grid h-[17px] w-[17px] place-items-center rounded border text-[11px] font-bold ${on ? 'border-primary bg-primary text-primary-foreground' : 'border-input'}`}>
+                <label
+                  key={m.id}
+                  className="flex cursor-pointer select-none items-center gap-1.5 text-sm"
+                >
+                  <span
+                    className={`grid h-[17px] w-[17px] place-items-center rounded border text-[11px] font-bold ${on ? 'border-primary bg-primary text-primary-foreground' : 'border-input'}`}
+                  >
                     {on ? '✓' : ''}
                   </span>
                   <input
@@ -610,7 +647,10 @@ export function InstanceSettingsPanel() {
                     className="sr-only"
                     checked={on}
                     onChange={() =>
-                      saveHc({ ...hc, methods: on ? hc.methods.filter((x) => x !== m.id) : [...hc.methods, m.id] })
+                      saveHc({
+                        ...hc,
+                        methods: on ? hc.methods.filter((x) => x !== m.id) : [...hc.methods, m.id],
+                      })
                     }
                   />
                   {m.label}
@@ -620,11 +660,14 @@ export function InstanceSettingsPanel() {
           </div>
         </div>
 
-        <div className={`flex flex-col gap-2 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}>
+        <div
+          className={`flex flex-col gap-2 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}
+        >
           <div>
             <div className="font-medium">Who can run active checks</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Empty means everyone. Add usernames to restrict active probing to specific people; passive “last seen” stays available to all.
+              Empty means everyone. Add usernames to restrict active probing to specific people;
+              passive “last seen” stays available to all.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -632,10 +675,15 @@ export function InstanceSettingsPanel() {
               <span className="text-sm text-muted-foreground">Everyone allowed</span>
             )}
             {hc.restrictUsers.map((u) => (
-              <span key={u} className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-sm">
+              <span
+                key={u}
+                className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-sm"
+              >
                 {u}
                 <button
-                  onClick={() => saveHc({ ...hc, restrictUsers: hc.restrictUsers.filter((x) => x !== u) })}
+                  onClick={() =>
+                    saveHc({ ...hc, restrictUsers: hc.restrictUsers.filter((x) => x !== u) })
+                  }
                   className="text-muted-foreground hover:text-foreground"
                   aria-label={`Remove ${u}`}
                 >
@@ -649,7 +697,8 @@ export function InstanceSettingsPanel() {
             onSubmit={(e) => {
               e.preventDefault();
               const u = userInput.trim();
-              if (u && !hc.restrictUsers.includes(u)) saveHc({ ...hc, restrictUsers: [...hc.restrictUsers, u] });
+              if (u && !hc.restrictUsers.includes(u))
+                saveHc({ ...hc, restrictUsers: [...hc.restrictUsers, u] });
               setUserInput('');
             }}
           >
@@ -659,16 +708,23 @@ export function InstanceSettingsPanel() {
               placeholder="username"
               className="w-40 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             />
-            <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted">
+            <button
+              type="submit"
+              className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+            >
               Add
             </button>
           </form>
         </div>
 
-        <div className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' || hc.active === 'on-demand' ? 'pointer-events-none opacity-40' : ''}`}>
+        <div
+          className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' || hc.active === 'on-demand' ? 'pointer-events-none opacity-40' : ''}`}
+        >
           <div>
             <div className="font-medium">Minimum interval</div>
-            <p className="mt-1 text-sm text-muted-foreground">Floor for background polling, so status never saturates the network.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Floor for background polling, so status never saturates the network.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -688,14 +744,16 @@ export function InstanceSettingsPanel() {
         <div className="border-t border-border p-4">
           <div className="font-medium">Machine dashboard — container &amp; service cards</div>
           <p className="mt-1 text-sm text-muted-foreground">
-            These two cards run a command on the host each time they refresh. The rest of the dashboard —
-            address, port forwarding, the Board — reads what Rite already holds and is never affected.
+            These two cards run a command on the host each time they refresh. The rest of the
+            dashboard — address, port forwarding, the Board — reads what Rite already holds and is
+            never affected.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            The two switches are not equally strong. <b>Web UI</b> is <b>enforcement</b>: this server runs
-            the commands, so off means nothing runs. <b>Clients</b> is <b>policy</b>: a client probes from
-            its own network and this server never sees it — the official client hides the cards, a modified
-            one could ignore the switch. It still stops the traffic in normal use and records the intent.
+            The two switches are not equally strong. <b>Web UI</b> is <b>enforcement</b>: this
+            server runs the commands, so off means nothing runs. <b>Clients</b> is <b>policy</b>: a
+            client probes from its own network and this server never sees it — the official client
+            hides the cards, a modified one could ignore the switch. It still stops the traffic in
+            normal use and records the intent.
           </p>
           {managed.dashboard_policy && <ManagedBy origin={managed.dashboard_policy} />}
         </div>
@@ -704,8 +762,8 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Allow in the web UI</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              This server runs the commands, so its own egress pays. Off means off for everyone in a browser —
-              not a matter of preference.
+              This server runs the commands, so its own egress pays. Off means off for everyone in a
+              browser — not a matter of preference.
             </p>
           </div>
           <Switch
@@ -720,8 +778,9 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Allow in attached clients</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Each client probes from its own network position, so your users&apos; endpoints pay. A user may
-              also turn the cards off for themselves; neither side can override the other upward.
+              Each client probes from its own network position, so your users&apos; endpoints pay. A
+              user may also turn the cards off for themselves; neither side can override the other
+              upward.
             </p>
           </div>
           <Switch

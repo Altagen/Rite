@@ -20,7 +20,9 @@ const argon2id: Argon2id = requireFromApp('hash-wasm').argon2id;
 
 /** After an accounts login, everyone lands in the shared workspace (ADR 0014). */
 async function expectWorkspace(page: Page): Promise<void> {
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 }
 
 /** Sign out through the profile pastille menu in the header. */
@@ -43,7 +45,8 @@ async function openAdminUsers(page: Page): Promise<void> {
   await expect(page.getByText('Add a user')).toBeVisible({ timeout: 15_000 });
 }
 
-const hexToBytes = (h: string) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
+const hexToBytes = (h: string) =>
+  new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
 
 const BASE = 'http://127.0.0.1:1422';
 
@@ -65,19 +68,22 @@ async function loginFull(
     hashLength: 32,
     outputType: 'hex',
   });
-  return (
-    await request.post(`${BASE}/api/server/login`, { data: { username, authHash } })
-  ).json();
+  return (await request.post(`${BASE}/api/server/login`, { data: { username, authHash } })).json();
 }
 
-async function login(request: APIRequestContext, username: string, password: string): Promise<string> {
+async function login(
+  request: APIRequestContext,
+  username: string,
+  password: string,
+): Promise<string> {
   return (await loginFull(request, username, password)).token;
 }
 
 /** Decrypt a `v1.iv.ct` AES-256-GCM value (the vault wire format) in Node. */
 async function aesGcmDecrypt(keyBytes: Uint8Array, token: string): Promise<Uint8Array> {
   const [, ivB64u, ctB64u] = token.split('.');
-  const b64u = (s: string) => new Uint8Array(Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
+  const b64u = (s: string) =>
+    new Uint8Array(Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
   const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['decrypt']);
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64u(ivB64u) }, key, b64u(ctB64u));
   return new Uint8Array(pt);
@@ -147,7 +153,9 @@ test('sign out then sign back in with the same credentials', async ({ page }) =>
   await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
   await page.locator('#username').fill(ADMIN.username);
   await page.locator('#password').fill(ADMIN.password);
-  const loginResp = page.waitForResponse((r) => r.url().endsWith('/api/server/login') && r.status() === 200);
+  const loginResp = page.waitForResponse(
+    (r) => r.url().endsWith('/api/server/login') && r.status() === 200,
+  );
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
   // The login carries the per-user vault blob (ADR 0011); a successful landing
@@ -232,7 +240,9 @@ test('teams RBAC: org-admin, team-admin, member, non-member (product-model)', as
   const carol = await login(request, 'carol', CAROL_TEMP);
 
   // Carol's user id (org-admin lists users).
-  const users = await (await request.get(`${BASE}/api/admin/users`, { headers: auth(admin) })).json();
+  const users = await (
+    await request.get(`${BASE}/api/admin/users`, { headers: auth(admin) })
+  ).json();
   const carolId = users.find((u: { username: string }) => u.username === 'carol').id;
 
   // Org-admin creates a team and adds carol as a plain member.
@@ -267,13 +277,18 @@ test('teams RBAC: org-admin, team-admin, member, non-member (product-model)', as
     (
       await request.post(`${BASE}/api/teams/${eng.id}/members`, {
         headers: auth(carol),
-        data: { userId: users.find((u: { username: string }) => u.username === 'admin').id, role: 'member' },
+        data: {
+          userId: users.find((u: { username: string }) => u.username === 'admin').id,
+          role: 'member',
+        },
       })
     ).status(),
   ).toBe(204);
 
   // Carol sees the team in her list.
-  const carolTeams = await (await request.get(`${BASE}/api/teams`, { headers: auth(carol) })).json();
+  const carolTeams = await (
+    await request.get(`${BASE}/api/teams`, { headers: auth(carol) })
+  ).json();
   expect(carolTeams.some((t: { name: string }) => t.name === 'eng')).toBe(true);
 
   // A non-member cannot view a team she's not in.
@@ -298,13 +313,17 @@ test('web member workspace: personal connections, zero-knowledge, server-execute
   // First login for an admin-provisioned account (must_change_password): the app forces a
   // self-chosen password before anything else — this mints carol a FRESH keypair (ADR 0010
   // addendum), so the admin-known temp password can no longer derive her vault key.
-  await expect(page.getByRole('heading', { name: 'Set your password' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('heading', { name: 'Set your password' })).toBeVisible({
+    timeout: 15_000,
+  });
   await page.getByPlaceholder('A password only you know').fill(CAROL_NEW);
   await page.getByPlaceholder('Type it again').fill(CAROL_NEW);
   await page.getByRole('button', { name: /set password & continue/i }).click();
 
   // Now a member lands in the shared workspace (ADR 0014), not the admin panels.
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // Create a personal connection: no loose machines (ADR 0016), so add it into the
   // synthetic "Personal" collection (backed by the per-user vault). The browser
@@ -326,7 +345,9 @@ test('web member workspace: personal connections, zero-knowledge, server-execute
   // is a collection item, and the server stored only ciphertext. Carol has just Personal here
   // (the shared 'Prod' collection is created by a later test), so it's her only collection.
   const token = await login(request, 'carol', CAROL_NEW);
-  const cols = await (await request.get(`${BASE}/api/collections`, { headers: auth(token) })).json();
+  const cols = await (
+    await request.get(`${BASE}/api/collections`, { headers: auth(token) })
+  ).json();
   expect(cols.length).toBeGreaterThan(0);
   const stored = await (
     await request.get(`${BASE}/api/collections/${cols[0].id}/items`, { headers: auth(token) })
@@ -361,7 +382,9 @@ test('collections: shared zero-knowledge with roles + RBAC (ADR 0016)', async ({
   const carolK = await unlockKeys(CAROL_NEW, carolL.vault);
 
   // The org directory feeds the member picker (id + username + public key).
-  const dir = await (await request.get(`${BASE}/api/directory`, { headers: auth(adminL.token) })).json();
+  const dir = await (
+    await request.get(`${BASE}/api/directory`, { headers: auth(adminL.token) })
+  ).json();
   const carol = dir.find((u: { username: string }) => u.username === 'carol');
   const adminId = dir.find((u: { username: string }) => u.username === 'admin').id;
   expect(carol.publicKey).toMatch(/^[0-9a-f]{64}$/);
@@ -386,38 +409,62 @@ test('collections: shared zero-knowledge with roles + RBAC (ADR 0016)', async ({
   expect(created.status()).toBe(201);
   const { id } = await created.json();
 
-  const itemBlob = await aesGcmEncrypt(itemsKey, enc({ name: 'web-01', host: 'coll-secret-host', user: 'deploy', port: 22 }));
+  const itemBlob = await aesGcmEncrypt(
+    itemsKey,
+    enc({ name: 'web-01', host: 'coll-secret-host', user: 'deploy', port: 22 }),
+  );
   expect(
-    (await request.post(`${BASE}/api/collections/${id}/items`, { headers: auth(adminL.token), data: { blob: itemBlob } })).status(),
+    (
+      await request.post(`${BASE}/api/collections/${id}/items`, {
+        headers: auth(adminL.token),
+        data: { blob: itemBlob },
+      })
+    ).status(),
   ).toBe(201);
 
   // A non-member (carol, not added yet) cannot read.
-  expect((await request.get(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token) })).status()).toBe(403);
+  expect(
+    (
+      await request.get(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token) })
+    ).status(),
+  ).toBe(403);
 
   // Admin shares with carol as a VIEWER, sealing BOTH keys to her directory public key.
   expect(
-    (await request.post(`${BASE}/api/collections/${id}/members`, {
-      headers: auth(adminL.token),
-      data: {
-        userId: carol.id,
-        role: 'viewer',
-        protectedMetaKey: seal(metaKey, hexToBytes(carol.publicKey)),
-        protectedItemsKey: seal(itemsKey, hexToBytes(carol.publicKey)),
-      },
-    })).status(),
+    (
+      await request.post(`${BASE}/api/collections/${id}/members`, {
+        headers: auth(adminL.token),
+        data: {
+          userId: carol.id,
+          role: 'viewer',
+          protectedMetaKey: seal(metaKey, hexToBytes(carol.publicKey)),
+          protectedItemsKey: seal(itemsKey, hexToBytes(carol.publicKey)),
+        },
+      })
+    ).status(),
   ).toBe(204);
 
   // Carol lists her collections, unwraps HER sealed keys → byte-identical, decrypts name + items.
-  const mine = (await (await request.get(`${BASE}/api/collections`, { headers: auth(carolL.token) })).json()).find(
-    (c: { id: string }) => c.id === id,
+  const mine = (
+    await (await request.get(`${BASE}/api/collections`, { headers: auth(carolL.token) })).json()
+  ).find((c: { id: string }) => c.id === id);
+  const carolMetaKey = sodium.crypto_box_seal_open(
+    unb64(mine.protectedMetaKey),
+    carolK.publicKey,
+    carolK.privateKey,
   );
-  const carolMetaKey = sodium.crypto_box_seal_open(unb64(mine.protectedMetaKey), carolK.publicKey, carolK.privateKey);
-  const carolItemsKey = sodium.crypto_box_seal_open(unb64(mine.protectedItemsKey), carolK.publicKey, carolK.privateKey);
+  const carolItemsKey = sodium.crypto_box_seal_open(
+    unb64(mine.protectedItemsKey),
+    carolK.publicKey,
+    carolK.privateKey,
+  );
   expect(Buffer.from(carolMetaKey).equals(Buffer.from(metaKey))).toBe(true);
   expect(Buffer.from(carolItemsKey).equals(Buffer.from(itemsKey))).toBe(true);
   expect(mine.role).toBe('viewer');
   expect(dec(await aesGcmDecrypt(carolMetaKey, mine.nameEnc)).name).toBe('Prod');
-  const items = await (await request.get(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token) })).json();
+  const items = await (
+    await request.get(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token) })
+  ).json();
   expect(dec(await aesGcmDecrypt(carolItemsKey, items[0].blob)).host).toBe('coll-secret-host');
 
   // Zero-knowledge: the server stored only ciphertext (name + items).
@@ -426,38 +473,69 @@ test('collections: shared zero-knowledge with roles + RBAC (ADR 0016)', async ({
 
   // RBAC: a viewer can neither write items…
   expect(
-    (await request.post(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token), data: { blob: itemBlob } })).status(),
+    (
+      await request.post(`${BASE}/api/collections/${id}/items`, {
+        headers: auth(carolL.token),
+        data: { blob: itemBlob },
+      })
+    ).status(),
   ).toBe(403);
   // …nor manage membership.
   expect(
-    (await request.post(`${BASE}/api/collections/${id}/members`, {
-      headers: auth(carolL.token),
-      data: { userId: carol.id, role: 'owner', protectedMetaKey: 'x', protectedItemsKey: 'x' },
-    })).status(),
+    (
+      await request.post(`${BASE}/api/collections/${id}/members`, {
+        headers: auth(carolL.token),
+        data: { userId: carol.id, role: 'owner', protectedMetaKey: 'x', protectedItemsKey: 'x' },
+      })
+    ).status(),
   ).toBe(403);
 
   // Promote carol to editor → she can now write.
   expect(
-    (await request.patch(`${BASE}/api/collections/${id}/members/${carol.id}`, { headers: auth(adminL.token), data: { role: 'editor' } })).status(),
+    (
+      await request.patch(`${BASE}/api/collections/${id}/members/${carol.id}`, {
+        headers: auth(adminL.token),
+        data: { role: 'editor' },
+      })
+    ).status(),
   ).toBe(204);
   expect(
-    (await request.post(`${BASE}/api/collections/${id}/items`, { headers: auth(carolL.token), data: { blob: itemBlob } })).status(),
+    (
+      await request.post(`${BASE}/api/collections/${id}/items`, {
+        headers: auth(carolL.token),
+        data: { blob: itemBlob },
+      })
+    ).status(),
   ).toBe(201);
 
   // The last owner (admin) can't be demoted → the ≥1-owner invariant.
   expect(
-    (await request.patch(`${BASE}/api/collections/${id}/members/${adminId}`, { headers: auth(adminL.token), data: { role: 'editor' } })).status(),
+    (
+      await request.patch(`${BASE}/api/collections/${id}/members/${adminId}`, {
+        headers: auth(adminL.token),
+        data: { role: 'editor' },
+      })
+    ).status(),
   ).toBe(409);
 });
 
-test('active health-check UI: Check marks an unreachable machine down (ADR 0017)', async ({ page, request }) => {
+test('active health-check UI: Check marks an unreachable machine down (ADR 0017)', async ({
+  page,
+  request,
+}) => {
   // Admin turns on on-demand probing for the whole server.
   const admin = await login(request, 'admin', ADMIN.password);
   expect(
     (
       await request.patch(`${BASE}/api/admin/healthcheck`, {
         headers: auth(admin),
-        data: { passiveStatus: true, active: 'on-demand', methods: ['tcp-connect'], restrictUsers: [], minInterval: 60 },
+        data: {
+          passiveStatus: true,
+          active: 'on-demand',
+          methods: ['tcp-connect'],
+          restrictUsers: [],
+          minInterval: 60,
+        },
       })
     ).status(),
   ).toBe(204);
@@ -468,7 +546,9 @@ test('active health-check UI: Check marks an unreachable machine down (ADR 0017)
   await page.locator('#username').fill('carol');
   await page.locator('#password').fill(CAROL_NEW);
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // Open her Personal collection into the main view — it holds my-web-box (an unreachable host
   // saved earlier). The governed Check button appears because active probing is on.
@@ -520,7 +600,8 @@ async function addMachine(
   await expect(page.getByRole('heading', { name: 'New Connection' })).toBeVisible();
   await page.getByPlaceholder('My Server').fill(opts.name);
   await page.getByPlaceholder('example.com or 192.168.1.1').fill(opts.host);
-  if (opts.port !== undefined) await page.locator('input[type="number"]').first().fill(String(opts.port));
+  if (opts.port !== undefined)
+    await page.locator('input[type="number"]').first().fill(String(opts.port));
   await page.getByPlaceholder('user').fill(opts.user);
   await page.getByPlaceholder('Enter password...').fill(opts.password);
   if (opts.jump) {
@@ -620,7 +701,9 @@ test('a collection Board round-trips its cards, and the server only sees ciphert
 
   const board = page.getByRole('dialog', { name: 'Board' });
   await expect(board).toBeVisible({ timeout: 15_000 });
-  await expect(board.getByText('No cards yet — add a Link, Note, Action or Live view.')).toBeVisible();
+  await expect(
+    board.getByText('No cards yet — add a Link, Note, Action or Live view.'),
+  ).toBeVisible();
 
   await board.getByRole('button', { name: /Add card/ }).click();
   // Menu entries spell out what each card type is ("Link — a styled button").
@@ -642,7 +725,9 @@ test('a collection Board round-trips its cards, and the server only sees ciphert
 
   // Zero-knowledge: the stored board is a ciphertext blob, not the URL.
   const token = await login(request, 'carol', CAROL_NEW);
-  const cols = (await (await request.get(`${BASE}/api/collections`, { headers: auth(token) })).json()) as {
+  const cols = (await (
+    await request.get(`${BASE}/api/collections`, { headers: auth(token) })
+  ).json()) as {
     id: string;
     boardEnc?: string | null;
   }[];
@@ -686,9 +771,13 @@ test('dashboard policy: webui:false hides the probing cards and names the server
   // is the whole point: turning the cards off takes effect while the admin is watching,
   // not at whatever moment each user next happens to reload.
   expect((await setPolicy(false)).status()).toBe(204);
-  await expect(page.getByText('Containers and services are not being checked')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('Containers and services are not being checked')).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(
-    page.getByText('Your server turns off container and service checks in the web UI, so they run for nobody here.'),
+    page.getByText(
+      'Your server turns off container and service checks in the web UI, so they run for nobody here.',
+    ),
   ).toBeVisible();
   await expect(card('Containers')).toHaveCount(0);
   await expect(card('Services')).toHaveCount(0);
@@ -711,7 +800,10 @@ test('dashboard policy: webui:false hides the probing cards and names the server
  * halves at once: that polling happens at all, and that the server cannot talk the client
  * into hammering a host.
  */
-test('the probing cards refresh on their own, never faster than the client floor', async ({ page, request }) => {
+test('the probing cards refresh on their own, never faster than the client floor', async ({
+  page,
+  request,
+}) => {
   // Waiting out a 15s floor does not fit in the default 30s budget, and shortening the
   // floor to fit would be testing a different promise than the one we make.
   test.setTimeout(120_000);
@@ -744,7 +836,9 @@ test('the probing cards refresh on their own, never faster than the client floor
   });
 
   await page.getByText('probe-cadence').first().click();
-  await expect(page.getByRole('heading', { name: 'Containers', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: 'Containers', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
   // The two cards each probe once on open, and those answer quickly.
   await expect.poll(() => execs.length, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
   const opened = execs.length;
@@ -754,9 +848,14 @@ test('the probing cards refresh on their own, never faster than the client floor
   // the client refuses to go under its own 15s floor, so this gap proves both halves:
   // that polling happens at all, and that a server cannot talk a client into hammering
   // a host.
-  await expect.poll(() => execs.length, { timeout: 60_000, intervals: [500] }).toBeGreaterThan(opened);
+  await expect
+    .poll(() => execs.length, { timeout: 60_000, intervals: [500] })
+    .toBeGreaterThan(opened);
   const gap = execs[opened] - settled;
-  expect(gap, `an automatic refresh ${gap}ms after the last one must respect the 15s floor`).toBeGreaterThanOrEqual(13_000);
+  expect(
+    gap,
+    `an automatic refresh ${gap}ms after the last one must respect the 15s floor`,
+  ).toBeGreaterThanOrEqual(13_000);
 
   // Put the policy back for anything that runs after this.
   await request.patch(`${BASE}/api/admin/dashboard-policy`, {
@@ -783,7 +882,12 @@ test('an overlay page carries the nav, which is also the way back', async ({ pag
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
   // Independent of what ran before: bootstrap on a fresh server, sign in otherwise.
-  if (await page.getByText('Create the server administrator').isVisible().catch(() => false)) {
+  if (
+    await page
+      .getByText('Create the server administrator')
+      .isVisible()
+      .catch(() => false)
+  ) {
     await page.locator('#username').fill(ADMIN.username);
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
@@ -816,7 +920,9 @@ test('an overlay page carries the nav, which is also the way back', async ({ pag
 
   // One hop, no Close in between — the whole point.
   await bar.getByRole('button', { name: 'Teams', exact: true }).click();
-  await expect(page.locator('.fixed.inset-0.z-50 > header.m-appbar [aria-current="page"]')).toHaveText(/Teams/);
+  await expect(
+    page.locator('.fixed.inset-0.z-50 > header.m-appbar [aria-current="page"]'),
+  ).toHaveText(/Teams/);
   // …and the admin console is reachable from here too, by the name this shell gives it.
   await expect(bar.getByRole('button', { name: /^(Admin|Organization)$/ })).toHaveCount(1);
 
@@ -854,7 +960,12 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   page,
 }) => {
   await page.goto('/');
-  if (await page.getByText('Create the server administrator').isVisible().catch(() => false)) {
+  if (
+    await page
+      .getByText('Create the server administrator')
+      .isVisible()
+      .catch(() => false)
+  ) {
     await page.locator('#username').fill(ADMIN.username);
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
@@ -876,7 +987,9 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   await expect(page.getByTestId('server-shell')).toHaveText(mode.defaultShell ?? 'bash');
   // Precise: the host-key row says the same thing about its own policy, and both rows
   // are in the DOM at once (the rail hides the other sections rather than unmounting).
-  await expect(page.getByText('Set by your administrator for every terminal', { exact: false })).toBeVisible();
+  await expect(
+    page.getByText('Set by your administrator for every terminal', { exact: false }),
+  ).toBeVisible();
   // …and no picker: the choice is not this user's to make here.
   await expect(page.getByTestId('shell-choices')).toHaveCount(0);
   await expect(page.getByTestId('shell-path')).toHaveCount(0);
@@ -910,7 +1023,9 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   // row, so anyone who chose "accept" turned verification off for every account on the
   // instance — and `/api/settings` let any account write that row directly.
   await page.getByTestId('settings-nav-security').click();
-  await expect(page.getByTestId('server-host-key')).toHaveText(mode.hostKeyVerification ?? 'strict');
+  await expect(page.getByTestId('server-host-key')).toHaveText(
+    mode.hostKeyVerification ?? 'strict',
+  );
   await expect(page.getByTestId('host-key-mode')).toHaveCount(0);
 
   // And the control itself is absent, not merely its switch: "+" opens a terminal here
@@ -934,7 +1049,12 @@ test('the web UI is told which shell the server sets, and is not offered the loc
  */
 test('an instance can hand the shell choice to its members, and take it back', async ({ page }) => {
   await page.goto('/');
-  if (await page.getByText('Create the server administrator').isVisible().catch(() => false)) {
+  if (
+    await page
+      .getByText('Create the server administrator')
+      .isVisible()
+      .catch(() => false)
+  ) {
     await page.locator('#username').fill(ADMIN.username);
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
@@ -947,14 +1067,22 @@ test('an instance can hand the shell choice to its members, and take it back', a
   await expectWorkspace(page);
 
   const mode = await (await page.request.get(`${BASE}/api/server/mode`)).json();
-  expect(mode.allowShellChoice ?? false, 'the choice is the instance\'s until it says otherwise').toBe(false);
+  expect(
+    mode.allowShellChoice ?? false,
+    "the choice is the instance's until it says otherwise",
+  ).toBe(false);
   // Against the filesystem rather than against the report. On a developer machine with all
   // four shells this agrees either way — the run that discriminates is the unit test in the
   // CI image, which has two. Here it catches the opposite mistake: a probe that under-reports.
   const { existsSync } = await import('node:fs');
   for (const name of ['bash', 'sh', 'zsh', 'fish']) {
-    const onDisk = ['/usr/bin', '/bin', '/usr/local/bin'].some((dir) => existsSync(`${dir}/${name}`));
-    expect((mode.shells as string[]).includes(name), `${name} is offered iff this machine has it`).toBe(onDisk);
+    const onDisk = ['/usr/bin', '/bin', '/usr/local/bin'].some((dir) =>
+      existsSync(`${dir}/${name}`),
+    );
+    expect(
+      (mode.shells as string[]).includes(name),
+      `${name} is offered iff this machine has it`,
+    ).toBe(onDisk);
   }
   const other = (mode.shells as string[]).find((s) => s !== mode.defaultShell);
   expect(other, 'this machine has a second shell to pick').toBeTruthy();
@@ -984,7 +1112,9 @@ test('an instance can hand the shell choice to its members, and take it back', a
   // …and the server runs it. Its own answer, because the tab's label is computed here and
   // would read the same whatever ran.
   const [created] = await Promise.all([
-    page.waitForResponse((r) => r.url().endsWith('/api/terminal/local') && r.request().method() === 'POST'),
+    page.waitForResponse(
+      (r) => r.url().endsWith('/api/terminal/local') && r.request().method() === 'POST',
+    ),
     page.getByRole('button', { name: 'Terminal', exact: true }).click(),
   ]);
   expect(((await created.json()) as { shell: string }).shell).toMatch(new RegExp(`/${other}$`));
@@ -1001,10 +1131,14 @@ test('an instance can hand the shell choice to its members, and take it back', a
   await page.reload();
   await expectWorkspace(page);
   const [again] = await Promise.all([
-    page.waitForResponse((r) => r.url().endsWith('/api/terminal/local') && r.request().method() === 'POST'),
+    page.waitForResponse(
+      (r) => r.url().endsWith('/api/terminal/local') && r.request().method() === 'POST',
+    ),
     page.getByRole('button', { name: 'Terminal', exact: true }).click(),
   ]);
-  expect(((await again.json()) as { shell: string }).shell).toMatch(new RegExp(`/${mode.defaultShell}$`));
+  expect(((await again.json()) as { shell: string }).shell).toMatch(
+    new RegExp(`/${mode.defaultShell}$`),
+  );
 });
 
 /**
@@ -1021,7 +1155,12 @@ test('an instance can hand the shell choice to its members, and take it back', a
  */
 test('a key chosen in the browser opens a real session on the server', async ({ page }) => {
   await page.goto('/');
-  if (await page.getByText('Create the server administrator').isVisible().catch(() => false)) {
+  if (
+    await page
+      .getByText('Create the server administrator')
+      .isVisible()
+      .catch(() => false)
+  ) {
     await page.locator('#username').fill(ADMIN.username);
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
@@ -1088,7 +1227,12 @@ test('a key chosen in the browser opens a real session on the server', async ({ 
  */
 test('a passphrase that was not kept is asked for at connect time', async ({ page }) => {
   await page.goto('/');
-  if (await page.getByText('Create the server administrator').isVisible().catch(() => false)) {
+  if (
+    await page
+      .getByText('Create the server administrator')
+      .isVisible()
+      .catch(() => false)
+  ) {
     await page.locator('#username').fill(ADMIN.username);
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();

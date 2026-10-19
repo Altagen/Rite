@@ -21,7 +21,10 @@ interface Props {
 
 // Non-empty command lines — the units that run one after another.
 const linesOf = (command: string) =>
-  command.split('\n').map((l) => l.trim()).filter(Boolean);
+  command
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
 
 // Send a snippet to a session: its lines are typed in order, so the shell runs
 // them one after another (like pasting) — no && chaining needed.

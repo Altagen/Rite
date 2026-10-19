@@ -25,7 +25,11 @@
  * survives a refactor, a half-finished hand edit, or a version that spelled a
  * field differently.
  */
-export function parseStored<T>(raw: string | null, fallback: T[], keep?: (entry: unknown) => boolean): T[] {
+export function parseStored<T>(
+  raw: string | null,
+  fallback: T[],
+  keep?: (entry: unknown) => boolean,
+): T[] {
   if (raw === null) return fallback;
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -48,4 +52,3 @@ export function isPreset(entry: unknown): boolean {
   const e = entry as Record<string, unknown>;
   return named(e.id) && named(e.name) && typeof e.command === 'string';
 }
-

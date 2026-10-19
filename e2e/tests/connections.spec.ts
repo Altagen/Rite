@@ -58,9 +58,7 @@ test('a listed machine never carries its credentials', async ({ request }) => {
     password: 'do-not-leak-me',
   });
 
-  const raw = await (
-    await request.get(`/api/local/collections/${collectionId}/machines`)
-  ).text();
+  const raw = await (await request.get(`/api/local/collections/${collectionId}/machines`)).text();
 
   expect(raw).toContain('e2e-secret-holder');
   expect(raw).toContain('secret-host.example');
@@ -89,7 +87,9 @@ test('a key-based machine says which key, and never its passphrase', async ({ re
   const raw = await (await request.get(`/api/local/collections/${collectionId}/machines`)).text();
   const [machine] = JSON.parse(raw);
   expect(machine.authType).toBe('publicKey');
-  expect(machine.keyPath, 'the path names a file, so it comes back').toBe('/home/someone/.ssh/id_ed25519');
+  expect(machine.keyPath, 'the path names a file, so it comes back').toBe(
+    '/home/someone/.ssh/id_ed25519',
+  );
   expect(raw).not.toContain('do-not-leak-this-passphrase');
   expect(raw).not.toContain('authMethod');
 });
@@ -101,7 +101,9 @@ test('a key-based machine says which key, and never its passphrase', async ({ re
  * a client that wants a secret has to ask another process. On a shared server the browser
  * already holds the plaintext it connects with, and the same switch binds its UI instead.
  */
-test('a stored secret comes back only when asked, and only if the vault allows it', async ({ request }) => {
+test('a stored secret comes back only when asked, and only if the vault allows it', async ({
+  request,
+}) => {
   const collectionId = await createCollection(request, 'e2e-reveal');
   const machineId = await createMachine(request, collectionId, {
     name: 'e2e-reveal-machine',
@@ -117,7 +119,9 @@ test('a stored secret comes back only when asked, and only if the vault allows i
 
   // A vault set to keep its secrets unreadable refuses, and says so rather than
   // answering with an empty object a caller would render as "no password".
-  expect((await request.put('/api/settings/allow_secret_reveal', { data: { value: '0' } })).status()).toBe(204);
+  expect(
+    (await request.put('/api/settings/allow_secret_reveal', { data: { value: '0' } })).status(),
+  ).toBe(204);
   const refused = await request.get(secretUrl);
   expect(refused.status()).toBe(403);
   expect(await refused.text()).toContain('unreadable');
@@ -199,7 +203,10 @@ test('a created machine shows up in the sidebar list', async ({ page, request })
  * password field converted it to password authentication without a word — nothing broke
  * until the next connection, on a machine that had been working for months.
  */
-test('editing a key-based machine opens on the key, not on a password field', async ({ page, request }) => {
+test('editing a key-based machine opens on the key, not on a password field', async ({
+  page,
+  request,
+}) => {
   const collectionId = await createCollection(request, 'e2e-edit-key');
   await createMachine(request, collectionId, {
     name: 'e2e-edit-key-machine',
@@ -298,14 +305,18 @@ test('a local collection carries folders and a board', async ({ request }) => {
   expect(after.folders).toHaveLength(2);
 
   // Board: empty to begin with, round-trips, and the stored blob is ciphertext.
-  expect(await (await request.get(`/api/local/collections/${collectionId}/board`)).json()).toEqual([]);
+  expect(await (await request.get(`/api/local/collections/${collectionId}/board`)).json()).toEqual(
+    [],
+  );
   const cards = [
     { id: 'b1', type: 'link', title: 'Grafana', url: 'https://grafana.secret.example' },
     { id: 'b2', type: 'note', title: 'Scrub', text: 'sunday 03:00' },
   ];
   const saved = await request.put(`/api/local/collections/${collectionId}/board`, { data: cards });
   expect(saved.ok()).toBeTruthy();
-  expect(await (await request.get(`/api/local/collections/${collectionId}/board`)).json()).toEqual(cards);
+  expect(await (await request.get(`/api/local/collections/${collectionId}/board`)).json()).toEqual(
+    cards,
+  );
   // hasBoard is what the sidebar uses to show the indicator.
   const withBoard = (await (await request.get('/api/local/collections')).json()).find(
     (c: { id: string }) => c.id === collectionId,
@@ -314,5 +325,7 @@ test('a local collection carries folders and a board', async ({ request }) => {
 
   // An empty array clears it, matching the browser — one state, not two.
   await request.put(`/api/local/collections/${collectionId}/board`, { data: [] });
-  expect(await (await request.get(`/api/local/collections/${collectionId}/board`)).json()).toEqual([]);
+  expect(await (await request.get(`/api/local/collections/${collectionId}/board`)).json()).toEqual(
+    [],
+  );
 });

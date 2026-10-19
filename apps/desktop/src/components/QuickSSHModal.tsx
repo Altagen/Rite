@@ -30,7 +30,12 @@ export interface QuickSSHConnectionInfo {
   passphrase?: string;
 }
 
-export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveToCollection }: QuickSSHModalProps) {
+export function QuickSSHModal({
+  onClose,
+  onConnected,
+  collectionTargets,
+  onSaveToCollection,
+}: QuickSSHModalProps) {
   const [host, setHost] = useState('');
   const [port, setPort] = useState(22);
   const [username, setUsername] = useState('');
@@ -48,12 +53,7 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
       // Build auth method for quick_ssh_connect (shared shape with the form)
       const authMethod = toAuthMethodInput(auth);
 
-      const sessionId = await Backend.Terminal.quickSshConnect(
-        host,
-        username,
-        port,
-        authMethod
-      );
+      const sessionId = await Backend.Terminal.quickSshConnect(host, username, port, authMethod);
 
       // Pass connection info back for potential saving
       const connectionInfo: QuickSSHConnectionInfo = {
@@ -113,7 +113,12 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
             disabled={loading}
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -148,9 +153,7 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
           <div className="grid grid-cols-3 gap-3">
             {/* Port */}
             <div className="col-span-1">
-              <label className="mb-1 block text-sm font-medium">
-                Port
-              </label>
+              <label className="mb-1 block text-sm font-medium">Port</label>
               <input
                 type="number"
                 value={port}
@@ -186,7 +189,9 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
           {/* Save to collection (ADR 0016) — optional */}
           {collectionTargets && collectionTargets.length > 0 && (
             <div>
-              <label className="mb-1 block text-sm font-medium">Save to collection (optional)</label>
+              <label className="mb-1 block text-sm font-medium">
+                Save to collection (optional)
+              </label>
               <select
                 value={saveCollectionId}
                 onChange={(e) => setSaveCollectionId(e.target.value)}
@@ -216,7 +221,13 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
             <button
               type="submit"
               className="rounded bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 flex items-center gap-2"
-              disabled={loading || !host || !username || (auth.authType === 'password' && !auth.password) || (auth.authType === 'publicKey' && !auth.keyPath)}
+              disabled={
+                loading ||
+                !host ||
+                !username ||
+                (auth.authType === 'password' && !auth.password) ||
+                (auth.authType === 'publicKey' && !auth.keyPath)
+              }
             >
               {loading && (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent" />

@@ -44,14 +44,18 @@ export function ForcePasswordChange() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
-      <form onSubmit={submit} className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-xl">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-xl"
+      >
         <h1 className="mb-2 text-xl font-bold">Set your password</h1>
         <p className="mb-5 text-sm text-muted-foreground">
           {user ? (
             <>
               Welcome, <b className="text-foreground">{user.username}</b> — choose a password{' '}
-              <b className="text-foreground">only you know</b>. Until you do, the initial password an admin set
-              could unlock your data. This one is yours alone, and it can&apos;t be recovered — keep it safe.
+              <b className="text-foreground">only you know</b>. Until you do, the initial password
+              an admin set could unlock your data. This one is yours alone, and it can&apos;t be
+              recovered — keep it safe.
             </>
           ) : (
             'Choose a password only you know.'
@@ -59,7 +63,9 @@ export function ForcePasswordChange() {
         </p>
 
         {error && (
-          <div className="mb-4 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">{error}</div>
+          <div className="mb-4 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">
+            {error}
+          </div>
         )}
 
         <label className="mb-1 block text-xs font-medium text-muted-foreground">New password</label>
@@ -83,12 +89,19 @@ export function ForcePasswordChange() {
         </div>
         <div className="mb-1 flex gap-1.5">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className={`h-1 flex-1 rounded ${i < score ? COLOR[score] : 'bg-muted'}`} />
+            <div
+              key={i}
+              className={`h-1 flex-1 rounded ${i < score ? COLOR[score] : 'bg-muted'}`}
+            />
           ))}
         </div>
-        <div className="mb-4 h-4 text-xs text-muted-foreground">{pw ? `Password strength: ${LABEL[score]}` : ''}</div>
+        <div className="mb-4 h-4 text-xs text-muted-foreground">
+          {pw ? `Password strength: ${LABEL[score]}` : ''}
+        </div>
 
-        <label className="mb-1 block text-xs font-medium text-muted-foreground">Confirm password</label>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          Confirm password
+        </label>
         <input
           type={show ? 'text' : 'password'}
           value={pw2}
@@ -97,7 +110,9 @@ export function ForcePasswordChange() {
           placeholder="Type it again"
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
         />
-        <div className="mb-4 mt-1 h-4 text-xs text-red-500">{mismatch ? 'Passwords don’t match.' : ''}</div>
+        <div className="mb-4 mt-1 h-4 text-xs text-red-500">
+          {mismatch ? 'Passwords don’t match.' : ''}
+        </div>
 
         <button
           type="submit"

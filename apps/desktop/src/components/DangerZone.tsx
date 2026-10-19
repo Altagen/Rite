@@ -18,7 +18,9 @@ export function DangerZone({
 }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-red-500/40 bg-red-500/[0.05]">
-      <div className="border-b border-red-500/25 px-5 py-3.5 text-sm font-semibold text-red-500">Danger zone</div>
+      <div className="border-b border-red-500/25 px-5 py-3.5 text-sm font-semibold text-red-500">
+        Danger zone
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
           <div className="font-semibold">{title}</div>

@@ -194,9 +194,7 @@ export function PreconnectModal({ command, connectionName, onSuccess, onCancel }
               {t('preconnect.runningFor', { name: connectionName })}
             </span>
           )}
-          {phase === 'success' && (
-            <span className="mr-auto text-xs text-green-500">✓</span>
-          )}
+          {phase === 'success' && <span className="mr-auto text-xs text-green-500">✓</span>}
 
           {phase === 'failed' && (
             <button

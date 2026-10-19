@@ -24,7 +24,10 @@ export function TeamsPanel() {
 
   const refresh = useCallback(async () => {
     try {
-      const [teamList, userList] = await Promise.all([Backend.Teams.listAll(), Backend.Admin.listUsers()]);
+      const [teamList, userList] = await Promise.all([
+        Backend.Teams.listAll(),
+        Backend.Admin.listUsers(),
+      ]);
       setTeams(teamList);
       setUsers(userList);
     } catch {
@@ -77,7 +80,9 @@ export function TeamsPanel() {
       <h2 className="text-xl font-semibold">Teams</h2>
 
       {error && (
-        <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">{error}</div>
+        <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">
+          {error}
+        </div>
       )}
 
       <div className="flex flex-wrap gap-2">
@@ -86,7 +91,9 @@ export function TeamsPanel() {
             key={t.id}
             onClick={() => loadMembers(t)}
             className={`rounded-md border px-3 py-1.5 text-sm ${
-              selected?.id === t.id ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted'
+              selected?.id === t.id
+                ? 'border-primary bg-primary/10'
+                : 'border-border hover:bg-muted'
             }`}
           >
             {t.name}
@@ -95,7 +102,10 @@ export function TeamsPanel() {
         {teams.length === 0 && <p className="text-sm text-muted-foreground">No teams yet.</p>}
       </div>
 
-      <form onSubmit={createTeam} className="flex items-end gap-3 rounded-lg border border-border bg-card p-4">
+      <form
+        onSubmit={createTeam}
+        className="flex items-end gap-3 rounded-lg border border-border bg-card p-4"
+      >
         <div className="flex-1 space-y-1">
           <label htmlFor="new-team" className="text-xs font-medium text-muted-foreground">
             New team name

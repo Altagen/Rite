@@ -75,7 +75,13 @@ export function LayoutsModal({ onClose, connections, libraryReadable }: Props) {
           title={t('common.close')}
           className="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg
+            className="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
@@ -90,7 +96,11 @@ export function LayoutsModal({ onClose, connections, libraryReadable }: Props) {
 
           <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
             {path ? (
-              <code className="min-w-0 flex-1 truncate font-mono" title={path} data-testid="layouts-path">
+              <code
+                className="min-w-0 flex-1 truncate font-mono"
+                title={path}
+                data-testid="layouts-path"
+              >
                 {path}
               </code>
             ) : (

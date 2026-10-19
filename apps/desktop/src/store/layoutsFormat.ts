@@ -128,7 +128,10 @@ export function parseLayoutFile(text: string): LayoutParse {
       continue;
     }
     if (line.startsWith('[')) {
-      return fail(i + 1, `unknown table ${line} — only [[preset]], [[layout]] and [[layout.pane]] exist`);
+      return fail(
+        i + 1,
+        `unknown table ${line} — only [[preset]], [[layout]] and [[layout.pane]] exist`,
+      );
     }
 
     const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line);
@@ -143,7 +146,10 @@ export function parseLayoutFile(text: string): LayoutParse {
     // A bare number is the mistake this subset invites, and `size = 45%` is the one
     // people will actually type, so it gets its own sentence instead of the generic one.
     else if (/^[0-9]+(\.[0-9]+)?%?$/.test(value))
-      return fail(i + 1, `a value is quoted — write ${key} = "${value.endsWith('%') ? value : `${value}%`}"`);
+      return fail(
+        i + 1,
+        `a value is quoted — write ${key} = "${value.endsWith('%') ? value : `${value}%`}"`,
+      );
     else return fail(i + 1, `a value is a quoted string or true/false, not ${value || 'nothing'}`);
 
     if (pane) {
@@ -156,14 +162,22 @@ export function parseLayoutFile(text: string): LayoutParse {
       else if (key === 'tab') pane.tab = String(parsed);
       else if (key === 'split') {
         const word = String(parsed);
-        if (!isSplitWord(word)) return fail(i + 1, `a split is right, down, left or up — not ${word}`);
+        if (!isSplitWord(word))
+          return fail(i + 1, `a split is right, down, left or up — not ${word}`);
         pane.split = word;
       } else if (key === 'size') {
         const share = parseShare(String(parsed));
         if (share === null)
-          return fail(i + 1, `a size is a percentage between 10% and 90%, not ${String(parsed) || 'nothing'}`);
+          return fail(
+            i + 1,
+            `a size is a percentage between 10% and 90%, not ${String(parsed) || 'nothing'}`,
+          );
         pane.size = share;
-      } else return fail(i + 1, `a pane takes machine, command, name, preset, split, of, size and tab — not ${key}`);
+      } else
+        return fail(
+          i + 1,
+          `a pane takes machine, command, name, preset, split, of, size and tab — not ${key}`,
+        );
     } else if (preset) {
       remember(preset, key, i + 1);
       if (key === 'name') preset.name = String(parsed);
@@ -194,13 +208,17 @@ export function parseLayoutFile(text: string): LayoutParse {
     for (const p of layout.panes) {
       if (p.name?.trim()) {
         if (seen.has(p.name.trim()))
-          return fail(at(p, 'name'), `two panes are named "${p.name.trim()}" — "of" could not tell them apart`);
+          return fail(
+            at(p, 'name'),
+            `two panes are named "${p.name.trim()}" — "of" could not tell them apart`,
+          );
         seen.add(p.name.trim());
       }
       if (p.preset !== undefined) {
         const cited = presets.find((x) => x.name.trim() === p.preset?.trim());
         if (!cited) return fail(at(p, 'preset'), `no [[preset]] is named "${p.preset}"`);
-        if (at(p, 'command')) return fail(at(p, 'command'), 'a pane takes preset or command, not both');
+        if (at(p, 'command'))
+          return fail(at(p, 'command'), 'a pane takes preset or command, not both');
         p.command = cited.command;
       }
     }
@@ -289,7 +307,10 @@ function planTabs(layout: Layout, at: (obj: object, key: string) => number): Pla
     for (const key of ['split', 'of', 'size'] as const) {
       if (first[key] !== undefined)
         return {
-          error: { line: at(first, key), message: `the first pane of a tab is the whole area — it has no ${key}` },
+          error: {
+            line: at(first, key),
+            message: `the first pane of a tab is the whole area — it has no ${key}`,
+          },
           fallback,
         };
     }
@@ -445,7 +466,9 @@ export function replacePresetBlocks(text: string, presets: Preset[]): string {
   const isPresetHeader = (line: string) => stripComment(line).trim() === '[[preset]]';
 
   const block = presets
-    .map((p) => [`[[preset]]`, `name = ${quote(p.name)}`, `command = ${quote(p.command)}`].join('\n'))
+    .map((p) =>
+      [`[[preset]]`, `name = ${quote(p.name)}`, `command = ${quote(p.command)}`].join('\n'),
+    )
     .join('\n\n');
 
   const out: string[] = [];

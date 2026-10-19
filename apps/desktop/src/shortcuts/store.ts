@@ -22,7 +22,8 @@ export function defaultBindings(): Record<string, Binding> {
   const out: Record<string, Binding> = {};
   for (const command of SHORTCUT_COMMANDS) {
     const binding = parseBinding(command.defaultBinding);
-    if (!binding) throw new Error(`malformed default binding for ${command.id}: ${command.defaultBinding}`);
+    if (!binding)
+      throw new Error(`malformed default binding for ${command.id}: ${command.defaultBinding}`);
     out[command.id] = binding;
   }
   return out;
@@ -32,7 +33,8 @@ const KEY = 'rite-shortcuts';
 
 /** macOS wants Cmd where everything else wants Ctrl; decided once, here. */
 export const IS_MAC =
-  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  typeof navigator !== 'undefined' &&
+  /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 /** Stored overrides: command id → binding text. Anything unreadable is ignored
  *  rather than thrown, since a corrupt key must not cost the user every shortcut. */

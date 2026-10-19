@@ -138,7 +138,10 @@ export function serverShellChoices(mode: ServerMode | null | undefined): string[
  * since withdrawn falls back here rather than travelling — and it could not survive as a
  * path anyway, since the server resolves the name itself.
  */
-export function effectiveServerShell(mode: ServerMode | null | undefined, picked: string | undefined): string {
+export function effectiveServerShell(
+  mode: ServerMode | null | undefined,
+  picked: string | undefined,
+): string {
   const offered = serverShellChoices(mode);
   return picked && offered.includes(picked) ? picked : (mode?.defaultShell ?? 'bash');
 }
@@ -241,12 +244,18 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS),
         createVaultKey(password),
       ]);
-      const { token, user } = await Backend.Server.bootstrap(username, salt, DEFAULT_KDF_PARAMS, authHash, {
-        masterSalt: vaultKey.masterSaltHex,
-        protectedUserKey: vaultKey.protectedUserKey,
-        publicKey: vaultKey.publicKeyHex,
-        protectedPrivateKey: vaultKey.protectedPrivateKey,
-      });
+      const { token, user } = await Backend.Server.bootstrap(
+        username,
+        salt,
+        DEFAULT_KDF_PARAMS,
+        authHash,
+        {
+          masterSalt: vaultKey.masterSaltHex,
+          protectedUserKey: vaultKey.protectedUserKey,
+          publicKey: vaultKey.publicKeyHex,
+          protectedPrivateKey: vaultKey.protectedPrivateKey,
+        },
+      );
       setSessionToken(token);
       await syncLocalVault(vaultKey.userKey);
       const mode = get().mode;

@@ -46,7 +46,8 @@ const THEMES: Record<TerminalThemeName, ITheme> = {
 };
 
 export function getTerminalThemeName(): TerminalThemeName {
-  const v = (typeof localStorage !== 'undefined' && deviceStore.getItem(THEME_STORAGE)) as TerminalThemeName | null;
+  const v = (typeof localStorage !== 'undefined' &&
+    deviceStore.getItem(THEME_STORAGE)) as TerminalThemeName | null;
   return v && v in THEMES ? v : 'dark';
 }
 

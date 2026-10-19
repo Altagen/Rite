@@ -180,7 +180,9 @@ export function useLocalCollectionsSource(): ConnectionsSource {
       const next = from
         ? // Rename: move the folder and anything nested under it.
           folders.map((f) =>
-            underPath(f.name, from) ? { name: rewrite(f.name), color: f.name === from ? color : f.color } : f,
+            underPath(f.name, from)
+              ? { name: rewrite(f.name), color: f.name === from ? color : f.color }
+              : f,
           )
         : [...folders.filter((f) => f.name !== path), { name: path, color }];
       await Backend.Local.updateCollection({

@@ -22,6 +22,8 @@ test('first-run setup lands on the main screen', async ({ page }) => {
   await submit.click();
 
   // The vault is now unlocked → MainScreen. Its toolbar has a Terminal action.
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
   await expect(page.getByText('Quick SSH')).toBeVisible();
 });

@@ -164,7 +164,10 @@ async function ensurePersonalCollection(
     for (const b of await Backend.Vault.connections()) {
       try {
         const record = await decryptRecord(userKey, b.blob);
-        await Backend.Collections.createItem(personalId, await encryptCollectionField(personalItemsKey, record));
+        await Backend.Collections.createItem(
+          personalId,
+          await encryptCollectionField(personalItemsKey, record),
+        );
         await Backend.Vault.deleteConnection(b.id);
       } catch {
         // leave undecryptable/failed items in the vault rather than lose them
@@ -247,8 +250,10 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   if (input.icon !== undefined) merged.icon = input.icon;
   if (input.folder !== undefined) merged.folder = input.folder;
   if (input.notes !== undefined) merged.notes = input.notes;
-  if (input.sshKeepAliveOverride !== undefined) merged.sshKeepAliveOverride = input.sshKeepAliveOverride;
-  if (input.sshKeepAliveInterval !== undefined) merged.sshKeepAliveInterval = input.sshKeepAliveInterval;
+  if (input.sshKeepAliveOverride !== undefined)
+    merged.sshKeepAliveOverride = input.sshKeepAliveOverride;
+  if (input.sshKeepAliveInterval !== undefined)
+    merged.sshKeepAliveInterval = input.sshKeepAliveInterval;
   if (input.preconnect !== undefined) merged.preconnect = input.preconnect;
   if (input.jump !== undefined) merged.jump = input.jump;
   if (input.forwards !== undefined) merged.forwards = input.forwards;
@@ -285,7 +290,11 @@ const answered = new Map<string, string>();
  * Returns null when the person cancels, which callers must treat as "they said no" rather
  * than as a failure to report.
  */
-async function authFor(id: string, record: StoredRecord, label: string): Promise<AuthMethodInput | null> {
+async function authFor(
+  id: string,
+  record: StoredRecord,
+  label: string,
+): Promise<AuthMethodInput | null> {
   const auth = record.authMethod;
   if (!record.needsPassphrase || !('key' in auth) || auth.passphrase) return auth;
   const known = answered.get(id);
@@ -297,7 +306,10 @@ async function authFor(id: string, record: StoredRecord, label: string): Promise
 }
 
 /** The endpoint shape the server takes for an ad-hoc target or hop. */
-function endpointOf(record: StoredRecord, authMethod: AuthMethodInput = record.authMethod): QuickEndpoint {
+function endpointOf(
+  record: StoredRecord,
+  authMethod: AuthMethodInput = record.authMethod,
+): QuickEndpoint {
   return {
     host: record.hostname,
     port: record.port,
@@ -345,9 +357,21 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
   const { userKey, publicKey, privateKey } = useServerSession();
   const [connections, setConnections] = useState<ConnectionInfo[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
-  const [writableCollections, setWritableCollections] = useState<{ id: string; name: string }[]>([]);
+  const [writableCollections, setWritableCollections] = useState<{ id: string; name: string }[]>(
+    [],
+  );
   const [collectionList, setCollectionList] = useState<
-    { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean; hc: boolean | null; hasBoard: boolean }[]
+    {
+      id: string;
+      name: string;
+      color: string | null;
+      role: string;
+      folders: CollectionFolder[];
+      memberCount: number;
+      isPersonal: boolean;
+      hc: boolean | null;
+      hasBoard: boolean;
+    }[]
   >([]);
   const entries = useRef<Map<string, Entry>>(new Map());
   const collections = useRef<Map<string, CollectionCtx>>(new Map());
@@ -372,7 +396,17 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       const writable: { id: string; name: string; isPersonal: boolean }[] = [];
       // Every readable collection (including empty ones), so the tree can show a
       // node before it has any machine. Personal is one of them (marked).
-      const list: { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean; hc: boolean | null; hasBoard: boolean }[] = [];
+      const list: {
+        id: string;
+        name: string;
+        color: string | null;
+        role: string;
+        folders: CollectionFolder[];
+        memberCount: number;
+        isPersonal: boolean;
+        hc: boolean | null;
+        hasBoard: boolean;
+      }[] = [];
       for (const col of cols) {
         if (!col.protectedMetaKey) continue;
         try {
@@ -384,7 +418,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
           // The context holds the itemsKey for item reads/writes (ADR 0016 split). A
           // roster-only member (admin meta-add) has no itemsKey → the collection shows
           // its name in the tree but carries no machines until a member seals access.
-          if (itemsKey) ctx.set(col.id, { key: itemsKey, role: col.role, boardEnc: col.boardEnc ?? null });
+          if (itemsKey)
+            ctx.set(col.id, { key: itemsKey, role: col.role, boardEnc: col.boardEnc ?? null });
           const memberCount = (await Backend.Collections.members(col.id).catch(() => [])).length;
           list.push({
             id: col.id,
@@ -397,7 +432,12 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
             hc: header.hc ?? null,
             hasBoard: !!col.boardEnc,
           });
-          if (canWrite(col.role)) writable.push({ id: col.id, name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name, isPersonal });
+          if (canWrite(col.role))
+            writable.push({
+              id: col.id,
+              name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name,
+              isPersonal,
+            });
           if (itemsKey)
             for (const it of await Backend.Collections.items(col.id)) {
               try {
@@ -425,7 +465,9 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       const byPersonalThenName = <T extends { isPersonal: boolean; name: string }>(a: T, b: T) =>
         a.isPersonal ? -1 : b.isPersonal ? 1 : a.name.localeCompare(b.name);
       setCollectionList([...list].sort(byPersonalThenName));
-      setWritableCollections([...writable].sort(byPersonalThenName).map(({ id, name }) => ({ id, name })));
+      setWritableCollections(
+        [...writable].sort(byPersonalThenName).map(({ id, name }) => ({ id, name })),
+      );
     }
 
     entries.current = map;
@@ -501,7 +543,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       if (!entry) return;
       if (entry.collectionId) {
         const ctx = collections.current.get(entry.collectionId);
-        if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
+        if (!ctx || !canWrite(ctx.role))
+          throw new Error('you do not have write access to this collection');
         await Backend.Collections.deleteItem(entry.collectionId, id);
       } else {
         await Backend.Vault.deleteConnection(id);
@@ -518,7 +561,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       // Collection writes are gated on owner/editor.
       if (input.collectionId) {
         const ctx = collections.current.get(input.collectionId);
-        if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
+        if (!ctx || !canWrite(ctx.role))
+          throw new Error('you do not have write access to this collection');
         const blob = await encryptCollectionField(ctx.key, record);
         await Backend.Collections.createItem(input.collectionId, blob);
         await refresh();
@@ -540,7 +584,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       if (!entry) throw new Error('connection is not available');
       if (entry.collectionId) {
         const ctx = collections.current.get(entry.collectionId);
-        if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
+        if (!ctx || !canWrite(ctx.role))
+          throw new Error('you do not have write access to this collection');
         const blob = await encryptCollectionField(ctx.key, applyUpdate(entry.record, input));
         await Backend.Collections.updateItem(entry.collectionId, input.id, blob);
         await refresh();

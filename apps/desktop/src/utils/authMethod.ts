@@ -80,7 +80,11 @@ export function toAuthMethodInput(s: AuthState): AuthMethodInput {
         ? { type: 'vaultKey', key: s.key, ...passphrase }
         : { type: 'publicKey', keyPath: s.keyPath, ...passphrase };
     case 'agent':
-      return { type: 'agent', ...(s.agentIdentity ? { identity: s.agentIdentity } : {}), forward: s.agentForward };
+      return {
+        type: 'agent',
+        ...(s.agentIdentity ? { identity: s.agentIdentity } : {}),
+        forward: s.agentForward,
+      };
     case 'password':
     default:
       return { type: 'password', password: s.password };

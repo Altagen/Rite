@@ -11,7 +11,8 @@ import type { HttpErrorKind } from '../utils/httpError';
 export type ConnErrorKind = HttpErrorKind | 'offline' | 'generic';
 
 const ICONS: Record<ConnErrorKind, string> = {
-  starting: 'M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1',
+  starting:
+    'M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1',
   unreachable: 'M17.5 19a4.5 4.5 0 000-9 6 6 0 00-11.3-1.5A4 4 0 006 19zM3 3l18 18',
   offline: 'M1 1l22 22M8.5 16.5a5 5 0 017 0M5 12.9a10 10 0 0114-.1M12 20h.01',
   'session-expired': 'M12 8v4l3 2M12 3a9 9 0 100 18 9 9 0 000-18z',
@@ -89,8 +90,18 @@ export function ConnectionError({
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6 text-foreground">
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center shadow-xl">
-        <div className={`mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl ${SEV_CLASS[c.sev]}`}>
-          <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+        <div
+          className={`mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl ${SEV_CLASS[c.sev]}`}
+        >
+          <svg
+            className="h-7 w-7"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d={iconPath} />
           </svg>
         </div>

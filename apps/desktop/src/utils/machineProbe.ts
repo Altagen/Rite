@@ -43,7 +43,10 @@ export const SERVICES_CMD =
   'systemctl list-units --type=service --all --no-pager --plain --no-legend 2>/dev/null';
 
 /** Parse container detection output → runtime + rows. Malformed lines are skipped. */
-export function parseContainers(stdout: string): { runtime: ContainerRuntime; rows: ContainerRow[] } {
+export function parseContainers(stdout: string): {
+  runtime: ContainerRuntime;
+  rows: ContainerRow[];
+} {
   let runtime: ContainerRuntime = 'none';
   const rows: ContainerRow[] = [];
   for (const raw of stdout.split('\n')) {
@@ -156,7 +159,11 @@ export function parseServicesShow(stdout: string): Record<string, { mem: string;
       const eq = line.indexOf('=');
       if (eq > 0) props[line.slice(0, eq)] = line.slice(eq + 1).trim();
     }
-    if (props.Id) out[props.Id] = { mem: fmtBytes(props.MemoryCurrent), since: fmtSince(props.ActiveEnterTimestamp) };
+    if (props.Id)
+      out[props.Id] = {
+        mem: fmtBytes(props.MemoryCurrent),
+        since: fmtSince(props.ActiveEnterTimestamp),
+      };
   }
   return out;
 }
