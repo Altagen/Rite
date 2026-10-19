@@ -378,7 +378,6 @@ export function Workspace({
   // Execute pending action after unlock
   useEffect(() => {
     if (!isLocked && pendingActionAfterUnlock) {
-      console.log('[MainScreen] Executing pending action after unlock');
       pendingActionAfterUnlock();
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the one-shot pending action after running it
       setPendingActionAfterUnlock(null);
@@ -402,10 +401,9 @@ export function Workspace({
     try {
       const allShellPaths = shells.map(s => s.path);
       const installed = await Backend.Terminal.getInstalledShells(allShellPaths);
-      console.log('[MainScreen] Installed shells:', installed);
       setInstalledShells(installed);
     } catch (error) {
-      console.error('[MainScreen] Failed to check installed shells:', error);
+      console.error('[Workspace] Failed to check installed shells:', error);
       // If check fails, assume all shells are installed (backward compatibility)
       setInstalledShells(shells.map(s => s.path));
     }
@@ -526,14 +524,11 @@ export function Workspace({
       return;
     }
 
-    console.log(`[Auto-lock] Enabled with timeout: ${settings.autoLockTimeout} minute(s)`);
-
     let timeoutId: ReturnType<typeof setTimeout>;
 
     const resetTimer = () => {
       clearTimeout(timeoutId);
       timeoutId = setTimeout(() => {
-        console.log('[Auto-lock] Locking due to inactivity');
         lock();
       }, settings.autoLockTimeout * 60 * 1000); // Convert minutes to milliseconds
     };
@@ -553,7 +548,6 @@ export function Workspace({
       events.forEach(event => {
         document.removeEventListener(event, resetTimer);
       });
-      console.log('[Auto-lock] Cleanup - timer removed');
     };
   }, [settings.autoLockEnabled, settings.autoLockTimeout, lock]);
 
@@ -562,8 +556,6 @@ export function Workspace({
     if (!settings.clipboardClearEnabled) {
       return;
     }
-
-    console.log(`[Clipboard] Auto-clear enabled with timeout: ${settings.clipboardClearTimeout} second(s)`);
 
     let clipboardTimeoutId: ReturnType<typeof setTimeout>;
 
@@ -575,13 +567,11 @@ export function Workspace({
       clipboardTimeoutId = setTimeout(async () => {
         try {
           await navigator.clipboard.writeText('');
-          console.log('[Clipboard] Cleared clipboard after timeout');
         } catch (error) {
           console.error('[Clipboard] Failed to clear clipboard:', error);
         }
       }, settings.clipboardClearTimeout * 1000); // Convert seconds to milliseconds
 
-      console.log(`[Clipboard] Copy detected, will clear in ${settings.clipboardClearTimeout}s`);
     };
 
     // Listen for copy events
@@ -591,7 +581,6 @@ export function Workspace({
     return () => {
       clearTimeout(clipboardTimeoutId);
       document.removeEventListener('copy', handleCopy);
-      console.log('[Clipboard] Cleanup - auto-clear removed');
     };
   }, [settings.clipboardClearEnabled, settings.clipboardClearTimeout]);
 
@@ -668,7 +657,6 @@ export function Workspace({
   };
 
   const doConnect = async (connection: ConnectionInfo) => {
-    console.log('[MainScreen] handleConnect called for connection:', connection.name, 'ID:', connection.id);
     // Remember the attempt so an accepted host-key prompt can retry it.
     lastConnectionRef.current = connection;
 
@@ -677,8 +665,6 @@ export function Workspace({
       // server-decrypts; accounts = browser-decrypts → server-execute).
       const sessionId = await conns.connect(connection);
 
-      console.log('[MainScreen] Backend returned session ID:', sessionId);
-
       // Create terminal session with backend session ID
       const session: TerminalSession = {
         id: sessionId,
@@ -686,10 +672,9 @@ export function Workspace({
         connectionName: connection.name,
       };
 
-      console.log('[MainScreen] Adding terminal session to tree:', session.id);
       addTerminalToTree(session);
     } catch (error) {
-      console.error('[MainScreen] Failed to connect to terminal:', error);
+      console.error('[Workspace] Failed to connect to terminal:', error);
       let errorMsg = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Failed to connect';
 
       // Strict-mode host-key rejection ("Disconnected"): the backend also emits
@@ -747,7 +732,7 @@ export function Workspace({
         await doConnect(lastConnectionRef.current);
       }
     } catch (error) {
-      console.error('[MainScreen] Failed to accept host key:', error);
+      console.error('[Workspace] Failed to accept host key:', error);
       setToastType('error');
       setToastMessage('Failed to trust host key');
     } finally {
@@ -764,7 +749,7 @@ export function Workspace({
         await Backend.Ssh.rejectHostKey(hostKeyPrompt.host, hostKeyPrompt.port);
       }
     } catch (error) {
-      console.error('[MainScreen] Failed to reject host key:', error);
+      console.error('[Workspace] Failed to reject host key:', error);
     } finally {
       setHostKeyPrompt(null);
       setHostKeyBusy(false);
@@ -795,7 +780,7 @@ export function Workspace({
 
       addTerminalToTree(session);
     } catch (error) {
-      console.error('[MainScreen] Failed to create local terminal:', error);
+      console.error('[Workspace] Failed to create local terminal:', error);
       // Show error message with toast
       const errorMsg = typeof error === 'string' ? error : 'Failed to create local terminal';
       setToastType('error');
@@ -805,7 +790,6 @@ export function Workspace({
 
   // Handle Quick SSH connected
   const handleQuickSSHConnected = (sessionId: string, connectionInfo: QuickSSHConnectionInfo) => {
-    console.log('[MainScreen] Quick SSH connected, session:', sessionId);
 
     // Store connection info for potential saving later
     setQuickSSHConnections(new Map(quickSSHConnections).set(sessionId, connectionInfo));
@@ -904,13 +888,12 @@ export function Workspace({
         return tab;
       }));
     } catch (error) {
-      console.error('[MainScreen] Failed to split pane:', error);
+      console.error('[Workspace] Failed to split pane:', error);
       const errorMsg = typeof error === 'string' ? error : 'Failed to create terminal for split';
       setToastType('error');
       setToastMessage(errorMsg);
     }
   };
-
 
   /**
    * Open a layout: its own tabs, arranged as its file says (ADR 0023).
@@ -997,7 +980,6 @@ export function Workspace({
 
   // Handle close pane
   const handleClosePane = (paneId: string) => {
-    console.log('[MainScreen] Closing pane:', paneId);
 
     if (!activeTabId) return;
 
@@ -1063,7 +1045,6 @@ export function Workspace({
 
   // Handle focus pane
   const handleFocusPane = (paneId: string) => {
-    console.log('[MainScreen] Focusing pane:', paneId);
 
     if (!activeTabId) return;
 
@@ -1098,13 +1079,11 @@ export function Workspace({
 
   // Handle reorder tabs
   const handleReorderTabs = (newTabOrder: Tab[]) => {
-    console.log('[MainScreen] Reordering tab groups:', newTabOrder.map(t => t.id));
     setTabGroups(newTabOrder);
   };
 
   // Handle close tab - gracefully close all terminals in a tab and remove it
   const handleCloseTab = async (tabId: string) => {
-    console.log('[MainScreen] Closing tab:', tabId);
 
     const tabToClose = tabGroups.find(t => t.id === tabId);
     if (!tabToClose) return;
@@ -1113,11 +1092,9 @@ export function Workspace({
     // itself, which is why this is a list of panes and no longer a list of session
     // ids: a tab holding an SFTP or agent pane closes correctly with no change here.
     const panesToClose = getAllPanes(tabToClose.paneTree);
-    console.log('[MainScreen] Disposing', panesToClose.length, 'panes');
-    const { disposed, failed } = await disposeAllPanes(panesToClose);
-    console.log('[MainScreen] Disposed', disposed, 'of', panesToClose.length, 'panes');
+    const { failed } = await disposeAllPanes(panesToClose);
     for (const { pane, error } of failed) {
-      console.error('[MainScreen] Failed to dispose pane:', pane.id, error);
+      console.error('[Workspace] Failed to dispose pane:', pane.id, error);
     }
 
     // Remove the tab
@@ -1140,7 +1117,6 @@ export function Workspace({
 
   // Handle detach pane - extract a pane from current tab and create a new tab with it
   const handleDetachPane = (paneId: string) => {
-    console.log('[MainScreen] Detaching pane:', paneId);
 
     if (!activeTabId) return;
 
@@ -1151,7 +1127,7 @@ export function Workspace({
     const { extractedPane, remainingTree } = extractPane(activeTab.paneTree, paneId);
 
     if (!extractedPane) {
-      console.error('[MainScreen] Failed to extract pane:', paneId);
+      console.error('[Workspace] Failed to extract pane:', paneId);
       return;
     }
 
@@ -1182,7 +1158,6 @@ export function Workspace({
 
   // Handle rename tab
   const handleRenameTab = (tabId: string, newName: string) => {
-    console.log('[MainScreen] Renaming tab:', tabId, 'to:', newName);
     setTabGroups(prev => prev.map(tab =>
       tab.id === tabId ? { ...tab, name: newName } : tab
     ));
@@ -1190,7 +1165,6 @@ export function Workspace({
 
   // Handle merge tab - drag a tab and drop it into another tab's pane area
   const handleMergeTab = (sourceTabId: string, targetTabId: string) => {
-    console.log('[MainScreen] Merging tab:', sourceTabId, 'into:', targetTabId);
 
     if (sourceTabId === targetTabId) return;
 
@@ -1230,7 +1204,6 @@ export function Workspace({
     targetPaneId: string,
     position: 'top' | 'bottom' | 'left' | 'right'
   ) => {
-    console.log('[MainScreen] Reorganizing pane:', sourcePaneId, 'to', position, 'of', targetPaneId);
 
     if (!activeTabId) return;
 
@@ -1248,22 +1221,19 @@ export function Workspace({
 
   // Handle save Quick SSH connection
   const handleSaveQuickSSH = (sessionId: string) => {
-    console.log('[MainScreen] Save Quick SSH connection requested for session:', sessionId);
 
     // Get connection info for this session
     const connectionInfo = quickSSHConnections.get(sessionId);
     if (!connectionInfo) {
-      console.error('[MainScreen] No connection info found for session:', sessionId);
+      console.error('[Workspace] No connection info found for session:', sessionId);
       return;
     }
 
     // Check if app is locked
     if (isLocked) {
-      console.log('[MainScreen] App is locked, showing unlock modal and storing pending action');
 
       // Store the action to execute after unlock
       setPendingActionAfterUnlock(() => () => {
-        console.log('[MainScreen] Executing pending Quick SSH save after unlock');
         setConnectionFormPrefill(connectionInfo);
         setEditingConnection(null);
         setShowForm(true);

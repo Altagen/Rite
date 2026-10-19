@@ -48,15 +48,12 @@ export function QuickSSHModal({ onClose, onConnected, collectionTargets, onSaveT
       // Build auth method for quick_ssh_connect (shared shape with the form)
       const authMethod = toAuthMethodInput(auth);
 
-      console.log('[QuickSSH] Connecting via quick_ssh_connect...');
       const sessionId = await Backend.Terminal.quickSshConnect(
         host,
         username,
         port,
         authMethod
       );
-
-      console.log('[QuickSSH] Connected successfully, session:', sessionId);
 
       // Pass connection info back for potential saving
       const connectionInfo: QuickSSHConnectionInfo = {

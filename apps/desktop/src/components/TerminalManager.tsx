@@ -160,7 +160,6 @@ export function TerminalManager({
       // Tab has changed, focus the first pane
       const firstPane = getFirstLeafPane(paneTree);
       if (firstPane) {
-        console.log('[TerminalManager] Auto-focusing first pane on tab switch:', firstPane.id, 'for tab:', activeTabId);
         lastFocusedTabRef.current = activeTabId;
         onFocusPane(firstPane.id);
       }

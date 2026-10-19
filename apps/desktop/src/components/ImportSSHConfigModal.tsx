@@ -60,7 +60,6 @@ export function ImportSSHConfigModal({
     loadDefaultPath();
   }, []);
 
-
   const handleParse = async () => {
     if (!configPath.trim()) {
       setError('Please enter a config file path');
@@ -72,10 +71,7 @@ export function ImportSSHConfigModal({
     setEntries([]);
 
     try {
-      console.log('[ImportSSH] Parsing config at:', configPath);
       const parsedEntries = await Backend.Connections.parseSshConfig(configPath);
-
-      console.log('[ImportSSH] Found entries:', parsedEntries.length);
 
       // Add preview and selection state
       const selectableEntries: SelectableSshConfigEntry[] = parsedEntries.map((entry) => {

@@ -164,7 +164,6 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   // This ensures keyboard shortcuts work when programmatically focusing a pane
   useEffect(() => {
     if (isFocused && terminalRef.current) {
-      console.log('[Terminal] Focusing textarea for session:', existingSessionId);
       focusTerminalTextarea();
     }
   }, [isFocused, existingSessionId]);
