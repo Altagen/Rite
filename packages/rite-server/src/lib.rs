@@ -560,7 +560,10 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/admin/default-shell", patch(set_default_shell))
         .route("/api/admin/shell-choice", patch(set_shell_choice))
         .route("/api/admin/host-key-mode", patch(set_host_key_mode))
-        .route("/api/admin/passphrase-storage", patch(set_passphrase_storage))
+        .route(
+            "/api/admin/passphrase-storage",
+            patch(set_passphrase_storage),
+        )
         .route("/api/admin/secret-reveal", patch(set_secret_reveal))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
         .route("/api/admin/registration", patch(set_open_registration))
@@ -3494,7 +3497,10 @@ const ADMIN_ROUTE_SETTINGS: &[&str] = &[
 /// host-key verification off for the whole instance, or hand the server a `default_shell`
 /// the admin route would have refused. Device preferences (auto-lock, clipboard) are the
 /// client's own and no longer travel here at all (`settingsStore.ts`).
-fn settings_route_refusal(state: &ServerState, user: &Option<Extension<Arc<User>>>) -> Option<Response> {
+fn settings_route_refusal(
+    state: &ServerState,
+    user: &Option<Extension<Arc<User>>>,
+) -> Option<Response> {
     if !state.accounts {
         return None;
     }
@@ -3539,7 +3545,9 @@ async fn set_setting(
         if ADMIN_ROUTE_SETTINGS.contains(&key.as_str()) {
             return Ok((
                 StatusCode::CONFLICT,
-                format!("`{key}` is an instance policy with its own validated route under /api/admin"),
+                format!(
+                    "`{key}` is an instance policy with its own validated route under /api/admin"
+                ),
             )
                 .into_response());
         }
@@ -3575,11 +3583,7 @@ fn layouts_path() -> Option<std::path::PathBuf> {
 /// would be plaintext in a table with no owner column, so one account's machine names
 /// would be both readable by the server and overwritable by a colleague.
 fn layouts_file(accounts: bool) -> Option<std::path::PathBuf> {
-    if accounts {
-        None
-    } else {
-        layouts_path()
-    }
+    if accounts { None } else { layouts_path() }
 }
 
 /// What a new installation sees instead of an empty box: the shape of the file, as
@@ -3681,7 +3685,9 @@ mod layouts_tests {
         }
         assert_eq!(
             found,
-            Some(std::path::PathBuf::from("/tmp/rite-workspace-elsewhere.toml"))
+            Some(std::path::PathBuf::from(
+                "/tmp/rite-workspace-elsewhere.toml"
+            ))
         );
     }
 
@@ -3689,9 +3695,7 @@ mod layouts_tests {
     /// fresh install parses to zero layouts instead of to an error.
     #[test]
     fn the_template_parses_to_nothing() {
-        let t: toml::Table = LAYOUTS_TEMPLATE
-            .parse()
-            .expect("the template must be TOML");
+        let t: toml::Table = LAYOUTS_TEMPLATE.parse().expect("the template must be TOML");
         assert!(t.is_empty(), "the template must declare no layout: {t:?}");
     }
 }
@@ -5607,21 +5611,32 @@ mod tests {
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
 
-        let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let payload: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(
             payload["version"], "0.2.4",
             "the release this server reports (Cargo.toml's workspace version)"
         );
-        assert_eq!(payload["apiVersion"], 1, "additive changes do not move this");
-        assert_eq!(payload["minClient"], "0.1.2", "the oldest client still supported");
+        assert_eq!(
+            payload["apiVersion"], 1,
+            "additive changes do not move this"
+        );
+        assert_eq!(
+            payload["minClient"], "0.1.2",
+            "the oldest client still supported"
+        );
 
         // What the build is, which Settings ▸ System shows and a bug report asks for.
         // Asserted as shapes rather than values — they differ between a checkout and a
         // release image by design — but never empty and never missing: an absent field
         // renders as a blank row that reads like a bug in the page.
         let commit = payload["commit"].as_str().expect("commit is a string");
-        assert!(!commit.is_empty(), "a build says what it is, or says `unknown`");
+        assert!(
+            !commit.is_empty(),
+            "a build says what it is, or says `unknown`"
+        );
         let built = payload["builtAt"].as_str().expect("builtAt is a string");
         assert!(
             built.len() == 10 && built.split('-').count() == 3,
@@ -5724,7 +5739,10 @@ mod tests {
             );
         }
         // Whatever else is true of this machine, the shell every image ships is runnable.
-        assert!(shell_path_of("sh").is_some(), "no /bin/sh on the test machine");
+        assert!(
+            shell_path_of("sh").is_some(),
+            "no /bin/sh on the test machine"
+        );
     }
 
     /// A name resolves to the path the session is given; anything shaped like a path

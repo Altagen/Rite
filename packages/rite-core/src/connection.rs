@@ -131,18 +131,25 @@ impl std::fmt::Debug for AuthMethod {
             } => write!(
                 f,
                 "PublicKey {{ key_path: {key_path:?}, passphrase: {} }}",
-                if passphrase.is_some() { "<redacted>" } else { "none" }
+                if passphrase.is_some() {
+                    "<redacted>"
+                } else {
+                    "none"
+                }
             ),
             AuthMethod::VaultKey { key, passphrase } => write!(
                 f,
                 "VaultKey {{ key: <redacted {} bytes>, passphrase: {} }}",
                 key.len(),
-                if passphrase.is_some() { "<redacted>" } else { "none" }
+                if passphrase.is_some() {
+                    "<redacted>"
+                } else {
+                    "none"
+                }
             ),
-            AuthMethod::Agent { identity, forward } => write!(
-                f,
-                "Agent {{ identity: {identity:?}, forward: {forward} }}"
-            ),
+            AuthMethod::Agent { identity, forward } => {
+                write!(f, "Agent {{ identity: {identity:?}, forward: {forward} }}")
+            }
         }
     }
 }
@@ -519,8 +526,14 @@ mod tests {
         let info = vault_key_connection().to_info();
         assert_eq!(info.auth_type, "vaultKey");
         let rendered = format!("{info:?}");
-        assert!(!rendered.contains("SECRET-KEY-BYTES"), "info carries the key: {rendered}");
-        assert!(!rendered.contains("PASSPHRASE-DO-NOT-LEAK"), "info carries the passphrase");
+        assert!(
+            !rendered.contains("SECRET-KEY-BYTES"),
+            "info carries the key: {rendered}"
+        );
+        assert!(
+            !rendered.contains("PASSPHRASE-DO-NOT-LEAK"),
+            "info carries the passphrase"
+        );
     }
 
     /// `Debug` is the leak that has not happened yet: nothing logs an `AuthMethod` today,
@@ -532,11 +545,22 @@ mod tests {
             passphrase: Some("PASSPHRASE-DO-NOT-LEAK".into()),
         };
         let rendered = format!("{key:?}");
-        assert!(rendered.starts_with("VaultKey"), "it still says which method: {rendered}");
-        assert!(!rendered.contains("SECRET-KEY-BYTES"), "the key is printed: {rendered}");
-        assert!(!rendered.contains("PASSPHRASE-DO-NOT-LEAK"), "the passphrase is printed");
+        assert!(
+            rendered.starts_with("VaultKey"),
+            "it still says which method: {rendered}"
+        );
+        assert!(
+            !rendered.contains("SECRET-KEY-BYTES"),
+            "the key is printed: {rendered}"
+        );
+        assert!(
+            !rendered.contains("PASSPHRASE-DO-NOT-LEAK"),
+            "the passphrase is printed"
+        );
 
-        let password = AuthMethod::Password { password: "PASSPHRASE-DO-NOT-LEAK".into() };
+        let password = AuthMethod::Password {
+            password: "PASSPHRASE-DO-NOT-LEAK".into(),
+        };
         assert!(!format!("{password:?}").contains("PASSPHRASE-DO-NOT-LEAK"));
 
         // A path names a file; it is not its contents, and losing it from a log would cost
@@ -546,7 +570,13 @@ mod tests {
             passphrase: Some("PASSPHRASE-DO-NOT-LEAK".into()),
         };
         let rendered = format!("{on_disk:?}");
-        assert!(rendered.contains("/home/me/.ssh/id_ed25519"), "the path is kept: {rendered}");
-        assert!(!rendered.contains("PASSPHRASE-DO-NOT-LEAK"), "the passphrase is printed");
+        assert!(
+            rendered.contains("/home/me/.ssh/id_ed25519"),
+            "the path is kept: {rendered}"
+        );
+        assert!(
+            !rendered.contains("PASSPHRASE-DO-NOT-LEAK"),
+            "the passphrase is printed"
+        );
     }
 }

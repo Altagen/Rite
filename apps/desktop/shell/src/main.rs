@@ -547,7 +547,10 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, window: WindowId, body: String)
         // the whole operation, so there is nothing for the loop to coordinate.
         Some("device-set") => {
             if let Some(key) = msg.get("key").and_then(|k| k.as_str()) {
-                write_device_pref(key, msg.get("value").cloned().unwrap_or(serde_json::Value::Null));
+                write_device_pref(
+                    key,
+                    msg.get("value").cloned().unwrap_or(serde_json::Value::Null),
+                );
             }
         }
         Some("set-fullscreen") => {
@@ -1048,7 +1051,9 @@ fn read_device_prefs() -> serde_json::Value {
 /// holding only what the slower one knew.
 fn write_device_pref(key: &str, value: serde_json::Value) {
     let mut prefs = read_device_prefs();
-    let Some(map) = prefs.as_object_mut() else { return };
+    let Some(map) = prefs.as_object_mut() else {
+        return;
+    };
     if value.is_null() {
         map.remove(key);
     } else {
