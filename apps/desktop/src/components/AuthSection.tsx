@@ -6,7 +6,7 @@
  * (file) are always offered; SSH agent is offered only in the native shell —
  * a browser can't reach $SSH_AUTH_SOCK.
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { isNativeShell } from '../utils/nativeShell';
 import { useServerSession } from '../store/serverSessionStore';
@@ -42,7 +42,7 @@ function EyeButton({ shown, onToggle }: { shown: boolean; onToggle: () => void }
 
 interface AuthSectionProps {
   value: AuthState;
-  onChange: (next: AuthState) => void;
+  onChange: Dispatch<SetStateAction<AuthState>>;
   /** Edit mode: password is optional (leave blank to keep the current one). */
   isEdit?: boolean;
   errors?: { password?: string; keyPath?: string };
@@ -98,7 +98,9 @@ export function AuthSection({
     }
   };
 
-  const RevealButton = ({ field }: { field: 'password' | 'passphrase' }) =>
+  // A function, not a component: a component declared inside a render gets a new identity
+  // on every render, so React tears the button down and rebuilds it for nothing.
+  const revealButton = (field: 'password' | 'passphrase') =>
     onReveal ? (
       <button
         type="button"
@@ -137,11 +139,10 @@ export function AuthSection({
    * frozen when the file was chosen — so a passphrase typed in the meantime was wiped by
    * the read completing. Silently: the field emptied, the machine saved without one, and
    * the next connection failed with "The key is encrypted" and nothing to explain it.
-   * A ref holds the newest state so a late callback cannot undo what was typed after it.
+   * Updating through the setter means the owner merges onto its newest state, so a late
+   * callback cannot undo what was typed after it.
    */
-  const latest = useRef(value);
-  latest.current = value;
-  const set = (patch: Partial<AuthState>) => onChange({ ...latest.current, ...patch });
+  const set = (patch: Partial<AuthState>) => onChange(prev => ({ ...prev, ...patch }));
 
   // Live SSH-agent identities (native only). `null` = still querying; an empty
   // list = no agent / no keys (a normal, graceful state — not an error).
@@ -200,7 +201,7 @@ export function AuthSection({
           </div>
           {errors?.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
           {isEdit && <p className="mt-1 text-sm text-muted-foreground">Leave empty to keep current password</p>}
-          <RevealButton field="password" />
+          {revealButton('password')}
           {revealError && (
             <p className="mt-1 text-sm text-amber-500" data-testid="auth-reveal-error">
               {revealError}
@@ -278,7 +279,7 @@ export function AuthSection({
                 {t('connections.keyPassphraseStored')}
               </p>
             )}
-            <RevealButton field="passphrase" />
+            {revealButton('passphrase')}
             {revealError && (
               <p className="mt-1 text-sm text-amber-500" data-testid="auth-reveal-error">
                 {revealError}

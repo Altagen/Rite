@@ -3,7 +3,7 @@
 #
 #   sh e2e/gate.sh
 #
-# Four steps, and the first one is not politeness. Playwright serves
+# Five steps, and the first one is not politeness. Playwright serves
 # `apps/desktop/dist` and the standalone checks drive `target/debug/rite-server`;
 # neither suite builds anything. A stale artefact tests the previous commit and
 # reports "passed", which is worse than reporting nothing — it has happened in this
@@ -66,6 +66,10 @@ if [ "$want" != "$have" ]; then
 fi
 
 say "1/5  build what the gates run against"
+# `build:frontend` type-checks on its way through, but eslint is a separate pass and
+# nothing else in this repository runs it, so a rule violation reaches the branch with
+# every gate green behind it. Here, before the slow steps.
+pnpm --filter desktop lint
 pnpm --filter desktop build:frontend
 if command -v cargo >/dev/null 2>&1; then
   cargo build -p rite-server

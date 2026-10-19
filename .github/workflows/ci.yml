@@ -162,6 +162,13 @@ jobs:
         working-directory: apps/desktop
         run: pnpm typecheck
 
+      # The repo has carried an eslint config and a `lint` script with --max-warnings 0
+      # for as long as it has had a frontend, and nothing ever ran them: type errors were
+      # caught here, rule violations were not. They reach the branch all the same.
+      - name: Run lint
+        working-directory: apps/desktop
+        run: pnpm lint
+
   # pnpm security audit
   pnpm-audit:
     name: 🔒 pnpm Audit
