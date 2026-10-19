@@ -12,6 +12,20 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: './e2e/tests',
+  /**
+   * 60s rather than Playwright's 30s.
+   *
+   * That default assumes a browser test: a page, some DOM, an assertion. This suite drives
+   * a real sshd in a container and waits for a terminal emulator to paint what came back
+   * over the wire — seconds of genuine work before anything can be asserted. Measured: with
+   * half this machine's cores busy, 7 of 23 failures were the per-test budget running out
+   * while the test was still making progress, which fails naming an assertion that had not
+   * timed out and teaches you to read red as noise.
+   *
+   * It does not hide a hang: a test that is truly stuck still fails, 30 seconds later than
+   * it used to, and there are 114 of them so that costs nothing in practice.
+   */
+  timeout: 60_000,
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
