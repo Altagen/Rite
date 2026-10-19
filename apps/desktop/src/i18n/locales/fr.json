@@ -216,17 +216,17 @@
     "toolbarQuickSshOff": "Votre serveur le désactive",
     "toolbarQuickSshOffWhy": ", le bouton reste donc masqué quoi que dise ce réglage.",
     "hostKeyServerDesc": "Défini par votre administrateur pour chaque connexion ouverte par ce serveur.",
-    "systemHint": "Ce qui tourne, et ce avec quoi ça parle. La première chose qu'un rapport de bug demande.",
+    "systemHint": "Ce qui tourne, et ce avec quoi ça parle.",
     "systemRelease": "Rite",
     "systemReleaseDesc": "La version qui sert cette page.",
     "systemBuild": "Build",
-    "systemBuildDesc": "Le commit dont il est issu, et sa date. « unknown » signifie un build fait hors d'un dépôt.",
+    "systemBuildDesc": "Le commit d'origine, et sa date. « unknown » : hors dépôt.",
     "systemShell": "Shell",
-    "systemShellDesc": "Où tourne cette interface. Le même bundle tourne dans les deux.",
+    "systemShellDesc": "Où tourne cette interface. Même bundle dans les deux.",
     "systemShellDesktop": "fenêtre desktop",
     "systemShellBrowser": "navigateur",
     "systemApi": "API",
-    "systemApiDesc": "Ce que ce serveur parle, et le plus ancien client qu'il accepte encore."
+    "systemApiDesc": "Ce que ce serveur parle, et le plus ancien client accepté."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
