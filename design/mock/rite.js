@@ -1,4 +1,6 @@
-/* Shared mock data + dialogs + helpers for the Rite UX prototypes. */
+/* Shared mock data + dialogs + helpers for the Rite UX prototypes.
+   `esc` comes from esc.js, loaded before this file; it says which fields are text
+   and which are markup by design. */
 const DATA = {
   vaults: [
     { id:'v1', name:'Perso', file:'~/.local/share/rite/perso.db', badge:'v1', locked:true, conns:[
@@ -57,10 +59,10 @@ function showModal({title,subtitle,body,confirm='Confirm',onConfirm,wide,width})
   const bd=document.createElement('div'); bd.className='backdrop show';
   const mw=width?`style="max-width:${width}"`:(wide?'style="max-width:520px"':'');
   const foot = confirm===null ? ''
-    : `<div class="foot"><button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-ok>${confirm}</button></div>`;
+    : `<div class="foot"><button class="btn btn-ghost" data-x>Cancel</button><button class="btn btn-primary" data-ok>${esc(confirm)}</button></div>`;
   bd.innerHTML=`<div class="modal" ${mw}>
     <button class="modal-x" data-close title="Close" aria-label="Close">✕</button>
-    <header><h3>${title}</h3>${subtitle?`<p>${subtitle}</p>`:''}</header>
+    <header><h3>${esc(title)}</h3>${subtitle?`<p>${esc(subtitle)}</p>`:''}</header>
     <div class="body">${body}</div>
     ${foot}
   </div>`;
@@ -658,11 +660,11 @@ function splitMenu(e){
   e.stopPropagation();
   const t=curTab(); const host=t&&t.host;
   const items = [PLAIN_PRESET].concat(SPLIT_PRESETS).map(p=>({ icon:ICON.term,
-    label:`${p.name}${p.command?`<div class="sub mono" style="font-size:11px;color:var(--muted);font-weight:400">${p.command}</div>`:''}`,
+    label:`${esc(p.name)}${p.command?`<div class="sub mono" style="font-size:11px;color:var(--muted);font-weight:400">${esc(p.command)}</div>`:''}`,
     onclick:()=>splitWith(p.id) }));
   items.push({ icon:EXICON.split, label:'Snippets…', onclick:()=>openSnippets(host||null) });
   PANE_LAYOUTS.forEach(l=>items.push({ icon:EXICON.panel,
-    label:`${l.name}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes</div>`,
+    label:`${esc(l.name)}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes</div>`,
     onclick:()=>applyLayout(l.id) }));
   // Nothing to configure where there is no file to write it to (ADR 0023).
   if(hasWorkspaceFile()) items.push({ icon:EXICON.gear, label:'Split presets…', onclick:()=>dlgSplitPrefs() });
@@ -692,10 +694,10 @@ function layoutsBtnHTML(){
 function layoutsMenu(e){
   e.stopPropagation();
   const items = PANE_LAYOUTS.map(l=>({ icon:EXICON.panel,
-    label:`${l.name}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes · ${l.panes.map(paneLabel).join(' · ')}</div>`,
+    label:`${esc(l.name)}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes · ${esc(l.panes.map(paneLabel).join(' · '))}</div>`,
     onclick:()=>applyLayout(l.id) }));
   if(LAYOUT_ERROR) items.unshift({ icon:'⚠',
-    label:`<span style="color:var(--amber)">layouts.toml has an error</span><div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${LAYOUT_ERROR.line?`line ${LAYOUT_ERROR.line} · `:''}${LAYOUT_ERROR.message}</div>`,
+    label:`<span style="color:var(--amber)">layouts.toml has an error</span><div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${LAYOUT_ERROR.line?`line ${esc(LAYOUT_ERROR.line)} · `:''}${esc(LAYOUT_ERROR.message)}</div>`,
     onclick:()=>dlgLayouts() });
   items.push({ icon:EXICON.gear, label:'Layouts file…', onclick:()=>dlgLayouts() });
   floatMenu(e, items);
@@ -776,13 +778,16 @@ function layoutCardsHTML(opts){
   const where=p=>{
     if(!p.machine) return '<span class="muted">this computer</span>';
     const tgt=layoutTarget(p);
-    return tgt.host? `<span class="ok">${p.machine}</span>`
-      : `<span style="color:var(--amber)">${p.machine} → plain shell</span>`;
+    return tgt.host? `<span class="ok">${esc(p.machine)}</span>`
+      : `<span style="color:var(--amber)">${esc(p.machine)} → plain shell</span>`;
   };
+  /* Every field here was parsed out of the textarea above, so it is data: a machine
+     name or a command with a `<` in it would otherwise be markup by the time it
+     reached the card. */
   const paneRow=p=>`<div style="display:flex;gap:8px;font-size:12px;padding:2px 0">
     <span style="flex:0 0 150px">${where(p)}</span>
-    <code class="mono" style="color:var(--fg-dim);min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.command||'(plain shell)'}</code>
-    <span class="muted" style="flex:0 0 auto">${paneLabel(p)}</span></div>`;
+    <code class="mono" style="color:var(--fg-dim);min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.command||'(plain shell)')}</code>
+    <span class="muted" style="flex:0 0 auto">${esc(paneLabel(p))}</span></div>`;
   return PANE_LAYOUTS.map((l,index)=>{
     /* A checkbox and not a radio: the file lets several layouts open at startup, each
        in its own tabs, and that is useful — one for what you watch, one for what you
@@ -793,11 +798,11 @@ function layoutCardsHTML(opts){
     /* Grouped as it will open: a layout may name tabs, and a pane listed under the
        wrong one would be the opposite of what this list is for. */
     const body = planLayout(l).map(plan=>
-      (plan.tab?`<div class="eyebrow" style="margin:4px 0 1px">Tab “${plan.tab}”</div>`:'')
+      (plan.tab?`<div class="eyebrow" style="margin:4px 0 1px">Tab “${esc(plan.tab)}”</div>`:'')
       + plan.panes.map(paneRow).join('')).join('');
     return `<div class="snip-row" style="display:block" data-lay-card="${index}">
       <div class="snip-name" style="margin-bottom:4px;display:flex;align-items:center;gap:6px">
-        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.name}</span>
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.name)}</span>
         <span class="snip-count">${l.panes.length} panes</span>
         ${startup}</div>
       ${body}</div>`;
@@ -808,7 +813,7 @@ function layoutCardsHTML(opts){
    and a button, with the difference hidden behind the button. */
 function layoutErrorHTML(){
   if(!LAYOUT_ERROR) return '';
-  return `<div class="lay-err">⚠ <b>Not loaded.</b> ${LAYOUT_ERROR.line?`Line ${LAYOUT_ERROR.line}: `:''}${LAYOUT_ERROR.message}<br>
+  return `<div class="lay-err">⚠ <b>Not loaded.</b> ${LAYOUT_ERROR.line?`Line ${esc(LAYOUT_ERROR.line)}: `:''}${esc(LAYOUT_ERROR.message)}<br>
     <span class="muted">The layouts already loaded keep working until the file parses again.</span></div>`;
 }
 /* Settings ▸ Layouts: the cards, then the file.
@@ -863,11 +868,11 @@ function layoutsBody(){
       One file for how this machine is set up: <code>[[preset]]</code> is what the chevron beside a divider offers,
       <code>[[layout]]</code> is what you open when you sit down — which terminals, in what order, on which machines.
       A machine this computer doesn't have opens a <b>plain shell</b> with a note in the pane; the layout still opens.</p>
-    <div class="lay-path">${EXICON.coll} <code>${LAYOUT_PATH}</code>
+    <div class="lay-path">${EXICON.coll} <code>${esc(LAYOUT_PATH)}</code>
       <span class="grow" style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" data-lay-editor>Open in my editor</button>
       <button class="btn btn-ghost btn-sm" data-lay-reload title="Re-read the file from disk">↻ Reload</button></div>
-    <textarea class="lay-file" id="lay-file" spellcheck="false">${LAYOUT_FILE.replace(/</g,'&lt;')}</textarea>
+    <textarea class="lay-file" id="lay-file" spellcheck="false">${esc(LAYOUT_FILE)}</textarea>
     <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
       <button class="btn btn-primary btn-sm" data-lay-save>Save file</button>
       <a href="#" onclick="toast('docs/LAYOUTS.md');return false" class="muted" style="font-size:12px">What can go in this file →</a></div>

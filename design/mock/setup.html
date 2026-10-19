@@ -75,9 +75,13 @@
     <div class="demo">Preview: <a onclick="location.search='?mode=first&u=frank'">first login</a> · <a onclick="location.search='?mode=reset&u=frank'">after a reset</a></div>
   </div>
 
+<script src="esc.js"></script>
 <script>
 const P=new URLSearchParams(location.search);
 const MODE=P.get('mode')==='reset'?'reset':'first';
+/* `?u=` is read straight off the URL and lands in innerHTML below, which made this
+   page a live reflected XSS. It stays a raw string here because one of its uses is
+   textContent, where escaping would print the entities; the innerHTML sinks escape it. */
 const USER=P.get('u')||'frank';
 const $=id=>document.getElementById(id);
 
@@ -91,7 +95,7 @@ if(MODE==='first'){
 }else{
   $('h').textContent='Set a new password';
   $('lead').innerHTML=`Your access was reset because the old password was lost. A new password gives you a fresh private key.`;
-  $('note').innerHTML=`<div class="note keep"><b>Kept:</b> your username <b>${USER}</b> and every team you're in.</div>
+  $('note').innerHTML=`<div class="note keep"><b>Kept:</b> your username <b>${esc(USER)}</b> and every team you're in.</div>
     <div class="note lose"><b>Gone for good:</b> anything encrypted under your old password — personal connections and any solo collection. End-to-end encryption means no one could recover them, not even an admin.</div>`;
   $('after').innerHTML=`Next: you'll see the collections offered to your teams — <b>request access</b> and a member grants you back in.`;
   $('go').textContent='Set new password & continue';

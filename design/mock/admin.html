@@ -198,6 +198,7 @@
 </div>
 <div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>Administration</b> · served at <code>/admin</code> · a separate surface</div>
 <div class="backdrop" id="bd" onclick="closeBd()"></div>
+<script src="esc.js"></script>
 <script src="full-data.js"></script>
 <script>
 /* ================= Rite admin console (mock) =================
@@ -407,7 +408,9 @@ function revealToken(){
   const teams=[...document.querySelectorAll('.tk-team.on')].map(l=>({name:l.querySelector('input').dataset.team,role:l.querySelector('.tk-trole').value}));
   const full='rite_'+Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,10);
   PENDING_TOK={id:'t'+Date.now(),frag:full.slice(0,9),role,teams,expires:expTxt,status:'active'};
-  const meta=`Role <b>${role}</b>${teams.length?' · teams '+teams.map(t=>t.name+' ('+t.role+')').join(', '):''} · expires ${expTxt} · single-use.`;
+  /* Every value here was read back out of the dialog — a select, a date input, a
+     team's data attribute — so it is DOM text on its way into innerHTML. */
+  const meta=`Role <b>${esc(role)}</b>${teams.length?' · teams '+teams.map(t=>esc(t.name+' ('+t.role+')')).join(', '):''} · expires ${esc(expTxt)} · single-use.`;
   const b=document.getElementById('bd');
   b.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
     <header><h3>Copy this token now</h3><p>For security the server keeps only a hash — you <b>won't be able to see it again</b>. Share it out-of-band (not by email in clear).</p></header>

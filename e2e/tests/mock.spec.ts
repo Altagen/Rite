@@ -1043,3 +1043,36 @@ test('mock: the nav travels between the overlay pages, and the console does not 
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
+
+/**
+ * The prototypes are the design's source of truth, and they build markup as strings —
+ * so every `innerHTML` in them is a sink. CodeQL found five, and one of them was not a
+ * prototype's licence to be sloppy but a live reflected XSS: `setup.html` reads `?u=`
+ * straight off the URL and put it into `innerHTML` unescaped, so a link could run
+ * script in whoever opened it.
+ *
+ * `design/mock/esc.js` now holds one `esc`, and this test is what keeps it wired up.
+ * It asserts the two halves separately, because each can fail without the other: that
+ * nothing ran, and that the name is still shown as the text it is — an over-eager fix
+ * that escaped the value at its source would pass the first and print entities on the
+ * screen for the second.
+ */
+test('mock: a username from the URL is text, not markup', async ({ page }) => {
+  const errs = watchErrors(page);
+
+  // `<img src=x onerror>` and not `<script>`: an injected script tag does not execute
+  // when it arrives through innerHTML, so it would pass whatever the page did.
+  const payload = '<img src=x onerror="window.__xss=1">';
+  await page.goto(`${mock('setup')}?mode=reset&u=${encodeURIComponent(payload)}`);
+
+  // Nothing ran.
+  expect(
+    await page.evaluate(() => (window as unknown as { __xss?: number }).__xss),
+  ).toBeUndefined();
+  await expect(page.locator('#note img')).toHaveCount(0);
+
+  // And the name is still on screen, as the characters it is made of.
+  await expect(page.locator('#note')).toContainText(payload);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
