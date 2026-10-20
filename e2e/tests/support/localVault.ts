@@ -54,6 +54,11 @@ export interface MachineOpts {
   keyPath?: string;
   /** The key's passphrase, when it is stored. */
   passphrase?: string;
+  /**
+   * Save the machine keeping no secret, so opening it has to ask (ADR 0024 §4) — what the
+   * form does when "remember this password" is left unticked.
+   */
+  needsPassword?: boolean;
   preconnect?: string | null;
   jump?: string | null;
   folder?: string | null;
@@ -79,7 +84,9 @@ export async function createMachine(
             keyPath: o.keyPath,
             ...(o.passphrase ? { passphrase: o.passphrase } : {}),
           }
-        : { type: 'password', password: o.password ?? SSH.password },
+        : o.needsPassword
+          ? { type: 'password' }
+          : { type: 'password', password: o.password ?? SSH.password },
       color: null,
       icon: null,
       folder: o.folder ?? null,
@@ -90,6 +97,8 @@ export async function createMachine(
       jump: o.jump ?? null,
       forwards: o.forwards ?? [],
       hc: null,
+      needsPassword: o.needsPassword ?? false,
+      needsPassphrase: false,
     },
   });
   expect(res.ok(), `creating machine ${o.name}: ${res.status()}`).toBeTruthy();

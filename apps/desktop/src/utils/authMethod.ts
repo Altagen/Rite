@@ -24,6 +24,12 @@ export interface AuthState {
    * careful default is the member's, and an instance may remove the choice entirely.
    */
   rememberPassphrase: boolean;
+  /**
+   * Whether the SSH password is written to the record (ADR 0024 §4). The sibling of
+   * `rememberPassphrase`, and false for the same reason: a password left out is asked for
+   * at connect time and written nowhere.
+   */
+  rememberPassword: boolean;
   /** SHA256 fingerprint of a pinned agent identity; '' ⇒ offer all. */
   agentIdentity: string;
   agentForward: boolean;
@@ -58,6 +64,7 @@ export function makeAuthState(partial?: Partial<AuthState>): AuthState {
     keyName: '',
     passphrase: '',
     rememberPassphrase: false,
+    rememberPassword: false,
     agentIdentity: '',
     agentForward: false,
     ...partial,
@@ -65,15 +72,27 @@ export function makeAuthState(partial?: Partial<AuthState>): AuthState {
 }
 
 /**
+ * What the method is being built for, which decides whether a secret the person did not
+ * ask Rite to keep travels with it.
+ *
+ * Not a default, because the two cases want opposite things and the compiler should ask.
+ * `'store'` writes a record: a secret left unremembered is omitted, so it is asked for at
+ * connect time and written nowhere (ADR 0024 §4). `'connect'` opens a session now — Quick
+ * SSH saves nothing, so "remember" has no meaning there and everything typed has to go, or
+ * the connection fails for want of a secret the person just supplied. Stripping it there
+ * is what used to happen to a Quick SSH passphrase.
+ */
+export type AuthUse = 'store' | 'connect';
+
+/**
  * Build the backend auth method (mirrors the Rust `AuthMethod` enum).
  *
  * A key read from a file becomes `vaultKey` and travels inside the record; a key named on
- * disk stays `publicKey` and is read by whichever process opens SSH. The passphrase is
- * omitted unless this person asked for it to be kept — a passphrase left out is asked for
- * at connect time and never written (ADR 0024 §4).
+ * disk stays `publicKey` and is read by whichever process opens SSH.
  */
-export function toAuthMethodInput(s: AuthState): AuthMethodInput {
-  const passphrase = s.rememberPassphrase && s.passphrase ? { passphrase: s.passphrase } : {};
+export function toAuthMethodInput(s: AuthState, use: AuthUse): AuthMethodInput {
+  const keep = (remember: boolean) => use === 'connect' || remember;
+  const passphrase = keep(s.rememberPassphrase) && s.passphrase ? { passphrase: s.passphrase } : {};
   switch (s.authType) {
     case 'publicKey':
       return s.key
@@ -87,6 +106,8 @@ export function toAuthMethodInput(s: AuthState): AuthMethodInput {
       };
     case 'password':
     default:
-      return { type: 'password', password: s.password };
+      return keep(s.rememberPassword) && s.password
+        ? { type: 'password', password: s.password }
+        : { type: 'password' };
   }
 }

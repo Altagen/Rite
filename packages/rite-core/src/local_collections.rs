@@ -96,6 +96,13 @@ pub struct MachineRecord {
     /// Health-check opt-out (ADR 0017): `Some(false)` ⇒ never actively probe.
     #[serde(default)]
     pub hc: Option<bool>,
+    /// This machine keeps no key passphrase / no SSH password, so opening it must ask
+    /// (ADR 0024 §4). `default` false, so a record written before these existed reads as
+    /// "it keeps what it needs" — which is what was true when it was written.
+    #[serde(default)]
+    pub needs_passphrase: bool,
+    #[serde(default)]
+    pub needs_password: bool,
 }
 
 /// A machine read back out of a collection, with the item id that addresses it.
@@ -326,11 +333,19 @@ pub struct MachinePatch {
     pub jump: Option<Option<String>>,
     pub forwards: Option<Vec<PortForwardConfig>>,
     pub hc: Option<Option<bool>>,
+    /// Whether this machine is to be asked for its passphrase / password from now on
+    /// (ADR 0024 §4). `None` keeps what is stored, as every field here does.
+    pub needs_passphrase: Option<bool>,
+    pub needs_password: Option<bool>,
     /// Drop the stored key passphrase and keep the key (ADR 0024 §4). A client editing a
     /// machine does not hold its secrets, so it cannot send an `auth_method` with the
     /// passphrase removed — it never had the key.
     #[serde(default)]
     pub forget_passphrase: bool,
+    /// Drop the stored SSH password and keep the machine (ADR 0024 §4). See
+    /// `forget_passphrase` above.
+    #[serde(default)]
+    pub forget_password: bool,
 }
 
 /// Apply a partial edit to a machine, keeping everything the caller left out.
@@ -372,11 +387,16 @@ pub async fn patch_machine(
     if patch.forget_passphrase {
         record.auth_method = std::mem::replace(
             &mut record.auth_method,
-            AuthMethod::Password {
-                password: String::new(),
-            },
+            AuthMethod::Password { password: None },
         )
         .without_passphrase();
+    }
+    if patch.forget_password {
+        record.auth_method = std::mem::replace(
+            &mut record.auth_method,
+            AuthMethod::Password { password: None },
+        )
+        .without_password();
     }
     if let Some(v) = patch.color {
         record.color = v;
@@ -404,6 +424,12 @@ pub async fn patch_machine(
     }
     if let Some(v) = patch.forwards {
         record.forwards = v;
+    }
+    if let Some(v) = patch.needs_passphrase {
+        record.needs_passphrase = v;
+    }
+    if let Some(v) = patch.needs_password {
+        record.needs_password = v;
     }
     if let Some(v) = patch.hc {
         record.hc = v;
@@ -673,6 +699,8 @@ mod tests {
                 remote_port: 80,
             }],
             hc: None,
+            needs_passphrase: false,
+            needs_password: false,
         }
     }
 
@@ -681,7 +709,7 @@ mod tests {
     /// Captured from `StoredRecord` in accountsConnectionsSource.ts.
     #[test]
     fn machine_record_matches_the_browser() {
-        const FROM_BROWSER: &str = r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,"username":"deploy","authMethod":{"type":"publicKey","keyPath":"/home/u/.ssh/id_ed25519"},"color":null,"icon":null,"folder":"Web servers","notes":null,"sshKeepAliveOverride":null,"sshKeepAliveInterval":null,"preconnect":null,"jump":"bastion","forwards":[{"forwardType":"local","bindHost":null,"localPort":8080,"remoteHost":"10.0.0.9","remotePort":80}],"hc":null}"#;
+        const FROM_BROWSER: &str = r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,"username":"deploy","authMethod":{"type":"publicKey","keyPath":"/home/u/.ssh/id_ed25519"},"color":null,"icon":null,"folder":"Web servers","notes":null,"sshKeepAliveOverride":null,"sshKeepAliveInterval":null,"preconnect":null,"jump":"bastion","forwards":[{"forwardType":"local","bindHost":null,"localPort":8080,"remoteHost":"10.0.0.9","remotePort":80}],"hc":null,"needsPassphrase":false,"needsPassword":false}"#;
         let parsed: MachineRecord =
             serde_json::from_str(FROM_BROWSER).expect("a browser record must load");
         assert_eq!(parsed, a_machine());
@@ -945,7 +973,7 @@ mod tests {
         let c = create(db.pool(), &mk, "Home lab", None).await.unwrap();
         let mut original = a_machine();
         original.auth_method = AuthMethod::Password {
-            password: "s3cret".into(),
+            password: Some("s3cret".into()),
         };
         let id = create_machine(db.pool(), &mk, &c.id, &original)
             .await
@@ -966,7 +994,7 @@ mod tests {
         assert_eq!(
             got.auth_method,
             AuthMethod::Password {
-                password: "s3cret".into()
+                password: Some("s3cret".into())
             },
             "an edit that never saw the password must not erase it"
         );

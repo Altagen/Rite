@@ -17,7 +17,7 @@ import { useToolbar } from '../store/toolbar';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useFocusMode } from '../store/focusMode';
-import { PassphrasePrompt } from './PassphrasePrompt';
+import { SecretPrompt } from './SecretPrompt';
 import { useTranslation } from '../i18n/i18n';
 import { LibrarySidebar } from './LibrarySidebar';
 import { ProfilePastille } from './ProfilePastille';
@@ -2394,9 +2394,9 @@ export function Workspace({
       )}
 
       {/* Quick SSH Modal */}
-      {/* Raised by `askPassphrase` from wherever a connection is opened (ADR 0024 §4).
+      {/* Raised by `askSecret` from wherever a connection is opened (ADR 0024 §4).
           Mounted once, like the create-vault dialog, for the same reason. */}
-      <PassphrasePrompt />
+      <SecretPrompt />
 
       {showQuickSSH && (
         <QuickSSHModal

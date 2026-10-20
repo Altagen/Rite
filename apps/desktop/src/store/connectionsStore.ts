@@ -21,7 +21,9 @@ export type AuthType = 'password' | 'publicKey' | 'agent';
  * fingerprint (else all are offered), `forward` requests agent forwarding.
  */
 export type AuthMethodInput =
-  | { type: 'password'; password: string }
+  // `password` absent ⇒ nothing kept: asked at connect and used for that session only
+  // (ADR 0024 §4), the same contract `passphrase` has below.
+  | { type: 'password'; password?: string }
   | { type: 'publicKey'; keyPath: string; passphrase?: string }
   // ADR 0024: the key itself, carried in the (encrypted) record. `keyPath` names a file on
   // whichever machine opens SSH — the person's own on a desktop, the container on a server,
@@ -59,6 +61,19 @@ export interface ConnectionInfo {
    * machine whose passphrase is in fact stored — a checkbox that lies about its own state.
    */
   hasStoredPassphrase?: boolean;
+  /**
+   * An SSH password is kept with this machine (ADR 0024 §4). Its sibling above, and not a
+   * secret for the same reason: without it the form's "remember this password" box could
+   * only render unticked on a machine whose password is in fact stored.
+   */
+  hasStoredPassword?: boolean;
+  /**
+   * What this machine does NOT keep, so whoever opens it knows to ask (ADR 0024 §4).
+   * `needsPassphrase` cannot be derived — a key with no passphrase and a key whose
+   * passphrase was not kept both hold none — so the record carries it.
+   */
+  needsPassphrase?: boolean;
+  needsPassword?: boolean;
   color?: string | null;
   icon?: string | null;
   folder?: string | null;
@@ -113,6 +128,11 @@ export interface CreateConnectionInput {
    * key with no passphrase is never prompted for.
    */
   needsPassphrase?: boolean;
+  /**
+   * This machine's password is not being stored, so connecting must ask for it (ADR 0024
+   * §4). The sibling of `needsPassphrase` directly above.
+   */
+  needsPassword?: boolean;
   // ADR 0016: save this machine into a shared collection (encrypted with the
   // collection key) instead of the personal vault. Absent ⇒ personal vault.
   collectionId?: string | null;
@@ -137,12 +157,15 @@ export interface UpdateConnectionInput {
   forwards?: PortForwardConfig[]; // saved port forwards (Some ⇒ replace the whole list)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
   needsPassphrase?: boolean; // see CreateConnectionInput
+  needsPassword?: boolean; // see CreateConnectionInput
   /**
    * Drop the stored passphrase, keeping the key (ADR 0024 §4). Unticking "remember" needs
    * this: the client editing a machine does not hold its key, so it cannot send an
    * `authMethod` with the passphrase taken out.
    */
   forgetPassphrase?: boolean;
+  /** Drop the stored password, keeping the machine (ADR 0024 §4). See `forgetPassphrase`. */
+  forgetPassword?: boolean;
 }
 
 /**

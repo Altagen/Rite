@@ -54,7 +54,7 @@ export function InstanceSettingsPanel() {
   const [shells, setShells] = useState<string[]>([]);
   const [shellChoice, setShellChoice] = useState(false);
   // ADR 0024 §4: what may rest in a member's vault, and whether it can be read back.
-  const [passphraseStorage, setPassphraseStorage] = useState(true);
+  const [secretStorage, setSecretStorage] = useState(true);
   const [secretReveal, setSecretReveal] = useState(true);
   // How this server verifies host keys, for every connection it opens. It was reported to
   // clients and shown read-only there, with nowhere here to set it.
@@ -82,7 +82,7 @@ export function InstanceSettingsPanel() {
       setShell(mode.defaultShell ?? 'bash');
       setShells(mode.shells ?? []);
       setShellChoice(mode.allowShellChoice === true);
-      setPassphraseStorage(mode.allowPassphraseStorage !== false);
+      setSecretStorage(mode.allowSecretStorage !== false);
       setSecretReveal(mode.allowSecretReveal !== false);
       setHostKeyMode((mode.hostKeyVerification as 'strict' | 'warn' | 'accept') ?? 'strict');
       setQuickSsh(mode.allowQuickSsh === true);
@@ -154,13 +154,13 @@ export function InstanceSettingsPanel() {
     }
   };
 
-  const togglePassphraseStorage = async () => {
-    const next = !passphraseStorage;
-    setPassphraseStorage(next);
+  const toggleSecretStorage = async () => {
+    const next = !secretStorage;
+    setSecretStorage(next);
     try {
-      await Backend.Admin.setPassphraseStorage(next);
+      await Backend.Admin.setSecretStorage(next);
     } catch (err) {
-      setPassphraseStorage(!next);
+      setSecretStorage(!next);
       setError(err instanceof Error ? err.message : 'Failed to save');
     }
   };
@@ -527,23 +527,22 @@ export function InstanceSettingsPanel() {
 
         <div className="flex items-start justify-between gap-4 border-b border-border px-4 pb-4">
           <div>
-            <div className="font-medium">Members may remember a key passphrase</div>
+            <div className="font-medium">Members may remember a secret</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>On by default</b>, and the member&apos;s own default is still to be asked — the box
-              is unticked when they save a machine. Off: a passphrase is never written on this
-              instance and is asked at each connection. A passphrase kept beside the key it protects
-              is no longer a second barrier, which is why the choice is named rather than implied.
+              An SSH password, a key passphrase, a key carried in the record. <b>On by default</b>,
+              and the member&apos;s own default is still to be asked — both boxes are unticked when
+              they save a machine. Off: nothing is written, and each is asked at every connection.{' '}
+              <b>This binds the client, not the data</b>: a record is sealed before it reaches this
+              instance, so no check here can tell one holding a password from one that does not.
             </p>
-            {managed.allow_passphrase_storage && (
-              <ManagedBy origin={managed.allow_passphrase_storage} />
-            )}
+            {managed.allow_secret_storage && <ManagedBy origin={managed.allow_secret_storage} />}
           </div>
           <Switch
-            checked={passphraseStorage}
-            label="Members may remember a key passphrase"
-            disabled={!!managed.allow_passphrase_storage}
-            onChange={togglePassphraseStorage}
-            testId="instance-passphrase-storage"
+            checked={secretStorage}
+            label="Members may remember a secret"
+            disabled={!!managed.allow_secret_storage}
+            onChange={toggleSecretStorage}
+            testId="instance-secret-storage"
           />
         </div>
 

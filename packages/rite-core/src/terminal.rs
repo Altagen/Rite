@@ -408,6 +408,14 @@ async fn authenticate_session(
 ) -> Result<()> {
     let auth_result = match auth_method {
         AuthMethod::Password { password } => {
+            // `None` here is a client that did not supply the password it was asked for:
+            // the record keeps none, so there is nothing to fall back on. Saying so beats
+            // authenticating with an empty string, which a server may well accept.
+            let Some(password) = password else {
+                return Err(anyhow!(
+                    "this machine keeps no password — one must be supplied for the session"
+                ));
+            };
             session.authenticate_password(username, password).await?
         }
         // Two sources, one key: a file this process can read (a desktop, where the key
@@ -519,7 +527,7 @@ async fn authenticate_session(
     if !auth_result.success() {
         tracing::info!("[terminal.rs] Primary auth incomplete, trying keyboard-interactive");
         let stored_password = match auth_method {
-            AuthMethod::Password { password } => Some(password.as_str()),
+            AuthMethod::Password { password } => password.as_deref(),
             _ => None,
         };
         let authed =
@@ -1128,11 +1136,16 @@ impl SessionManager {
     }
 
     /// Create a new SSH session
+    /// `session_secret` is a secret the caller was asked for because this machine keeps
+    /// none (ADR 0024 §4). It fills the record's empty slot for this session and is never
+    /// written back; `None` means the record holds what it needs, or holds nothing and the
+    /// authentication will say so.
     pub async fn create_session(
         &self,
         connection_id: String,
         events: SharedEvents,
         interactive: Option<SharedInteractive>,
+        session_secret: Option<String>,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_session called for connection_id: {}",
@@ -1142,6 +1155,10 @@ impl SessionManager {
         // Resolve the machine from whichever local store holds it (ADR 0018): the
         // legacy connections table, or an encrypted item inside a collection.
         let (connection, auth_method) = self.resolve_saved(&connection_id).await?;
+        let auth_method = match session_secret {
+            Some(secret) => auth_method.with_session_secret(secret),
+            None => auth_method,
+        };
         tracing::info!(
             "[terminal.rs] Connection loaded: {} ({}:{})",
             connection.name,
@@ -1317,10 +1334,16 @@ impl SessionManager {
         remote_host: &str,
         remote_port: u16,
         events: SharedEvents,
+        // See `create_session`.
+        session_secret: Option<String>,
     ) -> Result<PortForwardInfo> {
         // Resolve + decrypt the machine and its jump chain, as for a terminal, from
         // whichever local store holds it.
         let (connection, auth_method) = self.resolve_saved(connection_id).await?;
+        let auth_method = match session_secret {
+            Some(secret) => auth_method.with_session_secret(secret),
+            None => auth_method,
+        };
         let jumps = self.resolve_jump_chain(connection.jump.as_deref()).await?;
 
         // A long-lived tunnel benefits from keepalive to notice a dead peer; default 30s.
@@ -1536,13 +1559,21 @@ impl SessionManager {
     /// Agentless machine-dashboard detection (`docker ps`, `systemctl …`): decrypts the
     /// connection like `create_session`, follows its jump chain, execs over its own
     /// short-lived channel, and never registers an interactive session.
+    /// `session_secret`: see `create_session`. The dashboard's cards reach SSH through
+    /// here, so a machine that keeps no secret needs it on this path too — that is the
+    /// path the passphrase prompt missed when it shipped.
     pub async fn run_remote_command(
         &self,
         connection_id: &str,
         events: SharedEvents,
         command: &str,
+        session_secret: Option<String>,
     ) -> Result<RemoteCommandOutput> {
         let (connection, auth_method) = self.resolve_saved(connection_id).await?;
+        let auth_method = match session_secret {
+            Some(secret) => auth_method.with_session_secret(secret),
+            None => auth_method,
+        };
         let jumps = self.resolve_jump_chain(connection.jump.as_deref()).await?;
         exec_remote_command(
             &connection,

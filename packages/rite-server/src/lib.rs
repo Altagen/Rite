@@ -560,10 +560,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/admin/default-shell", patch(set_default_shell))
         .route("/api/admin/shell-choice", patch(set_shell_choice))
         .route("/api/admin/host-key-mode", patch(set_host_key_mode))
-        .route(
-            "/api/admin/passphrase-storage",
-            patch(set_passphrase_storage),
-        )
+        .route("/api/admin/secret-storage", patch(set_secret_storage))
         .route("/api/admin/secret-reveal", patch(set_secret_reveal))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
         .route("/api/admin/registration", patch(set_open_registration))
@@ -1315,11 +1312,20 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
     // until they say otherwise, so an instance that upgrades and says nothing is unchanged.
     let shells = offered_shells().to_vec();
     let allow_shell_choice = state.setting_bool("allow_shell_choice", false).await?;
-    // ADR 0024 §4. Permissive by default, because Rite already stores SSH passwords in the
-    // vault and has since it existed: forbidding a stored passphrase while allowing a
-    // stored password would be the appearance of hardening rather than hardening. The
-    // member's own default is the careful one — the "remember" box starts unchecked.
-    let allow_passphrase_storage = state.setting_bool("allow_passphrase_storage", true).await?;
+    // ADR 0024 §4. One switch over every secret a record can keep — an SSH password, a key
+    // passphrase, a carried key — because it governed only the passphrase before, and
+    // forbidding a stored passphrase while allowing a stored password is the appearance of
+    // hardening rather than hardening: the target that takes one usually takes the other.
+    //
+    // Permissive by default, so an instance that upgrades and says nothing is unchanged.
+    // The member's own default is the careful one: both "remember" boxes start unchecked,
+    // and a machine that keeps nothing is asked at connect time instead.
+    //
+    // It binds the client and not the data, and that is not a gap to close later. The
+    // record is sealed before it reaches an instance (ADR 0011) — `/api/vault/connections`
+    // stores opaque blobs — so no server-side check can tell one holding a password from
+    // one that does not. The same is true of `allow_secret_reveal` below.
+    let allow_secret_storage = state.setting_bool("allow_secret_storage", true).await?;
     let allow_secret_reveal = state.setting_bool("allow_secret_reveal", true).await?;
     // How this server verifies host keys for the connections it opens — a policy, not a
     // preference, since every terminal here runs on it. The client shows it read-only
@@ -1348,7 +1354,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "defaultShell": default_shell,
         "shells": shells,
         "allowShellChoice": allow_shell_choice,
-        "allowPassphraseStorage": allow_passphrase_storage,
+        "allowSecretStorage": allow_secret_storage,
         "allowSecretReveal": allow_secret_reveal,
         "hostKeyVerification": host_key_verification,
         "allowQuickSsh": allow_quick_ssh,
@@ -1555,19 +1561,16 @@ async fn set_host_key_mode(
 
 /// Whether a member may keep a key passphrase in their vault (org-admin only, ADR 0024 §4).
 /// Off: the passphrase is asked at each connection and never written.
-async fn set_passphrase_storage(
+async fn set_secret_storage(
     State(state): State<ServerState>,
     Json(req): Json<EnabledReq>,
 ) -> Result<Response, AppError> {
-    if let Some(refusal) = managed_refusal(&state, "allow_passphrase_storage") {
+    if let Some(refusal) = managed_refusal(&state, "allow_secret_storage") {
         return Ok(refusal);
     }
     state
         .db
-        .set_setting(
-            "allow_passphrase_storage",
-            if req.enabled { "1" } else { "0" },
-        )
+        .set_setting("allow_secret_storage", if req.enabled { "1" } else { "0" })
         .await?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -3472,9 +3475,9 @@ async fn delete_collection_item_ep(
 /// instance obeys, so none of them is this route's to write.
 const ADMIN_ROUTE_SETTINGS: &[&str] = &[
     "allow_invitations",
-    "allow_passphrase_storage",
     "allow_quick_ssh",
     "allow_secret_reveal",
+    "allow_secret_storage",
     "allow_shell_choice",
     "collection_policy",
     "confirm_role_change",
@@ -4491,6 +4494,9 @@ struct StartForwardReq {
     local_port: u16,
     remote_host: String,
     remote_port: u16,
+    /// See `ConnectSshReq`.
+    #[serde(default)]
+    session_secret: Option<String>,
 }
 
 /// Where a forward may listen.
@@ -4520,6 +4526,7 @@ async fn start_forward(
             &req.remote_host,
             req.remote_port,
             state.events_sink(),
+            req.session_secret.clone(),
         )
         .await?;
     Ok(Json(info))
@@ -4633,6 +4640,15 @@ struct LocalMachine {
     /// holds it", and without it the form's "remember this passphrase" box could only ever
     /// render unticked — on a machine whose passphrase is in fact stored.
     has_stored_passphrase: bool,
+    /// Whether an SSH password is kept with this machine (ADR 0024 §4). Its sibling above,
+    /// and not a secret for the same reason: without it the form's "remember this password"
+    /// box could only render unticked on a machine whose password is in fact stored.
+    has_stored_password: bool,
+    /// This machine keeps no key passphrase / no password, so whoever opens it must ask
+    /// (ADR 0024 §4). Published because the local vault's client cannot derive the first:
+    /// a key with no passphrase and a key whose passphrase was not kept both hold none.
+    needs_passphrase: bool,
+    needs_password: bool,
     color: Option<String>,
     icon: Option<String>,
     folder: Option<String>,
@@ -4666,6 +4682,9 @@ impl LocalMachine {
                 _ => None,
             },
             has_stored_passphrase: r.auth_method.has_stored_passphrase(),
+            has_stored_password: r.auth_method.has_stored_password(),
+            needs_passphrase: r.needs_passphrase,
+            needs_password: r.needs_password,
             name: r.name,
             protocol: r.protocol,
             hostname: r.hostname,
@@ -4873,6 +4892,10 @@ async fn local_set_board(
 struct ConnectSshReq {
     #[serde(rename = "connectionId")]
     connection_id: String,
+    /// A secret the client was asked for because this machine keeps none (ADR 0024 §4).
+    /// Used for this session and written nowhere.
+    #[serde(default, rename = "sessionSecret")]
+    session_secret: Option<String>,
 }
 
 async fn connect_ssh(
@@ -4915,6 +4938,7 @@ async fn connect_ssh(
             req.connection_id.clone(),
             state.events_sink(),
             state.interactive_provider(as_user(&user)),
+            req.session_secret.clone(),
         )
         .await?;
     // Record "last used" in the local vault (ADR 0017 passive status). This is the local
@@ -4961,7 +4985,13 @@ enum QuickAuthMethod {
 impl From<QuickAuthMethod> for AuthMethod {
     fn from(quick: QuickAuthMethod) -> Self {
         match quick {
-            QuickAuthMethod::Password { password } => AuthMethod::Password { password },
+            // Always `Some`: a quick connect carries the password it was given, whether the
+            // person typed it into Quick SSH or was asked for it because the machine keeps
+            // none (ADR 0024 §4). A request with the field missing is a 422, not a silent
+            // attempt with no password.
+            QuickAuthMethod::Password { password } => AuthMethod::Password {
+                password: Some(password),
+            },
             QuickAuthMethod::VaultKey { key, passphrase } => {
                 AuthMethod::VaultKey { key, passphrase }
             }
@@ -5117,6 +5147,9 @@ async fn quick_ssh(
 struct MachineExecReq {
     connection_id: String,
     command: String,
+    /// See `ConnectSshReq`.
+    #[serde(default)]
+    session_secret: Option<String>,
 }
 
 async fn machine_exec(
@@ -5128,7 +5161,12 @@ async fn machine_exec(
     }
     let out = state
         .sessions
-        .run_remote_command(&req.connection_id, state.events_sink(), &req.command)
+        .run_remote_command(
+            &req.connection_id,
+            state.events_sink(),
+            &req.command,
+            req.session_secret.clone(),
+        )
         .await?;
     Ok(Json(out).into_response())
 }

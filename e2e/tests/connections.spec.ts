@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { createCollection, createMachine, listMachines } from './support/localVault';
+import { SSH, createCollection, createMachine, listMachines } from './support/localVault';
 
 /**
  * Local-vault CRUD (ADR 0018): collections hold machines, machines are encrypted
@@ -328,4 +328,55 @@ test('a local collection carries folders and a board', async ({ request }) => {
   expect(await (await request.get(`/api/local/collections/${collectionId}/board`)).json()).toEqual(
     [],
   );
+});
+
+/**
+ * The local vault's half of the stored-secret policy (ADR 0024 §4).
+ *
+ * `allow_secret_storage` is a server policy, but the form offers "remember this password"
+ * on a local vault too — and a machine saved with it unticked used to store nothing and
+ * then fail to authenticate, because nothing on this path asked. Three local routes open
+ * SSH by id (a terminal, the dashboard's cards, a port forward) and all three resolve the
+ * record inside rite-core, so none of them could carry a secret typed on the spot.
+ *
+ * They can now, and this is what holds it: a machine that keeps no password is asked for
+ * one, cancelling is not a connection, and the typed answer is what authenticates — there
+ * is nothing in the record to fall back on.
+ */
+test('a local machine that keeps no password is asked for one', async ({ page, request }) => {
+  // The harness sshd's host key is not in known_hosts, and a local vault defaults to
+  // strict — which rejects before authentication and would fail this test for a reason
+  // that has nothing to do with the password. The same line wave1 uses.
+  await request.put('/api/settings/host_key_verification_mode', { data: { value: 'accept' } });
+
+  const collectionId = await createCollection(request, `e2e-ask-pw-${Date.now()}`);
+  await createMachine(request, collectionId, { name: 'e2e-ask-pw-host', needsPassword: true });
+
+  // The record says to ask, and holds nothing to ask about.
+  const listed = (await listMachines(request, collectionId))[0];
+  expect(listed.needsPassword, 'the record says to ask').toBe(true);
+  expect(listed.hasStoredPassword, 'and it keeps no password').toBe(false);
+
+  // Vault is already set up (smoke test) and unlocked in the server → main screen.
+  await page.goto('/');
+  const row = page.locator('.m-tnode.leaf', { hasText: 'e2e-ask-pw-host' });
+  await expect(row).toBeVisible({ timeout: 15_000 });
+
+  // Cancelling is not a connection.
+  await row.getByRole('button', { name: 'Connect' }).click();
+  const prompt = page.getByTestId('password-prompt');
+  await expect(prompt).toBeVisible({ timeout: 20_000 });
+  await expect(prompt).toContainText('e2e-ask-pw-host');
+  await page.keyboard.press('Escape');
+  await expect(prompt).toHaveCount(0);
+  await expect(page.locator('.xterm-rows')).toHaveCount(0);
+
+  // Answering opens a real session against the harness sshd.
+  await row.getByRole('button', { name: 'Connect' }).click();
+  await expect(prompt).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('password-input').fill(SSH.password);
+  await page.getByTestId('password-submit').click();
+  await expect(page.locator('.xterm-rows')).toContainText(`${SSH.username}@`, { timeout: 25_000 });
+
+  await request.delete(`/api/local/collections/${collectionId}`);
 });

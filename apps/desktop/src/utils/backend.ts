@@ -111,6 +111,9 @@ const ConnectionInfoSchema = z.object({
   // fact that a passphrase is kept — only the passphrase itself is.
   keyPath: z.string().nullable().optional(),
   hasStoredPassphrase: z.boolean().optional(),
+  hasStoredPassword: z.boolean().optional(),
+  needsPassphrase: z.boolean().optional(),
+  needsPassword: z.boolean().optional(),
   folder: z.string().nullable().optional(),
   color: z.string().nullable().optional(),
   icon: z.string().nullable().optional(),
@@ -357,8 +360,8 @@ export const BackendTerminal = {
   /**
    * Connect to a terminal (SSH connection)
    */
-  connectTerminal: (connectionId: string) =>
-    invokeWithValidation('connect_terminal', StringSchema, { connectionId }),
+  connectTerminal: (connectionId: string, sessionSecret?: string) =>
+    invokeWithValidation('connect_terminal', StringSchema, { connectionId, sessionSecret }),
 
   /**
    * Connect to a local terminal with custom shell
@@ -384,6 +387,8 @@ export const BackendTerminal = {
     localPort: number;
     remoteHost: string;
     remotePort: number;
+    /** A secret the client was asked for because this machine keeps none (ADR 0024 §4). */
+    sessionSecret?: string;
   }) => invokeWithValidation('start_forward', PortForwardInfoSchema, args),
 
   /**
@@ -423,8 +428,12 @@ export const BackendTerminal = {
    * output — agentless machine-dashboard detection (`docker ps`, `systemctl …`).
    * Runs over its own short-lived SSH exec channel; never touches a live session.
    */
-  machineExec: (connectionId: string, command: string) =>
-    invokeWithValidation('machine_exec', RemoteCommandOutputSchema, { connectionId, command }),
+  machineExec: (connectionId: string, command: string, sessionSecret?: string) =>
+    invokeWithValidation('machine_exec', RemoteCommandOutputSchema, {
+      connectionId,
+      command,
+      sessionSecret,
+    }),
 
   /**
    * Run a one-shot command on an ad-hoc target (accounts client-execute): the
@@ -545,7 +554,7 @@ const ServerModeSchema = z.object({
   allowShellChoice: z.boolean().optional(),
   // ADR 0024 §4. Permissive when absent, which is also the server's default: forbidding a
   // stored passphrase while Rite stores passwords would be the appearance of hardening.
-  allowPassphraseStorage: z.boolean().optional(),
+  allowSecretStorage: z.boolean().optional(),
   allowSecretReveal: z.boolean().optional(),
   allowQuickSsh: z.boolean().optional(),
   /** How the server verifies host keys for the connections it opens, for everyone. */
@@ -831,8 +840,8 @@ export const BackendAdmin = {
   setHostKeyMode: (mode: 'strict' | 'warn' | 'accept') =>
     invokeWithValidation('admin_set_host_key_mode', z.null(), { mode }),
   /** Let members keep a key passphrase in their vault, or have it asked each time. */
-  setPassphraseStorage: (enabled: boolean) =>
-    invokeWithValidation('admin_set_passphrase_storage', z.null(), { enabled }),
+  setSecretStorage: (enabled: boolean) =>
+    invokeWithValidation('admin_set_secret_storage', z.null(), { enabled }),
   /** Let a member read a stored secret back (ADR 0024 §4-5). */
   setSecretReveal: (enabled: boolean) =>
     invokeWithValidation('admin_set_secret_reveal', z.null(), { enabled }),

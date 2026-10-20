@@ -300,8 +300,8 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
-  admin_set_passphrase_storage: async (a) => {
-    await json('/api/admin/passphrase-storage', {
+  admin_set_secret_storage: async (a) => {
+    await json('/api/admin/secret-storage', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ enabled: a.enabled }),
@@ -644,8 +644,12 @@ const routes: Record<string, Route> = {
   list_sessions: () => json('/api/terminal'),
 
   connect_terminal: async (a) =>
-    (await json<{ sessionId: string }>('/api/terminal/ssh', post({ connectionId: a.connectionId })))
-      .sessionId,
+    (
+      await json<{ sessionId: string }>(
+        '/api/terminal/ssh',
+        post({ connectionId: a.connectionId, sessionSecret: a.sessionSecret }),
+      )
+    ).sessionId,
 
   connect_local_terminal: async (a) =>
     (await json<{ sessionId: string }>('/api/terminal/local', post({ shell: a.shell }))).sessionId,
@@ -655,7 +659,14 @@ const routes: Record<string, Route> = {
       .sessionId,
 
   machine_exec: (a) =>
-    json('/api/terminal/exec', post({ connectionId: a.connectionId, command: a.command })),
+    json(
+      '/api/terminal/exec',
+      post({
+        connectionId: a.connectionId,
+        command: a.command,
+        sessionSecret: a.sessionSecret,
+      }),
+    ),
   machine_exec_quick: (a) =>
     json(
       '/api/terminal/exec-quick',
@@ -678,6 +689,7 @@ const routes: Record<string, Route> = {
         localPort: a.localPort,
         remoteHost: a.remoteHost,
         remotePort: a.remotePort,
+        sessionSecret: a.sessionSecret,
       }),
     ),
   // Local-vault collections (ADR 0018). Plaintext over loopback: rite-core holds

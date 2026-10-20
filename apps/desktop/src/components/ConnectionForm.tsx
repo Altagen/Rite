@@ -95,6 +95,8 @@ export function ConnectionForm({
       // rather than a default: it rendered unticked on a machine whose passphrase Rite
       // was holding, which reads as "nothing is kept" and is the opposite of the truth.
       rememberPassphrase: connection?.hasStoredPassphrase === true,
+      // Same reasoning for the password, now that a machine may keep none.
+      rememberPassword: connection?.hasStoredPassword === true,
     }),
   );
   const [folder, setFolder] = useState(connection?.folder || defaultFolder || '');
@@ -290,11 +292,20 @@ export function ConnectionForm({
         // keep the existing one if left blank; key-file needs a path; agent has no
         // secret so it's always safe to (re)apply.
         if (auth.authType === 'password') {
-          if (auth.password) input.authMethod = { type: 'password', password: auth.password };
+          // A typed password goes in only if it is to be kept; either way the record says
+          // whether to ask next time, and unticking the box on a machine that stores one
+          // has to remove it — the same three moves the key branch below makes.
+          if (auth.password && auth.rememberPassword) {
+            input.authMethod = { type: 'password', password: auth.password };
+          }
+          input.needsPassword = !auth.rememberPassword;
+          if (connection?.hasStoredPassword && !auth.rememberPassword) {
+            input.forgetPassword = true;
+          }
         } else if (auth.authType === 'publicKey') {
           // Nothing new given ⇒ no `authMethod` in the update, so the core keeps the
           // stored one. This is what lets you rename a key-based machine.
-          if (auth.keyPath || auth.key) input.authMethod = toAuthMethodInput(auth);
+          if (auth.keyPath || auth.key) input.authMethod = toAuthMethodInput(auth, 'store');
           // A passphrase typed and not kept: the record says to ask next time, so a key
           // with no passphrase at all is never prompted for.
           input.needsPassphrase = !!auth.passphrase && !auth.rememberPassphrase;
@@ -305,7 +316,7 @@ export function ConnectionForm({
             input.forgetPassphrase = true;
           }
         } else {
-          input.authMethod = toAuthMethodInput(auth);
+          input.authMethod = toAuthMethodInput(auth, 'store');
         }
 
         await update(input);
@@ -317,10 +328,12 @@ export function ConnectionForm({
           hostname,
           port,
           username,
-          authMethod: toAuthMethodInput(auth),
+          authMethod: toAuthMethodInput(auth, 'store'),
           // See the update path: a passphrase typed and not kept means ask next time.
           needsPassphrase:
             auth.authType === 'publicKey' && !!auth.passphrase && !auth.rememberPassphrase,
+          // A password machine that keeps none is asked at connect time (ADR 0024 §4).
+          needsPassword: auth.authType === 'password' && !auth.rememberPassword,
           ...(folder && { folder }),
           ...(collectionTargetId && { collectionId: collectionTargetId }),
           ...(color && { color }),
@@ -513,6 +526,7 @@ export function ConnectionForm({
             // being created has nothing stored, and a viewer's source refuses.
             onReveal={connection && reveal ? () => reveal(connection) : undefined}
             hasStoredPassphrase={connection?.hasStoredPassphrase === true}
+            hasStoredPassword={connection?.hasStoredPassword === true}
           />
 
           {/* Jump host (ProxyJump): reach this machine through another saved one (a

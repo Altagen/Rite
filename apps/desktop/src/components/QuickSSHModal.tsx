@@ -50,8 +50,9 @@ export function QuickSSHModal({
     setLoading(true);
 
     try {
-      // Build auth method for quick_ssh_connect (shared shape with the form)
-      const authMethod = toAuthMethodInput(auth);
+      // `connect`, not `store`: Quick SSH keeps no record, so everything typed has to
+      // travel — "remember" means nothing for a connection that is never saved.
+      const authMethod = toAuthMethodInput(auth, 'connect');
 
       const sessionId = await Backend.Terminal.quickSshConnect(host, username, port, authMethod);
 

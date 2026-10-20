@@ -60,7 +60,7 @@ pub const SETTINGS: &[(&str, Shape)] = &[
     ("host_key_verification_mode", Shape::Text),
     ("allow_quick_ssh", Shape::Bool),
     ("allow_shell_choice", Shape::Bool),
-    ("allow_passphrase_storage", Shape::Bool),
+    ("allow_secret_storage", Shape::Bool),
     ("allow_secret_reveal", Shape::Bool),
     ("open_registration", Shape::Bool),
     ("allow_invitations", Shape::Bool),
@@ -350,7 +350,7 @@ pub fn validate(key: &str, value: &Value) -> Result<()> {
         "session_persistence"
         | "allow_quick_ssh"
         | "allow_shell_choice"
-        | "allow_passphrase_storage"
+        | "allow_secret_storage"
         | "allow_secret_reveal"
         | "open_registration"
         | "allow_invitations"

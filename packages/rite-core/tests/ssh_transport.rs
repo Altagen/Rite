@@ -311,7 +311,7 @@ fn hop(port: u16) -> (Connection, AuthMethod) {
     (
         jump_connection(port),
         AuthMethod::Password {
-            password: PASS.into(),
+            password: Some(PASS.into()),
         },
     )
 }
@@ -364,7 +364,7 @@ fn test_connection(port: u16) -> Connection {
         port,
         username: USER.into(),
         auth_method: AuthMethod::Password {
-            password: PASS.into(),
+            password: Some(PASS.into()),
         },
         metadata: ConnectionMetadata {
             color: None,
@@ -403,7 +403,7 @@ async fn ssh_session_connects_authenticates_and_round_trips() {
     let session = SshSession::connect(
         test_connection(port),
         AuthMethod::Password {
-            password: PASS.into(),
+            password: Some(PASS.into()),
         },
         events,
         pool,
@@ -466,7 +466,7 @@ async fn ssh_session_rejects_changed_host_key() {
     let result = SshSession::connect(
         test_connection(port),
         AuthMethod::Password {
-            password: PASS.into(),
+            password: Some(PASS.into()),
         },
         events,
         pool,
@@ -560,7 +560,7 @@ async fn ssh_session_fails_cleanly_on_refused_connection() {
     let result = SshSession::connect(
         test_connection(dead_port),
         AuthMethod::Password {
-            password: PASS.into(),
+            password: Some(PASS.into()),
         },
         events,
         pool,
@@ -729,7 +729,7 @@ async fn ssh_session_completes_keyboard_interactive_via_provider() {
     let session = SshSession::connect(
         test_connection(port),
         AuthMethod::Password {
-            password: PASS.into(),
+            password: Some(PASS.into()),
         },
         events,
         pool,
@@ -764,7 +764,7 @@ async fn ssh_session_autoanswers_keyboard_interactive_password() {
     let session = SshSession::connect(
         test_connection(port),
         AuthMethod::Password {
-            password: PASS.into(),
+            password: Some(PASS.into()),
         },
         events,
         pool,
@@ -977,7 +977,7 @@ async fn ssh_session_connects_through_a_jump_host() {
     let session = SshSession::connect(
         test_connection(target_port),
         AuthMethod::Password {
-            password: PASS.into(),
+            password: Some(PASS.into()),
         },
         events,
         pool,
@@ -987,7 +987,7 @@ async fn ssh_session_connects_through_a_jump_host() {
         vec![(
             jump_connection(bastion_port),
             AuthMethod::Password {
-                password: PASS.into(),
+                password: Some(PASS.into()),
             },
         )],
     )
@@ -1032,7 +1032,7 @@ async fn ssh_session_connects_through_two_jump_hosts() {
     let session = SshSession::connect(
         test_connection(target_port),
         AuthMethod::Password {
-            password: PASS.into(),
+            password: Some(PASS.into()),
         },
         events,
         pool,
@@ -1043,13 +1043,13 @@ async fn ssh_session_connects_through_two_jump_hosts() {
             (
                 jump_connection(b1_port),
                 AuthMethod::Password {
-                    password: PASS.into(),
+                    password: Some(PASS.into()),
                 },
             ),
             (
                 jump_connection(b2_port),
                 AuthMethod::Password {
-                    password: PASS.into(),
+                    password: Some(PASS.into()),
                 },
             ),
         ],
@@ -1121,7 +1121,7 @@ async fn local_port_forward_tunnels_tcp() {
             port: ssh_port,
             username: USER.into(),
             auth_method: AuthMethod::Password {
-                password: PASS.into(),
+                password: Some(PASS.into()),
             },
             color: None,
             icon: None,
@@ -1132,6 +1132,8 @@ async fn local_port_forward_tunnels_tcp() {
             preconnect: None,
             jump: None,
             forwards: None,
+            needs_passphrase: false,
+            needs_password: false,
         })
         .await
         .unwrap();
@@ -1139,7 +1141,15 @@ async fn local_port_forward_tunnels_tcp() {
     let mgr = SessionManager::new(db.clone(), auth.clone());
     let events: SharedEvents = Arc::new(Spy::default());
     let fwd = mgr
-        .start_local_forward(&info.id, "127.0.0.1", 0, "127.0.0.1", echo_port, events)
+        .start_local_forward(
+            &info.id,
+            "127.0.0.1",
+            0,
+            "127.0.0.1",
+            echo_port,
+            events,
+            None,
+        )
         .await
         .expect("forward should start");
     assert_eq!(mgr.list_forwards().await.len(), 1);
@@ -1189,7 +1199,7 @@ async fn quick_remote_command_captures_output_and_exit_status() {
         .run_quick_remote_command(
             test_connection(port),
             AuthMethod::Password {
-                password: PASS.into(),
+                password: Some(PASS.into()),
             },
             events.clone(),
             "docker ps",
@@ -1208,7 +1218,7 @@ async fn quick_remote_command_captures_output_and_exit_status() {
         .run_quick_remote_command(
             test_connection(port),
             AuthMethod::Password {
-                password: PASS.into(),
+                password: Some(PASS.into()),
             },
             events,
             "fail",
@@ -1234,7 +1244,7 @@ async fn quick_remote_command_runs_through_a_jump_host() {
         .run_quick_remote_command(
             test_connection(target_port),
             AuthMethod::Password {
-                password: PASS.into(),
+                password: Some(PASS.into()),
             },
             events,
             "systemctl list-units",
@@ -1272,7 +1282,7 @@ async fn quick_session_connects_through_a_jump_host() {
         .create_quick_ssh_session(
             test_connection(target_port),
             AuthMethod::Password {
-                password: PASS.into(),
+                password: Some(PASS.into()),
             },
             events,
             None,
@@ -1342,7 +1352,7 @@ async fn quick_local_forward_tunnels_tcp_through_a_jump_host() {
         .start_quick_local_forward(
             test_connection(ssh_port),
             AuthMethod::Password {
-                password: PASS.into(),
+                password: Some(PASS.into()),
             },
             vec![hop(bastion_port)],
             "127.0.0.1",

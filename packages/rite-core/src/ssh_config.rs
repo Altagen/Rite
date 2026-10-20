@@ -41,10 +41,11 @@ impl SshConfigEntry {
                 passphrase: None, // User will be prompted if needed
             }
         } else {
-            // Default to password auth with empty password
-            AuthMethod::Password {
-                password: String::new(),
-            }
+            // Password auth with nothing kept: an imported host has no password to import,
+            // so it is asked for at connect time (ADR 0024 §4). This was an empty string
+            // before `password` was optional, which `terminal.rs` would have offered to
+            // the server as a real, empty password.
+            AuthMethod::Password { password: None }
         };
 
         // Convert server_alive_interval to seconds (if present)
@@ -70,6 +71,14 @@ impl SshConfigEntry {
             preconnect: None,
             jump: None,
             forwards: None,
+            // An ssh_config says nothing about whether a key is encrypted, and most are
+            // not — asking for a passphrase on every imported key host would prompt for
+            // keys that have none. So this stays false, as the behaviour was before the
+            // flag existed; an encrypted key fails to authenticate and the machine is
+            // edited once. A password host is different: there is no password to import
+            // and password authentication cannot proceed without one, so it is asked for.
+            needs_passphrase: false,
+            needs_password: self.identity_file.is_none(),
         }
     }
 }

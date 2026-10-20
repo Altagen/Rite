@@ -174,10 +174,13 @@ allow_shell_choice = false
 # connection runs here. `strict` refuses it; `warn` and `accept` do not.
 host_key_verification_mode = "strict"
 
-# What may rest in a member's own vault (ADR 0024). Both on by default: Rite already
-# stores SSH passwords, so forbidding a stored passphrase alone hardens nothing.
-allow_passphrase_storage = true
-allow_secret_reveal      = true
+# What may rest in a member's own vault (ADR 0024). One switch over every secret a
+# record can keep — an SSH password, a key passphrase, a carried key — because
+# forbidding one while allowing another hardens nothing. Both bind the client and not
+# the data: a record is sealed before it reaches the instance, so nothing here can
+# check it afterwards. Off, each secret is asked for at every connection instead.
+allow_secret_storage = true
+allow_secret_reveal  = true
 
 [dashboard_policy]        # ADR 0019
 webui       = false       # the web UI may not run the probing cards
@@ -191,7 +194,7 @@ maxMembers  = 25
 
 The full list: `instance_name`, `session_persistence`, `default_shell`,
 `allow_shell_choice`, `host_key_verification_mode`, `allow_quick_ssh`,
-`allow_passphrase_storage`, `allow_secret_reveal`, `open_registration`,
+`allow_secret_storage`, `allow_secret_reveal`, `open_registration`,
 `allow_invitations`, `confirm_role_change`, `healthcheck_policy`, `collection_policy`,
 `dashboard_policy`. A key outside that list stops the server, named — a typo should be
 heard at start-up, not discovered months later as a setting that never applied. So does a

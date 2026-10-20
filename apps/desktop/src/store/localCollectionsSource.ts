@@ -21,6 +21,7 @@ import {
   type CreateConnectionInput,
   type UpdateConnectionInput,
 } from './connectionsStore';
+import { askSecret, type SecretKind } from '../utils/secretPrompt';
 import { type BoardCard, parseBoard } from '../utils/board';
 
 /** True for `path` itself and anything nested under it. */
@@ -47,7 +48,47 @@ function recordFromInput(input: CreateConnectionInput) {
     jump: input.jump ?? null,
     forwards: input.forwards ?? [],
     hc: input.hc ?? null,
+    // What this machine does NOT keep, so opening it knows to ask (ADR 0024 §4). The
+    // accounts path records the same two on its own StoredRecord.
+    needsPassphrase: input.needsPassphrase ?? false,
+    needsPassword: input.needsPassword ?? false,
   };
+}
+
+/**
+ * Secrets typed this session, keyed by kind and machine id — the local vault's copy of
+ * what `accountsConnectionsSource` keeps, and for the same reason: a dashboard fires one
+ * request per card, so asking per operation would ask four times over. In memory, for the
+ * life of the page, written nowhere.
+ */
+const answered = new Map<string, string>();
+
+/**
+ * The secret this machine does not keep, asked for once (ADR 0024 §4).
+ *
+ * `undefined` ⇒ nothing to ask: the record holds what it needs. `null` ⇒ the person
+ * cancelled, which callers report as "they said no" and not as a failure.
+ *
+ * Why the flags and not a guess: password authentication with nothing stored always wants
+ * a password, but a key holding no passphrase may simply not have one — so the record has
+ * to say, and `needsPassphrase` is what it says. The local vault never recorded it before,
+ * which is why a local machine saved with the box unticked failed to authenticate instead
+ * of asking.
+ */
+async function sessionSecretFor(c: ConnectionInfo): Promise<string | null | undefined> {
+  const kind: SecretKind | null = c.needsPassword
+    ? 'password'
+    : c.needsPassphrase
+      ? 'passphrase'
+      : null;
+  if (!kind) return undefined;
+  const key = `${kind}:${c.id}`;
+  const known = answered.get(key);
+  if (known) return known;
+  const typed = await askSecret(kind, c.name);
+  if (typed === null) return null;
+  answered.set(key, typed);
+  return typed;
 }
 
 export function useLocalCollectionsSource(): ConnectionsSource {
@@ -125,7 +166,9 @@ export function useLocalCollectionsSource(): ConnectionsSource {
   // so credentials never pass through here.
   const connect = useCallback(
     async (c: ConnectionInfo) => {
-      const id = await Backend.Terminal.connectTerminal(c.id);
+      const secret = await sessionSecretFor(c);
+      if (secret === null) throw new Error('cancelled');
+      const id = await Backend.Terminal.connectTerminal(c.id, secret);
       void refresh(); // pick up the new "last used"
       return id;
     },
@@ -288,14 +331,24 @@ export function useLocalCollectionsSource(): ConnectionsSource {
     deleteCollection,
     readBoard,
     saveBoard,
-    execRemote: (c, command) => Backend.Terminal.machineExec(c.id, command),
-    startForward: (c, f) =>
-      Backend.Terminal.startForward({
+    // The dashboard's cards and a port forward open SSH too, so they ask as `connect`
+    // does — one resolver, so a path added later cannot forget.
+    execRemote: async (c, command) => {
+      const secret = await sessionSecretFor(c);
+      if (secret === null) throw new Error('cancelled');
+      return Backend.Terminal.machineExec(c.id, command, secret);
+    },
+    startForward: async (c, f) => {
+      const secret = await sessionSecretFor(c);
+      if (secret === null) throw new Error('cancelled');
+      return Backend.Terminal.startForward({
         connectionId: c.id,
         bindHost: f.bindHost ?? undefined,
         localPort: f.localPort,
         remoteHost: f.remoteHost,
         remotePort: f.remotePort,
-      }),
+        sessionSecret: secret,
+      });
+    },
   };
 }

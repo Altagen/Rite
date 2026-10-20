@@ -27,7 +27,7 @@ import {
 } from './connectionsStore';
 import { encryptString, decryptString } from '../utils/vaultCrypto';
 import { getLastUsed, recordLastUsed } from '../utils/lastUsed';
-import { askPassphrase } from '../utils/passphrasePrompt';
+import { askSecret, type SecretKind } from '../utils/secretPrompt';
 import {
   unwrapCollectionKeys,
   decryptCollectionField,
@@ -81,6 +81,7 @@ export interface StoredRecord {
    * parsing the key to find out would mean implementing the OpenSSH format in the page.
    */
   needsPassphrase?: boolean;
+  needsPassword?: boolean;
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   // Sealed inside the blob, so the opt-out is zero-knowledge like everything else.
   hc?: boolean | null;
@@ -234,6 +235,7 @@ function recordFromCreate(input: CreateConnectionInput): StoredRecord {
     forwards: input.forwards ?? [],
     hc: input.hc ?? null,
     needsPassphrase: input.needsPassphrase ?? false,
+    needsPassword: input.needsPassword ?? false,
   };
 }
 
@@ -259,6 +261,7 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   if (input.forwards !== undefined) merged.forwards = input.forwards;
   if (input.hc !== undefined) merged.hc = input.hc;
   if (input.needsPassphrase !== undefined) merged.needsPassphrase = input.needsPassphrase;
+  if (input.needsPassword !== undefined) merged.needsPassword = input.needsPassword;
   // After `authMethod` above, so replacing the key and dropping its passphrase in one edit
   // does both. Here the client holds the whole record, so it can do this itself — the
   // local vault needs the core's help because there the key never leaves rite-core.
@@ -270,14 +273,18 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
 }
 
 /**
- * Passphrases typed this session, by connection id.
+ * Secrets typed this session, keyed by kind and connection id.
  *
  * Asking once per OPERATION is not the promise the dialog makes: a machine dashboard
  * fires one request per card, so opening it asked four times. The dialog says "used for
  * this connection only", and this is that sentence — in memory, for the life of the page,
  * written nowhere. A reload asks again, which is the point.
+ *
+ * Keyed by kind as well as id because one machine can want both: a password now that
+ * instances may forbid storing one, and a key passphrase as before.
  */
 const answered = new Map<string, string>();
+const answerKey = (kind: SecretKind, id: string) => `${kind}:${id}`;
 
 /**
  * The record's auth method, with a passphrase if one is needed and not stored.
@@ -296,12 +303,27 @@ async function authFor(
   label: string,
 ): Promise<AuthMethodInput | null> {
   const auth = record.authMethod;
+
+  // An SSH password the machine does not keep (ADR 0024 §4). Same shape as the passphrase
+  // below, and it reaches every path for the same reason: this resolver is the only place
+  // that builds the auth a request carries.
+  if (auth.type === 'password' && record.needsPassword && !auth.password) {
+    const key = answerKey('password', id);
+    const known = answered.get(key);
+    if (known) return { ...auth, password: known };
+    const typed = await askSecret('password', label);
+    if (typed === null) return null;
+    answered.set(key, typed);
+    return { ...auth, password: typed };
+  }
+
   if (!record.needsPassphrase || !('key' in auth) || auth.passphrase) return auth;
-  const known = answered.get(id);
+  const key = answerKey('passphrase', id);
+  const known = answered.get(key);
   if (known) return { ...auth, passphrase: known };
-  const typed = await askPassphrase(label);
+  const typed = await askSecret('passphrase', label);
   if (typed === null) return null;
-  answered.set(id, typed);
+  answered.set(key, typed);
   return { ...auth, passphrase: typed };
 }
 

@@ -405,7 +405,7 @@ mod tests {
                 port: 22,
                 username: "u".into(),
                 auth_method: AuthMethod::Password {
-                    password: "s3cret-pw".into(),
+                    password: Some("s3cret-pw".into()),
                 },
                 color: None,
                 icon: None,
@@ -416,6 +416,8 @@ mod tests {
                 preconnect: None,
                 jump: None,
                 forwards: None,
+                needs_passphrase: false,
+                needs_password: false,
             })
             .await
             .unwrap();
@@ -450,7 +452,7 @@ mod tests {
         let all = conns.get_all_connections().await.unwrap();
         let one = conns.get_connection(&all[0].id).await.unwrap().unwrap();
         match one.auth_method {
-            AuthMethod::Password { password } => assert_eq!(password, "s3cret-pw"),
+            AuthMethod::Password { password } => assert_eq!(password.as_deref(), Some("s3cret-pw")),
             _ => panic!("wrong auth method after re-key"),
         }
     }

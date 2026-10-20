@@ -214,7 +214,7 @@ export async function mockInvoke(
         defaultShell: 'bash',
         shells: ['bash', 'sh'],
         allowShellChoice: false,
-        allowPassphraseStorage: true,
+        allowSecretStorage: true,
         allowSecretReveal: true,
         allowQuickSsh: false,
         openRegistration: false,
@@ -241,7 +241,7 @@ export async function mockInvoke(
     case 'admin_set_default_shell':
     case 'admin_set_shell_choice':
     case 'admin_set_host_key_mode':
-    case 'admin_set_passphrase_storage':
+    case 'admin_set_secret_storage':
     case 'admin_set_secret_reveal':
     case 'admin_set_quick_ssh':
     case 'admin_set_open_registration':

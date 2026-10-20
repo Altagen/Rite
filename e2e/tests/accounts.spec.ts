@@ -335,6 +335,11 @@ test('web member workspace: personal connections, zero-knowledge, server-execute
   await page.getByPlaceholder('example.com or 192.168.1.1').fill('web-secret-host');
   await page.getByPlaceholder('user').fill('deployer');
   await page.getByPlaceholder('Enter password...').fill('web-secret-pw');
+  // Ticked deliberately: this test's point is that a password Rite DOES keep never leaves
+  // the browser in the clear, which it asserts against the stored blob below. Since ADR
+  // 0024 §4 covers passwords, the box is unticked by default and an unstored password
+  // would make that assertion pass on a record that holds no password at all.
+  await page.getByTestId('auth-remember-password').check();
   await page.getByRole('button', { name: 'Save Connection' }).click();
 
   // It comes back decrypted in the sidebar (a full browser round-trip via the vault).
@@ -604,6 +609,10 @@ async function addMachine(
     await page.locator('input[type="number"]').first().fill(String(opts.port));
   await page.getByPlaceholder('user').fill(opts.user);
   await page.getByPlaceholder('Enter password...').fill(opts.password);
+  // Every caller of this helper wants a machine that connects, so it keeps its password.
+  // Unticked is the default since ADR 0024 §4 covers passwords, and a machine that keeps
+  // none asks at connect time — which is its own test, not an accident in these.
+  await page.getByTestId('auth-remember-password').check();
   if (opts.jump) {
     // The picker lists every other readable machine, grouped by collection, and
     // labels each one "<name> — <user>@<host>".
@@ -988,7 +997,7 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   // Precise: the host-key row says the same thing about its own policy, and both rows
   // are in the DOM at once (the rail hides the other sections rather than unmounting).
   await expect(
-    page.getByText('Set by your administrator for every terminal', { exact: false }),
+    page.getByText('Set by your administrator, for every terminal', { exact: false }),
   ).toBeVisible();
   // …and no picker: the choice is not this user's to make here.
   await expect(page.getByTestId('shell-choices')).toHaveCount(0);
@@ -1306,6 +1315,93 @@ test('a passphrase that was not kept is asked for at connect time', async ({ pag
 
   // Back to the terminals first: the machine dashboard has an "Overview" heading of its
   // own, and `openAdmin` waits for the console's.
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Instance', exact: true }).click();
+  await page.getByTestId('instance-host-key-mode').selectOption('strict');
+  await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('strict');
+});
+
+/**
+ * The password's half of ADR 0024 §4, and the reason the policy is worth having.
+ *
+ * `allow_secret_storage` governed only the key passphrase before this. An instance that
+ * stopped storing passphrases while still storing SSH passwords had closed nothing if the
+ * target takes a password — the server's own comment said as much — so the switch now
+ * covers both, and a password left unremembered is asked for the way a passphrase is.
+ *
+ * Mirrors the passphrase test above deliberately, including the dashboard at the end: the
+ * cards are `exec-quick` and not `connect`, which is where the passphrase prompt was
+ * missing when it shipped. Asserting "no second prompt" alone would pass on a dashboard
+ * whose cards simply failed, so the cards' own output is asserted too.
+ */
+test('a password that was not kept is asked for at connect time', async ({ page }) => {
+  await page.goto('/');
+  if (
+    await page
+      .getByText('Create the server administrator')
+      .isVisible()
+      .catch(() => false)
+  ) {
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /create administrator/i }).click();
+  } else {
+    await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+  }
+  await expectWorkspace(page);
+
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Instance', exact: true }).click();
+  await page.getByTestId('instance-host-key-mode').selectOption('accept');
+  await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('accept');
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expectWorkspace(page);
+
+  // A fresh name per run: this vault persists, so a stale row would satisfy "it was
+  // saved" and the test would then connect with whatever that older row holds.
+  const name = `e2e-pw-asks-${Date.now()}`;
+  await page.getByRole('button', { name: 'Add to collection' }).first().click();
+  await page.getByRole('button', { name: 'New machine here' }).click();
+  await page.getByPlaceholder('My Server').fill(name);
+  await page.getByPlaceholder('example.com or 192.168.1.1').fill(SSH.hostname);
+  await page.locator('input[type="number"]').first().fill(String(SSH.port));
+  await page.getByPlaceholder('user').fill(SSH.username);
+  await page.getByPlaceholder('Enter password...').fill(SSH.password);
+  // Left unticked on purpose — that is what this test is about. It is also the default,
+  // so this asserts the default rather than assuming it.
+  await expect(page.getByTestId('auth-remember-password')).not.toBeChecked();
+  await page.getByRole('button', { name: /save connection/i }).click();
+  await expect(page.getByText(name)).toBeVisible({ timeout: 15_000 });
+
+  // Connecting asks, and cancelling is not a connection.
+  const row = page.locator('.m-tnode.leaf', { hasText: name });
+  await row.getByRole('button', { name: 'Connect' }).click();
+  const prompt = page.getByTestId('password-prompt');
+  await expect(prompt).toBeVisible({ timeout: 20_000 });
+  await expect(prompt).toContainText(name);
+  await page.keyboard.press('Escape');
+  await expect(prompt).toHaveCount(0);
+  await expect(page.locator('.xterm-rows')).toHaveCount(0);
+
+  // Asking again and answering opens the session — the proof that the typed answer is
+  // what authenticates, since the record holds no password to fall back on.
+  await row.getByRole('button', { name: 'Connect' }).click();
+  await expect(prompt).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('password-input').fill(SSH.password);
+  await page.getByTestId('password-submit').click();
+  await expect(page.locator('.xterm-rows')).toContainText(`${SSH.username}@`, { timeout: 25_000 });
+
+  // Remembered for this page, and the dashboard's cards ran on it.
+  await page.getByText(name).first().click();
+  await expect(page.getByText('Overview').first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId('password-prompt')).toHaveCount(0);
+  await expect(page.getByText('web', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/Couldn't detect/)).toHaveCount(0);
+
   await page.getByRole('button', { name: 'Terminal', exact: true }).click();
   await openAdmin(page);
   await page.getByRole('button', { name: 'Instance', exact: true }).click();

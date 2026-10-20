@@ -73,6 +73,11 @@ interface AuthSectionProps {
    * an empty box beside a ticked "remember this passphrase" reads as a contradiction.
    */
   hasStoredPassphrase?: boolean;
+  /**
+   * An SSH password is already stored for this machine. Same reason as above: the field
+   * stays empty, so the row has to say one is there.
+   */
+  hasStoredPassword?: boolean;
 }
 
 export function AuthSection({
@@ -82,6 +87,7 @@ export function AuthSection({
   errors,
   onReveal,
   hasStoredPassphrase,
+  hasStoredPassword,
 }: AuthSectionProps) {
   const { t } = useTranslation();
   const native = isNativeShell();
@@ -91,7 +97,10 @@ export function AuthSection({
   // container, which no member can put there — so the key travels with the record.
   const serverMode = useServerSession((st) => st.mode);
   const sshRunsHere = !serverMode?.accounts;
-  const mayRemember = serverMode?.allowPassphraseStorage !== false;
+  // One policy over every secret a record can keep (ADR 0024 §4): the SSH password, the
+  // key passphrase, a carried key. It binds this form and not the data — the record is
+  // sealed here before it leaves, so no instance can check it afterwards.
+  const mayRemember = serverMode?.allowSecretStorage !== false;
   const [keyError, setKeyError] = useState<string | null>(null);
   const [revealError, setRevealError] = useState<string | null>(null);
 
@@ -102,7 +111,9 @@ export function AuthSection({
     try {
       const secret = await onReveal();
       if (field === 'password') {
-        set({ password: secret.password ?? '' });
+        // `rememberPassword` follows what came back, as the passphrase branch does: a
+        // revealed secret exists, so the box that says whether Rite keeps it must agree.
+        set({ password: secret.password ?? '', rememberPassword: !!secret.password });
         setShowPassword(true);
       } else {
         set({ passphrase: secret.passphrase ?? '', rememberPassphrase: !!secret.passphrase });
@@ -235,13 +246,42 @@ export function AuthSection({
           {errors?.password && <p className="mt-1 text-sm text-red-500">{errors.password}</p>}
           {isEdit && (
             <p className="mt-1 text-sm text-muted-foreground">
-              Leave empty to keep current password
+              {hasStoredPassword
+                ? t('connections.passwordStored')
+                : t('connections.passwordLeaveEmpty')}
             </p>
           )}
           {revealButton('password')}
           {revealError && (
             <p className="mt-1 text-sm text-amber-500" data-testid="auth-reveal-error">
               {revealError}
+            </p>
+          )}
+          {/* The passphrase row's twin, and unticked for the same reason. Where the
+              instance forbids a stored secret the choice is gone and the password is
+              asked for at every connection instead. */}
+          {mayRemember ? (
+            <label className="mt-2 flex cursor-pointer items-start gap-2 text-sm leading-5">
+              <input
+                type="checkbox"
+                checked={value.rememberPassword}
+                onChange={(e) => set({ rememberPassword: e.target.checked })}
+                data-testid="auth-remember-password"
+                className="mt-0.5 flex-none"
+              />
+              <span>
+                {t('connections.passwordRemember')}
+                <span className="block text-muted-foreground">
+                  {hasStoredPassword
+                    ? t('connections.passwordRememberForget')
+                    : t('connections.passwordRememberWhy')}
+                </span>
+              </span>
+            </label>
+          ) : (
+            <p className="mt-2 text-sm" data-testid="auth-remember-password-forbidden">
+              <span className="text-amber-500">{t('connections.passwordRememberOff')}</span>
+              {t('connections.passwordRememberOffWhy')}
             </p>
           )}
         </div>
