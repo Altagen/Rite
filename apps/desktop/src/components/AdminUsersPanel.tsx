@@ -78,9 +78,9 @@ export function AdminUsersPanel() {
     try {
       setUsers(await Backend.Admin.listUsers());
     } catch {
-      setError('Failed to load users');
+      setError(t('admin.users.errLoadUsers'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async initial load
@@ -125,7 +125,7 @@ export function AdminUsersPanel() {
       setRole('user');
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create user');
+      setError(err instanceof Error ? err.message : t('admin.users.errCreateUser'));
     } finally {
       setBusy(false);
     }
@@ -138,7 +138,7 @@ export function AdminUsersPanel() {
       await fn();
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
+      setError(err instanceof Error ? err.message : t('admin.users.errAction'));
     } finally {
       setBusy(false);
     }

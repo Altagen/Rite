@@ -6,12 +6,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Backend, type Team, type TeamMember, type ServerUser } from '../utils/backend';
+import { useTranslation } from '../i18n/i18n';
 import { useServerSession } from '../store/serverSessionStore';
 import { DangerZone } from './DangerZone';
 
-const roleLabel = (r: TeamMember['role']) => (r === 'admin' ? 'Manager' : 'Member');
+const roleLabel = (r: TeamMember['role'], t: (k: string) => string) =>
+  r === 'admin' ? t('admin.teams.roleManager') : t('admin.teams.roleMember');
 
 export function TeamsPanel() {
+  const { t } = useTranslation();
   const { user: me } = useServerSession();
   const [teams, setTeams] = useState<Team[]>([]);
   const [users, setUsers] = useState<ServerUser[]>([]);
@@ -31,18 +34,21 @@ export function TeamsPanel() {
       setTeams(teamList);
       setUsers(userList);
     } catch {
-      setError('Failed to load teams');
+      setError(t('admin.teams.errLoad'));
     }
-  }, []);
+  }, [t]);
 
-  const loadMembers = useCallback(async (team: Team) => {
-    setSelected(team);
-    try {
-      setMembers(await Backend.Teams.members(team.id));
-    } catch {
-      setError('Failed to load members');
-    }
-  }, []);
+  const loadMembers = useCallback(
+    async (team: Team) => {
+      setSelected(team);
+      try {
+        setMembers(await Backend.Teams.members(team.id));
+      } catch {
+        setError(t('admin.teams.errMembers'));
+      }
+    },
+    [t],
+  );
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async initial load
@@ -55,7 +61,7 @@ export function TeamsPanel() {
     try {
       await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
+      setError(err instanceof Error ? err.message : t('admin.teams.errAction'));
     } finally {
       setBusy(false);
     }
@@ -77,7 +83,7 @@ export function TeamsPanel() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
-      <h2 className="text-xl font-semibold">Teams</h2>
+      <h2 className="text-xl font-semibold">{t('admin.teams.title')}</h2>
 
       {error && (
         <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">
@@ -99,7 +105,9 @@ export function TeamsPanel() {
             {t.name}
           </button>
         ))}
-        {teams.length === 0 && <p className="text-sm text-muted-foreground">No teams yet.</p>}
+        {teams.length === 0 && (
+          <p className="text-sm text-muted-foreground">{t('admin.teams.none')}</p>
+        )}
       </div>
 
       <form
@@ -108,7 +116,7 @@ export function TeamsPanel() {
       >
         <div className="flex-1 space-y-1">
           <label htmlFor="new-team" className="text-xs font-medium text-muted-foreground">
-            New team name
+            {t('admin.teams.newName')}
           </label>
           <input
             id="new-team"
@@ -123,7 +131,7 @@ export function TeamsPanel() {
           disabled={busy || !newName.trim()}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          Create team
+          {t('admin.teams.create')}
         </button>
       </form>
 
@@ -135,15 +143,15 @@ export function TeamsPanel() {
             <thead className="text-left text-muted-foreground">
               <tr>
                 <th className="py-1 font-medium">Member</th>
-                <th className="py-1 font-medium">Role</th>
-                <th className="py-1 font-medium text-right">Actions</th>
+                <th className="py-1 font-medium">{t('admin.teams.colRole')}</th>
+                <th className="py-1 font-medium text-right">{t('admin.teams.colActions')}</th>
               </tr>
             </thead>
             <tbody>
               {members.map((m) => (
                 <tr key={m.userId} className="border-t border-border">
                   <td className="py-1.5">{m.username}</td>
-                  <td className="py-1.5">{roleLabel(m.role)}</td>
+                  <td className="py-1.5">{roleLabel(m.role, t)}</td>
                   <td className="py-1.5">
                     <div className="flex justify-end gap-2">
                       {m.userId !== me?.id && (
@@ -157,7 +165,7 @@ export function TeamsPanel() {
                           disabled={busy}
                           className="rounded border border-red-500/30 px-2 py-0.5 text-xs text-red-600 hover:bg-red-500/10 disabled:opacity-50"
                         >
-                          Remove
+                          {t('admin.teams.remove')}
                         </button>
                       )}
                     </div>
@@ -170,7 +178,7 @@ export function TeamsPanel() {
           <div className="flex items-end gap-3">
             <div className="flex-1 space-y-1">
               <label htmlFor="add-member" className="text-xs font-medium text-muted-foreground">
-                Add member
+                {t('admin.teams.addMember')}
               </label>
               <select
                 id="add-member"
@@ -179,7 +187,7 @@ export function TeamsPanel() {
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 disabled={busy || nonMembers.length === 0}
               >
-                <option value="">Select a user…</option>
+                <option value="">{t('admin.teams.pickUser')}</option>
                 {nonMembers.map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.username}
@@ -204,7 +212,7 @@ export function TeamsPanel() {
           </div>
 
           <DangerZone
-            title="Delete team"
+            title={t('admin.teams.deleteTeam')}
             desc="Removes the team (a roster). Collections offered to it are no longer offered; membership in those collections is unaffected."
             action="Delete team"
             disabled={busy}

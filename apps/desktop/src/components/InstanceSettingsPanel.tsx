@@ -5,6 +5,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import { Backend, type DashboardPolicy, type HealthcheckPolicy } from '../utils/backend';
 import { Switch } from './Switch';
 
@@ -34,15 +35,12 @@ const HC_METHODS: { id: string; label: string }[] = [
  * explains why before they try.
  */
 function ManagedBy({ origin }: { origin: string }) {
-  return (
-    <p className="mt-1 text-xs text-amber-500">
-      Set by this instance&apos;s configuration (<code className="font-mono">{origin}</code>) —
-      change it there, not here.
-    </p>
-  );
+  const { t } = useTranslation();
+  return <p className="mt-1 text-xs text-amber-500">{t('admin.inst.managedBy', { origin })}</p>;
 }
 
 export function InstanceSettingsPanel() {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
   const [persistence, setPersistence] = useState(true);
@@ -93,9 +91,11 @@ export function InstanceSettingsPanel() {
       setDash(mode.dashboardPolicy ?? DEFAULT_DASH);
       setManaged(mode.managed ?? {});
     } catch {
-      setError('Failed to load instance settings');
+      setError(t('admin.inst.errLoad'));
     }
-  }, []);
+    // `t` is a dependency now that the message comes from the locales: a language change
+    // must re-render with the new one rather than keep the string this closure captured.
+  }, [t]);
 
   // Optimistic save of the whole policy; revert on failure.
   const saveHc = async (next: HealthcheckPolicy) => {
@@ -105,7 +105,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setHealthcheck(next);
     } catch (err) {
       setHc(prev);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -117,7 +117,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setDashboardPolicy(next);
     } catch (err) {
       setDash(prev);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -128,7 +128,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setDefaultShell(next);
     } catch (err) {
       setShell(prev);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -139,7 +139,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setShellChoice(next);
     } catch (err) {
       setShellChoice(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -150,7 +150,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setHostKeyMode(next);
     } catch (err) {
       setHostKeyMode(prev);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -161,7 +161,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setSecretStorage(next);
     } catch (err) {
       setSecretStorage(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -172,7 +172,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setSecretReveal(next);
     } catch (err) {
       setSecretReveal(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -183,7 +183,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setQuickSsh(next);
     } catch (err) {
       setQuickSsh(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -194,7 +194,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setOpenRegistration(next);
     } catch (err) {
       setOpenReg(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -205,7 +205,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setAllowInvitations(next);
     } catch (err) {
       setAllowInv(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -216,7 +216,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setConfirmRoleChange(next);
     } catch (err) {
       setConfirmRole(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -227,7 +227,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setSessionPersistence(next);
     } catch (err) {
       setPersistence(!next); // revert on failure
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -244,7 +244,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setInstanceName(name.trim());
       setSaved(name.trim());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     } finally {
       setBusy(false);
     }
@@ -253,10 +253,8 @@ export function InstanceSettingsPanel() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5">
       <div>
-        <h2 className="text-xl font-semibold">Instance</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          A name for this server, shown on the sign-in screen and in the header.
-        </p>
+        <h2 className="text-xl font-semibold">{t('admin.inst.title')}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.lead')}</p>
       </div>
 
       {error && (
@@ -271,13 +269,13 @@ export function InstanceSettingsPanel() {
       >
         <div className="flex-1 space-y-1">
           <label htmlFor="instance-name" className="text-xs font-medium text-muted-foreground">
-            Instance name
+            {t('admin.inst.nameLabel')}
           </label>
           <input
             id="instance-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Acme Corp"
+            placeholder={t('admin.inst.namePlaceholder')}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
             disabled={busy || !!managed.instance_name}
           />
@@ -288,27 +286,23 @@ export function InstanceSettingsPanel() {
           disabled={busy || !!managed.instance_name || name.trim() === (saved ?? '')}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          Save
+          {t('admin.inst.save')}
         </button>
       </form>
 
       {saved !== null && saved === name.trim() && (
-        <p className="text-xs text-muted-foreground">
-          Saved. It shows after everyone&apos;s next reload.
-        </p>
+        <p className="text-xs text-muted-foreground">{t('admin.inst.saved')}</p>
       )}
 
       {/* Host key (ADR 0012 TOFU): publish it so users can pin this server out-of-band. */}
       {hostKey && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4">
           <div className="min-w-0">
-            <div className="font-medium">Host key</div>
+            <div className="font-medium">{t('admin.inst.hostKey')}</div>
             <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
               SHA256:{hostKey}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Share this so users can pin this server on first connect.
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('admin.inst.hostKeyShare')}</p>
           </div>
           <button
             onClick={() => {
@@ -318,7 +312,7 @@ export function InstanceSettingsPanel() {
             }}
             className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
           >
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? t('admin.inst.copied') : t('admin.inst.copy')}
           </button>
         </div>
       )}
@@ -326,17 +320,13 @@ export function InstanceSettingsPanel() {
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-medium">Keep users signed in across reloads</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Each vault key sits in that browser&apos;s session storage and is cleared when the tab
-              closes; it never leaves the browser. Off: a RAM-only key, so a reload means a
-              re-login.
-            </p>
+            <div className="font-medium">{t('admin.inst.persistence')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.persistenceDesc')}</p>
             {managed.session_persistence && <ManagedBy origin={managed.session_persistence} />}
           </div>
           <Switch
             checked={persistence}
-            label="Keep users signed in across reloads"
+            label={t('admin.inst.persistence')}
             disabled={!!managed.session_persistence}
             onChange={togglePersistence}
             testId="instance-session-persistence"
@@ -347,17 +337,15 @@ export function InstanceSettingsPanel() {
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-medium">Open registration</div>
+            <div className="font-medium">{t('admin.inst.openReg')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default.</b> On, the sign-in screen offers <b>Create an account</b>: anyone
-              who can reach this server registers themselves, as a plain user with no team. Leave
-              off for an invite-only instance.
+              <b>{t('admin.inst.offByDefault')}</b> {t('admin.inst.openRegDesc')}
             </p>
             {managed.open_registration && <ManagedBy origin={managed.open_registration} />}
           </div>
           <Switch
             checked={openReg}
-            label="Open registration"
+            label={t('admin.inst.openReg')}
             disabled={!!managed.open_registration}
             onChange={toggleOpenReg}
             testId="instance-open-registration"
@@ -368,16 +356,15 @@ export function InstanceSettingsPanel() {
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-medium">Allow invitations</div>
+            <div className="font-medium">{t('admin.inst.allowInv')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>On by default.</b> Off closes the enrollment-token path instance-wide: no new
-              tokens, and existing ones stop working. Independent of open registration.
+              <b>{t('admin.inst.onByDefault')}</b> {t('admin.inst.allowInvDesc')}
             </p>
             {managed.allow_invitations && <ManagedBy origin={managed.allow_invitations} />}
           </div>
           <Switch
             checked={allowInv}
-            label="Allow invitations"
+            label={t('admin.inst.allowInv')}
             disabled={!!managed.allow_invitations}
             onChange={toggleAllowInv}
             testId="instance-allow-invitations"
@@ -388,16 +375,15 @@ export function InstanceSettingsPanel() {
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-medium">Confirm role changes</div>
+            <div className="font-medium">{t('admin.inst.confirmRole')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default.</b> On, changing a role in Users asks first — a guard against an
-              accidental promotion. A prompt, applied on every client.
+              <b>{t('admin.inst.offByDefault')}</b> {t('admin.inst.confirmRoleDesc')}
             </p>
             {managed.confirm_role_change && <ManagedBy origin={managed.confirm_role_change} />}
           </div>
           <Switch
             checked={confirmRole}
-            label="Confirm role changes"
+            label={t('admin.inst.confirmRole')}
             disabled={!!managed.confirm_role_change}
             onChange={toggleConfirmRole}
             testId="instance-confirm-role-change"
@@ -408,21 +394,17 @@ export function InstanceSettingsPanel() {
       {/* Client capabilities — what connected clients may do, governed here. */}
       <div className="rounded-lg border border-border bg-card">
         <div className="border-b border-border px-4 py-3">
-          <div className="text-base font-semibold">Client capabilities</div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            What connected clients may do on this server.
-          </p>
+          <div className="text-base font-semibold">{t('admin.inst.caps')}</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t('admin.inst.capsDesc')}</p>
         </div>
 
         <div className="flex items-start justify-between gap-4 border-b border-border p-4">
           <div>
-            <div className="font-medium">Default shell</div>
+            <div className="font-medium">{t('admin.inst.defaultShell')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              The shell a terminal here opens.{' '}
-              {shellChoice
-                ? 'What a member gets until they choose otherwise.'
-                : 'Every terminal, for everyone — web-UI members do not pick their own.'}{' '}
-              Desktop users run their own machine&apos;s shell. Installed here:{' '}
+              {t('admin.inst.shellPrefix')}{' '}
+              {shellChoice ? t('admin.inst.shellOpensChoice') : t('admin.inst.shellOpensFixed')}{' '}
+              {t('admin.inst.shellDesktop')}{' '}
               <b data-testid="instance-shells">{shells.join(', ')}</b>.
             </p>
             {managed.default_shell && <ManagedBy origin={managed.default_shell} />}
@@ -445,17 +427,15 @@ export function InstanceSettingsPanel() {
 
         <div className="flex items-start justify-between gap-4 border-b border-border p-4">
           <div>
-            <div className="font-medium">Let members choose their shell</div>
+            <div className="font-medium">{t('admin.inst.shellChoice')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default</b> — the default above is then the only shell. On, a member picks
-              among the installed shells in <b>Settings ▸ Terminals</b>, and one terminal at a time
-              from the <b>+</b> beside the tabs. They choose a name, never a path.
+              <b>{t('admin.inst.offByDefault')}</b> {t('admin.inst.shellChoiceDesc')}
             </p>
             {managed.allow_shell_choice && <ManagedBy origin={managed.allow_shell_choice} />}
           </div>
           <Switch
             checked={shellChoice}
-            label="Let members choose their shell"
+            label={t('admin.inst.shellChoice')}
             onChange={toggleShellChoice}
             disabled={!!managed.allow_shell_choice}
             testId="instance-shell-choice"
@@ -464,17 +444,15 @@ export function InstanceSettingsPanel() {
 
         <div className="flex items-start justify-between gap-4 p-4">
           <div>
-            <div className="font-medium">Allow Quick SSH</div>
+            <div className="font-medium">{t('admin.inst.quickSsh')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Ad-hoc one-off SSH from the toolbar. <b>Off by default</b> — connections on a server
-              belong in <b>collections</b>, saved and auditable. On for teams that need throwaway
-              sessions.
+              <b>{t('admin.inst.offByDefault')}</b> {t('admin.inst.quickSshDesc')}
             </p>
             {managed.allow_quick_ssh && <ManagedBy origin={managed.allow_quick_ssh} />}
           </div>
           <Switch
             checked={quickSsh}
-            label="Allow Quick SSH"
+            label={t('admin.inst.quickSsh')}
             disabled={!!managed.allow_quick_ssh}
             onChange={toggleQuickSsh}
             testId="instance-quick-ssh"
@@ -483,12 +461,8 @@ export function InstanceSettingsPanel() {
 
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
           <div>
-            <div className="font-medium">Host key verification</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              One policy for everyone, since every connection runs here. <b>Strict</b> refuses a
-              host key it has not seen; <b>warn</b> and <b>accept</b> do not, so neither would
-              refuse a man-in-the-middle either. Clients show it read-only.
-            </p>
+            <div className="font-medium">{t('admin.inst.hostKeyMode')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.hostKeyModeDesc')}</p>
             {managed.host_key_verification_mode && (
               <ManagedBy origin={managed.host_key_verification_mode} />
             )}
@@ -512,26 +486,25 @@ export function InstanceSettingsPanel() {
             because forbidding one while allowing another hardens nothing. Permissive by
             default, so an instance that upgrades and says nothing is unchanged. */}
         <div className="border-t border-border p-4">
-          <div className="font-medium">Stored secrets</div>
+          <div className="font-medium">{t('admin.inst.storedSecrets')}</div>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            What may rest in a member&apos;s own vault, and whether they can read it back.
+            {t('admin.inst.storedSecretsDesc')}
           </p>
         </div>
 
         <div className="flex items-start justify-between gap-4 border-b border-border px-4 pb-4">
           <div>
-            <div className="font-medium">Members may remember a secret</div>
+            <div className="font-medium">{t('admin.inst.secretStorage')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              An SSH password, a key passphrase, a key carried in the record. <b>On by default</b>,
-              and each member&apos;s own box starts unticked. Off: nothing is written and each is
-              asked at every connection. <b>This binds the client, not the data</b> — a record is
-              sealed before it reaches this instance.
+              {t('admin.inst.secretStorageWhat')} <b>{t('admin.inst.onByDefault')}</b>{' '}
+              {t('admin.inst.secretStorageDefault')} <b>{t('admin.inst.bindsClient')}</b>{' '}
+              {t('admin.inst.secretStorageBinds')}
             </p>
             {managed.allow_secret_storage && <ManagedBy origin={managed.allow_secret_storage} />}
           </div>
           <Switch
             checked={secretStorage}
-            label="Members may remember a secret"
+            label={t('admin.inst.secretStorage')}
             disabled={!!managed.allow_secret_storage}
             onChange={toggleSecretStorage}
             testId="instance-secret-storage"
@@ -540,18 +513,16 @@ export function InstanceSettingsPanel() {
 
         <div className="flex items-start justify-between gap-4 p-4">
           <div>
-            <div className="font-medium">Members may read a stored secret back</div>
+            <div className="font-medium">{t('admin.inst.secretReveal')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>On by default</b>, on an explicit action and never on screen by itself. Off: the
-              vault is write-only here. <b>This binds the client, not the data</b> — a browser
-              decrypts the record it connects with, so the boundary that holds is who the collection
-              is shared with.
+              <b>{t('admin.inst.onByDefault')}</b> {t('admin.inst.secretRevealWhen')}{' '}
+              <b>{t('admin.inst.bindsClient')}</b> {t('admin.inst.secretRevealBinds')}
             </p>
             {managed.allow_secret_reveal && <ManagedBy origin={managed.allow_secret_reveal} />}
           </div>
           <Switch
             checked={secretReveal}
-            label="Members may read a stored secret back"
+            label={t('admin.inst.secretReveal')}
             disabled={!!managed.allow_secret_reveal}
             onChange={toggleSecretReveal}
             testId="instance-secret-reveal"
@@ -560,25 +531,22 @@ export function InstanceSettingsPanel() {
 
         {/* Machine health-check (ADR 0017): passive "last seen" is free; active is governed. */}
         <div className="border-t border-border p-4">
-          <div className="font-medium">Machine health-check</div>
+          <div className="font-medium">{t('admin.inst.hc')}</div>
           <p className="mt-1 text-sm text-muted-foreground">
-            <b>Passive “last seen”</b> comes from users&apos; own connections and costs nothing.{' '}
-            <b>Active probing</b> makes requests from every client — a scan-like footprint at scale
-            — so it is governed here.
+            <b>{t('admin.inst.hcPassive')}</b> {t('admin.inst.hcDesc')}{' '}
+            <b>{t('admin.inst.hcActive')}</b> {t('admin.inst.hcActiveDesc')}
           </p>
           {managed.healthcheck_policy && <ManagedBy origin={managed.healthcheck_policy} />}
         </div>
 
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
           <div>
-            <div className="font-medium">Show status</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              The passive “last seen” pastille. No probing.
-            </p>
+            <div className="font-medium">{t('admin.inst.showStatus')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.showStatusDesc')}</p>
           </div>
           <Switch
             checked={hc.passiveStatus}
-            label="Show machine status"
+            label={t('admin.inst.showStatusLabel')}
             onChange={() => saveHc({ ...hc, passiveStatus: !hc.passiveStatus })}
             testId="instance-hc-passive"
           />
@@ -586,11 +554,8 @@ export function InstanceSettingsPanel() {
 
         <div className="flex flex-wrap items-start justify-between gap-4 border-t border-border p-4">
           <div className="min-w-[220px] flex-1">
-            <div className="font-medium">Active probing</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off</b> passive only · <b>On-demand</b> only when a user asks · <b>Full</b>{' '}
-              background polling allowed ·<b>Client&apos;s choice</b> each client picks its cadence.
-            </p>
+            <div className="font-medium">{t('admin.inst.hcActive')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.probeLegend')}</p>
           </div>
           <div className="inline-flex flex-wrap overflow-hidden rounded-md border border-input">
             {(['off', 'on-demand', 'full', 'client-choice'] as const).map((m) => (
@@ -613,11 +578,8 @@ export function InstanceSettingsPanel() {
           className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}
         >
           <div>
-            <div className="font-medium">Allowed methods</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              ICMP is blocked on some networks and required on others. Clients may use only a method
-              enabled here.
-            </p>
+            <div className="font-medium">{t('admin.inst.methods')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.methodsDesc')}</p>
           </div>
           <div className="flex flex-wrap gap-3">
             {HC_METHODS.map((m) => {
@@ -654,15 +616,12 @@ export function InstanceSettingsPanel() {
           className={`flex flex-col gap-2 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}
         >
           <div>
-            <div className="font-medium">Who can run active checks</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Empty means everyone. Add usernames to restrict active probing; passive “last seen”
-              stays available to all.
-            </p>
+            <div className="font-medium">{t('admin.inst.whoProbes')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.whoProbesDesc')}</p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {hc.restrictUsers.length === 0 && (
-              <span className="text-sm text-muted-foreground">Everyone allowed</span>
+              <span className="text-sm text-muted-foreground">{t('admin.inst.everyone')}</span>
             )}
             {hc.restrictUsers.map((u) => (
               <span
@@ -675,7 +634,7 @@ export function InstanceSettingsPanel() {
                     saveHc({ ...hc, restrictUsers: hc.restrictUsers.filter((x) => x !== u) })
                   }
                   className="text-muted-foreground hover:text-foreground"
-                  aria-label={`Remove ${u}`}
+                  aria-label={t('admin.inst.removeUser', { name: u })}
                 >
                   ×
                 </button>
@@ -695,14 +654,14 @@ export function InstanceSettingsPanel() {
             <input
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
-              placeholder="username"
+              placeholder={t('admin.inst.usernamePlaceholder')}
               className="w-40 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             />
             <button
               type="submit"
               className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
             >
-              Add
+              {t('admin.inst.add')}
             </button>
           </form>
         </div>
@@ -711,10 +670,8 @@ export function InstanceSettingsPanel() {
           className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' || hc.active === 'on-demand' ? 'pointer-events-none opacity-40' : ''}`}
         >
           <div>
-            <div className="font-medium">Minimum interval</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Floor for background polling, so status never saturates the network.
-            </p>
+            <div className="font-medium">{t('admin.inst.minInterval')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.minIntervalDesc')}</p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -732,31 +689,20 @@ export function InstanceSettingsPanel() {
         {/* Machine dashboard (ADR 0019): only the cards that execute on a host are governed.
             Overview, port forwarding and the Board touch no host and are never gated. */}
         <div className="border-t border-border p-4">
-          <div className="font-medium">Machine dashboard — container &amp; service cards</div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            These two cards run a command on the host each time they refresh. The rest of the
-            dashboard reads what Rite already holds.
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            The two are not equally strong. <b>Web UI</b> is <b>enforcement</b>: this server runs
-            the commands, so off means nothing runs. <b>Clients</b> is <b>policy</b>: a client
-            probes from its own network and this server never sees it — the official client hides
-            the cards, a modified one could ignore the switch.
-          </p>
+          <div className="font-medium">{t('admin.inst.dash')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.dashDesc')}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{t('admin.inst.dashStrength')}</p>
           {managed.dashboard_policy && <ManagedBy origin={managed.dashboard_policy} />}
         </div>
 
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
           <div>
-            <div className="font-medium">Allow in the web UI</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              This server runs the commands, so its own egress pays. Off is off for everyone in a
-              browser.
-            </p>
+            <div className="font-medium">{t('admin.inst.dashWebui')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.dashWebuiDesc')}</p>
           </div>
           <Switch
             checked={dash.webui}
-            label="Allow the dashboard probing cards in the web UI"
+            label={t('admin.inst.dashWebuiLabel')}
             disabled={!!managed.dashboard_policy}
             onChange={() => saveDash({ ...dash, webui: !dash.webui })}
             testId="instance-dash-webui"
@@ -765,15 +711,12 @@ export function InstanceSettingsPanel() {
 
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
           <div>
-            <div className="font-medium">Allow in attached clients</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Each client probes from its own network, so your users&apos; endpoints pay. A user may
-              also turn the cards off for themselves; neither side overrides the other upward.
-            </p>
+            <div className="font-medium">{t('admin.inst.dashClients')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.dashClientsDesc')}</p>
           </div>
           <Switch
             checked={dash.clients}
-            label="Allow the dashboard probing cards in attached clients"
+            label={t('admin.inst.dashClientsLabel')}
             disabled={!!managed.dashboard_policy}
             onChange={() => saveDash({ ...dash, clients: !dash.clients })}
             testId="instance-dash-clients"
@@ -784,12 +727,8 @@ export function InstanceSettingsPanel() {
           className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${!dash.webui && !dash.clients ? 'pointer-events-none opacity-40' : ''}`}
         >
           <div>
-            <div className="font-medium">Minimum refresh interval</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Floor between <b>automatic</b> refreshes. Clients apply a floor of their own, so a
-              very small number buys little. Pressing Refresh is not limited, and a dashboard nobody
-              watches does not poll.
-            </p>
+            <div className="font-medium">{t('admin.inst.dashInterval')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.dashIntervalDesc')}</p>
           </div>
           <div className="flex items-center gap-2">
             <input
