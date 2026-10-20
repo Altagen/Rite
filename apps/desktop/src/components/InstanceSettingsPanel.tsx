@@ -255,8 +255,7 @@ export function InstanceSettingsPanel() {
       <div>
         <h2 className="text-xl font-semibold">Instance</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          A global name for this server (e.g. your company or team). Shown to everyone on the
-          sign-in screen and in the header, so users can tell instances apart.
+          A name for this server, shown on the sign-in screen and in the header.
         </p>
       </div>
 
@@ -295,7 +294,7 @@ export function InstanceSettingsPanel() {
 
       {saved !== null && saved === name.trim() && (
         <p className="text-xs text-muted-foreground">
-          Saved. It appears for everyone after their next page load.
+          Saved. It shows after everyone&apos;s next reload.
         </p>
       )}
 
@@ -329,10 +328,9 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Keep users signed in across reloads</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Stores each user's vault key in their browser's session storage so a page reload
-              doesn't force a re-login. Still zero-knowledge — the key never leaves the browser and
-              is cleared when the tab closes. Turn this off to enforce a RAM-only key (re-login on
-              every reload).
+              Each vault key sits in that browser&apos;s session storage and is cleared when the tab
+              closes; it never leaves the browser. Off: a RAM-only key, so a reload means a
+              re-login.
             </p>
             {managed.session_persistence && <ManagedBy origin={managed.session_persistence} />}
           </div>
@@ -350,10 +348,9 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Open registration</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default.</b> When on, the sign-in screen offers <b>Create an account</b> —
-              anyone who can reach this server can self-register (role <b>user</b>, no team). They
-              generate their own keys, so you never see them. Leave off for an invite-only instance
-              (admin-provisioned accounts or enrollment tokens).
+              <b>Off by default.</b> On, the sign-in screen offers <b>Create an account</b>: anyone
+              who can reach this server registers themselves, as a plain user with no team. Leave
+              off for an invite-only instance.
             </p>
             {managed.open_registration && <ManagedBy origin={managed.open_registration} />}
           </div>
@@ -371,10 +368,8 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Allow invitations</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>On by default.</b> The master switch for enrollment-token invitations (Invitations
-              tab). Turn it off to close the invite path instance-wide — no new tokens can be minted
-              and existing ones stop working, enforced on the server. Independent of open
-              registration (invitations are the invite-only path).
+              <b>On by default.</b> Off closes the enrollment-token path instance-wide: no new
+              tokens, and existing ones stop working. Independent of open registration.
             </p>
             {managed.allow_invitations && <ManagedBy origin={managed.allow_invitations} />}
           </div>
@@ -392,9 +387,8 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Confirm role changes</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default.</b> When on, changing an account&apos;s role in Users asks for a
-              confirmation first — a guard against an accidental promotion or demotion. A UX safety
-              prompt, applied on every client.
+              <b>Off by default.</b> On, changing a role in Users asks first — a guard against an
+              accidental promotion. A prompt, applied on every client.
             </p>
             {managed.confirm_role_change && <ManagedBy origin={managed.confirm_role_change} />}
           </div>
@@ -420,12 +414,11 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Default shell</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              The shell a terminal on this server opens.{' '}
+              The shell a terminal here opens.{' '}
               {shellChoice
                 ? 'What a member gets until they choose otherwise.'
                 : 'Every terminal, for everyone — web-UI members do not pick their own.'}{' '}
-              (Desktop users run their own machine&apos;s shell; nothing here reaches it.) The list
-              is what this server has installed:{' '}
+              Desktop users run their own machine&apos;s shell. Installed here:{' '}
               <b data-testid="instance-shells">{shells.join(', ')}</b>.
             </p>
             {managed.default_shell && <ManagedBy origin={managed.default_shell} />}
@@ -450,11 +443,9 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Let members choose their shell</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default</b> — the default above is then the only shell. On: a member picks
-              among the installed shells in their own <b>Settings ▸ Terminals</b>, and one terminal
-              at a time from the <b>+</b> beside the tabs. They choose a shell, never a path: the
-              server resolves the name itself, so the choice cannot name a program this instance did
-              not offer.
+              <b>Off by default</b> — the default above is then the only shell. On, a member picks
+              among the installed shells in <b>Settings ▸ Terminals</b>, and one terminal at a time
+              from the <b>+</b> beside the tabs. They choose a name, never a path.
             </p>
             {managed.allow_shell_choice && <ManagedBy origin={managed.allow_shell_choice} />}
           </div>
@@ -472,8 +463,8 @@ export function InstanceSettingsPanel() {
             <div className="font-medium">Allow Quick SSH</div>
             <p className="mt-1 text-sm text-muted-foreground">
               Ad-hoc one-off SSH from the toolbar. <b>Off by default</b> — connections on a server
-              should live in <b>collections</b> (saved, shared, auditable). Turn on for teams that
-              need quick throwaway sessions.
+              belong in <b>collections</b>, saved and auditable. On for teams that need throwaway
+              sessions.
             </p>
             {managed.allow_quick_ssh && <ManagedBy origin={managed.allow_quick_ssh} />}
           </div>
@@ -489,12 +480,9 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Host key verification</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              How this server treats an SSH host key it has not seen before — <b>every</b>{' '}
-              connection on this instance runs here, so this is one policy for everyone.{' '}
-              <b>Strict</b> refuses an unknown host; <b>warn</b> and <b>accept</b> exist for a first
-              connection to a machine whose key nobody has recorded yet, and both mean a
-              man-in-the-middle would not be refused. Clients are told what this says and show it
-              read-only.
+              One policy for everyone, since every connection runs here. <b>Strict</b> refuses a
+              host key it has not seen; <b>warn</b> and <b>accept</b> do not, so neither would
+              refuse a man-in-the-middle either. Clients show it read-only.
             </p>
             {managed.host_key_verification_mode && (
               <ManagedBy origin={managed.host_key_verification_mode} />
@@ -515,9 +503,9 @@ export function InstanceSettingsPanel() {
           </select>
         </div>
 
-        {/* Stored secrets (ADR 0024 §4). Both permissive by default, because Rite already
-            stores SSH passwords in the vault and has since it existed: forbidding a stored
-            passphrase while allowing a stored password is the appearance of hardening. */}
+        {/* Stored secrets (ADR 0024 §4). One switch over every secret a record can keep,
+            because forbidding one while allowing another hardens nothing. Permissive by
+            default, so an instance that upgrades and says nothing is unchanged. */}
         <div className="border-t border-border p-4">
           <div className="font-medium">Stored secrets</div>
           <p className="mt-0.5 text-xs text-muted-foreground">
@@ -530,10 +518,9 @@ export function InstanceSettingsPanel() {
             <div className="font-medium">Members may remember a secret</div>
             <p className="mt-1 text-sm text-muted-foreground">
               An SSH password, a key passphrase, a key carried in the record. <b>On by default</b>,
-              and the member&apos;s own default is still to be asked — both boxes are unticked when
-              they save a machine. Off: nothing is written, and each is asked at every connection.{' '}
-              <b>This binds the client, not the data</b>: a record is sealed before it reaches this
-              instance, so no check here can tell one holding a password from one that does not.
+              and each member&apos;s own box starts unticked. Off: nothing is written and each is
+              asked at every connection. <b>This binds the client, not the data</b> — a record is
+              sealed before it reaches this instance.
             </p>
             {managed.allow_secret_storage && <ManagedBy origin={managed.allow_secret_storage} />}
           </div>
@@ -551,11 +538,9 @@ export function InstanceSettingsPanel() {
             <div className="font-medium">Members may read a stored secret back</div>
             <p className="mt-1 text-sm text-muted-foreground">
               <b>On by default</b>, on an explicit action and never on screen by itself. Off: the
-              vault is write-only here — a secret can be used and not read.{' '}
-              <b>This binds the client, not the data</b>: a browser decrypts the record it connects
-              with, so a member holds their own plaintext and a viewer holds a shared item&apos;s.
-              It stops the accidents — a secret on screen in a screen share, a casual copy — and the
-              boundary that holds is who the collection is shared with.
+              vault is write-only here. <b>This binds the client, not the data</b> — a browser
+              decrypts the record it connects with, so the boundary that holds is who the collection
+              is shared with.
             </p>
             {managed.allow_secret_reveal && <ManagedBy origin={managed.allow_secret_reveal} />}
           </div>
@@ -572,9 +557,9 @@ export function InstanceSettingsPanel() {
         <div className="border-t border-border p-4">
           <div className="font-medium">Machine health-check</div>
           <p className="mt-1 text-sm text-muted-foreground">
-            <b>Passive “last seen”</b> (from users&apos; own connections) costs no traffic.{' '}
-            <b>Active probing</b> makes network requests from every client — a scan-like footprint
-            at scale — so it&apos;s governed here.
+            <b>Passive “last seen”</b> comes from users&apos; own connections and costs nothing.{' '}
+            <b>Active probing</b> makes requests from every client — a scan-like footprint at scale
+            — so it is governed here.
           </p>
           {managed.healthcheck_policy && <ManagedBy origin={managed.healthcheck_policy} />}
         </div>
@@ -665,8 +650,8 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Who can run active checks</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Empty means everyone. Add usernames to restrict active probing to specific people;
-              passive “last seen” stays available to all.
+              Empty means everyone. Add usernames to restrict active probing; passive “last seen”
+              stays available to all.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -744,15 +729,13 @@ export function InstanceSettingsPanel() {
           <div className="font-medium">Machine dashboard — container &amp; service cards</div>
           <p className="mt-1 text-sm text-muted-foreground">
             These two cards run a command on the host each time they refresh. The rest of the
-            dashboard — address, port forwarding, the Board — reads what Rite already holds and is
-            never affected.
+            dashboard reads what Rite already holds.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            The two switches are not equally strong. <b>Web UI</b> is <b>enforcement</b>: this
-            server runs the commands, so off means nothing runs. <b>Clients</b> is <b>policy</b>: a
-            client probes from its own network and this server never sees it — the official client
-            hides the cards, a modified one could ignore the switch. It still stops the traffic in
-            normal use and records the intent.
+            The two are not equally strong. <b>Web UI</b> is <b>enforcement</b>: this server runs
+            the commands, so off means nothing runs. <b>Clients</b> is <b>policy</b>: a client
+            probes from its own network and this server never sees it — the official client hides
+            the cards, a modified one could ignore the switch.
           </p>
           {managed.dashboard_policy && <ManagedBy origin={managed.dashboard_policy} />}
         </div>
@@ -761,8 +744,8 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Allow in the web UI</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              This server runs the commands, so its own egress pays. Off means off for everyone in a
-              browser — not a matter of preference.
+              This server runs the commands, so its own egress pays. Off is off for everyone in a
+              browser.
             </p>
           </div>
           <Switch
@@ -777,9 +760,8 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Allow in attached clients</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Each client probes from its own network position, so your users&apos; endpoints pay. A
-              user may also turn the cards off for themselves; neither side can override the other
-              upward.
+              Each client probes from its own network, so your users&apos; endpoints pay. A user may
+              also turn the cards off for themselves; neither side overrides the other upward.
             </p>
           </div>
           <Switch
@@ -796,10 +778,9 @@ export function InstanceSettingsPanel() {
           <div>
             <div className="font-medium">Minimum refresh interval</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Floor between <b>automatic</b> refreshes: an open dashboard re-runs these two cards on
-              its own, never faster than this. Clients apply a floor of their own, so a very small
-              number here buys little. Pressing Refresh is not rate-limited, and a dashboard nobody
-              is watching does not poll.
+              Floor between <b>automatic</b> refreshes. Clients apply a floor of their own, so a
+              very small number buys little. Pressing Refresh is not limited, and a dashboard nobody
+              watches does not poll.
             </p>
           </div>
           <div className="flex items-center gap-2">
