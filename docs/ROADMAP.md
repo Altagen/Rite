@@ -232,6 +232,26 @@ had no released version to be compatible with.
 - [ ] Tab context menu (rename, duplicate, close others)
 - [ ] Quick switcher (Ctrl+Tab for recent tabs)
 
+### 🎨 Styling: one place for it (Priority: HIGH)
+
+The CSP served to browsers is strict on every axis but one: `style-src` carries
+`'unsafe-inline'`, because the app writes 42 inline `style={{}}` across about fifteen
+components — pane geometry, collection colours, computed widths. That directive is the
+symptom; the cause is that styling has no single home, so a value that belongs to the
+design lands in a component instead.
+
+Not a security fix, which is why it is not in 0.2.4: what `'unsafe-inline'` permits is
+CSS injection, and `script-src 'self'` with `object-src 'none'` hold the sharp edges.
+It is a refactor, and the dependency runs the other way — tighten the CSP once the
+styles have somewhere to live.
+
+- [ ] Inventory the 42 sites and sort them: geometry computed at runtime (a split's
+      percentage) against values that are really design tokens (a collection's colour)
+- [ ] Design tokens as CSS custom properties, set once, consumed by class
+- [ ] Runtime geometry through a CSS variable on the element rather than a style string
+- [ ] Then drop `'unsafe-inline'` from `style-src` in `packages/rite-server/src/lib.rs`
+      and let the tls-proxy suite prove nothing regressed
+
 ### 🐛 Bug Fixes & Stability (Priority: HIGH)
 - [ ] Comprehensive error handling
 - [ ] Graceful disconnect handling
