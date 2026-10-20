@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { existsSync, readFileSync } from 'node:fs';
 
 /**
  * Wave-1 feature parity, driven through the real app against the harness sshd.
@@ -650,6 +651,12 @@ test('a layout runs a pre-connect hook once, however many panes name the machine
     },
   });
   await page.reload();
+  // Wait for the machine to be BACK before opening the layout. A layout resolves
+  // `machine = "..."` against the library it can see, so opening it while the list is
+  // still loading gives four plain shells and no hook — which is what made this test
+  // fail about one run in three, always in a full suite and never on its own. The
+  // counter assertion below said "the hook never ran" and it was telling the truth.
+  await expect(page.getByText('e2e-layout-hook')).toBeVisible({ timeout: 20_000 });
 
   await page.getByTestId('layouts-button').click();
   await page
@@ -657,13 +664,31 @@ test('a layout runs a pre-connect hook once, however many panes name the machine
     .getByText('e2e-hooked', { exact: true })
     .click();
 
-  // One modal, and it is the hook's first run. The wait is long on purpose: this asserts
-  // that the hook's output ARRIVES, not how fast — a PTY opening and painting into an
-  // xterm has taken more than 20s on a machine that was also compiling, which failed the
-  // suite while saying nothing about the product.
-  const dialog = page.getByRole('dialog', { name: 'Running pre-connect' });
-  await expect(dialog.locator('.xterm-rows')).toContainText('HOOK_RUNS=1', { timeout: 90_000 });
-  await expect(dialog).toBeHidden({ timeout: 30_000 });
+  // How many times the hook has run, read from the file it appends to rather than from
+  // the modal that shows its output.
+  //
+  // The modal is transient — it closes when the hook exits — and asserting on what is
+  // inside it failed about one run in three with "element not found", which reads as "the
+  // hook never ran" and is the one thing this test must not be vague about. A pre-connect
+  // hook is a LOCAL command, so its file is on this machine and the test can simply read
+  // it. The invariant was never about the modal: it is that the layout asks for the hook
+  // ONCE, however many of its panes name the machine.
+  const hookRuns = async () => {
+    await expect
+      .poll(
+        () =>
+          existsSync(counter) ? readFileSync(counter, 'utf8').trimEnd().split('\n').length : 0,
+        {
+          timeout: 90_000,
+        },
+      )
+      .toBeGreaterThan(0);
+    return readFileSync(counter, 'utf8').trimEnd().split('\n').length;
+  };
+  expect(await hookRuns(), 'the layout runs the hook once, not once per pane').toBe(1);
+  await expect(page.getByRole('dialog', { name: 'Running pre-connect' })).toBeHidden({
+    timeout: 30_000,
+  });
 
   // All four panes opened, on the machine, with the hook asked for only once.
   await expect(page.locator('.xterm-screen')).toHaveCount(4, { timeout: 60_000 });
@@ -672,8 +697,12 @@ test('a layout runs a pre-connect hook once, however many panes name the machine
   // Opening it again by hand runs the hook a SECOND time — the proof that the layout
   // ran it exactly once, because four runs would make this one say 5.
   await page.getByText('e2e-layout-hook').dblclick();
-  await expect(dialog.locator('.xterm-rows')).toContainText('HOOK_RUNS=2', { timeout: 90_000 });
-  await expect(dialog).toBeHidden({ timeout: 30_000 });
+  await expect
+    .poll(() => readFileSync(counter, 'utf8').trimEnd().split('\n').length, { timeout: 90_000 })
+    .toBe(2);
+  await expect(page.getByRole('dialog', { name: 'Running pre-connect' })).toBeHidden({
+    timeout: 30_000,
+  });
 
   await request.put('/api/layouts', { data: { value: '' } });
 });
