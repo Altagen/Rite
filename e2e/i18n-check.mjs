@@ -200,7 +200,7 @@ check('every key the code asks for exists in both locales', () => {
   );
 });
 
-const HARDCODED_BASELINE = 264;
+const HARDCODED_BASELINE = 310;
 
 // Deliberately wide. The first version of this allowed only letters and commas inside a
 // string, so anything with a full stop, an apostrophe entity, an arrow or an em dash was
@@ -209,8 +209,27 @@ const HARDCODED_BASELINE = 264;
 // only became COUNTABLE because the `+` and the `/` were replaced by words, so the count
 // appeared to go up while the file got better. A count that misses a third of its subject
 // is not a ratchet, it is a reassurance.
-const JSX_TEXT = />\s*([A-Z][^<>{}\n]*?[a-z][^<>{}]*?)\s*</gs;
-const JSX_ATTR = /\b(title|placeholder|aria-label|label)=["']([A-Z][^"']{6,})["']/g;
+// Six patterns in four families, because the first two were half the subject. A count
+// that sees only part of what it counts gives false comfort: the narrow version reported
+// 264 when the figure was 349, and what it could not see mattered most — the ternary
+// fallbacks are error states and empty states, the text a reader meets when something
+// has already gone wrong.
+const HARDCODED = [
+  // Text between tags. Wide on purpose: an earlier version allowed only letters and
+  // commas inside a string, so a full stop, an apostrophe entity, an arrow or an em dash
+  // hid 125 of them from it.
+  ['jsx-text', />\s*([A-Z][^<>{}\n]*?[a-z][^<>{}]*?)\s*</gs],
+  ['attr', /\b(?:title|placeholder|aria-label|label|alt)=["']([A-Z][^"']{4,})["']/g],
+  ['confirm', /window\.confirm\(\s*[`'"]([^`'"]{10,})/g],
+  ['toast', /toast\(\s*[`'"]([A-Z][^`'"]{6,})/g],
+  ['throw', /throw new Error\(\s*[`'"]([A-Z][^`'"]{6,})/g],
+  // Both halves of a ternary, and an object property a reader sees. Counting only the
+  // `:` side missed the other one — `isFirstRun ? 'Create your vault' : 'Unlock vault'`
+  // came out as a single string.
+  ['ternary-else', /:\s*['"]([A-Z][a-z][^'"]{10,})['"]/g],
+  ['ternary-then', /\?\s*['"]([A-Z][a-z][^'"]{10,})['"]\s*:/g],
+  ['prop', /\b(?:label|message|hint|text|note)=?:\s*['"]([A-Z][a-z][^'"]{8,})['"]/g],
+];
 
 function hardcodedStrings() {
   const SRC = new URL('../apps/desktop/src/', import.meta.url);
@@ -219,13 +238,15 @@ function hardcodedStrings() {
     for (const entry of readdirSync(new URL(rel, SRC), { withFileTypes: true })) {
       const next = `${rel}${entry.name}`;
       if (entry.isDirectory()) walk(`${next}/`);
-      else if (entry.name.endsWith('.tsx')) {
+      else if (/\.tsx?$/.test(entry.name)) {
         const text = readFileSync(new URL(next, SRC), 'utf8');
-        for (const m of text.matchAll(JSX_TEXT)) {
-          const s = m[1].replace(/\s+/g, ' ').trim();
-          if (s.split(' ').length >= 2 && s !== s.toUpperCase()) found.push(`${next}: ${s}`);
+        for (const [kind, rx] of HARDCODED) {
+          for (const m of text.matchAll(rx)) {
+            const s = m[1].replace(/\s+/g, ' ').trim();
+            if (kind === 'jsx-text' && (s.split(' ').length < 2 || s === s.toUpperCase())) continue;
+            found.push(`${next}: [${kind}] ${s}`);
+          }
         }
-        for (const m of text.matchAll(JSX_ATTR)) found.push(`${next}: ${m[1]}=${m[2]}`);
       }
     }
   };

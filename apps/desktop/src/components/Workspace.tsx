@@ -716,7 +716,7 @@ export function Workspace({
           ? error
           : error instanceof Error
             ? error.message
-            : 'Failed to connect';
+            : t('ws.errConnect');
 
       // Strict-mode host-key rejection ("Disconnected"): the backend also emits
       // ssh:host-key-unknown, which opens the confirmation modal — don't also toast.
@@ -730,7 +730,7 @@ export function Workspace({
 
         // Add action button to open edit form
         setToastAction({
-          label: 'Edit Configuration',
+          label: t('ws.editConfig'),
           onClick: () => handleEditConnection(connection),
         });
       } else {
@@ -764,7 +764,7 @@ export function Workspace({
           ? error
           : error instanceof Error
             ? error.message
-            : 'Failed to connect';
+            : t('ws.errConnect');
       if (msg.includes('Disconnect')) return; // host-key modal handles it
       setToastType('error');
       setToastMessage(msg);
@@ -835,7 +835,7 @@ export function Workspace({
     } catch (error) {
       console.error('[Workspace] Failed to create local terminal:', error);
       // Show error message with toast
-      const errorMsg = typeof error === 'string' ? error : 'Failed to create local terminal';
+      const errorMsg = typeof error === 'string' ? error : t('ws.errLocalTerm');
       setToastType('error');
       setToastMessage(errorMsg);
     }
@@ -947,7 +947,7 @@ export function Workspace({
       );
     } catch (error) {
       console.error('[Workspace] Failed to split pane:', error);
-      const errorMsg = typeof error === 'string' ? error : 'Failed to create terminal for split';
+      const errorMsg = typeof error === 'string' ? error : t('ws.errSplitTerm');
       setToastType('error');
       setToastMessage(errorMsg);
     }
@@ -1438,7 +1438,7 @@ export function Workspace({
             <button
               onClick={handleCloseCollection}
               className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-              aria-label="Close collection"
+              aria-label={t('ws.closeCollection')}
             >
               <svg
                 className="h-3.5 w-3.5"
@@ -1513,7 +1513,7 @@ export function Workspace({
           <img src={riteLandscape} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
         {instanceName && (
-          <span className="m-chip" title="Server instance">
+          <span className="m-chip" title={t('ws.serverInstance')}>
             <span className="m-dot" />
             {instanceName}
           </span>
@@ -1545,7 +1545,7 @@ export function Workspace({
               setShowDefaultShellDropdown(!showDefaultShellDropdown);
             }}
             className="m-btn m-btn-sm"
-            title="Select default shell"
+            title={t('ws.selectShell')}
           >
             <span>{shells.find((s) => s.path === settings.defaultShell)?.icon || '🐚'}</span>
             <span className="hidden text-muted-foreground md:inline">
@@ -1561,7 +1561,7 @@ export function Workspace({
           <button
             onClick={toggleFocus}
             className={`m-btn m-btn-sm${focusActive ? ' text-primary' : ''}`}
-            title="Focus mode (F11) — hide the toolbar, terminals fill the screen"
+            title={t('ws.focusMode')}
             aria-pressed={focusActive}
           >
             <svg
@@ -1587,10 +1587,10 @@ export function Workspace({
           <button
             onClick={() => setShowQuickSSH(true)}
             className="m-btn m-btn-sm"
-            title="Quick SSH Connect"
+            title={t('ws.quickSshConnect')}
           >
             <IconBolt className="h-4 w-4" />
-            <span className="hidden md:inline">Quick SSH</span>
+            <span className="hidden md:inline">{t('ws.quickSsh')}</span>
           </button>
         )}
 
@@ -1618,10 +1618,12 @@ export function Workspace({
             <button
               onClick={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
               className="m-btn m-btn-primary m-btn-sm"
-              title={isFirstRun ? 'Create your local vault' : 'Unlock vault'}
+              title={isFirstRun ? t('ws.createVaultTitle') : t('ws.unlockVaultTitle')}
             >
               <IconLock className="h-4 w-4" />
-              <span className="hidden md:inline">{isFirstRun ? 'Create vault' : 'Unlock'}</span>
+              <span className="hidden md:inline">
+                {isFirstRun ? t('ws.createVault') : 'Unlock'}
+              </span>
             </button>
           </>
         ) : identity ? (
@@ -1684,7 +1686,7 @@ export function Workspace({
                   onClick={() => setIsSidebarOpen(false)}
                   className="m-btn m-btn-ghost"
                   style={{ padding: '4px' }}
-                  title="Hide sidebar"
+                  title={t('ws.hideSidebar')}
                   aria-label="Hide sidebar"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1700,8 +1702,8 @@ export function Workspace({
               <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
                 <p className="text-sm text-muted-foreground">
                   {isFirstRun && lockedVaults.length === 0
-                    ? 'No vault yet. Create one to save connections — the local terminal and Quick SSH work without it.'
-                    : 'Open a vault to see your saved connections. The local terminal and Quick SSH work without one.'}
+                    ? t('ws.noVaultYet')
+                    : t('ws.openVaultHint')}
                 </p>
                 <button
                   onClick={() => {
@@ -1712,8 +1714,8 @@ export function Workspace({
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
                   {isFirstRun && lockedVaults.length === 0
-                    ? 'Create local vault'
-                    : 'Open local vault'}
+                    ? t('ws.createLocalVault')
+                    : t('ws.openLocalVault')}
                 </button>
               </div>
             </div>
@@ -1737,7 +1739,7 @@ export function Workspace({
                 <input
                   value={sidebarQuery}
                   onChange={(e) => setSidebarQuery(e.target.value)}
-                  placeholder="Search connections…"
+                  placeholder={t('ws.searchConnections')}
                 />
               </div>
 
@@ -1748,7 +1750,7 @@ export function Workspace({
                   <button
                     onClick={() => setShowNewMenu((v) => !v)}
                     aria-label="Add to library"
-                    title="Add to library"
+                    title={t('ws.addToLibrary')}
                     className="m-btn m-btn-ghost"
                     style={{ padding: '4px' }}
                   >
@@ -1790,7 +1792,7 @@ export function Workspace({
                                 d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
                               />
                             </svg>
-                            New folder…
+                            {t('ws.newFolder')}
                           </button>
                           <button
                             onClick={() => {
@@ -1816,7 +1818,7 @@ export function Workspace({
                                 d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"
                               />
                             </svg>
-                            New collection…
+                            {t('ws.newCollection')}
                           </button>
                         </>
                       </div>
@@ -1826,7 +1828,7 @@ export function Workspace({
                     onClick={() => setIsSidebarOpen(false)}
                     className="m-btn m-btn-ghost"
                     style={{ padding: '4px' }}
-                    title="Hide sidebar"
+                    title={t('ws.hideSidebar')}
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path
@@ -1951,7 +1953,7 @@ export function Workspace({
         {!isSidebarOpen && (
           <button
             onClick={() => setIsSidebarOpen(true)}
-            title="Show sidebar"
+            title={t('ws.showSidebar')}
             aria-label="Show sidebar"
             className="absolute left-0 top-1/2 z-30 -translate-y-1/2 rounded-r-md border border-l-0 border-border bg-card p-2 shadow-lg transition-colors hover:bg-muted"
           >
@@ -2260,7 +2262,7 @@ export function Workspace({
           machineName={moveMachineTarget.name}
           currentFolder={moveMachineTarget.folder ?? ''}
           folderPaths={folderPathsForMachine(moveMachineTarget)}
-          rootLabel={moveMachineTarget.collectionId ? 'Collection root' : 'No folder (root)'}
+          rootLabel={moveMachineTarget.collectionId ? t('ws.collectionRoot') : t('ws.noFolder')}
           onClose={() => setMoveMachineTarget(null)}
           onPick={async (folder) => {
             await conns.update({ id: moveMachineTarget.id, folder });
@@ -2280,10 +2282,7 @@ export function Workspace({
             <h3 className="mb-2 text-lg font-semibold">
               Delete folder “{deleteFolderTarget.name}”?
             </h3>
-            <p className="mb-4 text-sm text-muted-foreground">
-              This only removes the folder from your view — the collections in it move back to the
-              root. Nothing is deleted or unshared.
-            </p>
+            <p className="mb-4 text-sm text-muted-foreground">{t('ws.removeFolderWhy')}</p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeleteFolderTarget(null)}
@@ -2518,10 +2517,8 @@ export function Workspace({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            <h2 className="text-lg font-semibold">Open a vault</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Pick a local vault, or create/open one.
-            </p>
+            <h2 className="text-lg font-semibold">{t('ws.openAVault')}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t('ws.openAVaultHint')}</p>
             <div className="mt-4 flex flex-col gap-2">
               {lockedVaults.map((v) => {
                 const isThisWindow = currentVaultPath != null && v.path === currentVaultPath;
@@ -2567,7 +2564,7 @@ export function Workspace({
                           setShowVaultPicker(false);
                           requestOpenContext({ kind: 'local', path: v.path });
                         }}
-                        title="Open in new window"
+                        title={t('ws.openInNewWindow')}
                         aria-label={`Open ${v.label} in a new window`}
                         className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
                       >
@@ -2588,7 +2585,7 @@ export function Workspace({
                     )}
                     <button
                       onClick={() => setRemoveVault(v)}
-                      title="Remove from list"
+                      title={t('ws.removeFromList')}
                       aria-label={`Remove ${v.label}`}
                       className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
                     >
@@ -2616,7 +2613,7 @@ export function Workspace({
                 }}
                 className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm text-muted-foreground hover:border-primary hover:text-foreground"
               >
-                <span aria-hidden>＋</span> New local vault…
+                <span aria-hidden>＋</span> {t('ws.newLocalVault')}
               </button>
               <button
                 onClick={() => {
@@ -2625,7 +2622,7 @@ export function Workspace({
                 }}
                 className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm text-muted-foreground hover:border-primary hover:text-foreground"
               >
-                <span aria-hidden>📂</span> Open a vault file…
+                <span aria-hidden>📂</span> {t('ws.openVaultFile')}
               </button>
             </div>
           </div>
@@ -2666,11 +2663,8 @@ export function Workspace({
       {abandonNewVault && pendingNewVaultPath && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl">
-            <h3 className="font-semibold">Abandon this new vault?</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              You haven’t set a master password, so this vault isn’t saved. Its file was just
-              created at:
-            </p>
+            <h3 className="font-semibold">{t('ws.abandonTitle')}</h3>
+            <p className="mt-2 text-sm text-muted-foreground">{t('ws.abandonWhy')}</p>
             <p className="mt-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs">
               {pendingNewVaultPath}
             </p>
@@ -2682,10 +2676,8 @@ export function Workspace({
                 className="mt-0.5 h-4 w-4 flex-none accent-red-500"
               />
               <span className="min-w-0 text-sm">
-                <span className="font-medium text-red-500">Delete the file</span>
-                <span className="block text-xs text-muted-foreground">
-                  Removes the empty vault file from your machine.
-                </span>
+                <span className="font-medium text-red-500">{t('ws.deleteFile')}</span>
+                <span className="block text-xs text-muted-foreground">{t('ws.deleteFileWhy')}</span>
               </span>
             </label>
             <div className="mt-4 flex justify-end gap-2">
@@ -2693,7 +2685,7 @@ export function Workspace({
                 onClick={() => setAbandonNewVault(false)}
                 className="rounded-md px-3 py-1.5 text-sm hover:bg-muted"
               >
-                Keep setting up
+                {t('ws.keepSettingUp')}
               </button>
               <button
                 onClick={() => {
@@ -2707,7 +2699,7 @@ export function Workspace({
                 }}
                 className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600"
               >
-                {abandonDeleteFile ? 'Abandon & delete file' : 'Abandon & keep file'}
+                {abandonDeleteFile ? t('ws.abandonDelete') : t('ws.abandonKeep')}
               </button>
             </div>
           </div>
@@ -2727,7 +2719,7 @@ export function Workspace({
         />
       )}
 
-      {/* Default Shell Dropdown (Portal) */}
+      {/* {t('ws.defaultShell')} Dropdown (Portal) */}
       {showDefaultShellDropdown &&
         createPortal(
           <>
@@ -2744,10 +2736,8 @@ export function Workspace({
               }}
             >
               <div className="p-2 border-b border-border">
-                <p className="text-xs font-medium text-muted-foreground">Default Shell</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">
-                  Used when clicking "+ Local Terminal"
-                </p>
+                <p className="text-xs font-medium text-muted-foreground">{t('ws.defaultShell')}</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">{t('ws.defaultShellWhy')}</p>
               </div>
               {shells.map((shell, index) => {
                 const isInstalled = installedShells.includes(shell.path);
@@ -2784,7 +2774,7 @@ export function Workspace({
                         <span className="font-medium">{shell.name}</span>
                         {!isInstalled && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 border border-red-500/30">
-                            Not installed
+                            {t('ws.notInstalled')}
                           </span>
                         )}
                       </div>

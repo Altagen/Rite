@@ -236,7 +236,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const changeMaster = async () => {
     if (pwBusy) return;
     if (pwNew !== pwConfirm) {
-      setPwMsg({ kind: 'err', text: 'The new passwords don’t match.' });
+      setPwMsg({ kind: 'err', text: t('settings.pwNoMatch') });
       return;
     }
     setPwBusy(true);
@@ -246,20 +246,20 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
       setPwCurrent('');
       setPwNew('');
       setPwConfirm('');
-      setPwMsg({ kind: 'ok', text: 'Master password changed.' });
+      setPwMsg({ kind: 'ok', text: t('settings.pwChanged') });
     } catch (e) {
       const text =
         e instanceof RiteHttpError && e.status === 401
-          ? 'The current password is incorrect.'
+          ? t('settings.pwWrongCurrent')
           : e instanceof RiteHttpError && e.status === 400
-            ? 'The new password is too weak.'
-            : 'Could not change the master password.';
+            ? t('settings.pwTooWeak')
+            : t('settings.pwFailed');
       setPwMsg({ kind: 'err', text });
     } finally {
       setPwBusy(false);
     }
   };
-  // Reset vault (local vault only): wipe the master password + all connections, then reboot to
+  // {t('settings.resetVault')} (local vault only): wipe the master password + all connections, then reboot to
   // first-run. Guarded by typing the confirmation phrase (mirrors the unlock screen).
   const [resetText, setResetText] = useState('');
   const resetVault = async () => {
@@ -268,7 +268,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
       await Backend.Auth.resetDatabase();
       window.location.reload();
     } catch (e) {
-      console.error('Reset vault failed:', e);
+      console.error('[Settings] vault reset failed:', e);
     }
   };
 
@@ -405,20 +405,20 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
           <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
             {/* Appearance */}
             <section hidden={shown !== 'appearance'} className="pb-2">
-              <SettingsHead title="Appearance" />
+              <SettingsHead title={t('settings.appearance')} />
               <SettingsRow
-                title="Terminal theme"
+                title={t('settings.terminalTheme')}
                 hint="Applies live; translucency shows on terminals opened afterwards."
               >
                 <SettingsControl>
                   <Dropdown<TerminalThemeName>
                     value={terminalTheme}
-                    label="Terminal theme"
+                    label={t('settings.terminalTheme')}
                     testId="terminal-theme"
                     options={[
-                      { value: 'dark', label: 'Dark (default)' },
+                      { value: 'dark', label: t('settings.themeDark') },
                       { value: 'grey', label: 'Grey' },
-                      { value: 'translucent', label: 'Translucent' },
+                      { value: 'translucent', label: t('settings.themeTranslucent') },
                     ]}
                     onChange={(name) => {
                       setTerminalTheme(name);
@@ -428,7 +428,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 </SettingsControl>
               </SettingsRow>
               <SettingsToggle
-                title="Show member count on collections"
+                title={t('settings.showMemberCount')}
                 hint="The number next to shared collections (the icon stays)"
                 checked={showMemberCount}
                 onChange={setShowMemberCount}
@@ -437,34 +437,35 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
             {/* Machine status (ADR 0017) — a client-side narrowing of the server's health policy. */}
             <section hidden={shown !== 'machines'} className="pb-2">
-              <SettingsHead title="Machine status" />
+              <SettingsHead title={t('settings.machineStatus')} />
               <SettingsRow
-                title="Health-check"
+                title={t('settings.healthCheck')}
                 hint={
                   <>
-                    <span className="text-amber-500">Governed by your server</span> — you can only
-                    narrow it. Passive “last seen” costs no network traffic; active probing does.
+                    <span className="text-amber-500">{t('settings.governedByServer')}</span> — you
+                    can only narrow it. Passive “last seen” costs no network traffic; active probing
+                    does.
                   </>
                 }
               >
                 <SettingsControl>
                   <Dropdown<HealthPref>
                     value={healthPref}
-                    label="Health-check"
+                    label={t('settings.healthCheck')}
                     testId="health-pref"
                     options={[
-                      { value: 'inherit', label: 'Follow the server policy' },
-                      { value: 'off', label: 'Off — no status' },
-                      { value: 'passive', label: 'Passive — last seen only' },
-                      { value: 'on-demand', label: 'On-demand checks' },
-                      { value: 'full', label: 'Background polling' },
+                      { value: 'inherit', label: t('settings.hcFollow') },
+                      { value: 'off', label: t('settings.hcOff') },
+                      { value: 'passive', label: t('settings.hcPassive') },
+                      { value: 'on-demand', label: t('settings.hcOnDemand') },
+                      { value: 'full', label: t('settings.hcBackground') },
                     ]}
                     onChange={setHealthPref}
                   />
                 </SettingsControl>
               </SettingsRow>
               <SettingsToggle
-                title="Container and service cards on the machine dashboard"
+                title={t('settings.dashCards')}
                 hint={
                   <>
                     These two cards run a command on the host each time they refresh. Turning them
@@ -473,10 +474,8 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     {probesRefusedByServer && (
                       <>
                         {' '}
-                        <span className="text-amber-500">
-                          Your server turns them off for this client
-                        </span>
-                        , so this setting changes nothing here.
+                        <span className="text-amber-500">{t('settings.serverTurnsOff')}</span>, so
+                        this setting changes nothing here.
                       </>
                     )}
                   </>
@@ -880,7 +879,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
             {isLocalContext && (
               <section hidden={shown !== 'password'} className="pb-2">
                 <SettingsHead
-                  title="Master password"
+                  title={t('settings.masterPassword')}
                   hint="It encrypts every connection in this vault, so changing it re-keys them all."
                 />
                 <div className="max-w-sm space-y-2 pt-1">
@@ -888,7 +887,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     type="password"
                     value={pwCurrent}
                     onChange={(e) => setPwCurrent(e.target.value)}
-                    placeholder="Current password"
+                    placeholder={t('settings.currentPassword')}
                     autoComplete="current-password"
                     className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
                   />
@@ -896,7 +895,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     type="password"
                     value={pwNew}
                     onChange={(e) => setPwNew(e.target.value)}
-                    placeholder="New password"
+                    placeholder={t('settings.newPassword')}
                     autoComplete="new-password"
                     className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
                   />
@@ -904,7 +903,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     type="password"
                     value={pwConfirm}
                     onChange={(e) => setPwConfirm(e.target.value)}
-                    placeholder="Confirm new password"
+                    placeholder={t('settings.confirmNewPassword')}
                     autoComplete="new-password"
                     className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
                   />
@@ -921,31 +920,30 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     disabled={pwBusy || !pwCurrent || !pwNew || !pwConfirm}
                     className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                   >
-                    {pwBusy ? 'Changing…' : 'Change password'}
+                    {pwBusy ? 'Changing…' : t('settings.changePassword')}
                   </button>
                 </div>
               </section>
             )}
 
-            {/* Danger zone — reset this local vault (wipe + reboot to first-run). Local only. */}
+            {/* {t('settings.dangerZone')} — reset this local vault (wipe + reboot to first-run). Local only. */}
             {isLocalContext && (
               <section hidden={shown !== 'danger'} className="pb-2">
-                <h3 className="text-lg font-semibold text-red-500">Danger zone</h3>
+                <h3 className="text-lg font-semibold text-red-500">{t('settings.dangerZone')}</h3>
                 <p className="mb-3 mt-1 text-xs leading-relaxed text-muted-foreground">
-                  One action, and it cannot be undone.
+                  {t('settings.dangerZoneWhy')}
                 </p>
                 <div className="rounded-md border border-red-500/30 bg-red-500/5 p-4">
-                  <div className="font-medium">Reset vault</div>
+                  <div className="font-medium">{t('settings.resetVault')}</div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Erase the master password and all connections on this device. This is
-                    irreversible.
+                    {t('settings.resetVaultWhy')}
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <input
                       value={resetText}
                       onChange={(e) => setResetText(e.target.value)}
-                      placeholder="Type DELETE ALL DATA"
-                      aria-label="Reset confirmation"
+                      placeholder={t('settings.typeDelete')}
+                      aria-label={t('settings.resetConfirmLabel')}
                       className="w-52 rounded border border-input bg-background px-2 py-1.5 text-sm"
                     />
                     <button
@@ -954,7 +952,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                       disabled={resetText !== 'DELETE ALL DATA'}
                       className="rounded-md border border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-500/10 disabled:opacity-40"
                     >
-                      Reset vault
+                      {t('settings.resetVault')}
                     </button>
                   </div>
                 </div>
@@ -963,9 +961,9 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
             {/* SSH connections */}
             <section hidden={shown !== 'ssh'} className="pb-2">
-              <SettingsHead title="SSH connections" />
+              <SettingsHead title={t('settings.sshConnections')} />
               <SettingsToggle
-                title="Auto-reconnect lost SSH connections"
+                title={t('settings.autoReconnect')}
                 hint={
                   <>
                     Off by default. When on, a dropped session reconnects automatically — a new
@@ -982,9 +980,9 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
             {/* Focus mode (client/native only) */}
             {native && (
               <section hidden={shown !== 'focus'} className="pb-2">
-                <SettingsHead title="Focus mode" />
+                <SettingsHead title={t('settings.focusMode')} />
                 <SettingsToggle
-                  title="Auto-collapse sidebar in focus mode"
+                  title={t('settings.autoCollapse')}
                   hint="When you enter focus mode (F11), also hide the library sidebar for a terminals-only view."
                   checked={focusAutoCollapse}
                   onChange={setFocusAutoCollapse}
