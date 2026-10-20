@@ -142,8 +142,8 @@ check('no locale carries a label for a command that no longer exists', () => {
  * A ratchet, not a gate: user-facing text written straight into a component.
  *
  * The checks above hold the two locales to each other, which says nothing about text
- * that never reached a locale at all — and 264 strings across 41 components never did.
- * The admin console alone holds 46. Translating them is a roadmap item and not a
+ * that never reached a locale at all — and 391 strings across 45 components never did.
+ * The instance panel alone holds 73. Translating them is a roadmap item and not a
  * release blocker; what IS a blocker is the count going UP, because that is how it got
  * here: each addition looked consistent with the file it landed in.
  *
@@ -159,8 +159,8 @@ check('no locale carries a label for a command that no longer exists', () => {
  * checks above could not see it: they compare the locales to each other, and a key that
  * exists in neither is consistent.
  *
- * This matters most for the migration the roadmap describes: moving 264 hardcoded
- * strings into the locales is 264 chances to ship a visible key. With this, it is zero.
+ * This matters most for the migration the roadmap describes: moving 391 hardcoded
+ * strings into the locales is 391 chances to ship a visible key. With this, it is zero.
  */
 function translationCalls() {
   const SRC = new URL('../apps/desktop/src/', import.meta.url);
@@ -200,9 +200,16 @@ check('every key the code asks for exists in both locales', () => {
   );
 });
 
-const HARDCODED_BASELINE = 264;
+const HARDCODED_BASELINE = 391;
 
-const JSX_TEXT = />\s*([A-Z][A-Za-z,'’-]*(?:\s+[A-Za-z,'’-]+){1,})\s*</g;
+// Deliberately wide. The first version of this allowed only letters and commas inside a
+// string, so anything with a full stop, an apostrophe entity, an arrow or an em dash was
+// invisible to it — 125 of them, which it reported as 264 instead of 391. Worse, the two
+// strings fixed in the same commit ("Policies + oversight", "Grant name / roster access")
+// only became COUNTABLE because the `+` and the `/` were replaced by words, so the count
+// appeared to go up while the file got better. A count that misses a third of its subject
+// is not a ratchet, it is a reassurance.
+const JSX_TEXT = />\s*([A-Z][^<>{}\n]*?[a-z][^<>{}]*?)\s*</gs;
 const JSX_ATTR = /\b(title|placeholder|aria-label|label)=["']([A-Z][^"']{6,})["']/g;
 
 function hardcodedStrings() {
@@ -215,8 +222,8 @@ function hardcodedStrings() {
       else if (entry.name.endsWith('.tsx')) {
         const text = readFileSync(new URL(next, SRC), 'utf8');
         for (const m of text.matchAll(JSX_TEXT)) {
-          const s = m[1].trim();
-          if (s.split(/\s+/).length >= 2 && s !== s.toUpperCase()) found.push(`${next}: ${s}`);
+          const s = m[1].replace(/\s+/g, ' ').trim();
+          if (s.split(' ').length >= 2 && s !== s.toUpperCase()) found.push(`${next}: ${s}`);
         }
         for (const m of text.matchAll(JSX_ATTR)) found.push(`${next}: ${m[1]}=${m[2]}`);
       }

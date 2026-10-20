@@ -113,7 +113,7 @@ styles have somewhere to live.
 
 ### 🌍 Text that never reached the locales (Priority: HIGH)
 
-**264 user-facing strings across 41 components are written straight into the JSX.**
+**391 user-facing strings across 45 components are written straight into the JSX.**
 The locale files hold the rest and are checked against each other, which says nothing
 about text that never arrived — so a French reader meets English in those 41 places.
 
@@ -124,14 +124,14 @@ start, and it is where the count is worst.
 
 `e2e/i18n-check.mjs` ratchets this: the baseline is written down, a new hardcoded
 string fails the check, and lowering the count without lowering the constant fails it
-too. That is how 264 accumulated — each addition looked consistent with the file it
+too. That is how 391 accumulated — each addition looked consistent with the file it
 landed in.
 
-- [ ] Admin console — `InstanceSettingsPanel` 46, `AdminDashboard` 14,
-      `AdminUsersPanel` 13, `InvitationsPanel` 6
-- [ ] Library and workspace — `LibrarySidebar` 23, `Workspace` 21, `CollectionView` 11,
-      `Terminal` 11 (mostly `title=` tooltips), `TerminalManager` 9
-- [ ] Settings — `Settings.tsx` 23, the rows the 0.2.4 rewrite did not reach
+- [ ] Admin console — `InstanceSettingsPanel` 73, `AdminDashboard` 23,
+      `AdminUsersPanel` 14, `InvitationsPanel` 11
+- [ ] Library and workspace — `Workspace` 31, `LibrarySidebar` 29, `Hub` 16,
+      `CollectionView` 12, `Terminal` 11 (mostly `title=` tooltips)
+- [ ] Settings — `Settings.tsx` 26, the rows the 0.2.4 rewrite did not reach
 - [ ] The rest, and then lower the baseline to 0 and make the check a gate
 
 ### 🐛 Bug Fixes & Stability (Priority: HIGH)

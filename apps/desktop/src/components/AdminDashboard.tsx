@@ -606,10 +606,10 @@ function CollectionsGovernance() {
           const candidates = directory.filter((d) => !taken.has(d.id) && d.publicKey);
           return (
             <div className="mb-4 rounded-2xl border border-border bg-card p-4">
-              <div className="text-sm font-semibold">Grant name / roster access</div>
+              <div className="text-sm font-semibold">Grant access to the name and roster</div>
               <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
                 {canAdd
-                  ? 'Adds the user to the roster and lets them see the collection name. Machine access still needs a member to seal the item key.'
+                  ? 'Adds the user to the roster and lets them see the collection name.'
                   : 'Available once the collection is escrowed to the Admin group (created after the escrow, or re-keyed).'}
               </p>
               <div className="flex items-center gap-2">
@@ -659,7 +659,9 @@ function CollectionsGovernance() {
     <>
       <div className="mb-5">
         <h1 className="text-[22px] font-bold">Collection governance</h1>
-        <span className="text-[13px] text-muted-foreground">Policies + oversight, server-wide</span>
+        <span className="text-[13px] text-muted-foreground">
+          Policies and oversight, server-wide
+        </span>
       </div>
       <ZkBanner />
       <CollectionPolicyPanel />

@@ -112,9 +112,9 @@ export function InvitationsPanel() {
 
       <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3.5 text-[13px] text-foreground/80">
         <span>
-          A token grants <b>membership + role immediately</b> on redeem; access to a
-          collection&apos;s encrypted machines still follows the usual <b>member grant</b>. Tokens
-          are <b>single-use</b>, <b>hashed at rest</b>, and the full value is shown <b>once</b>.
+          Redeeming a token grants <b>membership and its role at once</b>. It does not grant a
+          collection&apos;s encrypted machines — those still need a <b>member grant</b>, as they
+          always do.
         </span>
       </div>
 
@@ -128,8 +128,7 @@ export function InvitationsPanel() {
         <div className="mb-4 rounded-2xl border border-dashed border-primary/50 bg-card p-4">
           <div className="mb-1 text-sm font-semibold">Copy this token now</div>
           <p className="mb-3 text-xs text-muted-foreground">
-            The server keeps only a hash — you won&apos;t be able to see it again. Share it
-            out-of-band.
+            You won&apos;t see it again. Share it out-of-band, not by email in clear.
           </p>
           <div className="flex items-center gap-2.5">
             <code className="min-w-0 flex-1 break-all rounded-md bg-input px-3 py-2 font-mono text-sm">
@@ -282,8 +281,8 @@ function GenerateDialog({
       >
         <h3 className="text-lg font-semibold">Generate an invitation token</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          The holder self-registers with this recipe already applied. You&apos;ll see the token
-          once.
+          The holder registers themselves, with the role and teams you pick below already applied.
+          The token is single-use and shown once — the server keeps only a hash.
         </p>
 
         {err && (
