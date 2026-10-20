@@ -96,6 +96,7 @@ function LibraryFolderNode({
   onDelete?: (id: string) => void;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const [showMenu, setShowMenu] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const hasAdd = !!(onNewSubfolder || onNewCollection);
@@ -119,8 +120,8 @@ function LibraryFolderNode({
                   e.stopPropagation();
                   setShowAdd((v) => !v);
                 }}
-                title="New here"
-                aria-label="New here"
+                title={t('lib.newHere')}
+                aria-label={t('lib.newHere')}
               >
                 <PlusIcon />
               </button>
@@ -143,7 +144,7 @@ function LibraryFolderNode({
                         }}
                       >
                         <IconFolder className="h-4 w-4 flex-none" />
-                        New sub-folder
+                        {t('lib.newSubFolder')}
                       </button>
                     )}
                     {onNewCollection && (
@@ -155,7 +156,7 @@ function LibraryFolderNode({
                         }}
                       >
                         <CollectionIcon color={null} />
-                        New collection here…
+                        {t('lib.newCollectionHere')}
                       </button>
                     )}
                   </div>
@@ -169,7 +170,7 @@ function LibraryFolderNode({
                 e.stopPropagation();
                 setShowMenu((v) => !v);
               }}
-              aria-label="Folder menu"
+              aria-label={t('lib.folderMenu')}
             >
               <MoreIcon />
             </button>
@@ -193,7 +194,7 @@ function LibraryFolderNode({
                     }}
                     className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-muted"
                   >
-                    Delete folder
+                    {t('lib.deleteFolder')}
                   </button>
                 </div>
               </>
@@ -272,6 +273,7 @@ function CollectionNode({
   onMove?: (id: string) => void;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const [showAdd, setShowAdd] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const showMemberCount = useDisplayPrefs((s) => s.showMemberCount);
@@ -313,8 +315,8 @@ function CollectionNode({
                   e.stopPropagation();
                   setShowAdd((v) => !v);
                 }}
-                title="Add to collection"
-                aria-label="Add to collection"
+                title={t('lib.addToCollection')}
+                aria-label={t('lib.addToCollection')}
               >
                 <PlusIcon />
               </button>
@@ -336,7 +338,7 @@ function CollectionNode({
                       }}
                     >
                       <IconPlay className="h-4 w-4 flex-none" />
-                      New machine here
+                      {t('lib.newMachineHere')}
                     </button>
                     {onNewFolder && (
                       <button
@@ -347,7 +349,7 @@ function CollectionNode({
                         }}
                       >
                         <IconFolder className="h-4 w-4 flex-none" />
-                        New folder
+                        {t('lib.newFolder')}
                       </button>
                     )}
                     {onImport && (
@@ -359,7 +361,7 @@ function CollectionNode({
                         }}
                       >
                         <IconImport className="h-4 w-4 flex-none" />
-                        Import from ~/.ssh/config…
+                        {t('lib.importSshConfig')}
                       </button>
                     )}
                   </div>
@@ -373,7 +375,7 @@ function CollectionNode({
                 e.stopPropagation();
                 setShowMenu((v) => !v);
               }}
-              aria-label="Collection menu"
+              aria-label={t('lib.collectionMenu')}
             >
               <MoreIcon />
             </button>
@@ -412,7 +414,7 @@ function CollectionNode({
                       }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                     >
-                      Members &amp; sharing…
+                      {t('lib.membersSharing')}
                     </button>
                   )}
                   {!isPersonal && onMove && (
@@ -424,7 +426,7 @@ function CollectionNode({
                       }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                     >
-                      Move to folder…
+                      {t('lib.moveToFolder')}
                     </button>
                   )}
                   {canManage && (
@@ -448,7 +450,7 @@ function CollectionNode({
                       }}
                       className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-muted"
                     >
-                      Delete collection
+                      {t('lib.deleteCollection')}
                     </button>
                   )}
                 </div>
@@ -566,7 +568,7 @@ function MachineRow({
     <div
       className={`m-tnode leaf select-none ${isSelected ? 'sel' : ''}`}
       style={{ paddingLeft: `${6 + depth * 15}px` }}
-      title="Click: dashboard · double-click: connect"
+      title={t('lib.machineHint')}
       onClick={onOpenMachine ?? onSelect}
       onDoubleClick={onConnect}
     >
@@ -585,9 +587,9 @@ function MachineRow({
               strokeWidth="2"
               strokeLinecap="round"
               className="flex-none text-muted-foreground opacity-75"
-              aria-label="Reached through a jump host"
+              aria-label={t('lib.viaJump')}
             >
-              <title>Reached through a jump host (ProxyJump)</title>
+              <title>{t('lib.viaJumpLong')}</title>
               <path d="M4 17c2.5-9 13.5-9 16 0" />
               <circle cx="4" cy="17" r="1.7" fill="currentColor" stroke="none" />
               <circle cx="20" cy="17" r="1.7" fill="currentColor" stroke="none" />
@@ -603,7 +605,7 @@ function MachineRow({
               strokeWidth="2"
               strokeLinecap="round"
               className="flex-none text-muted-foreground opacity-75"
-              aria-label="Has saved port forwards"
+              aria-label={t('lib.hasForwards')}
             >
               <title>
                 {connection.forwards!.length} saved port forward
@@ -625,7 +627,7 @@ function MachineRow({
             e.stopPropagation();
             onConnect();
           }}
-          aria-label="Connect"
+          aria-label={t('lib.connect')}
           title={t('connections.connect')}
         >
           <IconPlay className="h-3.5 w-3.5" />
@@ -646,7 +648,7 @@ function MachineRow({
               e.stopPropagation();
               onForward();
             }}
-            aria-label="Port forwarding"
+            aria-label={t('lib.portForwarding')}
             title={t('pf.title')}
           >
             <svg
@@ -667,7 +669,7 @@ function MachineRow({
               e.stopPropagation();
               onMove();
             }}
-            aria-label="Move to folder"
+            aria-label={t('lib.moveToFolderTitle')}
             title="Move to folder…"
           >
             <svg
@@ -690,7 +692,7 @@ function MachineRow({
             e.stopPropagation();
             onDelete();
           }}
-          aria-label="Delete"
+          aria-label={t('lib.delete')}
           title={t('connections.delete')}
         >
           <IconTrash className="h-3.5 w-3.5" />
@@ -730,6 +732,7 @@ function FolderNode({
   onDelete?: (path: string) => void;
   children: React.ReactNode;
 }) {
+  const { t } = useTranslation();
   const [showMenu, setShowMenu] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const hasMenu = !!(onRename || onDelete);
@@ -751,8 +754,8 @@ function FolderNode({
                     e.stopPropagation();
                     setShowAdd((v) => !v);
                   }}
-                  title="New here"
-                  aria-label="New here"
+                  title={t('lib.newHere')}
+                  aria-label={t('lib.newHere')}
                 >
                   <PlusIcon />
                 </button>
@@ -787,7 +790,7 @@ function FolderNode({
                           }}
                         >
                           <IconPlay className="h-4 w-4 flex-none" />
-                          New connection…
+                          {t('lib.newConnection')}
                         </button>
                       )}
                     </div>
@@ -802,7 +805,7 @@ function FolderNode({
                     e.stopPropagation();
                     setShowMenu((v) => !v);
                   }}
-                  aria-label="Folder menu"
+                  aria-label={t('lib.folderMenu')}
                 >
                   <MoreIcon />
                 </button>
@@ -1153,7 +1156,7 @@ export function LibrarySidebar({
         {personal.length === 0 && collectionNodes.length === 0 ? (
           <div className="px-3 py-8 text-center">
             <p className="text-sm text-muted-foreground">
-              {q ? 'No connections match your search.' : t('main.noConnections')}
+              {q ? t('lib.noMatch') : t('main.noConnections')}
             </p>
             {!q && (
               <p className="mt-1 text-xs text-muted-foreground">{t('main.noConnectionsHint')}</p>

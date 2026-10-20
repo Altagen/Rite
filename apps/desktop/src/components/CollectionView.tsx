@@ -225,8 +225,8 @@ export function CollectionView({
               onMove(c);
             }}
             className="rounded p-1 opacity-0 hover:bg-muted group-hover:opacity-100"
-            title="Move to folder…"
-            aria-label="Move to folder"
+            title={t('cview.moveToFolderMenu')}
+            aria-label={t('cview.moveToFolder')}
           >
             <svg
               className="h-4 w-4"
@@ -250,7 +250,7 @@ export function CollectionView({
           }}
           className="rounded p-1 opacity-0 hover:bg-muted group-hover:opacity-100"
           title={t('connections.edit')}
-          aria-label="Edit machine"
+          aria-label={t('cview.editMachine')}
         >
           <svg
             className="h-4 w-4"
@@ -273,7 +273,7 @@ export function CollectionView({
           }}
           className="rounded p-1 text-primary hover:bg-primary/10"
           title={t('connections.connect')}
-          aria-label="Connect"
+          aria-label={t('cview.connect')}
         >
           <PlayIcon />
         </button>
@@ -292,9 +292,9 @@ export function CollectionView({
             strokeWidth="2"
             strokeLinecap="round"
             className="flex-none opacity-75"
-            aria-label="Reached through a jump host"
+            aria-label={t('cview.viaJump')}
           >
-            <title>Reached through a jump host (ProxyJump)</title>
+            <title>{t('cview.viaJumpLong')}</title>
             <path d="M4 17c2.5-9 13.5-9 16 0" />
             <circle cx="4" cy="17" r="1.7" fill="currentColor" stroke="none" />
             <circle cx="20" cy="17" r="1.7" fill="currentColor" stroke="none" />
@@ -462,7 +462,7 @@ export function CollectionView({
             }
             disabled={checkingHere}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-60"
-            title="Check machine status now"
+            title={t('cview.checkNow')}
           >
             <svg
               className={`h-4 w-4 ${checkingHere ? 'animate-spin' : ''}`}
@@ -531,7 +531,7 @@ export function CollectionView({
           <button
             onClick={clearNotice}
             className="font-medium hover:underline"
-            aria-label="Dismiss"
+            aria-label={t('cview.dismiss')}
           >
             Dismiss
           </button>
@@ -568,13 +568,13 @@ export function CollectionView({
         >
           <option value="name">Name</option>
           <option value="host">Host</option>
-          <option value="lastUsed">Last used</option>
+          <option value="lastUsed">{t('cview.lastUsed')}</option>
         </select>
         <button
           onClick={() => setLayout('grid')}
           className={`rounded-md border border-border p-1.5 ${layout === 'grid' ? 'text-primary' : 'text-muted-foreground'}`}
           title="Grid"
-          aria-label="Grid view"
+          aria-label={t('cview.gridView')}
         >
           <svg
             className="h-4 w-4"
@@ -593,7 +593,7 @@ export function CollectionView({
           onClick={() => setLayout('list')}
           className={`rounded-md border border-border p-1.5 ${layout === 'list' ? 'text-primary' : 'text-muted-foreground'}`}
           title="List"
-          aria-label="List view"
+          aria-label={t('cview.listView')}
         >
           <svg
             className="h-4 w-4"
@@ -614,7 +614,7 @@ export function CollectionView({
           <button
             onClick={onImport}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-            title="Import from SSH config"
+            title={t('cview.importSsh')}
           >
             <svg
               className="h-4 w-4"
@@ -690,7 +690,7 @@ export function CollectionView({
           <>
             {breadcrumb()}
             {subfolders.length === 0 && here.length === 0 ? (
-              emptyNote(cur ? 'This folder is empty.' : 'No machines in this collection yet.')
+              emptyNote(cur ? t('cview.emptyFolder') : t('cview.noMachines'))
             ) : (
               <>
                 {subfolders.length > 0 && (

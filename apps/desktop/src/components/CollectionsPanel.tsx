@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import { Backend, type UserCollection } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import { unwrapCollectionKeys, decryptCollectionField } from '../utils/collectionCrypto';
@@ -32,6 +33,7 @@ const COLLECTION_COLORS = [
 const DEFAULT_COLOR = '#94a3b8';
 
 export function CollectionsPanel() {
+  const { t } = useTranslation();
   const { publicKey, privateKey } = useServerSession();
   const [collections, setCollections] = useState<UserCollection[]>([]);
   const [headers, setHeaders] = useState<Record<string, CollectionHeader>>({});
@@ -128,7 +130,7 @@ export function CollectionsPanel() {
       try {
         await fn();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Action failed');
+        setError(err instanceof Error ? err.message : t('coll.errAction'));
       } finally {
         setBusy(false);
       }
@@ -164,7 +166,7 @@ export function CollectionsPanel() {
       <aside className="flex w-[280px] flex-none flex-col overflow-y-auto border-r border-border bg-input">
         <div className="flex items-center justify-between px-3.5 pb-2 pt-3">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            My collections
+            {t('coll.mine')}
           </span>
           <button
             onClick={() => setShowNew(true)}
@@ -241,7 +243,7 @@ export function CollectionsPanel() {
           )}
           {!selected || !header ? (
             <p className="rounded-2xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">
-              No collections yet. Create one to share machines with your team.
+              {t('coll.none')}
             </p>
           ) : (
             <>
@@ -261,9 +263,7 @@ export function CollectionsPanel() {
                 )}
               </div>
               <p className="mb-5 text-[13px] text-muted-foreground">
-                {isPersonal
-                  ? 'Your private space — only you. It can’t be shared or deleted; it always exists.'
-                  : 'Machines live in the workspace — open this collection from the library sidebar to manage them.'}
+                {isPersonal ? t('coll.personalSpace') : t('coll.machinesElsewhere')}
               </p>
 
               {/* Colour (writers only) */}
@@ -295,9 +295,7 @@ export function CollectionsPanel() {
                   <div>
                     <div className="text-sm font-semibold">Rename</div>
                     <div className="text-xs text-muted-foreground">
-                      {isPersonal
-                        ? 'Label your personal space.'
-                        : 'Shared — every member sees this name.'}
+                      {isPersonal ? t('coll.labelPersonal') : t('coll.sharedName')}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -322,7 +320,7 @@ export function CollectionsPanel() {
               {!isPersonal && (
                 <div className="mb-4 flex items-center justify-between rounded-2xl border border-border bg-card p-4">
                   <div>
-                    <div className="text-sm font-semibold">Members &amp; sharing</div>
+                    <div className="text-sm font-semibold">{t('coll.membersSharing')}</div>
                     <div className="text-xs text-muted-foreground">
                       {memberCounts[selected.id] ?? '·'} member
                       {memberCounts[selected.id] === 1 ? '' : 's'} ·{' '}
@@ -333,7 +331,7 @@ export function CollectionsPanel() {
                     onClick={() => setManageMembers(true)}
                     className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-secondary"
                   >
-                    {canManage ? 'Manage members' : 'View members'}
+                    {canManage ? t('coll.manageMembers') : t('coll.viewMembers')}
                   </button>
                 </div>
               )}
@@ -341,11 +339,8 @@ export function CollectionsPanel() {
               {/* Offer to a team (discovery) — owner only. The label is NOT encrypted. */}
               {canManage && (
                 <div className="mb-4 rounded-2xl border border-border bg-card p-4">
-                  <div className="text-sm font-semibold">Offer to a team</div>
-                  <div className="mb-3 text-xs text-muted-foreground">
-                    List this collection to a team so its members can discover it and request
-                    access. They still can&apos;t open it until you grant them.
-                  </div>
+                  <div className="text-sm font-semibold">{t('coll.offerTeam')}</div>
+                  <div className="mb-3 text-xs text-muted-foreground">{t('coll.offerWhy')}</div>
                   <div className="flex flex-wrap items-center gap-2">
                     <select
                       value={offerTeam}
@@ -363,7 +358,7 @@ export function CollectionsPanel() {
                     <input
                       value={offerLabel}
                       onChange={(e) => setOfferLabel(e.target.value)}
-                      placeholder="Discovery label (shown to the team)"
+                      placeholder={t('coll.discoveryLabel')}
                       disabled={busy || !offerTeam}
                       className="min-w-[200px] flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
                     />
@@ -378,9 +373,9 @@ export function CollectionsPanel() {
                   <div className="mt-2 flex items-start gap-2 text-xs text-amber-600">
                     <span>⚠</span>
                     <span>
-                      This label is <b>not encrypted</b> — visible to the team and the server so
-                      people can find it. Keep it non-sensitive; the collection&apos;s real name and
-                      its machines stay end-to-end encrypted.
+                      {t('coll.thisLabelIs')} <b>not encrypted</b> — visible to the team and the
+                      server so people can find it. Keep it non-sensitive; the collection&apos;s
+                      real name and its machines stay end-to-end encrypted.
                     </span>
                   </div>
                 </div>
@@ -390,10 +385,8 @@ export function CollectionsPanel() {
               {canManage && (
                 <div className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3.5">
                   <div>
-                    <div className="font-semibold text-red-500">Delete collection</div>
-                    <div className="text-xs text-muted-foreground">
-                      Removes it and its machines for every member. This can’t be undone.
-                    </div>
+                    <div className="font-semibold text-red-500">{t('coll.deleteCollection')}</div>
+                    <div className="text-xs text-muted-foreground">{t('coll.deleteWhy')}</div>
                   </div>
                   <button
                     onClick={() => setDeleteTarget({ id: selected.id, name: header.name })}
@@ -435,10 +428,7 @@ export function CollectionsPanel() {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-2 text-lg font-semibold">Delete “{deleteTarget.name}”?</h3>
-            <p className="mb-4 text-sm text-muted-foreground">
-              This permanently deletes the collection and its machines for everyone. Members lose
-              access. This cannot be undone.
-            </p>
+            <p className="mb-4 text-sm text-muted-foreground">{t('coll.deleteConfirm')}</p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeleteTarget(null)}
