@@ -152,21 +152,21 @@ export function TeamsDashboard() {
             {t('teams.mine')}
           </div>
           <div className="flex-1 px-2 pb-3">
-            {teams.map((t) => (
+            {teams.map((team) => (
               <button
-                key={t.id}
-                onClick={() => setSelectedId(t.id)}
+                key={team.id}
+                onClick={() => setSelectedId(team.id)}
                 className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-sm transition ${
-                  selectedId === t.id
+                  selectedId === team.id
                     ? 'border-primary/30 bg-primary/[0.13]'
                     : 'border-transparent hover:bg-card'
                 }`}
               >
                 <IconUsers className="h-4 w-4 flex-none text-primary" />
-                <span className="min-w-0 flex-1 truncate font-medium">{t.name}</span>
-                {t.role === 'admin' && (
+                <span className="min-w-0 flex-1 truncate font-medium">{team.name}</span>
+                {team.role === 'admin' && (
                   <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
-                    Manager
+                    {t('teams.roleManager')}
                   </span>
                 )}
               </button>
@@ -257,11 +257,11 @@ export function TeamsDashboard() {
                               onClick={() => navigate('/collections')}
                               className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-secondary"
                             >
-                              Open
+                              {t('teams.open')}
                             </button>
                           ) : pending ? (
                             <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold uppercase text-amber-600">
-                              Requested
+                              {t('teams.requested')}
                             </span>
                           ) : (
                             <button
@@ -281,10 +281,7 @@ export function TeamsDashboard() {
                 <div className="flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3 text-xs text-foreground/80">
                   <IconLock className="mt-0.5 h-4 w-4 flex-none text-primary" />
                   <div>
-                    <b>{t('teams.discoveryNote')}</b> The labels above are visible to this team (and
-                    the server) so you can find and request access. The machines — and every private
-                    collection — stay end-to-end encrypted; you only see them once a member grants
-                    you access.
+                    <b>{t('teams.discoveryNote')}</b> {t('teams.discoveryWhy')}
                   </div>
                 </div>
 
@@ -302,7 +299,7 @@ export function TeamsDashboard() {
                     title={iAmLastManager ? 'the team needs at least one manager' : undefined}
                     className="rounded-md border border-red-500/40 px-3 py-1.5 text-sm text-red-600 hover:bg-red-500/10 disabled:opacity-50"
                   >
-                    Leave
+                    {t('teams.leave')}
                   </button>
                 </section>
               </>

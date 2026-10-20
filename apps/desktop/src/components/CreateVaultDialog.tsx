@@ -8,8 +8,10 @@
 
 import { useState } from 'react';
 import { sendVaultCommand, suggestedVaultPath } from '../utils/nativeShell';
+import { useTranslation } from '../i18n/i18n';
 
 export function CreateVaultDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const path = suggestedVaultPath() ?? '';
   const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
   const dir = slash >= 0 ? path.slice(0, slash + 1) : '';
@@ -26,27 +28,27 @@ export function CreateVaultDialog({ onClose }: { onClose: () => void }) {
         className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold">Create a local vault</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          An encrypted database on this machine. Next you’ll set its master password.
-        </p>
+        <h2 className="text-lg font-semibold">{t('createVault.title')}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t('createVault.why')}</p>
 
         <div className="mt-4">
           <label htmlFor="cv-name" className="text-xs font-medium text-muted-foreground">
-            Name <span className="font-normal">(optional)</span>
+            {t('createVault.name')} <span className="font-normal">{t('createVault.optional')}</span>
           </label>
           <input
             id="cv-name"
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Personal"
+            placeholder={t('createVault.phName')}
             className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
           />
         </div>
 
         <div className="mt-4">
-          <span className="text-xs font-medium text-muted-foreground">Location</span>
+          <span className="text-xs font-medium text-muted-foreground">
+            {t('createVault.location')}
+          </span>
           <div className="mt-1 flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2.5">
             <svg
               className="h-4 w-4 flex-none text-muted-foreground"
@@ -78,11 +80,11 @@ export function CreateVaultDialog({ onClose }: { onClose: () => void }) {
             }}
             className="rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            Change location…
+            {t('createVault.change')}
           </button>
           <div className="flex gap-2">
             <button onClick={onClose} className="rounded-md px-3 py-1.5 text-sm hover:bg-muted">
-              Cancel
+              {t('createVault.cancel')}
             </button>
             <button
               onClick={() => {
@@ -92,7 +94,7 @@ export function CreateVaultDialog({ onClose }: { onClose: () => void }) {
               }}
               className="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Create vault
+              {t('createVault.create')}
             </button>
           </div>
         </div>

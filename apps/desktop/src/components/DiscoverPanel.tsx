@@ -8,8 +8,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Backend, type OfferedCollection } from '../utils/backend';
 import { IconCollection } from './icons';
+import { useTranslation } from '../i18n/i18n';
 
 export function DiscoverPanel() {
+  const { t } = useTranslation();
   const [offered, setOffered] = useState<OfferedCollection[]>([]);
   const [requested, setRequested] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -19,9 +21,9 @@ export function DiscoverPanel() {
     try {
       setOffered(await Backend.Collections.offered());
     } catch {
-      setError('Failed to load discovery');
+      setError(t('discover.errLoad'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async initial load
@@ -36,7 +38,7 @@ export function DiscoverPanel() {
         await Backend.Collections.requestAccess(id);
         setRequested((prev) => new Set(prev).add(id));
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Request failed');
+        setError(err instanceof Error ? err.message : t('discover.errRequest'));
       } finally {
         setBusy(null);
       }
@@ -57,18 +59,13 @@ export function DiscoverPanel() {
   return (
     <main className="min-w-0 flex-1 overflow-y-auto px-8 py-7">
       <div className="mx-auto max-w-[820px]">
-        <h1 className="mb-1 text-2xl font-bold">Discover</h1>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Collections offered to the teams you&apos;re in — request access and a member grants you
-          the key.
-        </p>
+        <h1 className="mb-1 text-2xl font-bold">{t('discover.title')}</h1>
+        <p className="mb-4 text-sm text-muted-foreground">{t('discover.subtitle')}</p>
 
         <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3 text-sm text-foreground/80">
           <IconCollection className="mt-0.5 h-4 w-4 flex-none text-primary" />
           <div>
-            <b>Labels here are for discovery, not secrets.</b> They&apos;re visible to your team
-            (and the server) so you can find and request access. Machines and private names stay
-            end-to-end encrypted until a member grants you.
+            <b>{t('discover.labelsTitle')}</b> {t('discover.labelsWhy')}
           </div>
         </div>
 
@@ -80,7 +77,7 @@ export function DiscoverPanel() {
 
         {byTeam.length === 0 && (
           <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-            No collections are offered to your teams yet.
+            {t('discover.empty')}
           </div>
         )}
 
@@ -90,7 +87,7 @@ export function DiscoverPanel() {
             className="mb-4 overflow-hidden rounded-2xl border border-border bg-card"
           >
             <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-              {team} · {offers.length} offered
+              {team} · {t('discover.offered', { count: offers.length })}
             </div>
             {offers.map((o) => {
               const isMember = o.memberRole !== null;
@@ -104,18 +101,16 @@ export function DiscoverPanel() {
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{o.discoveryLabel}</div>
                     <div className="text-xs text-muted-foreground">
-                      {isMember
-                        ? "You're a member — open it any time"
-                        : 'Machines stay encrypted until a member grants you'}
+                      {isMember ? t('discover.youAreMember') : t('discover.encrypted')}
                     </div>
                   </div>
                   {isMember ? (
                     <span className="rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-semibold uppercase text-green-600">
-                      Member
+                      {t('discover.member')}
                     </span>
                   ) : pending ? (
                     <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold uppercase text-amber-600">
-                      Requested
+                      {t('discover.requested')}
                     </span>
                   ) : (
                     <button
@@ -123,7 +118,7 @@ export function DiscoverPanel() {
                       disabled={busy === o.id}
                       className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                     >
-                      Request access
+                      {t('discover.request')}
                     </button>
                   )}
                 </div>

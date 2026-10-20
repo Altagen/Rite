@@ -6,7 +6,7 @@
  */
 
 import React, { Component, ReactNode } from 'react';
-import { translate } from '../i18n/i18n';
+import { translate } from '../i18n/translate';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
 export interface ErrorBoundaryProps {
@@ -123,7 +123,9 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 </summary>
                 <div className="mt-4 space-y-2">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Error:</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {translate('boundary.errorLabel')}
+                    </p>
                     <p className="font-mono text-xs text-red-500">{error.message}</p>
                   </div>
                   {errorInfo?.componentStack && (
@@ -214,7 +216,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 onClick={this.resetError}
                 className="mt-2 text-xs font-medium text-primary hover:underline"
               >
-                Retry
+                {translate('boundary.retry')}
               </button>
             </div>
           </div>

@@ -23,7 +23,8 @@
     "submitting": "Creating...",
     "warning": "Important: This password cannot be recovered. Keep it safe.",
     "showPassword": "Show password",
-    "hidePassword": "Hide password"
+    "hidePassword": "Hide password",
+    "aim16": "Aim for 16+ characters for a stronger vault."
   },
   "unlock": {
     "title": "RITE",
@@ -158,7 +159,11 @@
     "passwordAsk": "Password needed",
     "passwordAskFor": "To connect to {name}.",
     "passwordAskWhy": "Used for this connection only. Rite is not keeping it — tick “Remember this password” when editing the machine if you would rather it did.",
-    "newConnection": "Machine"
+    "newConnection": "Machine",
+    "healthCheck": "Health-check",
+    "hcInherit": "Follow the collection / server policy",
+    "hcOff": "Never probe this machine",
+    "hcWhy": "A machine can opt out of active probing; it cannot opt into more than the server allows."
   },
   "errors": {
     "setupFailed": "Setup failed: {error}",
@@ -272,7 +277,8 @@
     "sshConnections": "SSH connections",
     "autoReconnect": "Auto-reconnect lost SSH connections",
     "focusMode": "Focus mode",
-    "autoCollapse": "Auto-collapse sidebar in focus mode"
+    "autoCollapse": "Auto-collapse sidebar in focus mode",
+    "autoReconnectHint": "Off by default. When on, a dropped session reconnects automatically — a new shell, so your history, on-screen output and any running job are lost. When off, the pane offers a Reconnect button. Either way you are told you were disconnected."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -297,7 +303,12 @@
     "nCmds": "{n} cmds",
     "add": "Add",
     "done": "Done",
-    "fillAll": "Give the snippet a name and at least one command."
+    "fillAll": "Give the snippet a name and at least one command.",
+    "phName": "Deploy check",
+    "defSyslog": "Tail syslog",
+    "defDisk": "Disk usage",
+    "defContainers": "Running containers",
+    "defFailed": "Failed units"
   },
   "split": {
     "menu": "Split with…",
@@ -416,7 +427,8 @@
     "probesOffYou": "Container and service checks are off in your settings.",
     "probesOffYouHint": "Turn them back on in Settings. Everything else on this dashboard is unaffected.",
     "probesCardServer": "not allowed here",
-    "probesCardYou": "off in your settings"
+    "probesCardYou": "off in your settings",
+    "viaChain": "via {chain}"
   },
   "board": {
     "title": "Board",
@@ -463,7 +475,8 @@
     "copied": "Copied",
     "openLink": "Open link",
     "liveEmpty": "No data yet — refreshes from a connected machine.",
-    "liveHint": "Refreshes from a connected machine."
+    "liveHint": "Refreshes from a connected machine.",
+    "phActionLabel": "Restart"
   },
   "preconnect": {
     "label": "Pre-connect command",
@@ -559,7 +572,10 @@
     "inviteOnly": "This server is invite-only — paste the token you were given to join.",
     "creating": "Creating account…",
     "createAdmin": "Create administrator",
-    "create": "Create account"
+    "create": "Create account",
+    "username": "Username",
+    "password": "Password",
+    "redeem": "Redeem"
   },
   "admin": {
     "cancel": "Cancel",
@@ -599,7 +615,10 @@
       "resetAccess": "Reset access",
       "errLoadUsers": "Failed to load users",
       "errCreateUser": "Failed to create user",
-      "errAction": "Action failed"
+      "errAction": "Action failed",
+      "roleUser": "user",
+      "roleManager": "manager",
+      "roleAdmin": "admin"
     },
     "invites": {
       "title": "Invitations",
@@ -805,7 +824,8 @@
       "roleMember": "Member",
       "errLoad": "Failed to load teams",
       "errMembers": "Failed to load members",
-      "errAction": "Action failed"
+      "errAction": "Action failed",
+      "colMember": "Member"
     }
   },
   "ws": {
@@ -850,7 +870,11 @@
     "abandonKeep": "Abandon & keep file",
     "defaultShell": "Default Shell",
     "defaultShellWhy": "Used when clicking “+ Local Terminal”",
-    "notInstalled": "Not installed"
+    "notInstalled": "Not installed",
+    "terminal": "Terminal",
+    "library": "Library",
+    "openInNewWindowOf": "Open {name} in a new window",
+    "removeOf": "Remove {name}"
   },
   "lib": {
     "newSubFolder": "New sub-folder",
@@ -875,10 +899,13 @@
     "portForwarding": "Port forwarding",
     "moveToFolderTitle": "Move to folder",
     "delete": "Delete",
-    "noMatch": "No connections match your search."
+    "noMatch": "No connections match your search.",
+    "renameMenu": "Rename…",
+    "boardMenu": "Board…",
+    "memberCount": "{count} members"
   },
   "hub": {
-    "lead": "Manage your local vaults and saved servers. Each opens in its own window. Removing a server only forgets it here.",
+    "lead": "Manage your local vaults and saved servers. Each opens in its own window. Removing a server only forgets it here — your remote account stays.",
     "localVaults": "Local vaults",
     "localVault": "Local vault",
     "onThisMachine": "On this machine · unlocked with your master password",
@@ -895,7 +922,21 @@
     "labelOptional": "Label (optional)",
     "errSave": "Failed to save server",
     "errAdd": "Failed to add server",
-    "errRemove": "Failed to remove server"
+    "errRemove": "Failed to remove server",
+    "contexts": "Contexts",
+    "open": "Open",
+    "image": "Image…",
+    "resetIcon": "Reset",
+    "servers": "Servers",
+    "removeTitle": "Remove “{name}”?",
+    "removeWhy": "This only removes the server from this device. Your account on the server is not deleted — add it again any time with its URL and your password.",
+    "lockOf": "Lock {name}",
+    "renameOf": "Rename {name}",
+    "changeIconOf": "Change icon for {name}",
+    "openInNewWindowOf": "Open {name} in a new window",
+    "removeFromListOf": "Remove {name} from the list",
+    "editOf": "Edit {name}",
+    "removeOf": "Remove {name}"
   },
   "coll": {
     "mine": "My collections",
@@ -914,7 +955,13 @@
     "viewMembers": "View members",
     "manageMembers": "Manage members",
     "personalSpace": "Your private space — only you. It can't be shared or deleted; it always exists.",
-    "labelPersonal": "Label your personal space."
+    "labelPersonal": "Label your personal space.",
+    "discover": "Discover",
+    "instance": "Server instance",
+    "new": "New",
+    "personal": "Personal",
+    "rename": "Rename",
+    "labelNotEncrypted": "This label is not encrypted — your team and the server can read it so people can find the collection. Keep it non-sensitive; the real name and the machines stay end-to-end encrypted."
   },
   "cview": {
     "viaJumpLong": "Reached through a jump host (ProxyJump)",
@@ -930,11 +977,18 @@
     "listView": "List view",
     "importSsh": "Import from SSH config",
     "noMachines": "No machines in this collection yet.",
-    "emptyFolder": "This folder is empty."
+    "emptyFolder": "This folder is empty.",
+    "personal": "Personal",
+    "members": "Members",
+    "sortName": "Name",
+    "sortHost": "Host",
+    "import": "Import",
+    "folder": "Folder",
+    "openNamed": "Open “{name}”"
   },
   "term": {
     "dragPane": "Drag to reorganize pane",
-    "reconnect": "Reconnect to server",
+    "reconnect": "Reconnect",
     "detach": "Detach to new tab",
     "snippets": "Snippets",
     "closeTerminal": "Close terminal",
@@ -945,7 +999,11 @@
     "closeSearch": "Close (Escape)",
     "connected": "Connected to X",
     "connecting": "Connecting...",
-    "reconnecting": "Reconnecting..."
+    "reconnecting": "Reconnecting...",
+    "disconnected": "Disconnected",
+    "splitH": "Split horizontal ({chord})",
+    "splitV": "Split vertical ({chord})",
+    "searchIn": "Search in terminal ({chord})"
   },
   "connErr": {
     "retrying": "Retrying automatically…",
@@ -977,7 +1035,19 @@
     "errParse": "Failed to parse SSH config file",
     "errImport": "Failed to import connections",
     "deselectAll": "Deselect All",
-    "selectAll": "Select All"
+    "selectAll": "Select All",
+    "errPath": "Enter a path to a config file",
+    "errNoHosts": "No valid hosts in that config file",
+    "errNoneChosen": "Select at least one host to import",
+    "loading": "Loading…",
+    "parsing": "Parsing…",
+    "parse": "Parse",
+    "found": "Found {count} host(s):",
+    "willHave": "Imported connections arrive with",
+    "emptyPasswords": "no password",
+    "cancel": "Cancel",
+    "importing": "Importing {count}…",
+    "importSelected": "Import selected ({count})"
   },
   "teams": {
     "mine": "My teams",
@@ -987,11 +1057,14 @@
     "requestAccess": "Request access",
     "discoveryNote": "Names here are for discovery, not secrets.",
     "discoveryWhy": "The labels above are visible to this team (and the server) so you can find and request access. The machines — and every private collection — stay end-to-end encrypted; you only see them once a member grants you access.",
-    "leave": "Leave team",
+    "leave": "Leave",
     "serverInstance": "Server instance",
     "errAction": "Action failed",
     "leaveWhy": "You leave the roster and stop seeing the collections offered here. Collections you're already a member of are unaffected.",
-    "lastManager": "You are the last manager — promote someone before leaving."
+    "lastManager": "You are the last manager — promote someone before leaving.",
+    "roleManager": "Manager",
+    "open": "Open",
+    "requested": "Requested"
   },
   "tm": {
     "noSessions": "No active terminal sessions",
@@ -1015,7 +1088,15 @@
     "remove": "Remove",
     "addSomeone": "Add someone — type a username…",
     "errAction": "Action failed",
-    "newCollection": "New collection"
+    "newCollection": "New collection",
+    "add": "Add",
+    "roleOwner": "Owner",
+    "roleEditor": "Editor",
+    "roleViewer": "Viewer",
+    "ownerWhat": "manages sharing & settings",
+    "editorWhat": "adds/edits machines (re-encrypts)",
+    "viewerWhat": "can only connect.",
+    "noMachines": "no machines"
   },
   "boundary": {
     "appError": "Application Error",
@@ -1025,7 +1106,9 @@
     "reload": "Reload Application",
     "featureError": "Feature Error",
     "tryAgain": "Try Again",
-    "componentError": "Component Error"
+    "componentError": "Component Error",
+    "errorLabel": "Error:",
+    "retry": "Retry"
   },
   "paste": {
     "title": "Import from SSH config",
@@ -1046,5 +1129,235 @@
     "errTaken": "That username is already taken",
     "errTooMany": "Too many sign-up attempts — please try again in a few minutes",
     "errInvite": "That invitation is invalid or has expired"
+  },
+  "fpc": {
+    "title": "Set your password",
+    "welcome": "Welcome {name}. Choose a password only you know — the one an admin set can unlock your data until you do. Yours cannot be recovered.",
+    "welcomePlain": "Choose a password only you know.",
+    "newPassword": "New password",
+    "phNew": "A password only you know",
+    "phAgain": "Type it again",
+    "show": "Show",
+    "hide": "Hide",
+    "strength": "Password strength: {level}",
+    "tooWeak": "Too weak",
+    "fair": "Fair",
+    "good": "Good",
+    "strong": "Strong",
+    "setting": "Setting…",
+    "submit": "Set password & continue"
+  },
+  "hostKey": {
+    "changed": "Host key changed",
+    "unknown": "Unknown host key",
+    "changedWhy": "The host key for {target} has changed since you last connected. The server may have been reinstalled — or this is a man-in-the-middle. The connection was refused.",
+    "unknownWhy": "The authenticity of {target} cannot be established. Verify the fingerprint below before trusting it.",
+    "keyType": "Key type",
+    "oldFp": "Old fingerprint",
+    "newFp": "New fingerprint",
+    "fp": "Fingerprint",
+    "close": "Close",
+    "cancel": "Cancel",
+    "connecting": "Connecting…",
+    "trust": "Trust & connect"
+  },
+  "discover": {
+    "title": "Discover",
+    "subtitle": "Collections offered to your teams — request access and a member grants you the key.",
+    "labelsTitle": "Labels here are for discovery, not secrets.",
+    "labelsWhy": "Your team and the server can read them, so you can find and request access. Machines and private names stay end-to-end encrypted until a member grants you.",
+    "errLoad": "Could not load discovery",
+    "errRequest": "Request failed",
+    "empty": "No collections are offered to your teams yet.",
+    "offered": "{count} offered",
+    "youAreMember": "You’re a member — open it any time",
+    "encrypted": "Encrypted until a member grants you",
+    "member": "Member",
+    "requested": "Requested",
+    "request": "Request access"
+  },
+  "anav": {
+    "terminals": "Terminals",
+    "terminalsHint": "Back to your terminals (Esc)",
+    "teams": "Teams",
+    "collections": "Collections",
+    "collectionsHint": "Collections — yours + Discover (offered to your teams)",
+    "org": "Organization",
+    "admin": "Admin",
+    "orgHint": "Organization (server settings are in the web console)",
+    "adminHint": "Administration"
+  },
+  "qssh": {
+    "title": "Quick SSH Connect",
+    "subtitle": "Connect to an SSH server without saving credentials",
+    "saveTo": "Save to collection (optional)",
+    "dontSave": "Don’t save — connect once",
+    "cancel": "Cancel",
+    "connecting": "Connecting…",
+    "connect": "Connect",
+    "host": "Host",
+    "port": "Port",
+    "username": "Username"
+  },
+  "vaultRm": {
+    "currentTitle": "“{name}” is the vault you are in",
+    "currentWhy": "It cannot be removed from the list while this window holds it. Switch to another context first, or open {path} to erase this one and start over.",
+    "resetPath": "Settings ▸ Reset vault",
+    "close": "Close",
+    "title": "Remove “{name}”?",
+    "why": "Removes this vault from your list. The database file stays on disk — you can open it again any time.",
+    "alsoDelete": "Also delete the file permanently",
+    "alsoDeleteWhy": "Irreversible — erases the database and all its connections.",
+    "cancel": "Cancel",
+    "deleteForever": "Delete permanently",
+    "remove": "Remove",
+    "typeToConfirm": "Type",
+    "toConfirm": "to confirm"
+  },
+  "adminOnly": {
+    "title": "Admin console only",
+    "why": "This server exposes only the administration console, and your account is not an administrator. Ask an admin for access.",
+    "signOut": "Sign out"
+  },
+  "offline": {
+    "title": "You’re offline",
+    "why": "Reconnecting when you’re back — nothing is lost."
+  },
+  "cert": {
+    "title": "Untrusted certificate",
+    "why": "{url} presents a self-signed certificate that no public authority vouches for. Check the fingerprint below against the server out-of-band before you trust it.",
+    "fp": "SHA-256 fingerprint",
+    "pinned": "Once pinned, later connections must present this exact certificate.",
+    "cancel": "Cancel",
+    "trust": "Trust & add"
+  },
+  "notif": {
+    "title": "Notifications",
+    "bellHint": "Notifications",
+    "subtitle": "People asking to join collections you can grant.",
+    "empty": "No pending requests — you’re all caught up.",
+    "showingLatest": "Showing latest {shown} of {total}",
+    "total": "{count} total",
+    "seeAll": "See all notifications →",
+    "requestsAccess": "requests access",
+    "viaTeam": "discovered via team {team}",
+    "request": "access request",
+    "dismiss": "Dismiss",
+    "grant": "Grant",
+    "instance": "Server instance",
+    "nothing": "Nothing needs your attention",
+    "pending": "{count} pending",
+    "caughtUp": "You’re all caught up",
+    "caughtUpWhy": "People asking to join collections you can grant will show up here.",
+    "page": "Page {page} of {total}",
+    "prev": "← Previous",
+    "next": "Next →",
+    "errAction": "Action failed"
+  },
+  "reauth": {
+    "title": "Session locked",
+    "why": "Your vault key stays in memory only. Sign in again to unlock your connections.",
+    "signIn": "Sign in again",
+    "signOut": "Sign out"
+  },
+  "profile": {
+    "hint": "Your account",
+    "signOut": "Sign out"
+  },
+  "health": {
+    "disabled": "Active status checks are disabled on this server.",
+    "tooFast": "Checking too fast — try again in a moment.",
+    "failed": "Could not check machine status."
+  },
+  "dlg": {
+    "name": "Name",
+    "colour": "Colour",
+    "cancel": "Cancel",
+    "close": "Close",
+    "save": "Save",
+    "create": "Create",
+    "colourAria": "colour {hex}",
+    "delete": "Delete",
+    "remove": "Remove"
+  },
+  "collEdit": {
+    "rename": "Rename collection",
+    "new": "New collection",
+    "why": "A group of machines with its own folders and board.",
+    "whyLocal": "A group of machines with its own folders and board. Sharing needs a server.",
+    "phName": "e.g. Production DBs",
+    "hc": "Active health-check for this collection",
+    "hcOffLocal": "When off, this collection’s machines are never actively probed.",
+    "hcOffShared": "When off, members never actively probe this collection’s machines.",
+    "hcPassive": "Passive “last seen” still shows.",
+    "errAction": "Action failed"
+  },
+  "fold": {
+    "rename": "Rename folder",
+    "new": "New folder",
+    "errSave": "Could not save the folder",
+    "renamingIn": "Renaming a folder in “{name}”",
+    "subOf": "Sub-folder of “{path}”",
+    "sharedIn": "Shared in “{name}”",
+    "phCollection": "e.g. Web servers",
+    "phLibrary": "e.g. Acme"
+  },
+  "move": {
+    "title": "Move “{name}”",
+    "pickFolder": "Pick a destination folder.",
+    "root": "Root (no folder)",
+    "here": "here",
+    "newFolder": "New folder…",
+    "phNewPath": "New folder — e.g. Web servers or Web/EU",
+    "move": "Move",
+    "personal": "Choose a personal folder (your view only — not shared).",
+    "noFolderRoot": "(no folder — root)",
+    "current": "current",
+    "empty": "No folders yet — create one from the library ＋."
+  },
+  "ctxPill": {
+    "switch": "Switch context",
+    "localVaults": "Local vaults",
+    "noVault": "No vault yet — create one below.",
+    "servers": "Servers",
+    "newWindow": "Open in a new window",
+    "newWindowOf": "Open {name} in a new window",
+    "removeFromList": "Remove from list",
+    "removeOf": "Remove {name}",
+    "lock": "Lock",
+    "lockOf": "Lock {name}",
+    "manageAll": "Card view — manage all…",
+    "newVault": "New local vault…",
+    "openFile": "Open a vault file…",
+    "addServer": "Add a server…"
+  },
+  "createVault": {
+    "title": "Create a local vault",
+    "why": "An encrypted database on this machine. Next you’ll set its master password.",
+    "name": "Name",
+    "optional": "(optional)",
+    "phName": "e.g. Personal",
+    "location": "Location",
+    "change": "Change location…",
+    "cancel": "Cancel",
+    "create": "Create vault"
+  },
+  "kbd": {
+    "title": "Server verification",
+    "why": "The server needs more to sign you in.",
+    "notStored": "Requested by the server (keyboard-interactive). Your answer goes to the server to sign in —",
+    "notStoredBold": "nothing is stored by Rite",
+    "cancel": "Cancel",
+    "verifying": "Verifying…",
+    "verify": "Verify"
+  },
+  "status": {
+    "checking": "Checking status…",
+    "up": "Reachable · active check",
+    "down": "No response · active check",
+    "passive": "{when} · passive (no probe)"
+  },
+  "toast": {
+    "close": "Close"
   }
 }

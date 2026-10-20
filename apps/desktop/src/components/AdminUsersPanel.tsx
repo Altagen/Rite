@@ -252,9 +252,9 @@ export function AdminUsersPanel() {
                         className="ml-2 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-50"
                         title={t('admin.users.changeRole')}
                       >
-                        <option value="user">user</option>
-                        <option value="manager">manager</option>
-                        <option value="admin">admin</option>
+                        <option value="user">{t('admin.users.roleUser')}</option>
+                        <option value="manager">{t('admin.users.roleManager')}</option>
+                        <option value="admin">{t('admin.users.roleAdmin')}</option>
                       </select>
                     )}
                   </td>
@@ -387,14 +387,14 @@ export function AdminUsersPanel() {
                 className="rounded-md border border-input bg-background px-3 py-2 text-sm"
                 disabled={busy}
               >
-                <option value="user">user</option>
-                <option value="manager">manager</option>
-                <option value="admin">admin</option>
+                <option value="user">{t('admin.users.roleUser')}</option>
+                <option value="manager">{t('admin.users.roleManager')}</option>
+                <option value="admin">{t('admin.users.roleAdmin')}</option>
               </select>
             ) : (
               // A manager can only invite regular users.
               <span className="rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
-                user
+                {t('admin.users.roleUser')}
               </span>
             )}
           </div>

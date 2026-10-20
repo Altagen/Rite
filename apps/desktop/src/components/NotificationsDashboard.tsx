@@ -13,10 +13,12 @@ import { useAccessRequests } from '../store/accessRequests';
 import { RequestRow } from './AccessRequestsInbox';
 import { OverlayHeaderControls } from './OverlayHeaderControls';
 import riteLogo from '../assets/rite.png';
+import { useTranslation } from '../i18n/i18n';
 
 const PER_PAGE = 8;
 
 export function NotificationsDashboard() {
+  const { t } = useTranslation();
   const { mode } = useServerSession();
   const ctl = useAccessRequests();
   const { requests, error } = ctl;
@@ -38,7 +40,7 @@ export function NotificationsDashboard() {
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
         {mode?.instanceName && (
-          <span className="m-chip" title="Server instance">
+          <span className="m-chip" title={t('notif.instance')}>
             <span className="m-dot" />
             {mode.instanceName}
           </span>
@@ -50,11 +52,11 @@ export function NotificationsDashboard() {
       <main className="min-w-0 flex-1 overflow-y-auto px-6 py-7">
         <div className="mx-auto w-full max-w-3xl">
           <div className="mb-5 flex items-center gap-3.5">
-            <h1 className="text-[22px] font-bold">Notifications</h1>
+            <h1 className="text-[22px] font-bold">{t('notif.title')}</h1>
             <span className="text-[13px] text-muted-foreground">
               {requests.length === 0
-                ? 'Nothing needs your attention'
-                : `${requests.length} pending ${requests.length === 1 ? 'request' : 'requests'}`}
+                ? t('notif.nothing')
+                : t('notif.pending', { count: requests.length })}
             </span>
           </div>
 
@@ -82,10 +84,8 @@ export function NotificationsDashboard() {
                     />
                   </svg>
                 </div>
-                <div className="text-sm font-medium">You&apos;re all caught up</div>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  People asking to join collections you can grant will show up here.
-                </div>
+                <div className="text-sm font-medium">{t('notif.caughtUp')}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{t('notif.caughtUpWhy')}</div>
               </div>
             ) : (
               slice.map((r) => (
@@ -99,7 +99,7 @@ export function NotificationsDashboard() {
           {pageCount > 1 && (
             <div className="mt-4 flex items-center justify-between">
               <span className="text-sm text-muted-foreground">
-                Page {safePage + 1} of {pageCount}
+                {t('notif.page', { page: safePage + 1, total: pageCount })}
               </span>
               <div className="flex gap-2">
                 <button
@@ -107,14 +107,14 @@ export function NotificationsDashboard() {
                   disabled={safePage === 0}
                   className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-40"
                 >
-                  ← Previous
+                  {t('notif.prev')}
                 </button>
                 <button
                   onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                   disabled={safePage >= pageCount - 1}
                   className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-40"
                 >
-                  Next →
+                  {t('notif.next')}
                 </button>
               </div>
             </div>

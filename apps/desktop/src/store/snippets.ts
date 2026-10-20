@@ -7,6 +7,7 @@
  */
 import { deviceStore } from '../utils/deviceStore';
 import { create } from 'zustand';
+import { translate } from '../i18n/translate';
 
 export interface Snippet {
   id: string;
@@ -16,22 +17,23 @@ export interface Snippet {
 
 const KEY = 'rite-snippets';
 
-// A few useful defaults on first run (no stored library yet).
-const DEFAULTS: Snippet[] = [
-  { id: 's-syslog', name: 'Tail syslog', command: 'sudo tail -f /var/log/syslog' },
-  { id: 's-df', name: 'Disk usage', command: 'df -h' },
-  { id: 's-ps', name: 'Running containers', command: 'docker ps' },
-  { id: 's-failed', name: 'Failed units', command: 'systemctl --failed' },
+// A few useful defaults on first run (no stored library yet). Built on first read, not at
+// module load, so the names follow the locale the user has chosen.
+const defaults = (): Snippet[] => [
+  { id: 's-syslog', name: translate('snip.defSyslog'), command: 'sudo tail -f /var/log/syslog' },
+  { id: 's-df', name: translate('snip.defDisk'), command: 'df -h' },
+  { id: 's-ps', name: translate('snip.defContainers'), command: 'docker ps' },
+  { id: 's-failed', name: translate('snip.defFailed'), command: 'systemctl --failed' },
 ];
 
 const read = (): Snippet[] => {
   try {
     const raw = deviceStore.getItem(KEY);
-    if (raw === null) return DEFAULTS;
+    if (raw === null) return defaults();
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : DEFAULTS;
+    return Array.isArray(parsed) ? parsed : defaults();
   } catch {
-    return DEFAULTS;
+    return defaults();
   }
 };
 

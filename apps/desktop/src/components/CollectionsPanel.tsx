@@ -181,7 +181,7 @@ export function CollectionsPanel() {
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
             </svg>
-            New
+            {t('coll.new')}
           </button>
         </div>
         <ul className="space-y-0.5 px-2 pb-3">
@@ -206,7 +206,7 @@ export function CollectionsPanel() {
                   </span>
                   {h?.personal ? (
                     <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
-                      Personal
+                      {t('coll.personal')}
                     </span>
                   ) : (
                     <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -269,14 +269,14 @@ export function CollectionsPanel() {
               {/* Colour (writers only) */}
               {canWrite && (
                 <div className="mb-4 rounded-2xl border border-border bg-card p-4">
-                  <div className="mb-3 text-sm font-semibold">Colour</div>
+                  <div className="mb-3 text-sm font-semibold">{t('dlg.colour')}</div>
                   <div className="flex flex-wrap gap-2">
                     {COLLECTION_COLORS.map((c) => (
                       <button
                         key={c}
                         onClick={() => patchHeader(selected.id, { color: c })}
                         disabled={busy}
-                        aria-label={`colour ${c}`}
+                        aria-label={t('dlg.colourAria', { hex: c })}
                         className={`h-7 w-7 rounded-full disabled:opacity-50 ${
                           header.color === c
                             ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card'
@@ -293,7 +293,7 @@ export function CollectionsPanel() {
               {canRename && (
                 <div className="mb-4 flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-border bg-card p-4">
                   <div>
-                    <div className="text-sm font-semibold">Rename</div>
+                    <div className="text-sm font-semibold">{t('coll.rename')}</div>
                     <div className="text-xs text-muted-foreground">
                       {isPersonal ? t('coll.labelPersonal') : t('coll.sharedName')}
                     </div>
@@ -310,7 +310,7 @@ export function CollectionsPanel() {
                       disabled={busy || !renameVal.trim() || renameVal.trim() === header.name}
                       className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                     >
-                      Save
+                      {t('dlg.save')}
                     </button>
                   </div>
                 </div>
@@ -367,16 +367,12 @@ export function CollectionsPanel() {
                       disabled={busy || (!!offerTeam && !offerLabel.trim())}
                       className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                     >
-                      Save
+                      {t('dlg.save')}
                     </button>
                   </div>
                   <div className="mt-2 flex items-start gap-2 text-xs text-amber-600">
                     <span>⚠</span>
-                    <span>
-                      {t('coll.thisLabelIs')} <b>not encrypted</b> — visible to the team and the
-                      server so people can find it. Keep it non-sensitive; the collection&apos;s
-                      real name and its machines stay end-to-end encrypted.
-                    </span>
+                    <span>{t('coll.labelNotEncrypted')}</span>
                   </div>
                 </div>
               )}
@@ -392,7 +388,7 @@ export function CollectionsPanel() {
                     onClick={() => setDeleteTarget({ id: selected.id, name: header.name })}
                     className="rounded-md border border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-500/10"
                   >
-                    Delete
+                    {t('dlg.delete')}
                   </button>
                 </div>
               )}
@@ -434,14 +430,14 @@ export function CollectionsPanel() {
                 onClick={() => setDeleteTarget(null)}
                 className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
               >
-                Cancel
+                {t('dlg.cancel')}
               </button>
               <button
                 onClick={confirmDelete}
                 disabled={busy}
                 className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
-                Delete
+                {t('dlg.delete')}
               </button>
             </div>
           </div>

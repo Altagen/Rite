@@ -18,6 +18,7 @@ import {
 } from '../utils/collectionCrypto';
 import { escrowForCreate } from '../utils/adminGroup';
 import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
+import { useTranslation } from '../i18n/i18n';
 
 const COLORS = [
   '#6366f1',
@@ -54,6 +55,7 @@ export function CollectionEditDialog({
   onPersist?: (name: string, color: string | null, hc: boolean | null) => Promise<void>;
 }) {
   const { publicKey, privateKey } = useServerSession();
+  const { t } = useTranslation();
   const [name, setName] = useState(initialName ?? '');
   const [color, setColor] = useState(initialColor ?? COLORS[0]);
   // Active health-check for this collection (owner setting). Off ⇒ hc=false in the sealed header.
@@ -104,7 +106,7 @@ export function CollectionEditDialog({
       onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
+      setError(err instanceof Error ? err.message : t('collEdit.errAction'));
     } finally {
       setBusy(false);
     }
@@ -121,13 +123,11 @@ export function CollectionEditDialog({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-1 text-lg font-semibold">
-          {editing ? 'Rename collection' : 'New collection'}
+          {editing ? t('collEdit.rename') : t('collEdit.new')}
         </h3>
         {/* Say why there is nobody to add here — the mock's local dialog does the same. */}
         <p className="mb-3 text-xs text-muted-foreground">
-          {onPersist
-            ? 'A group of machines with its own folders and board. Sharing needs a server.'
-            : 'A group of machines with its own folders and board.'}
+          {onPersist ? t('collEdit.whyLocal') : t('collEdit.why')}
         </p>
 
         {error && (
@@ -136,17 +136,17 @@ export function CollectionEditDialog({
           </div>
         )}
 
-        <label className="mb-1 block text-sm font-medium">Name</label>
+        <label className="mb-1 block text-sm font-medium">{t('dlg.name')}</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoFocus
-          placeholder="e.g. Production DBs"
+          placeholder={t('collEdit.phName')}
           className="mb-4 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           disabled={busy}
         />
 
-        <label className="mb-1 block text-sm font-medium">Colour</label>
+        <label className="mb-1 block text-sm font-medium">{t('dlg.colour')}</label>
         <div className="mb-5 flex flex-wrap gap-2">
           {COLORS.map((c) => (
             <button
@@ -155,7 +155,7 @@ export function CollectionEditDialog({
               onClick={() => setColor(c)}
               className={`h-7 w-7 rounded-full ${color === c ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card' : ''}`}
               style={{ backgroundColor: c }}
-              aria-label={`colour ${c}`}
+              aria-label={t('dlg.colourAria', { hex: c })}
             />
           ))}
         </div>
@@ -171,14 +171,10 @@ export function CollectionEditDialog({
             disabled={busy}
           />
           <span>
-            <span className="block text-sm font-medium">
-              Active health-check for this collection
-            </span>
+            <span className="block text-sm font-medium">{t('collEdit.hc')}</span>
             <span className="block text-xs text-muted-foreground">
-              {onPersist
-                ? "When off, this collection's machines are never actively probed."
-                : "When off, members never actively probe this collection's machines."}{' '}
-              Passive &ldquo;last seen&rdquo; still shows.
+              {onPersist ? t('collEdit.hcOffLocal') : t('collEdit.hcOffShared')}{' '}
+              {t('collEdit.hcPassive')}
             </span>
           </span>
         </label>
@@ -189,14 +185,14 @@ export function CollectionEditDialog({
             onClick={onClose}
             className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
           >
-            Cancel
+            {t('dlg.cancel')}
           </button>
           <button
             type="submit"
             disabled={busy || !name.trim()}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {editing ? 'Save' : 'Create'}
+            {editing ? t('dlg.save') : t('dlg.create')}
           </button>
         </div>
       </form>

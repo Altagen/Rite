@@ -8,6 +8,7 @@
  */
 
 import { create } from 'zustand';
+import { translate } from '../i18n/translate';
 import { Backend, type ProbeTarget } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
 
@@ -50,11 +51,11 @@ export const useHealth = create<HealthStore>((set) => ({
       const notice =
         e instanceof RiteHttpError
           ? e.status === 403
-            ? 'Active status checks are disabled on this server.'
+            ? translate('health.disabled')
             : e.status === 429
-              ? 'Checking too fast — try again in a moment.'
-              : 'Could not check machine status.'
-          : 'Could not check machine status.';
+              ? translate('health.tooFast')
+              : translate('health.failed')
+          : translate('health.failed');
       set({ notice });
     } finally {
       set((s) => {

@@ -64,7 +64,7 @@ export function ImportSSHConfigModal({
 
   const handleParse = async () => {
     if (!configPath.trim()) {
-      setError('Please enter a config file path');
+      setError(t('sshImport.errPath'));
       return;
     }
 
@@ -92,7 +92,7 @@ export function ImportSSHConfigModal({
       setEntries(selectableEntries);
 
       if (selectableEntries.length === 0) {
-        setError('No valid hosts found in config file');
+        setError(t('sshImport.errNoHosts'));
       }
     } catch (err) {
       console.error('[ImportSSH] Parse failed:', err);
@@ -117,7 +117,7 @@ export function ImportSSHConfigModal({
     const selectedEntries = entries.filter((e) => e.selected);
 
     if (selectedEntries.length === 0) {
-      setError('Please select at least one host to import');
+      setError(t('sshImport.errNoneChosen'));
       return;
     }
 
@@ -184,7 +184,7 @@ export function ImportSSHConfigModal({
           <div className="flex gap-2">
             <input
               type="text"
-              value={loadingDefault ? 'Loading...' : configPath}
+              value={loadingDefault ? t('sshImport.loading') : configPath}
               onChange={(e) => setConfigPath(e.target.value)}
               placeholder="~/.ssh/config"
               className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -195,7 +195,7 @@ export function ImportSSHConfigModal({
               className="rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               disabled={loading || importing || loadingDefault}
             >
-              {loading ? 'Parsing...' : 'Parse'}
+              {loading ? t('sshImport.parsing') : t('sshImport.parse')}
             </button>
           </div>
         </div>
@@ -212,7 +212,7 @@ export function ImportSSHConfigModal({
           <>
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-medium">
-                Found {entries.length} host{entries.length !== 1 ? 's' : ''}:
+                {t('sshImport.found', { count: entries.length })}
               </p>
               <button
                 onClick={handleSelectAll}
@@ -256,8 +256,10 @@ export function ImportSSHConfigModal({
               <ul className="mt-1 ml-4 list-disc text-muted-foreground">
                 <li>{t('sshImport.noPasswords')}</li>
                 <li>
-                  Imported connections will have{' '}
-                  <span className="font-semibold text-foreground">empty passwords</span>
+                  {t('sshImport.willHave')}{' '}
+                  <span className="font-semibold text-foreground">
+                    {t('sshImport.emptyPasswords')}
+                  </span>
                 </li>
                 <li>
                   <span className="font-semibold text-foreground">{t('sshImport.toUseThem')}</span>{' '}
@@ -297,7 +299,7 @@ export function ImportSSHConfigModal({
             className="rounded bg-secondary px-4 py-2 font-medium text-secondary-foreground hover:bg-secondary/80"
             disabled={loading || importing}
           >
-            Cancel
+            {t('dlg.cancel')}
           </button>
           <button
             onClick={handleImport}
@@ -307,7 +309,9 @@ export function ImportSSHConfigModal({
             {importing && (
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent" />
             )}
-            {importing ? `Importing ${selectedCount}...` : `Import Selected (${selectedCount})`}
+            {importing
+              ? t('sshImport.importing', { count: selectedCount })
+              : t('sshImport.importSelected', { count: selectedCount })}
           </button>
         </div>
       </div>

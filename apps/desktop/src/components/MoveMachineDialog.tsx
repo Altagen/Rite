@@ -5,22 +5,24 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 
 export function MoveMachineDialog({
   machineName,
   currentFolder,
   folderPaths,
-  rootLabel = 'Root (no folder)',
+  rootLabel,
   onClose,
   onPick,
 }: {
   machineName: string;
   currentFolder: string; // '' ⇒ root (no folder)
   folderPaths: string[]; // every folder path in scope, sorted
-  rootLabel?: string; // label for the '' destination
+  rootLabel?: string; // label for the '' destination (defaults to move.root)
   onClose: () => void;
   onPick: (folder: string) => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newPath, setNewPath] = useState('');
@@ -75,7 +77,9 @@ export function MoveMachineDialog({
           )}
         </svg>
         <span className="truncate">{label}</span>
-        {isCurrent && <span className="ml-auto flex-none text-xs text-primary">here</span>}
+        {isCurrent && (
+          <span className="ml-auto flex-none text-xs text-primary">{t('move.here')}</span>
+        )}
       </button>
     );
   };
@@ -89,10 +93,10 @@ export function MoveMachineDialog({
         className="flex max-h-[80vh] w-full max-w-sm flex-col rounded-lg border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-1 text-lg font-semibold">Move “{machineName}”</h3>
-        <p className="mb-3 text-xs text-muted-foreground">Pick a destination folder.</p>
+        <h3 className="mb-1 text-lg font-semibold">{t('move.title', { name: machineName })}</h3>
+        <p className="mb-3 text-xs text-muted-foreground">{t('move.pickFolder')}</p>
         <div className="-mx-1 space-y-0.5 overflow-y-auto">
-          {row('', rootLabel, 0)}
+          {row('', rootLabel ?? t('move.root'), 0)}
           {folderPaths.map((p) => row(p, p.split('/').pop() ?? p, p.split('/').length))}
         </div>
 
@@ -110,7 +114,7 @@ export function MoveMachineDialog({
                     setNewPath('');
                   }
                 }}
-                placeholder="New folder — e.g. Web servers or Web/EU"
+                placeholder={t('move.phNewPath')}
                 className="min-w-0 flex-1 rounded-md border border-input bg-background px-2.5 py-1.5 text-sm"
                 disabled={busy}
               />
@@ -119,7 +123,7 @@ export function MoveMachineDialog({
                 disabled={busy || !cleanNew}
                 className="flex-none rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                Move
+                {t('move.move')}
               </button>
             </div>
           ) : (
@@ -142,7 +146,7 @@ export function MoveMachineDialog({
                 />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v4M10 13h4" />
               </svg>
-              New folder…
+              {t('move.newFolder')}
             </button>
           )}
         </div>
@@ -152,7 +156,7 @@ export function MoveMachineDialog({
             onClick={onClose}
             className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
           >
-            Cancel
+            {t('dlg.cancel')}
           </button>
         </div>
       </div>

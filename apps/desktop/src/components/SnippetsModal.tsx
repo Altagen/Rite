@@ -136,7 +136,7 @@ export function SnippetsModal({ sessionId, paneLabel, onClose }: Props) {
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Deploy check"
+                placeholder={t('snip.phName')}
                 className="w-full rounded border border-border bg-input px-2.5 py-1.5 text-sm"
               />
             </label>

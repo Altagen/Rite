@@ -7,6 +7,7 @@
 
 import { useMemo, useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
+import { useTranslation } from '../i18n/i18n';
 
 // Length-first (NIST 800-63B): 12 chars is the floor (Fair), not the top. Only longer passwords
 // climb to Good/Strong; char variety demotes a long low-variety one but never lifts a short one.
@@ -23,11 +24,12 @@ function strength(p: string): number {
   if (len >= 16 && variety >= 2) return 3; // good
   return 2; // fair (valid, but minimal)
 }
-const LABEL = ['', 'Too weak', 'Fair', 'Good', 'Strong'];
 const COLOR = ['', 'bg-red-500', 'bg-amber-500', 'bg-yellow-500', 'bg-green-500'];
 
 export function ForcePasswordChange() {
+  const { t } = useTranslation();
   const { user, changePassword, loading, error } = useServerSession();
+  const levels = ['', t('fpc.tooWeak'), t('fpc.fair'), t('fpc.good'), t('fpc.strong')];
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
   const [show, setShow] = useState(false);
@@ -48,18 +50,9 @@ export function ForcePasswordChange() {
         onSubmit={submit}
         className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-xl"
       >
-        <h1 className="mb-2 text-xl font-bold">Set your password</h1>
+        <h1 className="mb-2 text-xl font-bold">{t('fpc.title')}</h1>
         <p className="mb-5 text-sm text-muted-foreground">
-          {user ? (
-            <>
-              Welcome, <b className="text-foreground">{user.username}</b> — choose a password{' '}
-              <b className="text-foreground">only you know</b>. Until you do, the initial password
-              an admin set could unlock your data. This one is yours alone, and it can&apos;t be
-              recovered — keep it safe.
-            </>
-          ) : (
-            'Choose a password only you know.'
-          )}
+          {user ? t('fpc.welcome', { name: user.username }) : t('fpc.welcomePlain')}
         </p>
 
         {error && (
@@ -68,7 +61,9 @@ export function ForcePasswordChange() {
           </div>
         )}
 
-        <label className="mb-1 block text-xs font-medium text-muted-foreground">New password</label>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+          {t('fpc.newPassword')}
+        </label>
         <div className="relative mb-2">
           <input
             type={show ? 'text' : 'password'}
@@ -76,7 +71,7 @@ export function ForcePasswordChange() {
             onChange={(e) => setPw(e.target.value)}
             autoFocus
             autoComplete="new-password"
-            placeholder="A password only you know"
+            placeholder={t('fpc.phNew')}
             className="w-full rounded-md border border-input bg-background px-3 py-2 pr-16 text-sm"
           />
           <button
@@ -84,7 +79,7 @@ export function ForcePasswordChange() {
             onClick={() => setShow((v) => !v)}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
           >
-            {show ? 'Hide' : 'Show'}
+            {show ? t('fpc.hide') : t('fpc.show')}
           </button>
         </div>
         <div className="mb-1 flex gap-1.5">
@@ -96,22 +91,22 @@ export function ForcePasswordChange() {
           ))}
         </div>
         <div className="mb-4 h-4 text-xs text-muted-foreground">
-          {pw ? `Password strength: ${LABEL[score]}` : ''}
+          {pw ? t('fpc.strength', { level: levels[score] }) : ''}
         </div>
 
         <label className="mb-1 block text-xs font-medium text-muted-foreground">
-          Confirm password
+          {t('auth.confirmPassword')}
         </label>
         <input
           type={show ? 'text' : 'password'}
           value={pw2}
           onChange={(e) => setPw2(e.target.value)}
           autoComplete="new-password"
-          placeholder="Type it again"
+          placeholder={t('fpc.phAgain')}
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
         />
         <div className="mb-4 mt-1 h-4 text-xs text-red-500">
-          {mismatch ? 'Passwords don’t match.' : ''}
+          {mismatch ? t('auth.pwNoMatch') : ''}
         </div>
 
         <button
@@ -119,7 +114,7 @@ export function ForcePasswordChange() {
           disabled={!canSubmit}
           className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          {loading ? 'Setting…' : 'Set password & continue'}
+          {loading ? t('fpc.setting') : t('fpc.submit')}
         </button>
       </form>
     </div>

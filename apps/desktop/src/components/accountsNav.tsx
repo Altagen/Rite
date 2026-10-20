@@ -21,12 +21,14 @@
  */
 
 import { useRoutePath, navigate } from '../store/route';
+import { useTranslation } from '../i18n/i18n';
 import { useServerSession } from '../store/serverSessionStore';
 import { IconCollection, IconShield, IconTerminal, IconUsers } from './icons';
 import { isNativeShell } from '../utils/nativeShell';
 import type { NavAction } from './OverflowNav';
 
 export function useAccountsNav({ includeWorkspace = false } = {}): NavAction[] {
+  const { t } = useTranslation();
   const { user, mode } = useServerSession();
   const path = useRoutePath();
   if (!user || mode?.serveWebui === false) return [];
@@ -36,7 +38,7 @@ export function useAccountsNav({ includeWorkspace = false } = {}): NavAction[] {
   const canManage =
     (user.role === 'admin' || user.role === 'manager') && mode?.serveAdmin !== false;
   // The desktop shell and managers say "Organization": server settings are web-only.
-  const orgLabel = isNativeShell() || user.role === 'manager' ? 'Organization' : 'Admin';
+  const orgLabel = isNativeShell() || user.role === 'manager' ? t('anav.org') : t('anav.admin');
 
   const nav: NavAction[] = [
     // The way back, NAMED — and only where you are not already there. It replaces the ✕
@@ -47,8 +49,8 @@ export function useAccountsNav({ includeWorkspace = false } = {}): NavAction[] {
       ? [
           {
             id: 'app',
-            label: 'Terminals',
-            title: 'Back to your terminals (Esc)',
+            label: t('anav.terminals'),
+            title: t('anav.terminalsHint'),
             icon: <IconTerminal className="h-4 w-4" />,
             onClick: () => navigate('/'),
             active: path === '/',
@@ -57,15 +59,15 @@ export function useAccountsNav({ includeWorkspace = false } = {}): NavAction[] {
       : []),
     {
       id: 'teams',
-      label: 'Teams',
+      label: t('anav.teams'),
       icon: <IconUsers className="h-4 w-4" />,
       onClick: () => navigate('/teams'),
       active: path === '/teams',
     },
     {
       id: 'collections',
-      label: 'Collections',
-      title: 'Collections — yours + Discover (offered to your teams)',
+      label: t('anav.collections'),
+      title: t('anav.collectionsHint'),
       icon: <IconCollection className="h-4 w-4" />,
       onClick: () => navigate('/collections'),
       active: path === '/collections',
@@ -75,10 +77,7 @@ export function useAccountsNav({ includeWorkspace = false } = {}): NavAction[] {
     nav.push({
       id: 'admin',
       label: orgLabel,
-      title:
-        isNativeShell() || user.role === 'manager'
-          ? 'Organization (server settings are in the web console)'
-          : 'Administration',
+      title: isNativeShell() || user.role === 'manager' ? t('anav.orgHint') : t('anav.adminHint'),
       icon: <IconShield className="h-4 w-4" />,
       onClick: () => navigate('/admin'),
       active: path === '/admin',

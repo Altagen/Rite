@@ -5,6 +5,7 @@
  */
 
 import { useEffect } from 'react';
+import { useTranslation } from '../i18n/i18n';
 
 interface ToastProps {
   message: string;
@@ -18,6 +19,7 @@ interface ToastProps {
 }
 
 export function Toast({ message, type = 'error', onClose, duration = 4000, action }: ToastProps) {
+  const { t } = useTranslation();
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose();
@@ -51,7 +53,7 @@ export function Toast({ message, type = 'error', onClose, duration = 4000, actio
         <button
           onClick={onClose}
           className="hover:bg-white/20 rounded p-1 transition-colors"
-          aria-label="Close"
+          aria-label={t('toast.close')}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path

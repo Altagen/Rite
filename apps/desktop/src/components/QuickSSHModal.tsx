@@ -10,6 +10,7 @@ import { Backend } from '../utils/backend';
 import { type CreateConnectionInput, type AuthType } from '../store/connectionsStore';
 import { AuthSection } from './AuthSection';
 import { makeAuthState, toAuthMethodInput, type AuthState } from '../utils/authMethod';
+import { useTranslation } from '../i18n/i18n';
 
 interface QuickSSHModalProps {
   onClose: () => void;
@@ -36,6 +37,7 @@ export function QuickSSHModal({
   collectionTargets,
   onSaveToCollection,
 }: QuickSSHModalProps) {
+  const { t } = useTranslation();
   const [host, setHost] = useState('');
   const [port, setPort] = useState(22);
   const [username, setUsername] = useState('');
@@ -100,13 +102,13 @@ export function QuickSSHModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Quick SSH Connect"
+        aria-label={t('qssh.title')}
         className="mx-4 w-full max-w-md rounded-lg bg-background p-6 shadow-xl border border-border"
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-bold flex items-center gap-2">
             <span className="text-2xl">⚡</span>
-            Quick SSH Connect
+            {t('qssh.title')}
           </h2>
           <button
             onClick={onClose}
@@ -124,9 +126,7 @@ export function QuickSSHModal({
           </button>
         </div>
 
-        <p className="mb-4 text-sm text-muted-foreground">
-          Connect to SSH server without saving credentials
-        </p>
+        <p className="mb-4 text-sm text-muted-foreground">{t('qssh.subtitle')}</p>
 
         {error && (
           <div className="mb-4 rounded border border-red-500 bg-red-500/10 p-3 text-sm text-red-500">
@@ -138,7 +138,7 @@ export function QuickSSHModal({
           {/* Host */}
           <div>
             <label className="mb-1 block text-sm font-medium">
-              Host <span className="text-red-500">*</span>
+              {t('qssh.host')} <span className="text-red-500">*</span>
             </label>
             <input
               type="text"
@@ -154,7 +154,7 @@ export function QuickSSHModal({
           <div className="grid grid-cols-3 gap-3">
             {/* Port */}
             <div className="col-span-1">
-              <label className="mb-1 block text-sm font-medium">Port</label>
+              <label className="mb-1 block text-sm font-medium">{t('qssh.port')}</label>
               <input
                 type="number"
                 value={port}
@@ -170,7 +170,7 @@ export function QuickSSHModal({
             {/* Username */}
             <div className="col-span-2">
               <label className="mb-1 block text-sm font-medium">
-                Username <span className="text-red-500">*</span>
+                {t('qssh.username')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -190,16 +190,14 @@ export function QuickSSHModal({
           {/* Save to collection (ADR 0016) — optional */}
           {collectionTargets && collectionTargets.length > 0 && (
             <div>
-              <label className="mb-1 block text-sm font-medium">
-                Save to collection (optional)
-              </label>
+              <label className="mb-1 block text-sm font-medium">{t('qssh.saveTo')}</label>
               <select
                 value={saveCollectionId}
                 onChange={(e) => setSaveCollectionId(e.target.value)}
                 className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 disabled={loading}
               >
-                <option value="">Don't save — connect once</option>
+                <option value="">{t('qssh.dontSave')}</option>
                 {collectionTargets.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -217,7 +215,7 @@ export function QuickSSHModal({
               className="rounded bg-secondary px-4 py-2 font-medium text-secondary-foreground hover:bg-secondary/80"
               disabled={loading}
             >
-              Cancel
+              {t('qssh.cancel')}
             </button>
             <button
               type="submit"
@@ -233,7 +231,7 @@ export function QuickSSHModal({
               {loading && (
                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent" />
               )}
-              {loading ? 'Connecting...' : 'Connect'}
+              {loading ? t('qssh.connecting') : t('qssh.connect')}
             </button>
           </div>
         </form>

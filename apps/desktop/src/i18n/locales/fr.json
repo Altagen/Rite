@@ -23,7 +23,8 @@
     "submitting": "Création...",
     "warning": "Important : Ce mot de passe ne peut pas être récupéré. Gardez-le en sécurité.",
     "showPassword": "Afficher le mot de passe",
-    "hidePassword": "Masquer le mot de passe"
+    "hidePassword": "Masquer le mot de passe",
+    "aim16": "Visez 16 caractères ou plus pour un coffre plus solide."
   },
   "unlock": {
     "title": "RITE",
@@ -158,7 +159,11 @@
     "passwordAsk": "Mot de passe requis",
     "passwordAskFor": "Pour se connecter à {name}.",
     "passwordAskWhy": "Utilisé pour cette connexion seulement. Cochez « Retenir ce mot de passe » en éditant la machine pour qu'il soit conservé.",
-    "newConnection": "Machine"
+    "newConnection": "Machine",
+    "healthCheck": "Vérification de santé",
+    "hcInherit": "Suivre la politique de la collection / du serveur",
+    "hcOff": "Ne jamais sonder cette machine",
+    "hcWhy": "Une machine peut refuser le sondage actif ; elle ne peut pas en demander plus que le serveur n’autorise."
   },
   "errors": {
     "setupFailed": "Erreur lors de la création: {error}",
@@ -272,7 +277,8 @@
     "sshConnections": "Connexions SSH",
     "autoReconnect": "Reconnecter automatiquement les connexions SSH perdues",
     "focusMode": "Mode focus",
-    "autoCollapse": "Replier le panneau latéral en mode focus"
+    "autoCollapse": "Replier le panneau latéral en mode focus",
+    "autoReconnectHint": "Désactivé par défaut. Activé, une session coupée se reconnecte automatiquement — un nouveau shell, donc votre historique, l’affichage et tout travail en cours sont perdus. Désactivé, le volet propose un bouton Reconnecter. Dans les deux cas, vous êtes averti de la coupure."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -297,7 +303,12 @@
     "nCmds": "{n} cmd",
     "add": "Ajouter",
     "done": "Terminé",
-    "fillAll": "Donnez un nom et au moins une commande au snippet."
+    "fillAll": "Donnez un nom et au moins une commande au snippet.",
+    "phName": "Vérif. de déploiement",
+    "defSyslog": "Suivre syslog",
+    "defDisk": "Espace disque",
+    "defContainers": "Conteneurs actifs",
+    "defFailed": "Unités en échec"
   },
   "split": {
     "menu": "Diviser avec…",
@@ -416,7 +427,8 @@
     "probesOffYou": "La vérification des conteneurs et des services est désactivée dans vos paramètres.",
     "probesOffYouHint": "Réactivez-la dans les Paramètres. Le reste de ce tableau de bord n’est pas affecté.",
     "probesCardServer": "non autorisé ici",
-    "probesCardYou": "désactivé dans vos paramètres"
+    "probesCardYou": "désactivé dans vos paramètres",
+    "viaChain": "via {chain}"
   },
   "board": {
     "title": "Tableau",
@@ -463,7 +475,8 @@
     "copied": "Copié",
     "openLink": "Ouvrir le lien",
     "liveEmpty": "Aucune donnée — rafraîchi depuis une machine connectée.",
-    "liveHint": "Rafraîchi depuis une machine connectée."
+    "liveHint": "Rafraîchi depuis une machine connectée.",
+    "phActionLabel": "Redémarrer"
   },
   "preconnect": {
     "label": "Commande de pré-connexion",
@@ -559,7 +572,10 @@
     "inviteOnly": "Ce serveur est sur invitation — collez le jeton qu'on vous a donné pour rejoindre.",
     "creating": "Création du compte…",
     "createAdmin": "Créer l'administrateur",
-    "create": "Créer le compte"
+    "create": "Créer le compte",
+    "username": "Utilisateur",
+    "password": "Mot de passe",
+    "redeem": "Utiliser"
   },
   "admin": {
     "cancel": "Annuler",
@@ -599,7 +615,10 @@
       "resetAccess": "Réinitialiser l'accès",
       "errLoadUsers": "Le chargement des utilisateurs a échoué",
       "errCreateUser": "La création de l'utilisateur a échoué",
-      "errAction": "L'action a échoué"
+      "errAction": "L'action a échoué",
+      "roleUser": "utilisateur",
+      "roleManager": "responsable",
+      "roleAdmin": "admin"
     },
     "invites": {
       "title": "Invitations",
@@ -805,7 +824,8 @@
       "roleMember": "Membre",
       "errLoad": "Le chargement des équipes a échoué",
       "errMembers": "Le chargement des membres a échoué",
-      "errAction": "L'action a échoué"
+      "errAction": "L'action a échoué",
+      "colMember": "Membre"
     }
   },
   "ws": {
@@ -850,7 +870,11 @@
     "abandonKeep": "Abandonner et garder le fichier",
     "defaultShell": "Shell par défaut",
     "defaultShellWhy": "Utilisé en cliquant sur « + Terminal local »",
-    "notInstalled": "Non installé"
+    "notInstalled": "Non installé",
+    "terminal": "Terminal",
+    "library": "Bibliothèque",
+    "openInNewWindowOf": "Ouvrir {name} dans une nouvelle fenêtre",
+    "removeOf": "Retirer {name}"
   },
   "lib": {
     "newSubFolder": "Nouveau sous-dossier",
@@ -875,10 +899,13 @@
     "portForwarding": "Transfert de port",
     "moveToFolderTitle": "Déplacer vers un dossier",
     "delete": "Supprimer",
-    "noMatch": "Aucune connexion ne correspond à votre recherche."
+    "noMatch": "Aucune connexion ne correspond à votre recherche.",
+    "renameMenu": "Renommer…",
+    "boardMenu": "Tableau…",
+    "memberCount": "{count} membres"
   },
   "hub": {
-    "lead": "Gérez vos coffres locaux et vos serveurs enregistrés. Chacun s'ouvre dans sa propre fenêtre. Retirer un serveur ne fait que l'oublier ici.",
+    "lead": "Gérez vos coffres locaux et vos serveurs enregistrés. Chacun s’ouvre dans sa propre fenêtre. Retirer un serveur ne fait que l’oublier ici — votre compte distant reste.",
     "localVaults": "Coffres locaux",
     "localVault": "Coffre local",
     "onThisMachine": "Sur cette machine · déverrouillé avec votre mot de passe maître",
@@ -895,7 +922,21 @@
     "labelOptional": "Libellé (facultatif)",
     "errSave": "L'enregistrement du serveur a échoué",
     "errAdd": "L'ajout du serveur a échoué",
-    "errRemove": "Le retrait du serveur a échoué"
+    "errRemove": "Le retrait du serveur a échoué",
+    "contexts": "Contextes",
+    "open": "Ouvrir",
+    "image": "Image…",
+    "resetIcon": "Réinitialiser",
+    "servers": "Serveurs",
+    "removeTitle": "Retirer « {name} » ?",
+    "removeWhy": "Cela ne retire le serveur que de cet appareil. Votre compte sur le serveur n’est pas supprimé — ajoutez-le à nouveau quand vous voulez avec son URL et votre mot de passe.",
+    "lockOf": "Verrouiller {name}",
+    "renameOf": "Renommer {name}",
+    "changeIconOf": "Changer l’icône de {name}",
+    "openInNewWindowOf": "Ouvrir {name} dans une nouvelle fenêtre",
+    "removeFromListOf": "Retirer {name} de la liste",
+    "editOf": "Modifier {name}",
+    "removeOf": "Retirer {name}"
   },
   "coll": {
     "mine": "Mes collections",
@@ -914,7 +955,13 @@
     "viewMembers": "Voir les membres",
     "manageMembers": "Gérer les membres",
     "personalSpace": "Votre espace privé — vous seul. Il ne peut être ni partagé ni supprimé ; il existe toujours.",
-    "labelPersonal": "Nommez votre espace personnel."
+    "labelPersonal": "Nommez votre espace personnel.",
+    "discover": "Découvrir",
+    "instance": "Instance du serveur",
+    "new": "Nouvelle",
+    "personal": "Personnel",
+    "rename": "Renommer",
+    "labelNotEncrypted": "Ce libellé n’est pas chiffré — votre équipe et le serveur peuvent le lire pour que la collection soit trouvable. Gardez-le non sensible ; le vrai nom et les machines restent chiffrés de bout en bout."
   },
   "cview": {
     "viaJumpLong": "Atteinte via un hôte de rebond (ProxyJump)",
@@ -930,11 +977,18 @@
     "listView": "Vue en liste",
     "importSsh": "Importer depuis une config SSH",
     "noMachines": "Aucune machine dans cette collection.",
-    "emptyFolder": "Ce dossier est vide."
+    "emptyFolder": "Ce dossier est vide.",
+    "personal": "Personnel",
+    "members": "Membres",
+    "sortName": "Nom",
+    "sortHost": "Hôte",
+    "import": "Importer",
+    "folder": "Dossier",
+    "openNamed": "Ouvrir « {name} »"
   },
   "term": {
     "dragPane": "Glisser pour réorganiser le panneau",
-    "reconnect": "Se reconnecter au serveur",
+    "reconnect": "Reconnecter",
     "detach": "Détacher dans un nouvel onglet",
     "snippets": "Extraits",
     "closeTerminal": "Fermer le terminal",
@@ -945,7 +999,11 @@
     "closeSearch": "Fermer (Échap)",
     "connected": "Connecté à X",
     "connecting": "Connexion...",
-    "reconnecting": "Reconnexion..."
+    "reconnecting": "Reconnexion...",
+    "disconnected": "Déconnecté",
+    "splitH": "Diviser horizontalement ({chord})",
+    "splitV": "Diviser verticalement ({chord})",
+    "searchIn": "Rechercher dans le terminal ({chord})"
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",
@@ -977,7 +1035,19 @@
     "errParse": "L'analyse du fichier de configuration SSH a échoué",
     "errImport": "L'import des connexions a échoué",
     "deselectAll": "Tout désélectionner",
-    "selectAll": "Tout sélectionner"
+    "selectAll": "Tout sélectionner",
+    "errPath": "Indiquez le chemin d’un fichier de configuration",
+    "errNoHosts": "Aucun hôte valide dans ce fichier de configuration",
+    "errNoneChosen": "Sélectionnez au moins un hôte à importer",
+    "loading": "Chargement…",
+    "parsing": "Analyse…",
+    "parse": "Analyser",
+    "found": "{count} hôte(s) trouvé(s) :",
+    "willHave": "Les connexions importées arrivent avec",
+    "emptyPasswords": "aucun mot de passe",
+    "cancel": "Annuler",
+    "importing": "Import de {count}…",
+    "importSelected": "Importer la sélection ({count})"
   },
   "teams": {
     "mine": "Mes équipes",
@@ -987,11 +1057,14 @@
     "requestAccess": "Demander l'accès",
     "discoveryNote": "Les noms ici servent à la découverte, pas au secret.",
     "discoveryWhy": "Les libellés ci-dessus sont visibles par cette équipe (et par le serveur) pour que vous trouviez les collections et demandiez l'accès. Les machines — et toute collection privée — restent chiffrées de bout en bout ; vous ne les voyez qu'une fois l'accès accordé par un membre.",
-    "leave": "Quitter l'équipe",
+    "leave": "Quitter",
     "serverInstance": "Instance du serveur",
     "errAction": "L'action a échoué",
     "leaveWhy": "Vous quittez la liste et cessez de voir les collections proposées ici. Les collections dont vous êtes déjà membre ne changent pas.",
-    "lastManager": "Vous êtes le dernier manager — promouvez quelqu'un avant de partir."
+    "lastManager": "Vous êtes le dernier manager — promouvez quelqu'un avant de partir.",
+    "roleManager": "Responsable",
+    "open": "Ouvrir",
+    "requested": "Demandé"
   },
   "tm": {
     "noSessions": "Aucune session de terminal active",
@@ -1015,7 +1088,15 @@
     "remove": "Retirer",
     "addSomeone": "Ajouter quelqu'un — saisissez un nom…",
     "errAction": "L'action a échoué",
-    "newCollection": "Nouvelle collection"
+    "newCollection": "Nouvelle collection",
+    "add": "Ajouter",
+    "roleOwner": "Propriétaire",
+    "roleEditor": "Éditeur",
+    "roleViewer": "Lecteur",
+    "ownerWhat": "gère le partage et les réglages",
+    "editorWhat": "ajoute/modifie les machines (re-chiffre)",
+    "viewerWhat": "peut seulement se connecter.",
+    "noMachines": "aucune machine"
   },
   "boundary": {
     "appError": "Erreur de l'application",
@@ -1025,7 +1106,9 @@
     "reload": "Recharger l'application",
     "featureError": "Erreur de fonctionnalité",
     "tryAgain": "Réessayer",
-    "componentError": "Erreur de composant"
+    "componentError": "Erreur de composant",
+    "errorLabel": "Erreur :",
+    "retry": "Réessayer"
   },
   "paste": {
     "title": "Importer depuis une config SSH",
@@ -1046,5 +1129,235 @@
     "errTaken": "Ce nom d'utilisateur est déjà pris",
     "errTooMany": "Trop de tentatives d'inscription — réessayez dans quelques minutes",
     "errInvite": "Cette invitation est invalide ou a expiré"
+  },
+  "fpc": {
+    "title": "Définissez votre mot de passe",
+    "welcome": "Bienvenue {name}. Choisissez un mot de passe que vous seul connaissez — celui défini par un administrateur peut déverrouiller vos données jusque-là. Le vôtre est irrécupérable.",
+    "welcomePlain": "Choisissez un mot de passe que vous seul connaissez.",
+    "newPassword": "Nouveau mot de passe",
+    "phNew": "Un mot de passe que vous seul connaissez",
+    "phAgain": "Retapez-le",
+    "show": "Afficher",
+    "hide": "Masquer",
+    "strength": "Force du mot de passe : {level}",
+    "tooWeak": "Trop faible",
+    "fair": "Correct",
+    "good": "Bon",
+    "strong": "Fort",
+    "setting": "Enregistrement…",
+    "submit": "Définir et continuer"
+  },
+  "hostKey": {
+    "changed": "Clé d’hôte modifiée",
+    "unknown": "Clé d’hôte inconnue",
+    "changedWhy": "La clé d’hôte de {target} a changé depuis votre dernière connexion. Le serveur a pu être réinstallé — ou il s’agit d’une attaque de l’intercepteur. La connexion a été refusée.",
+    "unknownWhy": "L’authenticité de {target} ne peut pas être établie. Vérifiez l’empreinte ci-dessous avant de l’approuver.",
+    "keyType": "Type de clé",
+    "oldFp": "Ancienne empreinte",
+    "newFp": "Nouvelle empreinte",
+    "fp": "Empreinte",
+    "close": "Fermer",
+    "cancel": "Annuler",
+    "connecting": "Connexion…",
+    "trust": "Approuver et connecter"
+  },
+  "discover": {
+    "title": "Découvrir",
+    "subtitle": "Collections proposées à vos équipes — demandez l’accès et un membre vous remet la clé.",
+    "labelsTitle": "Ces libellés servent à la découverte, pas aux secrets.",
+    "labelsWhy": "Votre équipe et le serveur peuvent les lire, pour que vous puissiez trouver et demander l’accès. Les machines et les noms privés restent chiffrés de bout en bout jusqu’à ce qu’un membre vous accorde l’accès.",
+    "errLoad": "Impossible de charger la découverte",
+    "errRequest": "La demande a échoué",
+    "empty": "Aucune collection n’est encore proposée à vos équipes.",
+    "offered": "{count} proposée(s)",
+    "youAreMember": "Vous êtes membre — ouvrez-la quand vous voulez",
+    "encrypted": "Chiffrée jusqu’à ce qu’un membre vous accorde l’accès",
+    "member": "Membre",
+    "requested": "Demandé",
+    "request": "Demander l’accès"
+  },
+  "anav": {
+    "terminals": "Terminaux",
+    "terminalsHint": "Retour à vos terminaux (Échap)",
+    "teams": "Équipes",
+    "collections": "Collections",
+    "collectionsHint": "Collections — les vôtres + Découvrir (proposées à vos équipes)",
+    "org": "Organisation",
+    "admin": "Admin",
+    "orgHint": "Organisation (les réglages du serveur sont dans la console web)",
+    "adminHint": "Administration"
+  },
+  "qssh": {
+    "title": "Connexion SSH rapide",
+    "subtitle": "Se connecter à un serveur SSH sans enregistrer d’identifiants",
+    "saveTo": "Enregistrer dans une collection (facultatif)",
+    "dontSave": "Ne pas enregistrer — connexion unique",
+    "cancel": "Annuler",
+    "connecting": "Connexion…",
+    "connect": "Se connecter",
+    "host": "Hôte",
+    "port": "Port",
+    "username": "Utilisateur"
+  },
+  "vaultRm": {
+    "currentTitle": "« {name} » est le coffre dans lequel vous êtes",
+    "currentWhy": "Il ne peut pas être retiré de la liste tant que cette fenêtre le détient. Changez de contexte d’abord, ou ouvrez {path} pour l’effacer et repartir de zéro.",
+    "resetPath": "Réglages ▸ Réinitialiser le coffre",
+    "close": "Fermer",
+    "title": "Retirer « {name} » ?",
+    "why": "Retire ce coffre de votre liste. Le fichier de base de données reste sur le disque — vous pourrez le rouvrir.",
+    "alsoDelete": "Supprimer aussi le fichier définitivement",
+    "alsoDeleteWhy": "Irréversible — efface la base et toutes ses connexions.",
+    "cancel": "Annuler",
+    "deleteForever": "Supprimer définitivement",
+    "remove": "Retirer",
+    "typeToConfirm": "Tapez",
+    "toConfirm": "pour confirmer"
+  },
+  "adminOnly": {
+    "title": "Console d’administration uniquement",
+    "why": "Ce serveur n’expose que la console d’administration, et votre compte n’est pas administrateur. Demandez l’accès à un administrateur.",
+    "signOut": "Se déconnecter"
+  },
+  "offline": {
+    "title": "Vous êtes hors ligne",
+    "why": "Reconnexion dès votre retour — rien n’est perdu."
+  },
+  "cert": {
+    "title": "Certificat non approuvé",
+    "why": "{url} présente un certificat auto-signé qu’aucune autorité publique ne cautionne. Vérifiez l’empreinte ci-dessous auprès du serveur par un autre canal avant de l’approuver.",
+    "fp": "Empreinte SHA-256",
+    "pinned": "Une fois épinglé, les connexions suivantes devront présenter exactement ce certificat.",
+    "cancel": "Annuler",
+    "trust": "Approuver et ajouter"
+  },
+  "notif": {
+    "title": "Notifications",
+    "bellHint": "Notifications",
+    "subtitle": "Les personnes qui demandent à rejoindre des collections que vous pouvez accorder.",
+    "empty": "Aucune demande en attente — tout est à jour.",
+    "showingLatest": "{shown} dernières sur {total}",
+    "total": "{count} au total",
+    "seeAll": "Voir toutes les notifications →",
+    "requestsAccess": "demande l’accès",
+    "viaTeam": "découvert via l’équipe {team}",
+    "request": "demande d’accès",
+    "dismiss": "Ignorer",
+    "grant": "Accorder",
+    "instance": "Instance du serveur",
+    "nothing": "Rien ne requiert votre attention",
+    "pending": "{count} en attente",
+    "caughtUp": "Tout est à jour",
+    "caughtUpWhy": "Les demandes d’accès aux collections que vous pouvez accorder apparaîtront ici.",
+    "page": "Page {page} sur {total}",
+    "prev": "← Précédent",
+    "next": "Suivant →",
+    "errAction": "L’action a échoué"
+  },
+  "reauth": {
+    "title": "Session verrouillée",
+    "why": "Votre clé de coffre ne vit qu’en mémoire. Reconnectez-vous pour déverrouiller vos connexions.",
+    "signIn": "Se reconnecter",
+    "signOut": "Se déconnecter"
+  },
+  "profile": {
+    "hint": "Votre compte",
+    "signOut": "Se déconnecter"
+  },
+  "health": {
+    "disabled": "Les vérifications actives de statut sont désactivées sur ce serveur.",
+    "tooFast": "Vérifications trop rapprochées — réessayez dans un instant.",
+    "failed": "Impossible de vérifier le statut de la machine."
+  },
+  "dlg": {
+    "name": "Nom",
+    "colour": "Couleur",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "save": "Enregistrer",
+    "create": "Créer",
+    "colourAria": "couleur {hex}",
+    "delete": "Supprimer",
+    "remove": "Retirer"
+  },
+  "collEdit": {
+    "rename": "Renommer la collection",
+    "new": "Nouvelle collection",
+    "why": "Un groupe de machines avec ses propres dossiers et son tableau.",
+    "whyLocal": "Un groupe de machines avec ses propres dossiers et son tableau. Le partage demande un serveur.",
+    "phName": "ex. Bases de production",
+    "hc": "Vérification active pour cette collection",
+    "hcOffLocal": "Désactivée, les machines de cette collection ne sont jamais sondées activement.",
+    "hcOffShared": "Désactivée, les membres ne sondent jamais activement les machines de cette collection.",
+    "hcPassive": "Le « vu pour la dernière fois » passif reste affiché.",
+    "errAction": "L’action a échoué"
+  },
+  "fold": {
+    "rename": "Renommer le dossier",
+    "new": "Nouveau dossier",
+    "errSave": "Impossible d’enregistrer le dossier",
+    "renamingIn": "Renommage d’un dossier dans « {name} »",
+    "subOf": "Sous-dossier de « {path} »",
+    "sharedIn": "Partagé dans « {name} »",
+    "phCollection": "ex. Serveurs web",
+    "phLibrary": "ex. Acme"
+  },
+  "move": {
+    "title": "Déplacer « {name} »",
+    "pickFolder": "Choisissez un dossier de destination.",
+    "root": "Racine (aucun dossier)",
+    "here": "ici",
+    "newFolder": "Nouveau dossier…",
+    "phNewPath": "Nouveau dossier — ex. Serveurs web ou Web/EU",
+    "move": "Déplacer",
+    "personal": "Choisissez un dossier personnel (votre vue seulement — non partagé).",
+    "noFolderRoot": "(aucun dossier — racine)",
+    "current": "actuel",
+    "empty": "Aucun dossier — créez-en un depuis le ＋ de la bibliothèque."
+  },
+  "ctxPill": {
+    "switch": "Changer de contexte",
+    "localVaults": "Coffres locaux",
+    "noVault": "Aucun coffre — créez-en un ci-dessous.",
+    "servers": "Serveurs",
+    "newWindow": "Ouvrir dans une nouvelle fenêtre",
+    "newWindowOf": "Ouvrir {name} dans une nouvelle fenêtre",
+    "removeFromList": "Retirer de la liste",
+    "removeOf": "Retirer {name}",
+    "lock": "Verrouiller",
+    "lockOf": "Verrouiller {name}",
+    "manageAll": "Vue cartes — tout gérer…",
+    "newVault": "Nouveau coffre local…",
+    "openFile": "Ouvrir un fichier de coffre…",
+    "addServer": "Ajouter un serveur…"
+  },
+  "createVault": {
+    "title": "Créer un coffre local",
+    "why": "Une base chiffrée sur cette machine. Vous définirez ensuite son mot de passe maître.",
+    "name": "Nom",
+    "optional": "(facultatif)",
+    "phName": "ex. Personnel",
+    "location": "Emplacement",
+    "change": "Changer d’emplacement…",
+    "cancel": "Annuler",
+    "create": "Créer le coffre"
+  },
+  "kbd": {
+    "title": "Vérification du serveur",
+    "why": "Le serveur a besoin d’autre chose pour vous connecter.",
+    "notStored": "Demandé par le serveur (keyboard-interactive). Votre réponse part vers le serveur pour la connexion —",
+    "notStoredBold": "Rite n’enregistre rien",
+    "cancel": "Annuler",
+    "verifying": "Vérification…",
+    "verify": "Vérifier"
+  },
+  "status": {
+    "checking": "Vérification du statut…",
+    "up": "Joignable · vérification active",
+    "down": "Sans réponse · vérification active",
+    "passive": "{when} · passif (aucun sondage)"
+  },
+  "toast": {
+    "close": "Fermer"
   }
 }

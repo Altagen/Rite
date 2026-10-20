@@ -96,7 +96,7 @@ export function ServerAuthScreen() {
 
           <div className="space-y-2">
             <label htmlFor="username" className="text-sm font-medium">
-              Username
+              {t('auth.username')}
             </label>
             <input
               id="username"
@@ -112,7 +112,7 @@ export function ServerAuthScreen() {
 
           <div className="space-y-2">
             <label htmlFor="password" className="text-sm font-medium">
-              Password
+              {t('auth.password')}
             </label>
             <input
               id="password"
@@ -223,7 +223,7 @@ export function ServerAuthScreen() {
                     onClick={() => switchTab('register')}
                     className="font-medium text-primary hover:underline"
                   >
-                    Redeem
+                    {t('auth.redeem')}
                   </button>
                 </>
               )}

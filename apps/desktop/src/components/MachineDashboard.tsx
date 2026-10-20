@@ -291,7 +291,7 @@ export function MachineDashboard({
           <div className="flex items-center gap-1.5 text-base font-semibold">
             <span className="truncate">{connection.name}</span>
             {connection.jump && chain.length > 0 && (
-              <span title={`via ${chain.join(' › ')}`}>
+              <span title={t('dash.viaChain', { chain: chain.join(' › ') })}>
                 <JumpGlyph />
               </span>
             )}

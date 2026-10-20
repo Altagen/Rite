@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { type IncomingRequest } from '../utils/backend';
 import { navigate } from '../store/route';
 import { useAccessRequests, type AccessRequestsController } from '../store/accessRequests';
+import { useTranslation } from '../i18n/i18n';
 
 /** How many requests the bell dropdown shows before deferring to the full page. */
 const DROPDOWN_CAP = 5;
@@ -24,6 +25,7 @@ export function RequestRow({
   ctl: AccessRequestsController;
   compact?: boolean;
 }) {
+  const { t } = useTranslation();
   const k = ctl.keyOf(r);
   return (
     <div className={`flex items-center gap-2.5 ${compact ? 'rounded-md px-2 py-2' : 'px-4 py-3'}`}>
@@ -32,10 +34,10 @@ export function RequestRow({
       </span>
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm">
-          <b>{r.username}</b> requests access
+          <b>{r.username}</b> {t('notif.requestsAccess')}
         </div>
         <div className="truncate text-xs text-muted-foreground">
-          {r.teamName ? `discovered via team ${r.teamName}` : 'access request'}
+          {r.teamName ? t('notif.viaTeam', { team: r.teamName }) : t('notif.request')}
         </div>
       </div>
       <button
@@ -43,20 +45,21 @@ export function RequestRow({
         disabled={ctl.busy === k}
         className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
       >
-        Dismiss
+        {t('notif.dismiss')}
       </button>
       <button
         onClick={() => ctl.grant(r)}
         disabled={ctl.busy === k}
         className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
       >
-        Grant
+        {t('notif.grant')}
       </button>
     </div>
   );
 }
 
 export function AccessRequestsBell() {
+  const { t } = useTranslation();
   const ctl = useAccessRequests();
   const [open, setOpen] = useState(false);
   const { requests, error } = ctl;
@@ -67,7 +70,7 @@ export function AccessRequestsBell() {
       <button
         onClick={() => setOpen((v) => !v)}
         className="m-btn m-btn-ghost m-btn-sm relative"
-        title="Notifications"
+        title={t('notif.bellHint')}
       >
         <svg
           className="h-4 w-4"
@@ -93,10 +96,8 @@ export function AccessRequestsBell() {
           <div className="absolute right-0 top-[calc(100%+6px)] z-50 w-[min(92vw,440px)] rounded-xl border border-border bg-card shadow-xl">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <div>
-                <div className="text-sm font-semibold">Notifications</div>
-                <div className="text-xs text-muted-foreground">
-                  People asking to join collections you can grant.
-                </div>
+                <div className="text-sm font-semibold">{t('notif.title')}</div>
+                <div className="text-xs text-muted-foreground">{t('notif.subtitle')}</div>
               </div>
               {requests.length > 0 && (
                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-600">
@@ -108,7 +109,7 @@ export function AccessRequestsBell() {
             <div className="max-h-[60vh] overflow-y-auto p-2">
               {requests.length === 0 ? (
                 <div className="py-6 text-center text-sm text-muted-foreground">
-                  No pending requests — you&apos;re all caught up.
+                  {t('notif.empty')}
                 </div>
               ) : (
                 shown.map((r) => <RequestRow key={ctl.keyOf(r)} r={r} ctl={ctl} compact />)
@@ -118,8 +119,8 @@ export function AccessRequestsBell() {
               <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
                 <span className="text-xs text-muted-foreground">
                   {requests.length > DROPDOWN_CAP
-                    ? `Showing latest ${DROPDOWN_CAP} of ${requests.length}`
-                    : `${requests.length} total`}
+                    ? t('notif.showingLatest', { shown: DROPDOWN_CAP, total: requests.length })
+                    : t('notif.total', { count: requests.length })}
                 </span>
                 <button
                   onClick={() => {
@@ -128,7 +129,7 @@ export function AccessRequestsBell() {
                   }}
                   className="rounded-md px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/10"
                 >
-                  See all notifications →
+                  {t('notif.seeAll')}
                 </button>
               </div>
             )}

@@ -566,7 +566,7 @@ function CollectionsGovernance() {
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
           </svg>
-          Collections
+          {t('admin.nav.collections')}
         </button>
         <h1 className="mb-4 text-[22px] font-bold">{label(sel)}</h1>
         <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
@@ -574,7 +574,7 @@ function CollectionsGovernance() {
             Members {members ? `· ${members.length}` : ''}
           </div>
           {members === null ? (
-            <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
+            <div className="px-4 py-4 text-sm text-muted-foreground">{t('admin.coll.loading')}</div>
           ) : members.length === 0 ? (
             <div className="px-4 py-4 text-sm text-muted-foreground">
               {t('admin.coll.noMembers')}
@@ -646,7 +646,7 @@ function CollectionsGovernance() {
                   disabled={!canAdd || !addTarget}
                   className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
-                  Add
+                  {t('admin.coll.add')}
                 </button>
               </div>
             </div>
@@ -692,7 +692,7 @@ function CollectionsGovernance() {
           <span className="w-6" />
         </div>
         {shared === null ? (
-          <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
+          <div className="px-4 py-4 text-sm text-muted-foreground">{t('admin.coll.loading')}</div>
         ) : shared.length === 0 ? (
           <div className="px-4 py-4 text-sm text-muted-foreground">
             No shared collections{personal > 0 ? ' — personal ones stay private' : ''}.

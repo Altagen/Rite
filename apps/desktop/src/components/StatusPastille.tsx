@@ -11,6 +11,7 @@
  */
 
 import { useServerSession } from '../store/serverSessionStore';
+import { useTranslation } from '../i18n/i18n';
 import type { HealthStatus } from '../store/healthStore';
 import { useHealthPref, effectiveHealth } from '../store/healthPrefStore';
 
@@ -46,6 +47,7 @@ export function StatusPastille({
   className?: string;
 }) {
   const { mode } = useServerSession();
+  const { t } = useTranslation();
   const healthPref = useHealthPref((s) => s.pref);
 
   // Active verdict wins when present (an on-demand check has run / is running).
@@ -53,7 +55,7 @@ export function StatusPastille({
     return (
       <span
         className={`inline-block h-2 w-2 flex-none animate-pulse rounded-full bg-amber-500 ${className}`}
-        title="Checking status…"
+        title={t('status.checking')}
       />
     );
   }
@@ -61,7 +63,7 @@ export function StatusPastille({
     return (
       <span
         className={`inline-block h-2 w-2 flex-none rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.7)] ${className}`}
-        title="Reachable · active check"
+        title={t('status.up')}
       />
     );
   }
@@ -69,7 +71,7 @@ export function StatusPastille({
     return (
       <span
         className={`inline-block h-2 w-2 flex-none rounded-full border border-muted-foreground/50 ${className}`}
-        title="No response · active check"
+        title={t('status.down')}
       />
     );
   }
@@ -83,7 +85,7 @@ export function StatusPastille({
   return (
     <span
       className={`inline-block h-2 w-2 flex-none rounded-full ${dotClass(lastUsedAt)} ${className}`}
-      title={`${relLabel(lastUsedAt)} · passive (no probe)`}
+      title={t('status.passive', { when: relLabel(lastUsedAt) })}
     />
   );
 }

@@ -36,21 +36,21 @@ import { ForcePasswordChange } from './ForcePasswordChange';
 import { Settings } from './Settings';
 import { useSettingsModal } from '../store/settingsModal';
 import { useAccountsNav } from './accountsNav';
+import { useTranslation } from '../i18n/i18n';
 
 /** Reload without the password left no keys in RAM — re-auth to decrypt. */
 function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex h-screen items-center justify-center bg-background text-foreground">
       <div className="mx-4 w-full max-w-md rounded-lg border border-border bg-card p-6 text-center shadow-xl">
-        <h1 className="mb-2 text-lg font-semibold">Session locked</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
-          Your vault key stays in memory only. Sign in again to unlock your connections.
-        </p>
+        <h1 className="mb-2 text-lg font-semibold">{t('reauth.title')}</h1>
+        <p className="mb-6 text-sm text-muted-foreground">{t('reauth.why')}</p>
         <button
           onClick={onSignOut}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
-          Sign in again
+          {t('reauth.signIn')}
         </button>
       </div>
     </div>
@@ -58,6 +58,7 @@ function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
 }
 
 export function AccountsShell() {
+  const { t } = useTranslation();
   const { user, userKey, logout, mode } = useServerSession();
   const conns = useAccountsConnectionsSource();
   const path = useRoutePath();
@@ -119,7 +120,7 @@ export function AccountsShell() {
           isLocked: false,
           lock: () => logout(),
           renderUnlockModal: () => null,
-          lockLabel: 'Sign out',
+          lockLabel: t('reauth.signOut'),
         }}
         conns={conns}
         instanceName={mode?.instanceName}

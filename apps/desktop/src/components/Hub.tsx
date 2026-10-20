@@ -303,7 +303,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
 
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-[22px] font-semibold">Contexts</h1>
+            <h1 className="text-[22px] font-semibold">{t('hub.contexts')}</h1>
             <div className="flex-1" />
             {onClose && (
               <button
@@ -314,10 +314,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
               </button>
             )}
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage your local vaults and saved servers. Each opens in its own window. Removing a
-            server only forgets it here — your remote account stays.
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('hub.lead')}</p>
         </div>
 
         {error && (
@@ -376,13 +373,13 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                         onClick={() => openVault(v)}
                         className="flex-none rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                       >
-                        Open
+                        {t('hub.open')}
                       </button>
                       {isCurrent && (
                         <button
                           onClick={lockVault}
                           title="Lock"
-                          aria-label={`Lock ${v.label}`}
+                          aria-label={t('hub.lockOf', { name: v.label })}
                           className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                         >
                           <svg
@@ -400,7 +397,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                       <button
                         onClick={() => startRename(v)}
                         title={t('hub.rename')}
-                        aria-label={`Rename ${v.label}`}
+                        aria-label={t('hub.renameOf', { name: v.label })}
                         className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                       >
                         <svg
@@ -421,7 +418,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                         <button
                           onClick={() => setIconMenuPath(iconMenuPath === v.path ? null : v.path)}
                           title={t('hub.changeIcon')}
-                          aria-label={`Change icon for ${v.label}`}
+                          aria-label={t('hub.changeIconOf', { name: v.label })}
                           className="rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                         >
                           <svg
@@ -463,13 +460,13 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                                   onClick={() => setVaultImage(v)}
                                   className="rounded px-2 py-1 font-medium hover:bg-muted"
                                 >
-                                  Image…
+                                  {t('hub.image')}
                                 </button>
                                 <button
                                   onClick={() => clearVaultIcon(v)}
                                   className="rounded px-2 py-1 text-muted-foreground hover:bg-muted"
                                 >
-                                  Reset
+                                  {t('hub.resetIcon')}
                                 </button>
                               </div>
                             </div>
@@ -480,7 +477,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                         <button
                           onClick={() => openVaultNewWindow(v)}
                           title={t('hub.openInNewWindow')}
-                          aria-label={`Open ${v.label} in a new window`}
+                          aria-label={t('hub.openInNewWindowOf', { name: v.label })}
                           className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                         >
                           <svg
@@ -507,7 +504,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                         <button
                           onClick={() => setConfirmRemoveVault(v)}
                           title={t('hub.removeFromList')}
-                          aria-label={`Remove ${v.label} from the list`}
+                          aria-label={t('hub.removeFromListOf', { name: v.label })}
                           className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500"
                         >
                           <svg
@@ -574,7 +571,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
             </div>
           )}
 
-          <Section>Servers</Section>
+          <Section>{t('hub.servers')}</Section>
           {/* Registered servers */}
           {ctx?.roster.map((s) => {
             const isCurrent = current?.kind === 'server' && current.id === s.id;
@@ -600,12 +597,12 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                   onClick={() => openServer(s)}
                   className="flex-none rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  Open
+                  {t('hub.open')}
                 </button>
                 <button
                   onClick={() => startEditServer(s)}
                   title={t('hub.editUrl')}
-                  aria-label={`Edit ${s.label || s.url}`}
+                  aria-label={t('hub.editOf', { name: s.label || s.url })}
                   className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                 >
                   <svg
@@ -626,7 +623,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                   <button
                     onClick={() => setServerIconMenu(serverIconMenu === s.id ? null : s.id)}
                     title={t('hub.changeIcon')}
-                    aria-label={`Change icon for ${s.label || s.url}`}
+                    aria-label={t('hub.changeIconOf', { name: s.label || s.url })}
                     className="rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                   >
                     <svg
@@ -661,13 +658,13 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                             onClick={() => setServerImage(s)}
                             className="rounded px-2 py-1 font-medium hover:bg-muted"
                           >
-                            Image…
+                            {t('hub.image')}
                           </button>
                           <button
                             onClick={() => void clearServerIcon(s)}
                             className="rounded px-2 py-1 text-muted-foreground hover:bg-muted"
                           >
-                            Reset
+                            {t('hub.resetIcon')}
                           </button>
                         </div>
                       </div>
@@ -678,7 +675,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                   <button
                     onClick={() => openServerNewWindow(s)}
                     title={t('hub.openInNewWindow')}
-                    aria-label={`Open ${s.label || s.url} in a new window`}
+                    aria-label={t('hub.openInNewWindowOf', { name: s.label || s.url })}
                     className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
                   >
                     <svg
@@ -699,7 +696,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                 <button
                   onClick={() => setConfirmRemove(s.id)}
                   title={t('hub.removeFromDevice')}
-                  aria-label={`Remove ${s.label || s.url}`}
+                  aria-label={t('hub.removeOf', { name: s.label || s.url })}
                   className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500"
                 >
                   <svg
@@ -745,7 +742,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                 onClick={cancelForm}
                 className="rounded px-3 py-1.5 text-sm hover:bg-muted"
               >
-                Cancel
+                {t('dlg.cancel')}
               </button>
               <button
                 type="submit"
@@ -783,19 +780,17 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
           return (
             <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
               <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl">
-                <h3 className="font-semibold">Remove “{s.label || s.url}”?</h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {t('hub.removeServerWhy')} <strong>this device</strong>. Your account on the
-                  server is <strong>not</strong> deleted — add it again anytime with its URL and
-                  sign in with your password.
-                </p>
+                <h3 className="font-semibold">
+                  {t('hub.removeTitle', { name: s.label || s.url })}
+                </h3>
+                <p className="mt-2 text-sm text-muted-foreground">{t('hub.removeWhy')}</p>
                 <div className="mt-4 flex justify-end gap-2">
                   <button
                     onClick={() => setConfirmRemove(null)}
                     disabled={busy}
                     className="rounded-md px-3 py-1.5 text-sm hover:bg-muted"
                   >
-                    Cancel
+                    {t('dlg.cancel')}
                   </button>
                   <button
                     onClick={async () => {
@@ -813,7 +808,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                     disabled={busy}
                     className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
                   >
-                    Remove
+                    {t('dlg.remove')}
                   </button>
                 </div>
               </div>

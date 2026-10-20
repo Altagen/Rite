@@ -1532,7 +1532,7 @@ export function Workspace({
           }
         >
           <IconTerminal className="h-4 w-4" />
-          <span className="hidden md:inline">Terminal</span>
+          <span className="hidden md:inline">{t('ws.terminal')}</span>
         </button>
 
         {/* Local-shell selector — hidden in a server context (the server sets the
@@ -1687,7 +1687,7 @@ export function Workspace({
                   className="m-btn m-btn-ghost"
                   style={{ padding: '4px' }}
                   title={t('ws.hideSidebar')}
-                  aria-label="Hide sidebar"
+                  aria-label={t('ws.hideSidebar')}
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
@@ -1745,11 +1745,11 @@ export function Workspace({
 
               {/* Library header row: eyebrow · + menu · collapse */}
               <div className="m-side-hdr">
-                <span className="m-eyebrow">Library</span>
+                <span className="m-eyebrow">{t('ws.library')}</span>
                 <div className="relative ml-auto flex items-center gap-1">
                   <button
                     onClick={() => setShowNewMenu((v) => !v)}
-                    aria-label="Add to library"
+                    aria-label={t('ws.addToLibrary')}
                     title={t('ws.addToLibrary')}
                     className="m-btn m-btn-ghost"
                     style={{ padding: '4px' }}
@@ -1954,7 +1954,7 @@ export function Workspace({
           <button
             onClick={() => setIsSidebarOpen(true)}
             title={t('ws.showSidebar')}
-            aria-label="Show sidebar"
+            aria-label={t('ws.showSidebar')}
             className="absolute left-0 top-1/2 z-30 -translate-y-1/2 rounded-r-md border border-l-0 border-border bg-card p-2 shadow-lg transition-colors hover:bg-muted"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2203,7 +2203,7 @@ export function Workspace({
                 onClick={() => setDeleteSubfolder(null)}
                 className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
               >
-                Cancel
+                {t('dlg.cancel')}
               </button>
               <button
                 onClick={async () => {
@@ -2228,7 +2228,7 @@ export function Workspace({
                 }}
                 className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
-                Delete
+                {t('dlg.delete')}
               </button>
             </div>
           </div>
@@ -2288,7 +2288,7 @@ export function Workspace({
                 onClick={() => setDeleteFolderTarget(null)}
                 className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
               >
-                Cancel
+                {t('dlg.cancel')}
               </button>
               <button
                 onClick={() => {
@@ -2297,7 +2297,7 @@ export function Workspace({
                 }}
                 className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
-                Delete
+                {t('dlg.delete')}
               </button>
             </div>
           </div>
@@ -2341,13 +2341,13 @@ export function Workspace({
                 onClick={() => setDeleteCollectionTarget(null)}
                 className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
               >
-                Cancel
+                {t('dlg.cancel')}
               </button>
               <button
                 onClick={handleDeleteCollectionConfirmed}
                 className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
-                Delete
+                {t('dlg.delete')}
               </button>
             </div>
           </div>
@@ -2565,7 +2565,7 @@ export function Workspace({
                           requestOpenContext({ kind: 'local', path: v.path });
                         }}
                         title={t('ws.openInNewWindow')}
-                        aria-label={`Open ${v.label} in a new window`}
+                        aria-label={t('ws.openInNewWindowOf', { name: v.label })}
                         className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
                       >
                         <svg
@@ -2586,7 +2586,7 @@ export function Workspace({
                     <button
                       onClick={() => setRemoveVault(v)}
                       title={t('ws.removeFromList')}
-                      aria-label={`Remove ${v.label}`}
+                      aria-label={t('ws.removeOf', { name: v.label })}
                       className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
                     >
                       <svg

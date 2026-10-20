@@ -347,7 +347,7 @@ export function MemberPicker({
           {isCreate && (
             <>
               <div>
-                <label className="mb-1 block text-sm font-medium">Name</label>
+                <label className="mb-1 block text-sm font-medium">{t('dlg.name')}</label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -358,7 +358,7 @@ export function MemberPicker({
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium">Colour</label>
+                <label className="mb-1 block text-sm font-medium">{t('dlg.colour')}</label>
                 <div className="flex flex-wrap gap-2">
                   {COLLECTION_COLORS.map((c) => (
                     <button
@@ -367,7 +367,7 @@ export function MemberPicker({
                       onClick={() => setColor(c)}
                       className={`h-7 w-7 rounded-full ${color === c ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card' : ''}`}
                       style={{ backgroundColor: c }}
-                      aria-label={`colour ${c}`}
+                      aria-label={t('dlg.colourAria', { hex: c })}
                     />
                   ))}
                 </div>
@@ -439,7 +439,7 @@ export function MemberPicker({
                           title={t('members.awaiting')}
                           className="rounded-full bg-secondary px-2 py-0.5 text-[10px] uppercase text-muted-foreground"
                         >
-                          no machines
+                          {t('members.noMachines')}
                         </span>
                       ))}
                     {iManage && !isMe ? (
@@ -528,7 +528,7 @@ export function MemberPicker({
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">
                           {d.username}
                         </span>
-                        <span className="text-xs text-muted-foreground">Add</span>
+                        <span className="text-xs text-muted-foreground">{t('members.add')}</span>
                       </button>
                     </li>
                   ))}
@@ -543,9 +543,10 @@ export function MemberPicker({
           )}
 
           <p className="text-xs text-muted-foreground">
-            {t('members.membersHoldKey')} <b className="text-foreground">Owner</b> manages sharing
-            &amp; settings · <b className="text-foreground">Editor</b> adds/edits machines
-            (re-encrypts) · <b className="text-foreground">Viewer</b> can only connect.
+            {t('members.membersHoldKey')}{' '}
+            <b className="text-foreground">{t('members.roleOwner')}</b> {t('members.ownerWhat')} ·{' '}
+            <b className="text-foreground">{t('members.roleEditor')}</b> {t('members.editorWhat')} ·{' '}
+            <b className="text-foreground">{t('members.roleViewer')}</b> {t('members.viewerWhat')}
           </p>
         </div>
 
@@ -562,7 +563,7 @@ export function MemberPicker({
               disabled={busy || !name.trim()}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              Create
+              {t('dlg.create')}
             </button>
           )}
         </div>

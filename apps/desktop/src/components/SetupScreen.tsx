@@ -221,9 +221,7 @@ export function SetupScreen({ asModal = false, onClose }: SetupScreenProps = {})
                       />
                     </div>
                     {strength.is_valid && password.length < 16 && (
-                      <p className="text-[11px] text-muted-foreground">
-                        Aim for 16+ characters for a stronger vault.
-                      </p>
+                      <p className="text-[11px] text-muted-foreground">{t('setup.aim16')}</p>
                     )}
                   </div>
                 );

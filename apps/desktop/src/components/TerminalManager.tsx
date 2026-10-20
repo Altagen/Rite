@@ -796,7 +796,7 @@ export function TerminalManager({
                     onClick={handleCancelCloseTab}
                     className="px-4 py-2 rounded-md text-sm font-medium text-foreground bg-muted hover:bg-muted/80 transition-colors"
                   >
-                    Cancel
+                    {t('dlg.cancel')}
                   </button>
                   <button
                     onClick={handleConfirmCloseTab}

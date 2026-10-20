@@ -139,18 +139,6 @@ check('no locale carries a label for a command that no longer exists', () => {
 });
 
 /*
- * A ratchet, not a gate: user-facing text written straight into a component.
- *
- * The checks above hold the two locales to each other, which says nothing about text
- * that never reached a locale at all — and 391 strings across 45 components never did.
- * The instance panel alone holds 73. Translating them is a roadmap item and not a
- * release blocker; what IS a blocker is the count going UP, because that is how it got
- * here: each addition looked consistent with the file it landed in.
- *
- * So the baseline is written down and the check fails when it is exceeded. Lower it
- * when a surface is migrated — that is the ratchet turning, and it only turns one way.
- */
-/*
  * Every key the code asks for must exist, in both locales.
  *
  * `t()` returns the KEY when it cannot resolve one — so a typo or a key that was
@@ -200,26 +188,64 @@ check('every key the code asks for exists in both locales', () => {
   );
 });
 
-const HARDCODED_BASELINE = 123;
+/*
+ * No user-facing text written straight into a component.
+ *
+ * This started as a ratchet over 401 strings across 45 components, because the count only
+ * ever went up: each addition looked consistent with the file it landed in. The migration
+ * is finished, so it is now a gate — the scan must find nothing but the lines listed in
+ * ALLOWED, each of which is not interface text at all.
+ *
+ * Keep it that way. A new string in a component fails this check by name, and the fix is a
+ * key in both locales, not a line in the list below.
+ *
+ * The patterns are deliberately wide, and the width was earned. An early version allowed
+ * only letters and commas inside a string, so a full stop, an apostrophe entity, an arrow
+ * or an em dash hid 125 of them — it reported 264 where the figure was 401. Worse, two
+ * strings fixed in one commit ("Policies + oversight", "Grant name / roster access") only
+ * became COUNTABLE once the `+` and the `/` were replaced by words, so the count appeared
+ * to rise while the file got better. Both halves of a ternary are read for the same reason:
+ * counting only the `:` side turned `isFirstRun ? 'Create your vault' : 'Unlock vault'` into
+ * a single string, and those fallbacks are the error and empty states — the text a reader
+ * meets when something has already gone wrong.
+ */
+const ALLOWED = new Map([
+  // A log context, read by a developer in a console, never by a user.
+  ['components/TerminalManager.tsx: [ternary-else] TerminalManager', 'log context, not interface'],
+  // The product's name, and the name of a key on the keyboard. Neither is translated.
+  ['components/ServerAuthScreen.tsx: [jsx-text] Rite', 'product name'],
+  ['components/Workspace.tsx: [jsx-text] Esc', 'key cap, printed in a <kbd>'],
+  // A developer-facing error about a malformed backend reply: there is no user action.
+  [
+    'utils/backend.ts: [throw] Invalid response from ${command}: ${result.error.message}',
+    'internal protocol error, not shown to a user',
+  ],
+  // The browser-preview mock's seed data — machine names, not chrome. A demo library in
+  // the reader's language would claim the fixtures are real.
+  ['utils/mockBackend.ts: [ternary-else] Database (demo)', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] Web Server (demo)', 'mock fixture data'],
+  [
+    'utils/mockBackend.ts: [ternary-else] Demo connection — browser preview only',
+    'mock fixture data',
+  ],
+  // A bounds comparison: `clientX > rect.right || clientY < rect.top` is a `>`, words
+  // and a `<`, which is what the jsx-tail pattern is looking for.
+  ['components/TerminalManager.tsx: [jsx-tail] rect.right || clientY', 'source code, not text'],
+  // A CSS font-family stack. Font names are not translated.
+  ['utils/terminalPool.ts: [ternary-else] JetBrains Mono, Fira Code, monospace', 'CSS font stack'],
+]);
 
-// Deliberately wide. The first version of this allowed only letters and commas inside a
-// string, so anything with a full stop, an apostrophe entity, an arrow or an em dash was
-// invisible to it — 125 of them, which it reported as 264 instead of 391. Worse, the two
-// strings fixed in the same commit ("Policies + oversight", "Grant name / roster access")
-// only became COUNTABLE because the `+` and the `/` were replaced by words, so the count
-// appeared to go up while the file got better. A count that misses a third of its subject
-// is not a ratchet, it is a reassurance.
-// Six patterns in four families, because the first two were half the subject. A count
-// that sees only part of what it counts gives false comfort: the narrow version reported
-// 264 when the figure was 349, and what it could not see mattered most — the ternary
-// fallbacks are error states and empty states, the text a reader meets when something
-// has already gone wrong.
 const HARDCODED = [
   // Text between tags. Wide on purpose: an earlier version allowed only letters and
   // commas inside a string, so a full stop, an apostrophe entity, an arrow or an em dash
-  // hid 125 of them from it.
+  // hid 125 of them from it — and a one-word rule hid another 73, which is where most
+  // buttons live: Cancel, Delete, Rename…, Save.
   ['jsx-text', />\s*([A-Z][^<>{}\n]*?[a-z][^<>{}]*?)\s*</gs],
   ['attr', /\b(?:title|placeholder|aria-label|label|alt)=["']([A-Z][^"']{4,})["']/g],
+  // The same attributes written as a template literal, which the quoted pattern cannot
+  // see. Twenty-one of them were left that way, all of them screen-reader labels and
+  // tooltips: `aria-label={`Remove ${v.label} from the list`}`.
+  ['attr-tpl', /\b(?:title|placeholder|aria-label|label|alt)=\{`([^`]{4,})`\}/g],
   ['confirm', /window\.confirm\(\s*[`'"]([^`'"]{10,})/g],
   ['toast', /toast\(\s*[`'"]([A-Z][^`'"]{6,})/g],
   ['throw', /throw new Error\(\s*[`'"]([A-Z][^`'"]{6,})/g],
@@ -229,6 +255,11 @@ const HARDCODED = [
   ['ternary-else', /:\s*['"]([A-Z][a-z][^'"]{10,})['"]/g],
   ['ternary-then', /\?\s*['"]([A-Z][a-z][^'"]{10,})['"]\s*:/g],
   ['prop', /\b(?:label|message|hint|text|note)=?:\s*['"]([A-Z][a-z][^'"]{8,})['"]/g],
+  // A fragment that starts lower-case, because it continues a sentence a <b> interrupted:
+  // "…<b>Owner</b> manages sharing & settings". Six of those were left when every pattern
+  // above still demanded a capital, and they are the half of the sentence that says what
+  // the bold word means.
+  ['jsx-tail', />\s*([a-z][a-zA-Z0-9 ,.;:·'’&/()!?+%@À-ɏ—–…→▸-]*?\s[^<>{}]*?)\s*</gs],
 ];
 
 function hardcodedStrings() {
@@ -243,7 +274,11 @@ function hardcodedStrings() {
         for (const [kind, rx] of HARDCODED) {
           for (const m of text.matchAll(rx)) {
             const s = m[1].replace(/\s+/g, ' ').trim();
-            if (kind === 'jsx-text' && (s.split(' ').length < 2 || s === s.toUpperCase())) continue;
+            // `=> Promise<T>` reads as a `>`, a word and a `<`, in 60-odd stores and
+            // components. It is the one shape worth excluding by hand.
+            const jsx = kind === 'jsx-text' || kind === 'jsx-tail';
+            if (jsx && m.index > 0 && text[m.index - 1] === '=') continue;
+            if (jsx && s === s.toUpperCase()) continue;
             found.push(`${next}: [${kind}] ${s}`);
           }
         }
@@ -256,23 +291,22 @@ function hardcodedStrings() {
 
 const hardcoded = hardcodedStrings();
 
-check('no NEW user-facing string bypasses the locales', () => {
-  assert.ok(
-    hardcoded.length <= HARDCODED_BASELINE,
-    `${hardcoded.length} hardcoded strings, baseline is ${HARDCODED_BASELINE}. ` +
-      `New ones must go through the locales:\n        ` +
-      hardcoded.slice(-5).join('\n        '),
+check('no user-facing string bypasses the locales', () => {
+  const unexpected = hardcoded.filter((h) => !ALLOWED.has(h));
+  assert.deepEqual(
+    unexpected,
+    [],
+    `${unexpected.length} hardcoded string(s). Each one needs a key in both locales:\n        ` +
+      unexpected.join('\n        '),
   );
 });
 
-check('and the baseline is not stale', () => {
-  // A baseline nobody lowers is a baseline nobody reads. If the count has dropped, the
-  // constant above is wrong by exactly that much and this says so rather than passing.
-  assert.equal(
-    hardcoded.length,
-    HARDCODED_BASELINE,
-    `the count is ${hardcoded.length}; lower HARDCODED_BASELINE to match`,
-  );
+check('and the allow-list has no stale entry', () => {
+  // An allowed line that no longer matches is a line nobody will question later. If the
+  // code it described is gone, so is its reason to be here.
+  const found = new Set(hardcoded);
+  const stale = [...ALLOWED.keys()].filter((k) => !found.has(k));
+  assert.deepEqual(stale, [], `${stale.length} allow-list entr(y/ies) match nothing any more`);
 });
 
 console.log(`\n${passed} checks passed`);

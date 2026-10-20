@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 
 export function MoveToFolderDialog({
   collectionName,
@@ -18,6 +19,7 @@ export function MoveToFolderDialog({
   onClose: () => void;
   onPick: (folderId: string | null) => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const pick = async (folderId: string | null) => {
     setBusy(true);
@@ -52,7 +54,9 @@ export function MoveToFolderDialog({
         />
       </svg>
       {label}
-      {(current ?? null) === id && <span className="ml-auto text-xs text-primary">current</span>}
+      {(current ?? null) === id && (
+        <span className="ml-auto text-xs text-primary">{t('move.current')}</span>
+      )}
     </button>
   );
 
@@ -65,17 +69,13 @@ export function MoveToFolderDialog({
         className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-1 text-lg font-semibold">Move “{collectionName}”</h3>
-        <p className="mb-3 text-xs text-muted-foreground">
-          Choose a personal folder (your view only — not shared).
-        </p>
+        <h3 className="mb-1 text-lg font-semibold">{t('move.title', { name: collectionName })}</h3>
+        <p className="mb-3 text-xs text-muted-foreground">{t('move.personal')}</p>
         <div className="space-y-0.5">
-          {row(null, '(no folder — root)')}
+          {row(null, t('move.noFolderRoot'))}
           {folders.map((f) => row(f.id, f.name))}
           {folders.length === 0 && (
-            <p className="px-3 py-2 text-sm text-muted-foreground">
-              No folders yet — create one from the library ＋.
-            </p>
+            <p className="px-3 py-2 text-sm text-muted-foreground">{t('move.empty')}</p>
           )}
         </div>
         <div className="mt-4 flex justify-end">
@@ -83,7 +83,7 @@ export function MoveToFolderDialog({
             onClick={onClose}
             className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
           >
-            Close
+            {t('dlg.close')}
           </button>
         </div>
       </div>

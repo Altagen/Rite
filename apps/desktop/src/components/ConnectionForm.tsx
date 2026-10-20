@@ -576,7 +576,7 @@ export function ConnectionForm({
                   onClick={() => setColor(c)}
                   className={`m-sw ${color === c ? 'sel' : ''}`}
                   style={{ backgroundColor: c }}
-                  aria-label={`colour ${c}`}
+                  aria-label={t('dlg.colourAria', { hex: c })}
                 />
               ))}
             </div>
@@ -584,19 +584,16 @@ export function ConnectionForm({
 
           {/* Health-check (ADR 0017): a machine can opt out of active probing. */}
           <div>
-            <label className="mb-1 block text-sm font-medium">Health-check</label>
+            <label className="mb-1 block text-sm font-medium">{t('connections.healthCheck')}</label>
             <select
               value={hcOptOut ? 'off' : 'inherit'}
               onChange={(e) => setHcOptOut(e.target.value === 'off')}
               className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
             >
-              <option value="inherit">Follow the collection / server policy</option>
-              <option value="off">Never probe this machine</option>
+              <option value="inherit">{t('connections.hcInherit')}</option>
+              <option value="off">{t('connections.hcOff')}</option>
             </select>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              A machine can opt out of active probing; it can&apos;t opt into more than the server
-              allows.
-            </p>
+            <p className="mt-1.5 text-xs text-muted-foreground">{t('connections.hcWhy')}</p>
           </div>
 
           {/* Save-to-collection target (ADR 0016) — accounts context only */}

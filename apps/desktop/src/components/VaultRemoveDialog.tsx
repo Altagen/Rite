@@ -18,6 +18,7 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import {
   isNativeShell,
   nativeContext,
@@ -32,6 +33,7 @@ export function VaultRemoveDialog({
   vault: Pick<NativeVault, 'path' | 'label'>;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [deleteFile, setDeleteFile] = useState(false);
   const [confirmName, setConfirmName] = useState('');
   // The vault this window is on: it can't be forgotten/switched-away here, so reset it instead.
@@ -41,7 +43,9 @@ export function VaultRemoveDialog({
   const nameConfirmField = (
     <div className="mt-4">
       <label className="text-xs text-muted-foreground">
-        Type <span className="font-mono font-medium text-foreground">{vault.label}</span> to confirm
+        {t('vaultRm.typeToConfirm')}{' '}
+        <span className="font-mono font-medium text-foreground">{vault.label}</span>{' '}
+        {t('vaultRm.toConfirm')}
       </label>
       <input
         autoFocus
@@ -59,19 +63,17 @@ export function VaultRemoveDialog({
   if (isCurrent) {
     return (
       <Shell onClose={onClose}>
-        <h3 className="font-semibold">“{vault.label}” is the vault you are in</h3>
+        <h3 className="font-semibold">{t('vaultRm.currentTitle', { name: vault.label })}</h3>
         <p className="mt-1 truncate text-xs text-muted-foreground">{vault.path}</p>
         <p className="mt-3 text-sm text-muted-foreground">
-          It can't be removed from the list while this window holds it. Switch to another context
-          first, or open <strong>Settings ▸ Reset vault</strong> to erase this one and start from
-          scratch.
+          {t('vaultRm.currentWhy', { path: t('vaultRm.resetPath') })}
         </p>
         <div className="mt-4 flex justify-end">
           <button
             onClick={onClose}
             className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted"
           >
-            Close
+            {t('vaultRm.close')}
           </button>
         </div>
       </Shell>
@@ -80,12 +82,9 @@ export function VaultRemoveDialog({
 
   return (
     <Shell onClose={onClose}>
-      <h3 className="font-semibold">Remove “{vault.label}”?</h3>
+      <h3 className="font-semibold">{t('vaultRm.title', { name: vault.label })}</h3>
       <p className="mt-1 truncate text-xs text-muted-foreground">{vault.path}</p>
-      <p className="mt-3 text-sm text-muted-foreground">
-        Removes this vault from your list. The database file stays on disk — you can open it again
-        anytime.
-      </p>
+      <p className="mt-3 text-sm text-muted-foreground">{t('vaultRm.why')}</p>
       <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/5 p-3">
         <input
           type="checkbox"
@@ -97,16 +96,14 @@ export function VaultRemoveDialog({
           className="mt-0.5 h-4 w-4 flex-none accent-red-500"
         />
         <span className="min-w-0 text-sm">
-          <span className="font-medium text-red-500">Also delete the file permanently</span>
-          <span className="block text-xs text-muted-foreground">
-            Irreversible — erases the database and all its connections.
-          </span>
+          <span className="font-medium text-red-500">{t('vaultRm.alsoDelete')}</span>
+          <span className="block text-xs text-muted-foreground">{t('vaultRm.alsoDeleteWhy')}</span>
         </span>
       </label>
       {deleteFile && nameConfirmField}
       <div className="mt-4 flex justify-end gap-2">
         <button onClick={onClose} className="rounded-md px-3 py-1.5 text-sm hover:bg-muted">
-          Cancel
+          {t('vaultRm.cancel')}
         </button>
         <button
           onClick={() => {
@@ -120,7 +117,7 @@ export function VaultRemoveDialog({
           disabled={deleteFile && !nameOk}
           className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
         >
-          {deleteFile ? 'Delete permanently' : 'Remove'}
+          {deleteFile ? t('vaultRm.deleteForever') : t('vaultRm.remove')}
         </button>
       </div>
     </Shell>

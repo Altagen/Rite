@@ -672,7 +672,7 @@ export function Terminal({
               )}
               {status === 'error' && error && <span className="text-xs text-red-500">{error}</span>}
               {status === 'disconnected' && (
-                <span className="text-xs text-muted-foreground">Disconnected</span>
+                <span className="text-xs text-muted-foreground">{t('term.disconnected')}</span>
               )}
             </>
           )}
@@ -726,7 +726,7 @@ export function Terminal({
                     d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                   />
                 </svg>
-                <span>Reconnect</span>
+                <span>{t('term.reconnect')}</span>
               </div>
             </button>
           )}
@@ -736,7 +736,7 @@ export function Terminal({
             <button
               onClick={onSplitHorizontal}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title={`Split horizontal (${splitHChord})`}
+              title={t('term.splitH', { chord: splitHChord })}
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -752,7 +752,7 @@ export function Terminal({
             <button
               onClick={onSplitVertical}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title={`Split vertical (${splitVChord})`}
+              title={t('term.splitV', { chord: splitVChord })}
             >
               <svg
                 className="h-4 w-4"
@@ -842,7 +842,7 @@ export function Terminal({
           <button
             onClick={() => setShowSearch(!showSearch)}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title={`Search in terminal (${searchChord})`}
+            title={t('term.searchIn', { chord: searchChord })}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path

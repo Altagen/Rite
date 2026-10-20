@@ -355,7 +355,7 @@ export function CollectionView({
         key={p}
         onClick={() => setPath(p)}
         className="group flex items-center gap-2 rounded-xl border border-border bg-card p-3.5 text-left transition hover:-translate-y-0.5 hover:border-primary"
-        title={`Open “${nm}”`}
+        title={t('cview.openNamed', { name: nm })}
       >
         <svg
           className={`h-4 w-4 flex-none ${c ? '' : 'text-muted-foreground'}`}
@@ -440,7 +440,7 @@ export function CollectionView({
         <h2 className="text-lg font-semibold">{name}</h2>
         {isPersonal ? (
           <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-            Personal
+            {t('cview.personal')}
           </span>
         ) : (
           role && (
@@ -519,7 +519,7 @@ export function CollectionView({
                 d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 00-1-7.75"
               />
             </svg>
-            Members
+            {t('cview.members')}
           </button>
         )}
       </div>
@@ -533,7 +533,7 @@ export function CollectionView({
             className="font-medium hover:underline"
             aria-label={t('cview.dismiss')}
           >
-            Dismiss
+            {t('cview.dismiss')}
           </button>
         </div>
       )}
@@ -566,8 +566,8 @@ export function CollectionView({
           onChange={(e) => setSort(e.target.value as 'name' | 'host' | 'lastUsed')}
           className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
         >
-          <option value="name">Name</option>
-          <option value="host">Host</option>
+          <option value="name">{t('cview.sortName')}</option>
+          <option value="host">{t('cview.sortHost')}</option>
           <option value="lastUsed">{t('cview.lastUsed')}</option>
         </select>
         <button
@@ -629,7 +629,7 @@ export function CollectionView({
                 d="M12 3v12M8 11l4 4 4-4M5 21h14"
               />
             </svg>
-            Import
+            {t('cview.import')}
           </button>
         )}
         {canWrite && onNewFolder && (
@@ -651,7 +651,7 @@ export function CollectionView({
                 d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
               />
             </svg>
-            Folder
+            {t('cview.folder')}
           </button>
         )}
         {canWrite && (

@@ -964,14 +964,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               <SettingsHead title={t('settings.sshConnections')} />
               <SettingsToggle
                 title={t('settings.autoReconnect')}
-                hint={
-                  <>
-                    Off by default. When on, a dropped session reconnects automatically — a new
-                    shell, so your history, on-screen output and any running job are lost. When off,
-                    the pane shows a Reconnect button instead. Either way you&apos;re told you were
-                    disconnected.
-                  </>
-                }
+                hint={t('settings.autoReconnectHint')}
                 checked={autoReconnect}
                 onChange={setAutoReconnect}
               />

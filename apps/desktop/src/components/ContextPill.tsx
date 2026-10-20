@@ -35,8 +35,10 @@ import {
 } from './ContextTag';
 import { useAuthStore } from '../store/authStore';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
+import { useTranslation } from '../i18n/i18n';
 
 export function ContextPill() {
+  const { t } = useTranslation();
   const [ctx, setCtx] = useState<ContextState | null>(null);
   const [open, setOpen] = useState(false);
   const [showManager, setShowManager] = useState(false);
@@ -184,8 +186,8 @@ export function ContextPill() {
   const newWindowBtn = (label: string, onClick: () => void) => (
     <button
       onClick={onClick}
-      title="Open in a new window"
-      aria-label={`Open ${label} in a new window`}
+      title={t('ctxPill.newWindow')}
+      aria-label={t('ctxPill.newWindowOf', { name: label })}
       className="hidden flex-none rounded p-1.5 text-muted-foreground transition hover:bg-background hover:text-foreground group-hover:block"
     >
       {splitIcon}
@@ -204,8 +206,8 @@ export function ContextPill() {
           setOpen(false);
           setRemoveVault(v);
         }}
-        title="Remove from list"
-        aria-label={`Remove ${v.label}`}
+        title={t('ctxPill.removeFromList')}
+        aria-label={t('ctxPill.removeOf', { name: v.label })}
         className="hidden flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500 group-hover:block"
       >
         <svg
@@ -230,7 +232,7 @@ export function ContextPill() {
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm font-medium hover:bg-muted"
-        title="Switch context"
+        title={t('ctxPill.switch')}
       >
         <ContextDot state={isLocalActive ? vaultState(currentVaultPath) : 'server'} />
         <span className="max-w-[180px] truncate">{currentLabel}</span>
@@ -239,7 +241,7 @@ export function ContextPill() {
 
       {open && (
         <div className="absolute left-0 top-full z-30 mt-2 w-80 rounded-[14px] border border-border bg-card p-2 shadow-lg">
-          <p className="m-eyebrow px-2.5 pb-1 pt-2">Local vaults</p>
+          <p className="m-eyebrow px-2.5 pb-1 pt-2">{t('ctxPill.localVaults')}</p>
           {vaults.length > 0 ? (
             vaults.map((v) => {
               const isCurrent = isLocalActive && currentVaultPath === v.path;
@@ -269,8 +271,8 @@ export function ContextPill() {
                         setOpen(false);
                         void lockCurrent();
                       }}
-                      title="Lock"
-                      aria-label={`Lock ${v.label}`}
+                      title={t('ctxPill.lock')}
+                      aria-label={t('ctxPill.lockOf', { name: v.label })}
                       className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
                     >
                       <svg
@@ -291,14 +293,12 @@ export function ContextPill() {
               );
             })
           ) : (
-            <p className="px-2 py-1.5 text-sm text-muted-foreground">
-              No vault yet — create one below.
-            </p>
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">{t('ctxPill.noVault')}</p>
           )}
 
           {ctx && ctx.roster.length > 0 && (
             <>
-              <p className="m-eyebrow px-2.5 pb-1 pt-2.5">Servers</p>
+              <p className="m-eyebrow px-2.5 pb-1 pt-2.5">{t('ctxPill.servers')}</p>
               {ctx.roster.map((s) => {
                 const isCurrent = !isLocalActive && active.id === s.id;
                 return (
@@ -327,12 +327,12 @@ export function ContextPill() {
           )}
 
           <div className="my-2 h-px bg-border" />
-          {footerRow(gridIcon, 'Card view — manage all…', () => setShowManager(true))}
-          {footerRow(plusIcon, 'New local vault…', openCreateVault)}
-          {footerRow(folderIcon, 'Open a vault file…', () =>
+          {footerRow(gridIcon, t('ctxPill.manageAll'), () => setShowManager(true))}
+          {footerRow(plusIcon, t('ctxPill.newVault'), openCreateVault)}
+          {footerRow(folderIcon, t('ctxPill.openFile'), () =>
             sendVaultCommand({ type: 'vault-open-file' }),
           )}
-          {footerRow(shieldIcon, 'Add a server…', () => {
+          {footerRow(shieldIcon, t('ctxPill.addServer'), () => {
             setShowManager(true);
             setAddServer(true);
           })}

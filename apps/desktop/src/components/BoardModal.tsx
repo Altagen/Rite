@@ -645,7 +645,7 @@ function CardForm({
                     value={label}
                     onChange={(e) => setLabel(e.target.value)}
                     className={input}
-                    placeholder="Restart"
+                    placeholder={t('board.phActionLabel')}
                   />
                 </label>
                 <div className="flex-1">{catField}</div>

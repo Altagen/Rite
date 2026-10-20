@@ -185,7 +185,7 @@ function LibraryFolderNode({
                     }}
                     className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                   >
-                    Rename…
+                    {t('lib.renameMenu')}
                   </button>
                   <button
                     onClick={() => {
@@ -302,7 +302,7 @@ function CollectionNode({
           {name}
         </span>
         {memberCount > 1 && (
-          <span className="m-mc" title={`${memberCount} members`}>
+          <span className="m-mc" title={t('lib.memberCount', { count: memberCount })}>
             <IconUsers className="h-4 w-4" />
             {showMemberCount ? memberCount : null}
           </span>
@@ -400,7 +400,7 @@ function CollectionNode({
                       }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                     >
-                      Board…
+                      {t('lib.boardMenu')}
                     </button>
                   )}
                   {/* Personal can't be shared, moved or deleted — rename only. A vault
@@ -438,7 +438,7 @@ function CollectionNode({
                       }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-muted"
                     >
-                      Rename…
+                      {t('lib.renameMenu')}
                     </button>
                   )}
                   {!isPersonal && canManage && (
@@ -670,7 +670,7 @@ function MachineRow({
               onMove();
             }}
             aria-label={t('lib.moveToFolderTitle')}
-            title="Move to folder…"
+            title={t('lib.moveToFolder')}
           >
             <svg
               className="h-3.5 w-3.5"
@@ -778,7 +778,7 @@ function FolderNode({
                           }}
                         >
                           <IconFolder className="h-4 w-4 flex-none" />
-                          New sub-folder
+                          {t('lib.newSubFolder')}
                         </button>
                       )}
                       {onNewMachine && (
@@ -827,7 +827,7 @@ function FolderNode({
                             onRename(path);
                           }}
                         >
-                          Rename…
+                          {t('lib.renameMenu')}
                         </button>
                       )}
                       {onDelete && (
@@ -839,7 +839,7 @@ function FolderNode({
                           }}
                           style={{ color: '#f7768e' }}
                         >
-                          Delete folder
+                          {t('lib.deleteFolder')}
                         </button>
                       )}
                     </div>

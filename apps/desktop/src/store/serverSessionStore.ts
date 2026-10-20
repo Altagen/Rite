@@ -7,7 +7,7 @@
  */
 
 import { create } from 'zustand';
-import { translate } from '../i18n/i18n';
+import { translate } from '../i18n/translate';
 import { Backend, type ServerMode, type ServerUser } from '../utils/backend';
 import {
   deriveAuthHash,

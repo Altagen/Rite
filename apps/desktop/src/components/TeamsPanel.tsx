@@ -142,7 +142,7 @@ export function TeamsPanel() {
           <table className="w-full text-sm">
             <thead className="text-left text-muted-foreground">
               <tr>
-                <th className="py-1 font-medium">Member</th>
+                <th className="py-1 font-medium">{t('admin.teams.colMember')}</th>
                 <th className="py-1 font-medium">{t('admin.teams.colRole')}</th>
                 <th className="py-1 font-medium text-right">{t('admin.teams.colActions')}</th>
               </tr>
@@ -207,7 +207,7 @@ export function TeamsPanel() {
               disabled={busy || !addUserId}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              Add
+              {t('admin.teams.add')}
             </button>
           </div>
 

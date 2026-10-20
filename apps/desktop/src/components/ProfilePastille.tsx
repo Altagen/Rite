@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 
 const ROLE_PILL: Record<string, string> = {
   admin: 'bg-primary/15 text-primary',
@@ -27,6 +28,7 @@ export function ProfilePastille({
   onSignOut: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { t } = useTranslation();
   const initials = username.slice(0, 2).toUpperCase();
   const pill = ROLE_PILL[role] ?? ROLE_PILL.user;
   const avatar = (size: string) => (
@@ -42,7 +44,7 @@ export function ProfilePastille({
       <button
         onClick={() => setOpen((v) => !v)}
         className="m-btn m-btn-ghost m-btn-sm flex items-center gap-2"
-        title="Your account"
+        title={t('profile.hint')}
       >
         {avatar('h-6 w-6')}
         <span className="hidden flex-col items-start leading-tight md:flex">
@@ -93,7 +95,7 @@ export function ProfilePastille({
                   <circle cx="12" cy="12" r="3" />
                   <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
                 </svg>
-                Settings
+                {t('settings.title')}
               </button>
               <button
                 onClick={() => {
@@ -115,7 +117,7 @@ export function ProfilePastille({
                     d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
                   />
                 </svg>
-                Sign out
+                {t('profile.signOut')}
               </button>
             </div>
           </div>

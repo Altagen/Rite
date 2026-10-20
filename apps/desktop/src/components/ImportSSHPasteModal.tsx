@@ -152,11 +152,7 @@ export function ImportSSHPasteModal({
           </button>
         </div>
 
-        <p className="mb-3 text-sm text-muted-foreground">
-          Paste your <span className="font-mono">~/.ssh/config</span>. It's parsed in your browser
-          and never uploaded — selected hosts become machines in the chosen collection (encrypted
-          with its key).
-        </p>
+        <p className="mb-3 text-sm text-muted-foreground">{t('paste.lead')}</p>
 
         {error && (
           <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">
@@ -237,7 +233,7 @@ export function ImportSSHPasteModal({
             onClick={onClose}
             className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
           >
-            Cancel
+            {t('dlg.cancel')}
           </button>
           <button
             onClick={doImport}
