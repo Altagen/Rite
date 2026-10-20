@@ -181,7 +181,9 @@ had no released version to be compatible with.
   - [ ] Cursor style configuration
 
 ### 🔒 Security Enhancements (Priority: HIGH)
-- [ ] Zeroize sensitive memory (passwords, keys)
+- [ ] Zeroize sensitive memory — **keys done**, passwords not: `MasterKey` is
+      `ZeroizeOnDrop` and the server's vault key is `Zeroizing<[u8; 32]>`, but an SSH
+      password travels as a `String` and is dropped without being wiped
 - ✅ Password strength validation (zxcvbn with visual indicator)
 - ✅ Auto-lock after inactivity (configurable timeout: 1, 3, 5 min or custom)
 - ✅ Clipboard security (auto-clear after 30 seconds)
@@ -195,7 +197,7 @@ had no released version to be compatible with.
   way back: the changed-key dialog deliberately offers no accept, and the only
   path through is Quick SSH, which force-accepts *before* verification runs and
   overwrites the stored key without showing that it changed
-- [ ] Session timeout configuration
+- ✅ Session timeout configuration — auto-lock after N minutes idle, in Settings
 - [ ] Secure credential storage review
 
 ### 🖥️ Terminal Improvements (Priority: HIGH)
@@ -205,13 +207,14 @@ had no released version to be compatible with.
 - ✅ Keep-alive configuration (per-connection: 15s, 30s, 60s, or custom)
 - [ ] Connection timeout configuration
 - [ ] Copy/paste improvements (context menu, smart paste)
-- [ ] Find next/previous in search
+- ✅ Find next/previous in search — xterm `SearchAddon`, both directions
 - [ ] Broadcast mode (type in multiple terminals simultaneously)
 
 ### 📦 Connection Management (Priority: MEDIUM)
 - ✅ Import from ~/.ssh/config (file path on desktop, paste on web)
 - [ ] Export connections (encrypted backup)
-- [ ] Import connections
+- [ ] Import connections — an ssh_config import exists; this is about reading back a
+      Rite export, which has no object until `Export connections` above exists
 - [ ] Host tags (in addition to collections)
 - [ ] Advanced search and filter
 
@@ -220,13 +223,13 @@ had no released version to be compatible with.
   - ✅ Choose default shell (integrated in main UI)
   - ✅ Master password setup (already done)
   - [ ] Basic preferences (theme, font)
-  - [ ] Optional SSH config import
+  - ✅ Optional SSH config import — `ImportSSHConfigModal`, `rite-core/src/ssh_config.rs`
 - [ ] Keyboard shortcuts configuration
   - ✅ Tab close shortcut (`Mod+W`)
   - ✅ Customizable keybindings — **Settings → Keyboard**
   - [ ] Shortcuts cheatsheet (`Mod+?`) — the table exists now, so this is a reader
         for it rather than a second list to keep in step
-- [ ] Connection status indicators (SSH)
+- ✅ Connection status indicators (SSH) — `StatusPastille` off `healthStore` (ADR 0017)
 - [ ] Error handling improvements
 - ✅ Toast notifications system
 - [ ] Tab context menu (rename, duplicate, close others)
