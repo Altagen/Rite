@@ -6,6 +6,7 @@
  */
 
 import type { HttpErrorKind } from '../utils/httpError';
+import { useTranslation } from '../i18n/i18n';
 
 // Every HttpErrorKind, plus 'offline' (client-side) and a 'generic' fallback.
 export type ConnErrorKind = HttpErrorKind | 'offline' | 'generic';
@@ -23,42 +24,42 @@ const ICONS: Record<ConnErrorKind, string> = {
 
 const CONTENT: Record<
   ConnErrorKind,
-  { sev: 'warn' | 'error' | 'info'; title: string; msg: string }
+  { sev: 'warn' | 'error' | 'info'; titleKey: string; msgKey: string }
 > = {
   http: {
     sev: 'error',
-    title: 'Something went wrong',
-    msg: 'The request could not be completed. Try again in a moment.',
+    titleKey: 'connErr.genericTitle',
+    msgKey: 'connErr.httpMsg',
   },
   starting: {
     sev: 'warn',
-    title: 'The server is starting up',
-    msg: "It isn't ready yet — this usually clears in a few seconds. We'll keep trying on our own.",
+    titleKey: 'connErr.startingTitle',
+    msgKey: 'connErr.startingMsg',
   },
   unreachable: {
     sev: 'warn',
-    title: "Can't reach the server",
-    msg: 'Check your internet connection, or that the server address is correct. We keep retrying.',
+    titleKey: 'connErr.unreachableTitle',
+    msgKey: 'connErr.unreachableMsg',
   },
   offline: {
     sev: 'warn',
-    title: "You're offline",
-    msg: "Your device isn't connected to the internet. Rite will reconnect on its own the moment you're back online.",
+    titleKey: 'connErr.offlineTitle',
+    msgKey: 'connErr.offlineMsg',
   },
   'session-expired': {
     sev: 'info',
-    title: 'Your session expired',
-    msg: 'For your security you were signed out after inactivity. Sign in again to carry on — your saved connections stay safe and encrypted.',
+    titleKey: 'connErr.expiredTitle',
+    msgKey: 'connErr.expiredMsg',
   },
   'server-error': {
     sev: 'error',
-    title: 'Something went wrong',
-    msg: "The server hit an unexpected error — it's not you. Try again in a moment; if it keeps happening, contact an admin.",
+    titleKey: 'connErr.genericTitle',
+    msgKey: 'connErr.serverMsg',
   },
   generic: {
     sev: 'error',
-    title: 'Something went wrong',
-    msg: 'An unexpected error occurred. Try again in a moment.',
+    titleKey: 'connErr.genericTitle',
+    msgKey: 'connErr.genericMsg',
   },
 };
 
@@ -85,6 +86,7 @@ export function ConnectionError({
   actionLabel?: string;
   onAction?: () => void;
 }) {
+  const { t } = useTranslation();
   const c = CONTENT[kind] ?? CONTENT.generic;
   const iconPath = ICONS[kind] ?? ICONS.generic;
   return (
@@ -105,12 +107,12 @@ export function ConnectionError({
             <path d={iconPath} />
           </svg>
         </div>
-        <h1 className="mb-2 text-xl font-bold text-balance">{c.title}</h1>
-        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{c.msg}</p>
+        <h1 className="mb-2 text-xl font-bold text-balance">{t(c.titleKey)}</h1>
+        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{t(c.msgKey)}</p>
         {retrying && (
           <div className="mx-auto mb-4 inline-flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-muted-foreground">
             <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted border-t-amber-500" />
-            Retrying automatically…
+            {t('connErr.retrying')}
           </div>
         )}
         {detail && (
@@ -131,7 +133,7 @@ export function ConnectionError({
               onClick={onRetry}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Try again
+              {t('connErr.tryAgain')}
             </button>
           ) : null}
         </div>

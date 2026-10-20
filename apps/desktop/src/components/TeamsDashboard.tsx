@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import { Backend, type UserTeam, type TeamMember, type OfferedCollection } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import { navigate } from '../store/route';
@@ -43,6 +44,7 @@ function Avatar({ name }: { name: string }) {
 const roleLabel = (r: TeamMember['role']) => (r === 'admin' ? 'Manager' : 'Member');
 
 export function TeamsDashboard() {
+  const { t } = useTranslation();
   const { user: me, mode } = useServerSession();
   const [teams, setTeams] = useState<UserTeam[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export function TeamsDashboard() {
       try {
         await fn();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Action failed');
+        setError(err instanceof Error ? err.message : t('teams.errAction'));
       } finally {
         setBusy(false);
       }
@@ -134,7 +136,7 @@ export function TeamsDashboard() {
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
         {mode?.instanceName && (
-          <span className="m-chip" title="Server instance">
+          <span className="m-chip" title={t('teams.serverInstance')}>
             <span className="m-dot" />
             {mode.instanceName}
           </span>
@@ -147,7 +149,7 @@ export function TeamsDashboard() {
         {/* Rail: my teams */}
         <aside className="flex w-[280px] flex-none flex-col overflow-y-auto border-r border-border bg-input">
           <div className="px-3.5 pb-2 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            My teams
+            {t('teams.mine')}
           </div>
           <div className="flex-1 px-2 pb-3">
             {teams.map((t) => (
@@ -170,9 +172,7 @@ export function TeamsDashboard() {
               </button>
             ))}
             {teams.length === 0 && (
-              <p className="px-2 py-3 text-sm text-muted-foreground">
-                You&apos;re not in any team yet.
-              </p>
+              <p className="px-2 py-3 text-sm text-muted-foreground">{t('teams.none')}</p>
             )}
           </div>
         </aside>
@@ -186,7 +186,7 @@ export function TeamsDashboard() {
               </div>
             )}
             {!selected ? (
-              <p className="text-sm text-muted-foreground">Select a team.</p>
+              <p className="text-sm text-muted-foreground">{t('teams.pick')}</p>
             ) : (
               <>
                 <div className="mb-1 flex items-center gap-3">
@@ -237,7 +237,7 @@ export function TeamsDashboard() {
                   </div>
                   {teamOffers.length === 0 ? (
                     <div className="px-4 py-3 text-sm text-muted-foreground">
-                      No collections offered to this team yet.
+                      {t('teams.noOffers')}
                     </div>
                   ) : (
                     teamOffers.map((o) => {
@@ -269,7 +269,7 @@ export function TeamsDashboard() {
                               disabled={busy}
                               className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                             >
-                              Request access
+                              {t('teams.requestAccess')}
                             </button>
                           )}
                         </div>
@@ -281,21 +281,19 @@ export function TeamsDashboard() {
                 <div className="flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3 text-xs text-foreground/80">
                   <IconLock className="mt-0.5 h-4 w-4 flex-none text-primary" />
                   <div>
-                    <b>Names here are for discovery, not secrets.</b> The labels above are visible
-                    to this team (and the server) so you can find and request access. The machines —
-                    and every private collection — stay end-to-end encrypted; you only see them once
-                    a member grants you access.
+                    <b>{t('teams.discoveryNote')}</b> The labels above are visible to this team (and
+                    the server) so you can find and request access. The machines — and every private
+                    collection — stay end-to-end encrypted; you only see them once a member grants
+                    you access.
                   </div>
                 </div>
 
                 {/* Leave team */}
                 <section className="mt-4 flex items-center justify-between rounded-2xl border border-red-500/30 px-4 py-4">
                   <div>
-                    <div className="text-sm font-semibold text-red-600">Leave team</div>
+                    <div className="text-sm font-semibold text-red-600">{t('teams.leave')}</div>
                     <div className="text-xs text-muted-foreground">
-                      {iAmLastManager
-                        ? 'You are the last manager — promote someone before leaving.'
-                        : "You leave the roster and stop seeing the collections offered here. Collections you're already a member of are unaffected."}
+                      {iAmLastManager ? t('teams.lastManager') : t('teams.leaveWhy')}
                     </div>
                   </div>
                   <button

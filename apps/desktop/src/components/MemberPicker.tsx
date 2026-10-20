@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import { Backend, type CollectionRole, type DirectoryEntry, type UserTeam } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import {
@@ -79,6 +80,7 @@ export function MemberPicker({
   onSaved: () => void;
   onCreated?: (id: string) => void; // create mode: the new collection's id (for placement)
 }) {
+  const { t } = useTranslation();
   const { user: me, publicKey, privateKey, mode: serverMode } = useServerSession();
   // Server-governed default role for newly added members (admin → Collections policy).
   const defaultRole: CollectionRole = serverMode?.collectionPolicy?.defaultRole ?? 'viewer';
@@ -151,7 +153,7 @@ export function MemberPicker({
     try {
       await fn();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
+      setError(err instanceof Error ? err.message : t('members.errAction'));
     } finally {
       setBusy(false);
     }
@@ -314,12 +316,12 @@ export function MemberPicker({
       >
         <div className="mb-1 flex items-center justify-between">
           <h3 className="text-lg font-semibold">
-            {isCreate ? 'New collection' : `Share · ${initialName ?? ''}`}
+            {isCreate ? t('members.newCollection') : `Share · ${initialName ?? ''}`}
           </h3>
           <button
             onClick={onClose}
             className="rounded p-1 text-muted-foreground hover:bg-muted"
-            aria-label="Close"
+            aria-label={t('members.close')}
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -375,7 +377,7 @@ export function MemberPicker({
 
           {iManage && teams.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Add from team:</span>
+              <span className="text-xs text-muted-foreground">{t('members.addFromTeam')}</span>
               {teams.map((tm) => (
                 <button
                   key={tm.id}
@@ -427,14 +429,14 @@ export function MemberPicker({
                         <button
                           onClick={() => grantMachineAccess(d)}
                           disabled={busy}
-                          title="Roster-only: sees the name but no machines. Seal machine access to them."
+                          title={t('members.rosterOnly')}
                           className="rounded border border-primary/40 px-2 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50"
                         >
-                          Grant machine access
+                          {t('members.grantMachine')}
                         </button>
                       ) : (
                         <span
-                          title="Awaiting machine access from a member"
+                          title={t('members.awaiting')}
                           className="rounded-full bg-secondary px-2 py-0.5 text-[10px] uppercase text-muted-foreground"
                         >
                           no machines
@@ -458,7 +460,7 @@ export function MemberPicker({
                         <button
                           onClick={() => toggle(d)}
                           disabled={busy}
-                          title="Remove"
+                          title={t('members.remove')}
                           className="rounded p-1 text-red-500 hover:bg-muted disabled:opacity-50"
                         >
                           <svg
@@ -505,7 +507,7 @@ export function MemberPicker({
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Add someone — type a username…"
+                  placeholder={t('members.addSomeone')}
                   autoComplete="off"
                   className="min-w-0 flex-1 bg-transparent text-sm outline-none"
                 />
@@ -541,8 +543,8 @@ export function MemberPicker({
           )}
 
           <p className="text-xs text-muted-foreground">
-            Members hold the collection key. <b className="text-foreground">Owner</b> manages
-            sharing &amp; settings · <b className="text-foreground">Editor</b> adds/edits machines
+            {t('members.membersHoldKey')} <b className="text-foreground">Owner</b> manages sharing
+            &amp; settings · <b className="text-foreground">Editor</b> adds/edits machines
             (re-encrypts) · <b className="text-foreground">Viewer</b> can only connect.
           </p>
         </div>

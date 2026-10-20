@@ -403,7 +403,7 @@ export function Terminal({
         terminalInitializedCache.add(existingSessionId);
 
         // Write connection banner for SSH terminals before claiming buffered output,
-        // so the display order is: "Connected to X" → MOTD → shell prompt.
+        // so the display order is: t('term.connected') → MOTD → shell prompt.
         if (!isLocalTerminal) {
           term.write(`Connected to ${connectionNameRef.current}\r\n\n`);
         }
@@ -667,7 +667,7 @@ export function Terminal({
             <>
               {status === 'connecting' && (
                 <span className="text-xs text-muted-foreground">
-                  {isReconnecting ? 'Reconnecting...' : 'Connecting...'}
+                  {isReconnecting ? t('term.reconnecting') : t('term.connecting')}
                 </span>
               )}
               {status === 'error' && error && <span className="text-xs text-red-500">{error}</span>}
@@ -692,7 +692,7 @@ export function Terminal({
                 if (onDragEnd) onDragEnd();
               }}
               className="flex flex-col gap-0.5 p-1 cursor-move rounded hover:bg-muted transition-colors"
-              title="Drag to reorganize pane"
+              title={t('term.dragPane')}
             >
               <div className="flex gap-0.5">
                 <div className="h-1 w-1 rounded-full bg-muted-foreground/50" />
@@ -715,7 +715,7 @@ export function Terminal({
               onClick={() => handleReconnect()}
               disabled={isReconnecting}
               className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-              title="Reconnect to server"
+              title={t('term.reconnect')}
             >
               <div className="flex items-center gap-1">
                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -809,7 +809,7 @@ export function Terminal({
             <button
               onClick={onDetach}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title="Detach to new tab"
+              title={t('term.detach')}
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
@@ -826,7 +826,7 @@ export function Terminal({
           <button
             onClick={() => setSnippetSession(sessionIdRef.current || existingSessionId || null)}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Snippets"
+            title={t('term.snippets')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -857,7 +857,7 @@ export function Terminal({
           <button
             onClick={handleClose}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Close terminal"
+            title={t('term.closeTerminal')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -884,8 +884,8 @@ export function Terminal({
           <button
             onClick={() => setNoteDismissed(true)}
             className="flex-none rounded px-1 text-muted-foreground hover:text-foreground"
-            aria-label="Dismiss"
-            title="Dismiss"
+            aria-label={t('term.dismiss')}
+            title={t('term.dismiss')}
           >
             ✕
           </button>
@@ -905,7 +905,7 @@ export function Terminal({
                 handleSearch(e.shiftKey ? 'previous' : 'next');
               }
             }}
-            placeholder="Search in terminal..."
+            placeholder={t('term.searchPlaceholder')}
             className="flex-1 rounded border border-border bg-input px-3 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
             autoFocus
           />
@@ -913,7 +913,7 @@ export function Terminal({
             onClick={() => handleSearch('previous')}
             disabled={!searchTerm}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-            title="Previous (Shift+Enter)"
+            title={t('term.prev')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -928,7 +928,7 @@ export function Terminal({
             onClick={() => handleSearch('next')}
             disabled={!searchTerm}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-            title="Next (Enter)"
+            title={t('term.next')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -945,7 +945,7 @@ export function Terminal({
               setSearchTerm('');
             }}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Close (Escape)"
+            title={t('term.closeSearch')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path

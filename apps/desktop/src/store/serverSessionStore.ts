@@ -7,6 +7,7 @@
  */
 
 import { create } from 'zustand';
+import { translate } from '../i18n/i18n';
 import { Backend, type ServerMode, type ServerUser } from '../utils/backend';
 import {
   deriveAuthHash,
@@ -229,7 +230,7 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         sessionExpired: false,
       });
     } catch (e) {
-      set({ error: 'Invalid username or password', loading: false });
+      set({ error: translate('session.errLogin'), loading: false });
       throw e;
     }
   },
@@ -274,7 +275,10 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         mode: mode ? { ...mode, needsBootstrap: false } : mode,
       });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : 'Failed to create the admin', loading: false });
+      set({
+        error: e instanceof Error ? e.message : translate('session.errCreateAdmin'),
+        loading: false,
+      });
       throw e;
     }
   },
@@ -322,16 +326,16 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
     } catch (e) {
       const msg =
         e instanceof RiteHttpError && e.status === 409
-          ? 'That username is already taken'
+          ? translate('session.errTaken')
           : e instanceof RiteHttpError && e.status === 429
-            ? 'Too many sign-up attempts — please try again in a few minutes'
+            ? translate('session.errTooMany')
             : e instanceof RiteHttpError && e.status === 403
               ? inviteToken
-                ? 'That invitation is invalid or has expired'
-                : 'Registration is closed on this server'
+                ? translate('session.errInvite')
+                : translate('session.errClosed')
               : e instanceof Error
                 ? e.message
-                : 'Failed to create your account';
+                : translate('session.errCreateAccount');
       set({ error: msg, loading: false });
       throw e;
     }
@@ -367,7 +371,10 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         loading: false,
       });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : 'Failed to set the password', loading: false });
+      set({
+        error: e instanceof Error ? e.message : translate('session.errSetPassword'),
+        loading: false,
+      });
       throw e;
     }
   },

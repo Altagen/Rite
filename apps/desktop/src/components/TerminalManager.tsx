@@ -5,6 +5,7 @@
  */
 
 import type { SplitTarget } from '../types/pane';
+import { useTranslation } from '../i18n/i18n';
 import type { Layout } from '../store/layoutsFormat';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -104,6 +105,7 @@ export function TerminalManager({
   onSaveQuickSSH,
   quickSSHSessions = [],
 }: TerminalManagerProps) {
+  const { t } = useTranslation();
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [showShellDropdown, setShowShellDropdown] = useState(false);
@@ -378,8 +380,8 @@ export function TerminalManager({
             d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
           />
         </svg>
-        <p className="text-lg">No active terminal sessions</p>
-        <p className="mt-2 text-sm">Double-click a connection to open a terminal</p>
+        <p className="text-lg">{t('tm.noSessions')}</p>
+        <p className="mt-2 text-sm">{t('tm.doubleClickHint')}</p>
         {/* A layout opens its own tabs, so this is exactly when it is wanted: nothing
             is open, and the morning is one click away. It used to live only beside the
             tabs, which meant you had to open a terminal before you could open the
@@ -402,7 +404,7 @@ export function TerminalManager({
       {/* Tabs */}
       <div
         role="tablist"
-        aria-label="Open tabs"
+        aria-label={t('tm.openTabs')}
         className="flex items-center gap-1 border-b border-border bg-card px-2 py-1 pb-3 overflow-x-auto overflow-y-visible flex-shrink-0 relative z-10"
       >
         {tabGroups.map((tab) => {
@@ -490,7 +492,7 @@ export function TerminalManager({
                           handleStartRename(tab);
                         }}
                         className="rounded p-0.5 opacity-0 transition-opacity hover:bg-background/50 group-hover:opacity-100"
-                        title="Rename tab (double-click also works)"
+                        title={t('tm.renameTab')}
                       >
                         <svg
                           className="h-3 w-3"
@@ -524,7 +526,7 @@ export function TerminalManager({
                     onSaveQuickSSH(quickSSHSessionId);
                   }}
                   className="rounded p-0.5 opacity-0 transition-opacity hover:bg-background/50 group-hover:opacity-100"
-                  title="Save connection"
+                  title={t('tm.saveConnection')}
                 >
                   <svg
                     className="h-3.5 w-3.5"
@@ -605,7 +607,7 @@ export function TerminalManager({
                 setShowShellDropdown(!showShellDropdown);
               }}
               className="flex items-center gap-1 rounded px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors flex-shrink-0"
-              title="New terminal"
+              title={t('tm.newTerminal')}
               data-testid="tab-new-terminal"
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -677,7 +679,7 @@ export function TerminalManager({
                             <span className="font-medium">{shell.name}</span>
                             {!isInstalled && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 border border-red-500/30">
-                                Not installed
+                                {t('tm.notInstalled')}
                               </span>
                             )}
                           </div>
@@ -736,9 +738,7 @@ export function TerminalManager({
                     d="M12 4v16m8-8H4"
                   />
                 </svg>
-                <span className="text-base font-medium text-primary">
-                  Drop to merge into this tab
-                </span>
+                <span className="text-base font-medium text-primary">{t('tm.dropToMerge')}</span>
               </div>
             </div>
           </div>
@@ -778,7 +778,7 @@ export function TerminalManager({
                   </div>
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-foreground mb-2">
-                      Close Multiple Terminals?
+                      {t('tm.closeMany')}
                     </h3>
                     <p className="text-sm text-muted-foreground">
                       You are about to close{' '}
@@ -802,7 +802,7 @@ export function TerminalManager({
                     onClick={handleConfirmCloseTab}
                     className="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition-colors"
                   >
-                    Close All
+                    {t('tm.closeAll')}
                   </button>
                 </div>
               </div>

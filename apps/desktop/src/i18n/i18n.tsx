@@ -31,6 +31,29 @@ const LOCALE_STORAGE_KEY = 'rite-locale';
 
 const I18nContext = createContext<I18nContextType | undefined>(undefined);
 
+/**
+ * Resolve a key outside React, for the two places a hook cannot reach: a store (no
+ * component, no render) and a class error boundary (no hooks at all). Both hold text a
+ * reader sees — a sign-in failure, a crash screen — so neither can stay in English
+ * because of where it lives in the code.
+ *
+ * It reads the locale the provider persisted rather than the provider's state, which is
+ * the same value and available before any render. A locale change does not re-render
+ * what this returned: that is correct for a store's error string, which is produced at
+ * the moment of the failure and shown once.
+ */
+export function translate(key: string, params?: Record<string, string | number>): string {
+  const stored = deviceStore.getItem(LOCALE_STORAGE_KEY);
+  const locale: Locale = stored === 'en' || stored === 'fr' ? stored : DEFAULT_LOCALE;
+  const value = key
+    .split('.')
+    .reduce<unknown>((acc, k) => (acc as Record<string, unknown>)?.[k], translations[locale]);
+  if (typeof value !== 'string') return key;
+  return params
+    ? value.replace(/\{(\w+)\}/g, (_, p: string) => params[p]?.toString() ?? `{${p}}`)
+    : value;
+}
+
 interface I18nProviderProps {
   children: ReactNode;
 }

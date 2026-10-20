@@ -9,6 +9,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import { type CreateConnectionInput } from '../store/connectionsStore';
 
 interface ParsedHost {
@@ -60,6 +61,7 @@ export function ImportSSHPasteModal({
   onClose: () => void;
   onImported: (count: number) => void;
 }) {
+  const { t } = useTranslation();
   const [text, setText] = useState('');
   const [collectionId, setCollectionId] = useState(
     defaultCollectionId ?? collectionTargets[0]?.id ?? '',
@@ -75,7 +77,7 @@ export function ImportSSHPasteModal({
     const found = parseSshConfig(text);
     setSelected(new Set(found.map((h) => h.name)));
     setParsed(true);
-    setError(found.length === 0 ? 'No hosts found in the pasted config.' : null);
+    setError(found.length === 0 ? t('paste.noHosts') : null);
   };
 
   const toggle = (name: string) =>
@@ -117,7 +119,7 @@ export function ImportSSHPasteModal({
       onImported(count);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed');
+      setError(err instanceof Error ? err.message : t('paste.errImport'));
     } finally {
       setBusy(false);
     }
@@ -133,11 +135,11 @@ export function ImportSSHPasteModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Import from SSH config</h3>
+          <h3 className="text-lg font-semibold">{t('paste.title')}</h3>
           <button
             onClick={onClose}
             className="rounded p-1 text-muted-foreground hover:bg-muted"
-            aria-label="Close"
+            aria-label={t('paste.close')}
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
@@ -181,7 +183,7 @@ export function ImportSSHPasteModal({
               disabled={busy || !text.trim()}
               className="mt-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50"
             >
-              Parse hosts
+              {t('paste.parse')}
             </button>
           ) : (
             <>
@@ -214,7 +216,7 @@ export function ImportSSHPasteModal({
         <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-3">
           <div className="flex-1 space-y-1">
             <label htmlFor="import-coll" className="text-xs font-medium text-muted-foreground">
-              Into collection
+              {t('paste.intoCollection')}
             </label>
             <select
               id="import-coll"
@@ -223,7 +225,7 @@ export function ImportSSHPasteModal({
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               disabled={busy}
             >
-              {collectionTargets.length === 0 && <option value="">No writable collection</option>}
+              {collectionTargets.length === 0 && <option value="">{t('paste.noWritable')}</option>}
               {collectionTargets.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
