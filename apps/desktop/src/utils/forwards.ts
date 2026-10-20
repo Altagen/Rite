@@ -15,11 +15,8 @@ import type { PortForwardConfig } from '../store/connectionsStore';
  * Stable identity for a forward. The core assigns a random id when one starts, so
  * a saved row is matched to a running one by what it does, not by id.
  */
-export const forwardKey = (f: {
-  localPort: number;
-  remoteHost: string;
-  remotePort: number;
-}) => `${f.localPort}|${f.remoteHost}|${f.remotePort}`;
+export const forwardKey = (f: { localPort: number; remoteHost: string; remotePort: number }) =>
+  `${f.localPort}|${f.remoteHost}|${f.remotePort}`;
 
 /** Which of a machine's forwards are live, keyed by {@link forwardKey} → running id. */
 export function useRunningForwards(connectionId: string) {
@@ -53,17 +50,26 @@ export function useRunningForwards(connectionId: string) {
     [],
   );
 
-  const stop = useCallback(async (f: PortForwardConfig) => {
-    const key = forwardKey(f);
-    const id = running.get(key);
-    if (!id) return;
-    await Backend.Terminal.stopForward(id);
-    setRunning((m) => {
-      const next = new Map(m);
-      next.delete(key);
-      return next;
-    });
-  }, [running]);
+  const stop = useCallback(
+    async (f: PortForwardConfig) => {
+      const key = forwardKey(f);
+      const id = running.get(key);
+      if (!id) return;
+      await Backend.Terminal.stopForward(id);
+      setRunning((m) => {
+        const next = new Map(m);
+        next.delete(key);
+        return next;
+      });
+    },
+    [running],
+  );
 
-  return { running, reconcile, start, stop, isLive: (f: PortForwardConfig) => running.has(forwardKey(f)) };
+  return {
+    running,
+    reconcile,
+    start,
+    stop,
+    isLive: (f: PortForwardConfig) => running.has(forwardKey(f)),
+  };
 }

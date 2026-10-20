@@ -5,6 +5,7 @@
  */
 
 import { useEffect } from 'react';
+import { useTranslation } from '../i18n/i18n';
 
 interface ToastProps {
   message: string;
@@ -18,6 +19,7 @@ interface ToastProps {
 }
 
 export function Toast({ message, type = 'error', onClose, duration = 4000, action }: ToastProps) {
+  const { t } = useTranslation();
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose();
@@ -26,12 +28,15 @@ export function Toast({ message, type = 'error', onClose, duration = 4000, actio
     return () => clearTimeout(timer);
   }, [duration, onClose]);
 
-  const bgColor = type === 'error' ? 'bg-red-500/90' : type === 'success' ? 'bg-green-500/90' : 'bg-blue-500/90';
+  const bgColor =
+    type === 'error' ? 'bg-red-500/90' : type === 'success' ? 'bg-green-500/90' : 'bg-blue-500/90';
   const label = type === 'error' ? 'Error:' : type === 'success' ? 'Success:' : 'Info:';
 
   return (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-1/2 animate-in slide-in-from-top-5 fade-in duration-300">
-      <div className={`${bgColor} backdrop-blur-sm text-white px-4 py-2 shadow-lg flex items-center gap-3 border border-white/20 rounded-lg`}>
+      <div
+        className={`${bgColor} backdrop-blur-sm text-white px-4 py-2 shadow-lg flex items-center gap-3 border border-white/20 rounded-lg`}
+      >
         <span className="text-sm font-bold uppercase tracking-wide">{label}</span>
         <p className="flex-1 text-sm font-medium">{message}</p>
         {action && (
@@ -48,10 +53,15 @@ export function Toast({ message, type = 'error', onClose, duration = 4000, actio
         <button
           onClick={onClose}
           className="hover:bg-white/20 rounded p-1 transition-colors"
-          aria-label="Close"
+          aria-label={t('toast.close')}
         >
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </button>
       </div>

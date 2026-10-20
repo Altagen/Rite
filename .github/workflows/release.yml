@@ -134,7 +134,7 @@ jobs:
         run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master as of 2026-10-20
         with:
           toolchain: ${{ steps.rust-pin.outputs.channel }}
           targets: ${{ matrix.platform.target }}
@@ -164,7 +164,12 @@ jobs:
           pnpm --filter desktop build:frontend
           cp -r apps/desktop/dist/. packages/rite-server/web/
 
+      # `build.rs` falls back to asking git, which works here — but passing it is what
+      # makes the answer the TAG's commit rather than whatever the checkout resolved, and
+      # it is the same value the image is given, so the two artefacts of one release agree.
       - name: Build client binary
+        env:
+          RITE_COMMIT: ${{ github.sha }}
         run: cargo build --release -p rite-desktop --target ${{ matrix.platform.target }}
 
       - name: Package artifact
@@ -249,6 +254,7 @@ jobs:
           # fetch — once per architecture, under emulation for arm64.
           build-args: |
             RUST_VERSION=${{ steps.rust-pin.outputs.channel }}
+            RITE_COMMIT=${{ github.sha }}
           # Layer cache across runs. Without it the dependency layer below is rebuilt
           # from scratch every tag, which is where this job's hour goes: a full clean
           # build of this workspace is six minutes natively, so the rest is cache that
@@ -274,7 +280,7 @@ jobs:
         run: echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master as of 2026-10-20
         with:
           toolchain: ${{ steps.rust-pin.outputs.channel }}
 

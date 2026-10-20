@@ -38,8 +38,7 @@ test('the context menu offers no way to erase the vault you are in', async ({ pa
 
   // Row actions are display:none until the row is hovered, which also keeps them out
   // of the accessibility tree — so each row has to be hovered before it is judged.
-  const row = (label: string) =>
-    page.locator('.group').filter({ hasText: label }).first();
+  const row = (label: string) => page.locator('.group').filter({ hasText: label }).first();
 
   await row('Home lab').hover();
   // The other vault can be forgotten — a roster edit that keeps the file.
@@ -72,6 +71,9 @@ test('resetting a vault still asks for the phrase, in settings', async ({ page }
   await fakeNativeShell(page);
   await page.goto('/');
   await page.getByRole('button', { name: 'Settings' }).click();
+  // Settings is a rail of sections and only the chosen one is rendered, so the
+  // section has to be selected rather than scrolled to.
+  await page.getByTestId('settings-nav-danger').click();
 
   const phrase = page.getByPlaceholder('Type DELETE ALL DATA');
   await expect(phrase).toHaveCount(1);

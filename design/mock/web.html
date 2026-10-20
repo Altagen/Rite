@@ -56,7 +56,6 @@
   .inst .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
   .appbar{flex-wrap:nowrap}#acts{flex-wrap:nowrap;justify-content:flex-end;flex:none}
   .inst{min-width:0;overflow:hidden}.inst span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .notif{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 0 2px var(--bg)}
   /* Health-check pastille (ADR 0017). Down is muted, not red — an unreachable machine is a
      normal state, not an error. Passive = a dim "last seen" light; no probing. */
   .pst{width:9px;height:9px;border-radius:50%;flex:none;display:inline-block;box-sizing:border-box}
@@ -99,6 +98,7 @@
 </div>
 <div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>web UI</b> · one server (instance name, no pill) · <a href="#" onclick="openHostKey();return false">host-key</a> · <a href="#" onclick="openMachine('web-01');return false">machine dashboard</a> · <a href="#" onclick="dlgBoard(find('c-prod'));return false">board</a> · <a href="#" onclick="demoToggleDashPolicy();return false">dashboard policy</a></div>
 
+<script src="esc.js"></script>
 <script src="rite.js"></script>
 <script src="full-data.js"></script>
 <script src="machine.js"></script>
@@ -224,11 +224,37 @@ const AGENT_SHELL='web';
 function isLocal(){return false;}
 // …and the server always governs here: it is the one running the commands.
 function probeGoverned(){return true;}
-let STATE={sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30}};
+let STATE={sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},
+  myShell:'', /* '' = whatever the instance defaults to */
+  toolbar:{quick:true,agents:true,library:true,newTermMenu:true}};
+/* No workspace file in a browser: this shell talks to a shared server, and the file
+   belongs to a machine (ADR 0023). `rite.js` reads this to hide the Layouts button
+   and the "Split presets…" row the same way the app hides them when `/api/layouts`
+   answers that there is no file. */
+const WORKSPACE_FILE=false;
 // The web UI opens terminals ON THE SERVER, so the shell is the server's default (set by the
 // admin in Instance settings), not a per-user pick. Choosing between local shells (fish/zsh/…)
 // is a DESKTOP feature (local terminals). Comes from the server mode in the real app.
 const SERVER_SHELL='bash';
+/* What this build knows about itself. In the app it comes from `/api/capabilities` — the
+   server that served this page — so the bundle and the binary cannot disagree. */
+const BUILD = { version: '0.2.4', commit: '3e60b68', date: '2026-10-17', api: 1, minClient: '0.1.2' };
+function copyDiagnostics(){toast('Copied: Rite '+BUILD.version+' ('+BUILD.commit+') \u00b7 browser');}
+/* The shells this instance HAS, as the server reports them, and whether it lets a
+   member deviate from the default within that list (Administration ▸ Instance). The
+   member's pick is per browser, like the toolbar preferences: it is an ergonomic choice
+   with a server-side fallback, not something worth a per-account settings table. Empty
+   pick = the instance default. The client sends a NAME from this list, never a path. */
+const SERVER_SHELLS=['bash','sh'];
+const ALLOW_SHELL_CHOICE=true;
+/* What a new terminal opens: this member's pick when the instance allows one, the
+   instance default otherwise. A pick the instance has since stopped offering falls
+   back here rather than anywhere else — the server resolves the name, so a stale
+   choice cannot survive as a path. */
+function myShell(){return (ALLOW_SHELL_CHOICE&&STATE.myShell&&SERVER_SHELLS.includes(STATE.myShell))?STATE.myShell:SERVER_SHELL;}
+/* One terminal, one shell, and the pick above is left alone — the same split the
+   desktop has between its toolbar picker and this menu. */
+function webTermMenu(e){e.stopPropagation();floatMenu(e,SERVER_SHELLS.map(sh=>({icon:`<span style="width:16px;display:inline-block">⬢</span>`,label:`${esc(sh)}${sh===myShell()?' ★':''}`,onclick:()=>toast(`New terminal · ${esc(sh)}`)})));}
 // Quick SSH (ad-hoc one-off) is a server policy, OFF by default: connections on a server
 // should live in collections (saved/auditable). The admin flips it in Instance settings.
 const ALLOW_QUICK_SSH=false;
@@ -239,11 +265,11 @@ function renderActs(){
   // .tb-item buttons collapse into the "⋯" overflow menu (fitBar) when the bar runs out of room —
   // gradually, one at a time, so the header stays smooth and the instance name never gets crushed.
   document.getElementById('acts').innerHTML=`
-    <button class="btn btn-primary btn-sm" title="New terminal on the server (${SERVER_SHELL})" onclick="toast('New terminal · ${SERVER_SHELL}')">${ICON.term} <span class="lbl">Terminal</span></button>
-    ${ALLOW_QUICK_SSH?`<button class="btn btn-sm tb-item" data-label="Quick SSH" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`:''}
-    <button class="btn btn-ghost btn-sm tb-item" data-label="Agents" title="Agents — the AI sessions running on your machines" onclick="openAgents()">${M.agent} <span class="lbl">Agents</span></button>
-    <button class="btn btn-ghost btn-sm tb-item" data-label="Teams" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
-    <button class="btn btn-ghost btn-sm tb-item" data-label="Collections" title="Collections — yours + Discover (offered to your teams)" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>
+    <button class="btn btn-primary btn-sm" title="New terminal on the server (${myShell()})" onclick="toast('New terminal · ${myShell()}')">${ICON.term} <span class="lbl">Terminal</span></button>
+    ${ALLOW_QUICK_SSH&&STATE.toolbar.quick?`<button class="btn btn-sm tb-item" data-label="Quick SSH" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`:''}
+    ${STATE.toolbar.agents?`<button class="btn btn-ghost btn-sm tb-item" data-label="Agents" title="Agents — the AI sessions running on your machines" onclick="openAgents()">${M.agent} <span class="lbl">Agents</span></button>`:''}
+    ${STATE.toolbar.library?`<button class="btn btn-ghost btn-sm tb-item" data-label="Teams" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
+    <button class="btn btn-ghost btn-sm tb-item" data-label="Collections" title="Collections — yours + Discover (offered to your teams)" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>`:''}
     ${IS_ADMIN?`<button class="btn btn-ghost btn-sm tb-item" data-label="Administration" title="Administration — users, teams, invitations, instance" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Administration</span></button>`:''}
     <button class="btn btn-ghost btn-sm" id="ovBtn" title="More" style="display:none" onclick="toggleOv(event)"><svg class="icon" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
     <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
@@ -346,11 +372,16 @@ function renderMain(){
   const mt=document.getElementById('mtabs'); const coll=STATE.selColl?find(STATE.selColl):null;
   const tabActs=`<button class="mtab-act" title="Rename tab" onclick="event.stopPropagation();toast('Rename tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button><button class="mtab-act mtab-close" title="Close tab" onclick="event.stopPropagation();toast('Close tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>`;
   const mach=STATE.machineView?machineByName(STATE.machineView):null;
-  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Server terminal (${SERVER_SHELL})</span>${tabActs}</div>
+  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Server terminal (${myShell()})</span>${tabActs}</div>
     ${coll?`<div class="mtab view ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
     ${mach?`<div class="mtab view ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
     ${agentTabsHTML()}
-    <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
+    ${layoutsBtnHTML()}
+    <!-- The chevron exists only when the instance lets members choose: otherwise there
+         is no shell to pick for one terminal, and "+" is the whole gesture. -->
+    ${ALLOW_SHELL_CHOICE&&STATE.toolbar.newTermMenu
+      ? `<button class="mtab-new" title="New terminal — pick a shell for this one" onclick="webTermMenu(event)">${ICON.plus}${EXICON.chevD}</button>`
+      : `<button class="mtab-new" title="New terminal on the server (${myShell()})" onclick="toast('New terminal · ${myShell()}')">${ICON.plus}</button>`}`;
   const b=document.getElementById('mbody');
   // The dashboard is shell-agnostic (ADR 0019) — same cards, same markup as the desktop.
   if(STATE.mainTab==='agents'){ b.innerHTML=agentsViewHTML(); return; }
@@ -535,16 +566,80 @@ function openHostKey(){showModal({title:'Unknown host key',subtitle:'First conne
   confirm:'Trust & connect',onConfirm:()=>toast('Host key pinned')});}
 
 /* ================= settings + admin (web) ================= */
-function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',body:`
-  <div class="settings-row"><div><b>Interface language</b><div class="muted" style="font-size:12px">English / Français</div></div><select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select></div>
-  <div class="settings-row"><div><b>Theme</b><div class="muted" style="font-size:12px">Dark / light</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
-  <div class="settings-row"><div><b>Auto-lock session</b><div class="muted" style="font-size:12px">Clear the in-memory vault key after inactivity (re-login to resume)</div></div><select class="inp" style="width:auto"><option>Disabled</option><option>1 min</option><option>3 min</option><option selected>5 min</option><option>Custom…</option></select></div>
-  <div class="settings-row"><div><b>Auto-clear clipboard</b><div class="muted" style="font-size:12px">Clear 30s after a copy (security)</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
-  <div class="settings-row"><div><b>Server shell</b><div class="muted" style="font-size:12px">Terminals run on the server, so the shell is set by your admin — not per user. (Local-shell choice is a desktop-app feature.)</div></div><span class="muted" style="font-size:13px"><code>${SERVER_SHELL}</code> · set by the server</span></div>
-  <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
-  <div class="settings-row"><div><b>Machine status</b><div class="muted" style="font-size:12px"><span style="color:var(--amber)">Governed by your server</span> — you can only narrow it. Passive “last seen” costs no network traffic; active probing does.</div></div><select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select></div>
-  <div class="settings-row"><div><b>Container &amp; service cards on the machine dashboard</b><div class="muted" style="font-size:12px">These two cards ask the server to run a command on the host each time they refresh.${STATE.dashPolicy.webui===false?' <span style="color:var(--amber)">Your server turns them off for the web UI</span> — nobody can run them here, and this switch changes nothing.':' Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.'}</div></div><div class="toggle ${STATE.machineProbes?'on':''}" onclick="this.classList.toggle('on');STATE.machineProbes=this.classList.contains('on');renderAll()"><i></i></div></div>
-  <div class="settings-row" style="border:none"><div><b>Show member count on collections</b><div class="muted" style="font-size:12px">The number next to shared collections</div></div><div class="toggle ${STATE.showMemberCount?'on':''}" onclick="this.classList.toggle('on');STATE.showMemberCount=this.classList.contains('on');renderAll()"><i></i></div></div>`});}
+/* The browser shell's own sections. The chrome is in rite.js; what differs here is
+   WHICH sections exist. No focus mode (that is the native window), no local shell
+   (terminals run on the server, which sets the shell), no master password and no
+   danger zone (the account's password is the server's business, and a server vault
+   is not a file this browser can reset). Fewer sections, same rail. */
+const PREFS=[
+  { id:'appearance', label:'Appearance', body:()=>
+      prefRow('Theme','Dark / light',`<div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div>`)
+    + prefRow('Show member count on collections','The number next to shared collections',prefToggle('showMemberCount','renderAll()')) },
+
+  { id:'toolbar', label:'Toolbar', body:()=>
+      `<h4>Toolbar</h4><p class="lede">What sits along the top. Hiding a button never changes what you're allowed to do — and what your server forbids stays forbidden either way.</p>`
+    + prefRow('Quick SSH', ALLOW_QUICK_SSH?'One-off connections that aren\'t in a collection.':'<span style="color:var(--amber)">Your server turns this off</span>, so it is hidden regardless.',
+        prefToggle('toolbar.quick','renderActs()'))
+    + prefRow('Agents','The AI sessions running on your machines.',prefToggle('toolbar.agents','renderActs()'))
+    + prefRow('Teams and Collections','The two library shortcuts.',prefToggle('toolbar.library','renderActs()'))
+    + (ALLOW_SHELL_CHOICE
+        ? prefRow('Shell menu on “+”','The chevron on the <b>+</b> beside the tabs, to open one terminal with another of the server\'s shells without changing your pick in <b>Terminals</b>. Hiding it leaves <b>+</b> opening your shell.',prefToggle('toolbar.newTermMenu','renderMain()'))
+        : '') },
+
+  { id:'keyboard', label:'Keyboard', body:()=>
+      `<h4>Keyboard</h4><p class="lede">Click a chord to record a new one. <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd> and <kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>C</kbd> belong to the terminal and are refused. <kbd>F11</kbd> is not here: focus mode belongs to the desktop window.</p>
+      <table class="sc-tbl"><thead><tr><th>Action</th><th>Keys</th><th>Description</th></tr></thead><tbody>
+      <tr><td>Split horizontally</td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>H</kbd></td><td class="d">Split the focused pane into top / bottom.</td></tr>
+      <tr><td>Split vertically</td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>D</kbd></td><td class="d">Split the focused pane into left / right.</td></tr>
+      <tr><td>Close terminal pane</td><td><kbd>Ctrl</kbd> <kbd>W</kbd></td><td class="d">Close the focused split pane.</td></tr>
+      <tr><td>Find in terminal</td><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>F</kbd></td><td class="d">Search the focused pane's scrollback.</td></tr>
+      </tbody></table>` },
+
+  { id:'system', label:'System', body:()=>
+      `<h4>System</h4><p class="lede">What is running, and what it talks to. The first thing anyone is asked for in a bug report, and the only place a version mismatch between a client and its server is visible (ADR 0008).</p>`
+    + prefRow('Rite','The build serving this page.',`<code class="mono" style="font-size:13px">${BUILD.version} <span style="color:var(--muted)">(${BUILD.commit})</span></code>`)
+    + prefRow('Built','When this build was made.',`<code class="mono" style="font-size:13px;color:var(--muted)">${BUILD.date}</code>`)
+    + prefRow('Shell','Where the interface is running. The same bundle runs in the desktop window.',`<code class="mono" style="font-size:13px;color:var(--muted)">browser</code>`)
+    + prefRow('API','What this server speaks, and the oldest client it still accepts.',`<code class="mono" style="font-size:13px;color:var(--muted)">v${BUILD.api} \u00b7 min client ${BUILD.minClient}</code>`)
+    + `<p class="lede" style="margin-top:14px">Nothing here is sent anywhere. <a href="#" onclick="copyDiagnostics();return false">Copy as text</a> for a bug report.</p>` },
+
+  { id:'terminals', label:'Terminals', body:()=>
+      `<h4>Terminals</h4><p class="lede">Terminals run on the server here, so the shells on offer are the server's — ${ALLOW_SHELL_CHOICE?'which of them you open is yours.':"and which one you open is your administrator's."}</p>`
+    + (ALLOW_SHELL_CHOICE
+        ? prefRow('Your shell',`Among the shells this server has installed. <b>${SERVER_SHELL}</b> is the instance default — pick it and you follow the administrator if they change it. Saved in this browser, so another browser starts on the default again.`,
+            `<select class="inp" style="width:auto" onchange="STATE.myShell=this.value;renderMain();toast(this.value?('Your shell: '+this.value):'Following the instance default')">
+               <option value="" ${STATE.myShell?'':'selected'}>Instance default (${SERVER_SHELL})</option>
+               ${SERVER_SHELLS.map(s=>`<option value="${s}" ${STATE.myShell===s?'selected':''}>${s}</option>`).join('')}
+             </select>`)
+        : prefRow('Server shell','Set by your administrator for every terminal on this server. Desktop users pick their own local shell.',
+            `<code class="mono" style="font-size:13px;color:var(--muted)">${SERVER_SHELL}</code>`)) },
+
+  /* No "Split presets" and no "Layouts" here, and that is the ADR 0023 rule showing
+     through: both live in a workspace file, the file belongs to a MACHINE, and this
+     shell is a browser talking to a shared server. There is no file and nothing
+     stands in for one — a per-account copy in the server's database would make the
+     server hold what it is designed never to see. So the two sections are ABSENT
+     rather than empty, the Layouts button beside the tabs hides itself, and the split
+     chevron offers the plain divider and your snippets. The desktop app, which IS a
+     machine, is where this part of the setup lives (`WORKSPACE_FILE`, up top). */
+
+  { id:'machines', label:'Machine status', body:()=>
+      `<h4>Machine status</h4><p class="lede"><span style="color:var(--amber)">Governed by your server</span> — you can only narrow it. Passive “last seen” costs no network traffic; active probing does.</p>`
+    + prefRow('Health-check','',`<select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select>`)
+    + prefRow('Container &amp; service cards on the machine dashboard',`These two cards ask the server to run a command on the host each time they refresh.${STATE.dashPolicy.webui===false?' <span style="color:var(--amber)">Your server turns them off for the web UI</span> — nobody can run them here, and this switch changes nothing.':' Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.'}`,prefToggle('machineProbes','renderAll()')) },
+
+  { id:'security', label:'Security', body:()=>
+      `<h4>Security</h4>`
+    + prefRow('Auto-lock session','Clear the in-memory vault key after inactivity (re-login to resume)',`<select class="inp" style="width:auto"><option>Disabled</option><option>1 min</option><option>3 min</option><option selected>5 min</option><option>Custom…</option></select>`)
+    + prefRow('Auto-clear clipboard','Clear 30s after a copy',`<div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div>`) },
+
+  { id:'ssh', label:'SSH', body:()=>
+      prefRow('Host-key verification','How unknown server keys are handled',`<select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select>`) },
+
+  { id:'language', label:'Language', body:()=>
+      prefRow('Interface language','English / Français',`<select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select>`) },
+];
+function openSettings(at){ return openPrefs(PREFS,at); }
 // Administration is its own surface at /admin — the header button navigates to
 // admin.html (see the real app's route split, RITE_SERVE_ADMIN). No inline modal.
 
@@ -583,6 +678,9 @@ function dismissReq(i){const r=ORG.accessRequests[i];toast(`Dismissed ${r.user}'
 function demoToggleDashPolicy(){STATE.dashPolicy.webui=!STATE.dashPolicy.webui;
   toast(`Server policy: probing cards <span class="accent">${STATE.dashPolicy.webui?'allowed':'off'}</span> for the web UI`);renderAll();}
 function renderAll(){renderActs();renderSide();renderMain();}
+// This page has now said whether it has a workspace file; the first read in
+// rite.js could not see that answer.
+reloadLayouts();
 renderAll();
 </script>
 </body>

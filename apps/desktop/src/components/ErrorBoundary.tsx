@@ -6,6 +6,7 @@
  */
 
 import React, { Component, ReactNode } from 'react';
+import { translate } from '../i18n/translate';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
 export interface ErrorBoundaryProps {
@@ -111,23 +112,27 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 </div>
               </div>
               <h1 className="mb-4 text-3xl font-bold text-foreground">
-                Application Error
+                {translate('boundary.appError')}
               </h1>
               <p className="mb-6 text-lg text-muted-foreground">
-                The application encountered an unexpected error and needs to restart.
+                {translate('boundary.appErrorWhy')}
               </p>
               <details className="mb-6 rounded-lg bg-card p-4 text-left">
                 <summary className="cursor-pointer font-medium text-foreground hover:text-primary">
-                  Error Details
+                  {translate('boundary.details')}
                 </summary>
                 <div className="mt-4 space-y-2">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Error:</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {translate('boundary.errorLabel')}
+                    </p>
                     <p className="font-mono text-xs text-red-500">{error.message}</p>
                   </div>
                   {errorInfo?.componentStack && (
                     <div>
-                      <p className="text-sm font-medium text-foreground">Component Stack:</p>
+                      <p className="text-sm font-medium text-foreground">
+                        {translate('boundary.componentStack')}
+                      </p>
                       <pre className="mt-1 max-h-40 overflow-auto rounded bg-muted p-2 font-mono text-xs text-muted-foreground">
                         {errorInfo.componentStack}
                       </pre>
@@ -139,7 +144,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 onClick={() => window.location.reload()}
                 className="rounded-lg bg-primary px-6 py-3 font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
               >
-                Reload Application
+                {translate('boundary.reload')}
               </button>
             </div>
           </div>
@@ -166,7 +171,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               </svg>
             </div>
             <h3 className="mb-2 text-lg font-semibold text-foreground">
-              Feature Error
+              {translate('boundary.featureError')}
             </h3>
             <p className="mb-4 text-sm text-muted-foreground">
               This feature encountered an error: {error.message}
@@ -175,7 +180,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               onClick={this.resetError}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
             >
-              Try Again
+              {translate('boundary.tryAgain')}
             </button>
           </div>
         );
@@ -202,7 +207,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             </div>
             <div className="flex-1">
               <h4 className="text-sm font-medium text-foreground">
-                Component Error
+                {translate('boundary.componentError')}
               </h4>
               <p className="mt-1 text-xs text-muted-foreground">
                 {name || 'This component'} failed to render: {error.message}
@@ -211,7 +216,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 onClick={this.resetError}
                 className="mt-2 text-xs font-medium text-primary hover:underline"
               >
-                Retry
+                {translate('boundary.retry')}
               </button>
             </div>
           </div>

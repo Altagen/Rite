@@ -6,19 +6,34 @@
  * the plain split again (so the menu is a superset of the button rather than a
  * different feature), the user's presets, their snippets, and their layouts.
  *
+ * The layouts come from the layouts file (docs/LAYOUTS.md), not from this menu's own
+ * store: they have their own button beside the tabs now, and they are listed here as
+ * well because someone who learned the chevron should not have to unlearn it.
+ *
  * Opening a layout splits once per pane, in order and one after another, because
- * each split has to see the tree the previous one left behind.
+ * each split has to see the tree the previous one left behind — and the direction
+ * alternates as it goes. Five panes all split the same way is six columns, which is
+ * nobody's "five terminals arranged like this"; alternating makes a grid out of the
+ * same number of splits.
  */
 
 import { useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { useSnippets } from '../store/snippets';
 import { useSplits, PLAIN_PRESET } from '../store/splits';
+import { useLayouts } from '../store/layouts';
+import type { SplitTarget } from '../types/pane';
 
 interface Props {
   /** Split and run something in the new pane. */
-  onSplitWith: (direction: 'horizontal' | 'vertical', preset: { name: string; command: string }) => Promise<void>;
-  /** Where the new panes go — the same direction the plain button would have used. */
+  onSplitWith: (direction: 'horizontal' | 'vertical', target: SplitTarget) => Promise<void>;
+  /**
+   * Where a single new pane goes.
+   *
+   * One chevron serves both split buttons, so it has to pick one: it is the
+   * horizontal button's direction, the same one the pane's first split button uses.
+   * A layout ignores it after its first pane and alternates — see above.
+   */
   direction: 'horizontal' | 'vertical';
   onConfigure: () => void;
   onClose: () => void;
@@ -26,7 +41,10 @@ interface Props {
 
 export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Props) {
   const { t } = useTranslation();
-  const { presets, layouts } = useSplits();
+  const { presets } = useSplits();
+  // No workspace file, no library to configure: the plain split and the snippets are
+  // all this menu has to offer on a shared server (ADR 0023).
+  const hasWorkspaceFile = useLayouts((s) => s.available);
   const { snippets } = useSnippets();
   const ref = useRef<HTMLDivElement>(null);
 
@@ -45,16 +63,9 @@ export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Prop
     };
   }, [onClose]);
 
-  const run = (preset: { name: string; command: string }) => {
+  const run = (target: SplitTarget) => {
     onClose();
-    void onSplitWith(direction, preset);
-  };
-
-  const openLayout = (panes: { name: string; command: string }[]) => {
-    onClose();
-    void (async () => {
-      for (const pane of panes) await onSplitWith(direction, pane);
-    })();
+    void onSplitWith(direction, target);
   };
 
   const row = (key: string, label: string, sub: string | null, onClick: () => void) => (
@@ -86,19 +97,20 @@ export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Prop
 
       {snippets.length > 0 && heading(t('split.snippets'))}
       {snippets.map((s) =>
-        row(s.id, s.name, s.command.split('\n')[0], () => run({ name: s.name, command: s.command })),
+        row(s.id, s.name, s.command.split('\n')[0], () =>
+          run({ name: s.name, command: s.command }),
+        ),
       )}
 
-      {layouts.length > 0 && heading(t('split.layouts'))}
-      {layouts.map((l) =>
-        row(l.id, l.name, t('split.panesCount', { count: l.panes.length }), () => openLayout(l.panes)),
+      {hasWorkspaceFile && (
+        <>
+          <div className="my-1 border-t border-border" />
+          {row('configure', t('split.configure'), null, () => {
+            onClose();
+            onConfigure();
+          })}
+        </>
       )}
-
-      <div className="my-1 border-t border-border" />
-      {row('configure', t('split.configure'), null, () => {
-        onClose();
-        onConfigure();
-      })}
     </div>
   );
 }

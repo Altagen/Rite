@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Backend, type IncomingRequest, type UserCollection } from '../utils/backend';
 import { useServerSession } from './serverSessionStore';
 import { unwrapCollectionKeys, sealCollectionKeyToHex } from '../utils/collectionCrypto';
+import { translate } from '../i18n/translate';
 
 export interface AccessRequestsController {
   requests: IncomingRequest[];
@@ -58,7 +59,7 @@ export function useAccessRequests(): AccessRequestsController {
         await fn();
         await refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Action failed');
+        setError(err instanceof Error ? err.message : translate('notif.errAction'));
       } finally {
         setBusy(null);
       }

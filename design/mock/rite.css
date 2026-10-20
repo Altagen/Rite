@@ -11,6 +11,8 @@
      match the served app on every system — no divergent fallback (Roboto/Segoe). */
   --font:ui-sans-serif,system-ui,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Segoe UI Symbol","Noto Color Emoji";
   --mono:ui-monospace,"JetBrains Mono","SFMono-Regular",Menlo,monospace;
+  /* A checkbox's tick, as a mask: it takes the box's colour and scales with it. */
+  --tick:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.8l5 5 10-10.6'/%3E%3C/svg%3E");
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
@@ -97,7 +99,14 @@ kbd{font-family:var(--mono);font-size:11px;background:var(--card2);border:1px so
 /* modal */
 .backdrop{position:fixed;inset:0;background:rgba(6,8,14,.66);backdrop-filter:blur(3px);display:none;place-items:center;z-index:50;padding:20px}
 .backdrop.show{display:grid}
-.modal{width:100%;max-width:440px;background:var(--card);border:1px solid var(--border2);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;animation:pop .16s ease}
+.modal{position:relative;width:100%;max-width:440px;background:var(--card);border:1px solid var(--border2);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;animation:pop .16s ease}
+/* The ✕ is the only control whose meaning never changes, so every dialog has one,
+   in the same corner. A footer button that also just closes is a second answer to
+   the same question — see showModal() for which dialogs keep a footer and why. */
+.modal-x{position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border:none;border-radius:8px;
+  background:none;color:var(--muted);font-size:15px;line-height:1;cursor:pointer;font-family:inherit}
+.modal-x:hover{background:var(--card2);color:var(--fg)}
+.modal header{padding-right:46px}
 @keyframes pop{from{transform:translateY(6px) scale(.98);opacity:0}}
 .modal header{padding:18px 20px 6px}
 .modal header h3{font-size:17px}
@@ -108,6 +117,22 @@ label.field{display:block;margin:12px 0}
 label.field span{display:block;font-size:12px;font-weight:600;color:var(--fg-dim);margin-bottom:6px}
 input.inp,select.inp{width:100%;background:var(--bg2);border:1px solid var(--border2);border-radius:9px;padding:10px 12px;color:var(--fg);font-family:inherit;font-size:14px}
 input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
+/* The controls an engine draws itself, drawn here instead. The app ships in two engines
+   from one bundle (WebKitGTK in the desktop window, the browser's own in a tab), so a
+   native checkbox or select button is the one thing guaranteed to look different in each.
+   Mirrors apps/desktop/src/index.css. What stays the engine's either way: a select's
+   OPEN list, which is why the palette declares color-scheme. */
+select{appearance:none;background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23858da3' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;background-size:13px;padding-right:30px}
+input[type=checkbox],input[type=radio]{appearance:none;flex:none;display:inline-grid;place-content:center;width:16px;height:16px;
+  border:1px solid var(--border2);background:var(--bg2);border-radius:5px}
+input[type=radio]{border-radius:50%}
+input[type=checkbox]:checked,input[type=radio]:checked{background:var(--accent);border-color:var(--accent)}
+input[type=checkbox]:checked::after,input[type=radio]:checked::after{content:'';width:100%;height:100%;background:var(--bg)}
+input[type=checkbox]:checked::after{-webkit-mask:var(--tick) center/72% 72% no-repeat;mask:var(--tick) center/72% 72% no-repeat}
+input[type=radio]:checked::after{-webkit-mask:radial-gradient(circle at center,#000 0 27%,transparent 28%);mask:radial-gradient(circle at center,#000 0 27%,transparent 28%)}
+input[type=number]{appearance:textfield}
+input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{appearance:none;margin:0}
 .strength{height:6px;border-radius:999px;background:var(--card2);margin-top:8px;overflow:hidden}
 .strength>i{display:block;height:100%;width:0;background:var(--green);transition:.2s}
 
@@ -157,8 +182,12 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
 .mrow{display:flex;align-items:center;gap:11px;padding:8px 6px;border-radius:8px;cursor:pointer}.mrow:hover{background:var(--card2)}
 .teamchip{cursor:pointer}
 .settings-row{display:flex;align-items:center;justify-content:space-between;padding:12px 2px;border-bottom:1px solid var(--border)}
-.toggle{width:40px;height:22px;border-radius:999px;background:var(--card2);border:1px solid var(--border2);position:relative;cursor:pointer}
-.toggle.on{background:var(--accent);border-color:var(--accent)} .toggle i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}.toggle.on i{left:20px}
+/* The boolean control, everywhere. Sized to the shipped one (apps/desktop/src/components/
+   Switch.tsx): 44x24 with a 20px knob. The app drew a native checkbox in its settings for a
+   while, which each engine renders its own way — so the two shells disagreed about what a
+   switch looks like while serving the same bundle. */
+.toggle{width:44px;height:24px;border-radius:999px;background:var(--card2);border:1px solid var(--border2);position:relative;cursor:pointer}
+.toggle.on{background:var(--accent);border-color:var(--accent)} .toggle i{position:absolute;top:1px;left:1px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}.toggle.on i{left:22px}
 .navtab{padding:8px 4px;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;font-weight:600;font-size:13px}.navtab.on{color:var(--fg);border-color:var(--accent)}
 
 /* ---- unified collections tree (v2) ---- */
@@ -213,3 +242,58 @@ input.inp:focus,select.inp:focus{outline:none;border-color:var(--accent)}
 .snip-cmd{display:block;font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .snip-add{display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--border);padding-top:13px;margin-top:2px}
 .snip-add-foot{display:flex;justify-content:flex-end}
+
+/* ===== preferences: a rail of sections, not one long scroll =====
+   Settings grew past the point where scrolling could find anything. The rail names
+   every section at once and renders one of them; which sections exist depends on
+   the context (a vault, a server, the native shell), so the rail is built, not drawn. */
+.prefs{display:flex;align-items:stretch;min-height:min(60vh,460px)}
+.prefs-nav{flex:0 0 184px;border-right:1px solid var(--border);padding:4px 10px 10px 0;display:flex;flex-direction:column;gap:1px;overflow-y:auto}
+.prefs-nav button{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border:none;border-radius:8px;background:none;
+  color:var(--fg-dim);font-family:inherit;font-size:13px;font-weight:500;text-align:left;cursor:pointer}
+.prefs-nav button:hover{background:var(--card2);color:var(--fg)}
+.prefs-nav button.on{background:color-mix(in oklab,var(--accent) 14%,transparent);color:var(--accent);font-weight:650}
+.prefs-nav button.danger{color:var(--red)}
+.prefs-nav .eyebrow{padding:12px 10px 4px}
+.prefs-pane{flex:1;min-width:0;padding:2px 2px 4px 18px;overflow-y:auto}
+.prefs-pane h4{font-size:15px;margin:0 0 2px}
+.prefs-pane>.lede{color:var(--muted);font-size:12.5px;margin:0 0 12px;line-height:1.5}
+.prefs-pane .settings-row:last-child{border-bottom:none}
+
+/* ===== the accounts nav, carried by every surface ===== */
+/* Teams, Collections and Administration are pages you travel between, so the nav that
+   reaches them belongs in the bar of each one, not only in the workspace's. Before
+   this, an overlay's bar held Close and your avatar and nothing else: going from
+   Collections to Teams meant closing first, which is a click spent on getting back to
+   a bar you were about to use. */
+/* The page you are already on. MARKED rather than dropped: a nav that hides its own
+   entry shifts the others under your cursor as you travel. */
+.btn.nav-on{background:color-mix(in oklab,var(--accent) 15%,transparent);
+  border-color:color-mix(in oklab,var(--accent) 35%,transparent);color:var(--fg);cursor:default}
+.btn.nav-on:hover{background:color-mix(in oklab,var(--accent) 15%,transparent);
+  border-color:color-mix(in oklab,var(--accent) 35%,transparent)}
+/* The bell's unread dot. It lived inside web.html, which was fine while the bell did
+   too; the overlays carry the same bell now, so the rule is shared. */
+.notif{position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:50%;
+  background:var(--amber);box-shadow:0 0 0 2px var(--bg)}
+
+/* ===== layouts: the cards first, then the file ===== */
+/* The startup switch on a card. A checkbox, because the file lets several layouts
+   open at once — a radio would be a narrower format pretending to be a widget. */
+.lay-startup{display:inline-flex;align-items:center;gap:4px;font-weight:600;font-size:10.5px;
+  text-transform:lowercase;letter-spacing:0;color:var(--muted);cursor:pointer;margin-left:5px}
+.lay-startup input{width:12px;height:12px;margin:0;cursor:pointer}
+.lay-startup:hover{color:var(--fg)}
+.lay-path{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin:0 0 8px}
+.lay-path code{font-size:12px}
+.lay-file{width:100%;min-height:210px;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:11px 12px;
+  color:var(--fg);font-family:var(--mono,ui-monospace,monospace);font-size:12.5px;line-height:1.65;resize:vertical;tab-size:2}
+.lay-file:focus{outline:none;border-color:var(--accent)}
+.lay-err{background:color-mix(in oklab,var(--red) 10%,transparent);border:1px solid color-mix(in oklab,var(--red) 35%,transparent);
+  border-radius:9px;padding:8px 11px;margin:9px 0;font-size:12.5px;line-height:1.5}
+.lay-ok{color:var(--muted);font-size:12px;margin:9px 0 0}
+
+/* A pane that could not open what the file asked for. It opened a plain shell
+   instead — the banner is the only thing that says so, so it stays in the pane. */
+.pane-warn{display:flex;gap:9px;align-items:flex-start;background:color-mix(in oklab,var(--amber) 11%,transparent);
+  border:1px solid color-mix(in oklab,var(--amber) 36%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5}

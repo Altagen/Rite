@@ -12,12 +12,28 @@ import { create } from 'zustand';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
+/** The floor the backend also enforces; named once so the message cannot drift from it. */
+const MIN_PASSWORD_LENGTH = 12;
+
+/**
+ * What went wrong, as a key the screen translates — not as a sentence.
+ *
+ * This store used to set its own French prose, which the unlock and setup screens render
+ * raw: the first screen anyone sees answered in one language whatever the app was set to,
+ * and the strings lived outside the locale files where `i18n-check` could not see them.
+ * A store cannot call the `t` hook, so it names the message and the screen says it.
+ */
+export interface AuthErrorMessage {
+  key: string;
+  params?: Record<string, string | number>;
+}
+
 interface AuthState {
   // State
   isLocked: boolean;
   isFirstRun: boolean | null; // null = not checked yet
   isLoading: boolean;
-  error: string | null;
+  error: AuthErrorMessage | null;
   rateLimitWaitSeconds: number | null;
 
   // Actions
@@ -46,7 +62,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         isFirstRun,
         isLocked,
-        isLoading: false
+        isLoading: false,
       });
     } catch (error) {
       errorHandler.handle('Failed to check first run status', {
@@ -56,8 +72,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         context: { store: 'authStore', action: 'checkFirstRun' },
       });
       set({
-        error: `Erreur lors de la vérification: ${error}`,
-        isLoading: false
+        error: { key: 'auth.checkFailed', params: { error: String(error) } },
+        isLoading: false,
       });
     }
   },
@@ -67,13 +83,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
 
-      // Validation côté client
+      // Client-side validation. These set the message and stop rather than throwing prose
+      // for the catch below to concatenate: the screen needs a key, not a sentence.
       if (password !== confirmPassword) {
-        throw new Error('Les mots de passe ne correspondent pas');
+        set({ error: { key: 'auth.passwordsDiffer' }, isLoading: false });
+        throw new Error('passwords do not match');
       }
 
-      if (password.length < 12) {
-        throw new Error('Le mot de passe doit contenir au moins 12 caractères');
+      if (password.length < MIN_PASSWORD_LENGTH) {
+        set({
+          error: { key: 'auth.passwordTooShort', params: { count: MIN_PASSWORD_LENGTH } },
+          isLoading: false,
+        });
+        throw new Error('password too short');
       }
 
       // Call backend
@@ -83,7 +105,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         isFirstRun: false,
         isLocked: false,
-        isLoading: false
+        isLoading: false,
       });
     } catch (error) {
       errorHandler.handle('Failed to setup master password', {
@@ -92,10 +114,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         originalError: error,
         context: { store: 'authStore', action: 'setupMasterPassword' },
       });
-      set({
-        error: `Erreur lors de la création: ${error}`,
-        isLoading: false
-      });
+      // Keep a validation message the block above already set; only an unexpected
+      // failure is described here, or the specific reason is replaced by a generic one.
+      if (!get().error) {
+        set({ error: { key: 'auth.setupFailed', params: { error: String(error) } } });
+      }
+      set({ isLoading: false });
       throw error;
     }
   },
@@ -112,24 +136,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           isLocked: false,
           isLoading: false,
           error: null,
-          rateLimitWaitSeconds: null
+          rateLimitWaitSeconds: null,
         });
         return true;
       }
 
       if (response.type === 'invalidPassword') {
         set({
-          error: 'Mot de passe incorrect',
-          isLoading: false
+          error: { key: 'auth.wrongPassword' },
+          isLoading: false,
         });
         return false;
       }
 
       if (response.type === 'rateLimited') {
         set({
-          error: `Trop de tentatives. Réessayez dans ${response.waitSeconds} secondes.`,
+          error: { key: 'unlock.rateLimited', params: { seconds: response.waitSeconds || 30 } },
           rateLimitWaitSeconds: response.waitSeconds || 30,
-          isLoading: false
+          isLoading: false,
         });
 
         // Countdown
@@ -158,8 +182,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         context: { store: 'authStore', action: 'unlock' },
       });
       set({
-        error: `Erreur lors du déverrouillage: ${error}`,
-        isLoading: false
+        error: { key: 'auth.unlockFailed', params: { error: String(error) } },
+        isLoading: false,
       });
       return false;
     }
@@ -171,7 +195,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await Backend.Auth.lock();
       set({
         isLocked: true,
-        error: null
+        error: null,
       });
     } catch (error) {
       errorHandler.handle('Application lock failed', {
@@ -181,7 +205,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         context: { store: 'authStore', action: 'lock' },
       });
       set({
-        error: `Erreur lors du verrouillage: ${error}`
+        error: { key: 'auth.lockFailed', params: { error: String(error) } },
       });
     }
   },

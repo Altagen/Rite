@@ -91,8 +91,10 @@ try {
   // The console cannot render a locked field without being told which keys are locked.
   assert.deepEqual(
     Object.keys(mode.managed).sort(),
-    ['allow_quick_ssh', 'collection_policy', 'dashboard_policy', 'default_shell', 'instance_name',
-     'open_registration'],
+    // The fixture declares two more since the audit: a secrets policy (ADR 0024 §4) and
+    // the host-key policy, which had no console row and no validated route at all.
+    ['allow_quick_ssh', 'allow_secret_reveal', 'collection_policy', 'dashboard_policy',
+     'default_shell', 'host_key_verification_mode', 'instance_name', 'open_registration'],
     'server_mode lists exactly the keys the file and the environment declare',
   );
   assert.match(mode.managed.collection_policy, /rite\.toml$/, 'a file-declared key names the file');

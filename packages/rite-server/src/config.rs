@@ -48,7 +48,7 @@ pub enum Shape {
     Policy,
 }
 
-/// The ten settings an instance may declare. Anything outside this list is a typo.
+/// The settings an instance may declare. Anything outside this list is a typo.
 ///
 /// `remote_servers` is deliberately absent: it is a desktop client's multiplexer roster
 /// (ADR 0012), not instance configuration, and it is stored in the same table only because
@@ -57,7 +57,11 @@ pub const SETTINGS: &[(&str, Shape)] = &[
     ("instance_name", Shape::Text),
     ("session_persistence", Shape::Bool),
     ("default_shell", Shape::Text),
+    ("host_key_verification_mode", Shape::Text),
     ("allow_quick_ssh", Shape::Bool),
+    ("allow_shell_choice", Shape::Bool),
+    ("allow_secret_storage", Shape::Bool),
+    ("allow_secret_reveal", Shape::Bool),
     ("open_registration", Shape::Bool),
     ("allow_invitations", Shape::Bool),
     ("confirm_role_change", Shape::Bool),
@@ -333,8 +337,21 @@ pub fn validate(key: &str, value: &Value) -> Result<()> {
                 bail!("expected a string");
             }
         }
+        "host_key_verification_mode" => {
+            // Validated by value, not merely by type: an instance that declares a typo
+            // here would come up with `rite-core` falling back to strict and the console
+            // showing the typo, which reads as a policy that is set and is not.
+            match value.as_str() {
+                Some("strict") | Some("warn") | Some("accept") => {}
+                Some(other) => bail!("expected strict, warn or accept, not `{other}`"),
+                None => bail!("expected a string"),
+            }
+        }
         "session_persistence"
         | "allow_quick_ssh"
+        | "allow_shell_choice"
+        | "allow_secret_storage"
+        | "allow_secret_reveal"
         | "open_registration"
         | "allow_invitations"
         | "confirm_role_change" => {

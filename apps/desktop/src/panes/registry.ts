@@ -14,7 +14,7 @@
  */
 
 import type { ComponentType } from 'react';
-import type { LeafPaneNode } from '../types/pane';
+import type { LeafPaneNode, SplitTarget } from '../types/pane';
 import { disposePanes, type PaneDisposer } from './dispose';
 import { terminalKind } from './kinds/terminal';
 
@@ -41,7 +41,7 @@ export interface PaneChrome {
    * it offers — a preset, a snippet, or one pane of a layout — and a kind that
    * cannot split never receives it either.
    */
-  onSplitWith?: (direction: 'horizontal' | 'vertical', preset: { name: string; command: string }) => Promise<void>;
+  onSplitWith?: (direction: 'horizontal' | 'vertical', target: SplitTarget) => Promise<void>;
   onDetach?: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;

@@ -21,8 +21,14 @@ export type AuthType = 'password' | 'publicKey' | 'agent';
  * fingerprint (else all are offered), `forward` requests agent forwarding.
  */
 export type AuthMethodInput =
-  | { type: 'password'; password: string }
+  // `password` absent ⇒ nothing kept: asked at connect and used for that session only
+  // (ADR 0024 §4), the same contract `passphrase` has below.
+  | { type: 'password'; password?: string }
   | { type: 'publicKey'; keyPath: string; passphrase?: string }
+  // ADR 0024: the key itself, carried in the (encrypted) record. `keyPath` names a file on
+  // whichever machine opens SSH — the person's own on a desktop, the container on a server,
+  // where a browser cannot put one. `passphrase` absent ⇒ asked at connect and never stored.
+  | { type: 'vaultKey'; key: string; passphrase?: string }
   | { type: 'agent'; identity?: string; forward?: boolean };
 
 /** A saved port-forward config on a connection (started/stopped at runtime). */
@@ -42,6 +48,32 @@ export interface ConnectionInfo {
   port: number;
   username: string;
   authType: string;
+  /**
+   * The key file this machine names, when it names one (ADR 0024 §6). A path is not a
+   * secret: withholding it meant you could not see which key a machine used, and the form
+   * reopened on "Password" — so typing one there converted the machine silently.
+   */
+  keyPath?: string | null;
+  /**
+   * A key passphrase is kept with this machine (ADR 0024 §4). Not a secret: it is the
+   * difference between "this key has no passphrase" and "it has one and Rite holds it".
+   * Without it the form's "remember this passphrase" box could only render unticked, on a
+   * machine whose passphrase is in fact stored — a checkbox that lies about its own state.
+   */
+  hasStoredPassphrase?: boolean;
+  /**
+   * An SSH password is kept with this machine (ADR 0024 §4). Its sibling above, and not a
+   * secret for the same reason: without it the form's "remember this password" box could
+   * only render unticked on a machine whose password is in fact stored.
+   */
+  hasStoredPassword?: boolean;
+  /**
+   * What this machine does NOT keep, so whoever opens it knows to ask (ADR 0024 §4).
+   * `needsPassphrase` cannot be derived — a key with no passphrase and a key whose
+   * passphrase was not kept both hold none — so the record carries it.
+   */
+  needsPassphrase?: boolean;
+  needsPassword?: boolean;
   color?: string | null;
   icon?: string | null;
   folder?: string | null;
@@ -90,6 +122,17 @@ export interface CreateConnectionInput {
   jump?: string | null; // jump-host connection id (see ConnectionInfo.jump)
   forwards?: PortForwardConfig[]; // saved port forwards (see ConnectionInfo.forwards)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
+  /**
+   * This key's passphrase is not being stored, so connecting must ask for it (ADR 0024
+   * §4). Not a secret — it records what the person said when they saved the machine, so a
+   * key with no passphrase is never prompted for.
+   */
+  needsPassphrase?: boolean;
+  /**
+   * This machine's password is not being stored, so connecting must ask for it (ADR 0024
+   * §4). The sibling of `needsPassphrase` directly above.
+   */
+  needsPassword?: boolean;
   // ADR 0016: save this machine into a shared collection (encrypted with the
   // collection key) instead of the personal vault. Absent ⇒ personal vault.
   collectionId?: string | null;
@@ -113,6 +156,16 @@ export interface UpdateConnectionInput {
   jump?: string | null; // jump-host connection id (see ConnectionInfo.jump)
   forwards?: PortForwardConfig[]; // saved port forwards (Some ⇒ replace the whole list)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
+  needsPassphrase?: boolean; // see CreateConnectionInput
+  needsPassword?: boolean; // see CreateConnectionInput
+  /**
+   * Drop the stored passphrase, keeping the key (ADR 0024 §4). Unticking "remember" needs
+   * this: the client editing a machine does not hold its key, so it cannot send an
+   * `authMethod` with the passphrase taken out.
+   */
+  forgetPassphrase?: boolean;
+  /** Drop the stored password, keeping the machine (ADR 0024 §4). See `forgetPassphrase`. */
+  forgetPassword?: boolean;
 }
 
 /**
@@ -121,6 +174,14 @@ export interface UpdateConnectionInput {
  * with browser-decrypted per-user + team connections. `connect` opens a terminal
  * session for a saved connection and returns its id.
  */
+/** What a reveal hands back. Only the fields the stored method actually has. */
+export interface RevealedSecret {
+  password?: string;
+  key?: string;
+  keyPath?: string;
+  passphrase?: string | null;
+}
+
 export interface ConnectionsSource {
   connections: ConnectionInfo[];
   selectedConnectionId: string | null;
@@ -130,6 +191,16 @@ export interface ConnectionsSource {
   connect: (conn: ConnectionInfo) => Promise<string>;
   create: (input: CreateConnectionInput) => Promise<void>;
   update: (input: UpdateConnectionInput) => Promise<void>;
+  /**
+   * Read one machine's stored secret back (ADR 0024 §5), on an explicit request and never
+   * on render. Each context answers from where the plaintext already is: the browser holds
+   * the record it decrypted to connect with, and a local vault asks rite-core — which is
+   * also the only context where `allowSecretReveal` is a refusal rather than a convention.
+   *
+   * Throws when the policy says no, or when the caller's role may use the credential
+   * without extracting it (a viewer, ADR 0016).
+   */
+  reveal?: (conn: ConnectionInfo) => Promise<RevealedSecret>;
   // ADR 0016: collections the caller may write into (owner/editor), for the
   // machine form's "save to collection" target. Undefined in the local vault
   // context (no collections there); populated by the accounts source.
@@ -238,7 +309,7 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       });
       set({
         error: `Failed to load connections: ${error}`,
-        isLoading: false
+        isLoading: false,
       });
     }
   },
@@ -250,9 +321,9 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       const connection = await Backend.Connections.createConnection(input);
 
       // Add to local state
-      set(state => ({
+      set((state) => ({
         connections: [...state.connections, connection],
-        isLoading: false
+        isLoading: false,
       }));
 
       return connection;
@@ -261,11 +332,15 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
         severity: ErrorSeverity.ERROR,
         category: ErrorCategory.DATABASE,
         originalError: error,
-        context: { store: 'connectionsStore', action: 'createConnection', connectionName: input.name },
+        context: {
+          store: 'connectionsStore',
+          action: 'createConnection',
+          connectionName: input.name,
+        },
       });
       set({
         error: `Failed to create connection: ${error}`,
-        isLoading: false
+        isLoading: false,
       });
       throw error;
     }
@@ -278,11 +353,11 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       const updatedConnection = await Backend.Connections.updateConnection(input);
 
       // Update in local state
-      set(state => ({
-        connections: state.connections.map(conn =>
-          conn.id === updatedConnection.id ? updatedConnection : conn
+      set((state) => ({
+        connections: state.connections.map((conn) =>
+          conn.id === updatedConnection.id ? updatedConnection : conn,
         ),
-        isLoading: false
+        isLoading: false,
       }));
 
       return updatedConnection;
@@ -295,7 +370,7 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       });
       set({
         error: `Failed to update connection: ${error}`,
-        isLoading: false
+        isLoading: false,
       });
       throw error;
     }
@@ -308,10 +383,10 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       await Backend.Connections.deleteConnection(id);
 
       // Remove from local state
-      set(state => ({
-        connections: state.connections.filter(conn => conn.id !== id),
+      set((state) => ({
+        connections: state.connections.filter((conn) => conn.id !== id),
         selectedConnectionId: state.selectedConnectionId === id ? null : state.selectedConnectionId,
-        isLoading: false
+        isLoading: false,
       }));
     } catch (error) {
       errorHandler.handle('Failed to delete connection', {
@@ -322,7 +397,7 @@ export const useConnectionsStore = create<ConnectionsState>((set) => ({
       });
       set({
         error: `Failed to delete connection: ${error}`,
-        isLoading: false
+        isLoading: false,
       });
       throw error;
     }

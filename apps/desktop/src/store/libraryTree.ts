@@ -31,7 +31,9 @@ const EMPTY: LibraryTreeData = { folders: [], placement: {} };
 const rid = () => 'lf-' + Math.random().toString(36).slice(2, 9);
 
 async function decryptTree(key: Uint8Array, blob: string): Promise<LibraryTreeData> {
-  const data = JSON.parse(new TextDecoder().decode(await decryptString(key, blob))) as LibraryTreeData;
+  const data = JSON.parse(
+    new TextDecoder().decode(await decryptString(key, blob)),
+  ) as LibraryTreeData;
   return { folders: data.folders ?? [], placement: data.placement ?? {} };
 }
 
@@ -78,10 +80,16 @@ export function useLibraryTree(): LibraryTree {
   );
 
   const createFolder = (name: string, color: string | null, parent?: string | null) =>
-    persist({ ...tree, folders: [...tree.folders, { id: rid(), name, color, parent: parent ?? null }] });
+    persist({
+      ...tree,
+      folders: [...tree.folders, { id: rid(), name, color, parent: parent ?? null }],
+    });
 
   const renameFolder = (id: string, name: string, color: string | null) =>
-    persist({ ...tree, folders: tree.folders.map((f) => (f.id === id ? { ...f, name, color } : f)) });
+    persist({
+      ...tree,
+      folders: tree.folders.map((f) => (f.id === id ? { ...f, name, color } : f)),
+    });
 
   const deleteFolder = (id: string) => {
     // Cascade to descendant folders; any collection under a removed folder returns
@@ -99,7 +107,9 @@ export function useLibraryTree(): LibraryTree {
     }
     return persist({
       folders: tree.folders.filter((f) => !doomed.has(f.id)),
-      placement: Object.fromEntries(Object.entries(tree.placement).filter(([, fid]) => !doomed.has(fid))),
+      placement: Object.fromEntries(
+        Object.entries(tree.placement).filter(([, fid]) => !doomed.has(fid)),
+      ),
     });
   };
 

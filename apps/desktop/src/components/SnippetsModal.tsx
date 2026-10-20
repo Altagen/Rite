@@ -21,7 +21,10 @@ interface Props {
 
 // Non-empty command lines — the units that run one after another.
 const linesOf = (command: string) =>
-  command.split('\n').map((l) => l.trim()).filter(Boolean);
+  command
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
 
 // Send a snippet to a session: its lines are typed in order, so the shell runs
 // them one after another (like pasting) — no && chaining needed.
@@ -133,7 +136,7 @@ export function SnippetsModal({ sessionId, paneLabel, onClose }: Props) {
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Deploy check"
+                placeholder={t('snip.phName')}
                 className="w-full rounded border border-border bg-input px-2.5 py-1.5 text-sm"
               />
             </label>

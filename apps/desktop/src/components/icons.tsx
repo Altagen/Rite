@@ -152,18 +152,45 @@ export const IconSort = (p: IconProps) => (
 
 /* Identity icons (folder / collection / machine) — distinct, per the mock. */
 export const IconFolder = ({ className, color }: IconProps & { color?: string | null }) => (
-  <svg className={className ?? 'h-4 w-4'} style={color ? { color } : undefined} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    className={className ?? 'h-4 w-4'}
+    style={color ? { color } : undefined}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
   </svg>
 );
 export const IconCollection = ({ className, color }: IconProps & { color?: string | null }) => (
-  <svg className={className ?? 'h-4 w-4'} style={color ? { color } : undefined} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    className={className ?? 'h-4 w-4'}
+    style={color ? { color } : undefined}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <path d="M12 3l9 5-9 5-9-5 9-5z" />
     <path d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
   </svg>
 );
 export const IconMachine = ({ className, color }: IconProps & { color?: string | null }) => (
-  <svg className={className ?? 'h-4 w-4'} style={color ? { color } : undefined} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    className={className ?? 'h-4 w-4'}
+    style={color ? { color } : undefined}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <rect x="3" y="5" width="18" height="6" rx="1.5" />
     <rect x="3" y="13" width="18" height="6" rx="1.5" />
     <path d="M6.5 8h.01M6.5 16h.01M17 8h1.5M17 16h1.5" />

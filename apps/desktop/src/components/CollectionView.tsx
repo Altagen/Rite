@@ -30,16 +30,34 @@ function relTime(ts: number | null | undefined): string {
 
 function CollectionIcon({ color }: { color?: string | null }) {
   return (
-    <svg className="h-5 w-5 flex-none" style={{ color: color || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className="h-5 w-5 flex-none"
+      style={{ color: color || undefined }}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"
+      />
     </svg>
   );
 }
 
 function MachineIcon({ color }: { color?: string | null }) {
   return (
-    <svg className="h-4 w-4 flex-none" style={{ color: color || undefined }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <svg
+      className="h-4 w-4 flex-none"
+      style={{ color: color || undefined }}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+    >
       <rect x="3" y="5" width="18" height="6" rx="1.5" />
       <rect x="3" y="13" width="18" height="6" rx="1.5" />
       <path strokeLinecap="round" d="M6.5 8h.01M6.5 16h.01M17 8h1.5M17 16h1.5" />
@@ -106,8 +124,7 @@ export function CollectionView({
   // actively probed, regardless of the server/user policy. Passive "last seen" is unaffected.
   const collectionProbes = hc !== false;
   const canProbe = activeMode !== 'off' && collectionProbes;
-  const activeFor = (id: string) =>
-    checking[id] ? ('checking' as const) : results[id]?.status;
+  const activeFor = (id: string) => (checking[id] ? ('checking' as const) : results[id]?.status);
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'name' | 'host' | 'lastUsed'>('name');
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
@@ -174,7 +191,9 @@ export function CollectionView({
   const probeKey = probeHere.map((m) => m.id).join(',');
   useEffect(() => {
     if (activeMode !== 'full' || probeHere.length === 0) return;
-    const targets = probeHere.slice(0, 64).map((m) => ({ id: m.id, host: m.hostname, port: m.port }));
+    const targets = probeHere
+      .slice(0, 64)
+      .map((m) => ({ id: m.id, host: m.hostname, port: m.port }));
     void checkNow(targets);
     const id = setInterval(() => void checkNow(targets), Math.max(15, minInterval) * 1000);
     return () => clearInterval(id);
@@ -206,11 +225,21 @@ export function CollectionView({
               onMove(c);
             }}
             className="rounded p-1 opacity-0 hover:bg-muted group-hover:opacity-100"
-            title="Move to folder…"
-            aria-label="Move to folder"
+            title={t('cview.moveToFolderMenu')}
+            aria-label={t('cview.moveToFolder')}
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v2M3 7v11a2 2 0 002 2h6M16 16l3 3m0 0l-3 3m3-3h-8" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 7a2 2 0 012-2h4l2 2h6a2 2 0 012 2v2M3 7v11a2 2 0 002 2h6M16 16l3 3m0 0l-3 3m3-3h-8"
+              />
             </svg>
           </button>
         )}
@@ -221,10 +250,20 @@ export function CollectionView({
           }}
           className="rounded p-1 opacity-0 hover:bg-muted group-hover:opacity-100"
           title={t('connections.edit')}
-          aria-label="Edit machine"
+          aria-label={t('cview.editMachine')}
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z"
+            />
           </svg>
         </button>
         <button
@@ -234,7 +273,7 @@ export function CollectionView({
           }}
           className="rounded p-1 text-primary hover:bg-primary/10"
           title={t('connections.connect')}
-          aria-label="Connect"
+          aria-label={t('cview.connect')}
         >
           <PlayIcon />
         </button>
@@ -253,18 +292,30 @@ export function CollectionView({
             strokeWidth="2"
             strokeLinecap="round"
             className="flex-none opacity-75"
-            aria-label="Reached through a jump host"
+            aria-label={t('cview.viaJump')}
           >
-            <title>Reached through a jump host (ProxyJump)</title>
+            <title>{t('cview.viaJumpLong')}</title>
             <path d="M4 17c2.5-9 13.5-9 16 0" />
             <circle cx="4" cy="17" r="1.7" fill="currentColor" stroke="none" />
             <circle cx="20" cy="17" r="1.7" fill="currentColor" stroke="none" />
           </svg>
         )}
       </div>
-      <div className={`flex items-center gap-1 text-[11px] text-muted-foreground ${layout === 'list' ? '' : 'mt-1'}`}>
-        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      <div
+        className={`flex items-center gap-1 text-[11px] text-muted-foreground ${layout === 'list' ? '' : 'mt-1'}`}
+      >
+        <svg
+          className="h-3 w-3"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 8v4l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
         </svg>
         <span>{relTime(c.lastUsedAt)} · ssh</span>
       </div>
@@ -284,11 +335,15 @@ export function CollectionView({
   );
 
   const eyebrow = (label: string) => (
-    <div className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">{label}</div>
+    <div className="mb-2 mt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground first:mt-0">
+      {label}
+    </div>
   );
 
   const emptyNote = (msg: string) => (
-    <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">{msg}</div>
+    <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+      {msg}
+    </div>
   );
 
   // A clickable folder tile — enters the folder on click.
@@ -300,15 +355,36 @@ export function CollectionView({
         key={p}
         onClick={() => setPath(p)}
         className="group flex items-center gap-2 rounded-xl border border-border bg-card p-3.5 text-left transition hover:-translate-y-0.5 hover:border-primary"
-        title={`Open “${nm}”`}
+        title={t('cview.openNamed', { name: nm })}
       >
-        <svg className={`h-4 w-4 flex-none ${c ? '' : 'text-muted-foreground'}`} style={c ? { color: c } : undefined} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+        <svg
+          className={`h-4 w-4 flex-none ${c ? '' : 'text-muted-foreground'}`}
+          style={c ? { color: c } : undefined}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+          />
         </svg>
-        <span className="truncate font-semibold" title={nm}>{nm}</span>
+        <span className="truncate font-semibold" title={nm}>
+          {nm}
+        </span>
         <span className="flex-1" />
-        <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{countUnder(p)}</span>
-        <svg className="h-4 w-4 flex-none text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">
+          {countUnder(p)}
+        </span>
+        <svg
+          className="h-4 w-4 flex-none text-muted-foreground"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
         </svg>
       </button>
@@ -324,7 +400,13 @@ export function CollectionView({
           onClick={() => setPath('')}
           className={`flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted ${cur ? 'text-muted-foreground' : 'font-semibold'}`}
         >
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg
+            className="h-3.5 w-3.5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l9-9 9 9M5 10v10h14V10" />
           </svg>
           {name}
@@ -358,7 +440,7 @@ export function CollectionView({
         <h2 className="text-lg font-semibold">{name}</h2>
         {isPersonal ? (
           <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-            Personal
+            {t('cview.personal')}
           </span>
         ) : (
           role && (
@@ -380,7 +462,7 @@ export function CollectionView({
             }
             disabled={checkingHere}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-60"
-            title="Check machine status now"
+            title={t('cview.checkNow')}
           >
             <svg
               className={`h-4 w-4 ${checkingHere ? 'animate-spin' : ''}`}
@@ -390,7 +472,11 @@ export function CollectionView({
               strokeWidth={2}
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M20 9a8 8 0 00-14.3-3.3L4 9m0 6a8 8 0 0014.3 3.3L20 15" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M20 9a8 8 0 00-14.3-3.3L4 9m0 6a8 8 0 0014.3 3.3L20 15"
+              />
             </svg>
             {checkingHere ? 'Checking…' : 'Check'}
           </button>
@@ -400,7 +486,13 @@ export function CollectionView({
             onClick={onOpenBoard}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <rect x="3" y="4" width="7" height="7" rx="1.5" />
               <rect x="14" y="4" width="7" height="5" rx="1.5" />
               <rect x="3" y="15" width="7" height="5" rx="1.5" />
@@ -414,10 +506,20 @@ export function CollectionView({
             onClick={onOpenMembers}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 00-1-7.75" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a4 4 0 00-1-7.75"
+              />
             </svg>
-            Members
+            {t('cview.members')}
           </button>
         )}
       </div>
@@ -426,8 +528,12 @@ export function CollectionView({
       {notice && (
         <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-700 dark:text-amber-300">
           <span className="flex-1">{notice}</span>
-          <button onClick={clearNotice} className="font-medium hover:underline" aria-label="Dismiss">
-            Dismiss
+          <button
+            onClick={clearNotice}
+            className="font-medium hover:underline"
+            aria-label={t('cview.dismiss')}
+          >
+            {t('cview.dismiss')}
           </button>
         </div>
       )}
@@ -435,13 +541,23 @@ export function CollectionView({
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 pb-3">
         <div className="flex min-w-0 flex-1 max-w-[240px] items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5">
-          <svg className="h-4 w-4 flex-none text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
+          <svg
+            className="h-4 w-4 flex-none text-muted-foreground"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+            />
           </svg>
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder={t('common.filter') !== 'common.filter' ? t('common.filter') : 'Filter…'}
+            placeholder={t('common.filter')}
             className="min-w-0 flex-1 bg-transparent text-sm outline-none"
           />
         </div>
@@ -450,17 +566,23 @@ export function CollectionView({
           onChange={(e) => setSort(e.target.value as 'name' | 'host' | 'lastUsed')}
           className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
         >
-          <option value="name">Name</option>
-          <option value="host">Host</option>
-          <option value="lastUsed">Last used</option>
+          <option value="name">{t('cview.sortName')}</option>
+          <option value="host">{t('cview.sortHost')}</option>
+          <option value="lastUsed">{t('cview.lastUsed')}</option>
         </select>
         <button
           onClick={() => setLayout('grid')}
           className={`rounded-md border border-border p-1.5 ${layout === 'grid' ? 'text-primary' : 'text-muted-foreground'}`}
           title="Grid"
-          aria-label="Grid view"
+          aria-label={t('cview.gridView')}
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
             <rect x="4" y="4" width="7" height="7" rx="1.5" />
             <rect x="13" y="4" width="7" height="7" rx="1.5" />
             <rect x="4" y="13" width="7" height="7" rx="1.5" />
@@ -471,10 +593,20 @@ export function CollectionView({
           onClick={() => setLayout('list')}
           className={`rounded-md border border-border p-1.5 ${layout === 'list' ? 'text-primary' : 'text-muted-foreground'}`}
           title="List"
-          aria-label="List view"
+          aria-label={t('cview.listView')}
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"
+            />
           </svg>
         </button>
         <span className="flex-1" />
@@ -482,12 +614,22 @@ export function CollectionView({
           <button
             onClick={onImport}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-            title="Import from SSH config"
+            title={t('cview.importSsh')}
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12M8 11l4 4 4-4M5 21h14" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M12 3v12M8 11l4 4 4-4M5 21h14"
+              />
             </svg>
-            Import
+            {t('cview.import')}
           </button>
         )}
         {canWrite && onNewFolder && (
@@ -496,10 +638,20 @@ export function CollectionView({
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
             title={cur ? `New sub-folder in “${cur.split('/').pop()}”` : 'New folder'}
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+              />
             </svg>
-            Folder
+            {t('cview.folder')}
           </button>
         )}
         {canWrite && (
@@ -508,10 +660,16 @@ export function CollectionView({
             className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             title={cur ? `New machine in “${cur.split('/').pop()}”` : 'New machine'}
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
             </svg>
-            {t('connections.newConnection') !== 'connections.newConnection' ? t('connections.newConnection') : 'Machine'}
+            {t('connections.newConnection')}
           </button>
         )}
       </div>
@@ -532,7 +690,7 @@ export function CollectionView({
           <>
             {breadcrumb()}
             {subfolders.length === 0 && here.length === 0 ? (
-              emptyNote(cur ? 'This folder is empty.' : 'No machines in this collection yet.')
+              emptyNote(cur ? t('cview.emptyFolder') : t('cview.noMachines'))
             ) : (
               <>
                 {subfolders.length > 0 && (

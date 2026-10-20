@@ -10,11 +10,23 @@
  * asks the user to sign in again rather than showing an empty shell.
  */
 
+import { lazy, Suspense } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
 import { useAccountsConnectionsSource } from '../store/accountsConnectionsSource';
 import { useRoutePath, navigate } from '../store/route';
 import { Workspace } from './Workspace';
-import { AdminDashboard } from './AdminDashboard';
+/**
+ * The admin console, fetched when someone opens it.
+ *
+ * It is a whole surface — users, teams, invitations, collections, the instance's policies
+ * — that most members never open, and on an instance with `serveWebui` off it is the only
+ * surface there is. Carrying it in the first chunk charged everyone for it; `lazy` charges
+ * whoever asks. `Suspense` renders nothing while it arrives: the console mounts over the
+ * workspace, and a spinner over a working page is worse than a beat of nothing.
+ */
+const AdminDashboard = lazy(() =>
+  import('./AdminDashboard').then((m) => ({ default: m.AdminDashboard })),
+);
 import { AdminOnlyNotice } from './AdminOnlyNotice';
 import { CollectionsDashboard } from './CollectionsDashboard';
 import { TeamsDashboard } from './TeamsDashboard';
@@ -23,23 +35,22 @@ import { AccessRequestsBell } from './AccessRequestsInbox';
 import { ForcePasswordChange } from './ForcePasswordChange';
 import { Settings } from './Settings';
 import { useSettingsModal } from '../store/settingsModal';
-import { IconCollection, IconShield, IconUsers } from './icons';
-import { isNativeShell } from '../utils/nativeShell';
+import { useAccountsNav } from './accountsNav';
+import { useTranslation } from '../i18n/i18n';
 
 /** Reload without the password left no keys in RAM — re-auth to decrypt. */
 function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex h-screen items-center justify-center bg-background text-foreground">
       <div className="mx-4 w-full max-w-md rounded-lg border border-border bg-card p-6 text-center shadow-xl">
-        <h1 className="mb-2 text-lg font-semibold">Session locked</h1>
-        <p className="mb-6 text-sm text-muted-foreground">
-          Your vault key stays in memory only. Sign in again to unlock your connections.
-        </p>
+        <h1 className="mb-2 text-lg font-semibold">{t('reauth.title')}</h1>
+        <p className="mb-6 text-sm text-muted-foreground">{t('reauth.why')}</p>
         <button
           onClick={onSignOut}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
-          Sign in again
+          {t('reauth.signIn')}
         </button>
       </div>
     </div>
@@ -47,11 +58,15 @@ function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
 }
 
 export function AccountsShell() {
+  const { t } = useTranslation();
   const { user, userKey, logout, mode } = useServerSession();
   const conns = useAccountsConnectionsSource();
   const path = useRoutePath();
   const settingsOpen = useSettingsModal((s) => s.open);
   const setSettingsOpen = useSettingsModal((s) => s.setOpen);
+  // The one nav list, shared with every overlay page's bar (accountsNav.tsx). Called
+  // here with the other hooks, above the early returns below.
+  const nav = useAccountsNav();
   if (!user) return null;
 
   // A user without the unwrapped vault key (token-only resume) must re-auth.
@@ -79,7 +94,13 @@ export function AccountsShell() {
   if (!serveWebui) {
     return (
       <>
-        {canManage ? <AdminDashboard hideBack /> : <AdminOnlyNotice onSignOut={() => logout()} />}
+        {canManage ? (
+          <Suspense fallback={null}>
+            <AdminDashboard hideBack />
+          </Suspense>
+        ) : (
+          <AdminOnlyNotice onSignOut={() => logout()} />
+        )}
         {settingsModal}
       </>
     );
@@ -99,46 +120,22 @@ export function AccountsShell() {
           isLocked: false,
           lock: () => logout(),
           renderUnlockModal: () => null,
-          lockLabel: 'Sign out',
+          lockLabel: t('reauth.signOut'),
         }}
         conns={conns}
         instanceName={mode?.instanceName}
         identity={{ username: user.username, role: user.role }}
-        navActions={[
-          {
-            id: 'teams',
-            label: 'Teams',
-            icon: <IconUsers className="h-4 w-4" />,
-            onClick: () => navigate('/teams'),
-          },
-          {
-            id: 'collections',
-            label: 'Collections',
-            title: 'Collections — yours + Discover (offered to your teams)',
-            icon: <IconCollection className="h-4 w-4" />,
-            onClick: () => navigate('/collections'),
-          },
-          ...(canManage
-            ? [
-                {
-                  id: 'admin',
-                  label: isNativeShell() || user.role === 'manager' ? 'Organization' : 'Admin',
-                  title:
-                    isNativeShell() || user.role === 'manager'
-                      ? 'Organization (server settings are in the web console)'
-                      : 'Administration',
-                  icon: <IconShield className="h-4 w-4" />,
-                  onClick: () => navigate('/admin'),
-                },
-              ]
-            : []),
-        ]}
+        navActions={nav}
         headerExtra={<AccessRequestsBell />}
       />
       {path === '/teams' && <TeamsDashboard />}
       {path === '/collections' && <CollectionsDashboard />}
       {path === '/notifications' && <NotificationsDashboard />}
-      {path === '/admin' && canManage && <AdminDashboard />}
+      {path === '/admin' && canManage && (
+        <Suspense fallback={null}>
+          <AdminDashboard />
+        </Suspense>
+      )}
       {settingsModal}
     </>
   );

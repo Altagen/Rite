@@ -256,7 +256,7 @@ function agentScopeMenu(e) {
   e.stopPropagation();
   floatMenu(e, agentScopes().map((s) => ({
     icon: s.kind === 'local' ? ICON.term : s.kind === 'server' ? ICON.server : M.machine,
-    label: `${s.name}<div class="sub mono" style="font-size:11px;color:var(--muted);font-weight:400">${s.sub}</div>`,
+    label: `${esc(s.name)}<div class="sub mono" style="font-size:11px;color:var(--muted);font-weight:400">${esc(s.sub)}</div>`,
     onclick: () => agentPickScope(s.id),
   })));
 }

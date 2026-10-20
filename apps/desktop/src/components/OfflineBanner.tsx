@@ -5,9 +5,13 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 
 export function OfflineBanner() {
-  const [offline, setOffline] = useState(() => typeof navigator !== 'undefined' && !navigator.onLine);
+  const { t } = useTranslation();
+  const [offline, setOffline] = useState(
+    () => typeof navigator !== 'undefined' && !navigator.onLine,
+  );
 
   useEffect(() => {
     const on = () => setOffline(false);
@@ -26,10 +30,8 @@ export function OfflineBanner() {
       <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-amber-500/40 bg-card px-4 py-2.5 shadow-xl">
         <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted border-t-amber-500" />
         <div>
-          <div className="text-sm font-semibold">You&apos;re offline</div>
-          <div className="text-xs text-muted-foreground">
-            Reconnecting when you&apos;re back — nothing is lost.
-          </div>
+          <div className="text-sm font-semibold">{t('offline.title')}</div>
+          <div className="text-xs text-muted-foreground">{t('offline.why')}</div>
         </div>
       </div>
     </div>

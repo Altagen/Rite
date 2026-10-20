@@ -1,0 +1,12 @@
+# Build output and vendored trees.
+dist
+target
+node_modules
+packages/rite-server/web
+
+# Generated or externally owned: formatting these changes what they mean to the
+# tool that reads them, not how they read to a person.
+pnpm-lock.yaml
+*.md
+docs/screenshots
+e2e/.keys

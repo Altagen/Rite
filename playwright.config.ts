@@ -12,6 +12,19 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: './e2e/tests',
+  /**
+   * 60s rather than Playwright's 30s.
+   *
+   * That default assumes a browser test: a page, some DOM, an assertion. This suite drives
+   * a real sshd in a container and waits for a terminal emulator to paint what came back
+   * over the wire — seconds of genuine work before anything can be asserted, and a handful
+   * of tests open four panes that way. When the budget is what runs out, the failure names
+   * an assertion that had not timed out, which sends you to fix the wrong thing.
+   *
+   * It does not hide a hang: a test that is truly stuck still fails, 30 seconds later than
+   * it used to, and there are 114 of them so that costs nothing in practice.
+   */
+  timeout: 60_000,
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
@@ -33,8 +46,13 @@ export default defineConfig({
     },
     {
       name: 'chromium',
+      // An ignore LIST means a new spec joins this project by default, which is the wrong
+      // default for a project that runs against a local vault: `admin-console.spec.ts`
+      // landed here on its first run and failed twice for want of an admin console.
       testIgnore: [
         /smoke\.spec\.ts/,
+        /admin-console\.spec\.ts/,
+        /screenshots\.spec\.ts/,
         /mock\.spec\.ts/,
         /instance-config\.spec\.ts/,
         /accounts\.spec\.ts/,
@@ -42,6 +60,22 @@ export default defineConfig({
         /proxy\.spec\.ts/,
         /tls-proxy\.spec\.ts/,
       ],
+      use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
+    },
+    // The README's images, taken by driving the real UI (`e2e/tests/screenshots.spec.ts`):
+    //
+    //   sh e2e/harness-up.sh
+    //   RITE_SHOTS=1 npx playwright test --project=shots
+    //
+    // Behind a flag, and not part of a plain `playwright test`. They are a generator
+    // rather than a guarantee: they seed a presentable library and drive it to a chosen
+    // moment, which the state left by the rest of the suite (a locked vault, a signed-out
+    // session) breaks — without saying anything about the product. A test that fails for
+    // reasons outside what it asserts teaches you to ignore red.
+    {
+      name: 'shots',
+      testMatch: process.env.RITE_SHOTS ? /screenshots\.spec\.ts/ : /$^/,
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
     },
@@ -57,7 +91,7 @@ export default defineConfig({
     // local-vault suite.
     {
       name: 'accounts',
-      testMatch: /accounts\.spec\.ts/,
+      testMatch: [/accounts\.spec\.ts/, /admin-console\.spec\.ts/],
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1422' },
     },
     // An instance governed by a configuration file on :1427 (ADR 0020): the console has to

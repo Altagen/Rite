@@ -46,6 +46,25 @@ jobs:
           fi
           echo "both pinned to $pinned"
 
+      - name: Containerfile.server tracks .node-version
+        run: |
+          # Same contract as the Rust check above, for the same reason: the image that
+          # builds the shipped bundle used `node:24-...`, so it tracked a major while the
+          # host and CI tracked an exact version. A pin nobody enforces is not a pin.
+          pinned="$(tr -d '[:space:]' < .node-version)"
+          arg="$(sed -n 's/^ARG NODE_VERSION=\(.*\)$/\1/p' Containerfile.server)"
+          if [ -z "$pinned" ] || [ -z "$arg" ]; then
+            echo "::error::could not read the Node version from one of the two files" >&2
+            echo "  .node-version:                '${pinned:-<none>}'" >&2
+            echo "  Containerfile.server ARG:     '${arg:-<none>}'" >&2
+            exit 1
+          fi
+          if [ "$pinned" != "$arg" ]; then
+            echo "::error file=Containerfile.server::ARG NODE_VERSION=$arg but .node-version pins $pinned" >&2
+            exit 1
+          fi
+          echo "both pinned to $pinned"
+
   # Lint commit messages (PRs only)
   commitlint:
     name: 📝 Commit Lint
@@ -161,6 +180,13 @@ jobs:
       - name: Run type check
         working-directory: apps/desktop
         run: pnpm typecheck
+
+      # `task check` runs eslint locally and CI never did, so a violation only ever
+      # failed for whoever happened to run the local task — the branch took it either
+      # way. Type errors were caught here; rule violations were not.
+      - name: Run lint
+        working-directory: apps/desktop
+        run: pnpm lint
 
   # pnpm security audit
   pnpm-audit:

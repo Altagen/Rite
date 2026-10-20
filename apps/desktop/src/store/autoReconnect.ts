@@ -7,12 +7,13 @@
  * off, the pane shows a Reconnect button instead. Either way the user is told
  * they were disconnected. A per-device UI choice, persisted in localStorage.
  */
+import { deviceStore } from '../utils/deviceStore';
 import { create } from 'zustand';
 
 const KEY = 'rite-auto-reconnect';
 const readPref = (): boolean => {
   try {
-    return localStorage.getItem(KEY) === '1';
+    return deviceStore.getItem(KEY) === '1';
   } catch {
     return false;
   }
@@ -27,7 +28,7 @@ export const useAutoReconnect = create<AutoReconnectState>((set) => ({
   enabled: readPref(),
   setEnabled: (enabled) => {
     try {
-      localStorage.setItem(KEY, enabled ? '1' : '0');
+      deviceStore.setItem(KEY, enabled ? '1' : '0');
     } catch {
       /* storage unavailable — keep it in memory only */
     }

@@ -59,7 +59,7 @@ class ErrorHandler {
       originalError?: Error | unknown;
       context?: Record<string, unknown>;
       silent?: boolean; // Don't notify user
-    } = {}
+    } = {},
   ): AppError {
     const {
       severity = ErrorSeverity.ERROR,
@@ -197,4 +197,3 @@ class ErrorHandler {
 
 // Global singleton instance
 export const errorHandler = new ErrorHandler();
-

@@ -30,7 +30,16 @@ run() {
 run "pane-tree-check" node "e2e/pane-tree-check.mjs"
 run "pane-dispose-check" node "e2e/pane-dispose-check.mjs"
 run "split-format-check" node "e2e/split-format-check.mjs"
+run "layout-file-check" node "e2e/layout-file-check.mjs"
+run "place-menu-check" node "e2e/place-menu-check.mjs"
 run "shortcut-binding-check" node "e2e/shortcut-binding-check.mjs"
+run "machine-command-check" node "e2e/machine-command-check.mjs"
+run "i18n-check" node "e2e/i18n-check.mjs"
+run "board-markup-check" node "e2e/board-markup-check.mjs"
+run "device-prefs-check" node "e2e/device-prefs-check.mjs"
+run "version-check" node "e2e/version-check.mjs"
+run "advisory-floor-check" node "e2e/advisory-floor-check.mjs"
+run "docs-check" node "e2e/docs-check.mjs"
 
 echo
 echo "crypto parity (Rust ↔ browser):"
@@ -43,7 +52,7 @@ echo "server checks (fresh accounts server each):"
 for c in discovery-check first-login-check reset-check manager-role-check \
          rbac-hierarchy-check enrollment-token-check enrollment-scoping-check \
          invitations-switch-check self-register-check collection-policy-check \
-         healthcheck-check dashboard-policy-check; do
+         healthcheck-check dashboard-policy-check server-authz-check; do
   pkill -f 'target/debug/rite-server' 2>/dev/null
   sleep 1
   sh e2e/serve-accounts.sh >/tmp/rite-checks-server.log 2>&1 &

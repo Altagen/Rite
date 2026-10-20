@@ -9,9 +9,11 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import { useServerSession } from '../store/serverSessionStore';
 
 export function ServerAuthScreen() {
+  const { t } = useTranslation();
   const { mode, login, bootstrap, register, loading, error, clearError, sessionExpired } =
     useServerSession();
   const isBootstrap = mode?.needsBootstrap === true;
@@ -69,17 +71,16 @@ export function ServerAuthScreen() {
           )}
           <p className="mt-2 text-muted-foreground">
             {isBootstrap
-              ? 'Create the server administrator'
+              ? t('auth.createAdminTitle')
               : isRegister
-                ? 'Create your account'
-                : 'Sign in to the server'}
+                ? t('auth.createAccountTitle')
+                : t('auth.signInTitle')}
           </p>
         </div>
 
         {sessionExpired && !isNewAccount && (
           <div className="rounded-md border border-primary/25 bg-primary/[0.08] p-3 text-sm text-foreground/80">
-            <b>Your session expired.</b> For your security you were signed out — sign in again to carry on. Your saved
-            connections stay safe and encrypted.
+            <b>{t('auth.expired')}</b> {t('auth.expiredWhy')}
           </div>
         )}
 
@@ -95,7 +96,7 @@ export function ServerAuthScreen() {
 
           <div className="space-y-2">
             <label htmlFor="username" className="text-sm font-medium">
-              Username
+              {t('auth.username')}
             </label>
             <input
               id="username"
@@ -111,7 +112,7 @@ export function ServerAuthScreen() {
 
           <div className="space-y-2">
             <label htmlFor="password" className="text-sm font-medium">
-              Password
+              {t('auth.password')}
             </label>
             <input
               id="password"
@@ -127,7 +128,7 @@ export function ServerAuthScreen() {
           {isRegister && (
             <div className="space-y-2">
               <label htmlFor="confirm" className="text-sm font-medium">
-                Confirm password
+                {t('auth.confirmPassword')}
               </label>
               <input
                 id="confirm"
@@ -138,7 +139,7 @@ export function ServerAuthScreen() {
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 disabled={loading}
               />
-              {mismatch && <p className="text-xs text-red-600">Passwords don&apos;t match.</p>}
+              {mismatch && <p className="text-xs text-red-600">{t('auth.pwNoMatch')}</p>}
             </div>
           )}
 
@@ -161,9 +162,7 @@ export function ServerAuthScreen() {
                 disabled={loading}
               />
               <p className="text-xs text-muted-foreground">
-                {tokenRequired
-                  ? 'This server is invite-only — paste the token you were given to join.'
-                  : 'Have an invite? Paste it to join with your role and teams already set.'}
+                {tokenRequired ? t('auth.inviteOnly') : t('auth.haveInvite')}
               </p>
             </div>
           )}
@@ -181,12 +180,12 @@ export function ServerAuthScreen() {
               ? isBootstrap
                 ? 'Creating…'
                 : isRegister
-                  ? 'Creating account…'
+                  ? t('auth.creating')
                   : 'Signing in…'
               : isBootstrap
-                ? 'Create administrator'
+                ? t('auth.createAdmin')
                 : isRegister
-                  ? 'Create account'
+                  ? t('auth.create')
                   : 'Sign in'}
           </button>
 
@@ -200,7 +199,7 @@ export function ServerAuthScreen() {
                     onClick={() => switchTab('signin')}
                     className="font-medium text-primary hover:underline"
                   >
-                    Sign in
+                    {t('auth.signIn')}
                   </button>
                 </>
               ) : (
@@ -213,7 +212,7 @@ export function ServerAuthScreen() {
                         onClick={() => switchTab('register')}
                         className="font-medium text-primary hover:underline"
                       >
-                        Create an account
+                        {t('auth.createAccount')}
                       </button>
                       {' · '}
                     </>
@@ -224,7 +223,7 @@ export function ServerAuthScreen() {
                     onClick={() => switchTab('register')}
                     className="font-medium text-primary hover:underline"
                   >
-                    Redeem
+                    {t('auth.redeem')}
                   </button>
                 </>
               )}
@@ -232,9 +231,7 @@ export function ServerAuthScreen() {
           )}
         </form>
 
-        <p className="text-center text-xs text-muted-foreground">
-          The server never sees your password — it is hashed on this device.
-        </p>
+        <p className="text-center text-xs text-muted-foreground">{t('auth.neverSees')}</p>
       </div>
     </div>
   );

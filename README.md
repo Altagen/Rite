@@ -12,18 +12,52 @@
   </p>
 </div>
 
-A modern, secure terminal client for SSH and more.
+An SSH client for a fleet: sessions, saved machines, and the policies a team needs
+around them. One Rust core behind two shells — a desktop window and a web UI served by
+the same binary.
+
+---
+
+## Interface
+
+The same React bundle runs in both shells, so these are the desktop window too. Taken by
+driving the real UI (`e2e/tests/screenshots.spec.ts`), against seeded data — regenerate
+them with `RITE_SHOTS=1 npx playwright test --project=shots`.
+
+| | |
+|---|---|
+| **The workspace** — the library on the left, a session on the right. Tabs, split panes, and the shell picker beside **Terminal**. | **Layouts** — what opens in the morning, declared in a file on the machine: panes, which machine each one is on, and the command it runs. |
+| <img src="docs/screenshots/workspace.png" alt="The Rite workspace: a library of machines and an open SSH session" /> | <img src="docs/screenshots/layouts.png" alt="A layout opening three named panes at once" /> |
+| **The machine dashboard** — containers, services and port forwards, read over the SSH session. No agent is installed on the host. | **Administration** — what an instance governs for everyone: the shell its terminals open, host-key verification, and what may rest in a member's vault. |
+| <img src="docs/screenshots/dashboard.png" alt="A machine dashboard showing containers, services and port forwarding" /> | <img src="docs/screenshots/administration.png" alt="The admin console: client capabilities and stored-secret policies" /> |
 
 ---
 
 ## Features
 
-- **Secure by default** — Argon2id KDF, ChaCha20-Poly1305 AEAD, zeroized memory
-- **Encrypted vault** — Local database encrypted at rest
-- **SSH client** *(in development)* — Native SSH with xterm.js terminal emulation
-- **Host management** *(in development)* — Organize servers with tags and groups
+**Sessions**
 
-See the [Roadmap](docs/ROADMAP.md) for planned features (theme system, SFTP, jump hosts, profiles, sync, and more).
+- SSH over [russh](https://github.com/Eugeny/russh) with xterm.js, in tabs and split panes
+- **Layouts** — a TOML file on the machine declares what opens where, on which host, running what
+- **Jump hosts** (ProxyJump, chainable), **port forwarding**, and a **pre-connect hook** per machine
+- **Machine dashboard** — containers, services and forwards, read agentlessly over the session
+
+**Secrets**
+
+- Argon2id KDF, ChaCha20-Poly1305 AEAD, zeroized memory; the vault is encrypted at rest
+- **Zero-knowledge on a shared server** — the client encrypts; the server stores ciphertext and
+  decrypts nothing
+- Password, key file, a key carried in the vault, or an SSH **agent** (desktop, nothing stored)
+
+**Teams**
+
+- Accounts, roles and teams; **collections** of machines shared with a role each
+- An **admin console** for what the instance governs: shells, Quick SSH, host-key policy,
+  and whether a member may keep a passphrase or read a stored secret back
+- **Instance as code** — those policies declared in a TOML file; the console shows what it
+  cannot change and names where it was declared
+
+See the [Roadmap](docs/ROADMAP.md) for what is planned.
 
 ---
 
@@ -111,9 +145,10 @@ See [RELEASE.md](docs/RELEASE.md) for the release process.
 
 | Path | Purpose |
 |------|---------|
-| `~/.config/rite/config.toml` | User configuration |
-| `~/.config/rite/themes/` | Custom themes |
-| `~/.local/share/rite/vault.db` | Encrypted database |
+| `~/.config/rite/layouts.toml` | The workspace file: presets and layouts ([Layouts](docs/LAYOUTS.md)) |
+| `~/.local/share/rite/vault.db` | Encrypted vault: machines, collections, secrets |
+| `~/.local/share/rite/device.json` | This machine's UI preferences |
+| `~/.local/share/rite/vaults.json` | The vaults this client knows about |
 
 ---
 
@@ -128,15 +163,16 @@ rite/
 ├── packages/
 │   ├── rite-core/        # UI-agnostic core: auth, connections, terminals (Rust)
 │   ├── rite-server/      # Axum HTTP/WS server + embedded frontend (Rust)
-│   ├── crypto/           # Cryptography module (Rust)
-│   └── protocols/        # Protocol implementations (Rust)
-├── e2e/                  # Playwright end-to-end suite
+│   └── crypto/           # Cryptography module (Rust)
+├── e2e/                  # Playwright end-to-end suite + standalone checks
 ├── Containerfile.server  # Production rite-server image
 ├── docs/
 │   ├── ARCHITECTURE.md
+│   ├── LAYOUTS.md
 │   ├── RELEASE.md
 │   ├── ROADMAP.md
-│   └── SECURITY.md
+│   ├── SECURITY.md
+│   └── SERVER.md
 ├── Cargo.toml            # Rust workspace
 ├── pnpm-workspace.yaml
 └── Taskfile.yaml
@@ -146,7 +182,11 @@ rite/
 
 ## Documentation
 
+- [Install](INSTALL.md) — Running a release: the client binary, the server image, where state lives
+- [Quick start](QUICKSTART.md) — A working checkout and the commands that matter
 - [Architecture](docs/ARCHITECTURE.md) — Technical architecture
+- [Server](docs/SERVER.md) — Running an instance for a team: TLS, the container, policies as code
+- [Layouts](docs/LAYOUTS.md) — The workspace file: presets and layouts
 - [Security](docs/SECURITY.md) — Security policy and practices
 - [Roadmap](docs/ROADMAP.md) — Feature roadmap
 - [Release](docs/RELEASE.md) — Release process and conventional commits

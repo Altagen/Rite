@@ -1,21 +1,25 @@
 /**
- * The two parses behind split presets and layouts.
+ * The parse behind split presets.
  *
  * Loads apps/desktop/src/store/splitsFormat.ts directly: Node strips the types and
  * the module imports nothing at runtime, so this tests the shipped code rather than
  * a copy of it — the same arrangement pane-tree-check uses.
  *
- * Both functions exist because of a failure mode rather than a feature:
+ * `parseStored` exists because of a failure mode rather than a feature: it decides
+ * what happens when the stored key is corrupt, and the wrong answer there silently
+ * empties someone's presets.
  *
- *   * `parseStored` decides what happens when the stored key is corrupt, and the
- *     wrong answer there silently empties someone's presets;
- *   * `parseLayoutPanes` decides what a hand-written layout means, and the wrong
- *     answer there produces a pane with no name or a command cut in half.
+ * The layout half of this file is gone with the feature it tested, and so is the
+ * alternating cascade: a layout states its own cuts in the workspace file now, parsed
+ * and planned by `store/layoutsFormat.ts` and checked in `e2e/layout-file-check.mjs`.
+ * What is left here is the one thing presets still need from this module — reading a
+ * stored library without trusting it, which is how the release candidate's presets
+ * are carried into the file (ADR 0023).
  *
  * Run: node e2e/split-format-check.mjs
  */
 import assert from 'node:assert/strict';
-import { parseStored, parseLayoutPanes } from '../apps/desktop/src/store/splitsFormat.ts';
+import { parseStored, isPreset } from '../apps/desktop/src/store/splitsFormat.ts';
 
 let passed = 0;
 const check = (name, fn) => {
@@ -61,49 +65,51 @@ check('valid JSON that is not a list falls back', () => {
   assert.deepEqual(parseStored('null', DEFAULTS), DEFAULTS);
 });
 
-console.log('\nparseLayoutPanes — what a hand-written layout means:');
+console.log('\nthe shape of a stored entry:');
 
-check('a bare name is a pane with a plain shell', () => {
-  assert.deepEqual(parseLayoutPanes('shell'), [{ name: 'shell', command: '' }]);
+check('a preset needs an id, a name, and a command that is a string', () => {
+  assert.equal(isPreset({ id: 'a', name: 'A', command: 'top' }), true);
+  // The empty command is the plain shell and is meaningful; a missing one is not.
+  assert.equal(isPreset({ id: 'a', name: 'A', command: '' }), true, 'empty command is a plain shell');
+  assert.equal(isPreset({ id: 'a', name: 'A' }), false, 'no command');
+  assert.equal(isPreset({ id: 'a', command: 'top' }), false, 'no name');
+  assert.equal(isPreset({ name: 'A', command: 'top' }), false, 'no id');
+  assert.equal(isPreset({ id: 'a', name: '  ', command: 'top' }), false, 'a blank name is not a name');
+  assert.equal(isPreset({ id: 'a', name: 'A', command: 42 }), false, 'a command that is not text');
 });
 
-check('name = command splits on the first equals, and trims both sides', () => {
-  assert.deepEqual(parseLayoutPanes('  logs   =   journalctl -fu app  '), [
-    { name: 'logs', command: 'journalctl -fu app' },
+check('nothing that is not an object is a preset', () => {
+  // Guarding the JSON and not the shape was half a guard: `["nope"]` parses, and
+  // then `preset.name` is undefined in a menu row and `preset.id` is a React key
+  // that collides with every other one.
+  for (const entry of [null, undefined, 'nope', 42, true, [], () => {}]) {
+    assert.equal(isPreset(entry), false, String(entry));
+  }
+});
+
+
+check('one bad entry costs one entry, not the whole library', () => {
+  // The alternative is that a single mistyped row sends the user back to the
+  // defaults and loses the presets they still had.
+  const raw = JSON.stringify([
+    { id: 'a', name: 'A', command: 'top' },
+    'nope',
+    { id: 'b', name: 'B', command: 'df -h' },
+  ]);
+  assert.deepEqual(parseStored(raw, DEFAULTS, isPreset), [
+    { id: 'a', name: 'A', command: 'top' },
+    { id: 'b', name: 'B', command: 'df -h' },
   ]);
 });
 
-check('a command containing = keeps all of it', () => {
-  // Splitting on every equals would quietly truncate this to `RUST_LOG`.
-  assert.deepEqual(parseLayoutPanes('env = RUST_LOG=debug cargo run'), [
-    { name: 'env', command: 'RUST_LOG=debug cargo run' },
-  ]);
+check('a stored list of nothing but rubbish is empty, not the defaults', () => {
+  // It parsed and it was a list, so the user did configure something — badly.
+  // Handing back the defaults here would silently resurrect presets they removed.
+  assert.deepEqual(parseStored('[1,2,3]', DEFAULTS, isPreset), []);
 });
 
-check('order is the order written', () => {
-  const panes = parseLayoutPanes('shell\nlogs = journalctl -f\ncontainers = docker ps');
-  assert.deepEqual(panes.map((p) => p.name), ['shell', 'logs', 'containers']);
-});
-
-check('blank lines and whitespace-only lines are dropped', () => {
-  assert.equal(parseLayoutPanes('shell\n\n   \nlogs').length, 2);
-});
-
-check('a line with no name is dropped, not kept as a nameless pane', () => {
-  // `= top` has a command and nothing to call it; a pane with an empty header is
-  // worse than no pane.
-  assert.deepEqual(parseLayoutPanes('= top'), []);
-  assert.deepEqual(parseLayoutPanes('shell\n= top'), [{ name: 'shell', command: '' }]);
-});
-
-check('an empty layout is an empty list, not one blank pane', () => {
-  assert.deepEqual(parseLayoutPanes(''), []);
-  assert.deepEqual(parseLayoutPanes('\n\n'), []);
-});
-
-check('a trailing equals is a named pane with a plain shell', () => {
-  // How the placeholder itself writes the first line: `shell =`.
-  assert.deepEqual(parseLayoutPanes('shell ='), [{ name: 'shell', command: '' }]);
+check('without a filter nothing is dropped, so old callers are unchanged', () => {
+  assert.deepEqual(parseStored('[1,2]', DEFAULTS), [1, 2]);
 });
 
 console.log(`\n${passed} checks passed`);

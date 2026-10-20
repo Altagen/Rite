@@ -3,7 +3,7 @@
 #
 #   sh e2e/gate.sh
 #
-# Four steps, and the first one is not politeness. Playwright serves
+# Five steps, and the first one is not politeness. Playwright serves
 # `apps/desktop/dist` and the standalone checks drive `target/debug/rite-server`;
 # neither suite builds anything. A stale artefact tests the previous commit and
 # reports "passed", which is worse than reporting nothing — it has happened in this
@@ -65,16 +65,32 @@ if [ "$want" != "$have" ]; then
     "${have:-<none>}" "$want"
 fi
 
-say "1/5  build what the gates run against"
+say "1/5  lint, format, build what the gates run against"
+# `build:frontend` type-checks on its way through, but eslint is a separate pass that
+# only `task check` ran — so a rule violation reached the branch with this gate green
+# behind it. Here, before the slow steps.
+pnpm --filter desktop lint
 pnpm --filter desktop build:frontend
+# The Rust side gets the same treatment, and for the reason the eslint pass above
+# exists: `cargo fmt` and `clippy` only ever ran in `task check`, which needs a cargo on
+# the host — and there is none on the machine this was written on, so neither had ever
+# run locally here. CI caught both after the fact, on a branch of 43 commits that no
+# pull request had carried: seventeen format hunks across three files.
+#
+# Before the build, not after: both are cheap next to the steps below, and a format
+# violation is the kind of failure you want in the first ten seconds.
+RUST_GATE='cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
+cargo build -p rite-server'
 if command -v cargo >/dev/null 2>&1; then
-  cargo build -p rite-server
+  printf '%s\n' "$RUST_GATE" | sh -e
 else
-  # No host toolchain: build in the same image CI mirrors, so the binary matches
-  # what the checks expect without installing Rust on this machine.
-  echo "[gate] no local cargo — building rite-server in rite-ci:local"
+  # No host toolchain: run in the same image CI mirrors, so the binary matches what the
+  # checks expect — and so fmt and clippy agree with CI, which pins the toolchain the
+  # same way. A different rustfmt is a different opinion about where to break a line.
+  echo "[gate] no local cargo — fmt, clippy and build in rite-ci:local"
   podman run --rm -v "$PWD":/workspace:Z -w /workspace rite-ci:local \
-    bash -lc 'cargo build -p rite-server'
+    bash -lc "set -e; $RUST_GATE"
 fi
 
 say "2/5  SSH harness (container — nothing lands on this machine)"

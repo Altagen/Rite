@@ -15,7 +15,58 @@ const EXICON = {
   coll:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>',
   key:'<svg class="icon" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M17 6l2 2M14 9l2 2"/></svg>',
   trash:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"/></svg>',
+  bell:'<svg class="icon" viewBox="0 0 24 24"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>',
+  // Same path as ICON.term in rite.js: the overlay pages do not load it.
+  term:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 17l6-5-6-5M12 19h8"/></svg>',
 };
+
+/* ================= the accounts nav =================
+
+   Teams, Collections and Administration are PAGES you travel between, and the nav that
+   reaches them is written once here because every surface carries it: the workspace's
+   own bar (`renderActs` in web.html) and each overlay page's bar.
+
+   An overlay used to hold Close and your avatar and nothing else, so going from
+   Collections to Teams meant Close, then find the button you had just left. The nav
+   costs nothing to carry — the overlay bar is the emptiest bar in the app — and Close
+   stays exactly where it was for the trip back to the terminals.
+
+   The page you are on is MARKED, not dropped: removing the current entry would shift
+   the other two under the cursor each time you moved.
+
+   The admin console is the one surface that does NOT get this nav: its own left rail
+   already says Teams and Collections — the organisation's, not yours — and the same two
+   words twice in one screen, meaning two different things, is worse than a Close. */
+function overlayNavHTML(current){
+  const me = typeof ME !== 'undefined' ? ME : null;
+  const role = (typeof ORG !== 'undefined' && me && (ORG.users.find(u => u.u === me) || {}).role) || 'user';
+  const pages = [
+    // The way back, NAMED. It replaces the ✕ that used to be the only exit: a nav of
+    // four destinations says where you are going, where a Close only says "not here".
+    { id:'app', label:'Terminals', href:'web.html', icon:EXICON.term,
+      title:'Back to your terminals (Esc)' },
+    { id:'teams', label:'Teams', href:'teams.html', icon:EXICON.users, title:'Teams' },
+    { id:'collections', label:'Collections', href:'collections.html', icon:EXICON.coll,
+      title:'Collections — yours + Discover (offered to your teams)' },
+  ];
+  // Managers see it too; the console itself filters what they may touch.
+  if(role === 'admin' || role === 'manager')
+    pages.push({ id:'admin', label:'Administration', href:'admin.html', icon:EXICON.shield,
+      title:'Administration — users, teams, invitations, instance' });
+  // The current entry carries no onclick. In the app the same guard is unnecessary —
+  // `navigate()` no-ops on the path you are on — but these are real pages, and a link to
+  // the page you are reading reloads it.
+  const nav = pages.map(p => p.id === current
+    ? `<button class="btn btn-ghost btn-sm nav-on" title="${p.title}" aria-current="page">${p.icon} <span class="lbl">${p.label}</span></button>`
+    : `<button class="btn btn-ghost btn-sm" title="${p.title}" onclick="location.href='${p.href}'">${p.icon} <span class="lbl">${p.label}</span></button>`
+  ).join('');
+  // No bell on the notifications page itself: the page IS the inbox, and a button that
+  // opens what you are reading is a button with nothing to do.
+  if(current === 'notifications') return nav;
+  const waiting = typeof ORG !== 'undefined' && ORG.accessRequests ? ORG.accessRequests.length : 0;
+  return nav + `<button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications"
+    onclick="location.href='notifications.html'">${EXICON.bell}${waiting ? '<span class="notif"></span>' : ''}</button>`;
+}
 
 /* Org directory + teams (for the member picker / admin surface). */
 const ORG = {

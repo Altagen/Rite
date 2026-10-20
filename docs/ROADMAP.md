@@ -1,160 +1,37 @@
 # RITE Roadmap
 
-This document outlines the planned features for RITE, organized by development phases.
+**This file is what is LEFT to do, by category — nothing else.** An item lives here
+until the code does it, and then it is deleted rather than ticked. If you cannot find
+something here, it is done.
+
+Which means this file dates nothing. "What shipped, and when" is the tags and the
+release notes, generated from the commits by git-cliff — a record nobody writes by
+hand and so a record that cannot drift. This one used to carry a `Shipped in 0.2.0`
+section and 119 completed items, and by 0.2.4 it was wrong on twenty-four of them:
+whole sections of finished work still reading as pending, which made the remaining
+scope look twice its real size.
 
 **Product Vision:** Modern terminal with advanced features and native SSH/SFTP support (not just an SSH client).
 
-**Current Focus:** Phase 1 MVP — a complete terminal experience with local shell
-and SSH. **Pane kinds are done**, so the SFTP pane and the Agent Manager no longer
-wait on the split tree, and the keyboard shortcut engine is done too — so no engine
-item gates later work any more. The **Agent Manager** is the next major feature, ahead of Phase 2;
-its **mock is done** — the manager is a view, an agent session is a pane, and agents
-run on a machine from your library, never inside the server container. The ADR is next,
-then the code.
+**Current Focus:** Phase 1 MVP — a complete terminal experience with local shell and
+SSH. Nothing below waits on an engine any more: pane kinds and the keyboard binding
+table are in place, so the SFTP pane and the Agent Manager can be built when their
+turn comes rather than after a refactor.
+
+The **Agent Manager** is the next major feature, ahead of Phase 2. Its shape is
+settled in ADR 0022 and prototyped in `design/mock/agents.js`: the manager is a view,
+an agent session is a pane, and agents run on a machine from your library, never
+inside the server container. What is left is the code.
 
 ---
 
-## Shipped in 0.2.0
 
-The release is much wider than the phase list below, which predates it:
-
-- **One Rust core, many shells** — `rite-core` + `rite-server` (Axum) behind a wry
-  desktop client and a browser UI; Tauri removed (ADR 0004/0009).
-- **Server accounts** — login, sessions, roles, admin console (ADR 0010), plus
-  registration & enrollment (ADR 0015).
-- **Zero-knowledge sharing** — **collections** are the sharing unit, with members
-  and per-member roles; the server stores only ciphertext it cannot read
-  (ADR 0011/0013/0016). Personal is a real 1-member collection.
-- **One storage model, and the desktop decrypts in Rust** (ADR 0018) — a local
-  vault holds collections too, with folders and a Board, so there is one model
-  rather than two. It has no Personal: that exists on a server only because
-  *other* collections can be shared. Locally the keys are wrapped with the master
-  key and rite-core does the decrypting, so credentials never reach the webview —
-  a machine arrives saying *how* it authenticates, never with what. Hostnames,
-  usernames and folder names are encrypted at rest now, which the old
-  `connections` table left in plaintext columns.
-- **Native client ↔ remote server** — the context multiplexer, cert TOFU and
-  client-execute (ADR 0012).
-- **SSH hardening** — rsa-sha2 negotiation, connect timeout, SSH-agent auth,
-  keyboard-interactive (2FA/PAM), native keepalive, bounded buffers.
-- **Wave 1** — pre-connect hook · jump hosts · local port forwarding · snippets ·
-  collection **Board** · per-machine **dashboard** (containers/services, agentless
-  over SSH).
-- **Health-check governance** — passive last-seen plus a server-governed active
-  probe (ADR 0017).
-- **Dashboard governance** — the dashboard and the Board in **both** shells, with the
-  two cards that execute on a host (containers, services) governed per shell by
-  `dashboard_policy { webui, clients, minInterval }` and narrowable per device by the
-  user (ADR 0019).
-- **Instance configuration as code** — the ten settings an administrator would
-  click can instead be declared, in a TOML file (`RITE_CONFIG`) or as
-  `RITE__key__field` environment variables, and are then locked against the admin
-  API rather than merely seeded from it (ADR 0020). Reload on SIGHUP and
-  declarative team provisioning are deferred.
-
-**Pane or menu** — the rule that decides where a surface goes. A view that belongs
-*to a machine* is a **menu**: the dashboard's containers and services cards are
-reached from inside that host's context and mean nothing outside it, which is why a
-menu was right for them. A surface with a **context of its own**, independent of any
-host, is a **pane** — a first-class leaf in the split tree, openable beside a
-terminal, movable, detachable. SFTP browsing and the agent manager are both of the
-second kind. Getting this backwards produces a feature nailed to a machine it does
-not belong to.
-
-Known gaps at 0.2.0: port forwards are **local (`-L`) only** — remote (`-R`) and
-dynamic (SOCKS) are not built. Snippets are per-device (browser storage), not
-synced. A local vault is a **new** vault: ADR 0018 changed where machines are
-stored and nothing migrates from a pre-0.2.0 one, which is deliberate — Rite has
-had no released version to be compatible with.
-
----
-
-## ✅ Completed (MVP Foundation)
-
-### Security & Encryption
-- ✅ Argon2id key derivation
-- ✅ ChaCha20-Poly1305 encryption for credentials
-- ✅ Master password setup
-- ✅ Password strength validation (zxcvbn)
-- ✅ Database encryption (SQLite with encrypted fields)
-- ✅ Lock/unlock mechanism
-- ✅ Auto-lock after inactivity (configurable: 1, 3, 5 min or custom)
-- ✅ Clipboard security (auto-clear after 30s)
-
-### Host Management
-- ✅ Create/edit/delete connections
-- ✅ Host collections/folders
-- ✅ Host metadata (colors, icons, notes)
-- ✅ Sort by collections (alphabetical)
-- ✅ Sort by recent (last_used_at timestamp)
-- ✅ Auto-update last_used_at on connection
-
-### SSH Terminal
-- ✅ SSH client with russh backend
-- ✅ Password authentication
-- ✅ Public key authentication
-- ✅ Terminal emulation (xterm.js)
-- ✅ Multiple terminal tabs
-- ✅ Multiple tabs for same connection
-- ✅ Terminal scrollback (10,000 lines)
-- ✅ Drag & drop tab reordering
-- ✅ Terminal responsive resize
-- ✅ Read-only terminal after disconnect
-- ✅ Search in terminal (Ctrl+F with xterm-addon-search)
-- ✅ Per-connection SSH keep-alive configuration
-
-### UI/UX
-- ✅ Dark theme with Tailwind CSS
-- ✅ Responsive layout
-- ✅ Internationalization (i18n) support (FR/EN)
-- ✅ Language selector in Settings
-- ✅ Collapsible sidebar with auto-reveal
-- ✅ Connection list with visual feedback
-- ✅ Modal forms for connection CRUD
-- ✅ Password strength indicator (master password)
-
----
 
 ## Phase 1: MVP - Complete Terminal Experience
 **Goal:** Production-ready terminal with local shell + SSH, core modern features, and solid UX.
 
 ### 🎯 Terminal Core (Priority: CRITICAL - New Focus)
-- ✅ **Local terminal support** (bash/zsh/fish/sh via PTY)
-  - ✅ Shell spawning (portable-pty integration)
-  - ✅ Process lifecycle management
-  - ✅ Environment variables handling
-  - ✅ Shell selector with default preference (star system)
   - [ ] Working directory per tab
-- ✅ **Split panes** (horizontal/vertical)
-  - ✅ Split current pane
-  - ✅ Resize splits with draggable divider
-  - ✅ Navigate between panes (click to focus)
-  - ✅ Close individual panes
-  - ✅ Drag & drop panes to reorganize
-  - ✅ Terminal persistence across pane movements
-  - ✅ Tab drag & drop to merge terminals
-  - ✅ Tab close button with confirmation
-- [x] **Keyboard shortcut engine** — done (0.2.4). Four shortcuts used to be written
-  inline in two components as `if (e.ctrlKey && …)`, with nothing comparing them,
-  which is exactly why the two defects below existed.
-  - [x] One table owning every binding (`shortcuts/commands.ts`), with the matching
-        rules in an importless `shortcuts/binding.ts` the gate loads directly. A
-        component names the *command* it implements and never a key.
-  - [x] macOS asymmetry fixed — bindings are written with `Mod`, which is Cmd on
-        macOS and Ctrl elsewhere, decided in one place. `Cmd+W` closes a pane now.
-  - [x] `Ctrl+Shift+V` given back — it is **paste** in gnome-terminal, konsole and
-        xfce4-terminal. The vertical split ships on `Mod+Shift+D` (iTerm2's chord,
-        free in those three), and copy/paste are a reserved list the table refuses
-        to assign, so no future default can take them back.
-  - [x] Remapping, in **Settings → Keyboard**: a row records the keypress rather
-        than asking anyone to spell a chord, shows a conflict when two commands
-        claim one, and resets per row or all at once. Only overrides are stored, so
-        a default we change later still reaches people who never touched it.
-- [x] **Pane kinds** — a leaf in the split tree used to be a terminal by definition:
-  fourteen call sites tested `type === 'terminal'` and the helpers were named for it.
-  Both the SFTP pane and the agent manager need the same third kind, so it was done
-  **once, before either** — otherwise it gets built twice, or an agent gets bolted
-  into the terminal pane.
 
   Adding a kind is now three steps: extend `LeafPaneNode` in
   `apps/desktop/src/types/pane.ts`, write the kind under
@@ -163,74 +40,76 @@ had no released version to be compatible with.
   compile error rather than a pane that renders as nothing — and with a second kind
   added and nothing else touched, that missing line is the *only* thing the compiler
   asks for.
-  - [x] Leaf-agnostic traversal and focus — `isLeaf()` asks about shape, never about
-        kind; 28 checks in `e2e/pane-tree-check.mjs` hold it there, six of them by
-        feeding the tree a leaf of a kind it has never heard of
-  - [x] A pane kind registry, so a new kind is a registration and not a patch —
-        `apps/desktop/src/panes/registry.ts`; it owns rendering, whether a kind can
-        split, how a detached pane names its tab, and disposal (6 checks in
-        `e2e/pane-dispose-check.mjs`)
 - [ ] **Command palette** (Ctrl+K / Cmd+K)
   - [ ] Quick actions (new tab, split, settings)
   - [ ] Connection search
   - [ ] Command history search
 - [ ] **Terminal customization**
-  - [ ] Font family selection
+  - [ ] Font family selection — a value in the profile, not a picker (see Layouts)
   - [ ] Font size adjustment
-  - [ ] Color scheme selector (base themes)
-  - [ ] Cursor style configuration
+  - [ ] Color scheme selector — two themes, app and terminal, as token sets (see Layouts)
+  - [ ] Cursor style configuration — same: a profile value (`cursorBlink` is hard-coded today)
 
 ### 🔒 Security Enhancements (Priority: HIGH)
-- [ ] Zeroize sensitive memory (passwords, keys)
-- ✅ Password strength validation (zxcvbn with visual indicator)
-- ✅ Auto-lock after inactivity (configurable timeout: 1, 3, 5 min or custom)
-- ✅ Clipboard security (auto-clear after 30 seconds)
-- ✅ Host key verification (known_hosts) — trust on first use with SHA256
-  fingerprints; strict / warn / accept modes; a **changed** key refused in every
-  mode, not just strict; OpenSSH host certificates refused, since Rite knows a
-  host by its key and holds no CA
+- [ ] Zeroize sensitive memory — **keys done**, passwords not: `MasterKey` is
+      `ZeroizeOnDrop` and the server's vault key is `Zeroizing<[u8; 32]>`, but an SSH
+      password travels as a `String` and is dropped without being wiped
+- [ ] Throttle logins by address, not only by username — a single password tried
+      against a thousand usernames meets a fresh counter each time. Needs a client
+      address, and behind a reverse proxy that means trusting a header, so it comes
+      with a per-instance "trusted proxy" setting. `LoginLimiter` says so where it
+      caps its own map
 - [ ] Known-hosts management — nothing lists what is trusted or forgets a key
   (the API has only the strict-mode `accept` and `reject` for a pending key, and
   there is no UI at all). So a host whose key legitimately rotated has no clean
   way back: the changed-key dialog deliberately offers no accept, and the only
   path through is Quick SSH, which force-accepts *before* verification runs and
   overwrites the stored key without showing that it changed
-- [ ] Session timeout configuration
 - [ ] Secure credential storage review
 
 ### 🖥️ Terminal Improvements (Priority: HIGH)
-- ✅ Search in terminal (Ctrl+F with xterm-addon-search)
-- ✅ Quick SSH connect (connect without saving credentials)
-- ✅ Manual reconnection button for SSH
-- ✅ Keep-alive configuration (per-connection: 15s, 30s, 60s, or custom)
-- [ ] Connection timeout configuration
+- [ ] Connection timeout configuration — the timeout exists (20s, `CONNECT_TIMEOUT`)
+      and is not configurable, which is the whole of this item
 - [ ] Copy/paste improvements (context menu, smart paste)
-- [ ] Find next/previous in search
-- [ ] Broadcast mode (type in multiple terminals simultaneously)
+- [ ] Broadcast mode — **half done**: a snippet can be broadcast to every open pane,
+      but there is no mode where what you type keeps going to all of them
 
 ### 📦 Connection Management (Priority: MEDIUM)
-- ✅ Import from ~/.ssh/config (file path on desktop, paste on web)
 - [ ] Export connections (encrypted backup)
-- [ ] Import connections
+- [ ] Import connections — an ssh_config import exists; this is about reading back a
+      Rite export, which has no object until `Export connections` above exists
 - [ ] Host tags (in addition to collections)
 - [ ] Advanced search and filter
 
 ### 🎨 UI/UX Polish (Priority: MEDIUM)
-- [ ] Setup wizard (first run experience)
-  - ✅ Choose default shell (integrated in main UI)
-  - ✅ Master password setup (already done)
+- [ ] Setup wizard — the shell choice and the master password are already in the main
+      UI; what is missing is a first-run path offering preferences and an import
   - [ ] Basic preferences (theme, font)
-  - [ ] Optional SSH config import
-- [ ] Keyboard shortcuts configuration
-  - ✅ Tab close shortcut (`Mod+W`)
-  - ✅ Customizable keybindings — **Settings → Keyboard**
-  - [ ] Shortcuts cheatsheet (`Mod+?`) — the table exists now, so this is a reader
-        for it rather than a second list to keep in step
-- [ ] Connection status indicators (SSH)
+- [ ] Shortcuts cheatsheet (`Mod+?`) — the binding table and its editor exist; this is
+      a reader for that table, not a second list to keep in step
 - [ ] Error handling improvements
-- ✅ Toast notifications system
 - [ ] Tab context menu (rename, duplicate, close others)
 - [ ] Quick switcher (Ctrl+Tab for recent tabs)
+
+### 🎨 Styling: one place for it (Priority: HIGH)
+
+The CSP served to browsers is strict on every axis but one: `style-src` carries
+`'unsafe-inline'`, because the app writes 42 inline `style={{}}` across about fifteen
+components — pane geometry, collection colours, computed widths. That directive is the
+symptom; the cause is that styling has no single home, so a value that belongs to the
+design lands in a component instead.
+
+Not a security fix, which is why it is not in 0.2.4: what `'unsafe-inline'` permits is
+CSS injection, and `script-src 'self'` with `object-src 'none'` hold the sharp edges.
+It is a refactor, and the dependency runs the other way — tighten the CSP once the
+styles have somewhere to live.
+
+- [ ] Inventory the 42 sites and sort them: geometry computed at runtime (a split's
+      percentage) against values that are really design tokens (a collection's colour)
+- [ ] Design tokens as CSS custom properties, set once, consumed by class
+- [ ] Runtime geometry through a CSS variable on the element rather than a style string
+- [ ] Then drop `'unsafe-inline'` from `style-src` in `packages/rite-server/src/lib.rs`
+      and let the tls-proxy suite prove nothing regressed
 
 ### 🐛 Bug Fixes & Stability (Priority: HIGH)
 - [ ] Comprehensive error handling
@@ -257,27 +136,6 @@ already runs a command on the *local* machine from either shell.
 `design/mock/`, as the dashboard was, so the shape is argued over on screen
 rather than in a pull request. An ADR follows the mock, and code follows the ADR.
 
-- [x] **Mock first** (`design/mock/`) — `agents.js` / `agents.css`, shared by both
-      shells. Settled on screen: the **manager is a view** (a chooser has no context
-      of its own) and an **agent session is a pane**, so resuming opens a pane in a
-      **new tab** and leaves the list where it was. The selector is **machine → tool
-      → conversation**; discovery is one command per machine, so it is explicit and
-      **dated**. Four states are speakable rather than silent — never probed, not
-      installed, installed but unable to read its transcripts, and the refusal below.
-      The conversation **id is never typed and always copyable**, because an adapter
-      that breaks must not be the only way back to your own session. The agent pane
-      is a **leaf of the ordinary split tree** — it carries the terminal's chrome from
-      the same code and splits with plain terminals in the same tab, so a `watch
-      docker ps` can sit beside the agent causing it. Which CLIs Rite looks for is
-      **configurable**: an adapter is two commands (list, resume), and that is the
-      whole contract with a vendor.
-- [x] **ADR 0022** — the session model, the per-tool adapter boundary, what is
-      explicitly out of scope, and the governance question the mock could not answer:
-      discovery and reading what is in effect are governed by a new `agent_policy
-      { webui, clients }` (0019's shape, its own key, no `minInterval` because
-      discovery is explicit rather than periodic), while **running** an agent is
-      deliberately *not* governed — a server cannot stop it, so Rite must not pretend
-      to, and a switch that only hid the button would be relied on.
 - [ ] **PTY + exec in `rite-core`** — there is PTY+shell (interactive) and exec
       without a PTY (one-shot); an agent wants both. Not the typed-after-a-delay
       shortcut: a shell discards queued input while it sets the tty up, so an early
@@ -297,38 +155,6 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       and will change without notice. One adapter per tool, written expecting to
       break, with the breakage contained to it. (ADR 0003's lesson, learned the
       hard way: pin the constraint, never the incidental shape.)
-- [x] **Where an agent may run, and the one place it may not.** On a **machine from
-      the library**, over SSH — in **both shells**, since that is a session and the
-      transport is already shipped (`run_remote_command` / `run_quick_remote_command`,
-      built for the agentless dashboard). On **your own machine** — native on the
-      desktop, an attached client in a browser. **Never inside the Rite-Server
-      container**: an agent runs arbitrary code, and in the server's process it would
-      sit beside every user's encrypted data, the database and administrator sessions.
-      On a target machine it runs under the SSH account the user already had, so Rite
-      grants nothing new. This is a **non-goal**, stated on screen in the mock, and it
-      belongs in the ADR with its reason so it is not re-litigated in six months.
-- [x] **Skills, commands and hooks — read-only, with provenance** (mocked). Answers
-      *what is actually in effect*: the account layer under the project layer,
-      resolved on that host under that account, with every row carrying its layer and
-      its path, and a shadowed copy shown losing rather than hidden. Read-only is the
-      **defensive** choice — a hook is a command that runs unattended, and on a shared
-      account one person's hook runs for everyone, so making it visible is the
-      opposite of making it easy. **Editing is never Rite's**: *Open* runs `$EDITOR`
-      in a terminal pane on that machine, under the account you already use there —
-      no new right, no second source of truth, nothing to keep in sync. Nothing read
-      is stored, which keeps this out of the zero-knowledge path entirely.
-- [x] **Configurable splits** — **built** (0.2.4), after being mocked. A *terminal*
-      feature rather than an agent one. The split button opens a **plain terminal** — the common case pays nothing
-      — and a chevron beside it offers **presets** (a name and a command, both the
-      user's), the existing **snippets**, and **layouts** that open several panes at
-      once. One preferences dialog owns all of it. The mock gained a small
-      **pane-kind registry** to do this, so a terminal tab and an agent tab are the
-      same structure and a split is one feature instead of two. In the app, a preset's
-      command rides on the `TerminalSession` and the **pane** runs it once its session
-      is readable — the backend buffers a session's first output until the pane claims
-      it, and a shell discards queued input while it sets the tty up, so a timer on the
-      caller's side loses the command outright rather than running it late. The
-      dashboard's run-in-pane moved onto the same path and lost its 700 ms guess.
 - [ ] **Compare what is in effect across machines** — "this project loads three skills
       on web-01 and two on my laptop" is the same read, answered twice. Still
       read-only, and the natural next step once the single-machine view is real.
@@ -343,12 +169,6 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 ## Phase 2: Advanced SSH & File Transfer
 **Goal:** Enhanced SSH features and basic SFTP support.
 
-### 🔐 Advanced SSH (Priority: HIGH)
-- ✅ SSH agent support (agent auth + live identity picker + opt-in forwarding)
-- ✅ Jump hosts / bastion support (ProxyJump, chainable; local vault path)
-- ✅ Port forwarding — local `-L` *(remote `-R` and dynamic SOCKS still open)*
-- ✅ SSH agent forwarding (opt-in per connection)
-- ✅ Auto-reconnect on network failure (opt-in setting; off by default — a reconnect is a new shell)
 
 ### 📁 SFTP Core (Priority: MEDIUM)
 - [ ] **SFTP pane** — a browser as its own pane kind beside a terminal, not a menu
@@ -372,7 +192,8 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 - [ ] Backup reminder system
 
 ### 📊 Monitoring & Logs (Priority: LOW)
-- [ ] Connection history
+- [ ] Connection history — **half done**: `lastUsedAt` is tracked and shown, but
+      nothing keeps a list of past sessions
 - [ ] Session duration tracking
 - [ ] Bandwidth monitoring
 - [ ] Error logs (encrypted)
@@ -382,20 +203,48 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 ## Phase 3: Productivity & Advanced Features
 **Goal:** Power-user features and enhanced workflows.
 
-### 📑 Profiles / Termconfs (Priority: HIGH)
-- [ ] Profile creation UI
-- [ ] Profile launcher (Ctrl+P)
-- [ ] Auto-connect tabs on profile launch
-- [ ] Startup commands execution
-- [ ] Profile tags and organization
-- [ ] Save current session as profile
-- [ ] Profile import/export
+### 📑 Layouts (was: Profiles / Termconfs) (Priority: HIGH)
+
+Shipped in 0.2.4 as a FILE rather than as a profile manager:
+`~/.config/rite/layouts.toml` holds presets and layouts together, and Settings leads
+with the cards it parses. The rename is not cosmetic — "profile" implied a record the
+app owns and a UI to manage it, and what shipped is a file you own and can version,
+which is why import/export and creation have no separate work left.
+
+- [ ] Layout launcher shortcut — there is a Layouts button and a menu, no `Mod+P`
+- [ ] Layout tags and organization — the file has order and nothing else
+- [ ] Save the current arrangement AS a layout — the file is written by hand or by the
+      editor in Settings; nothing captures what is on screen into it
+
+#### The profile, later: one file for the whole setup
+
+A profile is not a layout with extras. It is **everything that makes this machine
+look and behave the way you left it, as code, in one file**: the font, the
+application's theme, the terminal's theme, and the layouts and presets that
+`layouts.toml` already holds. One file to version, one file to carry to another
+machine, one file to read when something looks wrong.
+
+`layouts.toml` is the first stone and it is laid (ADR 0023). What is missing is not
+file format but the thing underneath: **the appearance has to be drivable by
+configuration before a file can drive it**, and today it is not — the CSS lives
+across the components (see Styling above). A profile written now could set a layout
+and lie about everything else.
+
+So the order is fixed, and it is the reason this waits:
+
+1. Styling: design tokens as CSS custom properties, set in one place (above)
+2. A theme is then a set of token values — the application's and the terminal's,
+   which are two sets and not one
+3. The font joins them: a value, not a component's inline style
+4. Only then does the file grow past layouts, and the three items in Terminal Core
+   below — font family, colour scheme, cursor style — stop being three settings
+   screens and become what the file says
+
+Which is why those three are deliberately NOT built as one-off pickers. A font
+dropdown that writes to browser storage is work that has to be undone the day the
+profile exists, and it would teach the wrong shape in the meantime.
 
 ### ⚡ Terminal Enhancements (Priority: MEDIUM)
-- ✅ Split-view terminal (horizontal/vertical) *(moved to Phase 1)*
-- ✅ Broadcast input to multiple terminals *(moved to Phase 1)*
-- ✅ Snippets / command favorites (library, run per-pane or broadcast, multi-line)
-  - [ ] Snippet library
   - [ ] Variables in snippets (${VAR})
   - [ ] Quick insert palette
   - [ ] Per-host snippets
@@ -405,7 +254,6 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
   - [ ] Export as asciicast format
 - [ ] Advanced terminal features
   - [ ] Scrollback buffer search with regex
-  - [ ] URL detection and click-to-open
   - [ ] Semantic shell integration (prompts, commands)
   - [ ] Command history persistence
 
@@ -449,7 +297,6 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 - [ ] Variables in profiles
 - [ ] Conditional tabs (environment-based)
 - [ ] Pre/post-connect hooks
-- [ ] Advanced layouts (grids, custom splits)
 - [ ] Workspace mode (auto-save/restore session)
 
 ### 👥 Collaboration (Priority: LOW)
@@ -458,8 +305,6 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 - [ ] Team snippet sharing
 
 ### 🎯 Power User Features (Priority: LOW)
-- ✅ Command palette (Cmd+K / Ctrl+K) *(moved to Phase 1)*
-- ✅ Custom keyboard shortcuts *(moved to Phase 1)*
 - [ ] Terminal search history
 - [ ] Command history sync across devices
 - [ ] Labels and pre-hook scripts
@@ -471,35 +316,13 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 ## Phase 5: Web Version (Long-term)
 **Goal:** Browser-based access to RITE.
 
-### 🌍 Backend Server
-- [ ] Create `rite-server` package (Axum)
-- [ ] REST API (auth, hosts, themes)
-- [ ] WebSocket server for terminal I/O
-- [ ] SSH tunneling (Browser ↔ Backend ↔ SSH)
-- [ ] Multi-user support
-- [ ] Session isolation
 
 ### 💻 Web Frontend
-- [ ] React frontend (reuse desktop code)
-- [x] Replace Tauri with HTTP/WebSocket (rite-server + wry client)
-- [ ] Browser-compatible terminal
 - [ ] Progressive Web App (PWA)
-- [ ] LocalStorage/IndexedDB settings
 
-### 🔐 Web Security
-- [ ] HTTPS enforcement
-- [ ] JWT authentication
-- [ ] CORS configuration
-- [ ] Rate limiting
-- [ ] CSP headers
-- [ ] XSS prevention
 
 ### 📦 Deployment
-- [ ] Docker image
-- [ ] Docker Compose with PostgreSQL
 - [ ] Kubernetes manifests
-- [ ] Deployment guides
-- [ ] Reverse proxy configs
 
 ---
 
@@ -528,7 +351,6 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 - [ ] Plugin system
 - [ ] Terminal ligatures support
 - [ ] GPU-accelerated rendering
-- [ ] Pane presets/layouts (save and restore pane arrangements)
 - [ ] Detach panes to floating windows (multi-window support)
 - [ ] Terminal zoom mode (focus one pane fullscreen temporarily)
 - [ ] Pane synchronization (broadcast to selected panes only)
@@ -539,7 +361,6 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 - [ ] Terminal bell notifications (visual + system notifications)
 - [ ] Custom tab icons and colors (visual organization)
 - [ ] Pane title bars (show pwd, connection name, or custom label)
-- [ ] Split pane templates (2x2 grid, 1-3 layout, etc.)
 - [ ] Drag tabs between windows (when multi-window is implemented)
 - [ ] Terminal screenshot/export (capture pane or full tab as image)
 - [ ] Activity indicators (show which panes have new output)
@@ -567,11 +388,10 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 
 ## Phase 1 MVP Priority Order (Updated)
 
-**Critical path for usable terminal:**
-1. **Local terminal** (foundation for terminal usage)
-2. **Split panes** (essential modern feature)
-3. **Command palette** (UX quick wins)
-4. **Font/theme customization** (personalization)
-5. **Import ~/.ssh/config** (migration path)
-6. **Export/backup** (security)
-7. **Polish & stability** (error handling, notifications)
+**Critical path for usable terminal**, with what is done taken out of it — the local
+terminal, split panes and the ssh_config import have all shipped:
+
+1. **Command palette** (UX quick wins)
+2. **Font/theme customization** — as profile values, not as pickers; see Layouts
+3. **Export/backup** (security)
+4. **Polish & stability** (error handling, notifications)

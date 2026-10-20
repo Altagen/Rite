@@ -8,6 +8,9 @@
 import { z } from 'zod';
 import { errorHandler, ErrorSeverity, ErrorCategory } from './errorHandler';
 import { transport } from './transport';
+// Type-only, so it is erased at build time and the store ↔ backend cycle stays a
+// documentation one rather than a runtime one.
+import type { AuthMethodInput } from '../store/connectionsStore';
 
 /**
  * Generic wrapper for Backend invoke with Zod validation
@@ -15,7 +18,7 @@ import { transport } from './transport';
 async function invokeWithValidation<T>(
   command: string,
   schema: z.ZodType<T>,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
 ): Promise<T> {
   try {
     // Route through the active transport (Backend IPC, HTTP to rite-server, or the
@@ -83,6 +86,18 @@ const UnlockResponseSchema = z.object({
 // Settings schemas
 const SettingsRecordSchema = z.record(z.string(), z.string());
 
+/** The version handshake (ADR 0008), plus what the build is. */
+const CapabilitiesSchema = z.object({
+  version: z.string(),
+  // `unknown` on a build made outside a checkout with no build argument — honest rather
+  // than absent, so the row renders either way.
+  commit: z.string().optional(),
+  builtAt: z.string().optional(),
+  apiVersion: z.number(),
+  minClient: z.string(),
+});
+export type Capabilities = z.infer<typeof CapabilitiesSchema>;
+
 // Connection schemas
 const ConnectionInfoSchema = z.object({
   id: z.string(),
@@ -92,6 +107,13 @@ const ConnectionInfoSchema = z.object({
   port: z.number(),
   username: z.string(),
   authType: z.string(),
+  // ADR 0024 §6: a path names a file and is not a secret, so it comes back. Nor is the
+  // fact that a passphrase is kept — only the passphrase itself is.
+  keyPath: z.string().nullable().optional(),
+  hasStoredPassphrase: z.boolean().optional(),
+  hasStoredPassword: z.boolean().optional(),
+  needsPassphrase: z.boolean().optional(),
+  needsPassword: z.boolean().optional(),
   folder: z.string().nullable().optional(),
   color: z.string().nullable().optional(),
   icon: z.string().nullable().optional(),
@@ -143,10 +165,7 @@ export interface QuickEndpoint {
   host: string;
   port: number;
   username: string;
-  authMethod:
-    | { type: 'password'; password: string }
-    | { type: 'publicKey'; keyPath: string; passphrase?: string }
-    | { type: 'agent'; identity?: string; forward?: boolean };
+  authMethod: AuthMethodInput;
 }
 
 /**
@@ -206,13 +225,15 @@ export const BackendAuth = {
   /** Change the local-vault master password (re-keys all connections). Throws a typed
    *  RiteHttpError on a wrong current password (401) or a too-weak new one (400). */
   changeMasterPassword: (oldPassword: string, newPassword: string) =>
-    invokeWithValidation('change_master_password', z.null(), { old: oldPassword, new: newPassword }),
+    invokeWithValidation('change_master_password', z.null(), {
+      old: oldPassword,
+      new: newPassword,
+    }),
 
   /**
    * Unlock the application with the master password
    */
-  unlock: (password: string) =>
-    invokeWithValidation('unlock', UnlockResponseSchema, { password }),
+  unlock: (password: string) => invokeWithValidation('unlock', UnlockResponseSchema, { password }),
 
   /**
    * Lock the application
@@ -229,6 +250,20 @@ export const BackendAuth = {
    * Reset the database (DANGEROUS - only for UnlockScreen emergency reset)
    */
   resetDatabase: () => invokeWithValidation('reset_database', z.null()),
+} as const;
+
+// The workspace file (docs/LAYOUTS.md) — the split menu's presets, and what opens
+// when you sit down. `text` is null where there is no file at all: presets and
+// layouts are the machine's, so a shared server has neither and offers no substitute
+// (ADR 0023). `path` says where the file is, so an editor can open it too.
+const LayoutsFileSchema = z.object({
+  text: z.string().nullable(),
+  path: z.string().nullable(),
+});
+
+export const BackendLayouts = {
+  get: () => invokeWithValidation('get_layouts', LayoutsFileSchema),
+  put: (text: string) => invokeWithValidation('set_layouts', z.null(), { text }),
 } as const;
 
 // Settings Commands
@@ -277,15 +312,13 @@ export const BackendConnections = {
   /**
    * Get default SSH config path (~/.ssh/config)
    */
-  getDefaultSshConfigPath: () =>
-    invokeWithValidation('get_default_ssh_config_path', StringSchema),
+  getDefaultSshConfigPath: () => invokeWithValidation('get_default_ssh_config_path', StringSchema),
 
   /**
    * Parse SSH config file and return entries for preview
    */
   parseSshConfig: (configPath: string) =>
     invokeWithValidation('parse_ssh_config', SshConfigEntryArraySchema, { configPath }),
-
 } as const;
 
 // SSH host-key confirmation
@@ -327,8 +360,8 @@ export const BackendTerminal = {
   /**
    * Connect to a terminal (SSH connection)
    */
-  connectTerminal: (connectionId: string) =>
-    invokeWithValidation('connect_terminal', StringSchema, { connectionId }),
+  connectTerminal: (connectionId: string, sessionSecret?: string) =>
+    invokeWithValidation('connect_terminal', StringSchema, { connectionId, sessionSecret }),
 
   /**
    * Connect to a local terminal with custom shell
@@ -354,6 +387,8 @@ export const BackendTerminal = {
     localPort: number;
     remoteHost: string;
     remotePort: number;
+    /** A secret the client was asked for because this machine keeps none (ADR 0024 §4). */
+    sessionSecret?: string;
   }) => invokeWithValidation('start_forward', PortForwardInfoSchema, args),
 
   /**
@@ -393,8 +428,12 @@ export const BackendTerminal = {
    * output — agentless machine-dashboard detection (`docker ps`, `systemctl …`).
    * Runs over its own short-lived SSH exec channel; never touches a live session.
    */
-  machineExec: (connectionId: string, command: string) =>
-    invokeWithValidation('machine_exec', RemoteCommandOutputSchema, { connectionId, command }),
+  machineExec: (connectionId: string, command: string, sessionSecret?: string) =>
+    invokeWithValidation('machine_exec', RemoteCommandOutputSchema, {
+      connectionId,
+      command,
+      sessionSecret,
+    }),
 
   /**
    * Run a one-shot command on an ad-hoc target (accounts client-execute): the
@@ -417,21 +456,17 @@ export const BackendTerminal = {
     host: string,
     username: string,
     port: number,
-    authMethod: {
-      type: 'password';
-      password: string;
-    } | {
-      type: 'publicKey';
-      keyPath: string;
-      passphrase?: string;
-    } | {
-      type: 'agent';
-      identity?: string;
-      forward?: boolean;
-    },
+    // The shared union (`AuthMethodInput`), not a fourth copy of it: this one had drifted
+    // out of date the moment a variant was added, and the compiler said so.
+    authMethod: AuthMethodInput,
     // Resolved ProxyJump chain, outermost-first. Quick SSH proper has none; the
     // accounts source passes the hops it decrypted client-side.
-    jumps: QuickEndpoint[] = []
+    jumps: QuickEndpoint[] = [],
+    // Where the target came from, when it came from a collection. A server that forbids
+    // ad-hoc Quick SSH still has to open saved connections, and zero-knowledge means both
+    // arrive here as a decrypted host — so a saved one says which item it is, and the
+    // server checks that against this caller's membership (`quick_ssh` in rite-server).
+    origin?: { collectionId: string; itemId: string },
   ) =>
     invokeWithValidation('quick_ssh_connect', StringSchema, {
       host,
@@ -439,6 +474,8 @@ export const BackendTerminal = {
       port,
       authMethod,
       jumps,
+      collectionId: origin?.collectionId,
+      itemId: origin?.itemId,
     }),
 
   /**
@@ -508,7 +545,20 @@ const ServerModeSchema = z.object({
   // Server-governed client capabilities (mock "Client capabilities"): the shell used for
   // terminals on this server, and whether ad-hoc Quick SSH is allowed (off by default).
   defaultShell: z.string().optional(),
+  // The shells this instance actually has, probed rather than assumed: a minimal server
+  // image holds two of the four Rite knows about. Absent ⇒ an older server that never
+  // probed, and the client offers no choice rather than guessing.
+  shells: z.array(z.string()).optional(),
+  // Whether a member may deviate from `defaultShell` within `shells`. Off/absent ⇒ the
+  // default is the only shell, which is how every server behaved before this existed.
+  allowShellChoice: z.boolean().optional(),
+  // ADR 0024 §4. Permissive when absent, which is also the server's default: forbidding a
+  // stored passphrase while Rite stores passwords would be the appearance of hardening.
+  allowSecretStorage: z.boolean().optional(),
+  allowSecretReveal: z.boolean().optional(),
   allowQuickSsh: z.boolean().optional(),
+  /** How the server verifies host keys for the connections it opens, for everyone. */
+  hostKeyVerification: z.string().optional(),
   // Self-service registration (ADR 0015): when on, the sign-in screen offers "Create an
   // account". Off/absent ⇒ invite-only (admin-provisioned or enrollment token).
   openRegistration: z.boolean().optional(),
@@ -607,6 +657,12 @@ export type VaultKeyBlob = z.infer<typeof VaultSchema>;
 export const BackendServer = {
   /** Whether this endpoint is a shared server and if it still needs its admin. */
   mode: () => invokeWithValidation('server_mode', ServerModeSchema),
+  /**
+   * What is serving this page: its release, the build it was made from, and the API it
+   * speaks (ADR 0008). One source — the binary that served the bundle — so the two cannot
+   * disagree about which they are, which a version compiled into the frontend would allow.
+   */
+  capabilities: () => invokeWithValidation('server_capabilities', CapabilitiesSchema),
   /** KDF salt + params for a username (to derive the auth hash client-side). */
   prelogin: (username: string) =>
     invokeWithValidation('server_prelogin', PreloginSchema, { username }),
@@ -702,7 +758,11 @@ export type CollectionSummary = z.infer<typeof CollectionSummarySchema>;
 // Admin-group escrow schemas (ADR 0016 split-key model).
 const AdminGroupKeySchema = z.object({ epoch: z.number(), publicKey: z.string() });
 const AdminGroupGrantSchema = z.object({ epoch: z.number(), protectedPrivateKey: z.string() });
-const AdminKeySchema = z.object({ userId: z.string(), username: z.string(), publicKey: z.string() });
+const AdminKeySchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+  publicKey: z.string(),
+});
 export type AdminGroupKey = z.infer<typeof AdminGroupKeySchema>;
 export type AdminKey = z.infer<typeof AdminKeySchema>;
 
@@ -773,6 +833,18 @@ export const BackendAdmin = {
   /** Set the server's default shell for terminals (org-admin). */
   setDefaultShell: (shell: string) =>
     invokeWithValidation('admin_set_default_shell', z.null(), { shell }),
+  /** Let members pick their own shell among the ones this instance offers (org-admin). */
+  setShellChoice: (enabled: boolean) =>
+    invokeWithValidation('admin_set_shell_choice', z.null(), { enabled }),
+  /** How this server verifies host keys, for every connection it opens (org-admin). */
+  setHostKeyMode: (mode: 'strict' | 'warn' | 'accept') =>
+    invokeWithValidation('admin_set_host_key_mode', z.null(), { mode }),
+  /** Let members keep a key passphrase in their vault, or have it asked each time. */
+  setSecretStorage: (enabled: boolean) =>
+    invokeWithValidation('admin_set_secret_storage', z.null(), { enabled }),
+  /** Let a member read a stored secret back (ADR 0024 §4-5). */
+  setSecretReveal: (enabled: boolean) =>
+    invokeWithValidation('admin_set_secret_reveal', z.null(), { enabled }),
   /** Allow/forbid ad-hoc Quick SSH from the toolbar (org-admin). */
   setQuickSsh: (enabled: boolean) =>
     invokeWithValidation('admin_set_quick_ssh', z.null(), { enabled }),
@@ -795,26 +867,44 @@ export const BackendAdmin = {
     teams: { teamId: string; teamRole: 'admin' | 'member' }[];
     expiresInSecs: number | null;
   }) =>
-    invokeWithValidation('admin_create_enrollment_token', MintedTokenSchema, spec as unknown as Record<string, unknown>),
+    invokeWithValidation(
+      'admin_create_enrollment_token',
+      MintedTokenSchema,
+      spec as unknown as Record<string, unknown>,
+    ),
   revokeEnrollmentToken: (id: string) =>
     invokeWithValidation('admin_revoke_enrollment_token', z.null(), { id }),
   /** Set the machine health-check policy (org-admin). Sends the whole policy object. */
   setHealthcheck: (policy: HealthcheckPolicy) =>
-    invokeWithValidation('admin_set_healthcheck', z.null(), policy as unknown as Record<string, unknown>),
+    invokeWithValidation(
+      'admin_set_healthcheck',
+      z.null(),
+      policy as unknown as Record<string, unknown>,
+    ),
   /** Set the machine-dashboard policy (org-admin, ADR 0019). Sends the whole policy object. */
   setDashboardPolicy: (policy: DashboardPolicy) =>
-    invokeWithValidation('admin_set_dashboard_policy', z.null(), policy as unknown as Record<string, unknown>),
+    invokeWithValidation(
+      'admin_set_dashboard_policy',
+      z.null(),
+      policy as unknown as Record<string, unknown>,
+    ),
   /** Set the collection governance policy (org-admin). Sends the whole policy object. */
   setCollectionPolicy: (policy: CollectionPolicy) =>
-    invokeWithValidation('admin_set_collection_policy', z.null(), policy as unknown as Record<string, unknown>),
+    invokeWithValidation(
+      'admin_set_collection_policy',
+      z.null(),
+      policy as unknown as Record<string, unknown>,
+    ),
 
   // Collections governance (admin). Names stay encrypted — counts/membership only.
-  listCollections: () => invokeWithValidation('admin_list_collections', z.array(CollectionSummarySchema)),
+  listCollections: () =>
+    invokeWithValidation('admin_list_collections', z.array(CollectionSummarySchema)),
   collectionMembers: (id: string) =>
     invokeWithValidation('admin_collection_members', z.array(CollectionMemberSchema), { id }),
   removeCollectionMember: (id: string, userId: string) =>
     invokeWithValidation('admin_remove_collection_member', z.null(), { id, userId }),
-  deleteCollection: (id: string) => invokeWithValidation('admin_delete_collection', z.null(), { id }),
+  deleteCollection: (id: string) =>
+    invokeWithValidation('admin_delete_collection', z.null(), { id }),
 
   // Admin-group escrow (ADR 0016 split-key). Lets admins read collection names +
   // roster-add without ever holding item keys. The server stores only sealed blobs.
@@ -1012,8 +1102,7 @@ export const BackendCollections = {
   /** Collections I belong to, each with my sealed collection key. */
   mine: () => invokeWithValidation('collections_mine', z.array(UserCollectionSchema)),
   /** The Admin-group public key (member-readable) to escrow a new collection's metaKey to. */
-  groupKey: () =>
-    invokeWithValidation('collections_group_key', AdminGroupKeySchema.nullable()),
+  groupKey: () => invokeWithValidation('collections_group_key', AdminGroupKeySchema.nullable()),
   create: (
     nameEnc: string,
     protectedMetaKey: string,
@@ -1051,7 +1140,8 @@ export const BackendCollections = {
   removeMember: (id: string, userId: string) =>
     invokeWithValidation('collection_remove_member', z.null(), { id, userId }),
   /** A collection's item blobs (opaque; the caller decrypts with the collection key). */
-  items: (id: string) => invokeWithValidation('collection_items', z.array(CollectionItemSchema), { id }),
+  items: (id: string) =>
+    invokeWithValidation('collection_items', z.array(CollectionItemSchema), { id }),
   createItem: (id: string, blob: string) =>
     invokeWithValidation('collection_item_create', CollectionItemSchema, { id, blob }),
   updateItem: (id: string, itemId: string, blob: string) =>
@@ -1069,7 +1159,8 @@ export const BackendCollections = {
   /** Stop offering a collection (owner). */
   clearOffer: (id: string) => invokeWithValidation('collection_clear_offer', z.null(), { id }),
   /** Request access to a collection offered to one of my teams. */
-  requestAccess: (id: string) => invokeWithValidation('collection_request_access', z.null(), { id }),
+  requestAccess: (id: string) =>
+    invokeWithValidation('collection_request_access', z.null(), { id }),
   /** Access requests I can grant (I own/edit the collection) — the inbox. */
   incomingRequests: () =>
     invokeWithValidation('collections_requests', z.array(IncomingRequestSchema)),
@@ -1100,6 +1191,14 @@ const LocalCollectionSchema = z.object({
 export type LocalCollection = z.infer<typeof LocalCollectionSchema>;
 
 /** A machine in a local collection: credential-free, like every other read path. */
+/** What a reveal answers with: only the fields the stored method has. */
+const RevealedSecretSchema = z.object({
+  password: z.string().optional(),
+  key: z.string().optional(),
+  keyPath: z.string().optional(),
+  passphrase: z.string().nullable().optional(),
+});
+
 const LocalMachineSchema = ConnectionInfoSchema.extend({
   collectionId: z.string(),
   hc: z.boolean().nullable().optional(),
@@ -1115,8 +1214,7 @@ export type LocalMachine = z.infer<typeof LocalMachineSchema>;
  * endpoints are the other ones — there the client holds the keys.
  */
 export const BackendLocal = {
-  collections: () =>
-    invokeWithValidation('local_collections', z.array(LocalCollectionSchema), {}),
+  collections: () => invokeWithValidation('local_collections', z.array(LocalCollectionSchema), {}),
   createCollection: (name: string, color?: string | null) =>
     invokeWithValidation('local_create_collection', LocalCollectionSchema, { name, color }),
   updateCollection: (args: {
@@ -1131,6 +1229,13 @@ export const BackendLocal = {
 
   machines: (collectionId: string) =>
     invokeWithValidation('local_machines', z.array(LocalMachineSchema), { collectionId }),
+  /**
+   * One machine's stored secret (ADR 0024 §5). Refused with 403 when this vault is set to
+   * keep its secrets unreadable — the one context where that is a refusal and not a
+   * convention, because the key lives in the process being asked.
+   */
+  machineSecret: (collectionId: string, item: string) =>
+    invokeWithValidation('local_machine_secret', RevealedSecretSchema, { collectionId, item }),
   createMachine: (collectionId: string, record: unknown) =>
     invokeWithValidation('local_create_machine', z.object({ id: z.string() }), {
       collectionId,
@@ -1160,6 +1265,7 @@ export const BackendLocal = {
 export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
+  Layouts: BackendLayouts,
   Connections: BackendConnections,
   Terminal: BackendTerminal,
   Ssh: BackendSsh,

@@ -72,7 +72,10 @@ commit_parsers = [
   { message = "^(chore|ci|build)\\(deps", group = "<!-- 7 -->📦 Dependencies" },
   { message = "^chore\\(pr\\)", skip = true },
   { message = "^chore\\(pull\\)", skip = true },
-  { message = "^chore|^ci", group = "<!-- 8 -->⚙️ Miscellaneous" },
+  # `^build` too, and not only `build(deps`: with filter_commits = true a commit no
+  # parser matches is dropped outright, so `build(format)` — the commit that gave this
+  # repository a prettier config — would have left no trace in the 0.2.4 notes.
+  { message = "^chore|^ci|^build", group = "<!-- 8 -->⚙️ Miscellaneous" },
   { body = ".*security", group = "<!-- 9 -->🔒 Security" },
   { message = "^revert", group = "<!-- 10 -->⏪ Revert" },
 ]

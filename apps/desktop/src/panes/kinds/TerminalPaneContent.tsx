@@ -27,6 +27,7 @@ export function TerminalPaneContent({ node, chrome }: PaneContentProps<TerminalP
       onSplitVertical={chrome.onSplitVertical}
       onSplitWith={chrome.onSplitWith}
       initialCommand={node.session.initialCommand}
+      note={node.session.note}
       onDetach={chrome.onDetach}
       onDragStart={chrome.onDragStart}
       onDragEnd={chrome.onDragEnd}
