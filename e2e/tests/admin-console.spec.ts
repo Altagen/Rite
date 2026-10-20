@@ -1,0 +1,135 @@
+import { test, expect, type Page } from '@playwright/test';
+
+/**
+ * The administration console, held to its behaviour rather than to its wording.
+ *
+ * It had no test of its own. What touched it did so in passing — the host-key dropdown
+ * and the shell list, on the way to something else — so nine of its eleven switches
+ * were never clicked by anything, and nothing checked that the panel renders at all.
+ * This is the surface where a mistake is an instance-wide policy, which makes "nobody
+ * looks at it until an admin does" the wrong place to be.
+ *
+ * Deliberately NOT asserting copy. The console holds 391 strings written straight into
+ * the JSX, and this release rewrote a quarter of them; a test that pins sentences would
+ * have failed on every one of those edits while saying nothing about whether the thing
+ * works. So: test ids for what to click, `/api/server/mode` for what is true, and the
+ * round trip between them. The 0.2.4 settings rewrite broke a test that pinned a
+ * sentence — twice — which is the argument for this shape.
+ */
+
+// The same account `accounts.spec.ts` bootstraps — this project shares one instance,
+// so inventing a second administrator here would just fail to sign in.
+const ADMIN = { username: 'admin', password: 'AdminPass123!' };
+
+/** Sign in, bootstrapping the instance if this spec got there first. */
+async function signIn(page: Page) {
+  await page.goto('/');
+  const bootstrap = await page
+    .getByText('Create the server administrator')
+    .isVisible()
+    .catch(() => false);
+  if (bootstrap) {
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /create administrator/i }).click();
+  } else {
+    await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+  }
+}
+
+/** Open the admin console; it lands on Overview with a left nav. */
+async function openAdmin(page: Page) {
+  await page.getByRole('button', { name: 'Admin', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible({ timeout: 15_000 });
+}
+
+/** Fail on anything the page logged as an error — a console that throws is broken. */
+function watchErrors(page: Page): string[] {
+  const errs: string[] = [];
+  page.on('pageerror', (e) => errs.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => m.type() === 'error' && errs.push(`console: ${m.text()}`));
+  return errs;
+}
+
+const mode = async (page: Page) =>
+  (await (await page.request.get('/api/server/mode')).json()) as Record<string, unknown>;
+
+/**
+ * Every switch, against the server rather than against itself.
+ *
+ * A switch that renders its own state and writes nowhere looks identical to a working
+ * one, so each is read from `/api/server/mode`, flipped, read again, and flipped back.
+ * Leaving the instance as it was found matters: the accounts project shares one server
+ * between its specs, so a switch left off here would silently change another test.
+ */
+const SWITCHES: { testId: string; key: string }[] = [
+  { testId: 'instance-session-persistence', key: 'sessionPersistence' },
+  { testId: 'instance-open-registration', key: 'openRegistration' },
+  { testId: 'instance-allow-invitations', key: 'allowInvitations' },
+  { testId: 'instance-confirm-role-change', key: 'confirmRoleChange' },
+  { testId: 'instance-quick-ssh', key: 'allowQuickSsh' },
+  { testId: 'instance-shell-choice', key: 'allowShellChoice' },
+  { testId: 'instance-secret-storage', key: 'allowSecretStorage' },
+  { testId: 'instance-secret-reveal', key: 'allowSecretReveal' },
+];
+
+test('every instance switch shows what the server holds, and writes it back', async ({ page }) => {
+  const errs = watchErrors(page);
+  await signIn(page);
+  await openAdmin(page);
+  await page.getByRole('button', { name: 'Instance', exact: true }).click();
+
+  for (const { testId, key } of SWITCHES) {
+    const sw = page.getByTestId(testId);
+    await expect(sw, `${testId} is on the panel`).toBeVisible({ timeout: 15_000 });
+
+    const before = (await mode(page))[key];
+    expect(typeof before, `${key} is published by /api/server/mode`).toBe('boolean');
+    await expect(sw, `${testId} renders ${key}`).toHaveAttribute(
+      'aria-checked',
+      String(before as boolean),
+    );
+
+    await sw.click();
+    await expect(sw).toHaveAttribute('aria-checked', String(!(before as boolean)));
+    await expect
+      .poll(async () => (await mode(page))[key], { timeout: 10_000 })
+      .toBe(!(before as boolean));
+
+    // Back, so the next spec in this project finds the instance as it was.
+    await sw.click();
+    await expect
+      .poll(async () => (await mode(page))[key], { timeout: 10_000 })
+      .toBe(before as boolean);
+  }
+
+  expect(errs, 'the console must not log errors').toEqual([]);
+});
+
+/**
+ * Nothing on screen is an unresolved translation key.
+ *
+ * `t()` returns the key when it cannot resolve one, so a typo ships as
+ * `settings.foo.bar` in the interface with only a `console.warn` behind it.
+ * `i18n-check` now verifies the keys the SOURCE asks for; this checks what the page
+ * actually painted, which also covers a key built at run time.
+ */
+test('the console paints no raw translation keys', async ({ page }) => {
+  const errs = watchErrors(page);
+  await signIn(page);
+  await openAdmin(page);
+
+  for (const tab of ['Instance', 'Users', 'Invitations', 'Collections']) {
+    const nav = page.getByRole('button', { name: tab, exact: true });
+    if (!(await nav.isVisible().catch(() => false))) continue;
+    await nav.click();
+    const text = (await page.locator('main, body').first().innerText()).split('\n');
+    const keys = text.filter((l) => /^[a-z][a-zA-Z]*(\.[a-z][a-zA-Z]*){1,3}$/.test(l.trim()));
+    expect(keys, `${tab} shows a translation key instead of its text`).toEqual([]);
+  }
+
+  expect(errs, 'the console must not log errors').toEqual([]);
+});

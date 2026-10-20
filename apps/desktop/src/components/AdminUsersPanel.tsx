@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import { Backend, type ServerUser } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import {
@@ -28,6 +29,7 @@ const fmtJoined = (epochSeconds: number) =>
     : '—';
 
 export function AdminUsersPanel() {
+  const { t } = useTranslation();
   const { user: me, publicKey, privateKey, mode } = useServerSession();
   // Instance policy (admin → Instance): confirm every role change before applying it.
   const confirmRoleChange = mode?.confirmRoleChange === true;
@@ -166,8 +168,8 @@ export function AdminUsersPanel() {
   return (
     <div className="mx-auto w-full max-w-4xl space-y-5">
       <div className="flex items-center gap-3.5">
-        <h1 className="text-[22px] font-bold">Users</h1>
-        <span className="text-[13px] text-muted-foreground">Accounts on this instance</span>
+        <h1 className="text-[22px] font-bold">{t('admin.users.title')}</h1>
+        <span className="text-[13px] text-muted-foreground">{t('admin.users.subtitle')}</span>
       </div>
 
       {error && (
@@ -180,11 +182,11 @@ export function AdminUsersPanel() {
         <table className="w-full text-sm">
           <thead className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-4 py-3 font-semibold">Username</th>
-              <th className="px-4 py-3 font-semibold">Role</th>
-              <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold">Joined</th>
-              <th className="px-4 py-3 text-right font-semibold">Actions</th>
+              <th className="px-4 py-3 font-semibold">{t('admin.users.colUsername')}</th>
+              <th className="px-4 py-3 font-semibold">{t('admin.users.colRole')}</th>
+              <th className="px-4 py-3 font-semibold">{t('admin.users.colStatus')}</th>
+              <th className="px-4 py-3 font-semibold">{t('admin.users.colJoined')}</th>
+              <th className="px-4 py-3 text-right font-semibold">{t('admin.users.colActions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -195,7 +197,9 @@ export function AdminUsersPanel() {
                   <td className="px-4 py-2.5 font-medium">
                     {u.username}
                     {isSelf && (
-                      <span className="ml-2 text-xs font-normal text-muted-foreground">(you)</span>
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        {t('admin.users.you')}
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-2.5">
@@ -222,16 +226,18 @@ export function AdminUsersPanel() {
                           if (nr === 'admin') {
                             // Promotion to admin always confirms — it grants full server access.
                             if (
-                              !window.confirm(
-                                `Promote ${u.username} to admin? They get full server access and can read collection names via the Admin group.`,
-                              )
+                              !window.confirm(t('admin.users.confirmPromote', { name: u.username }))
                             )
                               return;
                           } else if (confirmRoleChange) {
                             // Instance policy: confirm any other role change too.
                             if (
                               !window.confirm(
-                                `Change ${u.username}'s role from ${u.role} to ${nr}?`,
+                                t('admin.users.confirmRole', {
+                                  name: u.username,
+                                  from: u.role,
+                                  to: nr,
+                                }),
                               )
                             )
                               return;
@@ -244,7 +250,7 @@ export function AdminUsersPanel() {
                         }}
                         disabled={busy}
                         className="ml-2 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-50"
-                        title="Change role"
+                        title={t('admin.users.changeRole')}
                       >
                         <option value="user">user</option>
                         <option value="manager">manager</option>
@@ -267,15 +273,15 @@ export function AdminUsersPanel() {
                     {u.mustChangePassword && (
                       <span
                         className="ml-2 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-600"
-                        title="Provisioned — hasn't set their own password yet"
+                        title={t('admin.users.awaitingTitle')}
                       >
-                        awaiting first login
+                        {t('admin.users.awaiting')}
                       </span>
                     )}
                   </td>
                   <td
                     className="whitespace-nowrap px-4 py-2.5 text-[13px] text-muted-foreground"
-                    title="Registered on this server"
+                    title={t('admin.users.joinedTitle')}
                   >
                     {fmtJoined(u.createdAt)}
                   </td>
@@ -299,7 +305,9 @@ export function AdminUsersPanel() {
                           disabled={busy}
                           className="rounded border border-border px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
                         >
-                          {u.status === 'active' ? 'Disable' : 'Enable'}
+                          {u.status === 'active'
+                            ? t('admin.users.disable')
+                            : t('admin.users.enable')}
                         </button>
                         <button
                           onClick={() => {
@@ -308,10 +316,10 @@ export function AdminUsersPanel() {
                             setResetConfirm('');
                           }}
                           disabled={busy}
-                          title="Reset access (lost password)"
+                          title={t('admin.users.resetTitle')}
                           className="rounded border border-amber-500/40 px-2 py-1 text-xs text-amber-600 hover:bg-amber-500/10 disabled:opacity-50"
                         >
-                          Reset
+                          {t('admin.users.reset')}
                         </button>
                         <button
                           onClick={() =>
@@ -324,7 +332,7 @@ export function AdminUsersPanel() {
                           disabled={busy}
                           className="rounded border border-red-500/30 px-2 py-1 text-xs text-red-600 hover:bg-red-500/10 disabled:opacity-50"
                         >
-                          Delete
+                          {t('admin.users.delete')}
                         </button>
                       </div>
                     )}
@@ -340,11 +348,11 @@ export function AdminUsersPanel() {
         onSubmit={handleCreate}
         className="space-y-3 rounded-2xl border border-border bg-card p-4"
       >
-        <div className="text-sm font-semibold">Add a user</div>
+        <div className="text-sm font-semibold">{t('admin.users.add')}</div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex-1 space-y-1">
             <label htmlFor="new-username" className="text-xs font-medium text-muted-foreground">
-              Username
+              {t('admin.users.colUsername')}
             </label>
             <input
               id="new-username"
@@ -356,7 +364,7 @@ export function AdminUsersPanel() {
           </div>
           <div className="flex-1 space-y-1">
             <label htmlFor="new-password" className="text-xs font-medium text-muted-foreground">
-              Initial password
+              {t('admin.users.initialPassword')}
             </label>
             <input
               id="new-password"
@@ -369,7 +377,7 @@ export function AdminUsersPanel() {
           </div>
           <div className="space-y-1">
             <label htmlFor="new-role" className="text-xs font-medium text-muted-foreground">
-              Role
+              {t('admin.users.colRole')}
             </label>
             {meIsAdmin ? (
               <select
@@ -395,7 +403,7 @@ export function AdminUsersPanel() {
             disabled={busy || !username.trim() || !password}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            Add user
+            {t('admin.users.addUser')}
           </button>
         </div>
       </form>
@@ -409,39 +417,39 @@ export function AdminUsersPanel() {
             className="w-full max-w-md rounded-lg border border-border bg-card p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-semibold">Reset access for {resetTarget.username}?</h3>
+            <h3 className="text-lg font-semibold">
+              {t('admin.users.resetFor', { name: resetTarget.username })}
+            </h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use this when <b className="text-foreground">{resetTarget.username}</b> has lost their
-              password. Verify it&apos;s really them first (in person, phone…). Set a temporary
-              password to relay to them — they&apos;ll set their own at next login.
+              {t('admin.users.resetWhy', { name: resetTarget.username })}
             </p>
             <div className="my-3 space-y-2 text-sm">
               <div className="rounded-md border border-green-500/30 bg-green-500/[0.08] p-2">
-                <b>Kept:</b> their username, role, and every team they&apos;re in.
+                <b>{t('admin.users.resetKeptLabel')}</b> {t('admin.users.resetKept')}
               </div>
               <div className="rounded-md border border-red-500/30 bg-red-500/[0.08] p-2">
-                <b>Lost for good:</b> everything encrypted under the old password — personal
-                connections and solo collections. They&apos;ll re-request access to shared
-                collections.
+                <b>{t('admin.users.resetLostLabel')}</b> {t('admin.users.resetLost')}
               </div>
             </div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">
-              Temporary password
+              {t('admin.users.tempPassword')}
             </label>
             <input
               type="text"
               value={resetPw}
               onChange={(e) => setResetPw(e.target.value)}
               autoFocus
-              placeholder="A temp password to relay to them"
+              placeholder={t('admin.users.tempPlaceholder')}
               className="mb-2 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
-            <label className="mb-1 block text-xs font-medium text-muted-foreground">Confirm</label>
+            <label className="mb-1 block text-xs font-medium text-muted-foreground">
+              {t('admin.users.confirmLabel')}
+            </label>
             <input
               type="text"
               value={resetConfirm}
               onChange={(e) => setResetConfirm(e.target.value)}
-              placeholder="Type it again"
+              placeholder={t('admin.users.typeAgain')}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
             <div className="mt-4 flex justify-end gap-2">
@@ -449,14 +457,14 @@ export function AdminUsersPanel() {
                 onClick={() => setResetTarget(null)}
                 className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
               >
-                Cancel
+                {t('admin.cancel')}
               </button>
               <button
                 onClick={doReset}
                 disabled={busy || resetPw.length < 4 || resetPw !== resetConfirm}
                 className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
               >
-                Reset access
+                {t('admin.users.resetAccess')}
               </button>
             </div>
           </div>

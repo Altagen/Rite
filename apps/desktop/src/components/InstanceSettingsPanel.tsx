@@ -339,6 +339,7 @@ export function InstanceSettingsPanel() {
             label="Keep users signed in across reloads"
             disabled={!!managed.session_persistence}
             onChange={togglePersistence}
+            testId="instance-session-persistence"
           />
         </div>
       </div>
@@ -359,6 +360,7 @@ export function InstanceSettingsPanel() {
             label="Open registration"
             disabled={!!managed.open_registration}
             onChange={toggleOpenReg}
+            testId="instance-open-registration"
           />
         </div>
       </div>
@@ -378,6 +380,7 @@ export function InstanceSettingsPanel() {
             label="Allow invitations"
             disabled={!!managed.allow_invitations}
             onChange={toggleAllowInv}
+            testId="instance-allow-invitations"
           />
         </div>
       </div>
@@ -397,6 +400,7 @@ export function InstanceSettingsPanel() {
             label="Confirm role changes"
             disabled={!!managed.confirm_role_change}
             onChange={toggleConfirmRole}
+            testId="instance-confirm-role-change"
           />
         </div>
       </div>
@@ -473,6 +477,7 @@ export function InstanceSettingsPanel() {
             label="Allow Quick SSH"
             disabled={!!managed.allow_quick_ssh}
             onChange={toggleQuickSsh}
+            testId="instance-quick-ssh"
           />
         </div>
 
@@ -575,6 +580,7 @@ export function InstanceSettingsPanel() {
             checked={hc.passiveStatus}
             label="Show machine status"
             onChange={() => saveHc({ ...hc, passiveStatus: !hc.passiveStatus })}
+            testId="instance-hc-passive"
           />
         </div>
 
@@ -753,6 +759,7 @@ export function InstanceSettingsPanel() {
             label="Allow the dashboard probing cards in the web UI"
             disabled={!!managed.dashboard_policy}
             onChange={() => saveDash({ ...dash, webui: !dash.webui })}
+            testId="instance-dash-webui"
           />
         </div>
 
@@ -769,6 +776,7 @@ export function InstanceSettingsPanel() {
             label="Allow the dashboard probing cards in attached clients"
             disabled={!!managed.dashboard_policy}
             onChange={() => saveDash({ ...dash, clients: !dash.clients })}
+            testId="instance-dash-clients"
           />
         </div>
 

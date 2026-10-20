@@ -200,7 +200,7 @@ check('every key the code asks for exists in both locales', () => {
   );
 });
 
-const HARDCODED_BASELINE = 391;
+const HARDCODED_BASELINE = 366;
 
 // Deliberately wide. The first version of this allowed only letters and commas inside a
 // string, so anything with a full stop, an apostrophe entity, an arrow or an em dash was

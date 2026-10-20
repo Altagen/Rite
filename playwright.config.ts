@@ -46,8 +46,12 @@ export default defineConfig({
     },
     {
       name: 'chromium',
+      // An ignore LIST means a new spec joins this project by default, which is the wrong
+      // default for a project that runs against a local vault: `admin-console.spec.ts`
+      // landed here on its first run and failed twice for want of an admin console.
       testIgnore: [
         /smoke\.spec\.ts/,
+        /admin-console\.spec\.ts/,
         /screenshots\.spec\.ts/,
         /mock\.spec\.ts/,
         /instance-config\.spec\.ts/,
@@ -87,7 +91,7 @@ export default defineConfig({
     // local-vault suite.
     {
       name: 'accounts',
-      testMatch: /accounts\.spec\.ts/,
+      testMatch: [/accounts\.spec\.ts/, /admin-console\.spec\.ts/],
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:1422' },
     },
     // An instance governed by a configuration file on :1427 (ADR 0020): the console has to
