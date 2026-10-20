@@ -57,7 +57,7 @@ test('quick SSH connect runs a command over a real session', async ({ page }) =>
   await dialog.getByPlaceholder('example.com').fill(SSH.hostname);
   await dialog.locator('input[type="number"]').fill(String(SSH.port));
   await dialog.getByPlaceholder('user').fill(SSH.username);
-  await dialog.getByPlaceholder('Enter password').fill(SSH.password);
+  await dialog.getByPlaceholder('Password', { exact: true }).fill(SSH.password);
 
   await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
 

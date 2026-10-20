@@ -317,7 +317,7 @@ test('web member workspace: personal connections, zero-knowledge, server-execute
     timeout: 15_000,
   });
   await page.getByPlaceholder('A password known to nobody else').fill(CAROL_NEW);
-  await page.getByPlaceholder('Type it again').fill(CAROL_NEW);
+  await page.getByPlaceholder('Confirmation').fill(CAROL_NEW);
   await page.getByRole('button', { name: /set password & continue/i }).click();
 
   // Now a member lands in the shared workspace (ADR 0014), not the admin panels.
@@ -334,7 +334,7 @@ test('web member workspace: personal connections, zero-knowledge, server-execute
   await page.getByPlaceholder('My Server').fill('my-web-box');
   await page.getByPlaceholder('example.com or 192.168.1.1').fill('web-secret-host');
   await page.getByPlaceholder('user').fill('deployer');
-  await page.getByPlaceholder('Enter password...').fill('web-secret-pw');
+  await page.getByPlaceholder('Password', { exact: true }).fill('web-secret-pw');
   // Ticked deliberately: this test's point is that a password Rite DOES keep never leaves
   // the browser in the clear, which it asserts against the stored blob below. Since ADR
   // 0024 §4 covers passwords, the box is unticked by default and an unstored password
@@ -608,7 +608,7 @@ async function addMachine(
   if (opts.port !== undefined)
     await page.locator('input[type="number"]').first().fill(String(opts.port));
   await page.getByPlaceholder('user').fill(opts.user);
-  await page.getByPlaceholder('Enter password...').fill(opts.password);
+  await page.getByPlaceholder('Password', { exact: true }).fill(opts.password);
   // Every caller of this helper wants a machine that connects, so it keeps its password.
   // Unticked is the default since ADR 0024 §4 covers passwords, and a machine that keeps
   // none asks at connect time — which is its own test, not an accident in these.
@@ -1370,7 +1370,7 @@ test('a password that was not kept is asked for at connect time', async ({ page 
   await page.getByPlaceholder('example.com or 192.168.1.1').fill(SSH.hostname);
   await page.locator('input[type="number"]').first().fill(String(SSH.port));
   await page.getByPlaceholder('user').fill(SSH.username);
-  await page.getByPlaceholder('Enter password...').fill(SSH.password);
+  await page.getByPlaceholder('Password', { exact: true }).fill(SSH.password);
   // Left unticked on purpose — that is what this test is about. It is also the default,
   // so this asserts the default rather than assuming it.
   await expect(page.getByTestId('auth-remember-password')).not.toBeChecked();
