@@ -292,7 +292,7 @@
     "title": "Snippets",
     "subtitle": "Exécuter une commande enregistrée sur {pane}, ou ⇉ diffuser à tous les panneaux ouverts.",
     "thisPane": "ce panneau",
-    "empty": "Aucun snippet — ajoutez-en un ci-dessous.",
+    "empty": "Aucun snippet — en ajouter un ci-dessous.",
     "run": "Exécuter",
     "runHere": "Exécuter sur ce panneau",
     "broadcast": "Diffuser à tous les panneaux ouverts",
@@ -335,7 +335,7 @@
   },
   "pf": {
     "title": "Redirection de ports",
-    "empty": "Aucune redirection — ajoutez-en une ci-dessous.",
+    "empty": "Aucune redirection — en ajouter une ci-dessous.",
     "local": "Local",
     "remote": "Distant",
     "dynamic": "Dynamique (SOCKS)",
@@ -436,8 +436,8 @@
     "members": "{n} membres",
     "intro": "Un espace réservé aux membres de {name} — liens, notes, actions en un clic et vues live. Chiffré ; l’accès en écriture peut modifier. Cliquer une carte pour l’ouvrir.",
     "introLocal": "Un espace de cartes pour {name} — liens, notes, actions en un clic et vues live. Chiffré dans le coffre. Cliquer une carte pour l’ouvrir.",
-    "empty": "Aucune carte — ajoutez un Lien, une Note, une Action ou une vue Live.",
-    "emptyFiltered": "Aucune carte dans cette catégorie — ajoutez-en une.",
+    "empty": "Aucune carte — ajouter un Lien, une Note, une Action ou une vue Live.",
+    "emptyFiltered": "Aucune carte dans cette catégorie — en ajouter une.",
     "add": "Ajouter une carte",
     "remove": "Supprimer la carte",
     "edit": "Modifier",
@@ -498,7 +498,7 @@
   "shortcuts": {
     "hint": "Cliquer sur un raccourci, puis appuyer sur les touches. {mod} est le modificateur de commande sur cette machine ; le même raccourci se reporte sur l’autre.",
     "resetAll": "Tout réinitialiser",
-    "recording": "appuyez sur les touches…",
+    "recording": "touches attendues…",
     "conflict": "conflit",
     "conflictTitle": "Une autre commande utilise cet accord : l’une des deux ne se déclenchera jamais.",
     "conflictNote": "Deux commandes partagent un accord. Les deux sont enregistrées, mais une seule se déclenchera.",
@@ -658,7 +658,7 @@
       "quickDays": "{days} jours",
       "noExpiration": "Sans expiration",
       "expiresAfter": "Le jeton cesse de fonctionner après le {date}.",
-      "neverExpires": "Le jeton n’expire jamais — révoquez-le à la main.",
+      "neverExpires": "Le jeton n’expire jamais — à révoquer à la main.",
       "generating": "Génération…",
       "generate": "Générer",
       "errRevoke": "La révocation a échoué",
@@ -677,7 +677,7 @@
     "instanceTitle": "Instance du serveur",
     "close": "Fermer",
     "closeTitle": "Fermer — retour à l’application (Échap)",
-    "hiddenNative": "Les réglages du serveur sont dans la console web — ouvrez l’URL du serveur dans un navigateur.",
+    "hiddenNative": "Les réglages du serveur sont dans la console web — ouvrir l’URL du serveur dans un navigateur.",
     "hiddenManager": "L’administration de l’instance est réservée aux administrateurs.",
     "managedBy": "Défini par la configuration de cette instance ({origin})",
     "dash": {
@@ -687,7 +687,7 @@
       "statAdmins": "Administrateurs",
       "statAdminsNote": "avec accès complet au serveur",
       "statTeams": "Équipes",
-      "statTeamsNote": "ouvrez Équipes pour les gérer",
+      "statTeamsNote": "ouvrir Équipes pour les gérer",
       "statSessions": "Sessions en cours",
       "statSessionsNote": "terminaux ouverts",
       "recent": "Activité récente",
@@ -812,7 +812,7 @@
       "dashClientsLabel": "Autoriser les cartes de sondage du tableau de bord dans les clients attachés",
       "dashInterval": "Intervalle de rafraîchissement minimal",
       "dashIntervalDesc": "Plancher entre les rafraîchissements automatiques. Les clients appliquent leur propre plancher, donc un très petit nombre n’apporte pas grand-chose. Appuyer sur Rafraîchir n’est pas limité, et un tableau de bord que personne ne regarde ne sonde pas.",
-      "managedBy": "Défini par la configuration de cette instance ({origin}) — changez-le là-bas, pas ici."
+      "managedBy": "Défini par la configuration de cette instance ({origin}) — à changer là-bas, pas ici."
     },
     "teams": {
       "title": "Équipes",
@@ -957,7 +957,7 @@
     "deleteConfirm": "Cela supprime définitivement la collection et ses machines pour tout le monde. Les membres perdent l’accès. C’est irréversible.",
     "discoveryLabel": "Libellé de découverte (visible par l’équipe)",
     "errAction": "L’action a échoué",
-    "machinesElsewhere": "Les machines vivent dans l’espace de travail — ouvrez cette collection depuis le panneau latéral pour les gérer.",
+    "machinesElsewhere": "Les machines vivent dans l’espace de travail — ouvrir cette collection depuis le panneau latéral pour les gérer.",
     "sharedName": "Partagé — chaque membre voit ce nom.",
     "viewMembers": "Voir les membres",
     "manageMembers": "Gérer les membres",
@@ -1075,7 +1075,7 @@
   },
   "tm": {
     "noSessions": "Aucune session de terminal active",
-    "doubleClickHint": "Double-cliquez sur une connexion pour ouvrir un terminal",
+    "doubleClickHint": "Double-clic sur une connexion pour ouvrir un terminal",
     "notInstalled": "Non installé",
     "dropToMerge": "Déposer pour fusionner dans cet onglet",
     "closeMany": "Fermer plusieurs terminaux ?",
@@ -1093,7 +1093,7 @@
     "rosterOnly": "Liste seulement : voit le nom mais aucune machine. Sceller l’accès aux machines pour l’accorder.",
     "awaiting": "En attente de l’accès aux machines par un membre",
     "remove": "Retirer",
-    "addSomeone": "Ajouter quelqu’un — saisissez un nom…",
+    "addSomeone": "Ajouter quelqu’un — saisir un nom…",
     "errAction": "L’action a échoué",
     "newCollection": "Nouvelle collection",
     "add": "Ajouter",
@@ -1134,7 +1134,7 @@
     "errCreateAccount": "La création du compte a échoué",
     "errSetPassword": "La définition du mot de passe a échoué",
     "errTaken": "Ce nom d’utilisateur est déjà pris",
-    "errTooMany": "Trop de tentatives d’inscription — réessayez dans quelques minutes",
+    "errTooMany": "Trop de tentatives d’inscription — réessayer dans quelques minutes",
     "errInvite": "Cette invitation est invalide ou a expiré"
   },
   "fpc": {
@@ -1273,7 +1273,7 @@
   },
   "health": {
     "disabled": "Les vérifications actives de statut sont désactivées sur ce serveur.",
-    "tooFast": "Vérifications trop rapprochées — réessayez dans un instant.",
+    "tooFast": "Vérifications trop rapprochées — réessayer dans un instant.",
     "failed": "Impossible de vérifier le statut de la machine."
   },
   "dlg": {
@@ -1320,12 +1320,12 @@
     "personal": "Choisir un dossier personnel — vue locale seulement, non partagée.",
     "noFolderRoot": "(aucun dossier — racine)",
     "current": "actuel",
-    "empty": "Aucun dossier — créez-en un depuis le ＋ de la bibliothèque."
+    "empty": "Aucun dossier — en créer un depuis le ＋ de la bibliothèque."
   },
   "ctxPill": {
     "switch": "Changer de contexte",
     "localVaults": "Coffres locaux",
-    "noVault": "Aucun coffre — créez-en un ci-dessous.",
+    "noVault": "Aucun coffre — en créer un ci-dessous.",
     "servers": "Serveurs",
     "newWindow": "Ouvrir dans une nouvelle fenêtre",
     "newWindowOf": "Ouvrir {name} dans une nouvelle fenêtre",

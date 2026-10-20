@@ -325,7 +325,7 @@ test('a shortcut can be remapped, and it is the new chord that fires', async ({
 
   // Remapped by pressing the keys, not by typing their name.
   await page.getByTestId('shortcut-binding-pane.splitHorizontal').click();
-  await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText('press keys…');
+  await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText('waiting for keys…');
   await page.keyboard.press('Control+Alt+J');
   await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText('Ctrl+Alt+J');
 
