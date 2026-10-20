@@ -16,11 +16,13 @@
  * Run: node e2e/i18n-check.mjs
  */
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { SHORTCUT_COMMANDS } from '../apps/desktop/src/shortcuts/commands.ts';
 
 const load = (locale) =>
-  JSON.parse(readFileSync(new URL(`../apps/desktop/src/i18n/locales/${locale}.json`, import.meta.url)));
+  JSON.parse(
+    readFileSync(new URL(`../apps/desktop/src/i18n/locales/${locale}.json`, import.meta.url)),
+  );
 
 const LOCALES = { en: load('en'), fr: load('fr') };
 
@@ -33,7 +35,8 @@ const flatten = (obj, prefix = '') =>
 const KEYS = Object.fromEntries(Object.entries(LOCALES).map(([l, d]) => [l, new Set(flatten(d))]));
 
 /** Resolve a dotted key the way i18n.tsx does, so this agrees with the app. */
-const resolve = (data, key) => key.split('.').reduce((acc, k) => (acc == null ? undefined : acc[k]), data);
+const resolve = (data, key) =>
+  key.split('.').reduce((acc, k) => (acc == null ? undefined : acc[k]), data);
 
 let passed = 0;
 const check = (name, fn) => {
@@ -133,6 +136,65 @@ check('no locale carries a label for a command that no longer exists', () => {
       assert.ok(ids.has(stem), `${locale}: shortcuts.cmd.${stem} has no command`);
     }
   }
+});
+
+/*
+ * A ratchet, not a gate: user-facing text written straight into a component.
+ *
+ * The checks above hold the two locales to each other, which says nothing about text
+ * that never reached a locale at all — and 264 strings across 41 components never did.
+ * The admin console alone holds 46. Translating them is a roadmap item and not a
+ * release blocker; what IS a blocker is the count going UP, because that is how it got
+ * here: each addition looked consistent with the file it landed in.
+ *
+ * So the baseline is written down and the check fails when it is exceeded. Lower it
+ * when a surface is migrated — that is the ratchet turning, and it only turns one way.
+ */
+const HARDCODED_BASELINE = 264;
+
+const JSX_TEXT = />\s*([A-Z][A-Za-z,'’-]*(?:\s+[A-Za-z,'’-]+){1,})\s*</g;
+const JSX_ATTR = /\b(title|placeholder|aria-label|label)=["']([A-Z][^"']{6,})["']/g;
+
+function hardcodedStrings() {
+  const SRC = new URL('../apps/desktop/src/', import.meta.url);
+  const found = [];
+  const walk = (rel) => {
+    for (const entry of readdirSync(new URL(rel, SRC), { withFileTypes: true })) {
+      const next = `${rel}${entry.name}`;
+      if (entry.isDirectory()) walk(`${next}/`);
+      else if (entry.name.endsWith('.tsx')) {
+        const text = readFileSync(new URL(next, SRC), 'utf8');
+        for (const m of text.matchAll(JSX_TEXT)) {
+          const s = m[1].trim();
+          if (s.split(/\s+/).length >= 2 && s !== s.toUpperCase()) found.push(`${next}: ${s}`);
+        }
+        for (const m of text.matchAll(JSX_ATTR)) found.push(`${next}: ${m[1]}=${m[2]}`);
+      }
+    }
+  };
+  walk('');
+  return found;
+}
+
+const hardcoded = hardcodedStrings();
+
+check('no NEW user-facing string bypasses the locales', () => {
+  assert.ok(
+    hardcoded.length <= HARDCODED_BASELINE,
+    `${hardcoded.length} hardcoded strings, baseline is ${HARDCODED_BASELINE}. ` +
+      `New ones must go through the locales:\n        ` +
+      hardcoded.slice(-5).join('\n        '),
+  );
+});
+
+check('and the baseline is not stale', () => {
+  // A baseline nobody lowers is a baseline nobody reads. If the count has dropped, the
+  // constant above is wrong by exactly that much and this says so rather than passing.
+  assert.equal(
+    hardcoded.length,
+    HARDCODED_BASELINE,
+    `the count is ${hardcoded.length}; lower HARDCODED_BASELINE to match`,
+  );
 });
 
 console.log(`\n${passed} checks passed`);

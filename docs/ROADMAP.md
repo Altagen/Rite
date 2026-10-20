@@ -111,6 +111,29 @@ styles have somewhere to live.
 - [ ] Then drop `'unsafe-inline'` from `style-src` in `packages/rite-server/src/lib.rs`
       and let the tls-proxy suite prove nothing regressed
 
+### 🌍 Text that never reached the locales (Priority: HIGH)
+
+**264 user-facing strings across 41 components are written straight into the JSX.**
+The locale files hold the rest and are checked against each other, which says nothing
+about text that never arrived — so a French reader meets English in those 41 places.
+
+Migrate by SURFACE and not by string, because half a translated panel is worse than
+none: one French row among forty-five English ones reads as a bug, while a wholly
+English panel at least reads as untranslated. The admin console is the place to
+start, and it is where the count is worst.
+
+`e2e/i18n-check.mjs` ratchets this: the baseline is written down, a new hardcoded
+string fails the check, and lowering the count without lowering the constant fails it
+too. That is how 264 accumulated — each addition looked consistent with the file it
+landed in.
+
+- [ ] Admin console — `InstanceSettingsPanel` 46, `AdminDashboard` 14,
+      `AdminUsersPanel` 13, `InvitationsPanel` 6
+- [ ] Library and workspace — `LibrarySidebar` 23, `Workspace` 21, `CollectionView` 11,
+      `Terminal` 11 (mostly `title=` tooltips), `TerminalManager` 9
+- [ ] Settings — `Settings.tsx` 23, the rows the 0.2.4 rewrite did not reach
+- [ ] The rest, and then lower the baseline to 0 and make the check a gate
+
 ### 🐛 Bug Fixes & Stability (Priority: HIGH)
 - [ ] Comprehensive error handling
 - [ ] Graceful disconnect handling
