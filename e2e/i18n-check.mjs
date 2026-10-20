@@ -164,6 +164,18 @@ function translationCalls() {
         for (const m of text.matchAll(/\bt\(\s*'([a-zA-Z][\w.]*)'/g)) {
           calls.push({ file: next, key: m[1] });
         }
+        // A key carried as DATA, resolved somewhere else: `{ key: 'auth.wrongPassword' }`
+        // in a store, `titleKey`/`msgKey` in a lookup table, `labelKey` in a nav list.
+        //
+        // This half was missing, and it cost exactly what it was built to prevent: the
+        // migration replaced the `auth` group wholesale and dropped seven error strings
+        // with it, so the unlock screen printed `auth.wrongPassword` to the user. Nothing
+        // failed — the two locales agreed, and the only reader was `t()`'s console.warn.
+        // `unlock-roundtrip.spec.ts` caught it, which is luck: it is the one screen with
+        // a test that pins the wording.
+        for (const m of text.matchAll(/\b\w*[Kk]ey\s*:\s*'([a-z][\w]*\.[\w.]+)'/g)) {
+          calls.push({ file: next, key: m[1] });
+        }
       }
     }
   };
@@ -178,7 +190,7 @@ check('every key the code asks for exists in both locales', () => {
   const missing = [];
   for (const { file, key } of CALLS) {
     for (const [locale, keys] of Object.entries(KEYS)) {
-      if (!keys.has(key)) missing.push(`${file}: t('${key}') is not in ${locale}.json`);
+      if (!keys.has(key)) missing.push(`${file}: '${key}' is not in ${locale}.json`);
     }
   }
   assert.deepEqual(

@@ -575,7 +575,14 @@
     "create": "Create account",
     "username": "Username",
     "password": "Password",
-    "redeem": "Redeem"
+    "redeem": "Redeem",
+    "checkFailed": "Could not tell whether this vault exists yet: {error}",
+    "passwordsDiffer": "The two passwords are not the same.",
+    "passwordTooShort": "A master password needs at least {count} characters.",
+    "setupFailed": "The vault could not be created: {error}",
+    "wrongPassword": "Wrong password.",
+    "unlockFailed": "The vault could not be unlocked: {error}",
+    "lockFailed": "The vault could not be locked: {error}"
   },
   "admin": {
     "cancel": "Cancel",

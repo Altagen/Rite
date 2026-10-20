@@ -575,7 +575,14 @@
     "create": "Créer le compte",
     "username": "Utilisateur",
     "password": "Mot de passe",
-    "redeem": "Utiliser"
+    "redeem": "Utiliser",
+    "checkFailed": "Impossible de savoir si ce coffre existe déjà : {error}",
+    "passwordsDiffer": "Les deux mots de passe ne sont pas identiques.",
+    "passwordTooShort": "Un mot de passe maître demande au moins {count} caractères.",
+    "setupFailed": "Le coffre n'a pas pu être créé : {error}",
+    "wrongPassword": "Mot de passe incorrect.",
+    "unlockFailed": "Le coffre n'a pas pu être déverrouillé : {error}",
+    "lockFailed": "Le coffre n'a pas pu être verrouillé : {error}"
   },
   "admin": {
     "cancel": "Annuler",
