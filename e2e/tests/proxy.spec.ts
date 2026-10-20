@@ -377,7 +377,7 @@ test('an attached client obeys clients:false, and it is the client that obeys (A
   });
   await expect(page.getByText('Containers and services are not being checked')).toBeVisible();
   await expect(
-    page.getByText('Your server turns off container and service checks for this client.'),
+    page.getByText('This server turns off container and service checks for this client.'),
   ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Containers', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Services', exact: true })).toHaveCount(0);

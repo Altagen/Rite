@@ -563,7 +563,7 @@ test('a layout opens from its file, and a missing machine falls back in place', 
   // The editor resolves the names against the library you actually have, before you
   // open anything: the question is not "is my TOML valid" but "will this open what I
   // think it opens, on this computer".
-  await expect(editor).toContainText('nope-01 — not in your library');
+  await expect(editor).toContainText('nope-01 — not in the library');
 
   await editor.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: 'Close settings' }).click();

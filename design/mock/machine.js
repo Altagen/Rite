@@ -154,8 +154,8 @@ function probeBlockedNote(){
   const why=v.by==='server'
     ? (DASH_SHELL==='webui'
         ? 'This server turns container and service checks off for the web UI, so they run for nobody here.'
-        : 'Your server turns container and service checks off for this client.')
-    : 'Container and service checks are off in your settings — turn them back on under Machine status.';
+        : 'This server turns container and service checks off for this client.')
+    : 'Container and service checks are off in settings — turn them back on under Machine status.';
   return `<div class="dnote">${IC_INFO}<span><b>Containers and Services are not shown.</b> ${why} Everything else on this dashboard is unaffected: refusing to probe is not refusing the feature.</span></div>`;
 }
 
@@ -196,7 +196,7 @@ function dlgDashCustomize(cn){cn.dashHidden=cn.dashHidden||[];
   const v=probeVerdict();
   const body=`<p class="muted" style="font-size:12px;margin:0 0 12px">Choose which cards appear on <b>${cn.name}</b>'s dashboard. Containers & Services are detected live over SSH; hide what you don't need.</p>
     <div class="dcust">${DASH_CARDS.map(([id,label])=>{const off=!v.allowed&&PROBE_CARDS.includes(id);
-      return `<label class="dcust-row ${off?'off':''}"><span>${label}${off?`<span class="dcust-why">${v.by==='server'?'not allowed here':'off in your settings'}</span>`:''}</span><span class="toggle ${cn.dashHidden.includes(id)?'':'on'}" data-card="${id}"><i></i></span></label>`;}).join('')}</div>`;
+      return `<label class="dcust-row ${off?'off':''}"><span>${label}${off?`<span class="dcust-why">${v.by==='server'?'not allowed here':'off in settings'}</span>`:''}</span><span class="toggle ${cn.dashHidden.includes(id)?'':'on'}" data-card="${id}"><i></i></span></label>`;}).join('')}</div>`;
   const m=showModal({title:'Customize dashboard',subtitle:cn.name,confirm:'Done',body});
   m.querySelectorAll('[data-card]').forEach(t=>t.onclick=()=>{const id=t.dataset.card;t.classList.toggle('on');const i=cn.dashHidden.indexOf(id);
     if(t.classList.contains('on')){if(i>=0)cn.dashHidden.splice(i,1);}else if(i<0)cn.dashHidden.push(id);renderMain();});}

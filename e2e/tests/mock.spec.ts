@@ -595,7 +595,7 @@ test('both mocks resolve ADR 0019 §5 the same way, row for row', async ({ page 
     } else {
       await expect(probing, where).toHaveCount(0);
       await expect(page.locator('.dnote'), where).toContainText(
-        row.verdict === 'off by server' ? /server turns/ : /off in your settings/,
+        row.verdict === 'off by server' ? /server turns/ : /off in settings/,
       );
     }
   }

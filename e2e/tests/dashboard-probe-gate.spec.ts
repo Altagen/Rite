@@ -70,7 +70,7 @@ test('turning the probing cards off removes those two cards, and says who refuse
   // …and the gap names this device's setting rather than a server that said nothing.
   await expect(page.getByText('Containers and services are not being checked')).toBeVisible();
   await expect(
-    page.getByText('Container and service checks are off in your settings.'),
+    page.getByText('Container and service checks are off in settings.'),
   ).toBeVisible();
 
   // Put it back, so the suite's other dashboard specs see a probing dashboard.

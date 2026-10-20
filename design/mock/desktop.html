@@ -973,7 +973,7 @@ const PREFS=[
     + prefRow('Shell menu on “+”','The chevron on the <b>+</b> beside the tabs, to open one terminal with another shell without changing your default. Hiding it leaves <b>+</b> opening the default shell.',prefToggle('toolbar.newTermMenu','renderMain()'))
     + prefRow('Focus mode','The F11 button. The key works either way.',prefToggle('toolbar.focus','renderActs()'))
     + prefRow('Quick SSH','One-off connections that aren\'t in a collection.'
-        + (STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK?' <span style="color:var(--amber)">Your server turns this off</span>, so it is hidden regardless.':''),
+        + (STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK?' <span style="color:var(--amber)">The server turns this off</span>, so it is hidden regardless.':''),
         prefToggle('toolbar.quick','renderActs()'))
     + prefRow('Agents','The AI sessions running on your machines.',prefToggle('toolbar.agents','renderActs()'))
     + prefRow('Layouts','The button beside the tabs. It already hides itself when you have no layouts.',prefToggle('toolbar.layouts','renderMain()')) },
@@ -1014,7 +1014,7 @@ const PREFS=[
   { id:'machines', label:'Machine status', body:()=>
       `<h4>Machine status</h4><p class="lede">${STATE.ctx.type==='server'?'<span style="color:var(--amber)">Governed by your server</span> — you can only narrow it.':'You govern this for this local vault.'} Passive “last seen” costs no network traffic; active probing does.</p>`
     + prefRow('Health-check','',`<select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select>`)
-    + prefRow('Container &amp; service cards on the machine dashboard',`These two cards run a command on the host each time they refresh. Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.${STATE.ctx.type==='server'&&STATE.dashPolicy.clients===false?' <span style="color:var(--amber)">Your server turns them off for this client</span>, so this changes nothing here.':''}`,prefToggle('machineProbes','renderAll()')) },
+    + prefRow('Container &amp; service cards on the machine dashboard',`These two cards run a command on the host each time they refresh. Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.${STATE.ctx.type==='server'&&STATE.dashPolicy.clients===false?' <span style="color:var(--amber)">The server turns them off for this client</span>, so this changes nothing here.':''}`,prefToggle('machineProbes','renderAll()')) },
 
   { id:'security', label:'Security', body:()=>
       `<h4>Security</h4><p class="lede">Applies as you change it.</p>`

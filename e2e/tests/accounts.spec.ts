@@ -313,10 +313,10 @@ test('web member workspace: personal connections, zero-knowledge, server-execute
   // First login for an admin-provisioned account (must_change_password): the app forces a
   // self-chosen password before anything else — this mints carol a FRESH keypair (ADR 0010
   // addendum), so the admin-known temp password can no longer derive her vault key.
-  await expect(page.getByRole('heading', { name: 'Set your password' })).toBeVisible({
+  await expect(page.getByRole('heading', { name: 'Set a personal password' })).toBeVisible({
     timeout: 15_000,
   });
-  await page.getByPlaceholder('A password only you know').fill(CAROL_NEW);
+  await page.getByPlaceholder('A password known to nobody else').fill(CAROL_NEW);
   await page.getByPlaceholder('Type it again').fill(CAROL_NEW);
   await page.getByRole('button', { name: /set password & continue/i }).click();
 
@@ -785,7 +785,7 @@ test('dashboard policy: webui:false hides the probing cards and names the server
   });
   await expect(
     page.getByText(
-      'Your server turns off container and service checks in the web UI, so they run for nobody here.',
+      'This server turns off container and service checks in the web UI, so they run for nobody here.',
     ),
   ).toBeVisible();
   await expect(card('Containers')).toHaveCount(0);
@@ -997,7 +997,7 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   // Precise: the host-key row says the same thing about its own policy, and both rows
   // are in the DOM at once (the rail hides the other sections rather than unmounting).
   await expect(
-    page.getByText('Set by your administrator, for every terminal', { exact: false }),
+    page.getByText('Set by the administrator, for every terminal', { exact: false }),
   ).toBeVisible();
   // …and no picker: the choice is not this user's to make here.
   await expect(page.getByTestId('shell-choices')).toHaveCount(0);
@@ -1016,7 +1016,7 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   expect(mode.allowQuickSsh ?? false).toBe(false);
   const quick = page.getByTestId('toolbar-quickSsh');
   await expect(quick).toBeVisible();
-  await expect(quick).toContainText('Your server turns this off');
+  await expect(quick).toContainText('The server turns this off');
   // And the control is ours rather than the engine's. A native checkbox is drawn by
   // WebKitGTK in the desktop shell and by the browser here — the same bundle showing two
   // different switches, which is the one thing these two surfaces must never do.

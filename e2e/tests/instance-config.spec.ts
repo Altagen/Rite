@@ -133,5 +133,5 @@ test('the Quick SSH switch is offered on an instance that allows Quick SSH', asy
   const quick = page.getByTestId('toolbar-quickSsh');
   await expect(quick).toBeVisible();
   // …and here it carries its ordinary explanation, not the server's refusal.
-  await expect(quick).not.toContainText('Your server turns this off');
+  await expect(quick).not.toContainText('The server turns this off');
 });
