@@ -147,8 +147,10 @@ check('no locale carries a label for a command that no longer exists', () => {
  * checks above could not see it: they compare the locales to each other, and a key that
  * exists in neither is consistent.
  *
- * This matters most for the migration the roadmap describes: moving 391 hardcoded
- * strings into the locales is 391 chances to ship a visible key. With this, it is zero.
+ * It mattered most during the migration: moving 401 hardcoded strings into the locales
+ * was 401 chances to ship a visible key. It caught the one that got through — seven
+ * `auth.*` error strings dropped when the group was replaced, which put
+ * `auth.wrongPassword` on the unlock screen.
  */
 function translationCalls() {
   const SRC = new URL('../apps/desktop/src/', import.meta.url);
