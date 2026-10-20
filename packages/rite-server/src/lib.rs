@@ -183,6 +183,17 @@ impl VaultKeyHolder {
 /// In-memory per-username login throttle: after `MAX_FAILURES` failures within
 /// `WINDOW`, the account is locked for `LOCKOUT`. Resets on server restart
 /// (acceptable — an attacker who can restart the server has bigger leverage).
+///
+/// The key is a username off an unauthenticated request, so two things are not
+/// optional. It is REJECTED unless it could name an account at all — the same 1-64
+/// characters registration enforces — and expired entries are swept on write, with a
+/// hard cap behind that. Without either, anyone could grow this map until the process
+/// died, one failed login at a time, and nothing would ever remove what they added.
+///
+/// What it does NOT do is throttle by address: one password tried against a thousand
+/// usernames meets a fresh counter each time. Fixing that needs a client address, and
+/// behind a reverse proxy that means trusting a header — a per-instance decision, so
+/// it is a roadmap item and not a silent default here.
 #[derive(Default)]
 struct LoginLimiter {
     inner: std::sync::Mutex<HashMap<String, Attempt>>,
@@ -192,12 +203,27 @@ struct Attempt {
     failures: u32,
     window_start: std::time::Instant,
     locked_until: Option<std::time::Instant>,
+    /// When this entry was last written. Eviction order, and it has to be "last seen"
+    /// rather than "window start": an account actually under attack is touched over and
+    /// over, so it must look RECENT, while each made-up name in a flood is touched once.
+    last_seen: std::time::Instant,
 }
 
 impl LoginLimiter {
     const MAX_FAILURES: u32 = 5;
     const WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
     const LOCKOUT: std::time::Duration = std::time::Duration::from_secs(60);
+    /// Above this many tracked usernames, a write sweeps and then refuses to add more
+    /// until the sweep makes room. A real instance holds a handful of entries; this is
+    /// only ever reached by someone trying names rather than passwords.
+    const MAX_TRACKED: usize = 10_000;
+
+    /// Whether this string could name an account, which is the only reason to remember
+    /// it. Same bound as registration (`1-64`), so a name no account can have is not
+    /// worth a map entry.
+    fn trackable(username: &str) -> bool {
+        !username.is_empty() && username.chars().count() <= 64
+    }
 
     /// Seconds to wait if currently locked, else `None`.
     fn locked_for(&self, username: &str) -> Option<u64> {
@@ -209,13 +235,50 @@ impl LoginLimiter {
     }
 
     fn record_failure(&self, username: &str) {
+        if !Self::trackable(username) {
+            return;
+        }
         let now = std::time::Instant::now();
         let mut map = self.inner.lock().unwrap();
+        // Make room, in two steps, and never by refusing to track a new name — that was
+        // the first version of this and it was worse than no cap at all: flooding the map
+        // with made-up names would then stop any real account from ever reaching its
+        // lockout, which is disabling the defence rather than tripping it. A unit test
+        // below holds that line.
+        //
+        // So: sweep what can no longer refuse anyone (window run out, no lockout left),
+        // and if that was not enough, evict the least recently seen entry that is not
+        // currently locked. A locked entry is the one doing work, so it is kept; an
+        // account under attack is written to repeatedly, so it stays recent and survives
+        // a flood of names touched once each.
+        if map.len() >= Self::MAX_TRACKED && !map.contains_key(username) {
+            map.retain(|_, a| {
+                a.locked_until.is_some_and(|u| u > now)
+                    || now.duration_since(a.window_start) <= Self::WINDOW
+            });
+            while map.len() >= Self::MAX_TRACKED {
+                let victim = map
+                    .iter()
+                    .filter(|(_, a)| !a.locked_until.is_some_and(|u| u > now))
+                    .min_by_key(|(_, a)| a.last_seen)
+                    .map(|(k, _)| k.clone());
+                match victim {
+                    Some(k) => {
+                        map.remove(&k);
+                    }
+                    // Every entry is actively locked out. That is MAX_TRACKED accounts
+                    // under lockout at once, which is not a map-size problem any more.
+                    None => return,
+                }
+            }
+        }
         let a = map.entry(username.to_string()).or_insert(Attempt {
             failures: 0,
             window_start: now,
             locked_until: None,
+            last_seen: now,
         });
+        a.last_seen = now;
         if now.duration_since(a.window_start) > Self::WINDOW {
             a.failures = 0;
             a.window_start = now;
@@ -944,9 +1007,15 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
         // tokens), which a `manager` may also reach. Everything else under /api/admin (instance
         // config, collection oversight/escrow, group keys) stays admin-only.
         if path.starts_with("/api/admin") {
-            let org = path.starts_with("/api/admin/teams")
-                || path.starts_with("/api/admin/users")
-                || path.starts_with("/api/admin/enrollment-tokens");
+            // Compared segment by segment, not by bare prefix: `starts_with` on
+            // "/api/admin/users" also matches "/api/admin/users-export", so a route added
+            // later with a name that merely BEGINS like one of these would have been handed
+            // to managers without anyone deciding that. The admin case fails closed and
+            // needs no list; this one opens a door, so it names its three doors exactly.
+            let org = ["teams", "users", "enrollment-tokens"].iter().any(|seg| {
+                path.strip_prefix("/api/admin/")
+                    .is_some_and(|rest| rest == *seg || rest.starts_with(&format!("{seg}/")))
+            });
             let allowed = user.role == Role::Admin || (org && user.role == Role::Manager);
             if !allowed {
                 return (StatusCode::FORBIDDEN, "insufficient role").into_response();
@@ -5799,5 +5868,93 @@ mod tests {
                 "{not_a_name} must not resolve to a shell"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod login_limiter_tests {
+    use super::LoginLimiter;
+
+    /// The key is a username off an unauthenticated request, so the map it grows has to
+    /// have a ceiling. Both halves are asserted because either alone leaves the hole:
+    /// refusing untrackable names does not stop a million valid-looking ones, and a cap
+    /// without a sweep would lock the map at its limit and stop defending real accounts.
+    #[test]
+    fn it_refuses_to_remember_a_name_no_account_could_have() {
+        assert!(!LoginLimiter::trackable(""), "an empty name names nothing");
+        assert!(
+            !LoginLimiter::trackable(&"a".repeat(65)),
+            "65 characters is past what registration allows, so no account has it"
+        );
+        assert!(
+            LoginLimiter::trackable("a"),
+            "one character is a legal name"
+        );
+        assert!(
+            LoginLimiter::trackable(&"a".repeat(64)),
+            "64 characters is the registration bound itself, not past it"
+        );
+        // Counted in characters and not bytes, or a name of emoji would be refused for
+        // being long while naming a perfectly legal account.
+        assert!(
+            LoginLimiter::trackable(&"é".repeat(64)),
+            "64 multi-byte characters are 64 characters"
+        );
+    }
+
+    #[test]
+    fn it_stops_growing_when_the_names_are_made_up() {
+        let limiter = LoginLimiter::default();
+        for i in 0..(LoginLimiter::MAX_TRACKED + 500) {
+            limiter.record_failure(&format!("made-up-{i}"));
+        }
+        let tracked = limiter.inner.lock().unwrap().len();
+        assert!(
+            tracked <= LoginLimiter::MAX_TRACKED,
+            "the map must not pass its cap, holds {tracked}"
+        );
+        // And an untrackable name adds nothing at all, cap or no cap.
+        let before = limiter.inner.lock().unwrap().len();
+        limiter.record_failure(&"x".repeat(65));
+        assert_eq!(limiter.inner.lock().unwrap().len(), before);
+    }
+
+    /// The realistic shape of the attack: fail against one account, flood the map to try
+    /// to evict its counter, fail again. This is what decides the eviction KEY — on
+    /// `window_start` alice looks older than every made-up name (her window opened first)
+    /// and is evicted every round, so she never reaches five; on `last_seen` she is the
+    /// most recently touched entry there is, and survives.
+    #[test]
+    fn a_flood_between_failures_does_not_reset_the_count() {
+        let limiter = LoginLimiter::default();
+        let mut flooded = 0;
+        for _ in 0..LoginLimiter::MAX_FAILURES {
+            limiter.record_failure("alice");
+            for _ in 0..(LoginLimiter::MAX_TRACKED / 2) {
+                limiter.record_failure(&format!("noise-{flooded}"));
+                flooded += 1;
+            }
+        }
+        assert!(
+            limiter.locked_for("alice").is_some(),
+            "five failures lock the account even when each is followed by a flood"
+        );
+    }
+
+    /// A real account still gets its lockout while that is going on — the defence has to
+    /// survive the thing it defends against.
+    #[test]
+    fn a_real_account_is_still_locked_out_under_a_name_flood() {
+        let limiter = LoginLimiter::default();
+        for i in 0..LoginLimiter::MAX_TRACKED {
+            limiter.record_failure(&format!("flood-{i}"));
+        }
+        for _ in 0..LoginLimiter::MAX_FAILURES {
+            limiter.record_failure("alice");
+        }
+        assert!(
+            limiter.locked_for("alice").is_some(),
+            "alice must be locked after her failures, flood or no flood"
+        );
     }
 }

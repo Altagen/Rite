@@ -17,9 +17,14 @@
 # read a file to choose its base image, so the release workflow passes this from
 # that file; the default below is for local builds and must track it.
 ARG RUST_VERSION=1.97.0
+# The Node the project is pinned to (.node-version), for the same reason and with the
+# same obligation: `node:24-...` was a floating major, so the bundle this image ships
+# was built by whatever 24.x the registry held that day, while the host and CI were
+# held to an exact version. The Pins job checks this against .node-version.
+ARG NODE_VERSION=24.21.0
 
 # --- Stage 1: build the frontend bundle ---
-FROM node:24-bookworm-slim AS web
+FROM node:${NODE_VERSION}-bookworm-slim AS web
 ENV CI=true
 RUN corepack enable
 WORKDIR /app
@@ -77,7 +82,9 @@ RUN find apps packages -name '*.rs' -exec touch {} + \
  && cargo build --release -p rite-server
 
 # --- Stage 3: minimal runtime ---
-FROM debian:bookworm-slim AS runtime
+# Pinned by digest: there is no version in this tag to pin instead, and the runtime
+# is where a silently-changed base would ship. Dependabot's docker ecosystem moves it.
+FROM debian:bookworm-slim@sha256:a4672c0cb26fbdde88e38fa2dfb6c681942306680e41e4378b28770b6e79ee91 AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/* \

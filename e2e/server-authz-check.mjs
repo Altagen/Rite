@@ -108,7 +108,41 @@ try {
   assert.equal((await post('/api/admin/users', { ...(await vaultBody('pleb', 'plebPass1!')), role: 'user' }, admin)).status, 201);
   const pleb = (await login('pleb', 'plebPass1!')).token;
   assert.ok(pleb, 'a regular account can sign in');
-  ok('server up, with an administrator and a regular account');
+  assert.equal(
+    (await post('/api/admin/users', { ...(await vaultBody('mgr', 'mgrPass123!')), role: 'manager' }, admin)).status,
+    201,
+  );
+  const mgr = (await login('mgr', 'mgrPass123!')).token;
+  assert.ok(mgr, 'a manager can sign in');
+  ok('server up, with an administrator, a manager and a regular account');
+
+  step = 'manager-reaches-org-and-nothing-else';
+  // `/api/admin/*` is admin-only except org management, which a manager may also reach.
+  // The guard used to decide that with a bare `starts_with`, so a route named
+  // `/api/admin/users-export` would have matched `/api/admin/users` and been handed to
+  // managers without anyone choosing that. It compares whole segments now, and this is
+  // what holds the line: the three org paths open, every other admin path shut, and a
+  // path that merely BEGINS like an org one shut too.
+  for (const open of ['/api/admin/users', '/api/admin/teams', '/api/admin/enrollment-tokens']) {
+    assert.notEqual((await get(open, mgr)).status, 403, `a manager may reach ${open}`);
+  }
+  for (const shut of ['/api/admin/collections', '/api/admin/group-keys']) {
+    assert.equal((await get(shut, mgr)).status, 403, `a manager may not reach ${shut}`);
+  }
+  assert.equal(
+    (await patch('/api/admin/instance', { name: 'nope' }, mgr)).status,
+    403,
+    'nor write an instance setting',
+  );
+  // The prefix trap itself: no such route exists, so 403 (the guard refusing) is the
+  // answer that proves the guard looked, and 404 would mean it waved the request through
+  // to the router. Either beats the old 405-or-whatever a manager would have got.
+  assert.equal(
+    (await get('/api/admin/users-export', mgr)).status,
+    403,
+    'a path that only begins like an org path is not an org path',
+  );
+  ok('a manager reaches org management and is refused everything else under /api/admin');
 
   step = 'settings-table-is-the-instance';
   assert.equal((await put('/api/settings/host_key_verification_mode', { value: 'accept' }, pleb)).status, 403,
