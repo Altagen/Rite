@@ -175,10 +175,10 @@ had no released version to be compatible with.
   - [ ] Connection search
   - [ ] Command history search
 - [ ] **Terminal customization**
-  - [ ] Font family selection
+  - [ ] Font family selection — a value in the profile, not a picker (see Layouts)
   - [ ] Font size adjustment
-  - [ ] Color scheme selector (base themes)
-  - [ ] Cursor style configuration
+  - [ ] Color scheme selector — two themes, app and terminal, as token sets (see Layouts)
+  - [ ] Cursor style configuration — same: a profile value (`cursorBlink` is hard-coded today)
 
 ### 🔒 Security Enhancements (Priority: HIGH)
 - [ ] Zeroize sensitive memory — **keys done**, passwords not: `MasterKey` is
@@ -441,6 +441,34 @@ which is why import/export and creation have no separate work left.
 - [ ] Layout tags and organization — the file has order and nothing else
 - [ ] Save the current arrangement AS a layout — the file is written by hand or by the
       editor in Settings; nothing captures what is on screen into it
+
+#### The profile, later: one file for the whole setup
+
+A profile is not a layout with extras. It is **everything that makes this machine
+look and behave the way you left it, as code, in one file**: the font, the
+application's theme, the terminal's theme, and the layouts and presets that
+`layouts.toml` already holds. One file to version, one file to carry to another
+machine, one file to read when something looks wrong.
+
+`layouts.toml` is the first stone and it is laid (ADR 0023). What is missing is not
+file format but the thing underneath: **the appearance has to be drivable by
+configuration before a file can drive it**, and today it is not — the CSS lives
+across the components (see Styling above). A profile written now could set a layout
+and lie about everything else.
+
+So the order is fixed, and it is the reason this waits:
+
+1. Styling: design tokens as CSS custom properties, set in one place (above)
+2. A theme is then a set of token values — the application's and the terminal's,
+   which are two sets and not one
+3. The font joins them: a value, not a component's inline style
+4. Only then does the file grow past layouts, and the three items in Terminal Core
+   below — font family, colour scheme, cursor style — stop being three settings
+   screens and become what the file says
+
+Which is why those three are deliberately NOT built as one-off pickers. A font
+dropdown that writes to browser storage is work that has to be undone the day the
+profile exists, and it would teach the wrong shape in the meantime.
 
 ### ⚡ Terminal Enhancements (Priority: MEDIUM)
 - ✅ Split-view terminal (horizontal/vertical) *(moved to Phase 1)*
