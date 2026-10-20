@@ -205,10 +205,12 @@ had no released version to be compatible with.
 - ✅ Quick SSH connect (connect without saving credentials)
 - ✅ Manual reconnection button for SSH
 - ✅ Keep-alive configuration (per-connection: 15s, 30s, 60s, or custom)
-- [ ] Connection timeout configuration
+- [ ] Connection timeout configuration — the timeout exists (20s, `CONNECT_TIMEOUT`)
+      and is not configurable, which is the whole of this item
 - [ ] Copy/paste improvements (context menu, smart paste)
 - ✅ Find next/previous in search — xterm `SearchAddon`, both directions
-- [ ] Broadcast mode (type in multiple terminals simultaneously)
+- [ ] Broadcast mode — **half done**: a snippet can be broadcast to every open pane,
+      but there is no mode where what you type keeps going to all of them
 
 ### 📦 Connection Management (Priority: MEDIUM)
 - ✅ Import from ~/.ssh/config (file path on desktop, paste on web)
@@ -408,7 +410,8 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 - [ ] Backup reminder system
 
 ### 📊 Monitoring & Logs (Priority: LOW)
-- [ ] Connection history
+- [ ] Connection history — **half done**: `lastUsedAt` is tracked and shown, but
+      nothing keeps a list of past sessions
 - [ ] Session duration tracking
 - [ ] Bandwidth monitoring
 - [ ] Error logs (encrypted)
@@ -418,20 +421,32 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 ## Phase 3: Productivity & Advanced Features
 **Goal:** Power-user features and enhanced workflows.
 
-### 📑 Profiles / Termconfs (Priority: HIGH)
-- [ ] Profile creation UI
-- [ ] Profile launcher (Ctrl+P)
-- [ ] Auto-connect tabs on profile launch
-- [ ] Startup commands execution
-- [ ] Profile tags and organization
-- [ ] Save current session as profile
-- [ ] Profile import/export
+### 📑 Layouts (was: Profiles / Termconfs) (Priority: HIGH)
+
+Shipped in 0.2.4 as a FILE rather than as a profile manager:
+`~/.config/rite/layouts.toml` holds presets and layouts together, and Settings leads
+with the cards it parses. The rename is not cosmetic — "profile" implied a record the
+app owns and a UI to manage it, and what shipped is a file you own and can version,
+which is why import/export and creation have no separate work left.
+
+- ✅ Profile creation UI — the file, plus the cards in Settings ▸ Layouts (edit, save,
+      reload, open in your editor), ADR 0023
+- ✅ Auto-connect tabs on profile launch — a layout opens its panes on their machines,
+      grouped into the tabs the file names
+- ✅ Startup commands execution — `command = "..."` per pane, and `startup = true`
+      picks which layouts open when you sit down
+- ✅ Profile import/export — it is a file: copy it, commit it, carry it to another
+      machine. A machine this computer does not have opens a plain shell with a note
+- [ ] Layout launcher shortcut — there is a Layouts button and a menu, no `Mod+P`
+- [ ] Layout tags and organization — the file has order and nothing else
+- [ ] Save the current arrangement AS a layout — the file is written by hand or by the
+      editor in Settings; nothing captures what is on screen into it
 
 ### ⚡ Terminal Enhancements (Priority: MEDIUM)
 - ✅ Split-view terminal (horizontal/vertical) *(moved to Phase 1)*
 - ✅ Broadcast input to multiple terminals *(moved to Phase 1)*
 - ✅ Snippets / command favorites (library, run per-pane or broadcast, multi-line)
-  - [ ] Snippet library
+  - ✅ Snippet library — `store/snippets.ts`, run or broadcast from the modal
   - [ ] Variables in snippets (${VAR})
   - [ ] Quick insert palette
   - [ ] Per-host snippets
@@ -441,7 +456,7 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
   - [ ] Export as asciicast format
 - [ ] Advanced terminal features
   - [ ] Scrollback buffer search with regex
-  - [ ] URL detection and click-to-open
+  - ✅ URL detection and click-to-open — xterm `WebLinksAddon`
   - [ ] Semantic shell integration (prompts, commands)
   - [ ] Command history persistence
 
@@ -508,34 +523,41 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
 **Goal:** Browser-based access to RITE.
 
 ### 🌍 Backend Server
-- [ ] Create `rite-server` package (Axum)
-- [ ] REST API (auth, hosts, themes)
-- [ ] WebSocket server for terminal I/O
-- [ ] SSH tunneling (Browser ↔ Backend ↔ SSH)
-- [ ] Multi-user support
-- [ ] Session isolation
+- ✅ Create `rite-server` package (Axum)
+- ✅ REST API — auth, connections, collections, instance settings. Themes never
+      became a server concern: they are a client preference, not instance state
+- ✅ WebSocket server for terminal I/O (`/ws`)
+- ✅ SSH tunneling (Browser ↔ Backend ↔ SSH) — server-execute, ADR 0011 §4 / 0012
+- ✅ Multi-user support — accounts mode (ADR 0010)
+- ✅ Session isolation — a session is owned, and another account cannot list or
+      attach to it (asserted in `accounts.spec.ts`)
 
 ### 💻 Web Frontend
-- [ ] React frontend (reuse desktop code)
+- ✅ React frontend — not a reuse but the SAME bundle, running in wry and in a browser
 - [x] Replace Tauri with HTTP/WebSocket (rite-server + wry client)
-- [ ] Browser-compatible terminal
+- ✅ Browser-compatible terminal
 - [ ] Progressive Web App (PWA)
-- [ ] LocalStorage/IndexedDB settings
+- ✅ LocalStorage settings — this machine's preferences live in the browser, per device
 
 ### 🔐 Web Security
-- [ ] HTTPS enforcement
-- [ ] JWT authentication
-- [ ] CORS configuration
-- [ ] Rate limiting
-- [ ] CSP headers
-- [ ] XSS prevention
+- ✅ HTTPS enforcement — TLS compose, HSTS under TLS, and accounts are refused over
+      plaintext on a non-loopback address unless explicitly acknowledged
+- ⊘ JWT authentication — **not the design**: sessions are opaque server-side tokens,
+      which can be revoked. A JWT cannot be, and nothing here needs a stateless token
+- ⊘ CORS configuration — **not applicable**: the bundle is served by the same origin
+      it talks to, so there is no cross-origin request to allow
+- ✅ Rate limiting — login (5 per minute, then a lockout) and signup
+- ✅ CSP headers — strict, plus nosniff / DENY / no-referrer. One relaxation left,
+      tracked under Styling above
+- ✅ XSS prevention — the one raw-HTML sink escapes its input and is covered by checks
 
 ### 📦 Deployment
-- [ ] Docker image
-- [ ] Docker Compose with PostgreSQL
+- ✅ Docker image — `Containerfile.server`, published to ghcr.io on a release
+- ⊘ Docker Compose with PostgreSQL — **obsolete**: the store is SQLite, one file per
+      instance. `deploy/compose.yml` ships; PostgreSQL was never the design
 - [ ] Kubernetes manifests
-- [ ] Deployment guides
-- [ ] Reverse proxy configs
+- ✅ Deployment guides — `INSTALL.md`, `docs/SERVER.md`, `deploy/`
+- ✅ Reverse proxy configs — `deploy/Caddyfile`, `deploy/compose.caddy.yml`
 
 ---
 
