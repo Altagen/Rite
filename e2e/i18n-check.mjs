@@ -150,6 +150,56 @@ check('no locale carries a label for a command that no longer exists', () => {
  * So the baseline is written down and the check fails when it is exceeded. Lower it
  * when a surface is migrated — that is the ratchet turning, and it only turns one way.
  */
+/*
+ * Every key the code asks for must exist, in both locales.
+ *
+ * `t()` returns the KEY when it cannot resolve one — so a typo or a key that was
+ * renamed in the locales ships as `settings.foo.bar` on screen, with nothing but a
+ * `console.warn` behind it. Nobody reads a browser console in a release build, and the
+ * checks above could not see it: they compare the locales to each other, and a key that
+ * exists in neither is consistent.
+ *
+ * This matters most for the migration the roadmap describes: moving 264 hardcoded
+ * strings into the locales is 264 chances to ship a visible key. With this, it is zero.
+ */
+function translationCalls() {
+  const SRC = new URL('../apps/desktop/src/', import.meta.url);
+  const calls = [];
+  const walk = (rel) => {
+    for (const entry of readdirSync(new URL(rel, SRC), { withFileTypes: true })) {
+      const next = `${rel}${entry.name}`;
+      if (entry.isDirectory()) walk(`${next}/`);
+      else if (/\.tsx?$/.test(entry.name)) {
+        const text = readFileSync(new URL(next, SRC), 'utf8');
+        // Literal keys only. A computed one (`t(someVar)`) cannot be checked here, and
+        // there is no point pretending otherwise.
+        for (const m of text.matchAll(/\bt\(\s*'([a-zA-Z][\w.]*)'/g)) {
+          calls.push({ file: next, key: m[1] });
+        }
+      }
+    }
+  };
+  walk('');
+  return calls;
+}
+
+const CALLS = translationCalls();
+
+check('every key the code asks for exists in both locales', () => {
+  assert.ok(CALLS.length > 100, `only ${CALLS.length} t() calls found — the scan is wrong`);
+  const missing = [];
+  for (const { file, key } of CALLS) {
+    for (const [locale, keys] of Object.entries(KEYS)) {
+      if (!keys.has(key)) missing.push(`${file}: t('${key}') is not in ${locale}.json`);
+    }
+  }
+  assert.deepEqual(
+    [...new Set(missing)],
+    [],
+    `a missing key renders as itself on screen:\n        ${[...new Set(missing)].join('\n        ')}`,
+  );
+});
+
 const HARDCODED_BASELINE = 264;
 
 const JSX_TEXT = />\s*([A-Z][A-Za-z,'’-]*(?:\s+[A-Za-z,'’-]+){1,})\s*</g;

@@ -557,7 +557,7 @@ export function CollectionView({
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder={t('common.filter') !== 'common.filter' ? t('common.filter') : 'Filter…'}
+            placeholder={t('common.filter')}
             className="min-w-0 flex-1 bg-transparent text-sm outline-none"
           />
         </div>
@@ -669,9 +669,7 @@ export function CollectionView({
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
             </svg>
-            {t('connections.newConnection') !== 'connections.newConnection'
-              ? t('connections.newConnection')
-              : 'Machine'}
+            {t('connections.newConnection')}
           </button>
         )}
       </div>

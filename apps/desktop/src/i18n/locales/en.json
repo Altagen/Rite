@@ -157,7 +157,8 @@
     "passwordLeaveEmpty": "Leave empty to keep the current password.",
     "passwordAsk": "Password needed",
     "passwordAskFor": "To connect to {name}.",
-    "passwordAskWhy": "Used for this connection only. Rite is not keeping it — tick “Remember this password” when editing the machine if you would rather it did."
+    "passwordAskWhy": "Used for this connection only. Rite is not keeping it — tick “Remember this password” when editing the machine if you would rather it did.",
+    "newConnection": "Machine"
   },
   "errors": {
     "setupFailed": "Setup failed: {error}",
@@ -443,7 +444,8 @@
   "common": {
     "advancedOptions": "Advanced Options",
     "seconds": "Seconds",
-    "close": "Close"
+    "close": "Close",
+    "filter": "Filter…"
   },
   "shortcuts": {
     "hint": "Click a shortcut, then press the keys you want. {mod} is the command modifier on this machine, and the same binding follows you to the other.",

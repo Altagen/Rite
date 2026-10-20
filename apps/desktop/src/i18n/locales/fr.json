@@ -157,7 +157,8 @@
     "passwordLeaveEmpty": "Laissez vide pour garder le mot de passe actuel.",
     "passwordAsk": "Mot de passe requis",
     "passwordAskFor": "Pour se connecter à {name}.",
-    "passwordAskWhy": "Utilisé pour cette connexion seulement. Cochez « Retenir ce mot de passe » en éditant la machine pour qu'il soit conservé."
+    "passwordAskWhy": "Utilisé pour cette connexion seulement. Cochez « Retenir ce mot de passe » en éditant la machine pour qu'il soit conservé.",
+    "newConnection": "Machine"
   },
   "errors": {
     "setupFailed": "Erreur lors de la création: {error}",
@@ -443,7 +444,8 @@
   "common": {
     "advancedOptions": "Options avancées",
     "seconds": "Secondes",
-    "close": "Fermer"
+    "close": "Fermer",
+    "filter": "Filtrer…"
   },
   "shortcuts": {
     "hint": "Cliquez sur un raccourci, puis appuyez sur les touches voulues. {mod} est le modificateur de commande sur cette machine, et le même raccourci vous suit sur l'autre.",
