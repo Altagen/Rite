@@ -323,6 +323,52 @@ function hardcodedStrings() {
   return found;
 }
 
+/**
+ * No browser dialog, anywhere.
+ *
+ * `window.confirm` was the hole the `confirm` pattern above could not close: it reads the
+ * literal passed to the call, so `window.confirm(message)` — with `message` built one line
+ * earlier — kept "This pane contains N terminals. Close all of them?" out of the locales for
+ * a whole release. Any pattern on the ARGUMENT can be walked around by naming it first.
+ *
+ * So the rule is on the call instead, and it is absolute: the app raises its own dialog
+ * (`askConfirm`), which takes translated strings and cannot render untranslated ones. A
+ * system box would not theme, would not translate its own OK and Cancel, and would give the
+ * destructive answer the same weight as the safe one.
+ */
+function browserDialogs() {
+  const SRC = new URL('../apps/desktop/src/', import.meta.url);
+  const found = [];
+  const walk = (rel) => {
+    for (const entry of readdirSync(new URL(rel, SRC), { withFileTypes: true })) {
+      const next = `${rel}${entry.name}`;
+      if (entry.isDirectory()) walk(`${next}/`);
+      else if (/\.tsx?$/.test(entry.name)) {
+        const text = readFileSync(new URL(next, SRC), 'utf8');
+        for (const [i, line] of text.split('\n').entries()) {
+          // Prose is allowed to name what it replaced — confirmPrompt.ts does, at length.
+          if (/^\s*(\*|\/\/)/.test(line)) continue;
+          if (/\bwindow\.(confirm|alert|prompt)\s*\(/.test(line)) {
+            found.push(`${next}:${i + 1}`);
+          }
+        }
+      }
+    }
+  };
+  walk('');
+  return found;
+}
+
+check('no screen asks through the browser', () => {
+  const calls = browserDialogs();
+  assert.deepEqual(
+    calls,
+    [],
+    `${calls.length} call(s) to window.confirm/alert/prompt. Use askConfirm():\n        ` +
+      calls.join('\n        '),
+  );
+});
+
 const hardcoded = hardcodedStrings();
 
 check('no user-facing string bypasses the locales', () => {

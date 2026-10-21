@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
+import { askConfirm } from '../utils/confirmPrompt';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { disposeAllPanes, paneKind } from '../panes/registry';
@@ -1041,7 +1042,9 @@ export function Workspace({
   }, [layoutsLoaded, layoutsFromFile]);
 
   // Handle close pane
-  const handleClosePane = (paneId: string) => {
+  // async since the multi-terminal confirmation is the app's dialog now, not the browser's
+  // blocking box. The caller does not await it: closing a pane has no result to report.
+  const handleClosePane = async (paneId: string) => {
     if (!activeTabId) return;
 
     // Check how many terminals will be closed
@@ -1055,9 +1058,13 @@ export function Workspace({
     // Ask confirmation ONLY if closing this pane will close multiple terminals
     // (don't ask for single terminal in a tab with multiple terminals - that's annoying)
     if (sessionCount > 1) {
-      const message = `This pane contains ${sessionCount} terminals. Close all of them?`;
-      const confirmed = window.confirm(message);
-      if (!confirmed) return;
+      const ok = await askConfirm({
+        title: t('ws.closePaneTitle', { count: sessionCount }),
+        body: t('ws.closePaneWhy', { count: sessionCount }),
+        action: t('tm.closeAll'),
+        danger: true,
+      });
+      if (!ok) return;
     }
 
     setTabGroups((prev) => {

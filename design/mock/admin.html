@@ -222,6 +222,7 @@ const NAV=[
   {id:'instance',label:'Instance',ic:EXICON.gear},
 ];
 let SEC='overview', SUB=null; // SUB = drilled-in team/collection index
+let TEAMQ='', TEAMPAGE=0; const TEAMPER=25; // the teams list: search text and page cursor
 // Flatten COLL (nesting is view-only) for the governance list. The admin governs
 // membership/structure; machine credentials stay encrypted (see the ZK banner).
 const FLATCOLL=[];(function rec(l){l.forEach(c=>{FLATCOLL.push({name:c.name,shared:c.shared,members:c.members.slice(),owner:c.members[0]||'alex',machines:(c.conns||[]).length,pending:[],
@@ -430,15 +431,35 @@ function teams(){
       ${t.members.map(m=>memberRow(m,m!==t.members[0])).join('')}${addPicker(t.members,t.name)}</div>
     <div class="panel danger-zone"><div class="panel-h"><span class="t">Danger zone</span></div>
       <div style="padding:16px 18px;display:flex;align-items:center;gap:12px"><span style="flex:1"><b>Delete team</b><div class="muted" style="font-size:12px">Removes the team (a roster). Collections offered to it are no longer offered; membership in those collections is unaffected.</div></span><button class="btn btn-sm btn-outline-danger" onclick="toast('Delete “${t.name}”…')">Delete team</button></div></div>`;}
+  /* Search and paging are the SERVER's, not this page's: an access-control directory at
+     enterprise scale holds hundreds to a few thousand groups, and the endpoint used to
+     return the whole table on every open. Twenty-five a page, sized for the pager being
+     useful while a page is one screenful. */
+  const q=TEAMQ.trim().toLowerCase();
+  const hits=q?ORG.teams.filter(t=>t.name.toLowerCase().includes(q)):ORG.teams;
+  const pages=Math.max(1,Math.ceil(hits.length/TEAMPER));
+  const pg=Math.min(TEAMPAGE,pages-1);
+  const slice=hits.slice(pg*TEAMPER,pg*TEAMPER+TEAMPER);
   return `<div class="page-h"><h1>Teams</h1><span class="sub">${ORG.teams.length} groups · RBAC</span><div style="flex:1"></div>
       <button class="btn btn-primary btn-sm" onclick="toast('New team…')">${ICONplus} New team</button></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <input type="search" placeholder="Search teams…" value="${esc(TEAMQ)}" oninput="TEAMQ=this.value;TEAMPAGE=0;renderContent()"
+        style="flex:1;min-width:0;padding:8px 11px;font-size:13px;border:1px solid var(--border);border-radius:9px;background:var(--bg);color:var(--fg)">
+      <span class="muted" style="font-size:12px;flex:none">${q?`${hits.length} matches`:`${ORG.teams.length} teams`}</span></div>
     <div class="panel"><table class="tbl">
       <thead><tr><th>Team</th><th>Members</th><th style="text-align:right">Manage</th></tr></thead>
-      <tbody>${ORG.teams.map((t,i)=>`<tr class="click" onclick="drill(${i})">
-        <td><div style="display:flex;align-items:center;gap:10px"><span style="color:var(--accent)">${EXICON.users}</span><b>${t.name}</b></div></td>
+      <tbody>${slice.map(t=>`<tr class="click" onclick="drill(${ORG.teams.indexOf(t)})">
+        <td><div style="display:flex;align-items:center;gap:10px"><span style="color:var(--accent)">${EXICON.users}</span><b>${esc(t.name)}</b></div></td>
         <td><div style="display:flex;align-items:center;gap:8px"><div class="avs">${t.members.slice(0,5).map(av).join('')}</div><span class="muted" style="font-size:13px">${t.members.length}</span></div></td>
-        <td><div style="display:flex;justify-content:flex-end">${chevR}</div></td></tr>`).join('')}</tbody>
-    </table></div>`;
+        <td><div style="display:flex;justify-content:flex-end">${chevR}</div></td></tr>`).join('')
+        ||`<tr><td colspan="3" class="muted" style="font-size:13px">${q?`No team matches “${esc(TEAMQ)}”.`:'No teams yet.'}</td></tr>`}</tbody>
+    </table></div>
+    ${pages>1?`<div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px">
+      <span class="muted" style="font-size:13px">Page ${pg+1} of ${pages}</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm btn-outline" ${pg===0?'disabled':''} onclick="TEAMPAGE=${pg-1};renderContent()">← Previous</button>
+        <button class="btn btn-sm btn-outline" ${pg>=pages-1?'disabled':''} onclick="TEAMPAGE=${pg+1};renderContent()">Next →</button>
+      </div></div>`:''}`;
 }
 
 let PERSIST=true, WEBUI=true, ADMINUI=true, SRVSHELL='bash', QUICKSSH=false, OPENREG=false, CONFIRMROLE=true, ALLOWINV=true;

@@ -156,22 +156,20 @@ test('deleting a team asks first, and a refusal leaves it standing', async ({ pa
   await expect(team).toBeVisible({ timeout: 15_000 });
   await team.click();
 
-  // Refuse the dialog: the team must still be there.
-  let asked = '';
-  page.once('dialog', (d) => {
-    asked = d.message();
-    void d.dismiss();
-  });
+  // Refuse the dialog: the team must still be there. It is the app's own dialog, not the
+  // browser's — a `page.on('dialog')` handler would now wait forever.
   await page.getByTestId('danger-action').click();
-  await expect.poll(() => asked, { timeout: 10_000 }).toContain(name);
+  await expect(page.getByTestId('confirm-dialog')).toContainText(name, { timeout: 10_000 });
+  await page.getByTestId('confirm-cancel').click();
+  await expect(page.getByTestId('confirm-dialog')).toHaveCount(0);
   await page.reload();
   await page.getByTestId('admin-nav-teams').click();
   await expect(page.getByTestId(`team-${name}`)).toBeVisible({ timeout: 15_000 });
 
   // Accept it, and only then is it gone.
   await page.getByTestId(`team-${name}`).click();
-  page.once('dialog', (d) => void d.accept());
   await page.getByTestId('danger-action').click();
+  await page.getByTestId('confirm-accept').click();
   await expect(page.getByTestId(`team-${name}`)).toHaveCount(0, { timeout: 15_000 });
 });
 
@@ -209,4 +207,51 @@ test('the sign-in password can be revealed and hidden again', async ({ page }) =
   // And back: an eye that only opens is a secret left on screen.
   await page.getByTestId('reveal-password').first().click();
   await expect(field).toHaveAttribute('type', 'password');
+});
+
+/**
+ * The teams list is searched and paged by the SERVER.
+ *
+ * It was a row of chips rendered from the whole table, which reads well at ten and is a
+ * wall at fifty — and the endpoint returned every team on every open, so paging it in the
+ * browser would have moved the problem rather than solved it.
+ *
+ * Asserted against the request, not only the DOM: a filter applied client-side would make
+ * the list look right while still shipping the directory. So the search has to reach the
+ * server as `?q=`, and the page as `?limit=`/`?offset=`.
+ */
+test('the teams list is searched and paged on the server', async ({ page }) => {
+  await signIn(page);
+  await openAdmin(page);
+  await page.getByTestId('admin-nav-teams').click();
+
+  // Two teams whose names share no prefix, so a search can tell them apart.
+  const tag = Date.now();
+  for (const name of [`alpha-${tag}`, `zeta-${tag}`]) {
+    await page.getByTestId('new-team-name').fill(name);
+    await page.getByTestId('new-team-submit').click();
+    await expect(page.getByTestId(`team-${name}`)).toBeVisible({ timeout: 15_000 });
+  }
+
+  // The search travels: the URL carries it, and the list narrows to the one that matches.
+  const [request] = await Promise.all([
+    page.waitForRequest((r) => r.url().includes('/api/admin/teams?') && r.url().includes('q=')),
+    page.getByTestId('team-search').fill(`alpha-${tag}`),
+  ]);
+  expect(request.url()).toContain(`q=alpha-${tag}`);
+  await expect(page.getByTestId(`team-alpha-${tag}`)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId(`team-zeta-${tag}`)).toHaveCount(0);
+
+  // A search that matches nothing says so, naming what was typed.
+  await page.getByTestId('team-search').fill(`nothing-like-this-${tag}`);
+  await expect(page.getByTestId('team-list')).toContainText(`nothing-like-this-${tag}`, {
+    timeout: 15_000,
+  });
+
+  // And the page is the server's too: asking for a page sends an offset.
+  const paged = page.waitForRequest(
+    (r) => r.url().includes('/api/admin/teams?') && r.url().includes('limit='),
+  );
+  await page.getByTestId('team-search').fill('');
+  expect((await paged).url()).toContain('limit=');
 });

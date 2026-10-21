@@ -981,6 +981,7 @@ export const BackendContext = {
 // Teams / RBAC (product-model.md). Keyless rosters — sharing lives in collections (ADR 0016).
 const TeamRoleSchema = z.enum(['admin', 'member']);
 const TeamSchema = z.object({ id: z.string(), name: z.string(), createdAt: z.number() });
+const TeamPageSchema = z.object({ teams: z.array(TeamSchema), total: z.number() });
 const TeamMemberSchema = z.object({
   userId: z.string(),
   username: z.string(),
@@ -999,7 +1000,18 @@ export type TeamRole = z.infer<typeof TeamRoleSchema>;
 
 export const BackendTeams = {
   /** All teams (org-admin). */
-  listAll: () => invokeWithValidation('admin_list_teams', z.array(TeamSchema)),
+  /**
+   * One page of teams, filtered by name. `total` is the count after the filter and before
+   * the cut, which is what a pager needs to say "page 2 of 7".
+   */
+  page: (query: string, limit: number, offset: number) =>
+    invokeWithValidation('admin_list_teams', TeamPageSchema, { query, limit, offset }),
+  /**
+   * Every team, for a picker that has to offer all of them (invitations). It asks for the
+   * server's ceiling rather than "all": past 200 the picker is the wrong control and needs
+   * a search of its own, and silently truncating is better than shipping a 2000-row select.
+   */
+  listAll: async () => (await Backend.Teams.page('', 200, 0)).teams,
   create: (name: string) => invokeWithValidation('admin_create_team', TeamSchema, { name }),
   remove: (id: string) => invokeWithValidation('admin_delete_team', z.null(), { id }),
   /** Teams the caller belongs to (keyless roster). */

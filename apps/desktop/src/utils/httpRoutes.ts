@@ -386,7 +386,14 @@ const routes: Record<string, Route> = {
   },
 
   // Teams / RBAC (product-model) — keyless rosters (ADR 0016).
-  admin_list_teams: () => json('/api/admin/teams'),
+  admin_list_teams: (a) => {
+    const q = new URLSearchParams();
+    if (a?.query) q.set('q', String(a.query));
+    if (a?.limit !== undefined) q.set('limit', String(a.limit));
+    if (a?.offset !== undefined) q.set('offset', String(a.offset));
+    const qs = q.toString();
+    return json(`/api/admin/teams${qs ? `?${qs}` : ''}`);
+  },
   admin_create_team: (a) => json('/api/admin/teams', post({ name: a.name })),
   admin_delete_team: async (a) => {
     await json(`/api/admin/teams/${encodeURIComponent(String(a.id))}`, { method: 'DELETE' });

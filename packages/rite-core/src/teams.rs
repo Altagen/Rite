@@ -98,6 +98,96 @@ pub async fn list_teams(db: &SqlitePool) -> Result<Vec<Team>> {
         .collect())
 }
 
+/// One page of teams, with the total the page was cut from.
+///
+/// The console used to render every team as a chip in a wrapping row, which reads well at
+/// ten and is unusable at fifty. Paging it in the browser would not have been enough: the
+/// endpoint returned the whole table on every open, so a directory of a few thousand groups
+/// — what an access-control tool at enterprise scale actually holds — meant a few thousand
+/// rows over the wire to show twenty-five.
+///
+/// `total` is the count BEFORE the page is cut but AFTER the search filter, which is what a
+/// pager has to display: "page 2 of 7" has to mean seven pages of what was searched for.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamPage {
+    pub teams: Vec<Team>,
+    pub total: i64,
+}
+
+/// A page of teams, optionally filtered by a substring of the name.
+///
+/// `limit` is clamped to 1..=200: a caller asking for everything gets 200 rather than the
+/// table, because an unbounded page is the thing this exists to prevent. The match is a
+/// case-insensitive substring — SQLite's LIKE is already case-insensitive for ASCII, and
+/// `escape` keeps a name containing % or _ from turning into a wildcard search.
+pub async fn list_teams_page(
+    db: &SqlitePool,
+    query: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Result<TeamPage> {
+    let limit = limit.clamp(1, 200);
+    let offset = offset.max(0);
+    let needle = query.map(str::trim).filter(|q| !q.is_empty()).map(|q| {
+        format!(
+            "%{}%",
+            q.replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_")
+        )
+    });
+
+    let (total,): (i64,) = match &needle {
+        Some(n) => {
+            sqlx::query_as("SELECT COUNT(*) FROM teams WHERE name LIKE ?1 ESCAPE '\\'")
+                .bind(n)
+                .fetch_one(db)
+                .await?
+        }
+        None => {
+            sqlx::query_as("SELECT COUNT(*) FROM teams")
+                .fetch_one(db)
+                .await?
+        }
+    };
+
+    let rows: Vec<(String, String, i64)> = match &needle {
+        Some(n) => {
+            sqlx::query_as(
+                "SELECT id, name, created_at FROM teams WHERE name LIKE ?1 ESCAPE '\\'
+             ORDER BY name LIMIT ?2 OFFSET ?3",
+            )
+            .bind(n)
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(db)
+            .await?
+        }
+        None => {
+            sqlx::query_as(
+                "SELECT id, name, created_at FROM teams ORDER BY name LIMIT ?1 OFFSET ?2",
+            )
+            .bind(limit)
+            .bind(offset)
+            .fetch_all(db)
+            .await?
+        }
+    };
+
+    Ok(TeamPage {
+        teams: rows
+            .into_iter()
+            .map(|(id, name, created_at)| Team {
+                id,
+                name,
+                created_at,
+            })
+            .collect(),
+        total,
+    })
+}
+
 pub async fn delete_team(db: &SqlitePool, id: &str) -> Result<bool> {
     let n = sqlx::query("DELETE FROM teams WHERE id = ?")
         .bind(id)

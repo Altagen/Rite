@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { askConfirm } from '../utils/confirmPrompt';
 import { useTranslation } from '../i18n/i18n';
 import { useServerSession } from '../store/serverSessionStore';
 import {
@@ -503,7 +504,13 @@ function CollectionsGovernance() {
     }
   };
   const del = async (id: string) => {
-    if (!window.confirm(t('admin.coll.confirmDelete'))) return;
+    const ok = await askConfirm({
+      title: t('admin.coll.confirmDeleteTitle'),
+      body: t('admin.coll.confirmDelete'),
+      action: t('dlg.delete'),
+      danger: true,
+    });
+    if (!ok) return;
     await Backend.Admin.deleteCollection(id).catch(() => {});
     setSel(null);
     load();

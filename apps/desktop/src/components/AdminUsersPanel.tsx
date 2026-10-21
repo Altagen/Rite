@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { askConfirm } from '../utils/confirmPrompt';
 import { RevealToggle } from './RevealToggle';
 import { useTranslation } from '../i18n/i18n';
 import { Backend, type ServerUser } from '../utils/backend';
@@ -225,30 +226,33 @@ export function AdminUsersPanel() {
                         onChange={(e) => {
                           const nr = e.target.value as 'user' | 'manager' | 'admin';
                           if (nr === u.role) return;
-                          if (nr === 'admin') {
-                            // Promotion to admin always confirms — it grants full server access.
-                            if (
-                              !window.confirm(t('admin.users.confirmPromote', { name: u.username }))
-                            )
-                              return;
-                          } else if (confirmRoleChange) {
-                            // Instance policy: confirm any other role change too.
-                            if (
-                              !window.confirm(
-                                t('admin.users.confirmRole', {
+                          void (async () => {
+                            if (nr === 'admin') {
+                              // Promotion to admin always confirms — it grants full server access.
+                              const ok = await askConfirm({
+                                title: t('admin.users.confirmPromote', { name: u.username }),
+                                action: t('admin.users.promote'),
+                                danger: true,
+                              });
+                              if (!ok) return;
+                            } else if (confirmRoleChange) {
+                              // Instance policy: confirm any other role change too.
+                              const ok = await askConfirm({
+                                title: t('admin.users.confirmRole', {
                                   name: u.username,
                                   from: u.role,
                                   to: nr,
                                 }),
-                              )
-                            )
-                              return;
-                          }
-                          act(async () => {
-                            await Backend.Admin.setRole(u.id, nr);
-                            // A new admin needs the current group key sealed to them (O(1), no rotation).
-                            if (nr === 'admin') await grantReenabledAdmin(u.id);
-                          });
+                                action: t('admin.users.changeRole'),
+                              });
+                              if (!ok) return;
+                            }
+                            act(async () => {
+                              await Backend.Admin.setRole(u.id, nr);
+                              // A new admin needs the group key sealed to them (O(1), no rotation).
+                              if (nr === 'admin') await grantReenabledAdmin(u.id);
+                            });
+                          })();
                         }}
                         disabled={busy}
                         className="ml-2 rounded border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium disabled:opacity-50"

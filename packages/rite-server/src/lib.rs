@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocketUpgrade};
-use axum::extract::{Path, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -2732,10 +2732,28 @@ async fn can_view_team(state: &ServerState, user: &User, team_id: &str) -> Resul
     )
 }
 
+/// `?q=` filters by name, `?limit=`/`?offset=` cut the page. Absent, it is the first 25 —
+/// not the whole table, which is what this used to return on every open of the console.
+#[derive(Deserialize)]
+struct TeamsQuery {
+    q: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
 async fn admin_list_teams(
     State(state): State<ServerState>,
-) -> Result<Json<Vec<rite_core::teams::Team>>, AppError> {
-    Ok(Json(rite_core::teams::list_teams(state.db.pool()).await?))
+    Query(params): Query<TeamsQuery>,
+) -> Result<Json<rite_core::teams::TeamPage>, AppError> {
+    Ok(Json(
+        rite_core::teams::list_teams_page(
+            state.db.pool(),
+            params.q.as_deref(),
+            params.limit.unwrap_or(25),
+            params.offset.unwrap_or(0),
+        )
+        .await?,
+    ))
 }
 
 #[derive(Deserialize)]

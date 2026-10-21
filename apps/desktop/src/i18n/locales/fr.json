@@ -634,7 +634,8 @@
       "errAction": "L’action a échoué",
       "roleUser": "utilisateur",
       "roleManager": "responsable",
-      "roleAdmin": "admin"
+      "roleAdmin": "admin",
+      "promote": "Promouvoir"
     },
     "invites": {
       "title": "Invitations",
@@ -738,7 +739,8 @@
       "membersCountN": "Membres · {count}",
       "personalHidden": "{count} personnelle(s), gardée(s) privée(s)",
       "noShared": "Aucune collection partagée.",
-      "noSharedPersonal": "Aucune collection partagée — les personnelles restent privées."
+      "noSharedPersonal": "Aucune collection partagée — les personnelles restent privées.",
+      "confirmDeleteTitle": "Supprimer cette collection ?"
     },
     "inst": {
       "errLoad": "Le chargement des réglages d’instance a échoué",
@@ -847,7 +849,13 @@
       "colMember": "Membre",
       "deleteDesc": "Retire la liste. Les collections qui lui sont proposées cessent de l’être ; l’appartenance à ces collections ne change pas.",
       "deleteAction": "Supprimer l’équipe",
-      "confirmDelete": "Supprimer l’équipe « {name} » et ses {count} membre(s) ? La liste disparaît ; personne ne perd une collection déjà rejointe."
+      "confirmDelete": "La liste disparaît, avec ses {count} membre(s). Personne ne perd une collection déjà rejointe.",
+      "confirmDeleteTitle": "Supprimer l’équipe « {name} » ?",
+      "searchPlaceholder": "Rechercher une équipe…",
+      "countTotal": "{count} équipe(s)",
+      "matching": "{count} résultat(s)",
+      "noMatch": "Aucune équipe ne correspond à « {query} ».",
+      "page": "Page {page} sur {total}"
     }
   },
   "ws": {
@@ -906,7 +914,9 @@
     "deleteCollWhy": "Cela supprime définitivement la collection et ses machines. Irréversible.",
     "deleteCollWhyShared": "Cela supprime définitivement la collection et ses machines pour tout le monde. Les membres perdent l’accès. Irréversible.",
     "importedMachines": "{count} machine(s) importée(s)",
-    "importedConnections": "{count} connexion(s) importée(s)"
+    "importedConnections": "{count} connexion(s) importée(s)",
+    "closePaneTitle": "Fermer {count} terminaux ?",
+    "closePaneWhy": "Ce volet contient {count} sessions actives. Toutes se terminent."
   },
   "lib": {
     "newSubFolder": "Nouveau sous-dossier",
@@ -1326,7 +1336,8 @@
     "create": "Créer",
     "colourAria": "couleur {hex}",
     "delete": "Supprimer",
-    "remove": "Retirer"
+    "remove": "Retirer",
+    "confirm": "Confirmer"
   },
   "collEdit": {
     "rename": "Renommer la collection",

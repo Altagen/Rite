@@ -634,7 +634,8 @@
       "errAction": "Action failed",
       "roleUser": "user",
       "roleManager": "manager",
-      "roleAdmin": "admin"
+      "roleAdmin": "admin",
+      "promote": "Promote"
     },
     "invites": {
       "title": "Invitations",
@@ -738,7 +739,8 @@
       "membersCountN": "Members · {count}",
       "personalHidden": "{count} personal, kept private",
       "noShared": "No shared collections.",
-      "noSharedPersonal": "No shared collections — the personal ones stay private."
+      "noSharedPersonal": "No shared collections — the personal ones stay private.",
+      "confirmDeleteTitle": "Delete this collection?"
     },
     "inst": {
       "errLoad": "Failed to load instance settings",
@@ -847,7 +849,13 @@
       "colMember": "Member",
       "deleteDesc": "Removes the roster. Collections offered to it stop being offered; membership in those collections is unaffected.",
       "deleteAction": "Delete team",
-      "confirmDelete": "Delete the team “{name}” and its {count} member(s)? The roster is gone; nobody loses a collection they already joined."
+      "confirmDelete": "The roster is gone, with its {count} member(s). Nobody loses a collection they already joined.",
+      "confirmDeleteTitle": "Delete the team “{name}”?",
+      "searchPlaceholder": "Search teams…",
+      "countTotal": "{count} team(s)",
+      "matching": "{count} match(es)",
+      "noMatch": "No team matches “{query}”.",
+      "page": "Page {page} of {total}"
     }
   },
   "ws": {
@@ -906,7 +914,9 @@
     "deleteCollWhy": "This permanently deletes the collection and its machines. It cannot be undone.",
     "deleteCollWhyShared": "This permanently deletes the collection and its machines for everyone. Members lose access. It cannot be undone.",
     "importedMachines": "{count} machine(s) imported",
-    "importedConnections": "{count} connection(s) imported"
+    "importedConnections": "{count} connection(s) imported",
+    "closePaneTitle": "Close {count} terminals?",
+    "closePaneWhy": "This pane holds {count} live sessions. All of them end."
   },
   "lib": {
     "newSubFolder": "New sub-folder",
@@ -1326,7 +1336,8 @@
     "create": "Create",
     "colourAria": "colour {hex}",
     "delete": "Delete",
-    "remove": "Remove"
+    "remove": "Remove",
+    "confirm": "Confirm"
   },
   "collEdit": {
     "rename": "Rename collection",
