@@ -181,6 +181,80 @@ export function AdminUsersPanel() {
         </div>
       )}
 
+      {/* Above the table, not below it. Under the list it moved down by a row on every
+          successful create — the form walked away from the person using it, and on a
+          directory of any size it was off-screen before the second user existed. */}
+      <form
+        onSubmit={handleCreate}
+        className="space-y-3 rounded-2xl border border-border bg-card p-4"
+      >
+        <div className="text-sm font-semibold">{t('admin.users.add')}</div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 space-y-1">
+            <label htmlFor="new-username" className="text-xs font-medium text-muted-foreground">
+              {t('admin.users.colUsername')}
+            </label>
+            <input
+              id="new-username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              disabled={busy}
+            />
+          </div>
+          <div className="flex-1 space-y-1">
+            <label htmlFor="new-password" className="text-xs font-medium text-muted-foreground">
+              {t('admin.users.initialPassword')}
+            </label>
+            <div className="relative">
+              <input
+                id="new-password"
+                type={revealNew ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 pr-10 text-sm"
+                disabled={busy}
+              />
+              <RevealToggle
+                shown={revealNew}
+                onToggle={() => setRevealNew((v) => !v)}
+                disabled={busy}
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="new-role" className="text-xs font-medium text-muted-foreground">
+              {t('admin.users.colRole')}
+            </label>
+            {meIsAdmin ? (
+              <select
+                id="new-role"
+                value={role}
+                onChange={(e) => setRole(e.target.value as 'user' | 'admin' | 'manager')}
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                disabled={busy}
+              >
+                <option value="user">{t('admin.users.roleUser')}</option>
+                <option value="manager">{t('admin.users.roleManager')}</option>
+                <option value="admin">{t('admin.users.roleAdmin')}</option>
+              </select>
+            ) : (
+              // A manager can only invite regular users.
+              <span className="rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
+                {t('admin.users.roleUser')}
+              </span>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={busy || !username.trim() || !password}
+            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {t('admin.users.addUser')}
+          </button>
+        </div>
+      </form>
+
       <div className="overflow-x-auto rounded-2xl border border-border bg-card">
         <table className="w-full text-sm">
           <thead className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -349,77 +423,6 @@ export function AdminUsersPanel() {
           </tbody>
         </table>
       </div>
-
-      <form
-        onSubmit={handleCreate}
-        className="space-y-3 rounded-2xl border border-border bg-card p-4"
-      >
-        <div className="text-sm font-semibold">{t('admin.users.add')}</div>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex-1 space-y-1">
-            <label htmlFor="new-username" className="text-xs font-medium text-muted-foreground">
-              {t('admin.users.colUsername')}
-            </label>
-            <input
-              id="new-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              disabled={busy}
-            />
-          </div>
-          <div className="flex-1 space-y-1">
-            <label htmlFor="new-password" className="text-xs font-medium text-muted-foreground">
-              {t('admin.users.initialPassword')}
-            </label>
-            <div className="relative">
-              <input
-                id="new-password"
-                type={revealNew ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 pr-10 text-sm"
-                disabled={busy}
-              />
-              <RevealToggle
-                shown={revealNew}
-                onToggle={() => setRevealNew((v) => !v)}
-                disabled={busy}
-              />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="new-role" className="text-xs font-medium text-muted-foreground">
-              {t('admin.users.colRole')}
-            </label>
-            {meIsAdmin ? (
-              <select
-                id="new-role"
-                value={role}
-                onChange={(e) => setRole(e.target.value as 'user' | 'admin' | 'manager')}
-                className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                disabled={busy}
-              >
-                <option value="user">{t('admin.users.roleUser')}</option>
-                <option value="manager">{t('admin.users.roleManager')}</option>
-                <option value="admin">{t('admin.users.roleAdmin')}</option>
-              </select>
-            ) : (
-              // A manager can only invite regular users.
-              <span className="rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
-                {t('admin.users.roleUser')}
-              </span>
-            )}
-          </div>
-          <button
-            type="submit"
-            disabled={busy || !username.trim() || !password}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            {t('admin.users.addUser')}
-          </button>
-        </div>
-      </form>
 
       {resetTarget && (
         <div
