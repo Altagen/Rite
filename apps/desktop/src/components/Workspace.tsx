@@ -1656,15 +1656,15 @@ export function Workspace({
           is never trapped. Fades to faint but doesn't disappear. */}
       {focusActive && (
         <div className="pointer-events-none fixed bottom-4 left-1/2 z-[56] flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs text-muted-foreground opacity-90 shadow-lg">
-          Focus mode ·{' '}
+          {t('ws.focusMode')}{' '}
           <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">
             Esc
           </kbd>{' '}
-          or{' '}
+          {t('ws.focusOr')}{' '}
           <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">
             F11
           </kbd>{' '}
-          to exit · hover the top edge to reveal the toolbar
+          {t('ws.focusExit')}
         </div>
       )}
 
@@ -2191,12 +2191,10 @@ export function Workspace({
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-2 text-lg font-semibold">
-              Delete folder “{deleteSubfolder.path.split('/').pop()}”?
+              {t('ws.deleteFolderTitle', { name: deleteSubfolder.path.split('/').pop() ?? '' })}
             </h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              The folder and its sub-folders are removed
-              {isServerContext ? ' for everyone in the collection' : ''}. Machines inside move up to
-              the parent folder — nothing is deleted.
+              {isServerContext ? t('ws.deleteSubfolderWhyShared') : t('ws.deleteSubfolderWhy')}
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -2280,7 +2278,7 @@ export function Workspace({
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="mb-2 text-lg font-semibold">
-              Delete folder “{deleteFolderTarget.name}”?
+              {t('ws.deleteFolderTitle', { name: deleteFolderTarget.name })}
             </h3>
             <p className="mb-4 text-sm text-muted-foreground">{t('ws.removeFolderWhy')}</p>
             <div className="flex justify-end gap-2">
@@ -2331,10 +2329,11 @@ export function Workspace({
             className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-2 text-lg font-semibold">Delete “{deleteCollectionTarget.name}”?</h3>
+            <h3 className="mb-2 text-lg font-semibold">
+              {t('ws.deleteCollTitle', { name: deleteCollectionTarget.name })}
+            </h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              This permanently deletes the collection and its machines
-              {isServerContext ? ' for everyone. Members lose access.' : '.'} This cannot be undone.
+              {isServerContext ? t('ws.deleteCollWhyShared') : t('ws.deleteCollWhy')}
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -2473,7 +2472,7 @@ export function Workspace({
             onImported={(count) => {
               fetchConnections();
               setToastType('success');
-              setToastMessage(`Imported ${count} machine${count !== 1 ? 's' : ''}`);
+              setToastMessage(t('ws.importedMachines', { count }));
             }}
           />
         ) : (
@@ -2485,7 +2484,7 @@ export function Workspace({
             onImported={(count) => {
               void conns.refresh();
               setToastType('success');
-              setToastMessage(`Successfully imported ${count} connection${count !== 1 ? 's' : ''}`);
+              setToastMessage(t('ws.importedConnections', { count }));
             }}
           />
         ))}

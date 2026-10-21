@@ -91,18 +91,19 @@ export function TeamsPanel() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {teams.map((t) => (
+      <div className="flex flex-wrap gap-2" data-testid="team-list">
+        {teams.map((team) => (
           <button
-            key={t.id}
-            onClick={() => loadMembers(t)}
+            key={team.id}
+            data-testid={`team-${team.name}`}
+            onClick={() => loadMembers(team)}
             className={`rounded-md border px-3 py-1.5 text-sm ${
-              selected?.id === t.id
+              selected?.id === team.id
                 ? 'border-primary bg-primary/10'
                 : 'border-border hover:bg-muted'
             }`}
           >
-            {t.name}
+            {team.name}
           </button>
         ))}
         {teams.length === 0 && (
@@ -120,6 +121,7 @@ export function TeamsPanel() {
           </label>
           <input
             id="new-team"
+            data-testid="new-team-name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -128,6 +130,7 @@ export function TeamsPanel() {
         </div>
         <button
           type="submit"
+          data-testid="new-team-submit"
           disabled={busy || !newName.trim()}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
@@ -213,10 +216,15 @@ export function TeamsPanel() {
 
           <DangerZone
             title={t('admin.teams.deleteTeam')}
-            desc="Removes the team (a roster). Collections offered to it are no longer offered; membership in those collections is unaffected."
-            action="Delete team"
+            desc={t('admin.teams.deleteDesc')}
+            action={t('admin.teams.deleteAction')}
             disabled={busy}
             onAction={() =>
+              // Destructive and irreversible: the roster is gone and every member has to be
+              // added back by hand. It used to delete on the first click.
+              window.confirm(
+                t('admin.teams.confirmDelete', { name: selected.name, count: members.length }),
+              ) &&
               act(async () => {
                 await Backend.Teams.remove(selected.id);
                 setSelected(null);

@@ -208,6 +208,7 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
           {nav.map((n) => (
             <button
               key={n.id}
+              data-testid={`admin-nav-${n.id}`}
               onClick={() => setSec(n.id)}
               className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition ${
                 activeSec === n.id
@@ -571,7 +572,9 @@ function CollectionsGovernance() {
         <h1 className="mb-4 text-[22px] font-bold">{label(sel)}</h1>
         <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
           <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-            Members {members ? `· ${members.length}` : ''}
+            {members
+              ? t('admin.coll.membersCountN', { count: members.length })
+              : t('admin.coll.membersCount')}
           </div>
           {members === null ? (
             <div className="px-4 py-4 text-sm text-muted-foreground">{t('admin.coll.loading')}</div>
@@ -681,7 +684,7 @@ function CollectionsGovernance() {
           <span className="text-sm font-semibold">{t('admin.coll.shared')}</span>
           {personal > 0 && (
             <span className="text-xs text-muted-foreground">
-              {personal} personal — kept private, not shown
+              {t('admin.coll.personalHidden', { count: personal })}
             </span>
           )}
         </div>
@@ -695,7 +698,7 @@ function CollectionsGovernance() {
           <div className="px-4 py-4 text-sm text-muted-foreground">{t('admin.coll.loading')}</div>
         ) : shared.length === 0 ? (
           <div className="px-4 py-4 text-sm text-muted-foreground">
-            No shared collections{personal > 0 ? ' — personal ones stay private' : ''}.
+            {personal > 0 ? t('admin.coll.noSharedPersonal') : t('admin.coll.noShared')}
           </div>
         ) : (
           shared.map((c) => (

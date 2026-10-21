@@ -468,14 +468,12 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 title={t('settings.dashCards')}
                 hint={
                   <>
-                    These two cards run a command on the host each time they refresh. Turning them
-                    off leaves the rest of the dashboard — address, port forwarding, the Board —
-                    untouched.
+                    {t('settings.dashCardsHint')}
                     {probesRefusedByServer && (
                       <>
                         {' '}
-                        <span className="text-amber-500">{t('settings.serverTurnsOff')}</span>, so
-                        this setting changes nothing here.
+                        <span className="text-amber-500">{t('settings.serverTurnsOff')}</span>
+                        {t('settings.changesNothingHere')}
                       </>
                     )}
                   </>

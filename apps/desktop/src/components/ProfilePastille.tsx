@@ -73,7 +73,9 @@ export function ProfilePastille({
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold">{username}</div>
                 <div className="truncate text-xs text-muted-foreground">
-                  Signed in{instanceName ? ` · ${instanceName}` : ''}
+                  {instanceName
+                    ? t('profile.signedInOn', { instance: instanceName })
+                    : t('profile.signedIn')}
                 </div>
               </div>
             </div>

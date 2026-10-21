@@ -174,7 +174,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               {translate('boundary.featureError')}
             </h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              This feature encountered an error: {error.message}
+              {translate('boundary.featureErrorWhat', { error: error.message })}
             </p>
             <button
               onClick={this.resetError}
@@ -210,7 +210,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 {translate('boundary.componentError')}
               </h4>
               <p className="mt-1 text-xs text-muted-foreground">
-                {name || 'This component'} failed to render: {error.message}
+                {translate('boundary.componentErrorWhat', {
+                  name: name || translate('boundary.thisComponent'),
+                  error: error.message,
+                })}
               </p>
               <button
                 onClick={this.resetError}

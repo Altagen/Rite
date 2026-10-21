@@ -29,6 +29,7 @@ export function DangerZone({
           <div className="mt-0.5 text-xs text-muted-foreground">{desc}</div>
         </div>
         <button
+          data-testid="danger-action"
           onClick={onAction}
           disabled={disabled}
           className="rounded-md border border-red-500/45 px-3 py-1.5 text-sm font-medium text-red-500 hover:border-red-500 hover:bg-red-500/[0.13] disabled:opacity-50"

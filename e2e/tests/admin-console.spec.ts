@@ -133,3 +133,44 @@ test('the console paints no raw translation keys', async ({ page }) => {
 
   expect(errs, 'the console must not log errors').toEqual([]);
 });
+
+/**
+ * Deleting a team asks first.
+ *
+ * It did not. The button sat in the danger zone, said "Delete team" in English on a
+ * French console, and removed the roster on the first click — every member had to be
+ * added back by hand, and nothing had warned. A destructive action with no guard is
+ * the one kind of bug a test should outlive the fix for, so this asserts the dialog
+ * appears AND that dismissing it leaves the team alone.
+ */
+test('deleting a team asks first, and a refusal leaves it standing', async ({ page }) => {
+  await signIn(page);
+  await openAdmin(page);
+  await page.getByTestId('admin-nav-teams').click();
+
+  // A team of our own, so the other specs in this project keep theirs.
+  const name = `guard-${Date.now()}`;
+  await page.getByTestId('new-team-name').fill(name);
+  await page.getByTestId('new-team-submit').click();
+  const team = page.getByTestId(`team-${name}`);
+  await expect(team).toBeVisible({ timeout: 15_000 });
+  await team.click();
+
+  // Refuse the dialog: the team must still be there.
+  let asked = '';
+  page.once('dialog', (d) => {
+    asked = d.message();
+    void d.dismiss();
+  });
+  await page.getByTestId('danger-action').click();
+  await expect.poll(() => asked, { timeout: 10_000 }).toContain(name);
+  await page.reload();
+  await page.getByTestId('admin-nav-teams').click();
+  await expect(page.getByTestId(`team-${name}`)).toBeVisible({ timeout: 15_000 });
+
+  // Accept it, and only then is it gone.
+  await page.getByTestId(`team-${name}`).click();
+  page.once('dialog', (d) => void d.accept());
+  await page.getByTestId('danger-action').click();
+  await expect(page.getByTestId(`team-${name}`)).toHaveCount(0, { timeout: 15_000 });
+});

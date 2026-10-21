@@ -334,7 +334,7 @@ export function MemberPicker({
           </button>
         </div>
         <p className="mb-3 text-xs text-muted-foreground">
-          {chosen.size} member{chosen.size > 1 ? 's' : ''} · {owners} owner{owners > 1 ? 's' : ''}
+          {t('members.counts', { members: chosen.size, owners })}
         </p>
 
         {error && (
@@ -407,7 +407,7 @@ export function MemberPicker({
           {/* Members — always shown, with role + remove; grant for roster-only members. */}
           <div>
             <div className="mb-1 text-xs font-medium text-muted-foreground">
-              Members · {chosen.size}
+              {t('members.membersCount', { count: chosen.size })}
             </div>
             <ul className="space-y-1">
               {memberEntries.map((d) => {
@@ -534,7 +534,7 @@ export function MemberPicker({
                   ))}
                   {results.length === 0 && (
                     <li className="px-2 py-2 text-center text-sm text-muted-foreground">
-                      No user starts with “{search.trim()}”.
+                      {t('members.noMatch', { query: search.trim() })}
                     </li>
                   )}
                 </ul>

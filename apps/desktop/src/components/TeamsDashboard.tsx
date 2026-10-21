@@ -192,7 +192,9 @@ export function TeamsDashboard() {
                 <div className="mb-1 flex items-center gap-3">
                   <IconUsers className="h-6 w-6 text-primary" />
                   <h1 className="text-2xl font-bold">{selected.name}</h1>
-                  <span className="text-sm text-muted-foreground">· {members.length} members</span>
+                  <span className="text-sm text-muted-foreground">
+                    {t('teams.memberCountInline', { count: members.length })}
+                  </span>
                 </div>
                 <p className="mb-5 text-sm text-muted-foreground">
                   {iManage
@@ -203,7 +205,7 @@ export function TeamsDashboard() {
                 {/* Members */}
                 <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
                   <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-                    Members · {members.length}
+                    {t('teams.membersCount', { count: members.length })}
                   </div>
                   {members.map((m) => (
                     <div
@@ -233,7 +235,7 @@ export function TeamsDashboard() {
                 {/* Collections offered to this team (discovery) */}
                 <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
                   <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-                    Collections offered to this team · {teamOffers.length}
+                    {t('teams.offersCount', { count: teamOffers.length })}
                   </div>
                   {teamOffers.length === 0 ? (
                     <div className="px-4 py-3 text-sm text-muted-foreground">

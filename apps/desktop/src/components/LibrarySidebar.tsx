@@ -607,10 +607,7 @@ function MachineRow({
               className="flex-none text-muted-foreground opacity-75"
               aria-label={t('lib.hasForwards')}
             >
-              <title>
-                {connection.forwards!.length} saved port forward
-                {connection.forwards!.length > 1 ? 's' : ''}
-              </title>
+              <title>{t('lib.forwardCount', { count: connection.forwards!.length })}</title>
               <path d="M4 9h13l-3.5-3.5M20 15H7l3.5 3.5" />
             </svg>
           )}

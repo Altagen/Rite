@@ -258,7 +258,7 @@ export function CollectionsPanel() {
                 </span>
                 {machineCount !== null && (
                   <span className="text-[13px] text-muted-foreground">
-                    · {machineCount} machine{machineCount === 1 ? '' : 's'}
+                    {t('coll.machineCount', { count: machineCount })}
                   </span>
                 )}
               </div>
@@ -322,9 +322,8 @@ export function CollectionsPanel() {
                   <div>
                     <div className="text-sm font-semibold">{t('coll.membersSharing')}</div>
                     <div className="text-xs text-muted-foreground">
-                      {memberCounts[selected.id] ?? '·'} member
-                      {memberCounts[selected.id] === 1 ? '' : 's'} ·{' '}
-                      {canManage ? 'add or remove people and set roles' : 'you can view the roster'}
+                      {t('coll.memberCount', { count: memberCounts[selected.id] ?? '·' })} ·{' '}
+                      {canManage ? t('coll.canManageRoster') : t('coll.viewRoster')}
                     </div>
                   </div>
                   <button
@@ -423,7 +422,9 @@ export function CollectionsPanel() {
             className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-2 text-lg font-semibold">Delete “{deleteTarget.name}”?</h3>
+            <h3 className="mb-2 text-lg font-semibold">
+              {t('coll.deleteTitle', { name: deleteTarget.name })}
+            </h3>
             <p className="mb-4 text-sm text-muted-foreground">{t('coll.deleteConfirm')}</p>
             <div className="flex justify-end gap-2">
               <button

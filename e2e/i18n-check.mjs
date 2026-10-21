@@ -274,7 +274,23 @@ const HARDCODED = [
   // above still demanded a capital, and they are the half of the sentence that says what
   // the bold word means.
   ['jsx-tail', />\s*([a-z][a-zA-Z0-9 ,.;:·'’&/()!?+%@À-ɏ—–…→▸-]*?\s[^<>{}]*?)\s*</gs],
+  // Text that TOUCHES an interpolation — the shape every pattern above is blind to,
+  // because they read `>` … `<` with `{` and `}` excluded from the capture. So
+  // `>Members ·{n}<` and `>{n} terminals<` were invisible, and that is the commonest
+  // shape in a real component: a sentence wrapped around a count. It cost 34 strings,
+  // three of which a reader found on screen in a French console after this check had
+  // already reported zero.
+  ['jsx-after-expr', /\}\s*([A-Za-zÀ-ÿ][^<>{}\n]*?[a-zà-ÿ][^<>{}]*?)\s*(?=[<{])/gs],
+  ['jsx-before-expr', />\s*([A-Za-zÀ-ÿ][^<>{}\n]*?[a-zà-ÿ][^<>{}]*?)\s*(?=\{)/gs],
 ];
+
+/*
+ * The two `-expr` patterns also match JavaScript, because `} catch {` and `} else {` are
+ * a brace, a word and a brace. Keywords and template-literal fragments are dropped here
+ * rather than by narrowing the pattern — a narrower pattern is what hid the 34.
+ */
+const NOT_TEXT =
+  /^(catch|finally|else|try|interface\b|export\b|class\b|function\b|const\b|let\b|var\b|return\b|if\b|while\b|for\b|switch\b|case\b|async\b|await\b|new\b|type\b)|px`|`\$|w-full|h-full|maxHeight|left:|[;=()[\]|&]|=>/;
 
 function hardcodedStrings() {
   const SRC = new URL('../apps/desktop/src/', import.meta.url);
@@ -290,9 +306,13 @@ function hardcodedStrings() {
             const s = m[1].replace(/\s+/g, ' ').trim();
             // `=> Promise<T>` reads as a `>`, a word and a `<`, in 60-odd stores and
             // components. It is the one shape worth excluding by hand.
-            const jsx = kind === 'jsx-text' || kind === 'jsx-tail';
+            const jsx = kind.startsWith('jsx-');
             if (jsx && m.index > 0 && text[m.index - 1] === '=') continue;
             if (jsx && s === s.toUpperCase()) continue;
+            // JSX only exists in .tsx, and in a plain .ts a brace-word-brace is a shell
+            // command or a module declaration — nine of those before this line existed.
+            if (kind.endsWith('-expr') && !next.endsWith('.tsx')) continue;
+            if (kind.endsWith('-expr') && (s.length < 4 || NOT_TEXT.test(s))) continue;
             found.push(`${next}: [${kind}] ${s}`);
           }
         }

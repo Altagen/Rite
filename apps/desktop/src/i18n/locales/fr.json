@@ -163,7 +163,8 @@
     "healthCheck": "Surveillance",
     "hcInherit": "Suivre la politique de la collection / du serveur",
     "hcOff": "Ne jamais sonder cette machine",
-    "hcWhy": "Une machine peut refuser le sondage actif ; elle ne peut pas en demander plus que le serveur n’autorise."
+    "hcWhy": "Une machine peut refuser le sondage actif ; elle ne peut pas en demander plus que le serveur n’autorise.",
+    "inCollection": "dans « {name} »"
   },
   "errors": {
     "setupFailed": "Erreur lors de la création : {error}",
@@ -278,7 +279,9 @@
     "autoReconnect": "Reconnecter automatiquement les connexions SSH perdues",
     "focusMode": "Mode focus",
     "autoCollapse": "Replier le panneau latéral en mode focus",
-    "autoReconnectHint": "Désactivé par défaut. Activé, une session coupée se reconnecte automatiquement — un nouveau shell, donc l’historique, l’affichage et tout travail en cours sont perdus. Désactivé, le volet propose un bouton Reconnecter. Dans les deux cas, la coupure est signalée."
+    "autoReconnectHint": "Désactivé par défaut. Activé, une session coupée se reconnecte automatiquement — un nouveau shell, donc l’historique, l’affichage et tout travail en cours sont perdus. Désactivé, le volet propose un bouton Reconnecter. Dans les deux cas, la coupure est signalée.",
+    "dashCardsHint": "Ces deux cartes exécutent une commande sur l’hôte à chaque rafraîchissement. Désactivées, le reste du tableau de bord — adresse, redirections, tableau — reste intact.",
+    "changesNothingHere": ", donc ce réglage ne change rien ici."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -331,7 +334,11 @@
     "cancel": "Annuler",
     "newPreset": "Nouveau préréglage",
     "editPreset": "Modifier le préréglage",
-    "layoutsTitle": "Dispositions — ouvrir un agencement enregistré dans cet onglet"
+    "layoutsTitle": "Dispositions — ouvrir un agencement enregistré dans cet onglet",
+    "dropLeft": "Déposer à gauche",
+    "dropRight": "Déposer à droite",
+    "dropTop": "Déposer au-dessus",
+    "dropBottom": "Déposer en dessous"
   },
   "pf": {
     "title": "Redirection de ports",
@@ -582,7 +589,13 @@
     "setupFailed": "Le coffre n’a pas pu être créé : {error}",
     "wrongPassword": "Mot de passe incorrect.",
     "unlockFailed": "Le coffre n’a pas pu être déverrouillé : {error}",
-    "lockFailed": "Le coffre n’a pas pu être verrouillé : {error}"
+    "lockFailed": "Le coffre n’a pas pu être verrouillé : {error}",
+    "tokenLabel": "Jeton d’invitation",
+    "tokenRequired": "· requis",
+    "tokenOptional": "· facultatif",
+    "haveAccount": "Compte déjà existant ?",
+    "newHere": "Première visite ?",
+    "haveToken": "Jeton d’invitation en main ?"
   },
   "admin": {
     "cancel": "Annuler",
@@ -631,7 +644,7 @@
       "title": "Invitations",
       "subtitle": "Jetons d’enrôlement · usage unique",
       "generateBtn": "+ Générer un jeton",
-      "banner": "Racheter un jeton accorde l’appartenance et son rôle d’un coup. Cela n’accorde pas les machines chiffrées d’une collection — celles-là passent toujours par un grant de membre, comme d’habitude.",
+      "banner": "Un jeton crée le compte avec son rôle et ses équipes. L’accès aux machines d’une collection reste séparé — un membre doit toujours l’accorder.",
       "revealTitle": "Jeton à copier maintenant",
       "revealWhy": "Non réaffiché. À transmettre hors bande, pas par mail en clair.",
       "copy": "Copier",
@@ -643,7 +656,7 @@
       "colExpires": "Expiration",
       "colActions": "Actions",
       "loading": "Chargement…",
-      "empty": "Aucun jeton d’invitation. En générer un pour intégrer un membre sans être présent.",
+      "empty": "Générer un jeton pour intégrer un membre automatiquement.",
       "used": "utilisé",
       "revoke": "Révoquer",
       "remove": "Retirer",
@@ -726,7 +739,12 @@
       "grantUnavailable": "Disponible une fois la collection séquestrée auprès du groupe Admin (créée après la séquestre, ou rechiffrée).",
       "noCandidates": "Aucun utilisateur à ajouter",
       "pickUser": "Choisir un utilisateur…",
-      "add": "Ajouter"
+      "add": "Ajouter",
+      "membersCount": "Membres",
+      "membersCountN": "Membres · {count}",
+      "personalHidden": "{count} personnelle(s), gardée(s) privée(s)",
+      "noShared": "Aucune collection partagée.",
+      "noSharedPersonal": "Aucune collection partagée — les personnelles restent privées."
     },
     "inst": {
       "errLoad": "Le chargement des réglages d’instance a échoué",
@@ -832,7 +850,10 @@
       "errLoad": "Le chargement des équipes a échoué",
       "errMembers": "Le chargement des membres a échoué",
       "errAction": "L’action a échoué",
-      "colMember": "Membre"
+      "colMember": "Membre",
+      "deleteDesc": "Retire la liste. Les collections qui lui sont proposées cessent de l’être ; l’appartenance à ces collections ne change pas.",
+      "deleteAction": "Supprimer l’équipe",
+      "confirmDelete": "Supprimer l’équipe « {name} » et ses {count} membre(s) ? La liste disparaît ; personne ne perd une collection déjà rejointe."
     }
   },
   "ws": {
@@ -843,7 +864,7 @@
     "closeCollection": "Fermer la collection",
     "serverInstance": "Instance du serveur",
     "selectShell": "Choisir le shell par défaut",
-    "focusMode": "Mode focus (F11) — masque la barre, les terminaux remplissent l’écran",
+    "focusMode": "Mode focus ·",
     "quickSshConnect": "Connexion SSH rapide",
     "quickSsh": "Quick SSH",
     "createVaultTitle": "Créer un coffre local",
@@ -881,7 +902,17 @@
     "terminal": "Terminal",
     "library": "Bibliothèque",
     "openInNewWindowOf": "Ouvrir {name} dans une nouvelle fenêtre",
-    "removeOf": "Retirer {name}"
+    "removeOf": "Retirer {name}",
+    "focusOr": "ou",
+    "focusExit": "pour sortir · survoler le bord haut pour révéler la barre",
+    "deleteFolderTitle": "Supprimer le dossier « {name} » ?",
+    "deleteSubfolderWhy": "Le dossier et ses sous-dossiers sont retirés. Les machines qu’ils contiennent remontent au dossier parent — rien n’est supprimé.",
+    "deleteSubfolderWhyShared": "Le dossier et ses sous-dossiers sont retirés pour tous les membres de la collection. Les machines qu’ils contiennent remontent au dossier parent — rien n’est supprimé.",
+    "deleteCollTitle": "Supprimer « {name} » ?",
+    "deleteCollWhy": "Cela supprime définitivement la collection et ses machines. Irréversible.",
+    "deleteCollWhyShared": "Cela supprime définitivement la collection et ses machines pour tout le monde. Les membres perdent l’accès. Irréversible.",
+    "importedMachines": "{count} machine(s) importée(s)",
+    "importedConnections": "{count} connexion(s) importée(s)"
   },
   "lib": {
     "newSubFolder": "Nouveau sous-dossier",
@@ -909,7 +940,8 @@
     "noMatch": "Aucune connexion ne correspond à la recherche.",
     "renameMenu": "Renommer…",
     "boardMenu": "Tableau…",
-    "memberCount": "{count} membres"
+    "memberCount": "{count} membres",
+    "forwardCount": "{count} redirection(s) enregistrée(s)"
   },
   "hub": {
     "lead": "Coffres locaux et serveurs enregistrés. Chacun s’ouvre dans sa propre fenêtre. Retirer un serveur ne fait que l’oublier ici — le compte distant reste.",
@@ -968,7 +1000,12 @@
     "new": "Nouvelle",
     "personal": "Personnel",
     "rename": "Renommer",
-    "labelNotEncrypted": "Ce libellé n’est pas chiffré — l’équipe et le serveur peuvent le lire pour que la collection soit trouvable. À garder non sensible ; le vrai nom et les machines restent chiffrés de bout en bout."
+    "labelNotEncrypted": "Ce libellé n’est pas chiffré — l’équipe et le serveur peuvent le lire pour que la collection soit trouvable. À garder non sensible ; le vrai nom et les machines restent chiffrés de bout en bout.",
+    "machineCount": "· {count} machine(s)",
+    "memberCount": "{count} membre(s)",
+    "canManageRoster": "ajouter ou retirer des personnes et définir les rôles",
+    "viewRoster": "liste en lecture seule ici",
+    "deleteTitle": "Supprimer « {name} » ?"
   },
   "cview": {
     "viaJumpLong": "Atteinte via un hôte de rebond (ProxyJump)",
@@ -1071,7 +1108,10 @@
     "lastManager": "Dernier responsable — promouvoir quelqu’un avant de partir.",
     "roleManager": "Responsable",
     "open": "Ouvrir",
-    "requested": "Demandé"
+    "requested": "Demandé",
+    "memberCountInline": "· {count} membre(s)",
+    "membersCount": "Membres · {count}",
+    "offersCount": "Collections proposées à cette équipe · {count}"
   },
   "tm": {
     "noSessions": "Aucune session de terminal active",
@@ -1083,7 +1123,8 @@
     "openTabs": "Onglets ouverts",
     "renameTab": "Renommer l’onglet (le double-clic marche aussi)",
     "saveConnection": "Enregistrer la connexion",
-    "newTerminal": "Nouveau terminal"
+    "newTerminal": "Nouveau terminal",
+    "closeManyWhy": "Fermeture de {count} terminaux. Toutes les connexions actives sont coupées."
   },
   "members": {
     "addFromTeam": "Ajouter depuis une équipe :",
@@ -1103,7 +1144,10 @@
     "ownerWhat": "gère le partage et les réglages",
     "editorWhat": "ajoute/modifie les machines (re-chiffre)",
     "viewerWhat": "peut seulement se connecter.",
-    "noMachines": "aucune machine"
+    "noMachines": "aucune machine",
+    "counts": "{members} membre(s) · {owners} propriétaire(s)",
+    "membersCount": "Membres · {count}",
+    "noMatch": "Aucun utilisateur ne commence par « {query} »."
   },
   "boundary": {
     "appError": "Erreur de l’application",
@@ -1115,7 +1159,10 @@
     "tryAgain": "Réessayer",
     "componentError": "Erreur de composant",
     "errorLabel": "Erreur :",
-    "retry": "Réessayer"
+    "retry": "Réessayer",
+    "featureErrorWhat": "Cette fonctionnalité a rencontré une erreur : {error}",
+    "componentErrorWhat": "{name} n’a pas pu s’afficher : {error}",
+    "thisComponent": "Ce composant"
   },
   "paste": {
     "title": "Importer depuis une config SSH",
@@ -1269,7 +1316,9 @@
   },
   "profile": {
     "hint": "Compte",
-    "signOut": "Se déconnecter"
+    "signOut": "Se déconnecter",
+    "signedIn": "Connecté",
+    "signedInOn": "Connecté · {instance}"
   },
   "health": {
     "disabled": "Les vérifications actives de statut sont désactivées sur ce serveur.",

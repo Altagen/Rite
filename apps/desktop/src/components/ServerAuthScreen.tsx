@@ -146,9 +146,9 @@ export function ServerAuthScreen() {
           {isRegister && (
             <div className="space-y-2">
               <label htmlFor="token" className="text-sm font-medium">
-                Invitation token{' '}
+                {t('auth.tokenLabel')}{' '}
                 <span className="font-normal text-muted-foreground">
-                  {tokenRequired ? '· required' : '· optional'}
+                  {tokenRequired ? t('auth.tokenRequired') : t('auth.tokenOptional')}
                 </span>
               </label>
               <input
@@ -193,7 +193,7 @@ export function ServerAuthScreen() {
             <p className="text-center text-sm text-muted-foreground">
               {isRegister ? (
                 <>
-                  Already have an account?{' '}
+                  {t('auth.haveAccount')}{' '}
                   <button
                     type="button"
                     onClick={() => switchTab('signin')}
@@ -206,7 +206,7 @@ export function ServerAuthScreen() {
                 <>
                   {openReg && (
                     <>
-                      New here?{' '}
+                      {t('auth.newHere')}{' '}
                       <button
                         type="button"
                         onClick={() => switchTab('register')}
@@ -217,7 +217,7 @@ export function ServerAuthScreen() {
                       {' · '}
                     </>
                   )}
-                  Have an invitation token?{' '}
+                  {t('auth.haveToken')}{' '}
                   <button
                     type="button"
                     onClick={() => switchTab('register')}

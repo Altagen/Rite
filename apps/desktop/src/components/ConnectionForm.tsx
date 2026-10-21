@@ -378,13 +378,12 @@ export function ConnectionForm({
                 (c) => c.id === (connection?.collectionId ?? defaultCollectionId),
               ) && (
                 <p className="mt-1 text-sm text-muted-foreground">
-                  in “
-                  {
-                    collectionTargets.find(
-                      (c) => c.id === (connection?.collectionId ?? defaultCollectionId),
-                    )?.name
-                  }
-                  ”
+                  {t('connections.inCollection', {
+                    name:
+                      collectionTargets.find(
+                        (c) => c.id === (connection?.collectionId ?? defaultCollectionId),
+                      )?.name ?? '',
+                  })}
                 </p>
               )}
           </div>

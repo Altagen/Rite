@@ -5,6 +5,7 @@
  */
 
 import type { SplitTarget } from '../types/pane';
+import { useTranslation } from '../i18n/i18n';
 import { useRef, useEffect } from 'react';
 import { AnyPaneNode } from '../types/pane';
 import { SplitPane } from './SplitPane';
@@ -40,6 +41,7 @@ export function PaneContainer({
   onDetachPane,
   onReorganizePane,
 }: PaneContainerProps) {
+  const { t } = useTranslation();
   const { draggedPaneId, setDraggedPane, dropTargetPaneId, dropPosition, setDropTarget } =
     usePaneDrag();
   const paneRef = useRef<HTMLDivElement>(null);
@@ -235,7 +237,15 @@ export function PaneContainer({
                       d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
                     />
                   </svg>
-                  <span className="text-sm font-medium text-primary">Drop {dropPosition}</span>
+                  <span className="text-sm font-medium text-primary">
+                    {dropPosition === 'top'
+                      ? t('split.dropTop')
+                      : dropPosition === 'bottom'
+                        ? t('split.dropBottom')
+                        : dropPosition === 'left'
+                          ? t('split.dropLeft')
+                          : t('split.dropRight')}
+                  </span>
                 </div>
               </div>
             </div>

@@ -163,7 +163,8 @@
     "healthCheck": "Health-check",
     "hcInherit": "Follow the collection / server policy",
     "hcOff": "Never probe this machine",
-    "hcWhy": "A machine can opt out of active probing; it cannot opt into more than the server allows."
+    "hcWhy": "A machine can opt out of active probing; it cannot opt into more than the server allows.",
+    "inCollection": "in “{name}”"
   },
   "errors": {
     "setupFailed": "Setup failed: {error}",
@@ -278,7 +279,9 @@
     "autoReconnect": "Auto-reconnect lost SSH connections",
     "focusMode": "Focus mode",
     "autoCollapse": "Auto-collapse sidebar in focus mode",
-    "autoReconnectHint": "Off by default. On, a dropped session reconnects automatically — a new shell, so history, on-screen output and any running job are lost. Off, the pane offers a Reconnect button. Either way the disconnection is reported."
+    "autoReconnectHint": "Off by default. On, a dropped session reconnects automatically — a new shell, so history, on-screen output and any running job are lost. Off, the pane offers a Reconnect button. Either way the disconnection is reported.",
+    "dashCardsHint": "These two cards run a command on the host each time they refresh. Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.",
+    "changesNothingHere": ", so this setting changes nothing here."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -331,7 +334,11 @@
     "cancel": "Cancel",
     "newPreset": "New preset",
     "editPreset": "Edit preset",
-    "layoutsTitle": "Layouts — open a saved arrangement in this tab"
+    "layoutsTitle": "Layouts — open a saved arrangement in this tab",
+    "dropLeft": "Drop left",
+    "dropRight": "Drop right",
+    "dropTop": "Drop above",
+    "dropBottom": "Drop below"
   },
   "pf": {
     "title": "Port forwarding",
@@ -582,7 +589,13 @@
     "setupFailed": "The vault could not be created: {error}",
     "wrongPassword": "Wrong password.",
     "unlockFailed": "The vault could not be unlocked: {error}",
-    "lockFailed": "The vault could not be locked: {error}"
+    "lockFailed": "The vault could not be locked: {error}",
+    "tokenLabel": "Invitation token",
+    "tokenRequired": "· required",
+    "tokenOptional": "· optional",
+    "haveAccount": "Already have an account?",
+    "newHere": "New here?",
+    "haveToken": "Have an invitation token?"
   },
   "admin": {
     "cancel": "Cancel",
@@ -631,7 +644,7 @@
       "title": "Invitations",
       "subtitle": "Enrollment tokens · single-use",
       "generateBtn": "+ Generate token",
-      "banner": "Redeeming a token grants membership and its role at once. It does not grant a collection's encrypted machines — those still need a member grant, as they always do.",
+      "banner": "A token creates the account with its role and teams. Access to a collection's machines is separate — a member must still grant it.",
       "revealTitle": "Token to copy now",
       "revealWhy": "Not shown again. Share it out-of-band, not by email in clear.",
       "copy": "Copy",
@@ -643,7 +656,7 @@
       "colExpires": "Expires",
       "colActions": "Actions",
       "loading": "Loading…",
-      "empty": "No invitation tokens yet. Generate one to onboard a member without being present.",
+      "empty": "Generate a token to onboard a member automatically.",
       "used": "used",
       "revoke": "Revoke",
       "remove": "Remove",
@@ -726,7 +739,12 @@
       "grantUnavailable": "Available once the collection is escrowed to the Admin group (created after the escrow, or re-keyed).",
       "noCandidates": "No users to add",
       "pickUser": "Select a user…",
-      "add": "Add"
+      "add": "Add",
+      "membersCount": "Members",
+      "membersCountN": "Members · {count}",
+      "personalHidden": "{count} personal, kept private",
+      "noShared": "No shared collections.",
+      "noSharedPersonal": "No shared collections — the personal ones stay private."
     },
     "inst": {
       "errLoad": "Failed to load instance settings",
@@ -832,7 +850,10 @@
       "errLoad": "Failed to load teams",
       "errMembers": "Failed to load members",
       "errAction": "Action failed",
-      "colMember": "Member"
+      "colMember": "Member",
+      "deleteDesc": "Removes the roster. Collections offered to it stop being offered; membership in those collections is unaffected.",
+      "deleteAction": "Delete team",
+      "confirmDelete": "Delete the team “{name}” and its {count} member(s)? The roster is gone; nobody loses a collection they already joined."
     }
   },
   "ws": {
@@ -843,7 +864,7 @@
     "closeCollection": "Close collection",
     "serverInstance": "Server instance",
     "selectShell": "Select default shell",
-    "focusMode": "Focus mode (F11) — hide the toolbar, terminals fill the screen",
+    "focusMode": "Focus mode ·",
     "quickSshConnect": "Quick SSH Connect",
     "quickSsh": "Quick SSH",
     "createVaultTitle": "Create a local vault",
@@ -881,7 +902,17 @@
     "terminal": "Terminal",
     "library": "Library",
     "openInNewWindowOf": "Open {name} in a new window",
-    "removeOf": "Remove {name}"
+    "removeOf": "Remove {name}",
+    "focusOr": "or",
+    "focusExit": "to exit · hover the top edge to reveal the toolbar",
+    "deleteFolderTitle": "Delete folder “{name}”?",
+    "deleteSubfolderWhy": "The folder and its sub-folders are removed. Machines inside move up to the parent folder — nothing is deleted.",
+    "deleteSubfolderWhyShared": "The folder and its sub-folders are removed for everyone in the collection. Machines inside move up to the parent folder — nothing is deleted.",
+    "deleteCollTitle": "Delete “{name}”?",
+    "deleteCollWhy": "This permanently deletes the collection and its machines. It cannot be undone.",
+    "deleteCollWhyShared": "This permanently deletes the collection and its machines for everyone. Members lose access. It cannot be undone.",
+    "importedMachines": "{count} machine(s) imported",
+    "importedConnections": "{count} connection(s) imported"
   },
   "lib": {
     "newSubFolder": "New sub-folder",
@@ -909,7 +940,8 @@
     "noMatch": "No connections match the search.",
     "renameMenu": "Rename…",
     "boardMenu": "Board…",
-    "memberCount": "{count} members"
+    "memberCount": "{count} members",
+    "forwardCount": "{count} saved port forward(s)"
   },
   "hub": {
     "lead": "Local vaults and saved servers. Each opens in its own window. Removing a server only forgets it here — the remote account stays.",
@@ -968,7 +1000,12 @@
     "new": "New",
     "personal": "Personal",
     "rename": "Rename",
-    "labelNotEncrypted": "This label is not encrypted — the team and the server can read it so the collection can be found. Keep it non-sensitive; the real name and the machines stay end-to-end encrypted."
+    "labelNotEncrypted": "This label is not encrypted — the team and the server can read it so the collection can be found. Keep it non-sensitive; the real name and the machines stay end-to-end encrypted.",
+    "machineCount": "· {count} machine(s)",
+    "memberCount": "{count} member(s)",
+    "canManageRoster": "add or remove people and set roles",
+    "viewRoster": "roster is read-only here",
+    "deleteTitle": "Delete “{name}”?"
   },
   "cview": {
     "viaJumpLong": "Reached through a jump host (ProxyJump)",
@@ -1071,7 +1108,10 @@
     "lastManager": "Last manager — promote someone before leaving.",
     "roleManager": "Manager",
     "open": "Open",
-    "requested": "Requested"
+    "requested": "Requested",
+    "memberCountInline": "· {count} member(s)",
+    "membersCount": "Members · {count}",
+    "offersCount": "Collections offered to this team · {count}"
   },
   "tm": {
     "noSessions": "No active terminal sessions",
@@ -1083,7 +1123,8 @@
     "openTabs": "Open tabs",
     "renameTab": "Rename tab (double-click also works)",
     "saveConnection": "Save connection",
-    "newTerminal": "New terminal"
+    "newTerminal": "New terminal",
+    "closeManyWhy": "Closing {count} terminals. Every active connection is terminated."
   },
   "members": {
     "addFromTeam": "Add from team:",
@@ -1103,7 +1144,10 @@
     "ownerWhat": "manages sharing & settings",
     "editorWhat": "adds/edits machines (re-encrypts)",
     "viewerWhat": "can only connect.",
-    "noMachines": "no machines"
+    "noMachines": "no machines",
+    "counts": "{members} member(s) · {owners} owner(s)",
+    "membersCount": "Members · {count}",
+    "noMatch": "No user starts with “{query}”."
   },
   "boundary": {
     "appError": "Application Error",
@@ -1115,7 +1159,10 @@
     "tryAgain": "Try Again",
     "componentError": "Component Error",
     "errorLabel": "Error:",
-    "retry": "Retry"
+    "retry": "Retry",
+    "featureErrorWhat": "This feature encountered an error: {error}",
+    "componentErrorWhat": "{name} failed to render: {error}",
+    "thisComponent": "This component"
   },
   "paste": {
     "title": "Import from SSH config",
@@ -1269,7 +1316,9 @@
   },
   "profile": {
     "hint": "Account",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "signedIn": "Signed in",
+    "signedInOn": "Signed in · {instance}"
   },
   "health": {
     "disabled": "Active status checks are disabled on this server.",

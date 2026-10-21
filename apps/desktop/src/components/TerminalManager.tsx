@@ -781,11 +781,7 @@ export function TerminalManager({
                       {t('tm.closeMany')}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      You are about to close{' '}
-                      <span className="font-semibold text-foreground">
-                        {tabToClose.terminalCount} terminals
-                      </span>
-                      . All active connections will be terminated. Are you sure?
+                      {t('tm.closeManyWhy', { count: tabToClose.terminalCount })}
                     </p>
                   </div>
                 </div>
