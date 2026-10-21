@@ -6,6 +6,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { RevealToggle } from './RevealToggle';
 import { useServerSession } from '../store/serverSessionStore';
 import { useTranslation } from '../i18n/i18n';
 
@@ -72,15 +73,9 @@ export function ForcePasswordChange() {
             autoFocus
             autoComplete="new-password"
             placeholder={t('fpc.phNew')}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 pr-16 text-sm"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 pr-10 text-sm"
           />
-          <button
-            type="button"
-            onClick={() => setShow((v) => !v)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground hover:text-foreground"
-          >
-            {show ? t('fpc.hide') : t('fpc.show')}
-          </button>
+          <RevealToggle shown={show} onToggle={() => setShow((v) => !v)} />
         </div>
         <div className="mb-1 flex gap-1.5">
           {[0, 1, 2, 3].map((i) => (

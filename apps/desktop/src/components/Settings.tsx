@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { RevealToggle } from './RevealToggle';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
 import { useDisplayPrefs } from '../store/displayPrefs';
@@ -228,6 +229,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
    */
   const [active, setActive] = useState<SectionId>('appearance');
   // Change master password (local vault): re-keys all connections server-side.
+  const [pwReveal, setPwReveal] = useState(false);
   const [pwCurrent, setPwCurrent] = useState('');
   const [pwNew, setPwNew] = useState('');
   const [pwConfirm, setPwConfirm] = useState('');
@@ -881,30 +883,39 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   hint="It encrypts every connection in this vault, so changing it re-keys them all."
                 />
                 <div className="max-w-sm space-y-2 pt-1">
-                  <input
-                    type="password"
-                    value={pwCurrent}
-                    onChange={(e) => setPwCurrent(e.target.value)}
-                    placeholder={t('settings.currentPassword')}
-                    autoComplete="current-password"
-                    className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
-                  />
-                  <input
-                    type="password"
-                    value={pwNew}
-                    onChange={(e) => setPwNew(e.target.value)}
-                    placeholder={t('settings.newPassword')}
-                    autoComplete="new-password"
-                    className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
-                  />
-                  <input
-                    type="password"
-                    value={pwConfirm}
-                    onChange={(e) => setPwConfirm(e.target.value)}
-                    placeholder={t('settings.confirmNewPassword')}
-                    autoComplete="new-password"
-                    className="w-full rounded border border-input bg-background px-3 py-2 text-sm"
-                  />
+                  <div className="relative">
+                    <input
+                      type={pwReveal ? 'text' : 'password'}
+                      value={pwCurrent}
+                      onChange={(e) => setPwCurrent(e.target.value)}
+                      placeholder={t('settings.currentPassword')}
+                      autoComplete="current-password"
+                      className="w-full rounded border border-input bg-background px-3 py-2 pr-10 text-sm"
+                    />
+                    <RevealToggle shown={pwReveal} onToggle={() => setPwReveal((v) => !v)} />
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={pwReveal ? 'text' : 'password'}
+                      value={pwNew}
+                      onChange={(e) => setPwNew(e.target.value)}
+                      placeholder={t('settings.newPassword')}
+                      autoComplete="new-password"
+                      className="w-full rounded border border-input bg-background px-3 py-2 pr-10 text-sm"
+                    />
+                    <RevealToggle shown={pwReveal} onToggle={() => setPwReveal((v) => !v)} />
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={pwReveal ? 'text' : 'password'}
+                      value={pwConfirm}
+                      onChange={(e) => setPwConfirm(e.target.value)}
+                      placeholder={t('settings.confirmNewPassword')}
+                      autoComplete="new-password"
+                      className="w-full rounded border border-input bg-background px-3 py-2 pr-10 text-sm"
+                    />
+                    <RevealToggle shown={pwReveal} onToggle={() => setPwReveal((v) => !v)} />
+                  </div>
                   {pwMsg && (
                     <p
                       className={`text-xs ${pwMsg.kind === 'ok' ? 'text-green-600' : 'text-red-500'}`}

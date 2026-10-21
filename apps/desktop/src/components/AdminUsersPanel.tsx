@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { RevealToggle } from './RevealToggle';
 import { useTranslation } from '../i18n/i18n';
 import { Backend, type ServerUser } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
@@ -61,6 +62,7 @@ export function AdminUsersPanel() {
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [revealNew, setRevealNew] = useState(false);
   const [role, setRole] = useState<'user' | 'admin' | 'manager'>('user');
   // A manager can invite regular users only; only an admin assigns roles.
   const meIsAdmin = me?.role === 'admin';
@@ -366,14 +368,21 @@ export function AdminUsersPanel() {
             <label htmlFor="new-password" className="text-xs font-medium text-muted-foreground">
               {t('admin.users.initialPassword')}
             </label>
-            <input
-              id="new-password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              disabled={busy}
-            />
+            <div className="relative">
+              <input
+                id="new-password"
+                type={revealNew ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 pr-10 text-sm"
+                disabled={busy}
+              />
+              <RevealToggle
+                shown={revealNew}
+                onToggle={() => setRevealNew((v) => !v)}
+                disabled={busy}
+              />
+            </div>
           </div>
           <div className="space-y-1">
             <label htmlFor="new-role" className="text-xs font-medium text-muted-foreground">

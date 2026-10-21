@@ -9,6 +9,7 @@
  */
 
 import { useState } from 'react';
+import { RevealToggle } from './RevealToggle';
 import { useTranslation } from '../i18n/i18n';
 import { useServerSession } from '../store/serverSessionStore';
 
@@ -24,6 +25,9 @@ export function ServerAuthScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  // One eye for both fields: on the register tab they must match, so revealing one and
+  // not the other is how you stare at two dots and still cannot tell.
+  const [reveal, setReveal] = useState(false);
   const [token, setToken] = useState('');
 
   const isNewAccount = isBootstrap || isRegister; // generates fresh keys from this password
@@ -114,15 +118,22 @@ export function ServerAuthScreen() {
             <label htmlFor="password" className="text-sm font-medium">
               {t('auth.password')}
             </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete={isNewAccount ? 'new-password' : 'current-password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              disabled={loading}
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={reveal ? 'text' : 'password'}
+                autoComplete={isNewAccount ? 'new-password' : 'current-password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 pr-10 text-sm"
+                disabled={loading}
+              />
+              <RevealToggle
+                shown={reveal}
+                onToggle={() => setReveal((v) => !v)}
+                disabled={loading}
+              />
+            </div>
           </div>
 
           {isRegister && (
@@ -130,15 +141,22 @@ export function ServerAuthScreen() {
               <label htmlFor="confirm" className="text-sm font-medium">
                 {t('auth.confirmPassword')}
               </label>
-              <input
-                id="confirm"
-                type="password"
-                autoComplete="new-password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                disabled={loading}
-              />
+              <div className="relative">
+                <input
+                  id="confirm"
+                  type={reveal ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 pr-10 text-sm"
+                  disabled={loading}
+                />
+                <RevealToggle
+                  shown={reveal}
+                  onToggle={() => setReveal((v) => !v)}
+                  disabled={loading}
+                />
+              </div>
               {mismatch && <p className="text-xs text-red-600">{t('auth.pwNoMatch')}</p>}
             </div>
           )}

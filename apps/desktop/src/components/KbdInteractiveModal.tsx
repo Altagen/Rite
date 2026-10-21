@@ -10,6 +10,7 @@
  */
 
 import { useState } from 'react';
+import { RevealToggle } from './RevealToggle';
 import { useTranslation } from '../i18n/i18n';
 
 export interface KbdPromptItem {
@@ -39,6 +40,8 @@ export function KbdInteractiveModal({
 }: KbdInteractiveModalProps) {
   const { t } = useTranslation();
   const [answers, setAnswers] = useState<string[]>(() => challenge.prompts.map(() => ''));
+  // Per prompt, not per dialog: a round can ask for a password AND a one-time code.
+  const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const title = challenge.name.trim() || t('kbd.title');
   const setAnswer = (i: number, v: string) =>
     setAnswers((a) => a.map((x, idx) => (idx === i ? v : x)));
@@ -71,14 +74,30 @@ export function KbdInteractiveModal({
           {challenge.prompts.map((p, i) => (
             <div key={i}>
               <label className="mb-1 block text-sm font-medium">{p.prompt}</label>
-              <input
-                type={p.echo ? 'text' : 'password'}
-                value={answers[i]}
-                onChange={(e) => setAnswer(i, e.target.value)}
-                autoFocus={i === 0}
-                autoComplete="off"
-                className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
-              />
+              <div className="relative">
+                <input
+                  type={p.echo || revealed.has(i) ? 'text' : 'password'}
+                  value={answers[i]}
+                  onChange={(e) => setAnswer(i, e.target.value)}
+                  autoFocus={i === 0}
+                  autoComplete="off"
+                  className="w-full rounded border border-border bg-input px-3 py-2 pr-10 text-foreground focus:border-primary focus:outline-none"
+                />
+                {/* Only where the server masks it: a prompt it marked `echo` is already legible. */}
+                {!p.echo && (
+                  <RevealToggle
+                    shown={revealed.has(i)}
+                    onToggle={() =>
+                      setRevealed((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(i)) next.delete(i);
+                        else next.add(i);
+                        return next;
+                      })
+                    }
+                  />
+                )}
+              </div>
             </div>
           ))}
         </div>

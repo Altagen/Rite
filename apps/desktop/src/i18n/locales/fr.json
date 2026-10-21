@@ -22,8 +22,6 @@
     "submit": "Créer le mot de passe maître",
     "submitting": "Création...",
     "warning": "Important : ce mot de passe ne peut pas être récupéré. À garder en sécurité.",
-    "showPassword": "Afficher le mot de passe",
-    "hidePassword": "Masquer le mot de passe",
     "aim16": "16 caractères ou plus pour un coffre plus solide."
   },
   "unlock": {
@@ -44,9 +42,7 @@
     "resetConfirmLabel": "Saisir DELETE ALL DATA pour confirmer :",
     "resetConfirmPlaceholder": "DELETE ALL DATA",
     "resetCancel": "Annuler",
-    "resetSubmit": "Réinitialiser",
-    "showPassword": "Afficher le mot de passe",
-    "hidePassword": "Masquer le mot de passe"
+    "resetSubmit": "Réinitialiser"
   },
   "main": {
     "lock": "Verrouiller",
@@ -102,8 +98,6 @@
     "personalVault": "Coffre personnel",
     "collectionMoveUnsupported": "Déplacer une machine entre collections n’est pas encore supporté.",
     "color": "Couleur (optionnelle)",
-    "showPassword": "Afficher le mot de passe",
-    "hidePassword": "Masquer le mot de passe",
     "icon": "Icône (optionnel)",
     "notes": "Notes (optionnel)",
     "notesPlaceholder": "Notes sur cette connexion",
@@ -500,7 +494,9 @@
     "advancedOptions": "Options avancées",
     "seconds": "Secondes",
     "close": "Fermer",
-    "filter": "Filtrer…"
+    "filter": "Filtrer…",
+    "showPassword": "Afficher le mot de passe",
+    "hidePassword": "Masquer le mot de passe"
   },
   "shortcuts": {
     "hint": "Cliquer sur un raccourci, puis appuyer sur les touches. {mod} est le modificateur de commande sur cette machine ; le même raccourci se reporte sur l’autre.",
@@ -1189,8 +1185,6 @@
     "newPassword": "Nouveau mot de passe",
     "phNew": "Un mot de passe connu de personne d’autre",
     "phAgain": "Confirmation",
-    "show": "Afficher",
-    "hide": "Masquer",
     "strength": "Force du mot de passe : {level}",
     "tooWeak": "Trop faible",
     "fair": "Moyen",

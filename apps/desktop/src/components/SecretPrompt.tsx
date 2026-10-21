@@ -10,12 +10,14 @@
  * the matching ones.
  */
 import { useEffect, useRef, useState } from 'react';
+import { RevealToggle } from './RevealToggle';
 import { useTranslation } from '../i18n/i18n';
 import { onAskSecret, type SecretRequest } from '../utils/secretPrompt';
 
 export function SecretPrompt() {
   const { t } = useTranslation();
   const [request, setRequest] = useState<SecretRequest | null>(null);
+  const [reveal, setReveal] = useState(false);
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -62,22 +64,25 @@ export function SecretPrompt() {
       >
         <h2 className="text-base font-semibold">{copy.title}</h2>
         <p className="mt-1 text-sm text-muted-foreground">{copy.forName}</p>
-        <input
-          ref={inputRef}
-          type="password"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          // Esc cancels, as it does on every other dialog here.
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault();
-              settle(null);
-            }
-          }}
-          placeholder={copy.placeholder}
-          className="mt-3 w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
-          data-testid={`${request.kind}-input`}
-        />
+        <div className="relative mt-3">
+          <input
+            ref={inputRef}
+            type={reveal ? 'text' : 'password'}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            // Esc cancels, as it does on every other dialog here.
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                settle(null);
+              }
+            }}
+            placeholder={copy.placeholder}
+            className="w-full rounded border border-border bg-input px-3 py-2 pr-10 text-foreground focus:border-primary focus:outline-none"
+            data-testid={`${request.kind}-input`}
+          />
+          <RevealToggle shown={reveal} onToggle={() => setReveal((v) => !v)} />
+        </div>
         <p className="mt-2 text-xs text-muted-foreground">{copy.why}</p>
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" onClick={() => settle(null)} className="m-btn m-btn-sm">

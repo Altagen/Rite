@@ -22,8 +22,6 @@
     "submit": "Create Master Password",
     "submitting": "Creating...",
     "warning": "Important: This password cannot be recovered. Keep it safe.",
-    "showPassword": "Show password",
-    "hidePassword": "Hide password",
     "aim16": "Aim for 16+ characters for a stronger vault."
   },
   "unlock": {
@@ -44,9 +42,7 @@
     "resetConfirmLabel": "Type DELETE ALL DATA to confirm:",
     "resetConfirmPlaceholder": "DELETE ALL DATA",
     "resetCancel": "Cancel",
-    "resetSubmit": "Reset",
-    "showPassword": "Show password",
-    "hidePassword": "Hide password"
+    "resetSubmit": "Reset"
   },
   "main": {
     "lock": "Lock",
@@ -102,8 +98,6 @@
     "personalVault": "Personal vault",
     "collectionMoveUnsupported": "Moving a machine between collections isn't supported yet.",
     "color": "Color (optional)",
-    "showPassword": "Show password",
-    "hidePassword": "Hide password",
     "icon": "Icon (optional)",
     "notes": "Notes (optional)",
     "notesPlaceholder": "Notes about this connection",
@@ -500,7 +494,9 @@
     "advancedOptions": "Advanced Options",
     "seconds": "Seconds",
     "close": "Close",
-    "filter": "Filter…"
+    "filter": "Filter…",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password"
   },
   "shortcuts": {
     "hint": "Click a shortcut, then press the keys. {mod} is the command modifier on this machine; the same binding carries over to the other.",
@@ -1189,8 +1185,6 @@
     "newPassword": "New password",
     "phNew": "A password known to nobody else",
     "phAgain": "Confirmation",
-    "show": "Show",
-    "hide": "Hide",
     "strength": "Password strength: {level}",
     "tooWeak": "Too weak",
     "fair": "Fair",

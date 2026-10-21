@@ -174,3 +174,39 @@ test('deleting a team asks first, and a refusal leaves it standing', async ({ pa
   await page.getByTestId('danger-action').click();
   await expect(page.getByTestId(`team-${name}`)).toHaveCount(0, { timeout: 15_000 });
 });
+
+/**
+ * The sign-in password can be read back.
+ *
+ * It could not. Five screens had an eye and three had none — and the one with none that
+ * mattered was this one: the first password anyone types into Rite, on a keyboard layout
+ * they may have guessed wrong, with no way to check before being told "wrong password".
+ *
+ * Asserted on the input's type rather than on the icon: what matters is whether the
+ * characters are legible, and an eye that renders but toggles nothing would pass a
+ * screenshot test.
+ */
+test('the sign-in password can be revealed and hidden again', async ({ page }) => {
+  await page.context().clearCookies();
+  await page.goto('/');
+  // Sign out if a previous spec left a session behind — this test needs the sign-in form.
+  if (
+    await page
+      .getByTestId('reveal-password')
+      .isHidden()
+      .catch(() => true)
+  ) {
+    await page.getByRole('button', { name: /^AD / }).click();
+    await page.getByRole('button', { name: /^sign out$/i }).click();
+  }
+  const field = page.locator('#password');
+  await expect(field).toBeVisible({ timeout: 15_000 });
+  await field.fill('something-typed');
+
+  await expect(field).toHaveAttribute('type', 'password');
+  await page.getByTestId('reveal-password').first().click();
+  await expect(field).toHaveAttribute('type', 'text');
+  // And back: an eye that only opens is a secret left on screen.
+  await page.getByTestId('reveal-password').first().click();
+  await expect(field).toHaveAttribute('type', 'password');
+});
