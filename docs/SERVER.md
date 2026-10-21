@@ -279,3 +279,36 @@ change the password after the first login.
 Pair it with `RITE_CONFIG` (above) and the deployment comes up **configured**, not merely
 administrable: the administrator exists, the policies are the ones in your repository, and
 nobody has opened a browser.
+
+## The console is smaller on the desktop client, on purpose
+
+Sign in to a server from the desktop client as an administrator and the button reads
+**Organization**, not **Admin**. Two sections are missing from its left rail: **Overview**
+and **Instance**.
+
+This is a **product decision, not a security boundary**, and the distinction matters:
+
+- The API does **not** care which shell you are using. A desktop client holding an admin
+  session can still `PATCH /api/admin/instance`; nothing refuses it. The real guard is the
+  account's **role**, enforced server-side on every admin route, and it is the same guard
+  for a browser and for the client.
+- What differs is what the interface *offers*. Instance administration — the name, open
+  registration, the host-key policy, what may rest in a vault, the health-check and
+  dashboard policies — is heavy, instance-wide, and rarely done. It belongs on the surface
+  you reach deliberately, which is the web console. The same split as Bitwarden and
+  Vaultwarden: the client is for using the thing, the web console for governing it.
+- Everything an administrator does *often* is in the client: users, invitations, teams,
+  collections. Those are not web-only.
+
+So "Organization" is the honest name for what the client shows — the organisation's people
+and groups — where "Admin" would promise the instance settings that are not there. The rail
+says as much in a note at its foot, pointing at the server's URL.
+
+If you need the instance settings, open the server's address in a browser and sign in
+there. Nothing has to be enabled for that; it is the same server and the same account.
+
+**A consequence worth knowing**: with `RITE_SERVE_WEBUI=off` the web console is the whole
+surface, and with `RITE_SERVE_ADMIN=off` there is no console at all. Turning both off
+leaves an instance that serves terminals and cannot be administered through any interface —
+`RITE_CONFIG` is then the only way to change it, which is a legitimate shape for a
+deployment managed entirely as code.

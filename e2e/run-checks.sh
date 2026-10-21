@@ -39,6 +39,7 @@ run "board-markup-check" node "e2e/board-markup-check.mjs"
 run "device-prefs-check" node "e2e/device-prefs-check.mjs"
 run "version-check" node "e2e/version-check.mjs"
 run "advisory-floor-check" node "e2e/advisory-floor-check.mjs"
+run "mode-nudge-check" node "e2e/mode-nudge-check.mjs"
 run "docs-check" node "e2e/docs-check.mjs"
 
 echo

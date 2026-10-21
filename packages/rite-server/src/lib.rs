@@ -1512,6 +1512,25 @@ fn managed_refusal(state: &ServerState, key: &str) -> Option<Response> {
     })
 }
 
+/// Tell every connected client that `/api/server/mode` changed.
+///
+/// ADR 0017's live distribution was wired to two policies — health-check and dashboard —
+/// and nothing else, although fourteen handlers write a setting that `server_mode` reports.
+/// So renaming the instance left every open client showing the old name on its context
+/// pastille until the person signed out and back in, and the same was true of open
+/// registration, Quick SSH, the default shell and the host-key mode: the admin flipped a
+/// switch, watched nothing happen, and had no way to tell that from a switch that does not
+/// work.
+///
+/// Payload-less and session-less, so it reaches every socket (see `event_visible_to`). The
+/// client re-pulls the mode; this carries no state of its own, which is why it is safe to
+/// send on any change.
+fn nudge_mode_changed(state: &ServerState) {
+    let _ = state
+        .events_tx
+        .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
+}
+
 async fn set_instance_name(
     State(state): State<ServerState>,
     Json(req): Json<InstanceNameReq>,
@@ -1523,6 +1542,7 @@ async fn set_instance_name(
         .db
         .set_setting("instance_name", req.name.trim())
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1543,6 +1563,7 @@ async fn set_session_persistence(
         .db
         .set_setting("session_persistence", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1578,6 +1599,7 @@ async fn set_default_shell(
             .into_response());
     }
     state.db.set_setting("default_shell", shell).await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1596,6 +1618,7 @@ async fn set_shell_choice(
         .db
         .set_setting("allow_shell_choice", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1625,6 +1648,7 @@ async fn set_host_key_mode(
         .db
         .set_setting("host_key_verification_mode", mode)
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1641,6 +1665,7 @@ async fn set_secret_storage(
         .db
         .set_setting("allow_secret_storage", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1662,6 +1687,7 @@ async fn set_secret_reveal(
         .db
         .set_setting("allow_secret_reveal", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1678,6 +1704,7 @@ async fn set_quick_ssh(
         .db
         .set_setting("allow_quick_ssh", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1694,6 +1721,7 @@ async fn set_open_registration(
         .db
         .set_setting("open_registration", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1710,6 +1738,7 @@ async fn set_allow_invitations(
         .db
         .set_setting("allow_invitations", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1732,6 +1761,7 @@ async fn set_confirm_role_change(
         .db
         .set_setting("confirm_role_change", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1751,6 +1781,7 @@ async fn set_collection_policy(
         .db
         .set_setting("collection_policy", &policy.to_string())
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1773,12 +1804,7 @@ async fn set_healthcheck(
         .db
         .set_setting("healthcheck_policy", &policy.to_string())
         .await?;
-    // Live distribution (ADR 0017): nudge every connected client to re-pull the
-    // policy now instead of waiting for its next throttled poll. A payload-less,
-    // session-less event broadcasts to all sockets (see `event_visible_to`).
-    let _ = state
-        .events_tx
-        .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1799,11 +1825,7 @@ async fn set_dashboard_policy(
         .db
         .set_setting("dashboard_policy", &policy.to_string())
         .await?;
-    // Same live distribution as ADR 0017: clients re-pull now rather than at their next
-    // poll, so turning the cards off takes effect while the admin is still watching.
-    let _ = state
-        .events_tx
-        .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -4081,7 +4103,7 @@ async fn add_server(
     if !is_valid_remote_url(&url) {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "remote must be https:// (http:// only on loopback)" })),
+            Json(json!({ "error": "this address needs https:// — plain http:// is accepted only for 127.0.0.1 and localhost" })),
         )
             .into_response());
     }
@@ -4170,7 +4192,7 @@ async fn update_server(
     if !is_valid_remote_url(&url) {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "remote must be https:// (http:// only on loopback)" })),
+            Json(json!({ "error": "this address needs https:// — plain http:// is accepted only for 127.0.0.1 and localhost" })),
         )
             .into_response());
     }
@@ -4252,7 +4274,7 @@ async fn probe_remote(
     if !is_valid_remote_url(&url) {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "remote must be https:// (http:// only on loopback)" })),
+            Json(json!({ "error": "this address needs https:// — plain http:// is accepted only for 127.0.0.1 and localhost" })),
         )
             .into_response());
     }
