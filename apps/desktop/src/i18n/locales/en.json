@@ -688,8 +688,6 @@
     "badgeAdmin": "Admin",
     "badgeOrg": "Organization",
     "instanceTitle": "Server instance",
-    "close": "Close",
-    "closeTitle": "Close — back to the app (Esc)",
     "hiddenNative": "Server settings live in the web console — open the server URL in a browser.",
     "hiddenManager": "Instance administration is limited to admins.",
     "managedBy": "Set by this instance's configuration ({origin})",

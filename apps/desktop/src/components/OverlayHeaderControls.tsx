@@ -13,8 +13,13 @@
  * There is no Close button any more: the nav's first entry IS the way back, and it is named. A ✕
  * beside it would be a second answer to a question already answered — the duplicate the nav was
  * added to remove. Esc still closes, because a mode you open over the app should close that way.
- * The admin console is the exception on both counts: it carries no nav (its own rail already says
- * Teams and Collections), so it keeps its own ✕.
+ *
+ * The admin console used to be the exception, carrying its own ✕ and no nav, on the argument that
+ * its left rail already says Teams and Collections — the organisation's, not yours. In use that
+ * cost more than the ambiguity saved: the console was the one page you could not leave by picking
+ * where to go. It now carries this bar like the others. `escapes` is for the deployment where the
+ * console is the WHOLE surface (`serveWebui: false`): there is no workspace behind it, so Esc must
+ * not pretend there is.
  */
 
 import { useEffect, type RefObject } from 'react';
@@ -28,8 +33,11 @@ import { useAccountsNav } from './accountsNav';
 
 export function OverlayHeaderControls({
   appbarRef,
+  escapes = true,
 }: {
   appbarRef?: RefObject<HTMLElement | null>;
+  /** False when nothing sits behind this surface, so Esc would navigate into nothing. */
+  escapes?: boolean;
 }) {
   const { user, mode, logout } = useServerSession();
   const setSettingsOpen = useSettingsModal((s) => s.setOpen);
@@ -40,13 +48,13 @@ export function OverlayHeaderControls({
   // Esc closes the overlay (a "mode" you open and close over the app), matching the × button —
   // but not while the Settings modal is open over it (Esc there is the modal's to handle/ignore).
   useEffect(() => {
-    if (settingsOpen) return;
+    if (settingsOpen || !escapes) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') navigate('/');
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [settingsOpen]);
+  }, [settingsOpen, escapes]);
 
   return (
     <>

@@ -6,10 +6,9 @@
  * Overview and Collections are new. Admin-role gating is the caller's.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { useServerSession } from '../store/serverSessionStore';
-import { navigate } from '../store/route';
 import {
   Backend,
   type ServerUser,
@@ -32,8 +31,7 @@ import { TeamsPanel } from './TeamsPanel';
 import { InstanceSettingsPanel } from './InstanceSettingsPanel';
 import { DangerZone } from './DangerZone';
 import { IconUsers, IconShield, IconGear, IconCollection } from './icons';
-import { ProfilePastille } from './ProfilePastille';
-import { useSettingsModal } from '../store/settingsModal';
+import { OverlayHeaderControls } from './OverlayHeaderControls';
 import { isNativeShell } from '../utils/nativeShell';
 import { Switch } from './Switch';
 import riteLogo from '../assets/rite.png';
@@ -113,8 +111,9 @@ function IconTicket() {
 
 export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}) {
   const { t } = useTranslation();
-  const { mode, logout, user } = useServerSession();
-  const setSettingsOpen = useSettingsModal((s) => s.setOpen);
+  const { mode, user } = useServerSession();
+  // The header, for OverflowNav's fit measurement (see OverlayHeaderControls).
+  const appbarRef = useRef<HTMLElement>(null);
   const role = (user?.role ?? 'user') as Role;
   const native = isNativeShell();
   // Instance master switch (admin → Instance): with invitations off, hide the tab entirely —
@@ -139,23 +138,14 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
   // turns invitations off while it's open via a live policy push) we fall back without an effect.
   const activeSec = nav.some((n) => n.id === sec) ? sec : (nav[0]?.id ?? 'teams');
 
-  // Esc closes the admin surface (two-worlds: it's a mode you open and close), unless it's the
-  // only screen (web console with no connection manager behind it) or the Settings modal is open
-  // over it (Esc there is the modal's).
-  const settingsOpen = useSettingsModal((s) => s.open);
-  useEffect(() => {
-    if (hideBack || settingsOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') navigate('/');
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [hideBack, settingsOpen]);
+  // Esc and the way back are the shared bar's now (OverlayHeaderControls), so the console
+  // behaves like every other overlay page. `hideBack` is the admin-only deployment: nothing
+  // sits behind the console, so Esc must not navigate into it.
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
       {/* Top bar — a distinct admin surface */}
-      <header className="m-appbar">
+      <header ref={appbarRef} className="m-appbar m-appbar-fit">
         <div className="m-brand flex items-center gap-2.5">
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
           <span className="rounded-md border border-primary/40 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
@@ -169,37 +159,7 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
           </span>
         )}
         <span className="m-spacer" />
-        {/* No Teams/Collections nav here, unlike the other overlay pages (accountsNav.tsx):
-            this console's own left rail already says Teams and Collections — the
-            organisation's, not yours — and the same two words twice on one screen, meaning
-            two different things, is worse than a Close. */}
-        {!hideBack && (
-          <button
-            onClick={() => navigate('/')}
-            className="m-btn m-btn-sm"
-            title={t('admin.closeTitle')}
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
-            </svg>
-            <span className="hidden md:inline">{t('admin.close')}</span>
-          </button>
-        )}
-        {user && (
-          <ProfilePastille
-            username={user.username}
-            role={user.role}
-            instanceName={mode?.instanceName}
-            onSettings={() => setSettingsOpen(true)}
-            onSignOut={() => logout()}
-          />
-        )}
+        <OverlayHeaderControls appbarRef={appbarRef} escapes={!hideBack} />
       </header>
 
       <div className="flex min-h-0 flex-1">

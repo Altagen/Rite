@@ -38,6 +38,21 @@ async function openAdmin(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible({ timeout: 15_000 });
 }
 
+/**
+ * Leave the console the way a user does.
+ *
+ * It used to carry a ✕, and five tests clicked it. The console now takes the same bar as
+ * every other overlay page, so the way back is the nav's named first entry — scoped to the
+ * overlay's own header, because the workspace's bar is still mounted behind it and every
+ * header locator would match twice.
+ */
+async function closeAdmin(page: Page): Promise<void> {
+  await page
+    .locator('.fixed.inset-0.z-50 > header.m-appbar')
+    .getByRole('button', { name: 'Terminals', exact: true })
+    .click();
+}
+
 /** Open the admin console and switch to the Users panel (left-nav). */
 async function openAdminUsers(page: Page): Promise<void> {
   await openAdmin(page);
@@ -1106,8 +1121,9 @@ test('an instance can hand the shell choice to its members, and take it back', a
 
   // The member picks — the same person here, but it is the member's surface that changes.
   // Out of the console first: it is an overlay over the workspace, so until it closes
-  // both headers are on the page and every header locator matches twice.
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  // both headers are on the page and every header locator matches twice. The console
+  // carries the shared nav now, so the way back is its named entry, not a ✕.
+  await closeAdmin(page);
   await page.reload();
   await expectWorkspace(page);
   await page.getByRole('button', { name: /^AD / }).click();
@@ -1136,7 +1152,7 @@ test('an instance can hand the shell choice to its members, and take it back', a
   await page.getByRole('button', { name: 'Instance', exact: true }).click();
   await page.getByTestId('instance-shell-choice').click();
   await expect(page.getByTestId('instance-shell-choice')).toHaveAttribute('aria-checked', 'false');
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await closeAdmin(page);
   await page.reload();
   await expectWorkspace(page);
   const [again] = await Promise.all([
@@ -1189,7 +1205,7 @@ test('a key chosen in the browser opens a real session on the server', async ({ 
   await page.getByRole('button', { name: 'Instance', exact: true }).click();
   await page.getByTestId('instance-host-key-mode').selectOption('accept');
   await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('accept');
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await closeAdmin(page);
   await expectWorkspace(page);
 
   // A machine is always created inside a collection (ADR 0016); on a server that is
@@ -1257,7 +1273,7 @@ test('a passphrase that was not kept is asked for at connect time', async ({ pag
   await page.getByRole('button', { name: 'Instance', exact: true }).click();
   await page.getByTestId('instance-host-key-mode').selectOption('accept');
   await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('accept');
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await closeAdmin(page);
   await expectWorkspace(page);
 
   // A fresh name per run: this vault persists between runs, so a stale row from an
@@ -1358,7 +1374,7 @@ test('a password that was not kept is asked for at connect time', async ({ page 
   await page.getByRole('button', { name: 'Instance', exact: true }).click();
   await page.getByTestId('instance-host-key-mode').selectOption('accept');
   await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('accept');
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await closeAdmin(page);
   await expectWorkspace(page);
 
   // A fresh name per run: this vault persists, so a stale row would satisfy "it was
