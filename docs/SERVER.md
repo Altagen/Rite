@@ -282,6 +282,8 @@ nobody has opened a browser.
 
 ## The console is smaller on the desktop client, on purpose
 
+*The decision and its alternatives: ADR 0025 — the client holds the people, the web console holds the policy.*
+
 Sign in to a server from the desktop client as an administrator and the button reads
 **Organization**, not **Admin**. Two sections are missing from its left rail: **Overview**
 and **Instance**.

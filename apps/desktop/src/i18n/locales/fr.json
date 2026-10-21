@@ -685,7 +685,7 @@
     "badgeAdmin": "Admin",
     "badgeOrg": "Organisation",
     "instanceTitle": "Instance du serveur",
-    "hiddenNative": "Les réglages du serveur sont dans la console web — ouvrir l’URL du serveur dans un navigateur.",
+    "hiddenNative": "Les personnes sont ici — utilisateurs, invitations, équipes, collections. La politique de l’instance vit dans la console web :",
     "hiddenManager": "L’administration de l’instance est réservée aux administrateurs.",
     "managedBy": "Défini par la configuration de cette instance ({origin})",
     "dash": {
@@ -856,7 +856,9 @@
       "matching": "{count} résultat(s)",
       "noMatch": "Aucune équipe ne correspond à « {query} ».",
       "page": "Page {page} sur {total}"
-    }
+    },
+    "hiddenNativeNoUrl": "Les personnes sont ici — utilisateurs, invitations, équipes, collections. La politique de l’instance vit dans la console web, à l’adresse de ce serveur dans un navigateur.",
+    "openConsole": "Ouvrir la console web"
   },
   "ws": {
     "errConnect": "La connexion a échoué",

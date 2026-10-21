@@ -33,16 +33,18 @@ import { InstanceSettingsPanel } from './InstanceSettingsPanel';
 import { DangerZone } from './DangerZone';
 import { IconUsers, IconShield, IconGear, IconCollection } from './icons';
 import { OverlayHeaderControls } from './OverlayHeaderControls';
-import { isNativeShell } from '../utils/nativeShell';
+import { isNativeShell, nativeContext } from '../utils/nativeShell';
 import { Switch } from './Switch';
 import riteLogo from '../assets/rite.png';
 
 type Sec = 'overview' | 'users' | 'invitations' | 'teams' | 'collections' | 'instance';
 type Role = 'admin' | 'manager' | 'user';
 
-// Sections are gated on TWO axes: the account role (managers do org only — users + teams), and the
-// shell (the desktop client hides heavy INSTANCE administration, which lives in the web console —
-// Bitwarden/Vaultwarden model). The API guard is the real boundary; this is UX.
+// Sections are gated on TWO axes (ADR 0025): the account role (managers do org only — users
+// + teams), and the shell (the client holds the PEOPLE, the web console holds the POLICY).
+// The API guard is the real boundary and it is the role, never the shell — a client with an
+// admin session can still PATCH the instance, so no code may read a hidden rail as a
+// permission.
 const NAV: {
   id: Sec;
   labelKey: string;
@@ -132,6 +134,9 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
   const [sec, setSec] = useState<Sec>(nav[0]?.id ?? 'teams');
   // "Admin" only for a full admin on the web console; otherwise it's the org surface.
   const label = role === 'admin' && !native ? t('admin.badgeAdmin') : t('admin.badgeOrg');
+  // The address of the console that DOES carry instance policy. Only a server-context
+  // window has one; a local-vault window has no server to point at.
+  const consoleUrl = native ? (nativeContext()?.url ?? null) : null;
   // Some sections are hidden here (native shell, or a manager) ⇒ point instance admin at the web.
   const hasHidden = nav.length < NAV.filter((n) => n.roles.includes(role)).length || native;
 
@@ -182,9 +187,28 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
             </button>
           ))}
           {hasHidden && (
-            <p className="mt-auto px-2 pt-3 text-[11px] leading-relaxed text-muted-foreground">
-              {native ? t('admin.hiddenNative') : t('admin.hiddenManager')}
-            </p>
+            <div className="mt-auto px-2 pt-3 text-[11px] leading-relaxed text-muted-foreground">
+              {/* It used to say "open the server URL in a browser" without saying which URL,
+                  which is advice the reader cannot act on — the client knows the address. */}
+              {!native ? (
+                <p>{t('admin.hiddenManager')}</p>
+              ) : consoleUrl ? (
+                <>
+                  <p>{t('admin.hiddenNative')}</p>
+                  <button
+                    type="button"
+                    data-testid="open-web-console"
+                    onClick={() => window.open(consoleUrl, '_blank', 'noopener,noreferrer')}
+                    title={t('admin.openConsole')}
+                    className="mt-1 break-all text-left font-mono text-[11px] text-primary hover:underline"
+                  >
+                    {consoleUrl}
+                  </button>
+                </>
+              ) : (
+                <p>{t('admin.hiddenNativeNoUrl')}</p>
+              )}
+            </div>
           )}
         </nav>
 

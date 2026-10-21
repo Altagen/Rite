@@ -685,7 +685,7 @@
     "badgeAdmin": "Admin",
     "badgeOrg": "Organization",
     "instanceTitle": "Server instance",
-    "hiddenNative": "Server settings live in the web console — open the server URL in a browser.",
+    "hiddenNative": "People are here — users, invitations, teams, collections. Instance policy lives in the web console:",
     "hiddenManager": "Instance administration is limited to admins.",
     "managedBy": "Set by this instance's configuration ({origin})",
     "dash": {
@@ -856,7 +856,9 @@
       "matching": "{count} match(es)",
       "noMatch": "No team matches “{query}”.",
       "page": "Page {page} of {total}"
-    }
+    },
+    "hiddenNativeNoUrl": "People are here — users, invitations, teams, collections. Instance policy lives in the web console, at this server’s address in a browser.",
+    "openConsole": "Open the web console"
   },
   "ws": {
     "errConnect": "Failed to connect",
