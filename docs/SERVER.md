@@ -314,3 +314,29 @@ surface, and with `RITE_SERVE_ADMIN=off` there is no console at all. Turning bot
 leaves an instance that serves terminals and cannot be administered through any interface —
 `RITE_CONFIG` is then the only way to change it, which is a legitimate shape for a
 deployment managed entirely as code.
+
+## The server speaks English, for now
+
+The client ships English and French and lets a member switch. `rite-server` does not: its
+refusals cross the wire as English prose — `invalid credentials`, `too many attempts — try
+again later` — and the client shows them as they arrive. So a French member meets English
+in the handful of places a server refusal surfaces.
+
+**This is a decision, not an oversight.** Translating them properly means the server
+returning a stable error *code* per refusal — `invalid_credentials`,
+`remote_requires_https` — which the client looks up in its locales, with the prose moving
+out of Rust entirely. That is the right design. It is also a change to the API contract,
+touching every handler that refuses, and ADR 0008 makes that contract something clients
+negotiate against. With no users on the thing yet, it is cheap to change later and
+expensive to get wrong now.
+
+What did not wait is consistency. The messages had been written one at a time and drifted:
+eight addressed the caller in the second person, two throttles said the same thing with
+different punctuation, and one word was British in an American file.
+`e2e/server-errors-check.mjs` holds the shape from now on — no message addresses its
+caller, each is a lower-case fragment rather than a sentence (the client frames it), and an
+afterthought is joined with an em dash rather than a comma.
+
+**Reopen this** when there is a deployment whose members do not read English, or when a
+refusal needs to carry structured data a client should act on rather than display. Either
+one changes the premise; until then the server speaks one language, consistently.

@@ -1979,7 +1979,7 @@ async fn server_login(
     if let Some(wait) = state.login_limiter.locked_for(&req.username) {
         return Ok((
             StatusCode::TOO_MANY_REQUESTS,
-            Json(json!({ "error": "too many attempts, try again later", "retryAfter": wait })),
+            Json(json!({ "error": "too many attempts — try again later", "retryAfter": wait })),
         )
             .into_response());
     }
@@ -2036,7 +2036,7 @@ async fn server_bootstrap(
     if server_auth::has_any_user(state.db.pool()).await? {
         return Ok((
             StatusCode::CONFLICT,
-            Json(json!({ "error": "server already initialised" })),
+            Json(json!({ "error": "server already initialized" })),
         )
             .into_response());
     }
@@ -2293,7 +2293,7 @@ async fn admin_create_token(
             return Ok((
                 StatusCode::FORBIDDEN,
                 Json(
-                    json!({ "error": "you can't grant membership to a team you don't administer" }),
+                    json!({ "error": "membership can only be granted to a team the caller administers" }),
                 ),
             )
                 .into_response());
@@ -2351,7 +2351,7 @@ async fn admin_revoke_token(
         Some(role) if caller.role != Role::Admin && role != Role::User => {
             return Ok((
                 StatusCode::FORBIDDEN,
-                Json(json!({ "error": "you can't manage this token" })),
+                Json(json!({ "error": "this token is not the caller's to manage" })),
             )
                 .into_response());
         }
@@ -2545,7 +2545,7 @@ async fn admin_set_status(
     if id == current.id {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "you can't change your own status" })),
+            Json(json!({ "error": "an account cannot change its own status" })),
         )
             .into_response());
     }
@@ -2558,7 +2558,7 @@ async fn admin_set_status(
     if !can_manage(current.role, target_role) {
         return Ok((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "you can't manage an account at or above your level" })),
+            Json(json!({ "error": "an account at or above the caller's level cannot be managed" })),
         )
             .into_response());
     }
@@ -2587,7 +2587,7 @@ async fn admin_set_role(
     if id == current.id {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "you can't change your own role" })),
+            Json(json!({ "error": "an account cannot change its own role" })),
         )
             .into_response());
     }
@@ -2598,7 +2598,7 @@ async fn admin_set_role(
     if !can_manage(current.role, target_role) {
         return Ok((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "you can't manage an account at or above your level" })),
+            Json(json!({ "error": "an account at or above the caller's level cannot be managed" })),
         )
             .into_response());
     }
@@ -2608,7 +2608,7 @@ async fn admin_set_role(
         return Ok((
             StatusCode::BAD_REQUEST,
             Json(
-                json!({ "error": "can't change an admin's role here — disable or delete instead" }),
+                json!({ "error": "an admin's role cannot be changed here — disable or delete the account instead" }),
             ),
         )
             .into_response());
@@ -2619,7 +2619,7 @@ async fn admin_set_role(
     if !assign_ok {
         return Ok((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "you can't assign a role at or above your level" })),
+            Json(json!({ "error": "a role at or above the caller's own cannot be assigned" })),
         )
             .into_response());
     }
@@ -2662,7 +2662,7 @@ async fn admin_reset_user(
     if !can_manage(current.role, target_role) {
         return Ok((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "you can't manage an account at or above your level" })),
+            Json(json!({ "error": "an account at or above the caller's level cannot be managed" })),
         )
             .into_response());
     }
@@ -2699,7 +2699,7 @@ async fn admin_delete_user(
     if id == current.id {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "you can't delete yourself" })),
+            Json(json!({ "error": "an account cannot delete itself" })),
         )
             .into_response());
     }
@@ -2709,7 +2709,7 @@ async fn admin_delete_user(
     if !can_manage(current.role, target_role) {
         return Ok((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "you can't manage an account at or above your level" })),
+            Json(json!({ "error": "an account at or above the caller's level cannot be managed" })),
         )
             .into_response());
     }

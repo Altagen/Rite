@@ -42,6 +42,7 @@ run "advisory-floor-check" node "e2e/advisory-floor-check.mjs"
 run "mode-nudge-check" node "e2e/mode-nudge-check.mjs"
 run "dead-end-check" node "e2e/dead-end-check.mjs"
 run "mock-register-check" node "e2e/mock-register-check.mjs"
+run "server-errors-check" node "e2e/server-errors-check.mjs"
 run "docs-check" node "e2e/docs-check.mjs"
 
 echo

@@ -111,6 +111,25 @@ styles have somewhere to live.
 - [ ] Then drop `'unsafe-inline'` from `style-src` in `packages/rite-server/src/lib.rs`
       and let the tls-proxy suite prove nothing regressed
 
+### 🌍 The server's refusals, as codes (Priority: LOW)
+
+`rite-server` answers in English prose and the client shows it as it arrives, so a French
+member meets English wherever a server refusal surfaces — a sign-in failure, a rate limit, a
+rejected address. The client's own 1200 strings are translated; these twenty-eight are not.
+
+Deferred deliberately, not forgotten (the decision and its reasoning: `docs/SERVER.md`, "The
+server speaks English, for now"). Doing it properly means a stable error code per refusal
+that the client looks up in its locales, which changes the API contract ADR 0008 has clients
+negotiate against. Cheap later, expensive to get wrong now, and nobody is reading them yet.
+
+`e2e/server-errors-check.mjs` keeps them consistent in the meantime.
+
+- [ ] A stable code per refusal, carried beside the prose so old clients keep working
+- [ ] Locale entries for each, in both languages
+- [ ] The client prefers the code and falls back to the prose
+- [ ] Reopen trigger: a deployment whose members do not read English, or a refusal that has
+      to carry structured data a client should act on rather than display
+
 ### 🐛 Bug Fixes & Stability (Priority: HIGH)
 - [ ] Comprehensive error handling
 - [ ] Graceful disconnect handling
