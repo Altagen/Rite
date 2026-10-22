@@ -123,14 +123,15 @@
       "portInvalid": "Le port doit être entre 1 et 65535",
       "usernameRequired": "Le nom d’utilisateur est requis",
       "passwordRequired": "Le mot de passe est requis",
-      "keyPathRequired": "Le chemin de la clé privée est requis"
+      "keyPathRequired": "Le chemin de la clé privée est requis",
+      "keyFileRequired": "Choisir le fichier de clé privée"
     },
     "keyFile": "Fichier de clé privée",
-    "keyFileHint": "Lue dans cette page et rangée dans le coffre chiffré — jamais envoyée comme fichier. Les terminaux tournent sur le serveur : un chemin local ne lui dirait rien.",
-    "keyFileLoaded": "Chargée depuis {name}. Chiffrée avec la clé du coffre avant de quitter cette page.",
+    "keyFileHint": "Lue dans cette page et scellée dans l’enregistrement — jamais envoyée comme fichier.",
+    "keyFileLoaded": "Chargée depuis {name}. Scellée avec la clé du coffre avant de quitter cette page.",
     "keyFileUnnamed": "le fichier choisi",
     "keyUnreadable": "Ce fichier n’a pas pu être lu.",
-    "keyLooksPublic": "Cela ressemble à une clé publique (.pub). Choisis la clé privée — le fichier sans extension.",
+    "keyLooksPublic": "Cela ressemble à une clé publique (.pub). Choisir la clé privée — le fichier sans extension.",
     "keyRemember": "Retenir cette passphrase",
     "keyRememberWhy": "Sinon demandée à chaque connexion. Conservée ici, elle voyage avec la clé qu’elle protège et cesse d’être une seconde barrière.",
     "keyRememberOff": "Ce serveur ne conserve pas les passphrases",
@@ -141,7 +142,7 @@
     "passphraseUnlock": "Se connecter",
     "reveal": "Révéler",
     "revealFailed": "Impossible de révéler cela.",
-    "keyPassphraseStored": "Une passphrase est enregistrée pour cette clé. Laisse ce champ vide pour la garder, tape-en une nouvelle pour la remplacer, ou décoche en dessous pour que Rite l’oublie.",
+    "keyPassphraseStored": "Une passphrase est enregistrée pour cette clé. Laisser vide pour la garder, en saisir une autre pour la remplacer, ou décocher en dessous pour que Rite l’oublie.",
     "keyRememberForget": "Enregistrée. Décocher pour l’oublier — demandée à chaque connexion ensuite.",
     "passwordRemember": "Retenir ce mot de passe",
     "passwordRememberWhy": "Sinon demandé à chaque connexion, et Rite ne l’écrit nulle part.",
@@ -158,7 +159,16 @@
     "hcInherit": "Suivre la politique de la collection / du serveur",
     "hcOff": "Ne jamais sonder cette machine",
     "hcWhy": "Une machine peut refuser le sondage actif ; elle ne peut pas en demander plus que le serveur n’autorise.",
-    "inCollection": "dans « {name} »"
+    "inCollection": "dans « {name} »",
+    "keyCarried": "Une clé partagée, dans l’enregistrement",
+    "keyCarriedWhy": "Tout membre de la collection peut ouvrir cette machine. Son hôte voit une seule identité pour tous.",
+    "keyOnDisk": "Un fichier de clé sur chaque poste",
+    "keyOnDiskWhy": "Seul un membre qui a ce fichier, à ce chemin, peut ouvrir cette machine. Client desktop uniquement — un navigateur n’a pas de système de fichiers.",
+    "keyCarryForbidden": "Ce serveur ne conserve aucun secret dans un enregistrement : la clé reste sur chaque poste. Une machine ainsi configurée nécessite un client desktop.",
+    "keyStoredUnnamed": "Une clé est enregistrée",
+    "keyStoredWhy": "La remplacer pour en utiliser une autre. Enregistrer autre chose ici conserve cette clé.",
+    "keyReplace": "Remplacer…",
+    "keyOnDiskNeedsDesktop": "Cette machine lit un fichier de clé sur le poste qui se connecte : elle nécessite un client desktop."
   },
   "errors": {
     "setupFailed": "Erreur lors de la création : {error}",
@@ -433,7 +443,12 @@
     "probesOffYouHint": "À réactiver dans les Paramètres. Le reste de ce tableau de bord n’est pas affecté.",
     "probesCardServer": "non autorisé ici",
     "probesCardYou": "désactivé dans les paramètres",
-    "viaChain": "via {chain}"
+    "viaChain": "via {chain}",
+    "authPassword": "Mot de passe",
+    "authVaultKey": "Clé partagée, dans l’enregistrement",
+    "authPublicKey": "Fichier de clé sur chaque poste",
+    "authAgent": "Agent SSH",
+    "authNeedsDesktop": "client desktop uniquement"
   },
   "board": {
     "title": "Tableau",

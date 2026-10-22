@@ -123,11 +123,12 @@
       "portInvalid": "Port must be between 1 and 65535",
       "usernameRequired": "Username is required",
       "passwordRequired": "Password is required",
-      "keyPathRequired": "Private key path is required"
+      "keyPathRequired": "Private key path is required",
+      "keyFileRequired": "Choose the private key file"
     },
     "keyFile": "Private key file",
-    "keyFileHint": "Read in this page and stored in the encrypted vault — never uploaded as a file. Terminals here run on the server, so a local path would mean nothing to it.",
-    "keyFileLoaded": "Loaded from {name}. Encrypted with the vault key before it leaves this page.",
+    "keyFileHint": "Read in this page and sealed in the record — never uploaded as a file.",
+    "keyFileLoaded": "Loaded from {name}. Sealed with the vault key before it leaves this page.",
     "keyFileUnnamed": "the file chosen",
     "keyUnreadable": "That file could not be read.",
     "keyLooksPublic": "That looks like a public key (.pub). Choose the private key — the file without the extension.",
@@ -158,7 +159,16 @@
     "hcInherit": "Follow the collection / server policy",
     "hcOff": "Never probe this machine",
     "hcWhy": "A machine can opt out of active probing; it cannot opt into more than the server allows.",
-    "inCollection": "in “{name}”"
+    "inCollection": "in “{name}”",
+    "keyCarried": "A shared key, in the record",
+    "keyCarriedWhy": "Every member of the collection can open this machine. Its host sees one identity for all of them.",
+    "keyOnDisk": "A key file on each computer",
+    "keyOnDiskWhy": "Only a member who has that file, at that path, can open this machine. Desktop client only — a browser has no filesystem.",
+    "keyCarryForbidden": "This server keeps no secret in a record, so the key stays on each computer. A machine set up this way needs a desktop client.",
+    "keyStoredUnnamed": "A key is stored",
+    "keyStoredWhy": "Replace it to use another one. Saving anything else here keeps this key.",
+    "keyReplace": "Replace…",
+    "keyOnDiskNeedsDesktop": "This machine reads a key file on the computer that connects, so it needs a desktop client."
   },
   "errors": {
     "setupFailed": "Setup failed: {error}",
@@ -433,7 +443,12 @@
     "probesOffYouHint": "Re-enable them in Settings. Everything else on this dashboard is unaffected.",
     "probesCardServer": "not allowed here",
     "probesCardYou": "off in settings",
-    "viaChain": "via {chain}"
+    "viaChain": "via {chain}",
+    "authPassword": "Password",
+    "authVaultKey": "Shared key, in the record",
+    "authPublicKey": "Key file on each computer",
+    "authAgent": "SSH agent",
+    "authNeedsDesktop": "desktop client only"
   },
   "board": {
     "title": "Board",

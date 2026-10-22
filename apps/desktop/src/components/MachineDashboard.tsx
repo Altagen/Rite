@@ -15,6 +15,7 @@ import { StatusPastille } from './StatusPastille';
 import { useHealth } from '../store/healthStore';
 import { useServerSession } from '../store/serverSessionStore';
 import { useDisplayPrefs } from '../store/displayPrefs';
+import { isNativeShell } from '../utils/nativeShell';
 import { probeBlockedReason, probeVerdict, type ProbeVerdict } from '../utils/dashboardProbes';
 import type { ConnectionInfo, PortForwardConfig } from '../store/connectionsStore';
 import type { PortForwardInfo, RemoteCommandOutput } from '../utils/backend';
@@ -253,10 +254,25 @@ export function MachineDashboard({
     );
   };
   const addr = `${connection.username}@${connection.hostname}:${connection.port}`;
+  const AUTH_LABEL: Record<string, string> = {
+    password: t('dash.authPassword'),
+    vaultKey: t('dash.authVaultKey'),
+    publicKey: t('dash.authPublicKey'),
+    agent: t('dash.authAgent'),
+  };
+  const authLabel =
+    (AUTH_LABEL[connection.authType ?? 'password'] ?? t('dash.authPassword')) +
+    (connection.authType === 'publicKey' && !isNativeShell()
+      ? ` — ${t('dash.authNeedsDesktop')}`
+      : '');
 
   const overviewRows: [string, string][] = [
     [t('dash.address'), addr],
-    [t('dash.auth'), connection.authType ?? 'password'],
+    // The method in words, and whether this machine can be opened from here at all: a key
+    // standing on each computer is read by the process that opens SSH, which in a browser
+    // is the server's container (ADR 0028 §4). Saying so on the machine beats failing at
+    // connect time with an authentication error.
+    [t('dash.auth'), authLabel],
     ...(chain.length ? ([[t('dash.jump'), chain.join(' › ')]] as [string, string][]) : []),
     [t('dash.lastUsed'), relTime(connection.lastUsedAt, t('dash.justNow'), t('dash.never'))],
   ];

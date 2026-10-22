@@ -6,8 +6,20 @@
  */
 import type { AuthType, AuthMethodInput } from '../store/connectionsStore';
 
+/**
+ * Which of the two things a key means here (ADR 0028 §1).
+ *
+ * `carried` puts the key's text in the record: every member of the collection can open the
+ * machine, and its host sees one identity for all of them. `path` puts a path there and no
+ * secret at all: only a member who has that file, there, can open it, and the host sees who
+ * did. The default is `carried` — the only support that works in every context.
+ */
+export type KeySupport = 'carried' | 'path';
+
 export interface AuthState {
   authType: AuthType;
+  /** Carried or named on disk. Only offered where both are possible. */
+  keySupport: KeySupport;
   password: string;
   keyPath: string;
   /**
@@ -58,6 +70,7 @@ export function storedAuthType(connection?: { authType?: string } | null): AuthT
 export function makeAuthState(partial?: Partial<AuthState>): AuthState {
   return {
     authType: 'password',
+    keySupport: 'carried',
     password: '',
     keyPath: '',
     key: '',
@@ -87,17 +100,19 @@ export type AuthUse = 'store' | 'connect';
 /**
  * Build the backend auth method (mirrors the Rust `AuthMethod` enum).
  *
- * A key read from a file becomes `vaultKey` and travels inside the record; a key named on
- * disk stays `publicKey` and is read by whichever process opens SSH.
+ * The key branch follows `keySupport` and not "did a file get read", which is what it used
+ * to do: the support is a decision about who may open the machine (ADR 0028 §1), and
+ * inferring it from which field happened to be filled made it a property of the shell that
+ * created the record instead.
  */
 export function toAuthMethodInput(s: AuthState, use: AuthUse): AuthMethodInput {
   const keep = (remember: boolean) => use === 'connect' || remember;
   const passphrase = keep(s.rememberPassphrase) && s.passphrase ? { passphrase: s.passphrase } : {};
   switch (s.authType) {
     case 'publicKey':
-      return s.key
-        ? { type: 'vaultKey', key: s.key, ...passphrase }
-        : { type: 'publicKey', keyPath: s.keyPath, ...passphrase };
+      return s.keySupport === 'path'
+        ? { type: 'publicKey', keyPath: s.keyPath, ...passphrase }
+        : { type: 'vaultKey', key: s.key, ...passphrase };
     case 'agent':
       return {
         type: 'agent',

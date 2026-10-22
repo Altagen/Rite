@@ -90,6 +90,10 @@ export function ConnectionForm({
       authType: (prefillData?.authType ?? storedAuthType(connection)) as AuthState['authType'],
       password: prefillData?.password ?? '',
       keyPath: prefillData?.keyPath ?? connection?.keyPath ?? '',
+      // The support the record already uses, so editing a machine does not convert it
+      // (ADR 0028 §1). A record with a path keeps its path; anything else is carried,
+      // which is the default for a machine being created.
+      keySupport: connection?.authType === 'publicKey' ? 'path' : 'carried',
       passphrase: prefillData?.passphrase ?? '',
       // Ticked when one is in fact stored, so the box states the machine's condition
       // rather than a default: it rendered unticked on a machine whose passphrase Rite
@@ -212,12 +216,21 @@ export function ConnectionForm({
       newErrors.password = t('connections.validation.passwordRequired');
     }
 
-    // A key from either field (a path here, the file's text on a server), and an edit
-    // that already stores one needs neither: the update keeps what it does not mention.
+    // Each support needs its own thing, and an edit that already holds one needs neither:
+    // the update keeps what it does not mention (ADR 0028 §6).
     const hasStoredKey =
       !!connection && (connection.authType === 'publicKey' || connection.authType === 'vaultKey');
-    if (auth.authType === 'publicKey' && !auth.keyPath.trim() && !auth.key && !hasStoredKey) {
-      newErrors.keyPath = t('connections.validation.keyPathRequired');
+    // Switching support is a change in its own right: picking "a file on this computer" and
+    // typing nothing must not quietly leave the machine carrying its key.
+    const switchedSupport =
+      !!connection && (connection.authType === 'publicKey' ? 'path' : 'carried') !== auth.keySupport;
+    if (auth.authType === 'publicKey' && (!hasStoredKey || switchedSupport)) {
+      if (auth.keySupport === 'path' && !auth.keyPath.trim()) {
+        newErrors.keyPath = t('connections.validation.keyPathRequired');
+      }
+      if (auth.keySupport === 'carried' && !auth.key) {
+        newErrors.keyPath = t('connections.validation.keyFileRequired');
+      }
     }
 
     setErrors(newErrors);
@@ -305,7 +318,11 @@ export function ConnectionForm({
         } else if (auth.authType === 'publicKey') {
           // Nothing new given ⇒ no `authMethod` in the update, so the core keeps the
           // stored one. This is what lets you rename a key-based machine.
-          if (auth.keyPath || auth.key) input.authMethod = toAuthMethodInput(auth, 'store');
+          // Nothing given for this support ⇒ no `authMethod` in the update, so the core
+          // keeps the stored one. This is what lets you rename a key-based machine.
+          // Validation above already insists on it when the support changed.
+          const given = auth.keySupport === 'path' ? !!auth.keyPath.trim() : !!auth.key;
+          if (given) input.authMethod = toAuthMethodInput(auth, 'store');
           // A passphrase typed and not kept: the record says to ask next time, so a key
           // with no passphrase at all is never prompted for.
           input.needsPassphrase = !!auth.passphrase && !auth.rememberPassphrase;
@@ -525,6 +542,14 @@ export function ConnectionForm({
             // being created has nothing stored, and a viewer's source refuses.
             onReveal={connection && reveal ? () => reveal(connection) : undefined}
             hasStoredPassphrase={connection?.hasStoredPassphrase === true}
+            storedKey={
+              connection?.authType === 'vaultKey'
+                ? {
+                    fingerprint: connection.keyFingerprint ?? null,
+                    algorithm: connection.keyAlgorithm ?? null,
+                  }
+                : null
+            }
             hasStoredPassword={connection?.hasStoredPassword === true}
           />
 

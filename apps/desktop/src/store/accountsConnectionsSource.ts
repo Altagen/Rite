@@ -27,6 +27,9 @@ import {
 } from './connectionsStore';
 import { encryptString, decryptString } from '../utils/vaultCrypto';
 import { getLastUsed, recordLastUsed } from '../utils/lastUsed';
+import { keyIdentity } from '../utils/sshKeyFingerprint';
+import { isNativeShell } from '../utils/nativeShell';
+import { translate } from '../i18n/translate';
 import { askSecret, type SecretKind } from '../utils/secretPrompt';
 import {
   unwrapCollectionKeys,
@@ -180,13 +183,17 @@ async function ensurePersonalCollection(
   return personalId;
 }
 
-function toInfo(
+async function toInfo(
   id: string,
   r: StoredRecord,
   createdAt: number,
   updatedAt: number,
   folder: string | null,
-): ConnectionInfo {
+): Promise<ConnectionInfo> {
+  // Which key, for a record that carries one (ADR 0028 §6). Read here rather than in the
+  // form: the form never receives the key material, and a fingerprint is not secret.
+  const identity =
+    r.authMethod.type === 'vaultKey' ? await keyIdentity(r.authMethod.key) : null;
   return {
     id,
     name: r.name,
@@ -196,6 +203,8 @@ function toInfo(
     username: r.username,
     authType: r.authMethod.type,
     keyPath: r.authMethod.type === 'publicKey' ? r.authMethod.keyPath : null,
+    keyFingerprint: identity?.fingerprint ?? null,
+    keyAlgorithm: identity?.algorithm ?? null,
     hasStoredPassphrase:
       (r.authMethod.type === 'publicKey' || r.authMethod.type === 'vaultKey') &&
       !!r.authMethod.passphrase,
@@ -468,7 +477,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
                 // folder stays the record's own (a shared folder inside the collection);
                 // the collection itself is carried as first-class metadata for the tree.
                 infos.push({
-                  ...toInfo(it.id, record, it.createdAt, it.updatedAt, record.folder),
+                  ...(await toInfo(it.id, record, it.createdAt, it.updatedAt, record.folder)),
                   collectionId: col.id,
                   collectionName: header.name,
                   collectionColor: header.color,
@@ -502,6 +511,14 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     const entry = entries.current.get(conn.id);
     if (!entry) throw new Error('connection is not available');
     const { record } = entry;
+    // A key named on disk is read by whichever process opens SSH (ADR 0028 §4). In a
+    // desktop window that is this computer, which is the point of the support. In a
+    // browser it is the server's container, so the request is not made: the server refuses
+    // it too, and an error from there would arrive as an authentication failure with
+    // nothing naming the cause.
+    if (record.authMethod.type === 'publicKey' && !isNativeShell()) {
+      throw new Error(translate('connections.keyOnDiskNeedsDesktop'));
+    }
     // Server-execute: the decrypted target is handed to the server to run SSH; it
     // is never persisted server-side (ADR 0011 / 0012 client-execute). The jump
     // chain travels with it — the server can't resolve hops it can't decrypt.

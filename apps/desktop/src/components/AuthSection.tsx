@@ -1,10 +1,11 @@
 /**
  * AuthSection — shared authentication controls for the connection forms.
  *
- * One source of truth for the New machine form AND Quick SSH, so they stay ISO
- * (this mirrors the design mock's shared auth section). Password and public-key
- * (file) are always offered; SSH agent is offered only in the native shell —
- * a browser can't reach $SSH_AUTH_SOCK.
+ * One source of truth for the New machine form AND Quick SSH, so they stay ISO.
+ *
+ * Password and key are always offered; the SSH agent only in the native shell, which is
+ * the only place `$SSH_AUTH_SOCK` exists. A key is two different things and the member
+ * chooses which in a server context (ADR 0028): carried in the record, or named on disk.
  */
 import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
 import { RevealToggle } from './RevealToggle';
@@ -41,6 +42,13 @@ interface AuthSectionProps {
    * stays empty, so the row has to say one is there.
    */
   hasStoredPassword?: boolean;
+  /**
+   * Which key this machine already carries (ADR 0028 §6). A file input cannot be
+   * prefilled, so without this the row showed "no file chosen" on a machine whose key is
+   * stored — which reads as *nothing was saved*. Null where the key's format does not
+   * publish its public half; absent on a machine being created.
+   */
+  storedKey?: { fingerprint: string | null; algorithm: string | null } | null;
 }
 
 export function AuthSection({
@@ -51,19 +59,26 @@ export function AuthSection({
   onReveal,
   hasStoredPassphrase,
   hasStoredPassword,
+  storedKey,
 }: AuthSectionProps) {
   const { t } = useTranslation();
   const native = isNativeShell();
-  // Where SSH will run decides what a key field can mean (ADR 0024 §2). On this machine's
-  // own vault, a path: the key stays on disk and Rite keeps a reference, which is better
-  // than a copy. Pointed at a server, SSH runs there — a path would name a file in its
-  // container, which no member can put there — so the key travels with the record.
+  // A key means one of two things, and in a server context the member chooses which
+  // (ADR 0028 §1): carried in the record, so every member of the collection can open the
+  // machine, or named on disk, so only a member who has that file can. A local vault has no
+  // collection and no account to seal to, so there it is a path and there is no choice.
   const serverMode = useServerSession((st) => st.mode);
-  const sshRunsHere = !serverMode?.accounts;
+  const inVault = !serverMode?.accounts;
   // One policy over every secret a record can keep (ADR 0024 §4): the SSH password, the
   // key passphrase, a carried key. It binds this form and not the data — the record is
   // sealed here before it leaves, so no instance can check it afterwards.
   const mayRemember = serverMode?.allowSecretStorage !== false;
+  // A carried key IS a stored secret (ADR 0024 §4 names it), and this form is where that
+  // policy is enforced: the record is sealed before it leaves, so the server cannot check
+  // it afterwards. Off ⇒ the carried support is not offered, which makes key auth on this
+  // instance a desktop matter (ADR 0028 §5).
+  const mayCarry = mayRemember;
+  const support = inVault ? 'path' : mayCarry ? value.keySupport : 'path';
   const [keyError, setKeyError] = useState<string | null>(null);
   const [revealError, setRevealError] = useState<string | null>(null);
 
@@ -121,6 +136,10 @@ export function AuthSection({
   };
   const [showPassword, setShowPassword] = useState(false);
   const [showPassphrase, setShowPassphrase] = useState(false);
+  // Replacing a stored key is asked for, not offered: the picker is what wipes it.
+  const [replacingKey, setReplacingKey] = useState(false);
+  const keyAlreadyStored = !!storedKey && value.keySupport === 'carried';
+  const showStoredKey = keyAlreadyStored && !replacingKey && !value.key;
   /**
    * Patch the auth state from the LATEST value, not the one this render captured.
    *
@@ -250,10 +269,49 @@ export function AuthSection({
         </div>
       )}
 
-      {/* Public key — a file on this machine, or the key itself (ADR 0024 §2) */}
+      {/* A key: carried in the record, or standing on the machine (ADR 0028) */}
       {value.authType === 'publicKey' && (
         <div className="space-y-4">
-          {sshRunsHere ? (
+          {/* The choice itself, where there is one. Two radios rather than a checkbox: they
+              are not a setting and its absence, they are two different answers to "who may
+              open this machine", and the text under each has to say which. */}
+          {!inVault && mayCarry && (
+            <div className="space-y-2" data-testid="key-support">
+              {(['carried', 'path'] as const).map((option) => (
+                <label
+                  key={option}
+                  className="flex cursor-pointer items-start gap-2 text-sm leading-5"
+                >
+                  <input
+                    type="radio"
+                    name="key-support"
+                    checked={value.keySupport === option}
+                    onChange={() => set({ keySupport: option })}
+                    data-testid={`key-support-${option}`}
+                    className="mt-0.5 flex-none"
+                  />
+                  <span>
+                    {t(option === 'carried' ? 'connections.keyCarried' : 'connections.keyOnDisk')}
+                    <span className="block text-muted-foreground">
+                      {t(
+                        option === 'carried'
+                          ? 'connections.keyCarriedWhy'
+                          : 'connections.keyOnDiskWhy',
+                      )}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          {/* Forbidden rather than chosen: the instance keeps no secret in a record, so the
+              only key support left is a path — and that makes this machine desktop-only. */}
+          {!inVault && !mayCarry && (
+            <p className="text-sm text-muted-foreground" data-testid="key-carry-forbidden">
+              {t('connections.keyCarryForbidden')}
+            </p>
+          )}
+          {support === 'path' ? (
             <div>
               <label className="mb-1 block text-sm font-medium">
                 {t('connections.keyPath')} <span className="text-red-500">*</span>
@@ -271,23 +329,54 @@ export function AuthSection({
           ) : (
             <div>
               <label className="mb-1 block text-sm font-medium">
-                {t('connections.keyFile')} <span className="text-red-500">*</span>
+                {t('connections.keyFile')}
+                {!keyAlreadyStored && <span className="text-red-500"> *</span>}
               </label>
-              <input
-                type="file"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) readKeyFile(file);
-                }}
-                className={`${INPUT_CLS} file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1 file:text-foreground`}
-                data-testid="auth-key-file"
-              />
+              {/* A stored key names itself instead of showing an empty picker, which read as
+                  "nothing was saved" (ADR 0028 §6). The picker comes back on Replace: the
+                  key is not re-chosen by accident, and an edit that touches nothing else
+                  keeps it. */}
+              {showStoredKey ? (
+                <div
+                  className="flex flex-wrap items-center gap-2 rounded border border-border bg-input px-3 py-2"
+                  data-testid="auth-key-stored"
+                >
+                  <code className="min-w-0 flex-1 truncate font-mono text-xs">
+                    {storedKey?.fingerprint ?? t('connections.keyStoredUnnamed')}
+                  </code>
+                  {storedKey?.algorithm && (
+                    <span className="flex-none rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {storedKey.algorithm}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setReplacingKey(true)}
+                    className="flex-none text-sm text-primary hover:underline"
+                    data-testid="auth-key-replace"
+                  >
+                    {t('connections.keyReplace')}
+                  </button>
+                </div>
+              ) : (
+                <input
+                  type="file"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) readKeyFile(file);
+                  }}
+                  className={`${INPUT_CLS} file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1 file:text-foreground`}
+                  data-testid="auth-key-file"
+                />
+              )}
               <p className="mt-1 text-sm text-muted-foreground">
                 {value.key
                   ? t('connections.keyFileLoaded', {
                       name: value.keyName || t('connections.keyFileUnnamed'),
                     })
-                  : t('connections.keyFileHint')}
+                  : showStoredKey
+                    ? t('connections.keyStoredWhy')
+                    : t('connections.keyFileHint')}
               </p>
               {keyError && (
                 <p className="mt-1 text-sm text-red-500" data-testid="auth-key-error">

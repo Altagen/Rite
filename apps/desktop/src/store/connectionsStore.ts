@@ -55,6 +55,14 @@ export interface ConnectionInfo {
    */
   keyPath?: string | null;
   /**
+   * Which key this machine carries, when it carries one (ADR 0028 §6). Derived from the
+   * key's public half, which an OpenSSH file holds in the clear — so it is not a secret,
+   * and it is the string `ssh-keygen -lf` prints, comparable against `authorized_keys`.
+   * Null where the format does not publish one, absent where the key is a path.
+   */
+  keyFingerprint?: string | null;
+  keyAlgorithm?: string | null;
+  /**
    * A key passphrase is kept with this machine (ADR 0024 §4). Not a secret: it is the
    * difference between "this key has no passphrase" and "it has one and Rite holds it".
    * Without it the form's "remember this passphrase" box could only render unticked, on a
