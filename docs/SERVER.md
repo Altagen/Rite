@@ -75,9 +75,30 @@ missing.)
 **Why a password and not a hash.** The bootstrap creates a **vault**, and the vault key is
 derived from the password (ADR 0011). A hash would make an account that can sign in and
 whose vault cannot exist. So a browser-free bootstrap means the server sees the password
-once — that is the whole reason this file exists in this shape. In Swarm or Kubernetes,
-point the same `secrets:` stanza at a real secret store; the server reads `/run/secrets`
-either way.
+once — that is the whole reason this file exists in this shape.
+
+### Why a path, and not a variable
+
+`RITE_ADMIN_PASSWORD_FILE` names a **path**, and a path is what every secret manager
+already produces. The `admin_password.txt` beside these files is only what that path points
+at on a laptop with no secret manager at all:
+
+| Where the secret lives | What the server is given |
+| --- | --- |
+| a compose or Swarm secret | `/run/secrets/rite_admin_password` (tmpfs, never on disk) |
+| a Kubernetes Secret, mounted as a volume | one file per key, on a memory-backed volume |
+| Vault, through the agent or the CSI driver | a rendered file at a path you choose |
+| a systemd unit with `LoadCredential=` | `$CREDENTIALS_DIRECTORY/<name>` |
+| nothing — a laptop | `./admin_password.txt`, which is the case above with no manager |
+
+So the server supports all of them by supporting none of them specifically. Nothing in it
+knows what Kubernetes is.
+
+The variable form, `RITE_ADMIN_PASSWORD`, exists as a fallback and is **the one to avoid**:
+an environment is readable through `docker inspect` and `/proc/<pid>/environ`, it is
+inherited by every child process, and it lands in crash reports. That is why the `_FILE`
+convention exists across container images at all — Postgres, MySQL and the rest read their
+passwords the same way, for the same reason.
 
 So, the two paths:
 
