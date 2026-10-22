@@ -38,7 +38,12 @@ services:
 
 secrets:
   rite_admin_password:
-    # echo -n 'a-strong-password' > deploy/admin_password.txt
+    # install -m 600 /dev/null deploy/admin_password.txt
+    # printf '%s' 'a-strong-password' > deploy/admin_password.txt
+    #
+    # The file must EXIST — compose refuses to start without a secret's source. Leave it
+    # empty for no bootstrap at all: the web UI then creates the administrator, and no
+    # password rests on disk. See docs/SERVER.md.
     file: ./admin_password.txt
 
 volumes:

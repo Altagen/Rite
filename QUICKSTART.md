@@ -59,7 +59,7 @@ the Playwright suite plus the standalone checks:
 sh e2e/gate.sh
 ```
 
-Its last step tears down a local deployment and consumes `deploy/admin_password.txt`,
+Its last step tears down a local deployment and removes `deploy/admin_password.txt`,
 so do not run it against an instance you are using. `task e2e` and `task e2e:play` are
 the subsets.
 

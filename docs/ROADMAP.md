@@ -51,6 +51,16 @@ inside the server container. What is left is the code.
   - [ ] Cursor style configuration — same: a profile value (`cursorBlink` is hard-coded today)
 
 ### 🔒 Security Enhancements (Priority: HIGH)
+- [ ] **A one-time bootstrap token, as an alternative to the password file.** A headless
+      first start needs the plaintext password *once*, because the bootstrap derives the
+      admin's vault key from it (ADR 0011) — a hash would make an account whose vault
+      cannot exist. So `deploy/admin_password.txt` holds a live admin password at rest
+      until someone deletes it, and the only mitigations today are its mode and a warning
+      in the log. The better shape: the server prints a single-use token on stdout at
+      first start, that token authorises exactly one `create the administrator` call, and
+      it dies with it — no secret at rest, and the operator chooses the password. It
+      changes the bootstrap contract (what a fresh instance accepts, and from whom), so it
+      needs an ADR before any code
 - [ ] Zeroize sensitive memory — **keys done**, passwords not: `MasterKey` is
       `ZeroizeOnDrop` and the server's vault key is `Zeroizing<[u8; 32]>`, but an SSH
       password travels as a `String` and is dropped without being wiped

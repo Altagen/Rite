@@ -44,8 +44,57 @@ to run.
 Each one expects an admin password next to it:
 
 ```bash
-echo -n 'a-strong-password' > deploy/admin_password.txt
+install -m 600 /dev/null deploy/admin_password.txt
+printf '%s' 'a-strong-password' > deploy/admin_password.txt
 ```
+
+**The mode matters.** A plain `echo >` creates the file with whatever the umask gives,
+which on most systems is readable by every account on the machine. Compose mounts it as a
+secret, so inside the container it is a file under `/run/secrets` rather than an
+environment variable — `docker inspect`, `/proc/<pid>/environ` and a crash report do not
+carry it. The exposure left is the one on the host, and the mode is what closes it.
+
+**Empty it once the administrator has signed in** — `: > deploy/admin_password.txt`, not
+`rm`, because compose needs the file to exist for the next start. The server reads it at
+every start and only acts on it while no account exists, so after the first start it is a
+live admin password in a file that does nothing. A server that finds one still configured
+on a populated instance says so in its log.
+
+Why a password at all, and not a hash: the bootstrap creates a **vault**, and the vault key
+is derived from the password (ADR 0011). A hash would make an account that can sign in and
+whose vault cannot exist. So a browser-free bootstrap means the server sees the password
+once — and nothing else about this file is negotiable for that reason. In Swarm or
+Kubernetes, point the same `secrets:` stanza at a real secret store; the server reads
+`/run/secrets` either way.
+
+### Not using it at all
+
+The file is **required** by the three compose files here, and not because the server needs
+it: compose refuses to start when a secret's source is missing, so leaving it out fails
+before the container exists.
+
+```
+Error: statfs ./admin_password.txt: no such file or directory
+```
+
+To deploy without a password at rest, **create it empty**:
+
+```bash
+: > deploy/admin_password.txt
+```
+
+An empty file means *do not bootstrap*. The server creates no account, and the web UI
+offers **Create the server administrator** — the same first run as a desktop vault, with
+nothing secret on disk. An empty file does not fall back to `RITE_ADMIN_PASSWORD` either:
+emptying it is a decision, not a gap to fill.
+
+So the two paths, both from the same compose file:
+
+| `deploy/admin_password.txt` | What happens on first start |
+| --- | --- |
+| a password in it | the administrator exists before anyone opens a browser — turnkey (ADR 0020) |
+| empty | no account; the browser creates the administrator, and no secret rests anywhere |
+| absent | compose refuses to start |
 
 ## 1. Try it locally — no certificate at all
 

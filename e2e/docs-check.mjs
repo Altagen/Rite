@@ -148,7 +148,8 @@ check('every relative link in the docs points at something', () => {
 const GENERATED = new Map([
   [
     'deploy/admin_password.txt',
-    'written by the compose turnkey start (ADR 0020) and consumed on first login',
+    'written by the operator for the compose turnkey start (ADR 0020); the server only ' +
+      'acts on it while no account exists, and the gate removes its own',
   ],
 ]);
 

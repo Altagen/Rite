@@ -4,7 +4,7 @@
 //! (local desktop shell) and TCP+TLS (shared server) come in later phases.
 
 use anyhow::{Context, Result};
-use tracing::info;
+use tracing::{info, warn};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -43,11 +43,23 @@ async fn main() -> Result<()> {
 
         // Non-interactive admin bootstrap for headless deploys: on a fresh
         // server, RITE_ADMIN_USER + RITE_ADMIN_PASSWORD(_FILE) create the admin.
-        if let Some((user, pass)) = admin_bootstrap_creds()
-            && !rite_core::server_auth::has_any_user(state.db.pool()).await?
-        {
-            rite_core::server_auth::bootstrap_admin(state.db.pool(), &user, &pass).await?;
-            info!("[rite-server] bootstrapped admin '{user}' from the environment");
+        match admin_bootstrap_creds() {
+            Some((user, pass))
+                if !rite_core::server_auth::has_any_user(state.db.pool()).await? =>
+            {
+                rite_core::server_auth::bootstrap_admin(state.db.pool(), &user, &pass).await?;
+                info!("[rite-server] bootstrapped admin '{user}' from the environment");
+            }
+            // A password that is still mounted on an instance that already has accounts is
+            // a live admin credential at rest, doing nothing. It used to be read and
+            // silently ignored at every start, which is how it stays there for months.
+            Some(_) => warn!(
+                "[rite-server] an admin bootstrap password is still configured, and this \
+                 instance already has accounts — nothing was created. Remove the secret \
+                 (deploy/admin_password.txt and the RITE_ADMIN_* variables): it is a live \
+                 credential that no longer does anything."
+            ),
+            None => {}
         }
     }
     // RITE_ADDR default = loopback; port 0 lets the OS pick a free port (the
@@ -100,14 +112,83 @@ async fn main() -> Result<()> {
 /// either `RITE_ADMIN_PASSWORD_FILE` (preferred — read from a mounted secret) or
 /// `RITE_ADMIN_PASSWORD`. Returns `None` if not fully set.
 fn admin_bootstrap_creds() -> Option<(String, String)> {
-    let user = std::env::var("RITE_ADMIN_USER")
-        .ok()
-        .filter(|v| !v.is_empty())?;
-    let pass = std::env::var("RITE_ADMIN_PASSWORD_FILE")
-        .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
+    resolve_bootstrap_creds(
+        std::env::var("RITE_ADMIN_USER").ok(),
+        std::env::var("RITE_ADMIN_PASSWORD_FILE")
+            .ok()
+            .and_then(|p| std::fs::read_to_string(p).ok()),
+        std::env::var("RITE_ADMIN_PASSWORD").ok(),
+    )
+}
+
+/// The rule itself, with the environment read out of it so it can be tested.
+///
+/// **An EMPTY password file means "do not bootstrap".** That is the documented way to get
+/// the browser's `Create the server administrator` out of a compose deployment: the shipped
+/// `deploy/compose.yml` declares the file as a secret, and compose refuses to start when a
+/// secret's source is missing — so the file cannot simply be left out. Emptying it can,
+/// and it leaves no password at rest.
+///
+/// An empty file does NOT fall through to `RITE_ADMIN_PASSWORD`: the operator who emptied
+/// it asked for no bootstrap, and silently using a variable they had also set would be the
+/// opposite of that.
+fn resolve_bootstrap_creds(
+    user: Option<String>,
+    password_file: Option<String>,
+    password_var: Option<String>,
+) -> Option<(String, String)> {
+    let user = user.filter(|v| !v.is_empty())?;
+    let pass = password_file
         .map(|s| s.trim().to_string())
-        .or_else(|| std::env::var("RITE_ADMIN_PASSWORD").ok())
+        .or(password_var)
         .filter(|v| !v.is_empty())?;
     Some((user, pass))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_bootstrap_creds;
+
+    /// The documented opt-out (`docs/SERVER.md`): the shipped compose file declares the
+    /// password as a secret, and compose refuses to start when a secret's source is
+    /// missing — verified, it fails with `statfs … no such file or directory`. So the file
+    /// cannot be left out, and EMPTYING it is how an operator asks for the browser
+    /// bootstrap instead. That is a contract now, so it is pinned here.
+    #[test]
+    fn an_empty_password_file_means_no_bootstrap() {
+        let some = |s: &str| Some(s.to_string());
+
+        // The turnkey path: a user and a file with a password in it.
+        assert_eq!(
+            resolve_bootstrap_creds(some("admin"), some("a-strong-password\n"), None),
+            Some(("admin".to_string(), "a-strong-password".to_string())),
+            "a trailing newline is how `printf`/`echo` leave it, and must be trimmed"
+        );
+
+        // Emptied on purpose: no account is created, and the web UI offers to create one.
+        assert_eq!(resolve_bootstrap_creds(some("admin"), some(""), None), None);
+        assert_eq!(
+            resolve_bootstrap_creds(some("admin"), some("   \n\t"), None),
+            None
+        );
+
+        // …and it does NOT fall through to the variable. Someone who emptied the file
+        // asked for no bootstrap; quietly using a password they had also set elsewhere
+        // would be the opposite of what they asked.
+        assert_eq!(
+            resolve_bootstrap_creds(some("admin"), some(""), some("from-the-variable")),
+            None,
+            "an emptied file is a decision, not a gap to fill"
+        );
+
+        // The variable is the fallback only when there is no file at all.
+        assert_eq!(
+            resolve_bootstrap_creds(some("admin"), None, some("from-the-variable")),
+            Some(("admin".to_string(), "from-the-variable".to_string()))
+        );
+
+        // No user, no bootstrap — whatever the password says.
+        assert_eq!(resolve_bootstrap_creds(None, some("p"), None), None);
+        assert_eq!(resolve_bootstrap_creds(some(""), some("p"), None), None);
+    }
 }

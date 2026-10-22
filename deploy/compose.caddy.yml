@@ -51,6 +51,9 @@ services:
 
 secrets:
   rite_admin_password:
+    # The file must EXIST — compose refuses to start without a secret's source. Mode 600,
+    # and empty for no bootstrap at all (the web UI then creates the administrator, and no
+    # password rests on disk). See docs/SERVER.md.
     file: ./admin_password.txt
 
 volumes:
