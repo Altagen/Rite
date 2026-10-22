@@ -54,11 +54,25 @@ inside the server container. What is left is the code.
 - [ ] Zeroize sensitive memory — **keys done**, passwords not: `MasterKey` is
       `ZeroizeOnDrop` and the server's vault key is `Zeroizing<[u8; 32]>`, but an SSH
       password travels as a `String` and is dropped without being wiped
-- [ ] Throttle logins by address, not only by username — a single password tried
-      against a thousand usernames meets a fresh counter each time. Needs a client
-      address, and behind a reverse proxy that means trusting a header, so it comes
-      with a per-instance "trusted proxy" setting. `LoginLimiter` says so where it
-      caps its own map
+- [ ] **Throttle logins by address, not only by username** — decided and deferred, see
+      ADR 0026. The counter keys on the username, so five failures against one account
+      lock it; a single common password tried against a thousand *different* usernames
+      meets a fresh counter every time and nothing ever locks. That is password spraying,
+      and it is the attack a multi-account server actually meets.
+      - [ ] A per-instance **trusted-proxy** setting first (ADR 0020 key, so it renders
+            inert in the console when declared in the file). Reading `X-Forwarded-For`
+            without it is worse than no counter: an attacker forges a fresh address per
+            request and the throttle never fires, or forges a colleague's and locks them
+            out
+      - [ ] The default trusts nothing and falls back to the socket — which means the
+            address counter does **not** cover the recommended reverse-proxy deployment
+            until an administrator fills the setting in. Stated here because it is a
+            trade-off, not an oversight
+      - [ ] Address and name keep separate counters and separate verdicts
+      - [ ] Registration and token redemption carry the same gap and move with it
+      - Not in 0.2.4: a misconfigured address throttle is less safe than none, and it adds
+        a security setting an administrator has to understand. Shipping that in the days
+        before a release is how the regression reaches a real instance
 - [ ] Known-hosts management — nothing lists what is trusted or forgets a key
   (the API has only the strict-mode `accept` and `reject` for a pending key, and
   there is no UI at all). So a host whose key legitimately rotated has no clean

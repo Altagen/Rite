@@ -213,9 +213,13 @@ impl LoginLimiter {
     const MAX_FAILURES: u32 = 5;
     const WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
     const LOCKOUT: std::time::Duration = std::time::Duration::from_secs(60);
-    /// Above this many tracked usernames, a write sweeps and then refuses to add more
-    /// until the sweep makes room. A real instance holds a handful of entries; this is
-    /// only ever reached by someone trying names rather than passwords.
+    /// Above this many tracked usernames, a write sweeps to make room. A real instance
+    /// holds a handful of entries; this is only ever reached by someone trying names
+    /// rather than passwords — which is password spraying, and which this limiter does
+    /// NOT stop: it keys on the name, so a thousand names collect one failure each and
+    /// nothing reaches MAX_FAILURES. Counting by address is the missing half and waits
+    /// for a trusted-proxy setting (ADR 0026) — reading `X-Forwarded-For` without one is
+    /// worse than not counting, since the header is the attacker's to write.
     const MAX_TRACKED: usize = 10_000;
 
     /// Whether this string could name an account, which is the only reason to remember
