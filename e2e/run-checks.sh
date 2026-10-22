@@ -43,6 +43,7 @@ run "mode-nudge-check" node "e2e/mode-nudge-check.mjs"
 run "dead-end-check" node "e2e/dead-end-check.mjs"
 run "mock-register-check" node "e2e/mock-register-check.mjs"
 run "server-errors-check" node "e2e/server-errors-check.mjs"
+run "layouts-source-check" node "e2e/layouts-source-check.mjs"
 run "docs-check" node "e2e/docs-check.mjs"
 
 echo
@@ -56,7 +57,8 @@ echo "server checks (fresh accounts server each):"
 for c in discovery-check first-login-check reset-check manager-role-check \
          rbac-hierarchy-check enrollment-token-check enrollment-scoping-check \
          invitations-switch-check self-register-check collection-policy-check \
-         healthcheck-check dashboard-policy-check server-authz-check; do
+         healthcheck-check dashboard-policy-check layouts-policy-check \
+         server-authz-check; do
   pkill -f 'target/debug/rite-server' 2>/dev/null
   sleep 1
   sh e2e/serve-accounts.sh >/tmp/rite-checks-server.log 2>&1 &

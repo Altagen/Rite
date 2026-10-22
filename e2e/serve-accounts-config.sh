@@ -27,6 +27,11 @@ webui = false
 
 [collection_policy]
 maxMembers = 7
+
+# ADR 0027, and NOT at its default: declared false for the web UI so the lock and the
+# reported value are both discriminating.
+[layouts_policy]
+webui = false
 TOML
 
 # A secret the way a container runtime mounts one: a file whose whole content is the

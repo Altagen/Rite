@@ -593,6 +593,27 @@ test('active health-check UI: Check marks an unreachable machine down (ADR 0017)
 // request that leaves the browser: it must carry the hops the user configured.
 
 /** Sign carol into the workspace (her password is CAROL_NEW by this point). */
+/** Sign in as the administrator, bootstrapping the instance if this is the first test. */
+async function signInAdmin(page: Page): Promise<void> {
+  await page.goto('/');
+  if (
+    await page
+      .getByText('Create the server administrator')
+      .isVisible()
+      .catch(() => false)
+  ) {
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /create administrator/i }).click();
+  } else {
+    await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+    await page.locator('#username').fill(ADMIN.username);
+    await page.locator('#password').fill(ADMIN.password);
+    await page.getByRole('button', { name: /^sign in$/i }).click();
+  }
+  await expectWorkspace(page);
+}
+
 async function signInCarol(page: Page): Promise<void> {
   await page.goto('/');
   await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
@@ -1038,9 +1059,12 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   await expect(quick).toHaveAttribute('role', 'switch');
   await expect(quick.locator('input[type="checkbox"]')).toHaveCount(0);
 
-  // Focus mode belongs to the native window, and the workspace file to a machine.
+  // Focus mode belongs to the native window, so its switch is not here.
   await expect(page.getByTestId('toolbar-focusMode')).toHaveCount(0);
-  await expect(page.getByTestId('toolbar-layouts')).toHaveCount(0);
+  // Layouts, on the other hand, are here now: ADR 0027 gave the account a sealed copy, so
+  // a browser has a workspace to read and a button to hide. It used to be absent, because
+  // a server answered that there was no file and there was no substitute.
+  await expect(page.getByTestId('toolbar-layouts')).toBeVisible();
 
   // Host-key verification is the instance's on a server: every connection runs there, so
   // the policy is reported and not offered. It used to be a dropdown writing one shared
@@ -1423,4 +1447,99 @@ test('a password that was not kept is asked for at connect time', async ({ page 
   await page.getByRole('button', { name: 'Instance', exact: true }).click();
   await page.getByTestId('instance-host-key-mode').selectOption('strict');
   await expect(page.getByTestId('instance-host-key-mode')).toHaveValue('strict');
+});
+
+/**
+ * Layouts on an account (ADR 0027), end to end in a browser.
+ *
+ * A server used to answer that there was no layouts file, so the web UI had no layouts at
+ * all — and that was read as a property of the model rather than of the one option that
+ * had been rejected. The account's copy is a blob sealed in the browser under the user's
+ * own key, so what this proves is the whole chain: the editor writes, the server stores
+ * something it cannot read, and a fresh sign-in gets the text back.
+ *
+ * It also walks the reader's switch, because the switch is where the dead end was: the
+ * section it lives in used to be hidden whenever the feature was unavailable, which would
+ * have hidden the way back on.
+ */
+test('the account holds a layouts document the server cannot read, and the reader may decline it', async ({
+  page,
+  request,
+}) => {
+  await signInAdmin(page);
+
+  const open = async () => {
+    await page.getByRole('button', { name: /^AD / }).click();
+    await page.getByRole('button', { name: /^settings$/i }).click();
+    await page.getByTestId('settings-nav-layouts').click();
+  };
+  await open();
+
+  // On the account, not in a file: there is no path to show, because there is no file.
+  await expect(page.getByTestId('settings-layouts-blocked')).toHaveCount(0);
+  await expect(page.getByText('sealed under', { exact: false }).first()).toBeVisible();
+
+  const DOC = [
+    '[[preset]]',
+    'name = "Journal"',
+    'command = "journalctl -f"',
+    '',
+    '[[layout]]',
+    'name = "Account morning"',
+    '',
+    '  [[layout.pane]]',
+    '  command = "echo one"',
+    '',
+    '  [[layout.pane]]',
+    '  command = "echo two"',
+    '  split = "right"',
+    '',
+  ].join('\n');
+
+  await page.getByTestId('open-layouts-settings').click();
+  await page.getByTestId('layouts-file').fill(DOC);
+  await page.getByTestId('layouts-save').click();
+  await expect(page.getByTestId('layouts-saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  // The cards are the section's own, parsed from what came back rather than from the
+  // textarea: `.first()` because the dialog's list says the same thing while it is open.
+  await expect(page.getByText('Account morning').first()).toBeVisible();
+
+  // What the server holds is not the document. If this ever reads as TOML, the seal broke
+  // and every machine name in every member's workspace is readable by the instance.
+  const token = await page.evaluate(() => sessionStorage.getItem('rite.sessionToken') ?? '');
+  const stored = await (
+    await request.get(`${BASE}/api/user/layouts`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+  ).json();
+  expect(stored.blob).toBeTruthy();
+  expect(stored.blob).not.toContain('layout');
+  expect(stored.blob).not.toContain('Journal');
+  expect(stored.blob.startsWith('v1.')).toBe(true);
+  expect(typeof stored.updatedAt).toBe('number');
+
+  // Sign out and back in: the key is derived from the password again, and the document
+  // comes back from the server. One kept in this tab's memory would pass everything above
+  // and fail here.
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await page.getByRole('button', { name: /^AD / }).click();
+  await page.getByTestId('pastille-sign-out').click();
+  await signInAdmin(page);
+  await open();
+  await expect(page.getByText('Account morning').first()).toBeVisible();
+
+  // The reader declines. The cards go, the section stays — with the switch still in it.
+  await page.getByTestId('layouts-enabled').click();
+  await expect(page.getByTestId('settings-layouts-blocked')).toBeVisible();
+  await expect(page.getByTestId('open-layouts-settings')).toHaveCount(0);
+  await expect(page.getByTestId('layouts-enabled')).toBeVisible();
+  // …and the toolbar switch for a button that no longer exists goes with it.
+  await page.getByTestId('settings-nav-toolbar').click();
+  await expect(page.getByTestId('toolbar-layouts')).toHaveCount(0);
+
+  // Declining does not delete. Back on, the document is where it was.
+  await page.getByTestId('settings-nav-layouts').click();
+  await page.getByTestId('layouts-enabled').click();
+  await expect(page.getByText('Account morning').first()).toBeVisible();
 });

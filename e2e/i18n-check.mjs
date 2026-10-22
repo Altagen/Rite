@@ -255,11 +255,13 @@ const HARDCODED = [
   // hid 125 of them from it — and a one-word rule hid another 73, which is where most
   // buttons live: Cancel, Delete, Rename…, Save.
   ['jsx-text', />\s*([A-Z][^<>{}\n]*?[a-z][^<>{}]*?)\s*</gs],
-  ['attr', /\b(?:title|placeholder|aria-label|label|alt)=["']([A-Z][^"']{4,})["']/g],
+  // `hint` is in this list because it was not, and four sentences lived in it — the
+  // explanation under a setting's title, which is the longest text on that row.
+  ['attr', /\b(?:title|placeholder|aria-label|label|alt|hint)=["']([A-Z][^"']{4,})["']/g],
   // The same attributes written as a template literal, which the quoted pattern cannot
   // see. Twenty-one of them were left that way, all of them screen-reader labels and
   // tooltips: `aria-label={`Remove ${v.label} from the list`}`.
-  ['attr-tpl', /\b(?:title|placeholder|aria-label|label|alt)=\{`([^`]{4,})`\}/g],
+  ['attr-tpl', /\b(?:title|placeholder|aria-label|label|alt|hint)=\{`([^`]{4,})`\}/g],
   ['confirm', /window\.confirm\(\s*[`'"]([^`'"]{10,})/g],
   ['toast', /toast\(\s*[`'"]([A-Z][^`'"]{6,})/g],
   ['throw', /throw new Error\(\s*[`'"]([A-Z][^`'"]{6,})/g],
