@@ -11,8 +11,8 @@
  * So each crate we moved for a security reason gets a line here, with the advisory it
  * answers. A downgrade fails by name, and the name is the explanation.
  *
- * What this is NOT: a reproduction of the vulnerability. Two of the three advisories
- * below are in russh's SERVER side, and the one place Rite runs a russh server is
+ * What this is NOT: a reproduction of the vulnerability. Two of russh's advisories
+ * below are in its SERVER side, and the one place Rite runs a russh server is
  * `packages/rite-core/tests/ssh_transport.rs`; the shipped code is a client
  * (`russh::client`) and an agent client (`russh::keys::agent::client`). Reproducing
  * GHSA-j7h2-66j4-ghjf would mean offering a public key with a forged signature, which
@@ -34,6 +34,13 @@ const LOCK = readFileSync(new URL('../Cargo.lock', import.meta.url), 'utf8');
 /**
  * crate -> [minimum, why]. The `why` is printed on failure, so it has to say what the
  * floor buys rather than restate the number.
+ *
+ * A floor applies to the copies on ITS OWN major line. Two incompatible majors of one
+ * crate coexist legitimately — `webpki-roots` is in the tree twice, 1.0.x for
+ * `rite-server` and 0.26.x for `tokio-tungstenite` — and the advisory named only one of
+ * them. A floor that swept both would fail for a version nobody claimed was vulnerable,
+ * which is the way a check stops being read. Every other copy is still asserted against
+ * its own line's floor, and a floor matching NO copy fails: the list would be stale.
  */
 const FLOORS = [
   [
@@ -41,6 +48,27 @@ const FLOORS = [
     '0.23.46',
     'RUSTSEC-2026-0349 — a server could be talked into a weaker key exchange than the ' +
       'one both sides had agreed on (#348)',
+  ],
+  [
+    'rustls-webpki',
+    '0.103.16',
+    'RUSTSEC-2026-0382 — certificate verification could accept an intermediate that ' +
+      'had been distrusted, so a chain Rite checked was not the chain it thought it ' +
+      'had checked. Reached through rustls, on every TLS connection the server makes',
+  ],
+  [
+    'webpki-roots',
+    '1.0.10',
+    'RUSTSEC-2026-0381 — the bundled trust anchors still carried distrusted emSign ' +
+      'intermediates. `rite-server` depends on this directly for the proxied remote ' +
+      'context (ADR 0012), so the roots it trusts are these',
+  ],
+  [
+    'tokio',
+    '1.54.1',
+    'RUSTSEC-2026-0384 — a race in `tokio::time::Interval`, and 1.54.0 was yanked. ' +
+      'Every timer in the server runs on it: the probe cooldown, the keep-alives, the ' +
+      'login throttle',
   ],
   [
     'russh',
@@ -125,12 +153,20 @@ const check = (name, fn) => {
 console.log('a security floor holds:');
 
 for (const [crate, floor, why] of FLOORS) {
-  check(`${crate} >= ${floor}`, () => {
+  check(`${crate} >= ${floor} (on its own major line)`, () => {
     const versions = lockedVersions(crate);
     // A crate that left the tree entirely is not "fine by default": the floor was
     // written for a dependency we have, and its absence means this list is now wrong.
     assert.notEqual(versions.length, 0, `${crate} is not in Cargo.lock — is this floor stale?`);
-    for (const v of versions) {
+    const line = (v) => v.split('.').slice(0, v.startsWith('0.') ? 2 : 1).join('.');
+    const onThisLine = versions.filter((v) => line(v) === line(floor));
+    assert.notEqual(
+      onThisLine.length,
+      0,
+      `${crate} is in Cargo.lock as ${versions.join(', ')}, none on the ${line(floor)} ` +
+        `line this floor was written for — is it stale?`,
+    );
+    for (const v of onThisLine) {
       assert.ok(
         cmp(v, floor) >= 0,
         `Cargo.lock pins ${crate} ${v}, below the ${floor} floor.\n        Why the floor: ${why}`,
