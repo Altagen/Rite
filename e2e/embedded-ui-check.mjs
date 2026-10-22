@@ -9,7 +9,9 @@
  * whole surface was absent from a binary built minutes after it was written.
  *
  * A date comparison rather than a content hash: the question is only whether the copy was
- * skipped, and the copy is the fix.
+ * skipped, and the copy is the fix. `e2e/gate.sh` does it in step 1 and `task build` does
+ * it before the release build, so this fires on a hand-rolled `cargo build --release` —
+ * which is exactly the one that went out wrong.
  *
  * Run: node e2e/embedded-ui-check.mjs
  */
