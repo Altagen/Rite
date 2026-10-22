@@ -51,6 +51,43 @@ const FLOORS = [
   ],
 ];
 
+/**
+ * Advisories we have READ and decided not to act on, with the decision.
+ *
+ * This exists because of a gap the floors above do not cover: `cargo audit` and GitHub's
+ * advisory database do not see the same things. GHSA-wrw7-89jp-8q8g has been open against
+ * this repository since March 2026 and `cargo audit` has never mentioned it — so the gate
+ * was green for seven months on a medium advisory, and nothing compared the two lists.
+ *
+ * A floor above says "do not go below this version". A line here says "this one is known,
+ * and here is why nothing moved" — which is the other half, and the half that rots fastest
+ * when it lives in someone's memory instead of a file.
+ *
+ * Nothing is asserted against these: an accepted advisory has no version to hold. They are
+ * here to be read, and to be re-read when the reopen condition arrives.
+ */
+const ACCEPTED = [
+  {
+    id: 'GHSA-wrw7-89jp-8q8g',
+    crate: 'glib 0.18.5',
+    what:
+      'Unsoundness in Iterator/DoubleEndedIterator for glib::VariantStrIter — undefined ' +
+      'behaviour, not a remotely reachable flaw. Rite never calls VariantStrIter.',
+    reach: 'The desktop client only, through gtk → tao/wry. rite-server does not link it.',
+    why:
+      'There is nothing to bump to. tao 0.37.1 and wry 0.57.0 ARE the latest, and on Linux ' +
+      'wry renders in webkit2gtk, which is GTK3. The fix landed in glib 0.20, which belongs ' +
+      'to the GTK4 line; gtk-rs froze its GTK3 bindings at 0.18/0.19 and moved on to gtk4. ' +
+      'So the correction is not available to us at any version — it needs wry to migrate to ' +
+      'GTK4 + webkitgtk-6 upstream.',
+    decision:
+      'Accepted. Stay on wry/GTK3. If this becomes a real problem — an exploit path, or a ' +
+      'distribution dropping webkit2gtk — move the shell to GTK4, which is large work and a ' +
+      'deliberate project rather than a bump.',
+    reopen: 'wry ships a GTK4 backend, or the advisory gains a demonstrated exploit path.',
+  },
+];
+
 /** Every version recorded for a crate in Cargo.lock — a lockfile may hold several. */
 function lockedVersions(crate) {
   const found = [];
@@ -101,6 +138,23 @@ for (const [crate, floor, why] of FLOORS) {
     }
   });
 }
+
+check('every accepted advisory carries its reasoning', () => {
+  // Not an assertion about versions — an assertion that the record is usable. An accepted
+  // advisory without a reach, a reason and a reopen condition is a shrug with an id on it.
+  for (const a of ACCEPTED) {
+    // `crate` is a name and a version; the rest have to be sentences, because a reader
+    // arriving at this file is asking "why is this still open" and wants an answer.
+    assert.ok(a.crate?.length > 4, `${a.id} does not say which crate`);
+    for (const field of ['what', 'reach', 'why', 'decision', 'reopen']) {
+      assert.ok(
+        typeof a[field] === 'string' && a[field].length > 30,
+        `${a.id} has no usable ${field}`,
+      );
+    }
+    assert.match(a.id, /^(GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}|RUSTSEC-\d{4}-\d{4})$/);
+  }
+});
 
 check('every floor names an advisory', () => {
   // A floor without a reason is a number nobody will dare to move. If a bump was not
