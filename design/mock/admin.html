@@ -477,6 +477,11 @@ let HC={passive:true, mode:'off', tcp:true, icmp:false, ssh:false, restrict:fals
 // containers and services. Defaults on/on: that is what ships, and silently disabling a
 // working feature on upgrade would surprise users more than the traffic it saves.
 let DASH={webui:true, clients:true, interval:30};
+// Layouts policy (ADR 0027). Two booleans and no third `enabled` flag: both false is the
+// feature off, so there is no second switch to contradict them. Policy and not
+// enforcement — the copy says so, because the blob is sealed client-side and this server
+// cannot tell a layouts write from any other.
+let LAYOUTS={webui:true, clients:true};
 function mchk(key,label){return `<label class="mchk" onclick="event.preventDefault();HC.${key}=!HC.${key};renderContent();toast('${label}: '+(HC.${key}?'allowed':'blocked'))"><span class="mbox ${HC[key]?'on':''}">${HC[key]?'✓':''}</span>${label}</label>`;}
 function hcRows(){const off=HC.mode==='off';
   return `<div class="setrow" style="border-top:1px solid var(--border);margin-top:4px"><div><div class="lab">Machine health-check</div><div class="hint"><b>Passive “last seen”</b> (from users' own connections) costs no traffic. <b>Active probing</b> makes network requests from every client — a scan-like footprint at scale — so it's governed here.</div></div></div>
@@ -504,6 +509,14 @@ function dashRows(){const off=!DASH.webui&&!DASH.clients;
       <div onclick="DASH.clients=!DASH.clients;renderContent();toast('Probing cards '+(DASH.clients?'allowed':'off')+' in attached clients')">${tog(DASH.clients)}</div></div>
     <div class="setrow gate ${off?'off':''}" style="border:none"><div><div class="lab">Minimum refresh interval</div><div class="hint">Floor between <b>automatic</b> refreshes: an open dashboard re-runs these two cards on its own, never faster than this. Clients apply a floor of their own, so a very small number here buys little. Pressing Refresh is not rate-limited, and a dashboard nobody is watching does not poll.</div></div>
       <div style="display:flex;gap:8px;align-items:center"><input class="inp" style="width:80px" value="${DASH.interval}"><span class="muted">seconds</span></div></div>`;}
+/* Layouts policy (ADR 0027). Where the feature exists, and nothing about how: the copy is
+   encrypted in the member's browser, so this server stores it and cannot read it. */
+function layoutsRows(){
+  return `<div class="setrow" style="border-top:1px solid var(--border);margin-top:4px"><div><div class="lab">Layouts</div><div class="hint">What opens at the start of a session, and the split menu's presets. Stored on the account, sealed under the member's key: this server keeps it and cannot read it.<br>A <b>policy</b>, not an application: this server cannot tell a layouts save from any other write, so there is nothing here it could refuse. The official surfaces honour these switches.</div></div></div>
+    <div class="setrow"><div><div class="lab">Allow in the web UI</div><div class="hint">A browser has no filesystem, so it reads the account's copy or nothing.</div></div>
+      <div onclick="LAYOUTS.webui=!LAYOUTS.webui;renderContent();toast('Layouts '+(LAYOUTS.webui?'allowed':'off')+' in the web UI')">${tog(LAYOUTS.webui)}</div></div>
+    <div class="setrow" style="border:none"><div><div class="lab">Allow in attached clients</div><div class="hint">A desktop window picks per computer between the account's copy and a local file. Off removes both.</div></div>
+      <div onclick="LAYOUTS.clients=!LAYOUTS.clients;renderContent();toast('Layouts '+(LAYOUTS.clients?'allowed':'off')+' in attached clients')">${tog(LAYOUTS.clients)}</div></div>`;}
 function instance(){
   // Client capabilities = what CONNECTED clients may do, governed by the server (shell,
   // Quick SSH, health-check). Grouped so it stays legible as it grows. See rite-mock-two-shells.
@@ -538,6 +551,7 @@ function instance(){
       ${quickRow}
       ${hcRows()}
       ${dashRows()}
+      ${layoutsRows()}
     </div>`;
 }
 
