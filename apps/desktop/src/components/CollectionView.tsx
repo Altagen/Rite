@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
+import { relTime } from '../utils/relTime';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { useServerSession } from '../store/serverSessionStore';
 import { useHealth } from '../store/healthStore';
@@ -15,19 +16,6 @@ import { useHealthPref, effectiveHealth } from '../store/healthPrefStore';
 import { StatusPastille } from './StatusPastille';
 
 /** Compact relative time for a machine's last use ("2h ago"), or "—" when never used. */
-function relTime(ts: number | null | undefined): string {
-  if (!ts) return '—';
-  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (s < 60) return 'just now';
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
-  return `${Math.floor(d / 7)}w ago`;
-}
-
 function CollectionIcon({ color }: { color?: string | null }) {
   return (
     <svg
@@ -317,7 +305,7 @@ export function CollectionView({
             d="M12 8v4l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
           />
         </svg>
-        <span>{relTime(c.lastUsedAt)} · ssh</span>
+        <span>{relTime(c.lastUsedAt, t, { never: '—' })} · ssh</span>
       </div>
     </div>
   );
@@ -684,7 +672,7 @@ export function CollectionView({
               {grid(shown)}
             </>
           ) : (
-            emptyNote('No machines match your filter.')
+            emptyNote(t('cview.noMatch'))
           )
         ) : (
           <>
@@ -695,7 +683,7 @@ export function CollectionView({
               <>
                 {subfolders.length > 0 && (
                   <>
-                    {eyebrow('Folders')}
+                    {eyebrow(t('cview.folders'))}
                     <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(215px,1fr))]">
                       {subfolders.map(folderTile)}
                     </div>
@@ -703,7 +691,7 @@ export function CollectionView({
                 )}
                 {here.length > 0 && (
                   <>
-                    {subfolders.length > 0 && eyebrow('Machines')}
+                    {subfolders.length > 0 && eyebrow(t('cview.machines'))}
                     {grid(here)}
                   </>
                 )}

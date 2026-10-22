@@ -10,6 +10,7 @@
 import { deviceStore } from '../utils/deviceStore';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from '../i18n/i18n';
+import { relTime } from '../utils/relTime';
 import { forwardKey, useRunningForwards } from '../utils/forwards';
 import { StatusPastille } from './StatusPastille';
 import { useHealth } from '../store/healthStore';
@@ -143,19 +144,6 @@ function ExpandBtn({
 }
 
 /** Compact relative time for last use ("2h ago"), or "—" when never used. lastUsedAt is epoch seconds. */
-function relTime(ts: number | null | undefined, justNow: string, never: string): string {
-  if (!ts) return never;
-  const s = Math.max(0, Math.floor(Date.now() / 1000 - ts));
-  if (s < 60) return justNow;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
-  return `${Math.floor(d / 7)}w ago`;
-}
-
 /** Resolve the ProxyJump chain (jump → jump-of-jump → …) to hop names, cycle-guarded. */
 function jumpChain(conn: ConnectionInfo, connections: ConnectionInfo[]): string[] {
   const byId = new Map(connections.map((c) => [c.id, c]));
@@ -274,7 +262,7 @@ export function MachineDashboard({
     // connect time with an authentication error.
     [t('dash.auth'), authLabel],
     ...(chain.length ? ([[t('dash.jump'), chain.join(' › ')]] as [string, string][]) : []),
-    [t('dash.lastUsed'), relTime(connection.lastUsedAt, t('dash.justNow'), t('dash.never'))],
+    [t('dash.lastUsed'), relTime(connection.lastUsedAt, t, { never: t('dash.never') })],
   ];
 
   const [prefs, setPrefs] = useState<DashPrefs>(() => readDashPrefs(connection.id));
