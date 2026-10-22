@@ -86,7 +86,7 @@
     <!-- Terminals / Teams / Collections / Administration + the bell: one list, in
          full-data.js. "Terminals" IS the way back, which is why there is no ✕ here. -->
     <span id="onav" style="display:contents"></span>
-    <button class="profile" onclick="toggleProfile(event)" title="Your account"><span class="avatar" id="avSm"></span><span class="pmeta"><span class="pname" id="pName"></span><span class="prole" id="pRole"></span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
+    <button class="profile" onclick="toggleProfile(event)" title="Account"><span class="avatar" id="avSm"></span><span class="pmeta"><span class="pname" id="pName"></span><span class="prole" id="pRole"></span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
   </div>
   <div class="pmenu" id="pmenu">
     <div class="pmenu-head"><span class="avatar" id="pmAv"></span><div><div class="pname" id="pmName" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span>rite.acme.io</span></div></div></div>
@@ -109,7 +109,7 @@
     <main class="cmain" id="detail"></main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>collections</b> · your collections — you hold the keys, so names &amp; members are yours</div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>collections</b> · member collections — the keys are held here, so names &amp; members are readable</div>
 <script src="full-data.js"></script>
 <script>
 /* ================= Rite collection manager (mock) =================
@@ -166,17 +166,17 @@ function detail(){
   const machines=(c.conns||[]).length;
   const members=`<div class="panel"><div class="panel-h"><span class="t">Members · ${c.members.length}</span>
       ${owner?`<button class="btn btn-primary btn-sm" onclick="toast('Add member…')"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg> Add member</button>`:''}</div>
-    ${c.members.map(m=>{const r=c.roles[m];const pend=c.pending.includes(m);const you=m===ME?' <span class="muted" style="font-size:12px">(you)</span>':'';
+    ${c.members.map(m=>{const r=c.roles[m];const pend=c.pending.includes(m);const selfTag=m===ME?' <span class="muted" style="font-size:12px">(this account)</span>':'';
       const grant=pend?(owner
         ?`<button class="btn btn-sm" title="Roster-only: seal machine access to them" onclick="toast('Grant machine access to ${m}')">Grant machine access</button>`
         :`<span class="role-badge role-viewer" title="Roster access only — awaiting machine access from a member">no machines</span>`):'';
       const ctl=owner&&m!==ME?`${roleSelect(c,m)}<button class="btn btn-ghost btn-sm" title="Remove" onclick="toast('Remove ${m}')" style="color:var(--red)">${EXICON.trash}</button>`:roleBadge(r);
-      return `<div class="mrow">${av(m)}<span class="nm">${m}${you}</span>${grant}${ctl}</div>`;}).join('')}</div>`;
+      return `<div class="mrow">${av(m)}<span class="nm">${m}${selfTag}</span>${grant}${ctl}</div>`;}).join('')}</div>`;
 
   // Colour is a PERSONAL view tint (owner decision 2026-07-30): only you see it, it's not
   // shared and not part of the metaKey — so every member (viewers included) can set it.
-  const swatches=`<div class="panel" style="padding:16px 18px"><div style="font-weight:600;margin-bottom:2px">Colour <span class="muted" style="font-weight:400;font-size:12px">· your view</span></div>
-    <div class="muted" style="font-size:12px;margin-bottom:10px">A personal tint to spot this collection fast — only you see it, it isn't shared.</div>
+  const swatches=`<div class="panel" style="padding:16px 18px"><div style="font-weight:600;margin-bottom:2px">Colour <span class="muted" style="font-weight:400;font-size:12px">· local view</span></div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">A personal tint to spot this collection fast — local only, it isn't shared.</div>
     <div style="display:flex;gap:9px;flex-wrap:wrap">${CCOLORS.map(col=>`<button class="sw ${col===c.color?'sel':''}" style="background:${col}" onclick="MINE.find(x=>x.id==='${c.id}').color='${col}';render()"></button>`).join('')}</div></div>`;
 
   const rename=hint=>`<div class="panel" style="padding:6px 18px 10px"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0">
@@ -184,7 +184,7 @@ function detail(){
         <div style="display:flex;gap:8px"><input class="inp" style="width:200px" value="${c.name}"><button class="btn btn-sm" onclick="toast('Renamed')">Save</button></div></div></div>`;
 
   const danger=`<div class="panel danger" style="padding:6px 18px 10px"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0">
-        <div><div style="font-weight:600;color:var(--red)">${owner?'Delete collection':'Leave collection'}</div><div class="muted" style="font-size:12px">${owner?'Removes it and its machines for every member. Can’t be undone.':'You lose access; others keep it.'}</div></div>
+        <div><div style="font-weight:600;color:var(--red)">${owner?'Delete collection':'Leave collection'}</div><div class="muted" style="font-size:12px">${owner?'Removes it and its machines for every member. Can’t be undone.':'Access is lost here; others keep theirs.'}</div></div>
         <button class="btn btn-sm danger" style="color:var(--red)" onclick="toast('${owner?'Delete':'Leave'} “${c.name}”…')">${owner?'Delete':'Leave'}</button></div></div>`;
 
   const head=`<div class="cmain-h"><span style="color:${c.color};display:grid;place-items:center">${layers}</span><h1>${c.name}</h1>
@@ -192,7 +192,7 @@ function detail(){
       <span class="muted" style="font-size:13px">· ${machines} machine${machines===1?'':'s'}</span></div>`;
 
   if(!c.shared)
-    return head+`<div class="cmain-sub">Your private space — only you. It can't be shared or deleted; it always exists.</div>`+swatches+rename('Label your personal space.');
+    return head+`<div class="cmain-sub">A private space — one account only. It can't be shared or deleted; it always exists.</div>`+swatches+rename('Label for the personal space.');
 
   // Shared: members always; colour = personal (every member); rename + settings (health-check,
   // offer) = OWNER only; delete (owner) / leave (member). Editors write machines/folders, not
@@ -203,7 +203,7 @@ function detail(){
   const off=c.offer||null;
   const offer=`<div class="panel" style="padding:16px 18px">
     <div style="font-weight:600;margin-bottom:2px">Offer to a team</div>
-    <div class="muted" style="font-size:12px;margin-bottom:10px">List this collection to a team so its members can discover it and request access. They still can't open it until you grant them.</div>
+    <div class="muted" style="font-size:12px;margin-bottom:10px">List this collection to a team so its members can discover it and request access. They still can't open it until it is granted.</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <select class="inp" style="width:auto" onchange="toast('Offer '+(this.value==='— none —'?'removed':'set to '+this.value))"><option ${!off?'selected':''}>— none —</option>${ALLTEAMS.map(tn=>`<option ${off&&off.team===tn?'selected':''}>${tn}</option>`).join('')}</select>
       <input class="inp" style="flex:1;min-width:200px" placeholder="Discovery label (shown to the team)" value="${off?off.label:''}">
@@ -216,11 +216,11 @@ function detail(){
   const hc=`<div class="panel" style="padding:16px 18px">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
       <div><div style="font-weight:600;margin-bottom:2px">Active health-check for these machines</div>
-        <div class="muted" style="font-size:12px">Off keeps this collection out of any active probing, even where the server allows it — you can only restrict, never exceed the server policy. Passive “last seen” is unaffected.</div></div>
+        <div class="muted" style="font-size:12px">Off keeps this collection out of any active probing, even where the server allows it — only a narrowing, never beyond the server policy. Passive “last seen” is unaffected.</div></div>
       <div class="toggle on" onclick="this.classList.toggle('on');toast(this.classList.contains('on')?'Follows the server policy':'Active probing off for this collection')"><i></i></div></div>
   </div>`;
 
-  return head+`<div class="cmain-sub">Shared with ${c.members.length} people · you are ${myRole(c)}.</div>`
+  return head+`<div class="cmain-sub">Shared with ${c.members.length} people · role here: ${myRole(c)}.</div>`
     +members+swatches+(owner?rename('Shared — every member sees this name.'):'')+(owner?hc:'')+(owner?offer:'')+danger;
 }
 
@@ -238,13 +238,13 @@ function discoverView(){
     const btn=mine?`<button class="btn btn-sm" onclick="openMine('${c.id}')">Open</button>`
       :pending?`<button class="btn btn-sm" disabled style="opacity:.55;cursor:default">Awaiting a grant</button>`
       :`<button class="btn btn-primary btn-sm" onclick="discReq('${c.offer.label}')">Request access</button>`;
-    const sub=mine?"You're a member — open it any time":"Machines stay end-to-end encrypted until a member grants you";
+    const sub=mine?"Member — open it any time":"Machines stay end-to-end encrypted until a member grants access";
     return `<div class="oc"><span class="oc-ic">${layers}</span><div class="oc-txt"><div class="oc-label">${c.offer.label}</div><div class="oc-sub">${sub}</div></div><div class="oc-act">${badge}${btn}</div></div>`;};
   const allCollapsed=myteams.every(t=>DCOLL.has(t.name));
   return `<div class="cmain-h"><span style="color:var(--accent);display:grid;place-items:center">${compass}</span><h1>Discover</h1><div style="flex:1"></div>
       <button class="btn btn-ghost btn-sm" onclick="discToggleAll()">${allCollapsed?'Expand all':'Collapse all'}</button></div>
-    <div class="cmain-sub">Collections offered to the teams you're in — request access and a member grants you the key.</div>
-    <div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Labels here are for discovery, not secrets.</b> They're visible to your team (and the server) so you can find and request access. Machines and private names stay end-to-end encrypted until a member grants you.</div></div>
+    <div class="cmain-sub">Collections offered to the joined teams' — request access and a member grants the key.</div>
+    <div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Labels here are for discovery, not secrets.</b> They're visible to the team and the server, so a collection can be found and access requested. Machines and private names stay end-to-end encrypted until a member grants access.</div></div>
     ${myteams.map(t=>{const o=offeredTo(t.name),collapsed=DCOLL.has(t.name);
       return `<div class="panel disc-panel ${collapsed?'collapsed':''}">
         <button class="panel-h disc-h" onclick="toggleTeam('${t.name}')" title="${collapsed?'Expand':'Collapse'}">
@@ -257,7 +257,7 @@ function discoverView(){
 function toggleTeam(name){DCOLL.has(name)?DCOLL.delete(name):DCOLL.add(name);render();}
 function discToggleAll(){const my=ORG.teams.filter(t=>t.members.includes(ME));if(my.every(t=>DCOLL.has(t.name)))DCOLL.clear();else my.forEach(t=>DCOLL.add(t.name));render();}
 function openMine(id){SEL=id;VIEW='mine';render();}
-function discReq(label){DREQ.add(label);toast('Requested access to '+label+' — a member will grant you the key');render();}
+function discReq(label){DREQ.add(label);toast('Requested access to '+label+' — a member grants the key');render();}
 function setView(v){VIEW=v;render();}
 function render(){
   document.querySelectorAll('.ctab').forEach(b=>b.classList.toggle('on',b.dataset.v===VIEW));

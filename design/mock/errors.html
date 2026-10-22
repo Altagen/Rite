@@ -73,17 +73,17 @@ const I={
 // sev: warn (transient/retry) · error (hard, needs care) · info (action) · muted (neutral)
 const STATES=[
  ['starting',{sev:'warn',icon:I.spin,title:`${INST} is starting up`,msg:`The server isn't ready yet <span style="opacity:.7">(HTTP 503)</span>. This usually clears in a few seconds — we'll keep trying on our own.`,detail:'spin|Retrying automatically…',actions:[['Retry now','btn-primary']]}],
- ['unreachable',{sev:'warn',icon:I.cloud,title:"Can't reach the server",msg:`We couldn't connect to <b>${INST}</b>. Check your internet connection, or that the server address is correct.`,detail:`${HOST} · connection failed`,actions:[['Try again','btn-primary'],['Edit server URL','']],retry:'unreachable'}],
- ['lost',{sev:'warn',icon:I.spin,title:'Connection lost',msg:`You've lost contact with <b>${INST}</b>. Your open terminals will pick up right where they were once you're back — nothing is lost.`,detail:'spin|Reconnecting…',actions:[['Reconnect now','btn-primary'],['See the banner version','','banner']]}],
- ['offline',{sev:'warn',icon:I.wifiOff,title:"You're offline",msg:`Your device isn't connected to the internet. Rite will reconnect on its own the moment you're back online.`,detail:'spin|Waiting for a connection…',actions:[['Try again','btn-primary']]}],
- ['session',{sev:'info',icon:I.key,title:'Your session expired',msg:`For your security you were signed out after a spell of inactivity. Sign in again to carry on — your saved connections stay safe and encrypted.`,actions:[['Sign in','btn-primary','signin.html']]}],
- ['denied',{sev:'error',icon:I.shield,title:"You don't have access",msg:`This area is for administrators of <b>${INST}</b>. If you think you should have access, ask an admin.`,detail:'HTTP 403 · forbidden',actions:[['Back to app','btn-primary','web.html']]}],
- ['notfound',{sev:'muted',icon:I.compass,title:"This page doesn't exist",msg:`The link may be broken, or what you're looking for was moved or deleted.`,detail:'HTTP 404 · not found',actions:[['Back to app','btn-primary','web.html']]}],
- ['server',{sev:'error',icon:I.alert,title:'Something went wrong',msg:`The server hit an unexpected error <span style="opacity:.7">(HTTP 500)</span> — it's not you. Try again in a moment; if it keeps happening, share the reference below with an admin.`,detail:'Reference: 7f3a-be21-c4',actions:[['Try again','btn-primary'],['Copy reference','']]}],
- ['ratelimited',{sev:'warn',icon:I.clock,title:'Too many attempts',msg:`You've tried too many times in a row. Wait a moment before trying again — this protects your account from password guessing.`,detail:'cd|Try again in',actions:[['Try again','btn-primary',null,'cd']]}],
- ['tls',{sev:'error',icon:I.lockx,title:"Couldn't secure the connection",msg:`Rite couldn't establish a verified secure (TLS) connection to <b>${INST}</b>. The certificate may be invalid, expired, or intercepted — so, to keep you safe, we didn't connect.`,detail:'certificate verification failed',actions:[['Retry','btn-primary'],['What does this mean?','']]}],
- ['version',{sev:'info',icon:I.refresh,title:'Update needed',msg:`This server needs a newer version of the Rite client than the one you're running. Update to connect.`,detail:'client 1.4 · server needs ≥ 1.7',actions:[['How to update','btn-primary'],['Back','','web.html']]}],
- ['maintenance',{sev:'muted',icon:I.wrench,title:`${INST} is under maintenance`,msg:`An admin has taken the server down for planned maintenance. It'll be back shortly — no action needed on your side.`,detail:'spin|Checking every 30s…',actions:[['Check now','btn-primary']]}],
+ ['unreachable',{sev:'warn',icon:I.cloud,title:"Can't reach the server",msg:`We couldn't connect to <b>${INST}</b>. Check the internet connection, or that the server address is correct.`,detail:`${HOST} · connection failed`,actions:[['Try again','btn-primary'],['Edit server URL','']],retry:'unreachable'}],
+ ['lost',{sev:'warn',icon:I.spin,title:'Connection lost',msg:`Contact with <b>${INST}</b> was lost. Open terminals pick up where they were once the connection're back — nothing is lost.`,detail:'spin|Reconnecting…',actions:[['Reconnect now','btn-primary'],['See the banner version','','banner']]}],
+ ['offline',{sev:'warn',icon:I.wifiOff,title:"Offline",msg:`This device isn't connected to the internet. Rite reconnects on its own as soon as the connection're back online.`,detail:'spin|Waiting for a connection…',actions:[['Try again','btn-primary']]}],
+ ['session',{sev:'info',icon:I.key,title:'Session expired',msg:`Signed out after a spell of inactivity, for security. Sign in again to carry on — the saved connections stay safe and encrypted.`,actions:[['Sign in','btn-primary','signin.html']]}],
+ ['denied',{sev:'error',icon:I.shield,title:"No access",msg:`This area is for administrators of <b>${INST}</b>. If access should exist, ask an admin.`,detail:'HTTP 403 · forbidden',actions:[['Back to app','btn-primary','web.html']]}],
+ ['notfound',{sev:'muted',icon:I.compass,title:"This page doesn't exist",msg:`The link may be broken, or what it're looking for was moved or deleted.`,detail:'HTTP 404 · not found',actions:[['Back to app','btn-primary','web.html']]}],
+ ['server',{sev:'error',icon:I.alert,title:'Something went wrong',msg:`The server hit an unexpected error <span style="opacity:.7">(HTTP 500)</span> — it's not a client error. Try again in a moment; if it persists, share the reference below with an admin.`,detail:'Reference: 7f3a-be21-c4',actions:[['Try again','btn-primary'],['Copy reference','']]}],
+ ['ratelimited',{sev:'warn',icon:I.clock,title:'Too many attempts',msg:`Too many attempts in a row. Wait a moment before trying again — this protects the account from password guessing.`,detail:'cd|Try again in',actions:[['Try again','btn-primary',null,'cd']]}],
+ ['tls',{sev:'error',icon:I.lockx,title:"Couldn't secure the connection",msg:`Rite couldn't establish a verified secure (TLS) connection to <b>${INST}</b>. The certificate may be invalid, expired, or intercepted — so, as a precaution, Rite didn't connect.`,detail:'certificate verification failed',actions:[['Retry','btn-primary'],['What does this mean?','']]}],
+ ['version',{sev:'info',icon:I.refresh,title:'Update needed',msg:`This server needs a newer version of the Rite client than the one're running. Update to connect.`,detail:'client 1.4 · server needs ≥ 1.7',actions:[['How to update','btn-primary'],['Back','','web.html']]}],
+ ['maintenance',{sev:'muted',icon:I.wrench,title:`${INST} is under maintenance`,msg:`An admin has taken the server down for planned maintenance. It'll be back shortly — no action needed here.`,detail:'spin|Checking every 30s…',actions:[['Check now','btn-primary']]}],
 ];
 const MAP=Object.fromEntries(STATES);
 let SEL='starting', timers=[];
@@ -121,14 +121,14 @@ function render(){
   </div></div>`;
   // live countdowns for the retry-style states
   if(SEL==='ratelimited'){let n=42;const el=document.getElementById('cdn'),btn=document.getElementById('cdbtn');
-    timers.push(setInterval(()=>{n--;if(el)el.textContent=n;if(n<=0){clearTimers();if(btn){btn.disabled=false;}if(el&&el.parentElement)el.parentElement.innerHTML='You can try again now';}},1000));}
+    timers.push(setInterval(()=>{n--;if(el)el.textContent=n;if(n<=0){clearTimers();if(btn){btn.disabled=false;}if(el&&el.parentElement)el.parentElement.innerHTML='Ready to try again';}},1000));}
 }
 function bannerView(){
   return `<div><div class="appmock">
       <div class="fake"><div class="fk-bar"></div><div class="fk-row"></div><div class="fk-row"></div><div class="fk-row"></div><div class="fk-row"></div></div>
-      <div class="banner"><span class="spin"></span><div><div class="bt">Reconnecting to ${INST}…</div><div class="bs">Your terminals resume automatically — nothing is lost.</div></div><button class="btn btn-sm" onclick="toast('Retrying…')">Retry now</button></div>
+      <div class="banner"><span class="spin"></span><div><div class="bt">Reconnecting to ${INST}…</div><div class="bs">Terminals resume automatically — nothing is lost.</div></div><button class="btn btn-sm" onclick="toast('Retrying…')">Retry now</button></div>
     </div>
-    <div class="note">Mid-session, a dropped connection is a <b>non-blocking banner</b> over the dimmed app — not a full-page takeover — because your work is still there waiting to resume.</div></div>`;
+    <div class="note">Mid-session, a dropped connection is a <b>non-blocking banner</b> over the dimmed app — not a full-page takeover — because the work is still there waiting to resume.</div></div>`;
 }
 function toast(m){let t=document.querySelector('.toast');if(!t){t=document.createElement('div');t.className='toast';document.body.appendChild(t);}t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),1600);}
 render();

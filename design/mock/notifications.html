@@ -89,7 +89,7 @@
     <!-- Terminals / Teams / Collections / Administration + the bell: one list, in
          full-data.js. "Terminals" IS the way back, which is why there is no ✕ here. -->
     <span id="onav" style="display:contents"></span>
-    <button class="profile" onclick="toggleProfile(event)" title="Your account"><span class="avatar" id="avSm"></span><span class="pmeta"><span class="pname" id="pName"></span><span class="prole" id="pRole"></span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
+    <button class="profile" onclick="toggleProfile(event)" title="Account"><span class="avatar" id="avSm"></span><span class="pmeta"><span class="pname" id="pName"></span><span class="prole" id="pRole"></span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
   </div>
   <div class="pmenu" id="pmenu">
     <div class="pmenu-head"><span class="avatar" id="pmAv"></span><div><div class="pname" id="pmName" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span>rite.acme.io</span></div></div></div>
@@ -133,11 +133,11 @@ const NOTIFS=Array.from({length:24},(_,i)=>({type:NTYPES[i%NTYPES.length],user:N
 let NFILTER='all',NPAGE=1;const PER=8;
 function nmsg(n){switch(n.type){
   case 'request': return `<b>${n.user}</b> requests access to <b>${n.coll}</b>${n.team?` · discovered via team ${n.team}`:''}`;
-  case 'granted': return `You granted <b>${n.user}</b> access to <b>${n.coll}</b>`;
+  case 'granted': return `<b>${n.user}</b> was granted access to <b>${n.coll}</b>`;
   case 'joined':  return `<b>${n.user}</b> joined via an invitation token`;
   case 'left':    return `<b>${n.user}</b> left team <b>${n.team||'Eng'}</b>`;
   case 'role':    return `<b>${n.user}</b> was promoted to <b>manager</b>`;
-  case 'reset':   return `You reset <b>${n.user}</b>'s access`;
+  case 'reset':   return `<b>${n.user}</b>'s access was reset`;
   default: return '';
 }}
 function nFiltered(){return NOTIFS.filter(n=>NFILTER==='all'||(NFILTER==='unread'&&n.unread)||(NFILTER==='request'&&n.type==='request'));}
@@ -152,7 +152,7 @@ function renderNotifs(){
   const slice=all.slice((NPAGE-1)*PER,NPAGE*PER);const unread=NOTIFS.filter(n=>n.unread).length;
   document.getElementById('nsub').textContent=`${NOTIFS.length} total · ${unread} unread`;
   document.getElementById('ntabs').innerHTML=[['all','All'],['unread','Unread'],['request','Requests']].map(([v,l])=>`<button class="ntab ${NFILTER===v?'on':''}" onclick="nSetFilter('${v}')">${l}</button>`).join('');
-  document.getElementById('nlist').innerHTML=slice.length?slice.map(nRow).join(''):`<div class="nempty">Nothing here — you're all caught up.</div>`;
+  document.getElementById('nlist').innerHTML=slice.length?slice.map(nRow).join(''):`<div class="nempty">Nothing here.</div>`;
   document.getElementById('npager').innerHTML=pages>1?`<button class="btn btn-sm" ${NPAGE<=1?'disabled':''} onclick="nPage(-1)">‹ Prev</button><span>Page ${NPAGE} of ${pages}</span><button class="btn btn-sm" ${NPAGE>=pages?'disabled':''} onclick="nPage(1)">Next ›</button>`:'';
 }
 function nSetFilter(f){NFILTER=f;NPAGE=1;renderNotifs();}

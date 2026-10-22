@@ -174,7 +174,7 @@
          one screen, meaning two different things, is worse than a Close.
          Which is also why this is the one overlay that KEEPS its ✕: the nav is the way
          back everywhere else, and this page does not carry it. -->
-    <button class="profile" onclick="toggleProfile(event)" title="Your account">
+    <button class="profile" onclick="toggleProfile(event)" title="Account">
       <span class="avatar" id="avSm"></span>
       <span class="pmeta"><span class="pname" id="pName"></span><span class="prole" id="pRole"></span></span>
       <span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
@@ -278,7 +278,7 @@ function users(){
       <table class="tbl">
         <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Joined</th><th style="text-align:right">Actions</th></tr></thead>
         <tbody>${ORG.users.map(u=>{const st=STATUS[u.u]||'active';const self=u.u===ORG.me;return `<tr>
-          <td><div style="display:flex;align-items:center;gap:10px">${av(u.u)}<b>${u.u}</b>${self?'<span class="muted" style="font-size:12px">(you)</span>':''}</div></td>
+          <td><div style="display:flex;align-items:center;gap:10px">${av(u.u)}<b>${u.u}</b>${self?'<span class="muted" style="font-size:12px">this account</span>':''}</div></td>
           <td>${self
             ? `<span class="role-badge role-${u.role}">${u.role}</span>`
             : `<select class="role-sel" style="color:${roleColor(u.role)}" onchange="roleChange(this,'${u.u}','${u.role}')">${['user','manager','admin'].map(r=>`<option value="${r}" ${u.role===r?'selected':''}>${r}</option>`).join('')}</select>`}</td>
@@ -295,14 +295,14 @@ function genPw(){const a='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz234567
 function newUserDialog(){
   const b=document.getElementById('bd');
   b.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
-    <header><h3>Add a user</h3><p>Create an account and hand over a temporary password — the user sets their own at first login, so you never keep it.</p></header>
+    <header><h3>Add a user</h3><p>Create an account and hand over a temporary password — the user sets their own at first login, so it is never kept here.</p></header>
     <div class="body">
       <label class="field"><span>Username</span><input class="inp" id="nuUser" autocomplete="off" placeholder="e.g. dana"></label>
       <label class="field"><span>Temporary password</span>
         <div style="display:flex;gap:8px"><input class="inp" id="nuPw" type="text" placeholder="Type or generate" style="flex:1"><button class="btn btn-sm" onclick="genPw()">Generate</button></div></label>
       <label class="field"><span>Role</span>
         <select class="inp" id="nuRole"><option value="user">user</option><option value="manager">manager</option><option value="admin">admin</option></select>
-        <div class="muted" style="font-size:12px;margin-top:5px">Managers run org onboarding (users, teams, invitations); admins manage the whole instance. You can promote later.</div></label>
+        <div class="muted" style="font-size:12px;margin-top:5px">Managers run org onboarding (users, teams, invitations); admins manage the whole instance. Promotion can come later.</div></label>
     </div>
     <div class="foot"><button class="btn btn-sm" onclick="closeBd()">Cancel</button><button class="btn btn-sm btn-primary" onclick="closeBd();toast('User created — share the temporary password')">Create user</button></div>
   </div>`;
@@ -313,7 +313,7 @@ function newUserDialog(){
 function roleChange(sel,user,cur){
   const nr=sel.value; if(nr===cur)return;
   const apply=()=>{sel.style.color=roleColor(nr);toast(user+' is now '+nr);};
-  if(CONFIRMROLE) confirmDialog('Change role?',`You're about to change <b>${user}</b> to <b>${nr}</b>. Are you sure?`,apply,()=>{sel.value=cur;});
+  if(CONFIRMROLE) confirmDialog('Change role?',`<b>${user}</b> becomes <b>${nr}</b>. Confirm?`,apply,()=>{sel.value=cur;});
   else apply();
 }
 function confirmDialog(title,body,onYes,onNo){
@@ -383,7 +383,7 @@ function genToken(){
   const teamRows=ORG.teams.map(t=>`<label class="tk-team"><input type="checkbox" data-team="${t.name}" onchange="this.closest('.tk-team').classList.toggle('on',this.checked)"><span style="flex:1">${t.name}</span>
      <select class="inp tk-trole" style="width:auto"><option value="member">member</option><option value="admin">admin</option></select></label>`).join('');
   b.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
-    <header><h3>Generate an invitation token</h3><p>The holder self-registers with this recipe already applied. You'll see the token once.</p></header>
+    <header><h3>Generate an invitation token</h3><p>The holder self-registers with this recipe already applied. The token is shown once.</p></header>
     <div class="body">
       <label class="field"><span>Org role</span>
         <select class="inp" id="tkRole"><option value="user">user</option><option value="manager">manager</option></select>
@@ -414,7 +414,7 @@ function revealToken(){
   const meta=`Role <b>${esc(role)}</b>${teams.length?' · teams '+teams.map(t=>esc(t.name+' ('+t.role+')')).join(', '):''} · expires ${esc(expTxt)} · single-use.`;
   const b=document.getElementById('bd');
   b.innerHTML=`<div class="modal" onclick="event.stopPropagation()">
-    <header><h3>Copy this token now</h3><p>For security the server keeps only a hash — you <b>won't be able to see it again</b>. Share it out-of-band (not by email in clear).</p></header>
+    <header><h3>Copy this token now</h3><p>For security the server keeps only a hash — it <b>cannot be shown again</b>. Share it out-of-band (not by email in clear).</p></header>
     <div class="body">
       <div class="tk-reveal"><code>${full}</code><button class="btn btn-sm" onclick="navigator.clipboard&&navigator.clipboard.writeText('${full}');toast('Token copied')">Copy</button></div>
       <div class="muted" style="font-size:12.5px;margin-top:10px">${meta}</div>
@@ -484,7 +484,7 @@ function hcRows(){const off=HC.mode==='off';
       <div onclick="HC.passive=!HC.passive;renderContent();toast('Status display '+(HC.passive?'on':'off'))">${tog(HC.passive)}</div></div>
     <div class="setrow"><div><div class="lab">Active probing</div><div class="hint"><b>Off</b> passive only · <b>On-demand</b> only when a user asks, current view only · <b>Full</b> background polling allowed · <b>Client's choice</b> each client picks its cadence.</div></div>
       <div class="seg">${['off','on-demand','full','client-choice'].map(m=>`<button class="seg-b ${HC.mode===m?'on':''}" onclick="HC.mode='${m}';renderContent();toast('Active probing: ${m}')">${m}</button>`).join('')}</div></div>
-    <div class="setrow gate ${off?'off':''}"><div><div class="lab">Allowed methods</div><div class="hint">ICMP is blocked on some networks and required on others — allow what your infra permits. Clients may use only a method enabled here.</div></div>
+    <div class="setrow gate ${off?'off':''}"><div><div class="lab">Allowed methods</div><div class="hint">ICMP is blocked on some networks and required on others — allow what the infrastructure permits. Clients may use only a method enabled here.</div></div>
       <div style="display:flex;gap:16px;flex-wrap:wrap">${mchk('tcp','TCP-connect')}${mchk('icmp','ICMP')}${mchk('ssh','SSH handshake')}</div></div>
     <div class="setrow gate ${off?'off':''}"><div><div class="lab">Restrict to specific users</div><div class="hint">When on, only the users below may actively probe (e.g. an ops group) — everyone else stays passive-only.</div></div>
       <div onclick="HC.restrict=!HC.restrict;renderContent();toast('Restrict to allowlist '+(HC.restrict?'on':'off'))">${tog(HC.restrict)}</div></div>
@@ -500,7 +500,7 @@ function dashRows(){const off=!DASH.webui&&!DASH.clients;
   return `<div class="setrow" style="border-top:1px solid var(--border);margin-top:4px"><div><div class="lab">Machine dashboard — container &amp; service cards</div><div class="hint">These two cards run a command on the host each time they refresh. The rest of the dashboard — address, port forwarding, the Board — reads what Rite already holds and is never affected.<br>The two switches are not equally strong. <b>Web UI</b> is <b>enforcement</b>: this server runs the commands, so off means nothing runs. <b>Clients</b> is <b>policy</b>: a client probes from its own network and this server never sees it — the official client hides the cards, a modified one could ignore the switch. It still stops the traffic in normal use and records the intent.</div></div></div>
     <div class="setrow"><div><div class="lab">Allow in the web UI</div><div class="hint">This server runs the commands, so its own egress pays. Off means off for everyone in a browser — not a matter of preference.</div></div>
       <div onclick="DASH.webui=!DASH.webui;renderContent();toast('Probing cards '+(DASH.webui?'allowed':'off')+' in the web UI')">${tog(DASH.webui)}</div></div>
-    <div class="setrow"><div><div class="lab">Allow in attached clients</div><div class="hint">Each client probes from its own network position, so your users' endpoints pay. A user may also turn the cards off for themselves; neither side can override the other upward.</div></div>
+    <div class="setrow"><div><div class="lab">Allow in attached clients</div><div class="hint">Each client probes from its own network position, so the users' endpoints pay. A user may also turn the cards off for themselves; neither side can override the other upward.</div></div>
       <div onclick="DASH.clients=!DASH.clients;renderContent();toast('Probing cards '+(DASH.clients?'allowed':'off')+' in attached clients')">${tog(DASH.clients)}</div></div>
     <div class="setrow gate ${off?'off':''}" style="border:none"><div><div class="lab">Minimum refresh interval</div><div class="hint">Floor between <b>automatic</b> refreshes: an open dashboard re-runs these two cards on its own, never faster than this. Clients apply a floor of their own, so a very small number here buys little. Pressing Refresh is not rate-limited, and a dashboard nobody is watching does not poll.</div></div>
       <div style="display:flex;gap:8px;align-items:center"><input class="inp" style="width:80px" value="${DASH.interval}"><span class="muted">seconds</span></div></div>`;}
@@ -521,7 +521,7 @@ function instance(){
         <div onclick="PERSIST=!PERSIST;renderContent();toast('Session persistence '+(PERSIST?'on':'off'))">${tog(PERSIST)}</div></div>
       <div class="setrow"><div><div class="lab">Open registration</div><div class="hint"><b>Off by default.</b> When on, the sign-in screen offers <b>Create an account</b> — anyone who can reach this server self-registers (role <b>user</b>, no team; they generate their own keys, so the admin never sees them). Leave off for invite-only instances (admin-provisioned or enrollment tokens).</div></div>
         <div onclick="OPENREG=!OPENREG;renderContent();toast('Open registration '+(OPENREG?'on':'off'))">${tog(OPENREG)}</div></div>
-      <div class="setrow"><div><div class="lab">Confirm role changes</div><div class="hint">Ask for confirmation before changing a user's role (&ldquo;Change <b>dana</b> to <b>admin</b>?&rdquo;). <b>On by default</b> — protects against a mis-click that hands out admin. Turn off if you promote in bulk and find the prompt slows you down.</div></div>
+      <div class="setrow"><div><div class="lab">Confirm role changes</div><div class="hint">Ask for confirmation before changing a user's role (&ldquo;Change <b>dana</b> to <b>admin</b>?&rdquo;). <b>On by default</b> — protects against a mis-click that hands out admin. Turn off for bulk promotions, where the prompt only slows things down.</div></div>
         <div onclick="CONFIRMROLE=!CONFIRMROLE;renderContent();toast('Confirm role changes '+(CONFIRMROLE?'on':'off'))">${tog(CONFIRMROLE)}</div></div>
       <div class="setrow"><div><div class="lab">Allow invitations</div><div class="hint">Enrollment tokens for invite-only onboarding (independent of open registration). <b>On by default.</b> When off, the <b>Invitations</b> section disappears and no token can be minted or redeemed — accounts are then created by an admin directly. Existing tokens stop working.</div></div>
         <div onclick="ALLOWINV=!ALLOWINV;if(!ALLOWINV&&SEC==='invitations')SEC='overview';renderNav();renderContent();toast('Invitations '+(ALLOWINV?'allowed':'disabled'))">${tog(ALLOWINV)}</div></div>
@@ -593,8 +593,8 @@ function askReset(u){
     <header><h3>Reset access for ${u}?</h3><p>Use this when <b>${u}</b> has lost their password. There's no email recovery — a reset lets them keep their identity and set a new password. Verify it's really them first (in person, phone…).</p></header>
     <div class="body">
       <div class="rk keep"><b>Kept:</b> the username <b>${u}</b>, their role, and every team they're in — so they can find their way back to their collections.</div>
-      <div class="rk lose"><b>Lost for good:</b> everything encrypted under the old password — their personal connections and any solo collection. It's end-to-end encrypted, so no one (not even you) can recover it.</div>
-      <div class="rk next"><b>Next:</b> ${u} chooses a new password at their next sign-in, then re-requests access to the collections offered to their teams — a member grants them back in. You never see the new password.</div>
+      <div class="rk lose"><b>Lost for good:</b> everything encrypted under the old password — their personal connections and any solo collection. It's end-to-end encrypted, so nobody can recover it.</div>
+      <div class="rk next"><b>Next:</b> ${u} chooses a new password at their next sign-in, then re-requests access to the collections offered to their teams — a member grants them back in. The new password is never visible here.</div>
       <label class="field"><span>Type <b>${u}</b> to confirm</span><input class="inp" id="rkc" autocomplete="off" oninput="document.getElementById('rkgo').disabled=this.value.trim()!=='${u}'" placeholder="${u}"></label>
     </div>
     <div class="foot"><button class="btn btn-sm" onclick="closeBd()">Cancel</button><button class="btn btn-sm btn-danger" id="rkgo" disabled onclick="closeBd();toast('Access reset — ${u} can set a new password at next sign-in')">Reset access</button></div>

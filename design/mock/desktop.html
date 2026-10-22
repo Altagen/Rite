@@ -383,10 +383,10 @@ function setIcon(type,id){const it=__iconItem(type,id);if(!it)return;document.ge
 function clearIcon(type,id){const it=__iconItem(type,id);if(it){delete it.img;delete it.emoji;refreshCtx();toast('Icon reset');}}
 /* Add a server — probes it; unreachable is fine (add anyway, fix later). Nothing
    is created remotely until you sign in. Overrides the generic mock dialog. */
-function dlgAddServer(){showModal({title:'Add a server',subtitle:"A Rite server holds your connections (its own login).",confirm:'Add',
+function dlgAddServer(){showModal({title:'Add a server',subtitle:"A Rite server holds the connections (its own login).",confirm:'Add',
   body:`<label class="field"><span>Server URL</span><input class="inp" id="as-url" placeholder="https://rite.example.com"></label>
     <label class="field"><span>Label (optional)</span><input class="inp" id="as-label" placeholder="Team"></label>
-    <p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.key} We check the server when you add it. If it's unreachable you can still add it and connect (or fix the URL) later — <b>nothing is created remotely</b> until you sign in.</p>`,
+    <p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.key} The server is checked when added. If it's unreachable it can still be added, and connected to (or the URL fixed) later — <b>nothing is created remotely</b> before sign-in.</p>`,
   onConfirm:(m)=>{const url=(m.querySelector('#as-url').value||'').trim();if(!url)return false;const label=(m.querySelector('#as-label').value||'').trim();
     const reachable=/^https?:\/\/[^\s]+\.[^\s]+/.test(url);
     DATA.servers.push({id:'s-'+Math.random().toString(36).slice(2,7),name:label||url.replace(/^https?:\/\//,''),url,badge:['s1','s2'][DATA.servers.length%2],online:reachable});
@@ -398,7 +398,7 @@ function dlgAddServer(){showModal({title:'Add a server',subtitle:"A Rite server 
    is set. "Change location…" opens a save dialog (simulated here). */
 function dlgNewVault(){
   const defFile='~/.local/share/rite/vault.db';
-  showModal({title:'Create a local vault',subtitle:'An encrypted database on this machine. Next you’ll set its master password.',confirm:'Create vault',
+  showModal({title:'Create a local vault',subtitle:'An encrypted database on this machine. A master password is set next.',confirm:'Create vault',
     body:`<label class="field"><span>Name <span class="muted" style="font-weight:400">(optional)</span></span><input class="inp" id="nv-name" placeholder="e.g. Personal"></label>
       <div class="field"><span>Location</span>
         <div class="row" style="border:1px solid var(--border);border-radius:9px;padding:8px 10px;gap:8px;cursor:default">
@@ -416,7 +416,7 @@ function dlgCreatePassword(name,file){
   const bd=showModal({title:'Set the master password',subtitle:file,confirm:'Create & open',
     body:`<label class="field"><span>Master password</span><input class="inp" id="nv-pw" type="password" placeholder="Create a strong password"><div class="strength"><i id="nv-str"></i></div><div class="muted" style="font-size:11px;margin-top:5px">At least 12 characters — aim for 16+.</div></label>
       <label class="field"><span>Confirm master password</span><input class="inp" id="nv-pw2" type="password" placeholder="Repeat it"><div id="nv-match" style="font-size:11px;margin-top:5px;height:14px"></div></label>
-      <p class="muted" style="font-size:12px;margin:2px 0 0">If you lose this password, the vault can't be decrypted — there's no recovery (zero-knowledge). The vault joins your list only once the password is set.</p>`,
+      <p class="muted" style="font-size:12px;margin:2px 0 0">If this password is lost, the vault can't be decrypted — there's no recovery (zero-knowledge). The vault joins the list only once the password is set.</p>`,
     onConfirm:(m)=>{const pw=m.querySelector('#nv-pw').value,pw2=m.querySelector('#nv-pw2').value;
       if(pw.length<12||pw!==pw2)return false; // guarded by the disabled button too
       const nm=name||((file.split('/').pop()||'').replace(/\.db$/,''))||'Local vault';
@@ -440,26 +440,26 @@ function dlgEditServer(id){const s=DATA.servers.find(x=>x.id===id);if(!s)return;
   showModal({title:'Edit server',confirm:'Save',
     body:`<label class="field"><span>Label</span><input class="inp" id="es-label" value="${s.name}"></label>
       <label class="field"><span>Server URL</span><input class="inp" id="es-url" value="${s.url}"></label>
-      <p class="muted" style="font-size:12px;margin:8px 0 0">Changing the URL re-checks the server next time you open it. Your saved connections are unaffected.</p>`,
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Changing the URL re-checks the server at the next open. Saved connections are unaffected.</p>`,
     onConfirm:(m)=>{s.name=(m.querySelector('#es-label').value||'').trim()||s.name;s.url=(m.querySelector('#es-url').value||'').trim()||s.url;refreshCtx();toast('Server updated');}});}
 function dlgRenameVault(id){const v=DATA.vaults.find(x=>x.id===id);if(!v)return;document.getElementById('ctxmenu').classList.remove('show');
   showModal({title:'Rename vault',subtitle:v.file,confirm:'Save',
     body:`<label class="field"><span>Name</span><input class="inp" id="rv-name" value="${v.name}"></label>
-      <p class="muted" style="font-size:12px;margin:8px 0 0">Renames it in your list only — the file on disk is not moved.</p>`,
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Renames it in the list only — the file on disk is not moved.</p>`,
     onConfirm:(m)=>{v.name=(m.querySelector('#rv-name').value||'').trim()||v.name;refreshCtx();toast('Vault renamed');}});}
 /* Removing a SERVER forgets it locally — the remote account is untouched. */
 function removeServer(id){const s=DATA.servers.find(x=>x.id===id);if(!s)return;document.getElementById('ctxmenu').classList.remove('show');
   showModal({title:`Remove “${s.name}”?`,subtitle:s.url,confirm:'Remove from my servers',
     body:`<div class="card" style="padding:12px;border-color:rgba(124,156,245,.35);background:rgba(124,156,245,.06)">
-        <p style="margin:0;font-size:13px">This only removes the server from <b>this device</b>. <b>Your account on the server is NOT deleted</b> — nothing is touched remotely.</p>
-        <p style="margin:8px 0 0;font-size:13px;color:var(--muted)">To come back: add it again with its URL and sign in with your password (which decrypts your key).</p></div>`,
+        <p style="margin:0;font-size:13px">This only removes the server from <b>this device</b>. <b>The account on the server is NOT deleted</b> — nothing is touched remotely.</p>
+        <p style="margin:8px 0 0;font-size:13px;color:var(--muted)">To come back: add it again with its URL and sign in (the password decrypts the key).</p></div>`,
     onConfirm:()=>{const i=DATA.servers.findIndex(x=>x.id===id);if(i>=0)DATA.servers.splice(i,1);
       if(STATE.ctx.type==='server'&&STATE.ctx.id===id){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
       refreshCtx();toast(`Removed <span class="accent">${s.name}</span> from this device`);}});}
 /* Removing a LOCAL VAULT forgets it; deleting the file is a separate opt-in. */
 function removeVault(id){const v=DATA.vaults.find(x=>x.id===id);if(!v)return;document.getElementById('ctxmenu').classList.remove('show');
   showModal({title:`Remove “${v.name}”?`,subtitle:v.file,confirm:'Remove',
-    body:`<p style="font-size:13px;margin:0 0 10px">Removes this vault from your list. The database file stays on disk — you can open it again anytime.</p>
+    body:`<p style="font-size:13px;margin:0 0 10px">Removes this vault from the list. The database file stays on disk and can be opened again.</p>
       <label class="mrow" style="cursor:pointer;padding:10px;border:1px solid rgba(247,118,142,.3);border-radius:9px;background:rgba(247,118,142,.06)"
         onclick="const c=this.querySelector('.chk');c.classList.toggle('on');c.textContent=c.classList.contains('on')?'✓':'';const nc=document.getElementById('rmv-nc');if(nc)nc.style.display=c.classList.contains('on')?'block':'none'">
         <span class="chk"></span><div class="grow"><div class="title" style="color:var(--red)">Also delete the file permanently</div><div class="sub">Irreversible — erases <span class="mono">${v.file}</span> and all its connections.</div></div></label>
@@ -496,7 +496,7 @@ function renderCtxMgr(){const el=document.getElementById('ctxmgr');if(!el)return
     <button class="btn btn-ghost btn-sm" style="color:var(--red)" title="Remove access" onclick="removeServer('${s.id}')">${EXICON.trash}</button></div>`;
   el.innerHTML=`<div class="mgr-wrap">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px"><h1 style="font-size:22px">Contexts</h1><div style="flex:1"></div><button class="btn btn-ghost btn-sm" onclick="closeCtxMgr()">✕ Close</button></div>
-    <p class="muted" style="margin:0 0 20px;font-size:14px">Manage your local vaults and saved servers. Removing a server only forgets it here — your remote account stays.</p>
+    <p class="muted" style="margin:0 0 20px;font-size:14px">Local vaults and saved servers. Removing a server only forgets it here — the remote account stays.</p>
     <div class="sec"><span class="eyebrow">Local vaults</span><span class="line"></span></div>
     <div class="mgr-grid">${DATA.vaults.map(vcard).join('')}<button class="dashed" onclick="dlgNewVault()">${ICON.plus} New local vault</button></div>
     <div class="sec"><span class="eyebrow">Servers</span><span class="line"></span></div>
@@ -514,7 +514,7 @@ function renderSide(){const s=document.getElementById('side'),c=STATE.ctx;
     document.body.appendChild(r);return;}
   const hide=`<div style="display:flex;justify-content:flex-end;padding:8px"><button class="btn btn-ghost btn-sm" style="padding:4px" title="Hide panel" onclick="STATE.sideCollapsed=true;renderAll()"><svg class="icon" viewBox="0 0 24 24"><path d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg></button></div>`;
   if(c.type==='home'){const has=DATA.vaults.length>0;s.style.width='290px';s.style.borderRight='';
-    s.innerHTML=hide+`<div class="empty" style="height:calc(100% - 44px)"><div>${ICON.term}</div><div class="big">${has?'Base session — terminal & Quick SSH in the toolbar. Pick a vault or server (top-left) for your saved connections.':'No vault yet — create one to save connections. The terminal & Quick SSH work without it.'}</div><button class="btn btn-primary btn-sm" onclick="dlgNewVault()">${has?'New local vault':'Create local vault'}</button></div>`;return;}
+    s.innerHTML=hide+`<div class="empty" style="height:calc(100% - 44px)"><div>${ICON.term}</div><div class="big">${has?'Base session — terminal & Quick SSH in the toolbar. Pick a vault or server (top-left) for the saved connections.':'No vault yet — create one to save connections. The terminal & Quick SSH work without it.'}</div><button class="btn btn-primary btn-sm" onclick="dlgNewVault()">${has?'New local vault':'Create local vault'}</button></div>`;return;}
   if(c.type==='vault'&&c.locked){s.style.width='290px';s.style.borderRight='';
     s.innerHTML=hide+`<div class="empty" style="height:calc(100% - 44px)"><div>${ICON.lock}</div><div class="big">“${c.name}” is locked.</div><button class="btn btn-primary btn-sm" onclick="dlgUnlock(STATE.ctx,()=>{STATE.ctx.locked=false;renderAll()})">Unlock</button></div>`;return;}
   s.style.width='290px';s.style.borderRight='';
@@ -682,7 +682,7 @@ function collectMachines(node){let out=[...(node.conns||[])];(node.children||[])
 function dlgNewFolder(parentId){const parent=parentId?find(parentId):null;
   const shared=!!parent&&(parent.type==='coll'||underColl(parentId));
   showModal({title:shared&&!isLocal()?'New folder in collection':'New folder',
-    subtitle:parent?`inside “${parent.name}”${shared&&!isLocal()?' · shared with the collection':''}`:'Your personal organiser — colour it to spot it fast.',confirm:'Create',
+    subtitle:parent?`inside “${parent.name}”${shared&&!isLocal()?' · shared with the collection':''}`:'A personal organiser — colour it to spot it fast.',confirm:'Create',
     body:`<label class="field"><span>Name</span><input class="inp" id="fname" placeholder="${shared?'e.g. Web servers':'e.g. Client Beta'}"></label>${swatchRow(COLORS[0])}
       ${shared?`<p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.users} Part of the collection — everyone who has it sees this folder. Owners &amp; editors can change it (re-encrypts).</p>`:''}`,
     onConfirm:(m)=>{const name=(m.querySelector('#fname').value||'').trim()||'New folder';
@@ -699,7 +699,7 @@ function dlgNewLocalColl(){
   showModal({title:'New collection',subtitle:'A group of machines with its own folders and board.',confirm:'Create',
     body:`<label class="field"><span>Name</span><input class="inp" id="lc-name" placeholder="Home lab" autofocus></label>
       ${swatchRow(COLORS[1])}
-      <p class="muted" style="font-size:12px;margin:10px 0 0">Local vault — collections organise your machines. Sharing needs a server.</p>`,
+      <p class="muted" style="font-size:12px;margin:10px 0 0">Local vault — collections organise the machines. Sharing needs a server.</p>`,
     onConfirm:m=>{const name=(m.querySelector('#lc-name').value||'').trim()||'New collection';
       lib().unshift({id:'c-'+Math.random().toString(36).slice(2,7),type:'coll',color:__pickColor,name,open:true,conns:[]});
       renderAll();toast(`Collection <span class="accent">${name}</span> created`);}});}
@@ -719,7 +719,7 @@ function dlgImportSSH(collName){
       <label class="field"><span>Into collection</span><select class="inp" id="impcoll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
       <div class="eyebrow" style="margin:4px 0 6px">Hosts</div>
       <div class="scroll" style="max-height:230px;overflow:auto">${SSH_HOSTS.map(row).join('')}</div>
-      <p class="muted" style="font-size:12px;margin:9px 0 0">${EXICON.key} Selected hosts become machines in the collection (edit them after). They're encrypted with the collection key — never leave your device in clear.</p>`,
+      <p class="muted" style="font-size:12px;margin:9px 0 0">${EXICON.key} Selected hosts become machines in the collection (edit them after). They're encrypted with the collection key — never leave this device in clear.</p>`,
     onConfirm:(m)=>{const n=m.querySelectorAll('.chk.on').length,into=m.querySelector('#impcoll').value;
       toast(`Imported <span class="accent">${n}</span> machine${n>1?'s':''} into ${into}`);}});}
 function folderMenu(id,e){const f=find(id),shared=underColl(id);floatMenu(e,[
@@ -777,11 +777,11 @@ function agentPanel(p,e){e=e||{};
         <span class="muted" style="${mono}">${k.fp}</span>
         <span style="margin-left:auto;flex:none;font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;${k.hw?'background:color-mix(in oklab,var(--accent) 20%,transparent);color:var(--accent)':'background:var(--card2);color:var(--muted)'}">${k.hw?'hardware · FIDO':k.type}</span>
       </div>`).join('')}</div>
-      <p class="muted" style="font-size:12px;line-height:1.55;margin:10px 0 0">Rite asks the agent to sign — your key and passphrase never leave it, and <b>nothing is stored in Rite</b>. Hardware keys (YubiKey/FIDO) work only this way.</p>
+      <p class="muted" style="font-size:12px;line-height:1.55;margin:10px 0 0">Rite asks the agent to sign — the key and its passphrase never leave it, and <b>nothing is stored in Rite</b>. Hardware keys (YubiKey/FIDO) work only this way.</p>
     </div>
     <label style="display:flex;gap:10px;align-items:flex-start;margin-top:11px;cursor:pointer">
       <input type="checkbox" id="${p}-agent-fwd" ${e.agentForward?'checked':''} style="margin-top:3px;flex:none">
-      <span><b style="font-size:13px">Forward agent to this host</b><span class="muted" style="display:block;font-size:12px;line-height:1.5;margin-top:2px">⚠ Lets the remote machine reuse your local keys to hop onward (agent forwarding). Powerful but risky — a compromised host could use your agent. Leave off unless you need it.</span></span>
+      <span><b style="font-size:13px">Forward agent to this host</b><span class="muted" style="display:block;font-size:12px;line-height:1.5;margin-top:2px">⚠ Lets the remote machine reuse the local keys to hop onward (agent forwarding). Powerful but risky — a compromised host could use the agent. Leave off unless needed.</span></span>
     </label>`;
 }
 /* Shared authentication section — one source of truth for New machine AND Quick
@@ -808,14 +808,14 @@ function dlgNewConn(collName,existing){const e=existing||{};
     ${authPanels('nc',e)}
     <label class="field"><span>Jump host <span class="muted" style="font-weight:400">(optional)</span></span>
       <select class="inp" id="nc-jump"><option value="">Direct — no jump</option>${allColls().map(c=>{const opts=(c.conns||[]).filter(m=>m.name!==e.name).map(m=>`<option value="${m.name}" ${e.jump===m.name?'selected':''}>${m.name} — ${m.user?m.user+'@':''}${m.host}</option>`).join('');return opts?`<optgroup label="${c.name}">${opts}</optgroup>`:'';}).join('')}</select>
-      <span class="muted" style="font-size:12px;display:block;margin-top:6px">Reach this machine <b>through</b> another (a bastion). Rite opens the jump first, then tunnels the SSH session to the target — like OpenSSH <code style="font-family:ui-monospace,monospace">ProxyJump</code>. <b>Chainable</b>: if the jump itself has a jump, the whole path is built. Your key is never copied onto the bastion — auth happens end-to-end with the target.</span></label>
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">Reach this machine <b>through</b> another (a bastion). Rite opens the jump first, then tunnels the SSH session to the target — like OpenSSH <code style="font-family:ui-monospace,monospace">ProxyJump</code>. <b>Chainable</b>: if the jump itself has a jump, the whole path is built. The key is never copied onto the bastion — auth happens end-to-end with the target.</span></label>
     ${swatchRow(e.color||'#56c7c0')}
     <div style="display:flex;gap:10px;align-items:flex-end"><label class="field" style="flex:1"><span>Keep-alive</span><select class="inp" id="nc-ka" onchange="document.getElementById('nc-kai').style.display=this.value==='on'?'':'none'"><option value="off" ${e.sshKeepAliveOverride==='enabled'?'':'selected'}>Disabled</option><option value="on" ${e.sshKeepAliveOverride==='enabled'?'selected':''}>Enabled</option></select></label>
       <label class="field" id="nc-kai" style="flex:1;${e.sshKeepAliveOverride==='enabled'?'':'display:none'}"><span>Interval (s)</span><input class="inp" value="${e.sshKeepAliveInterval||30}"></label></div>
     <label class="field"><span>Health-check</span><select class="inp" id="nc-hc"><option value="inherit" ${e.hc===false?'':'selected'}>Follow the collection / server policy</option><option value="off" ${e.hc===false?'selected':''}>Never probe this machine</option></select>
       <span class="muted" style="font-size:12px;display:block;margin-top:6px">A machine can opt out of active probing; it can't opt into more than allowed.</span></label>
     <label class="field"><span>Pre-connect command <span class="muted" style="font-weight:400">(optional)</span></span><textarea class="inp mono" id="nc-preconnect" oninput="autoGrow(this)" placeholder="wg-quick up wg0&#10;# one line, or a mini-script (fail-fast)" spellcheck="false" rows="${e.preconnect?Math.min((e.preconnect.match(/\n/g)||[]).length+1,6):2}" style="resize:vertical;overflow:auto;min-height:52px;line-height:1.5">${e.preconnect||''}</textarea>
-      <span class="muted" style="font-size:12px;display:block;margin-top:6px">A <b>local</b> command run <b>before</b> connecting — one line, or a few lines for a mini-script (<b>fail-fast</b>: any line failing aborts). <code style="font-family:ui-monospace,monospace">tailscale up</code>, <code style="font-family:ui-monospace,monospace">aws sso login</code>, <code style="font-family:ui-monospace,monospace">kinit</code>, mount a VPN… Interactive prompts (password, browser) run in a small terminal. If it fails, Rite <b>won't connect</b> and shows why. Runs on your machine, never on the server.</span></label>
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">A <b>local</b> command run <b>before</b> connecting — one line, or a few lines for a mini-script (<b>fail-fast</b>: any line failing aborts). <code style="font-family:ui-monospace,monospace">tailscale up</code>, <code style="font-family:ui-monospace,monospace">aws sso login</code>, <code style="font-family:ui-monospace,monospace">kinit</code>, mount a VPN… Interactive prompts (password, browser) run in a small terminal. If it fails, Rite <b>won't connect</b> and shows why. Runs on this machine, never on the server.</span></label>
     <label class="field"><span>Notes</span><textarea class="inp" id="nc-notes" rows="2" placeholder="Optional notes…">${e.notes||''}</textarea></label>
     <label class="field"><span>Collection</span><select class="inp" id="nc-coll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
     ${(()=>{const c=allColls().find(x=>x.name===collName);return c&&c.shared?`<p class="muted" style="font-size:12px;margin:6px 0 0">${EXICON.users} Shared collection — saving re-encrypts for all ${c.members.length} members (needs write access · RBAC).</p>`:'';})()}`,
@@ -850,7 +850,7 @@ function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',
       ${ORG.teams.map(t=>`<span class="chip" style="cursor:pointer" onclick="mpTeam('${t.name}')">${EXICON.users} ${t.name} <span class="muted">${t.members.length}</span></span>`).join('')}</div>
     <div class="search" style="margin:0 0 6px">${EXICON.search}<input id="mpsearch" autocomplete="off" placeholder="Add someone — type a username…" oninput="mpResults()"></div>
     <div id="mpresults" style="margin-bottom:8px"></div>
-    <label class="field"><span>Put in folder (your personal organisation — view only)</span><select class="inp"><option>(no folder)</option>${folders.map(f=>`<option>${f}</option>`).join('')}</select></label>
+    <label class="field"><span>Put in folder (personal organisation — view only)</span><select class="inp"><option>(no folder)</option>${folders.map(f=>`<option>${f}</option>`).join('')}</select></label>
     <p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.key} Members hold the collection key. <b style="color:var(--fg-dim)">Owner</b> manages sharing &amp; settings (rename/delete/transfer) · <b style="color:var(--fg-dim)">Editor</b> adds/edits machines (re-encrypts) · <b style="color:var(--fg-dim)">Viewer</b> can only connect.</p>`;
   const bd=showModal({title:isNew?'New collection':`Share · ${coll.name}`,subtitle:`${chosen.size} member${chosen.size>1?'s':''}`,wide:true,body,confirm:isNew?'Create':'Save',
     onConfirm:()=>{if(isNew){const name=(bd.querySelector('input')?.value||'').trim()||'New collection';
@@ -861,7 +861,7 @@ function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',
 // The chosen members — always shown, with role + remove. Adding is via the typeahead.
 function mpRenderMembers(){const {bd,chosen,roles}=window.__mp;const owners=[...chosen].filter(u=>roles[u]==='owner');
   bd.querySelector('#mpmembers').innerHTML=[...chosen].map(u=>{const me=u===ORG.me;const lockOwner=roles[u]==='owner'&&owners.length<2;const info=ORG.users.find(x=>x.u===u)||{role:'user'};
-    return `<div class="mrow" style="cursor:default">${av(u)}<div class="grow"><div class="title">${u}${roles[u]==='owner'?' <span title="owner">👑</span>':''}${me?' <span class="muted" style="font-size:12px">(you)</span>':''}</div><div class="sub">${info.role}</div></div>${roleSel(u,roles[u]||'viewer',lockOwner)}${me?'':`<button class="btn btn-ghost btn-sm" title="Remove" style="padding:4px;color:var(--red)" onclick="mpRemove('${u}')">${EXICON.trash}</button>`}</div>`;}).join('');
+    return `<div class="mrow" style="cursor:default">${av(u)}<div class="grow"><div class="title">${u}${roles[u]==='owner'?' <span title="owner">👑</span>':''}${me?' <span class="muted" style="font-size:12px">(this account)</span>':''}</div><div class="sub">${info.role}</div></div>${roleSel(u,roles[u]||'viewer',lockOwner)}${me?'':`<button class="btn btn-ghost btn-sm" title="Remove" style="padding:4px;color:var(--red)" onclick="mpRemove('${u}')">${EXICON.trash}</button>`}</div>`;}).join('');
   const cnt=bd.querySelector('#mpcount');if(cnt)cnt.textContent=`${chosen.size} member${chosen.size>1?'s':''} · ${owners.length} owner${owners.length>1?'s':''}`;
   const p=bd.querySelector('header p');if(p)p.textContent=`${chosen.size} member${chosen.size>1?'s':''}`;}
 // Typeahead: only search once you type a prefix — never ship the whole directory.
@@ -885,14 +885,14 @@ function openHostKey(){showModal({title:'Unknown host key',subtitle:'First conne
    it renders one or many prompts, each masked unless the server says to echo. */
 const KBD_DEMO={host:'alex@web-03.acme.io:22',name:'Two-factor authentication',
   note:'✓ Primary auth accepted — one more step.',
-  instruction:'Enter the 6-digit code from your authenticator app.',
+  instruction:'The 6-digit code from the authenticator app.',
   prompts:[{label:'Verification code:',echo:false}]};
 function openKbdInteractive(ch){ch=ch||KBD_DEMO;
-  showModal({title:ch.name||'Server verification',subtitle:'The server needs more to sign you in.',confirm:'Verify',
+  showModal({title:ch.name||'Server verification',subtitle:'The server needs more to complete sign-in.',confirm:'Verify',
   body:`${ch.note?`<p style="color:var(--accent);font-size:12.5px;font-weight:600;margin:0 0 10px">${ch.note}</p>`:''}<div class="card" style="padding:11px 13px;display:flex;gap:10px;align-items:center"><span style="color:var(--accent)">${EXICON.shield}</span><b class="mono" style="font-size:13px">${ch.host}</b></div>
     ${ch.instruction?`<p class="muted" style="font-size:13px;margin:12px 0 2px">${ch.instruction}</p>`:''}
     ${ch.prompts.map((pr,i)=>`<label class="field"><span>${pr.label}</span><input class="inp" type="${pr.echo?'text':'password'}" ${i===0?'autofocus':''} placeholder="${pr.echo?'':'••••••'}"></label>`).join('')}
-    <p class="muted" style="font-size:12px;margin:10px 0 0">Requested by the server (keyboard-interactive). Your answer is sent to the server to sign in — <b>nothing is stored by Rite</b>.</p>`,
+    <p class="muted" style="font-size:12px;margin:10px 0 0">Requested by the server (keyboard-interactive). The answer goes to the server to sign in — <b>nothing is stored by Rite</b>.</p>`,
   onConfirm:()=>toast('Verifying with the server…')});}
 /* Simulate connecting to a machine: the primary auth runs, then (for the demo)
    the server asks for a second factor via keyboard-interactive — the real path
@@ -906,7 +906,7 @@ function connectMachine(host,name){
   else toast(`▶ ${name} · authenticating…`);
   setTimeout(()=>openKbdInteractive({host,name:'Two-factor authentication',
     note:'✓ Primary auth accepted — one more step.',
-    instruction:'Enter the 6-digit code from your authenticator app.',
+    instruction:'The 6-digit code from the authenticator app.',
     prompts:[{label:'Verification code:',echo:false}]}),chain.length?950:650);}
 /* Reconnect (P2 UX): a dropped SSH session is NEVER force-reconnected — reconnecting
    opens a new shell (history + on-screen output + any running job are lost). If the
@@ -930,9 +930,9 @@ function runPreconnect(willFail){const o=PRECONNECT;
     ?['[#] ip link add wg0 type wireguard','RTNETLINK answers: Operation not permitted','Unable to access interface: Operation not permitted']
     :['[#] ip link add wg0 type wireguard','[#] wg setconf wg0 /dev/fd/63','[#] ip -4 address add 10.9.0.2/24 dev wg0','[#] ip link set mtu 1420 up dev wg0'];
   const base=`<span style="color:var(--accent)">$ ${o.cmd}</span>\n`;
-  const bd=showModal({title:'Pre-connect',subtitle:`Runs on your machine before connecting to ${o.host}`,wide:true,confirm:'Cancel',
+  const bd=showModal({title:'Pre-connect',subtitle:`Runs on this machine before connecting to ${o.host}`,wide:true,confirm:'Cancel',
     body:`<div style="background:var(--bg);border:1px solid var(--border);border-radius:9px;overflow:hidden">
-        <div style="padding:5px 11px;border-bottom:1px solid var(--border);font:600 11px ui-monospace,monospace;color:var(--muted);display:flex;align-items:center;gap:7px"><span class="pst check"></span> <span id="pc-hdr">pre-connect · running on your machine · interactive</span></div>
+        <div style="padding:5px 11px;border-bottom:1px solid var(--border);font:600 11px ui-monospace,monospace;color:var(--muted);display:flex;align-items:center;gap:7px"><span class="pst check"></span> <span id="pc-hdr">pre-connect · running on this machine · interactive</span></div>
         <div id="pc-out" style="font-family:ui-monospace,monospace;font-size:12px;line-height:1.5;padding:10px 12px;white-space:pre-wrap;max-height:220px;overflow:auto;min-height:104px">${base}<span class="cursor"></span></div>
       </div>
       <p id="pc-note" class="muted" style="font-size:12px;margin:11px 0 0">Running… interactive prompts (a password, a browser) would appear right here.</p>`,
@@ -968,15 +968,15 @@ const PREFS=[
      a server that forbids Quick SSH still forbids it, and hiding a button you are
      not allowed to use is not the same promise as turning the rule off. */
   { id:'toolbar', label:'Toolbar', body:()=>
-      `<h4>Toolbar</h4><p class="lede">What sits along the top of the window. Hiding a button never changes what you're allowed to do — a shortcut or a menu still reaches it.</p>`
+      `<h4>Toolbar</h4><p class="lede">What sits along the top of the window. Hiding a button never changes what're allowed to do — a shortcut or a menu still reaches it.</p>`
     + prefRow('Shell picker','The dropdown next to <b>Terminal</b>, for picking the shell a new local terminal opens. Hiding it leaves the setting itself in <b>Terminals</b>, above.',prefToggle('toolbar.shell','renderActs()'))
-    + prefRow('Shell menu on “+”','The chevron on the <b>+</b> beside the tabs, to open one terminal with another shell without changing your default. Hiding it leaves <b>+</b> opening the default shell.',prefToggle('toolbar.newTermMenu','renderMain()'))
+    + prefRow('Shell menu on “+”','The chevron on the <b>+</b> beside the tabs, to open one terminal with another shell without changing the default. Hiding it leaves <b>+</b> opening the default shell.',prefToggle('toolbar.newTermMenu','renderMain()'))
     + prefRow('Focus mode','The F11 button. The key works either way.',prefToggle('toolbar.focus','renderActs()'))
     + prefRow('Quick SSH','One-off connections that aren\'t in a collection.'
         + (STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK?' <span style="color:var(--amber)">The server turns this off</span>, so it is hidden regardless.':''),
         prefToggle('toolbar.quick','renderActs()'))
-    + prefRow('Agents','The AI sessions running on your machines.',prefToggle('toolbar.agents','renderActs()'))
-    + prefRow('Layouts','The button beside the tabs. It already hides itself when you have no layouts.',prefToggle('toolbar.layouts','renderMain()')) },
+    + prefRow('Agents','The AI sessions running on the machines.',prefToggle('toolbar.agents','renderActs()'))
+    + prefRow('Layouts','The button beside the tabs. It hides itself when no layout exists.',prefToggle('toolbar.layouts','renderMain()')) },
 
   { id:'keyboard', label:'Keyboard', body:()=>
       `<h4>Keyboard</h4><p class="lede">Click a chord to record a new one. Reserved chords (${'<kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd>'}, ${'<kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>C</kbd>'}) belong to the terminal and are refused.</p>
@@ -1012,19 +1012,19 @@ const PREFS=[
   { id:'layouts', label:'Layouts', body:()=>layoutsSettingsHTML() },
 
   { id:'machines', label:'Machine status', body:()=>
-      `<h4>Machine status</h4><p class="lede">${STATE.ctx.type==='server'?'<span style="color:var(--amber)">Governed by your server</span> — you can only narrow it.':'You govern this for this local vault.'} Passive “last seen” costs no network traffic; active probing does.</p>`
+      `<h4>Machine status</h4><p class="lede">${STATE.ctx.type==='server'?'<span style="color:var(--amber)">Governed by the server</span> — it can only be narrowed.':'Governed here, for this local vault.'} Passive “last seen” costs no network traffic; active probing does.</p>`
     + prefRow('Health-check','',`<select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select>`)
     + prefRow('Container &amp; service cards on the machine dashboard',`These two cards run a command on the host each time they refresh. Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.${STATE.ctx.type==='server'&&STATE.dashPolicy.clients===false?' <span style="color:var(--amber)">The server turns them off for this client</span>, so this changes nothing here.':''}`,prefToggle('machineProbes','renderAll()')) },
 
   { id:'security', label:'Security', body:()=>
-      `<h4>Security</h4><p class="lede">Applies as you change it.</p>`
+      `<h4>Security</h4><p class="lede">Applies on change.</p>`
     + prefRow('Auto-lock vault','After inactivity',`<select class="inp" style="width:auto"><option>Disabled</option><option>1 min</option><option>3 min</option><option selected>5 min</option><option>Custom…</option></select>`)
     + prefRow('Auto-clear clipboard','Clear 30s after a copy',`<div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div>`) },
 
   { id:'ssh', label:'SSH', body:()=>
       `<h4>SSH</h4>`
     + prefRow('Host-key verification','How unknown server keys are handled',`<select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select>`)
-    + prefRow('Auto-reconnect lost connections','Off by default. On → a dropped session reconnects automatically (a <b>new shell</b>: history, on-screen output and any running job are lost). Off → a <b>Reconnect</b> button instead. Either way you are told.',prefToggle('autoReconnect','renderMain()')) },
+    + prefRow('Auto-reconnect lost connections','Off by default. On → a dropped session reconnects automatically (a <b>new shell</b>: history, on-screen output and any running job are lost). Off → a <b>Reconnect</b> button instead. Either way the disconnection is reported.',prefToggle('autoReconnect','renderMain()')) },
 
   { id:'focus', label:'Focus mode', body:()=>
       `<h4>Focus mode</h4><p class="lede">F11 hides the toolbar so terminals fill the screen.</p>`
@@ -1045,14 +1045,14 @@ const PREFS=[
     + `<p class="lede" style="margin-top:14px">Nothing here is sent anywhere. <a href="#" onclick="copyDiagnostics();return false">Copy as text</a> for a bug report.</p>` },
 
   { id:'password', label:'Master password', when:prefsHasVault, body:()=>
-      `<h4>Master password</h4><p class="lede">The password that opens <b>${(STATE.ctx&&STATE.ctx.name)||'this vault'}</b>. Changing it re-wraps the vault key; your machines are not re-encrypted.</p>
+      `<h4>Master password</h4><p class="lede">The password that opens <b>${(STATE.ctx&&STATE.ctx.name)||'this vault'}</b>. Changing it re-wraps the vault key; the machines are not re-encrypted.</p>
       <label class="field"><span>Current password</span><input class="inp" type="password" placeholder="••••••••"></label>
       <label class="field"><span>New password</span><input class="inp" type="password" data-pw placeholder="••••••••"><div class="strength"><i></i></div></label>
       <label class="field"><span>Confirm new password</span><input class="inp" type="password" placeholder="••••••••"></label>
       <button class="btn btn-primary btn-sm" onclick="toast('Password changed')">Change password</button>` },
 
   { id:'danger', label:'Danger zone', when:prefsHasVault, danger:true, body:()=>
-      `<h4 style="color:var(--red)">Danger zone</h4><p class="lede">Only ever about the vault you are in. Removing a vault you are <i>not</i> in — and deleting its file — is in the vault manager instead, where the list of vaults is.</p>
+      `<h4 style="color:var(--red)">Danger zone</h4><p class="lede">Only ever about the vault in use here. Removing a vault that is <i>not</i> in — and deleting its file — is in the vault manager instead, where the list of vaults is.</p>
       <div class="settings-row" style="border:none"><div><b style="color:var(--red)">Reset this vault</b><div class="muted" style="font-size:12px">Erase its master password and every connection it holds. Irreversible.</div></div><button class="btn btn-sm" style="color:var(--red);border-color:rgba(247,118,142,.4)" onclick="this.closest('.backdrop').remove();dlgResetVault()">Reset…</button></div>` },
 ];
 /* A vault has to be OPEN for these two to mean anything: with none, there is no
@@ -1063,7 +1063,7 @@ function openSettings(at){ return openPrefs(PREFS,at); }
    then returns to the base workspace (a vault isn't mandatory). Irreversible ⇒ type the vault name. */
 function dlgResetVault(){const nm=(STATE.ctx&&STATE.ctx.name)||'this vault';
   showModal({title:`Reset “${nm}”?`,confirm:'Reset & start fresh',
-  body:`<div class="card" style="padding:12px;border-color:rgba(247,118,142,.35);background:rgba(247,118,142,.06)"><p style="margin:0;font-size:13px;color:var(--fg)">This <b>permanently erases</b> its master password, every connection, and its name/icon. You'll return to the base workspace — it can't be undone (zero-knowledge).</p></div>
+  body:`<div class="card" style="padding:12px;border-color:rgba(247,118,142,.35);background:rgba(247,118,142,.06)"><p style="margin:0;font-size:13px;color:var(--fg)">This <b>permanently erases</b> its master password, every connection, and its name/icon. The base workspace comes back — irreversible (zero-knowledge).</p></div>
     <label class="field" style="margin-top:12px"><span>Type <b class="mono">${nm}</b> to confirm</span><input class="inp" id="reset-confirm" placeholder="${nm}"></label>`,
   onConfirm:(m)=>{if((m.querySelector('#reset-confirm').value||'').trim()!==nm)return false;
     if(STATE.ctx&&STATE.ctx.type==='vault'){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
@@ -1078,12 +1078,12 @@ function dlgResetVault(){const nm=(STATE.ctx&&STATE.ctx.name)||'this vault';
    A local vault is single-user: no teams, no sharing requests. These only exist when
    the current context is a SERVER (ADR 0016/0017). */
 function inboxRows(limit){
-  if(!ORG.accessRequests.length)return `<div style="text-align:center;color:var(--muted);padding:22px 0">No pending requests — you're all caught up.</div>`;
+  if(!ORG.accessRequests.length)return `<div style="text-align:center;color:var(--muted);padding:22px 0">No pending requests.</div>`;
   return (limit?ORG.accessRequests.slice(0,limit):ORG.accessRequests).map((r,i)=>`<div class="mrow" style="cursor:default;gap:11px">${av(r.user)}<div class="grow"><div class="title"><b>${r.user}</b> requests access to <b>${r.coll}</b></div><div class="sub">${r.team?`discovered via team ${r.team} · `:''}${r.when}</div></div><button class="btn btn-ghost btn-sm" onclick="dismissReq(${i})">Dismiss</button><button class="btn btn-primary btn-sm" onclick="grantReq(${i})">${EXICON.key} Grant</button></div>`).join('');
 }
 function openInbox(){document.querySelectorAll('.backdrop').forEach(b=>b.remove());const bd=document.createElement('div');bd.className='backdrop show';
   const total=ORG.accessRequests.length, CAP=5;
-  bd.innerHTML=`<div class="modal" style="max-width:540px"><header><h3>Notifications</h3><p>People asking to join collections you can grant.${total>CAP?` Showing the latest ${CAP} of ${total}.`:''}</p></header><div class="body" id="inboxBody" style="max-height:52vh;overflow:auto">${inboxRows(CAP)}</div><div class="foot" style="justify-content:space-between"><button class="btn btn-ghost btn-sm" onclick="location.href='notifications.html'">See all notifications →</button><button class="btn btn-ghost" onclick="this.closest('.backdrop').remove()">Close</button></div></div>`;
+  bd.innerHTML=`<div class="modal" style="max-width:540px"><header><h3>Notifications</h3><p>Requests to join grantable collections.${total>CAP?` Showing the latest ${CAP} of ${total}.`:''}</p></header><div class="body" id="inboxBody" style="max-height:52vh;overflow:auto">${inboxRows(CAP)}</div><div class="foot" style="justify-content:space-between"><button class="btn btn-ghost btn-sm" onclick="location.href='notifications.html'">See all notifications →</button><button class="btn btn-ghost" onclick="this.closest('.backdrop').remove()">Close</button></div></div>`;
   bd.addEventListener('click',e=>{if(e.target===bd)bd.remove();});document.body.appendChild(bd);}
 function refreshInbox(){const b=document.getElementById('inboxBody');if(b)b.innerHTML=inboxRows(5);renderActs();}
 function grantReq(i){const r=ORG.accessRequests[i];toast(`Sealed machine access to <span class="accent">${r.user}</span> · ${r.coll}`);ORG.accessRequests.splice(i,1);refreshInbox();}
@@ -1098,18 +1098,18 @@ function discBody(){const ME=ORG.me;
   const row=c=>{const mine=c.members.includes(ME),pending=DREQ.has(c.offer.label);
     const badge=mine?`<span style="font-size:11px;font-weight:700;color:var(--green)">MEMBER</span>`:pending?`<span style="font-size:11px;font-weight:700;color:var(--amber)">REQUESTED</span>`:'';
     const btn=mine?`<button class="btn btn-sm" onclick="toast('Opening…')">Open</button>`:pending?`<button class="btn btn-sm" disabled style="opacity:.55;cursor:default">Awaiting a grant</button>`:`<button class="btn btn-primary btn-sm" onclick="discReq('${c.offer.label}')">Request access</button>`;
-    const sub=mine?"You're a member — open it any time":"Machines stay encrypted until a member grants you";
+    const sub=mine?"Member — open it any time":"Machines stay encrypted until a member grants access";
     return `<div class="oc"><span class="oc-ic">${M.coll}</span><div class="oc-txt"><div class="oc-label">${c.offer.label}</div><div class="oc-sub">${sub}</div></div><div class="oc-act">${badge}${btn}</div></div>`;};
   const allCol=myteams.every(t=>DCOLL.has(t.name));
-  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px"><p class="muted" style="font-size:13px;margin:0">Collections offered to the teams you're in — request access and a member grants you the key.</p><button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="discToggleAll()">${allCol?'Expand all':'Collapse all'}</button></div>
-    <div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Labels are for discovery, not secrets.</b> Visible to your team (and the server) so you can find and request access; machines and private names stay end-to-end encrypted until a member grants you.</div></div>
+  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px"><p class="muted" style="font-size:13px;margin:0">Collections offered to the joined teams' — request access and a member grants the key.</p><button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="discToggleAll()">${allCol?'Expand all':'Collapse all'}</button></div>
+    <div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Labels are for discovery, not secrets.</b> Visible to the team and the server, so a collection can be found and access requested; machines and private names stay end-to-end encrypted until a member grants access.</div></div>
     ${myteams.map(t=>{const o=offeredTo(t.name),col=DCOLL.has(t.name);
       return `<div class="disc-panel ${col?'collapsed':''}"><button class="disc-h" onclick="toggleTeam('${t.name}')" title="${col?'Expand':'Collapse'}"><span class="tname">${EXICON.users} ${t.name}</span><span class="disc-count">${o.length} offered</span><span class="disc-chev ${col?'':'open'}">${EXICON.chevD}</span></button>${col?'':(o.length?o.map(row).join(''):'<div class="disc-empty">No collections offered to this team yet.</div>')}</div>`;}).join('')}`;}
 function openDiscover(){document.querySelectorAll('.backdrop').forEach(b=>b.remove());showModal({title:'Discover',wide:true,body:`<div id="discBody">${discBody()}</div>`,confirm:'Done'});}
 function discRefresh(){const el=document.getElementById('discBody');if(el)el.innerHTML=discBody();}
 function toggleTeam(name){DCOLL.has(name)?DCOLL.delete(name):DCOLL.add(name);discRefresh();}
 function discToggleAll(){const my=ORG.teams.filter(t=>t.members.includes(ORG.me));if(my.every(t=>DCOLL.has(t.name)))DCOLL.clear();else my.forEach(t=>DCOLL.add(t.name));discRefresh();}
-function discReq(label){DREQ.add(label);toast('Requested access to <span class="accent">'+label+'</span> — a member will grant you the key');discRefresh();}
+function discReq(label){DREQ.add(label);toast('Requested access to <span class="accent">'+label+'</span> — a member grants the key');discRefresh();}
 
 /* ================= wire ================= */
 /* What a build knows about itself. In the app these come from the binary that serves the
@@ -1127,12 +1127,12 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
   ${STATE.toolbar.shell?`<button class="btn btn-sm" title="Shell for new local terminals — the same setting as Settings ▸ Terminals" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>`:''}
   ${STATE.toolbar.focus?`<button class="btn btn-ghost btn-sm" title="Focus mode (F11) — hide the toolbar, terminals fill the screen" onclick="toggleFocus()"><svg class="icon" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>`:''}
   ${(STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK)||!STATE.toolbar.quick?'':`<button class="btn btn-sm" onclick="dlgQuickSSH()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`}
-  ${STATE.toolbar.agents?`<button class="btn btn-ghost btn-sm" title="Agents — the AI sessions running on your machines" onclick="openAgents()">${M.agent} <span class="lbl">Agents</span></button>`:''}
+  ${STATE.toolbar.agents?`<button class="btn btn-ghost btn-sm" title="Agents — the AI sessions running on the machines" onclick="openAgents()">${M.agent} <span class="lbl">Agents</span></button>`:''}
   ${STATE.ctx.type==='vault'&&!STATE.ctx.locked?`<button class="btn btn-ghost btn-sm" title="Lock vault" onclick="lockVault('${STATE.ctx.id}')">${ICON.lock}</button>`:''}
-  ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Discover collections offered to your teams" onclick="openDiscover()">${M.compass} <span class="lbl">Discover</span></button>
+  ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Discover collections offered to the joined teams" onclick="openDiscover()">${M.compass} <span class="lbl">Discover</span></button>
   <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
   <button class="btn btn-ghost btn-sm" title="Administration — users, teams, invitations, instance" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Administration</span></button>
-  <button class="profile" onclick="toggleProfile(event)" title="Your account on ${STATE.ctx.name}"><span class="avatar" style="background:${avColor(ORG.me)}">${(ORG.me||'?').slice(0,2).toUpperCase()}</span><span class="pmeta"><span class="pname">${ORG.me}</span><span class="prole role-admin">admin</span></span><span class="chev">${EXICON.chevD}</span></button>`:''}
+  <button class="profile" onclick="toggleProfile(event)" title="Account on ${STATE.ctx.name}"><span class="avatar" style="background:${avColor(ORG.me)}">${(ORG.me||'?').slice(0,2).toUpperCase()}</span><span class="pmeta"><span class="pname">${ORG.me}</span><span class="prole role-admin">admin</span></span><span class="chev">${EXICON.chevD}</span></button>`:''}
   ${STATE.ctx.type!=='home'?`<button class="btn btn-ghost btn-sm" title="Open in new window" onclick="openInNewWindow('${STATE.ctx.name}')">${EXICON.split}</button>`:''}`;}
 // Profile dropdown (server context). Populated from the active server context on open.
 function toggleProfile(e){e.stopPropagation();const a=document.getElementById('pmAv');a.textContent=(ORG.me||'?').slice(0,2).toUpperCase();a.style.background=avColor(ORG.me);document.getElementById('pmName').textContent=ORG.me;document.getElementById('pmServer').textContent=(STATE.ctx&&STATE.ctx.name)||'';document.getElementById('pmenu').classList.toggle('show');}

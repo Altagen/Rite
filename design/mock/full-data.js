@@ -44,10 +44,10 @@ function overlayNavHTML(current){
     // The way back, NAMED. It replaces the ✕ that used to be the only exit: a nav of
     // four destinations says where you are going, where a Close only says "not here".
     { id:'app', label:'Terminals', href:'web.html', icon:EXICON.term,
-      title:'Back to your terminals (Esc)' },
+      title:'Back to the terminals (Esc)' },
     { id:'teams', label:'Teams', href:'teams.html', icon:EXICON.users, title:'Teams' },
     { id:'collections', label:'Collections', href:'collections.html', icon:EXICON.coll,
-      title:'Collections — yours + Discover (offered to your teams)' },
+      title:'Collections — owned, plus Discover (offered to the joined teams)' },
   ];
   // Managers see it too; the console itself filters what they may touch.
   if(role === 'admin' || role === 'manager')
@@ -72,7 +72,7 @@ function overlayNavHTML(current){
 const ORG = {
   me:'alex',
   users:[
-    {u:'alex', role:'admin', label:'alex (you)', joined:'2025-11-02', pw:true},
+    {u:'alex', role:'admin', label:'alex (this account)', joined:'2025-11-02', pw:true},
     {u:'carol', role:'user', label:'carol', joined:'2026-01-15', pw:true},
     {u:'dan', role:'user', label:'dan', joined:'2026-02-20', pw:true},
     {u:'erin', role:'user', label:'erin', joined:'2026-02-28', pw:false},

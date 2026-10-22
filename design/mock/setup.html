@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rite · Set your password (mock)</title>
+<title>Rite · Set a password (mock)</title>
 <link rel="stylesheet" href="rite.css">
 <style>
   /* Pre-auth "choose your password" screen. ONE mechanism, two entry points:
@@ -55,7 +55,7 @@
     <div id="note"></div>
 
     <label class="field"><span id="pwLab">New password</span>
-      <div class="pw-wrap"><input class="inp" id="pw" type="password" autocomplete="new-password" placeholder="A password only you know" oninput="upd()">
+      <div class="pw-wrap"><input class="inp" id="pw" type="password" autocomplete="new-password" placeholder="A password known to nobody else" oninput="upd()">
         <button class="eye" id="eye" title="Show password" onclick="toggleEye()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
     </label>
     <div class="meter" id="meter"><i></i><i></i><i></i><i></i></div>
@@ -67,7 +67,7 @@
     <div class="mismatch" id="mismatch"></div>
 
     <div class="zk"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/></svg>
-      <div>Your password encrypts everything you store and <b>never leaves this device</b> — the server only ever sees ciphertext. That's also why it can't be recovered: keep it safe.</div></div>
+      <div>The password encrypts everything stored and <b>never leaves this device</b> — the server only ever sees ciphertext. That's also why it can't be recovered: keep it safe.</div></div>
 
     <button class="btn btn-primary go" id="go" disabled onclick="submit()"></button>
     <div class="after" id="after"></div>
@@ -88,16 +88,16 @@ const $=id=>document.getElementById(id);
 // Copy differs by entry point, but the mechanism (mint a fresh vault key from a
 // password the server never sees) is identical.
 if(MODE==='first'){
-  $('h').textContent=`Welcome, ${USER} — set your password`;
-  $('lead').innerHTML=`An admin created your account. Choose a password <b>only you know</b>: until you do, the initial password an admin set could unlock your data. This one is yours alone.`;
+  $('h').textContent=`${USER} — set a personal password`;
+  $('lead').innerHTML=`An admin created this account. A password <b>known to nobody else</b>: until then, the initial password an admin set could unlock the data. This one belongs to this account alone.`;
   $('after').textContent='';
   $('go').textContent='Set password & continue';
 }else{
   $('h').textContent='Set a new password';
-  $('lead').innerHTML=`Your access was reset because the old password was lost. A new password gives you a fresh private key.`;
-  $('note').innerHTML=`<div class="note keep"><b>Kept:</b> your username <b>${esc(USER)}</b> and every team you're in.</div>
-    <div class="note lose"><b>Gone for good:</b> anything encrypted under your old password — personal connections and any solo collection. End-to-end encryption means no one could recover them, not even an admin.</div>`;
-  $('after').innerHTML=`Next: you'll see the collections offered to your teams — <b>request access</b> and a member grants you back in.`;
+  $('lead').innerHTML=`The access was reset because the old password was lost. A new password gives a fresh private key.`;
+  $('note').innerHTML=`<div class="note keep"><b>Kept:</b> the username <b>${esc(USER)}</b> and every team it're in.</div>
+    <div class="note lose"><b>Gone for good:</b> anything encrypted under the old password — personal connections and any solo collection. End-to-end encryption means no one could recover them, not even an admin.</div>`;
+  $('after').innerHTML=`Next: the'collections offered to the joined teams appear — <b>request access</b> and a member grants access back.`;
   $('go').textContent='Set new password & continue';
 }
 
@@ -136,7 +136,7 @@ function submit(){
   // wrapped keys + auth verifier, then lands in the app.
   const t=document.createElement('div');t.className='toast show';
   t.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border2);padding:11px 16px;border-radius:10px;box-shadow:var(--shadow);font-size:13px;z-index:80';
-  t.textContent=MODE==='reset'?'Password set — taking you to your teams…':'Password set — welcome to Rite…';
+  t.textContent=MODE==='reset'?'Password set — opening the teams…':'Password set — welcome to Rite…';
   document.body.appendChild(t);
   setTimeout(()=>location.href='web.html',900);
 }

@@ -348,7 +348,7 @@ test('desktop mock: a hook nobody here installed is visible, on a shared account
   );
 
   await expect(page.locator('.backdrop')).toContainText(/shared account/);
-  await expect(page.locator('.backdrop')).toContainText(/hooks you did not install/);
+  await expect(page.locator('.backdrop')).toContainText(/hooks nobody here installed/);
   // The one under the shared home is marked apart from the project's own.
   await expect(page.locator('.backdrop .arow.hook')).toHaveCount(2);
   await expect(page.locator('.backdrop .arow.hook.foreign')).toHaveCount(1);
@@ -528,7 +528,7 @@ const ROWS: {
     ctx: 'vault',
     policy: { webui: true, clients: true },
     user: false,
-    verdict: 'off by you',
+    verdict: 'off by local',
   },
   {
     shell: 'desktop',
@@ -556,12 +556,12 @@ const ROWS: {
     ctx: 'server',
     policy: { webui: true, clients: true },
     user: false,
-    verdict: 'off by you',
+    verdict: 'off by local',
   },
   { shell: 'web', policy: { webui: true, clients: true }, user: true, verdict: 'run' },
   { shell: 'web', policy: { webui: false, clients: true }, user: true, verdict: 'off by server' },
   { shell: 'web', policy: { webui: false, clients: true }, user: false, verdict: 'off by server' },
-  { shell: 'web', policy: { webui: true, clients: false }, user: false, verdict: 'off by you' },
+  { shell: 'web', policy: { webui: true, clients: false }, user: false, verdict: 'off by local' },
 ];
 
 test('both mocks resolve ADR 0019 §5 the same way, row for row', async ({ page }) => {
@@ -813,8 +813,8 @@ test('desktop mock: Settings leads with the layout cards, and the startup switch
   expect(after.presets).toBe(2);
   // Morning's own key, and the comment written beside it, are still there.
   expect(after.file).toContain('startup = true            # open this layout when Rite starts');
-  expect(after.file).toContain('  machine = "web-01"      # a machine from your library, by name');
-  expect(after.file.startsWith('# Your workspace:')).toBe(true);
+  expect(after.file).toContain('  machine = "web-01"      # a machine from the library, by name');
+  expect(after.file.startsWith('# The workspace:')).toBe(true);
 
   // Off REMOVES the line rather than writing `startup = false`: the file stays free of
   // a key that states the default.
@@ -884,7 +884,7 @@ test('desktop mock: the preset dialog rewrites the preset blocks and nothing els
   // Everything that is not a preset block came back exactly as it was typed.
   expect(after.layouts).toEqual(['Morning', 'Deploy watch']);
   expect(after.panes).toBe(6);
-  expect(after.file.startsWith('# Your workspace:')).toBe(true);
+  expect(after.file.startsWith('# The workspace:')).toBe(true);
   expect(after.file).toContain(
     '  of = "logs"             # cut out of that pane, not the previous one',
   );

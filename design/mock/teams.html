@@ -70,7 +70,7 @@
     <!-- Terminals / Teams / Collections / Administration + the bell: one list, in
          full-data.js. "Terminals" IS the way back, which is why there is no ✕ here. -->
     <span id="onav" style="display:contents"></span>
-    <button class="profile" onclick="toggleProfile(event)" title="Your account"><span class="avatar" id="avSm"></span><span class="pmeta"><span class="pname" id="pName"></span><span class="prole" id="pRole"></span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
+    <button class="profile" onclick="toggleProfile(event)" title="Account"><span class="avatar" id="avSm"></span><span class="pmeta"><span class="pname" id="pName"></span><span class="prole" id="pRole"></span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
   </div>
   <div class="pmenu" id="pmenu">
     <div class="pmenu-head"><span class="avatar" id="pmAv"></span><div><div class="pname" id="pmName" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span>rite.acme.io</span></div></div></div>
@@ -89,7 +89,7 @@
     <main class="cmain" id="detail"></main>
   </div>
 </div>
-<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>teams</b> · your teams — managers handle who's in the team; sharing lives in collections</div>
+<div style="position:fixed;bottom:12px;right:14px;color:var(--muted);font-size:12px">Rite · <b>teams</b> · joined teams — managers handle who's in the team; sharing lives in collections</div>
 <script src="full-data.js"></script>
 <script>
 /* ================= Rite teams (user view, mock) =================
@@ -111,7 +111,7 @@ const FLATC=[];(function rec(l){l.forEach(c=>{FLATC.push(c);if(c.children)rec(c.
 const offeredTo=name=>FLATC.filter(c=>c.offer&&c.offer.team===name);
 // Discovery labels I've requested (shared with the Discover tab in collections.html).
 const REQ=new Set(ORG.myRequests);
-function reqAccess(label){REQ.add(label);toast('Requested access to <b>'+label+'</b> — a member will grant you the key');render();}
+function reqAccess(label){REQ.add(label);toast('Requested access to <b>'+label+'</b> — a member grants the key');render();}
 
 const myRole=t=>t.roles[ME];
 const adminsOf=t=>t.members.filter(m=>t.roles[m]==='admin').length;
@@ -136,14 +136,14 @@ function detail(){
   const head=`<div class="cmain-h"><span style="color:var(--accent);display:grid;place-items:center">${usersIcon}</span><h1>${t.name}</h1>${roleBadge(myRole(t))}
       <span class="muted" style="font-size:13px">· ${t.members.length} member${t.members.length===1?'':'s'}</span></div>`;
   const sub=admin
-    ? `You're a <b>manager</b> of this team — add, remove, and set who's a manager. Sharing machines happens in collections.`
-    : `You're a member of this team. A manager handles who's in it.`;
+    ? `<b>Manager</b> of this team — add, remove, and set who's a manager. Sharing machines happens in collections.`
+    : `Member of this team. A manager handles who's in it.`;
 
   const members=`<div class="panel" style="overflow:visible"><div class="panel-h"><span class="t">Members · ${t.members.length}</span></div>
     ${t.members.map(m=>{const r=t.roles[m];const isMe=m===ME;
-      const you=isMe?' <span class="muted" style="font-size:12px">(you)</span>':'';
+      const selfTag=isMe?' <span class="muted" style="font-size:12px">(this account)</span>':'';
       const ctl=admin&&!isMe?`${roleSelect(t,m)}<button class="btn btn-ghost btn-sm" title="Remove from team" onclick="toast('Remove ${m}')" style="color:var(--red)">${EXICON.trash}</button>`:roleBadge(r);
-      return `<div class="mrow">${av(m)}<span class="nm">${m}${you}</span>${ctl}</div>`;}).join('')}
+      return `<div class="mrow">${av(m)}<span class="nm">${m}${selfTag}</span>${ctl}</div>`;}).join('')}
     ${admin?`<div class="add-pick"><div class="ta"><input class="inp" placeholder="Add someone — type a username…" data-ex="${t.members.join(',')}" data-label="${t.name}" oninput="taSearch(this)"><div class="ta-menu" hidden></div></div></div>`:''}</div>`;
 
   // Collections offered to this team — discovery labels (not the real encrypted names),
@@ -158,16 +158,16 @@ function detail(){
               :`<button class="btn btn-primary btn-sm" onclick="reqAccess('${c.offer.label}')">Request access</button>`}</div>`;}).join('')
       :'<div class="mrow"><span class="muted" style="font-size:13px">No collections offered to this team yet. An owner can offer one from its collection settings.</span></div>'}</div>`;
 
-  const zk=`<div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Names here are for discovery, not secrets.</b> The labels above are visible to this team (and the server) so you can find and request access. The machines themselves — and every private collection — stay end-to-end encrypted; you only see them once a member grants you access.</div></div>`;
+  const zk=`<div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Names here are for discovery, not secrets.</b> The labels above are visible to this team and the server, so a collection can be found and access requested. The machines themselves — and every private collection — stay end-to-end encrypted, until a member grants access.</div></div>`;
 
   // Leave (offboarding). A member can always leave; the last manager / sole member
   // can't (the team would be unmanageable or empty — that's the org-admin's call).
   const lastMgr=admin&&adminsOf(t)<2, sole=t.members.length<2, canLeave=!lastMgr&&!sole;
   const leave=`<div class="panel danger" style="padding:6px 18px 10px"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0">
       <div><div style="font-weight:600;color:var(--red)">Leave team</div><div class="muted" style="font-size:12px">${canLeave
-        ?"You leave the roster and stop seeing the collections offered to this team. Collections you're already a member of are unaffected."
-        :(lastMgr?"You're the only manager — promote another manager first, or ask an admin."
-                 :"You're the only member — an admin can delete the team.")}</div></div>
+        ?"Leaves the roster and stops showing the collections offered to this team. Collections already joined are unaffected."
+        :(lastMgr?"Last manager — promote another manager first, or ask an admin."
+                 :"Only member — an admin can delete the team.")}</div></div>
       <button class="btn btn-sm danger" style="color:var(--red)" ${canLeave?'':'disabled'} onclick="toast('Leave ${t.name}…')">Leave</button></div></div>`;
 
   return head+`<div class="cmain-sub">${sub}</div>`+members+discover+zk+leave;

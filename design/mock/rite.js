@@ -256,8 +256,8 @@ registerPaneKind('term', (p,i) => termHTML(p.host, { name:p.name, cmd:p.cmd, lin
    layout: it opens a PLAIN SHELL and says so in the pane. You get your workspace,
    minus what could not be found, and you can see exactly what was missing. */
 const LAYOUT_PATH = '~/.config/rite/layouts.toml';
-let LAYOUT_FILE = `# Your workspace: the commands the split menu offers, and what opens in the morning.
-# Rite reads this file at startup. Settings ▸ Layouts edits it; so does your editor.
+let LAYOUT_FILE = `# The workspace: the commands the split menu offers, and what opens at the start.
+# Rite reads this file at startup. Settings ▸ Layouts edits it; so does any editor.
 
 [[preset]]
 name = "Load"
@@ -276,7 +276,7 @@ startup = true            # open this layout when Rite starts
                           # the first pane of a tab is the whole area
 
   [[layout.pane]]
-  machine = "web-01"      # a machine from your library, by name
+  machine = "web-01"      # a machine from the library, by name
   command = "journalctl -fu app"
   name = "logs"           # the pane header, and what "of" points at
   split = "right"         # right, down, left, up — of the previous pane
@@ -599,10 +599,10 @@ function layoutTarget(p){
   // no context at all means "the library is reachable", not "there is no library".
   const openVault = !ctx || ctx.type==='server' || (ctx.type==='vault' && !ctx.locked);
   if(!openVault) return { host:null,
-    warn:`<b>${p.machine}</b> needs an open vault — your machines are encrypted, so this pane opened a plain shell.` };
+    warn:`<b>${p.machine}</b> needs an open vault — machines are encrypted, so this pane opened a plain shell.` };
   const m=findMachine(p.machine);
   if(!m) return { host:null,
-    warn:`<b>${p.machine}</b> isn't in your library — renamed, or from another computer. This pane opened a plain shell.` };
+    warn:`<b>${p.machine}</b> isn't in the library — renamed, or from another computer. This pane opened a plain shell.` };
   return { host:m.name, warn:null };
 }
 
@@ -688,7 +688,7 @@ function layoutsBtnHTML(){
   // what keeps the two from disagreeing.
   if(!PANE_LAYOUTS.length && !LAYOUT_ERROR) return '';
   const bad=!!LAYOUT_ERROR;
-  return `<button class="mtab-new" title="${bad?'Layouts — your layouts.toml has an error':'Layouts — open a saved arrangement in this tab'}"
+  return `<button class="mtab-new" title="${bad?'Layouts — layouts.toml has an error':'Layouts — open a saved arrangement in this tab'}"
     onclick="layoutsMenu(event)"${bad?' style="color:var(--amber)"':''}>${EXICON.panel}${EXICON.chevD}</button>`;
 }
 function layoutsMenu(e){
@@ -823,11 +823,11 @@ function layoutErrorHTML(){
    for EDITING, which is a rarer thing to want than looking. */
 function layoutsSettingsHTML(){
   const cards=layoutCardsHTML({toggle:true});
-  return `<h4>Layouts</h4><p class="lede">What opens when you sit down: which terminals, in what order, on which machines.
-      Kept as a file so you can version it and carry it between computers.</p>
+  return `<h4>Layouts</h4><p class="lede">What opens at the start of a session: which terminals, in what order, on which machines.
+      Kept as a file so it can be versioned and carried between computers.</p>
     ${layoutErrorHTML()}
     ${cards? `<div class="snip-list" data-lay-cards>${cards}</div>`
-      : (LAYOUT_ERROR?'':'<p class="muted" style="font-size:12.5px;margin:2px 0 10px" data-lay-empty>No layouts yet. Open the file and describe what should open when you sit down.</p>')}
+      : (LAYOUT_ERROR?'':'<p class="muted" style="font-size:12.5px;margin:2px 0 10px" data-lay-empty>No layouts yet. Open the file and describe what should open at the start of a session.</p>')}
     <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
       <button class="btn btn-sm" onclick="dlgLayouts()">Open the layouts file…</button>
       <code class="muted" style="font-size:11.5px">${LAYOUT_PATH}</code></div>
@@ -866,7 +866,7 @@ function layoutsBody(){
     : `<p class="lay-ok">✓ ${PANE_LAYOUTS.length} layout${PANE_LAYOUTS.length===1?'':'s'} loaded, ${SPLIT_PRESETS.length} preset${SPLIT_PRESETS.length===1?'':'s'}.</p>`;
   return `<p class="muted" style="font-size:12.5px;margin:0 0 10px;line-height:1.55">
       One file for how this machine is set up: <code>[[preset]]</code> is what the chevron beside a divider offers,
-      <code>[[layout]]</code> is what you open when you sit down — which terminals, in what order, on which machines.
+      <code>[[layout]]</code> is what opens at the start of a session — which terminals, in what order, on which machines.
       A machine this computer doesn't have opens a <b>plain shell</b> with a note in the pane; the layout still opens.</p>
     <div class="lay-path">${EXICON.coll} <code>${esc(LAYOUT_PATH)}</code>
       <span class="grow" style="flex:1"></span>
@@ -881,13 +881,13 @@ function layoutsBody(){
     <div class="snip-list">${cards||'<p class="muted" style="font-size:13px;margin:2px 0 10px">Nothing loaded.</p>'}</div>`;
 }
 function dlgLayouts(){
-  const bd=showModal({title:'Layouts',subtitle:'What opens when you sit down',width:'620px',confirm:null,body:layoutsBody()});
+  const bd=showModal({title:'Layouts',subtitle:'What opens at the start of a session',width:'620px',confirm:null,body:layoutsBody()});
   const body=bd.querySelector('.body');
   const redraw=()=>{body.innerHTML=layoutsBody();};
   body.addEventListener('click',e=>{
     const t=e.target.closest('[data-lay-save],[data-lay-reload],[data-lay-editor]');
     if(!t)return;
-    if(t.dataset.layEditor!==undefined){ toast(`${LAYOUT_PATH} — opened in your editor`); return; }
+    if(t.dataset.layEditor!==undefined){ toast(`${LAYOUT_PATH} — opened in the editor`); return; }
     if(t.dataset.layReload!==undefined){ reloadLayouts(); redraw();
       toast(LAYOUT_ERROR?'File re-read — it still has an error':'File re-read'); if(typeof renderMain==='function')renderMain(); return; }
     // Save: the textarea is the file. Parse first, keep the old layouts if it fails.
@@ -953,8 +953,8 @@ function termHTML(host, opts){
   // A layout asked for a machine we could not open. The pane works — it just is not
   // the pane that was asked for, and nothing else on screen would ever say so.
   if(opts.warn) banner=`<div class="pane-warn"><span>⚠</span><span>${opts.warn}</span></div>`;
-  if(lost && auto) banner+=`<div style="background:color-mix(in oklab,var(--amber) 12%,transparent);border:1px solid color-mix(in oklab,var(--amber) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ Connection lost — <b>automatically reconnected</b>. This is a new shell: your previous history, on-screen output and any running job were lost.</div>`;
-  else if(lost) banner+=`<div style="background:color-mix(in oklab,var(--red) 10%,transparent);border:1px solid color-mix(in oklab,var(--red) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ <b>Connection lost.</b> Reconnecting opens a <b>new shell</b> (history & on-screen output are lost) — use <b>Reconnect ↗</b> when you're ready.</div>`;
+  if(lost && auto) banner+=`<div style="background:color-mix(in oklab,var(--amber) 12%,transparent);border:1px solid color-mix(in oklab,var(--amber) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ Connection lost — <b>automatically reconnected</b>. This is a new shell: the previous history, on-screen output and any running job were lost.</div>`;
+  else if(lost) banner+=`<div style="background:color-mix(in oklab,var(--red) 10%,transparent);border:1px solid color-mix(in oklab,var(--red) 35%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5">⚠ <b>Connection lost.</b> Reconnecting opens a <b>new shell</b> (history & on-screen output are lost) — use <b>Reconnect ↗</b> to restart it.</div>`;
   const body = opts.lines
     ? `${banner}<div class="ln di"># ${opts.cmd || ''}</div>${opts.lines.map((l)=>`<div class="ln di">${l}</div>`).join('')}<div class="ln"><span class="pr">${who} ~ ❯</span> <span class="cursor"></span></div>`
     : (lost && auto)

@@ -267,13 +267,13 @@ function renderActs(){
   document.getElementById('acts').innerHTML=`
     <button class="btn btn-primary btn-sm" title="New terminal on the server (${myShell()})" onclick="toast('New terminal · ${myShell()}')">${ICON.term} <span class="lbl">Terminal</span></button>
     ${ALLOW_QUICK_SSH&&STATE.toolbar.quick?`<button class="btn btn-sm tb-item" data-label="Quick SSH" onclick="dlgQuickSSHWeb()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`:''}
-    ${STATE.toolbar.agents?`<button class="btn btn-ghost btn-sm tb-item" data-label="Agents" title="Agents — the AI sessions running on your machines" onclick="openAgents()">${M.agent} <span class="lbl">Agents</span></button>`:''}
+    ${STATE.toolbar.agents?`<button class="btn btn-ghost btn-sm tb-item" data-label="Agents" title="Agents — the AI sessions running on the machines" onclick="openAgents()">${M.agent} <span class="lbl">Agents</span></button>`:''}
     ${STATE.toolbar.library?`<button class="btn btn-ghost btn-sm tb-item" data-label="Teams" title="Teams" onclick="location.href='teams.html'">${EXICON.users} <span class="lbl">Teams</span></button>
-    <button class="btn btn-ghost btn-sm tb-item" data-label="Collections" title="Collections — yours + Discover (offered to your teams)" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>`:''}
+    <button class="btn btn-ghost btn-sm tb-item" data-label="Collections" title="Collections — owned, plus Discover (offered to the joined teams)" onclick="location.href='collections.html'">${M.coll} <span class="lbl">Collections</span></button>`:''}
     ${IS_ADMIN?`<button class="btn btn-ghost btn-sm tb-item" data-label="Administration" title="Administration — users, teams, invitations, instance" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Administration</span></button>`:''}
     <button class="btn btn-ghost btn-sm" id="ovBtn" title="More" style="display:none" onclick="toggleOv(event)"><svg class="icon" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></button>
     <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
-    <button class="profile" onclick="toggleProfile(event)" title="Your account"><span class="avatar" style="background:${ME_COLOR}">${ME_INIT}</span><span class="pmeta"><span class="pname">${ME_NAME}</span><span class="prole role-${ME_ROLE}">${ME_ROLE}</span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>`;
+    <button class="profile" onclick="toggleProfile(event)" title="Account"><span class="avatar" style="background:${ME_COLOR}">${ME_INIT}</span><span class="pmeta"><span class="pname">${ME_NAME}</span><span class="prole role-${ME_ROLE}">${ME_ROLE}</span></span><span class="chev"><svg class="icon" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>`;
   initProfile(); fitBar();
 }
 // Overflow menu: collapse the lowest-priority toolbar buttons into "⋯" until the bar fits, one at a
@@ -479,7 +479,7 @@ function pickColor(el,c){__pickColor=c;el.parentNode.querySelectorAll('.sw').for
 function dlgNewFolder(parentId){const parent=parentId?find(parentId):null;
   const shared=!!parent&&(parent.type==='coll'||underColl(parentId));
   showModal({title:shared?'New folder in collection':'New folder',
-    subtitle:parent?`inside “${parent.name}”${shared?' · shared with the collection':''}`:'Your personal organiser — colour it to spot it fast.',confirm:'Create',
+    subtitle:parent?`inside “${parent.name}”${shared?' · shared with the collection':''}`:'A personal organiser — colour it to spot it fast.',confirm:'Create',
     body:`<label class="field"><span>Name</span><input class="inp" id="fname" placeholder="${shared?'e.g. Web servers':'e.g. Client Beta'}"></label>${swatchRow(COLORS[0])}
       ${shared?`<p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.users} Part of the collection — everyone who has it sees this folder.</p>`:''}`,
     onConfirm:(m)=>{const name=(m.querySelector('#fname').value||'').trim()||'New folder';
@@ -516,7 +516,7 @@ function dlgQuickSSHWeb(){showModal({title:'⚡ Quick SSH',subtitle:'Connect onc
 
 /* Import is PASTE-only in the web UI — the server never sees a file path. */
 function dlgImportPaste(collName){
-  showModal({title:'Import from SSH config',subtitle:'Paste your config — parsed in your browser, never uploaded.',wide:true,confirm:'Import',
+  showModal({title:'Import from SSH config',subtitle:'Paste a config — parsed in this browser, never uploaded.',wide:true,confirm:'Import',
     body:`<label class="field"><span>Paste ~/.ssh/config</span><textarea class="inp" id="imp-text" rows="6" placeholder="Host prod&#10;  HostName 10.0.0.5&#10;  User deploy&#10;  Port 22"></textarea></label>
       <div class="eyebrow" style="margin:4px 0 6px">Detected hosts (example)</div>
       <div class="scroll" style="max-height:170px;overflow:auto">${SSH_HOSTS.map(h=>`<label class="mrow" style="cursor:pointer" onclick="const c=this.querySelector('.chk');c.classList.toggle('on');c.textContent=c.classList.contains('on')?'✓':''"><span class="chk on">✓</span><span style="color:var(--teal);display:grid;place-items:center">${M.machine}</span><div class="grow"><div class="title">${h.name}</div><div class="sub">${h.user}@${h.host}:${h.port}</div></div></label>`).join('')}</div>
@@ -546,7 +546,7 @@ function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',
 // The chosen members — always shown, with role + remove. Adding is via the typeahead.
 function mpRenderMembers(){const {bd,chosen,roles}=window.__mp;const owners=[...chosen].filter(u=>roles[u]==='owner');
   bd.querySelector('#mpmembers').innerHTML=[...chosen].map(u=>{const me=u===ORG.me;const lockOwner=roles[u]==='owner'&&owners.length<2;const info=ORG.users.find(x=>x.u===u)||{role:'user'};
-    return `<div class="mrow" style="cursor:default">${av(u)}<div class="grow"><div class="title">${u}${roles[u]==='owner'?' <span title="owner">👑</span>':''}${me?' <span class="muted" style="font-size:12px">(you)</span>':''}</div><div class="sub">${info.role}</div></div>${roleSel(u,roles[u]||'viewer',lockOwner)}${me?'':`<button class="btn btn-ghost btn-sm" title="Remove" style="padding:4px;color:var(--red)" onclick="mpRemove('${u}')">${EXICON.trash}</button>`}</div>`;}).join('');
+    return `<div class="mrow" style="cursor:default">${av(u)}<div class="grow"><div class="title">${u}${roles[u]==='owner'?' <span title="owner">👑</span>':''}${me?' <span class="muted" style="font-size:12px">(this account)</span>':''}</div><div class="sub">${info.role}</div></div>${roleSel(u,roles[u]||'viewer',lockOwner)}${me?'':`<button class="btn btn-ghost btn-sm" title="Remove" style="padding:4px;color:var(--red)" onclick="mpRemove('${u}')">${EXICON.trash}</button>`}</div>`;}).join('');
   const cnt=bd.querySelector('#mpcount');if(cnt)cnt.textContent=`${chosen.size} member${chosen.size>1?'s':''} · ${owners.length} owner${owners.length>1?'s':''}`;
   const p=bd.querySelector('header p');if(p)p.textContent=`${chosen.size} member${chosen.size>1?'s':''}`;}
 // Typeahead: only search once you type a prefix — never ship the whole directory.
@@ -577,13 +577,13 @@ const PREFS=[
     + prefRow('Show member count on collections','The number next to shared collections',prefToggle('showMemberCount','renderAll()')) },
 
   { id:'toolbar', label:'Toolbar', body:()=>
-      `<h4>Toolbar</h4><p class="lede">What sits along the top. Hiding a button never changes what you're allowed to do — and what your server forbids stays forbidden either way.</p>`
+      `<h4>Toolbar</h4><p class="lede">What sits along the top. Hiding a button never changes what' is permitted — and what the server forbids stays forbidden either way.</p>`
     + prefRow('Quick SSH', ALLOW_QUICK_SSH?'One-off connections that aren\'t in a collection.':'<span style="color:var(--amber)">The server turns this off</span>, so it is hidden regardless.',
         prefToggle('toolbar.quick','renderActs()'))
-    + prefRow('Agents','The AI sessions running on your machines.',prefToggle('toolbar.agents','renderActs()'))
+    + prefRow('Agents','The AI sessions running on the machines.',prefToggle('toolbar.agents','renderActs()'))
     + prefRow('Teams and Collections','The two library shortcuts.',prefToggle('toolbar.library','renderActs()'))
     + (ALLOW_SHELL_CHOICE
-        ? prefRow('Shell menu on “+”','The chevron on the <b>+</b> beside the tabs, to open one terminal with another of the server\'s shells without changing your pick in <b>Terminals</b>. Hiding it leaves <b>+</b> opening your shell.',prefToggle('toolbar.newTermMenu','renderMain()'))
+        ? prefRow('Shell menu on “+”','The chevron on the <b>+</b> beside the tabs, to open one terminal with another of the server\'s shells without changing the pick in <b>Terminals</b>. Hiding it leaves <b>+</b> opening the chosen shell.',prefToggle('toolbar.newTermMenu','renderMain()'))
         : '') },
 
   { id:'keyboard', label:'Keyboard', body:()=>
@@ -604,14 +604,14 @@ const PREFS=[
     + `<p class="lede" style="margin-top:14px">Nothing here is sent anywhere. <a href="#" onclick="copyDiagnostics();return false">Copy as text</a> for a bug report.</p>` },
 
   { id:'terminals', label:'Terminals', body:()=>
-      `<h4>Terminals</h4><p class="lede">Terminals run on the server here, so the shells on offer are the server's — ${ALLOW_SHELL_CHOICE?'which of them you open is yours.':"and which one you open is your administrator's."}</p>`
+      `<h4>Terminals</h4><p class="lede">Terminals run on the server here, so the shells on offer are the server's — ${ALLOW_SHELL_CHOICE?'which of them opens is configurable.':"and which one opens is the administrator's."}</p>`
     + (ALLOW_SHELL_CHOICE
-        ? prefRow('Your shell',`Among the shells this server has installed. <b>${SERVER_SHELL}</b> is the instance default — pick it and you follow the administrator if they change it. Saved in this browser, so another browser starts on the default again.`,
-            `<select class="inp" style="width:auto" onchange="STATE.myShell=this.value;renderMain();toast(this.value?('Your shell: '+this.value):'Following the instance default')">
+        ? prefRow('Local shell',`Among the shells this server has installed. <b>${SERVER_SHELL}</b> is the instance default — picking it follows the administrator on any change. Saved in this browser, so another browser starts on the default again.`,
+            `<select class="inp" style="width:auto" onchange="STATE.myShell=this.value;renderMain();toast(this.value?('Local shell: '+this.value):'Following the instance default')">
                <option value="" ${STATE.myShell?'':'selected'}>Instance default (${SERVER_SHELL})</option>
                ${SERVER_SHELLS.map(s=>`<option value="${s}" ${STATE.myShell===s?'selected':''}>${s}</option>`).join('')}
              </select>`)
-        : prefRow('Server shell','Set by your administrator for every terminal on this server. Desktop users pick their own local shell.',
+        : prefRow('Server shell','Set by the administrator for every terminal on this server. Desktop users pick their own local shell.',
             `<code class="mono" style="font-size:13px;color:var(--muted)">${SERVER_SHELL}</code>`)) },
 
   /* No "Split presets" and no "Layouts" here, and that is the ADR 0023 rule showing
@@ -624,7 +624,7 @@ const PREFS=[
      machine, is where this part of the setup lives (`WORKSPACE_FILE`, up top). */
 
   { id:'machines', label:'Machine status', body:()=>
-      `<h4>Machine status</h4><p class="lede"><span style="color:var(--amber)">Governed by your server</span> — you can only narrow it. Passive “last seen” costs no network traffic; active probing does.</p>`
+      `<h4>Machine status</h4><p class="lede"><span style="color:var(--amber)">Governed by the server</span> — it can only be narrowed. Passive “last seen” costs no network traffic; active probing does.</p>`
     + prefRow('Health-check','',`<select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select>`)
     + prefRow('Container &amp; service cards on the machine dashboard',`These two cards ask the server to run a command on the host each time they refresh.${STATE.dashPolicy.webui===false?' <span style="color:var(--amber)">The server turns them off for the web UI</span> — nobody can run them here, and this switch changes nothing.':' Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.'}`,prefToggle('machineProbes','renderAll()')) },
 
@@ -648,7 +648,7 @@ function openSettings(at){ return openPrefs(PREFS,at); }
    Granting seals the collection's itemsKey to their public key (RBAC: owner/editor).
    The server only ever saw who-asked-for-what, never a key. */
 function inboxRows(limit){
-  if(!ORG.accessRequests.length)return `<div style="text-align:center;color:var(--muted);padding:22px 0">No pending requests — you're all caught up.</div>`;
+  if(!ORG.accessRequests.length)return `<div style="text-align:center;color:var(--muted);padding:22px 0">No pending requests.</div>`;
   return (limit?ORG.accessRequests.slice(0,limit):ORG.accessRequests).map((r,i)=>`<div class="mrow" style="cursor:default;gap:11px">${av(r.user)}
     <div class="grow"><div class="title"><b>${r.user}</b> requests access to <b>${r.coll}</b></div>
       <div class="sub">${r.team?`discovered via team ${r.team} · `:''}${r.when}</div></div>
@@ -660,7 +660,7 @@ function openInbox(){
   const bd=document.createElement('div');bd.className='backdrop show';
   const total=ORG.accessRequests.length, CAP=5;
   bd.innerHTML=`<div class="modal" style="max-width:540px">
-    <header><h3>Notifications</h3><p>People asking to join collections you can grant.${total>CAP?` Showing the latest ${CAP} of ${total}.`:''}</p></header>
+    <header><h3>Notifications</h3><p>Requests to join grantable collections.${total>CAP?` Showing the latest ${CAP} of ${total}.`:''}</p></header>
     <div class="body" id="inboxBody" style="max-height:52vh;overflow:auto">${inboxRows(CAP)}</div>
     <div class="foot" style="justify-content:space-between">
       <button class="btn btn-ghost btn-sm" onclick="location.href='notifications.html'">See all notifications →</button>

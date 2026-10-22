@@ -81,8 +81,8 @@ function dlgAgentTools() {
       <label class="field"><span>Binary</span><input class="inp mono" id="at-bin" placeholder="aider"></label>
       <label class="field"><span>Command that lists its conversations</span><input class="inp mono" id="at-list" placeholder="ls ~/.aider/sessions"></label>
       <label class="field"><span>Command that resumes one</span><input class="inp mono" id="at-resume" placeholder="aider --restore {id}"></label>
-      <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55"><b>{id}</b> is where the conversation id goes — you never type it, and the adapter never
-      asks you to. These two commands are the <i>entire</i> contract with a tool: a vendor changing
+      <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55"><b>{id}</b> is where the conversation id goes — never typed by hand, and the adapter never
+      asks for it. These two commands are the <i>entire</i> contract with a tool: a vendor changing
       its flags or its file layout breaks this adapter and nothing else.</p>`,
     onConfirm: (m) => {
       const g = (k) => (m.querySelector('#at-' + k).value || '').trim();
@@ -148,7 +148,7 @@ const AGENT_PROBES = {
   'lb-01': { at: '5 min ago', tools: [{ id: 'claude', installed: false }, { id: 'codex', installed: false }, { id: 'gemini', installed: false }] },
 };
 
-/* Your own machine, in the desktop shell. Local agents run through client-execute,
+/* This machine, in the desktop shell. Local agents run through client-execute,
    not SSH — the only difference the manager shows is the scope's subtitle. */
 const AGENT_LOCAL = {
   at: 'just now',
@@ -168,7 +168,7 @@ const AGENT_LOCAL = {
 };
 
 /* ---- scopes: every machine an agent could run on, plus the one it may not ----
-   Your own machine is listed in BOTH shells, and that is deliberate: a browser
+   This machine is listed in BOTH shells, and that is deliberate: a browser
    cannot spawn a process, so in the web UI the entry exists to carry the one real
    gap — attach a desktop client and it works. Leaving it out would make the gap
    silent, which is how a user concludes the feature is missing rather than
@@ -182,7 +182,7 @@ function agentScopes() {
   }
   const local = AGENT_SHELL === 'desktop'
     ? { id: '@local', kind: 'local', name: 'This machine', sub: 'alex@thinkpad · runs here, not over SSH' }
-    : { id: '@local', kind: 'local', name: 'Your own machine', sub: 'needs an attached desktop client' };
+    : { id: '@local', kind: 'local', name: 'This machine', sub: 'needs an attached desktop client' };
   // The server's own host is offered so the refusal has somewhere to be read. It is
   // listed, and it is the one scope that never resumes anything.
   const server = { id: '@server', kind: 'server', name: 'Rite server host', sub: 'rite.acme.io · the container Rite itself runs in' };
@@ -274,11 +274,11 @@ function agentServerNote() {
   return `<div class="dnote" style="border-color:color-mix(in oklab,var(--amber) 35%,transparent)">${IC_INFO}<span>
     <b>Rite never runs an agent inside its own server container.</b> An agent executes
     arbitrary code and writes to disk; in the server's process it would sit beside every
-    user's encrypted data, the database and administrator sessions. On a machine from your
-    library it runs under the SSH account you already have, so Rite grants no access you did
+    user's encrypted data, the database and administrator sessions. On a machine from the
+    library it runs under the SSH account already in use, so Rite grants no access that did
     not already have — which is why that is the only place agents run.
-    <br><br>Add this host to a collection like any other machine if you want agents on it:
-    then it is your SSH account doing the work, not the server's.</span></div>`;
+    <br><br>Add this host to a collection like any other machine to run agents on it:
+    the work is then done by that SSH account, not by the server's.</span></div>`;
 }
 
 /* A conversation row. The id is never typed and always reachable: the row is read by
@@ -350,15 +350,15 @@ function agentsViewHTML() {
   if (sc.kind === 'server') {
     body = agentServerNote();
   } else if (sc.kind === 'local' && AGENT_SHELL === 'web') {
-    body = `<div class="dnote">${IC_INFO}<span><b>Your own machine is not reachable from a browser.</b>
+    body = `<div class="dnote">${IC_INFO}<span><b>This machine is not reachable from a browser.</b>
       Attach the Rite desktop client to this server and its agents appear here. Agents on the
-      machines in your library need nothing — they run over SSH, the same way their terminals do.</span></div>`;
+      machines in the library need nothing — they run over SSH, the same way their terminals do.</span></div>`;
   } else if (!probe) {
     body = `<div class="aempty">
       <div class="muted" style="font-size:13px;line-height:1.6;max-width:520px">
         <b>${sc.name} has not been probed yet.</b><br>
         Looking for agent sessions runs one command on the machine, so Rite asks before it does it —
-        and tells you when the answer was read, not just what it said.</div>
+        and reports when the answer was read, not just what it said.</div>
       <button class="btn btn-primary btn-sm" onclick="agentProbeNow()">${M.refresh} Probe ${sc.name}</button></div>`;
   } else {
     const on = new Set(agentEnabled().map((t) => t.id));
@@ -378,11 +378,11 @@ function agentsViewHTML() {
       <span style="flex:1"></span>
       <button class="btn btn-sm" onclick="agentScopeMenu(event)" title="Choose the machine to look on">${M.machine} ${sc.name} ${EXICON.chevD}</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgAgentTools()" title="Which agent CLIs Rite looks for">${EXICON.gear} Tools</button>
-      ${probe && readable ? `<span class="muted" style="font-size:12px" title="Discovery is one command over SSH — it is read when you ask, not continuously">read ${probe.at}</span>
+      ${probe && readable ? `<span class="muted" style="font-size:12px" title="Discovery is one command over SSH — read on request, not continuously">read ${probe.at}</span>
         <button class="btn btn-ghost btn-sm" onclick="agentProbeNow()">${M.refresh} Probe again</button>` : ''}
     </div>
     <div class="dgrid">${body}</div>
-    <div class="mdash-foot">${IC_INFO}<span>Agents run on the machine you picked, under the SSH account you already use
+    <div class="mdash-foot">${IC_INFO}<span>Agents run on the chosen machine, under the SSH account already in use
       there — never inside the Rite server. Resuming opens a pane in a new tab; this list stays where it is.</span></div>
   </div>`;
 }
@@ -461,7 +461,7 @@ function dlgNewAgent(scopeId, toolId) {
     title: `New ${tool.name} agent`, subtitle: `on ${sc.name}`, confirm: 'Start',
     body: `<label class="field"><span>Working directory</span><input class="inp mono" id="na-cwd" value="/srv/acme/api"></label>
       <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55">The agent starts with this directory as its context — the project, its git state and
-      the machine it runs on are passed for you. You are not pasting a prompt to tell it where it is.</p>`,
+      the machine it runs on are passed along. No prompt has to be pasted to tell it where it is.</p>`,
     onConfirm: (m) => { toast(`${tool.name} started in <span class="mono">${m.querySelector('#na-cwd').value}</span> on ${sc.name}`); },
   });
 }
@@ -567,7 +567,7 @@ function dlgAgentContext(scopeId, toolId, sessionId) {
         loaded by neither.</span></div>
       ${ctx.shared ? `<div class="anote" style="margin-bottom:14px;border-color:color-mix(in oklab,var(--amber) 45%,transparent)">${IC_INFO}<span>
         <b>This is a shared account.</b> Anything under its home runs for everyone who signs in as
-        <span class="mono">${ctx.account.split('@')[0]}</span> — including hooks you did not install.</span></div>` : ''}
+        <span class="mono">${ctx.account.split('@')[0]}</span> — including hooks nobody here installed.</span></div>` : ''}
       ${section('Skills', ctx.skills.map(skillRow).join(''), 'No skill is loaded here.')}
       ${section('Commands', ctx.commands.map(skillRow).join(''), 'No slash command is defined here.')}
       ${section('Hooks — commands that run on their own', ctx.hooks.map(hookRow).join(''), 'No hook will fire here.')}`;
@@ -577,7 +577,7 @@ function dlgAgentContext(scopeId, toolId, sessionId) {
     wide: true, confirm: 'Close', onConfirm: () => {},
     body: body + `<div class="mdash-foot" style="margin-top:18px">${IC_INFO}<span>Rite reads these files and shows them;
       it never writes them and never stores them. <b>Open</b> puts the file in a terminal pane on that machine, under the
-      account you already use there — the editor edits, Rite only takes you to it. A hook is a command that runs
+      account already in use there — the editor edits, Rite only opens it. A hook is a command that runs
       unattended, which is why installing one is never a click in a panel.</span></div>`,
   });
   // Nothing here can be cancelled, because nothing here changes anything — offering
@@ -593,7 +593,7 @@ function agentOpenFile(scopeId, path) {
   const sc = agentScope(scopeId);
   const host = sc.kind === 'local' ? null : sc.sub;
   const pane = { kind: 'term', host, name: path.split('/').pop(), cmd: `$EDITOR ${path}`,
-    lines: ['(your editor, on that machine, as that account — Rite is not in the middle)'] };
+    lines: ['(the editor, on that machine, as that account — Rite is not in the middle)'] };
   if (!STATE.agentTab) STATE.agentTab = { host, panes: [], focus: 0 };
   STATE.agentTab.panes.push(pane);
   STATE.agentTab.focus = STATE.agentTab.panes.length - 1;
