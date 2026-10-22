@@ -231,7 +231,7 @@
     "systemRelease": "Rite",
     "systemReleaseDesc": "The release serving this page.",
     "systemBuild": "Build",
-    "systemBuildDesc": "Commit and date. `unknown` means no checkout.",
+    "systemBuildDesc": "Commit, and when this binary was linked (UTC). `unknown` means no checkout.",
     "systemShell": "Shell",
     "systemShellDesc": "Where this interface runs.",
     "systemShellDesktop": "desktop window",

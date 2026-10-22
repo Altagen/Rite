@@ -8,13 +8,25 @@
 //! So both are read from the environment first and discovered second: a release passes
 //! `RITE_COMMIT` as a build argument, a local `cargo build` falls back to asking git, and
 //! a build with neither says `unknown` rather than inventing something.
+//!
+//! The BUILD TIME is not computed here. A build script runs only when one of its declared
+//! inputs changes, so a stamp written here outlives the binary it describes: copying a new
+//! frontend into `web/` recompiles this crate and relinks the binary without re-running
+//! this script, and the System panel then names yesterday for a binary built minutes ago.
+//! It happened. So this only passes `RITE_BUILT_AT` through for a release that wants a
+//! fixed value, and an empty one means "ask the executable" at runtime.
 
 use std::process::Command;
 
 fn main() {
     // Only re-run when the inputs change, not on every build of every crate.
     println!("cargo:rerun-if-env-changed=RITE_COMMIT");
+    println!("cargo:rerun-if-env-changed=RITE_BUILT_AT");
     println!("cargo:rerun-if-changed=build.rs");
+    // …and when the checkout moves: `HEAD` for a branch switch, the ref it names for a
+    // new commit on the same branch. Without these the commit is stamped once and then
+    // reported for every later build, which is the same lie as the date was.
+    watch_git_head();
 
     let commit = std::env::var("RITE_COMMIT")
         .ok()
@@ -24,13 +36,36 @@ fn main() {
         .unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=RITE_COMMIT={commit}");
 
-    // A date, not a timestamp: this is read by a person in a bug report, and the hour a
-    // binary was linked tells them nothing they can act on.
+    // Empty unless a release pinned one: the server reads its own file's time instead.
     let built = std::env::var("RITE_BUILT_AT")
-        .ok()
-        .filter(|d| !d.trim().is_empty())
-        .unwrap_or_else(today);
+        .map(|d| d.trim().to_string())
+        .unwrap_or_default();
     println!("cargo:rustc-env=RITE_BUILT_AT={built}");
+}
+
+/// Tell cargo to re-run this script when the checked-out commit changes.
+///
+/// `.git` is absent in a release image (`.containerignore` excludes it), and a missing
+/// path in `rerun-if-changed` is not an error — it just never triggers, which is correct
+/// there: that build is stamped by its build argument.
+fn watch_git_head() {
+    let git = std::path::Path::new("../../.git");
+    let head = git.join("HEAD");
+    println!("cargo:rerun-if-changed={}", head.display());
+    // `HEAD` holds `ref: refs/heads/<branch>`; the branch file is what a commit moves.
+    if let Ok(contents) = std::fs::read_to_string(&head)
+        && let Some(reference) = contents.strip_prefix("ref: ")
+    {
+        println!(
+            "cargo:rerun-if-changed={}",
+            git.join(reference.trim()).display()
+        );
+    }
+    // A commit can also be recorded in `packed-refs` rather than as a loose file.
+    println!(
+        "cargo:rerun-if-changed={}",
+        git.join("packed-refs").display()
+    );
 }
 
 fn git_commit() -> Option<String> {
@@ -53,25 +88,4 @@ fn git_commit() -> Option<String> {
         .ok()
         .is_some_and(|o| !o.stdout.is_empty());
     Some(if dirty { format!("{sha}-dirty") } else { sha })
-}
-
-/// Today in UTC, as `YYYY-MM-DD`, computed from the epoch so the build needs no date crate.
-fn today() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let days = secs / 86_400;
-    // Civil-from-days (Howard Hinnant's algorithm), shifted to an era starting 0000-03-01.
-    let z = days + 719_468;
-    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = if m <= 2 { y + 1 } else { y };
-    format!("{y:04}-{m:02}-{d:02}")
 }

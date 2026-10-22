@@ -231,7 +231,7 @@
     "systemRelease": "Rite",
     "systemReleaseDesc": "La version qui sert cette page.",
     "systemBuild": "Build",
-    "systemBuildDesc": "Commit et date. « unknown » : hors dépôt.",
+    "systemBuildDesc": "Commit, et l’heure de link de ce binaire (UTC). « unknown » : hors dépôt.",
     "systemShell": "Shell",
     "systemShellDesc": "Où tourne cette interface.",
     "systemShellDesktop": "fenêtre desktop",

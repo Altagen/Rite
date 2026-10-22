@@ -1253,10 +1253,52 @@ async fn capabilities() -> Json<Value> {
         // `unknown` is honest: a build made outside a checkout and given no build argument
         // does not know its commit, and guessing would be worse than saying so.
         "commit": env!("RITE_COMMIT"),
-        "builtAt": env!("RITE_BUILT_AT"),
+        "builtAt": built_at(),
         "apiVersion": API_VERSION,
         "minClient": MIN_CLIENT,
     }))
+}
+
+/// When this binary was produced, as `YYYY-MM-DD HH:MM:SS` UTC.
+///
+/// Read from the FILE, not stamped at compile time. A build script runs only when one of
+/// its inputs changes, so a compile-time stamp survives the rebuild it is supposed to
+/// describe — a new frontend copied into `web/` relinks the binary and leaves the date
+/// where it was. The executable's own timestamp cannot drift from the executable.
+///
+/// `RITE_BUILT_AT` still wins when a release pins one: a reproducible build wants a fixed
+/// value, and a packaged file's time is the packager's, not the build's.
+fn built_at() -> String {
+    let pinned = env!("RITE_BUILT_AT");
+    if !pinned.is_empty() {
+        return pinned.to_string();
+    }
+    std::env::current_exe()
+        .and_then(std::fs::metadata)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| utc_stamp(d.as_secs() as i64))
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// `YYYY-MM-DD HH:MM:SS` from an epoch second, so neither this nor the build needs a date
+/// crate. Civil-from-days is Howard Hinnant's algorithm, on an era starting 0000-03-01.
+fn utc_stamp(secs: i64) -> String {
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    let (hh, mm, ss) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}:{ss:02}")
 }
 
 async fn first_run(State(state): State<ServerState>) -> Result<Json<bool>, AppError> {
@@ -3758,10 +3800,10 @@ fn layouts_path() -> Option<std::path::PathBuf> {
 /// A single-operator instance gets a file it can also edit by hand; a shared server gets
 /// nothing *here*. What this refuses is a settings ROW — plaintext in a table with no
 /// owner column, so one account's machine names would be both readable by the server and
-/// overwritable by a colleague. It does not refuse layouts on an account: ADR 0027 adds
-/// them as a blob sealed under the user's own key at `/api/user/layouts`, the way
-/// `/api/user/library` already works. Until that lands this returns None in accounts
-/// mode, and the buttons hide rather than opening an empty editor.
+/// overwritable by a colleague. Layouts on an account are neither refused nor here: ADR
+/// 0027 keeps them as a blob sealed under the user's own key at `/api/user/layouts`, the
+/// way `/api/user/library` already does. So this answers None in accounts mode and the
+/// client reads that route instead — two supports, two honest contracts.
 fn layouts_file(accounts: bool) -> Option<std::path::PathBuf> {
     if accounts { None } else { layouts_path() }
 }
@@ -5852,10 +5894,12 @@ mod tests {
             !commit.is_empty(),
             "a build says what it is, or says `unknown`"
         );
+        // `YYYY-MM-DD HH:MM:SS`, with the time, because the date alone could not tell two
+        // builds of the same afternoon apart — and that is exactly when it is asked.
         let built = payload["builtAt"].as_str().expect("builtAt is a string");
         assert!(
-            built.len() == 10 && built.split('-').count() == 3,
-            "a build date is YYYY-MM-DD, got {built}"
+            built.len() == 19 && built.split('-').count() == 3 && built.split(':').count() == 3,
+            "a build stamp is YYYY-MM-DD HH:MM:SS, got {built}"
         );
     }
 
