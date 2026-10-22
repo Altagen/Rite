@@ -3693,11 +3693,13 @@ fn layouts_path() -> Option<std::path::PathBuf> {
 
 /// Is there a workspace file to offer at all? (ADR 0023)
 ///
-/// Presets and layouts are the MACHINE's, not the account's: my desktop and my laptop
-/// do not open the same morning. A single-operator instance therefore gets a file it
-/// can also edit by hand, and a shared server gets nothing — not a settings row, which
-/// would be plaintext in a table with no owner column, so one account's machine names
-/// would be both readable by the server and overwritable by a colleague.
+/// A single-operator instance gets a file it can also edit by hand; a shared server gets
+/// nothing *here*. What this refuses is a settings ROW — plaintext in a table with no
+/// owner column, so one account's machine names would be both readable by the server and
+/// overwritable by a colleague. It does not refuse layouts on an account: ADR 0027 adds
+/// them as a blob sealed under the user's own key at `/api/user/layouts`, the way
+/// `/api/user/library` already works. Until that lands this returns None in accounts
+/// mode, and the buttons hide rather than opening an empty editor.
 fn layouts_file(accounts: bool) -> Option<std::path::PathBuf> {
     if accounts { None } else { layouts_path() }
 }

@@ -249,6 +249,43 @@ which is why import/export and creation have no separate work left.
 - [ ] Save the current arrangement AS a layout — the file is written by hand or by the
       editor in Settings; nothing captures what is on screen into it
 
+#### Layouts on a server account (ADR 0027)
+
+A shared server answers that there is no layouts file, so the web UI has no layouts at
+all and a desktop window pointed at a server has none either. That was read as a
+limitation of the model; it is not. The objection recorded in the code was to a
+**plaintext** settings row — machine names readable by the server, in a table with no
+owner column — and a blob sealed client-side has neither property. `/api/user/library`
+already does exactly that, so the mechanism ships.
+
+Decided in ADR 0027: two supports, with three gates and a known limitation.
+
+- [ ] `user_layouts` and `GET`/`PUT /api/user/layouts` — a sealed blob scoped by
+      `user_id`, mirroring `/api/user/library`. A second route rather than a new shape
+      for `/api/layouts`: in accounts mode the server cannot return `text`, because it
+      cannot decrypt
+- [ ] `layouts_policy` as an ADR 0020 key, `Shape::Policy`, two booleans — `webui` and
+      `clients`, both false being the feature off. Not three: an `enabled` flag that can
+      contradict them is a state someone has to reconcile
+- [ ] A per-reader switch in Settings, in both shells, to turn the feature off for
+      oneself without asking an admin
+- [ ] A per-**machine** source switch (file or blob) in `deviceStore`, shown only in a
+      server context — in the account it would mean switching the laptop switched the
+      desktop
+- [ ] Default to the blob when everything is open, so two machines match with nothing
+      configured and **divergence is the deliberate act**. Consequence to document: a
+      desktop that already has a `layouts.toml` does not read it after signing in to a
+      server until the switch is flipped, once, per machine
+- [ ] Honour `startup` in a browser **once per browser session**, not per page load —
+      sitting down to work is not the same as pressing F5
+- [ ] Document the known limitation: one row, so two machines editing the same account
+      means last write wins with no merge. Accepted — two clients are not expected to
+      edit one account's config at once, and doing it properly is replication. Already
+      the behaviour of `/api/user/library`
+- [ ] NOT in scope: team or instance-wide layouts. Sharing one needs ownership at team
+      level — who may edit, what happens on leaving, how an override relates to the
+      team's — and that model does not exist yet
+
 #### The profile, later: one file for the whole setup
 
 A profile is not a layout with extras. It is **everything that makes this machine
