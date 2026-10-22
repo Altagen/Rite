@@ -44,6 +44,8 @@ run "dead-end-check" node "e2e/dead-end-check.mjs"
 run "mock-register-check" node "e2e/mock-register-check.mjs"
 run "server-errors-check" node "e2e/server-errors-check.mjs"
 run "layouts-source-check" node "e2e/layouts-source-check.mjs"
+run "key-identity-check" node "e2e/key-identity-check.mjs"
+run "key-support-check" node "e2e/key-support-check.mjs"
 run "embedded-ui-check" node "e2e/embedded-ui-check.mjs"
 run "docs-check" node "e2e/docs-check.mjs"
 

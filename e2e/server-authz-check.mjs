@@ -254,6 +254,35 @@ try {
   await patch('/api/admin/quick-ssh', { enabled: false }, admin);
   ok('`allow_quick_ssh` is a refusal from the server, not a hidden button');
 
+  step = 'a-key-path-is-not-read-off-the-server';
+  // ADR 0028 §4. A path here names a file in the server's own container: a member cannot
+  // put one there, and a file an administrator does put there authenticates EVERY account
+  // that can read the record. So the refusal is in the handler, not in the form — and it
+  // is asserted with the Quick SSH policy ON, or a 403 from that policy would look like
+  // this guard working while it does nothing.
+  await patch('/api/admin/quick-ssh', { enabled: true }, admin);
+  const withPath = { host: '127.0.0.1', port: 65001, username: 'x', authMethod: { type: 'publicKey', keyPath: '/etc/ssh/ssh_host_ed25519_key' } };
+  const refusedPath = await post('/api/terminal/quick-ssh', withPath, pleb);
+  assert.equal(refusedPath.status, 400, `a key path must be refused, got ${refusedPath.status}`);
+  const why = await refusedPath.text();
+  assert.match(why, /desktop client/, `the refusal names what would work: ${why}`);
+  // A carried key reaches the transport instead: it is refused by SSH, not by this guard.
+  const carried = { ...withPath, authMethod: { type: 'vaultKey', key: 'not a key' } };
+  assert.notEqual((await post('/api/terminal/quick-ssh', carried, pleb)).status, 400,
+    'a carried key is not caught by the path guard');
+  // The hop chain authenticates like any other target, so it is refused like one.
+  const viaHop = { ...withPath, authMethod: { type: 'vaultKey', key: 'not a key' },
+    jumps: [{ host: '127.0.0.1', port: 65002, username: 'x', authMethod: { type: 'publicKey', keyPath: '/etc/passwd' } }] };
+  assert.equal((await post('/api/terminal/quick-ssh', viaHop, pleb)).status, 400,
+    'a jump host with a path is refused too');
+  // The other two routes that take one.
+  assert.equal((await post('/api/terminal/exec-quick', { ...withPath, command: 'echo hi' }, pleb)).status, 400,
+    'and exec-quick refuses it');
+  assert.equal((await post('/api/forwards/quick', { ...withPath, connectionId: 'x', localPort: 65003, remoteHost: '127.0.0.1', remotePort: 22 }, pleb)).status, 400,
+    'and so does the port-forward route');
+  await patch('/api/admin/quick-ssh', { enabled: false }, admin);
+  ok('a key path is refused by the server in accounts mode, on every route that takes one');
+
   step = 'shells-is-not-an-oracle';
   const probe = await (await post('/api/shells', { shells: ['/etc/shadow', '/etc/passwd', '/bin/sh'] }, pleb)).json();
   assert.deepEqual(probe, ['/bin/sh'], `only shells are answered for (got ${JSON.stringify(probe)})`);

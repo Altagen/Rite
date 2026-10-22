@@ -142,6 +142,8 @@ const auth = (token: string) => ({ authorization: `Bearer ${token}` });
 const ADMIN = { username: 'admin', password: 'AdminPass123!' };
 // Carol is admin-provisioned, so she starts on a temp password (must_change_password)
 // and sets her own on first UI login (ADR 0010 addendum) — after which CAROL_NEW is hers.
+/** What `ssh-keygen -lf e2e/.keys/e2e_plain.pub` prints: the identity the form must show. */
+const KEY_FINGERPRINT = 'SHA256:Zn1iECukTpW09hzo2CB3mS7btkQCoAcng/jgosVrWh0';
 const CAROL_TEMP = 'CarolPass123!';
 const CAROL_NEW = 'CarolNew123!';
 
@@ -1203,6 +1205,9 @@ test('an instance can hand the shell choice to its members, and take it back', a
  * `vaultKey` mapping are the two things under test, and both live in the page.
  */
 test('a key chosen in the browser opens a real session on the server', async ({ page }) => {
+  // Two admin round trips, a real SSH session, and the whole edit path through both key
+  // supports. Past the default budget by design, not by slowness.
+  test.setTimeout(120_000);
   await page.goto('/');
   if (
     await page
@@ -1242,8 +1247,11 @@ test('a key chosen in the browser opens a real session on the server', async ({ 
   await page.locator('input[type="number"]').first().fill(String(SSH.port));
   await page.getByPlaceholder('user').fill(SSH.username);
 
-  // A path is not offered here at all — that is the fix. The file input is.
+  // Both supports are offered here, and the carried one is selected (ADR 0028 §1–2), so
+  // the file input is what shows and the path field is not rendered at all.
   await page.getByRole('radio', { name: /public key/i }).click();
+  await expect(page.getByTestId('key-support-carried')).toBeChecked();
+  await expect(page.getByTestId('key-support-path')).not.toBeChecked();
   await expect(page.getByTestId('auth-key-path')).toHaveCount(0);
   await page.getByTestId('auth-key-file').setInputFiles(SSH.keyPlain);
   // The page says what it read, and says the key never leaves it as a file.
@@ -1256,6 +1264,33 @@ test('a key chosen in the browser opens a real session on the server', async ({ 
   // the server, or reached it unusable, fails here with "Permission denied".
   await page.getByText('e2e-browser-key').last().dblclick();
   await expect(page.locator('.xterm-rows')).toContainText(`${SSH.username}@`, { timeout: 25_000 });
+
+  // Reopening the machine names the key instead of showing an empty picker, which read as
+  // "nothing was saved" (ADR 0028 §6). The fingerprint is the one ssh-keygen prints for
+  // this fixture — computed in the page from the key's public half, never stored.
+  // Scoped to the library: the open terminal's tab carries the same name, and its screen
+  // swallows the click.
+  await page.getByRole('complementary').getByText('e2e-browser-key').click({ button: 'right' });
+  await page.getByRole('button', { name: /^edit$/i }).click();
+  await expect(page.getByTestId('auth-key-stored')).toContainText(KEY_FINGERPRINT);
+  await expect(page.getByTestId('auth-key-stored')).toContainText('ssh-ed25519');
+  await expect(page.getByTestId('auth-key-file')).toHaveCount(0);
+
+  // Replace puts the picker back, and only then: the control that wipes a stored key is
+  // asked for rather than sitting there.
+  await page.getByTestId('auth-key-replace').click();
+  await expect(page.getByTestId('auth-key-file')).toBeVisible();
+
+  // Switching support is a change in its own right: choosing the other one and saving
+  // nothing must not quietly leave the machine carrying its key.
+  await page.getByTestId('key-support-path').click();
+  await expect(page.getByTestId('auth-key-path')).toBeVisible();
+  await page.getByRole('button', { name: /save connection/i }).click();
+  await expect(page.getByText('Private key path is required')).toBeVisible();
+  // Escape is the deliberate way out of this form (a backdrop click keeps it), and the
+  // only unambiguous one: the modal's close cross is also named Cancel.
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('auth-key-path')).toHaveCount(0);
 
   // Put the instance's policy back for whatever runs next.
   await openAdmin(page);
