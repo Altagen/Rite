@@ -4777,9 +4777,16 @@ struct StartQuickForwardReq {
 async fn start_quick_forward(
     State(state): State<ServerState>,
     Json(req): Json<StartQuickForwardReq>,
-) -> Result<Json<rite_core::terminal::PortForwardInfo>, AppError> {
+) -> Result<Response, AppError> {
     let bind_host = forward_bind_host(state.accounts, req.bind_host.as_deref());
-    let auth: AuthMethod = req.auth_method.into();
+    let auth = match quick_auth(&state, req.auth_method) {
+        Ok(auth) => auth,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
+    let hops = match quick_hops(&state, req.jumps) {
+        Ok(hops) => hops,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
     let mut connection = quick_connection("fwd", &req.host, req.port, &req.username, auth.clone());
     connection.id = req.connection_id;
     let info = state
@@ -4787,7 +4794,7 @@ async fn start_quick_forward(
         .start_quick_local_forward(
             connection,
             auth,
-            quick_hops(req.jumps),
+            hops,
             bind_host,
             req.local_port,
             &req.remote_host,
@@ -4795,7 +4802,7 @@ async fn start_quick_forward(
             state.events_sink(),
         )
         .await?;
-    Ok(Json(info))
+    Ok(Json(info).into_response())
 }
 
 async fn stop_forward(
@@ -5201,6 +5208,38 @@ enum QuickAuthMethod {
     },
 }
 
+/// Convert a quick auth method, refusing a key path where this server would read it off
+/// its own filesystem (ADR 0028 §4).
+///
+/// `terminal.rs` reads `key_path` in the process that opens SSH. On a desktop pointed at a
+/// server that is the member's own machine, which is the whole point of the support. Here,
+/// in accounts mode, it is this container: a path a member cannot write to, and a file an
+/// administrator does put there would authenticate EVERY account that can read the record.
+/// That is a shared credential with none of a shared credential's honesty, chosen by
+/// nobody. A path-record is a desktop record, and this is where that is true rather than
+/// merely asked of the UI.
+///
+/// Every handler taking a `QuickAuthMethod` goes through here; `e2e/key-support-check.mjs`
+/// fails the build if one converts with `.into()` instead.
+fn quick_auth(state: &ServerState, quick: QuickAuthMethod) -> Result<AuthMethod, KeyPathRefused> {
+    if state.accounts && matches!(quick, QuickAuthMethod::PublicKey { .. }) {
+        return Err(KeyPathRefused);
+    }
+    Ok(quick.into())
+}
+
+/// The refusal above, as a unit rather than as a `Response`: a response is 128 bytes, and an
+/// `Err` variant that wide widens every `Result` in the call chain (clippy's
+/// `result_large_err`, and it is right).
+struct KeyPathRefused;
+
+impl IntoResponse for KeyPathRefused {
+    fn into_response(self) -> Response {
+        let why = "a key path is read on the machine that opens SSH — this one is a server, so the key has to travel with the record, or the machine needs a desktop client";
+        (StatusCode::BAD_REQUEST, why).into_response()
+    }
+}
+
 impl From<QuickAuthMethod> for AuthMethod {
     fn from(quick: QuickAuthMethod) -> Self {
         match quick {
@@ -5241,12 +5280,17 @@ struct QuickHop {
 
 /// Build the in-memory hop chain the transport takes. Hops are ad-hoc like the target:
 /// never persisted, never written to the vault.
-fn quick_hops(hops: Vec<QuickHop>) -> Vec<(Connection, AuthMethod)> {
+fn quick_hops(
+    state: &ServerState,
+    hops: Vec<QuickHop>,
+) -> Result<Vec<(Connection, AuthMethod)>, KeyPathRefused> {
     hops.into_iter()
         .map(|h| {
-            let auth: AuthMethod = h.auth_method.into();
+            // A hop authenticates like any other target, so it is refused like one: a jump
+            // host reached with a path would read the same container.
+            let auth = quick_auth(state, h.auth_method)?;
             let conn = quick_connection("jump", &h.host, h.port, &h.username, auth.clone());
-            (conn, auth)
+            Ok((conn, auth))
         })
         .collect()
 }
@@ -5340,7 +5384,14 @@ async fn quick_ssh(
         }
     }
     // Ad-hoc connection, never persisted (mirrors the desktop quick_ssh_connect).
-    let auth: AuthMethod = req.auth_method.clone().into();
+    let auth = match quick_auth(&state, req.auth_method.clone()) {
+        Ok(auth) => auth,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
+    let hops = match quick_hops(&state, req.jumps) {
+        Ok(hops) => hops,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
     let mut connection =
         quick_connection("quick", &req.host, req.port, &req.username, auth.clone());
     connection.metadata.icon = Some("⚡".to_string());
@@ -5352,7 +5403,7 @@ async fn quick_ssh(
             auth,
             state.events_sink(),
             state.interactive_provider(as_user(&user)),
-            quick_hops(req.jumps),
+            hops,
         )
         .await?;
     state.record_session_owner(&id, as_user(&user));
@@ -5422,17 +5473,18 @@ async fn machine_exec_quick(
     if !dashboard_probes_allowed(&state).await? {
         return Ok(probes_refused());
     }
-    let auth: AuthMethod = req.auth_method.into();
+    let auth = match quick_auth(&state, req.auth_method) {
+        Ok(auth) => auth,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
+    let hops = match quick_hops(&state, req.jumps) {
+        Ok(hops) => hops,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
     let connection = quick_connection("exec", &req.host, req.port, &req.username, auth.clone());
     let out = state
         .sessions
-        .run_quick_remote_command(
-            connection,
-            auth,
-            state.events_sink(),
-            &req.command,
-            &quick_hops(req.jumps),
-        )
+        .run_quick_remote_command(connection, auth, state.events_sink(), &req.command, &hops)
         .await?;
     Ok(Json(out).into_response())
 }
