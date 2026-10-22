@@ -117,10 +117,16 @@ function prefsHTML(prefs){
     <nav class="prefs-nav">${shown.map(s=>`<button class="${s.id===PREF_AT?'on':''}${s.danger?' danger':''}" data-pref="${s.id}">${s.label}</button>`).join('')}</nav>
     <div class="prefs-pane">${sec.body()}</div></div>`;
 }
+/* The open prefs pane, so a control that changes what the pane SHOWS can redraw it —
+   the layouts switches do: turning them off replaces the cards with the reason. */
+let PREF_REDRAW=null;
+function renderPrefsPane(){ if(typeof PREF_REDRAW==='function') PREF_REDRAW(); }
+
 function openPrefs(prefs,at){
   if(at)PREF_AT=at;
   const bd=showModal({title:'Settings',width:'760px',confirm:null,body:prefsHTML(prefs)});
   const body=bd.querySelector('.body');
+  PREF_REDRAW=()=>{ body.innerHTML=prefsHTML(prefs); };
   body.style.padding='14px 20px 18px';
   body.addEventListener('click',e=>{
     const b=e.target.closest('[data-pref]'); if(!b)return;
@@ -256,6 +262,21 @@ registerPaneKind('term', (p,i) => termHTML(p.host, { name:p.name, cmd:p.cmd, lin
    layout: it opens a PLAIN SHELL and says so in the pane. You get your workspace,
    minus what could not be found, and you can see exactly what was missing. */
 const LAYOUT_PATH = '~/.config/rite/layouts.toml';
+/* Which support the workspace sits on (ADR 0027). Two of them, and the surface decides:
+   a browser has no filesystem, so it is the account's sealed copy or nothing; a local
+   vault has no account to seal to, so it is the file. Only a desktop window signed into a
+   server holds both, and there this machine's own preference picks — which is why the
+   preference is a device one and not an account one.
+
+   `STATE.layoutsOn` is the reader's own switch, the second of the three gates. The first
+   is the instance's `layouts_policy`, which a mock has no server to ask. */
+function layoutSupport(){
+  const ctx = (typeof STATE==='object' && STATE.ctx) ? STATE.ctx.type : null;
+  if(ctx==='vault') return 'file';
+  if(ctx==='server') return STATE.layoutSource||'account';
+  // No context of its own: the browser, which has no filesystem to read a file from.
+  return hasLayoutFileHere() ? 'file' : 'account';
+}
 let LAYOUT_FILE = `# The workspace: the commands the split menu offers, and what opens at the start.
 # Rite reads this file at startup. Settings ▸ Layouts edits it; so does any editor.
 
@@ -479,9 +500,9 @@ const PLAIN_PRESET={ id:'plain', name:'Terminal', command:'', builtin:true };
    preset is a decision, and a fallback that overrode it would be a bug. */
 const DEFAULT_PRESETS=[{id:'sp-load',name:'Load',command:'top'},{id:'sp-disk',name:'Disk',command:'df -h'}];
 function reloadLayouts(){
-  // No file, nothing to load — not an empty file, and not a default standing in for
-  // one. The browser shell lands here (see `hasWorkspaceFile`), which is why its
-  // split chevron offers the plain divider and its snippets, and nothing else.
+  // Nothing to load — not an empty document, and not a default standing in for one.
+  // Reached when the reader turned layouts off (ADR 0027 gate 2), which is why the split
+  // chevron then offers the plain divider and the snippets, and nothing else.
   if(!hasWorkspaceFile()){
     PANE_LAYOUTS=[]; SPLIT_PRESETS=[]; LAYOUT_ERROR=null;
     return {presets:[],layouts:[],error:null};
@@ -501,11 +522,19 @@ function reloadLayouts(){
    later <script> than this one, so this first read cannot see it. */
 reloadLayouts();
 
-/* Does this shell have a workspace file at all? The desktop is a machine, so yes; the
-   browser talks to a server, where there is no file and nothing stands in for one
-   (ADR 0023) — the two sections and the button are ABSENT there, not empty. Each entry
-   page answers for itself, and the desktop's answer is the default. */
-function hasWorkspaceFile(){ return typeof WORKSPACE_FILE==='undefined' ? true : !!WORKSPACE_FILE; }
+/* Is there a workspace to read at all?
+   It used to mean "is there a FILE", and a browser answered no — so the two sections and
+   the Layouts button were absent there (ADR 0023). ADR 0027 gave the account a sealed
+   copy, so a browser has a support too, and the only thing that removes the workspace now
+   is the reader's own switch (the instance's `layouts_policy` is the other, and a mock has
+   no server to ask). `WORKSPACE_FILE` stays as each page's answer to "is there a FILE
+   here", which is what picks the support rather than what decides it exists. */
+function hasWorkspaceFile(){
+  // `typeof` because this file's own boot calls `reloadLayouts()` before the page's
+  // `STATE` exists — rite.js is the earlier <script>.
+  return typeof STATE!=='object' || !STATE ? true : STATE.layoutsOn!==false;
+}
+function hasLayoutFileHere(){ return typeof WORKSPACE_FILE==='undefined' ? true : !!WORKSPACE_FILE; }
 
 /* ===== Two edits made from the UI, spliced into the file =====
 
@@ -666,7 +695,7 @@ function splitMenu(e){
   PANE_LAYOUTS.forEach(l=>items.push({ icon:EXICON.panel,
     label:`${esc(l.name)}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes</div>`,
     onclick:()=>applyLayout(l.id) }));
-  // Nothing to configure where there is no file to write it to (ADR 0023).
+  // Nothing to configure where the reader turned the workspace off (ADR 0027).
   if(hasWorkspaceFile()) items.push({ icon:EXICON.gear, label:'Split presets…', onclick:()=>dlgSplitPrefs() });
   floatMenu(e, items);
 }
@@ -683,21 +712,24 @@ function splitMenu(e){
    "Configure splits…" is where a first layout comes from. */
 function layoutsBtnHTML(){
   if(typeof STATE!=='undefined' && STATE.toolbar && STATE.toolbar.layouts===false) return '';
-  // No second test for "is there a file": a shell without one loads no layouts and no
+  // No second test for "is there a workspace": one that is off loads no layouts and no
   // error, so the line below already hides the button — and one rule in one place is
   // what keeps the two from disagreeing.
   if(!PANE_LAYOUTS.length && !LAYOUT_ERROR) return '';
   const bad=!!LAYOUT_ERROR;
-  return `<button class="mtab-new" title="${bad?'Layouts — layouts.toml has an error':'Layouts — open a saved arrangement in this tab'}"
+  return `<button class="mtab-new" title="${bad?`Layouts — ${layoutDocName()} has an error`:'Layouts — open a saved arrangement in this tab'}"
     onclick="layoutsMenu(event)"${bad?' style="color:var(--amber)"':''}>${EXICON.panel}${EXICON.chevD}</button>`;
 }
+/* What to call the document in a message. There is no file name on the account's copy,
+   and naming one there would send a reader looking for a file that does not exist. */
+function layoutDocName(){ return layoutSupport()==='account' ? 'the account’s layouts' : 'layouts.toml'; }
 function layoutsMenu(e){
   e.stopPropagation();
   const items = PANE_LAYOUTS.map(l=>({ icon:EXICON.panel,
     label:`${esc(l.name)}<div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${l.panes.length} panes · ${esc(l.panes.map(paneLabel).join(' · '))}</div>`,
     onclick:()=>applyLayout(l.id) }));
   if(LAYOUT_ERROR) items.unshift({ icon:'⚠',
-    label:`<span style="color:var(--amber)">layouts.toml has an error</span><div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${LAYOUT_ERROR.line?`line ${esc(LAYOUT_ERROR.line)} · `:''}${esc(LAYOUT_ERROR.message)}</div>`,
+    label:`<span style="color:var(--amber)">${layoutDocName()} has an error</span><div class="sub" style="font-size:11px;color:var(--muted);font-weight:400">${LAYOUT_ERROR.line?`line ${esc(LAYOUT_ERROR.line)} · `:''}${esc(LAYOUT_ERROR.message)}</div>`,
     onclick:()=>dlgLayouts() });
   items.push({ icon:EXICON.gear, label:'Layouts file…', onclick:()=>dlgLayouts() });
   floatMenu(e, items);
@@ -823,16 +855,37 @@ function layoutErrorHTML(){
    for EDITING, which is a rarer thing to want than looking. */
 function layoutsSettingsHTML(){
   const cards=layoutCardsHTML({toggle:true});
+  const support=layoutSupport();
+  const onAccount=support==='account';
+  const off=STATE.layoutsOn===false;
+  /* The reader's switch keeps its section when it is off: the way back on is inside it.
+     The source row is a desktop-on-server matter only — nowhere else has two supports. */
+  const gates=prefRow('Use layouts','Off: nothing opens at the start of a session, and the presets leave the split menu.',
+      prefToggle('layoutsOn','renderPrefsPane();renderMain()'))
+    + ((typeof STATE==='object'&&STATE.ctx&&STATE.ctx.type==='server')
+      ? prefRow('Read from','The copy this computer uses. The other one is kept, and switching back finds it unchanged.',
+          `<select class="inp" style="width:auto" onchange="STATE.layoutSource=this.value;renderPrefsPane()">
+            <option value="account"${onAccount?' selected':''}>The account</option>
+            <option value="file"${onAccount?'':' selected'}>A file on this computer</option></select>`)
+      : '');
+  const where=onAccount
+    ? `<p class="muted" style="font-size:12px;margin:10px 0 0;line-height:1.5">Sealed under the account’s key: the server stores it and cannot read it.
+        <span style="display:block;margin-top:4px">One copy per account. Two computers saving means the second one wins, with no merge.</span></p>`
+    : `<div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+        <button class="btn btn-sm" onclick="dlgLayouts()">Open the layouts file…</button>
+        <code class="muted" style="font-size:11.5px">${LAYOUT_PATH}</code></div>`;
   return `<h4>Layouts</h4><p class="lede">What opens at the start of a session: which terminals, in what order, on which machines.
-      Kept as a file so it can be versioned and carried between computers.</p>
+      One document, on one of two supports — a file on this computer, or a copy sealed on the account.</p>
+    ${gates}
+    ${off? '<p class="muted" style="font-size:12.5px;margin:10px 0 0">Layouts are off in settings.</p>' : `
     ${layoutErrorHTML()}
     ${cards? `<div class="snip-list" data-lay-cards>${cards}</div>`
-      : (LAYOUT_ERROR?'':'<p class="muted" style="font-size:12.5px;margin:2px 0 10px" data-lay-empty>No layouts yet. Open the file and describe what should open at the start of a session.</p>')}
-    <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
-      <button class="btn btn-sm" onclick="dlgLayouts()">Open the layouts file…</button>
-      <code class="muted" style="font-size:11.5px">${LAYOUT_PATH}</code></div>
+      : (LAYOUT_ERROR?'':'<p class="muted" style="font-size:12.5px;margin:2px 0 10px" data-lay-empty>No layouts yet. Open the document and describe what should open at the start of a session.</p>')}
+    ${onAccount? `<div style="margin-top:12px"><button class="btn btn-sm" onclick="dlgLayouts()">Open the layouts…</button></div>` : ''}
+    ${where}
     <p class="muted" style="font-size:12px;margin:10px 0 0;line-height:1.5">Tick “at startup” and the layout opens itself when Rite starts —
-      several may, each in its own tabs. The switch writes <code>startup</code> into the file.</p>`;
+      several may, each in its own tabs. The switch writes <code>startup</code> into the document.
+      In a browser that is once per browser session: a new tab honours it, a refresh does not.</p>`}`;
 }
 /* The startup switch, wherever it is drawn. One checkbox, one key, spliced — and a
    re-render, because the file is the state and the box only reflected it. */
@@ -864,18 +917,22 @@ function layoutsBody(){
   const cards=layoutCardsHTML({});
   const err = LAYOUT_ERROR? layoutErrorHTML()
     : `<p class="lay-ok">✓ ${PANE_LAYOUTS.length} layout${PANE_LAYOUTS.length===1?'':'s'} loaded, ${SPLIT_PRESETS.length} preset${SPLIT_PRESETS.length===1?'':'s'}.</p>`;
+  const onAccount=layoutSupport()==='account';
   return `<p class="muted" style="font-size:12.5px;margin:0 0 10px;line-height:1.55">
-      One file for how this machine is set up: <code>[[preset]]</code> is what the chevron beside a divider offers,
+      One document for how a workspace is set up: <code>[[preset]]</code> is what the chevron beside a divider offers,
       <code>[[layout]]</code> is what opens at the start of a session — which terminals, in what order, on which machines.
-      A machine this computer doesn't have opens a <b>plain shell</b> with a note in the pane; the layout still opens.</p>
-    <div class="lay-path">${EXICON.coll} <code>${esc(LAYOUT_PATH)}</code>
+      A machine this context doesn't have opens a <b>plain shell</b> with a note in the pane; the layout still opens.</p>
+    <div class="lay-path">${EXICON.coll}
+      ${onAccount
+        ? `<span class="muted" style="font-size:12px">Sealed under the account’s key: the server stores it and cannot read it.</span>`
+        : `<code>${esc(LAYOUT_PATH)}</code>`}
       <span class="grow" style="flex:1"></span>
-      <button class="btn btn-ghost btn-sm" data-lay-editor>Open in my editor</button>
-      <button class="btn btn-ghost btn-sm" data-lay-reload title="Re-read the file from disk">↻ Reload</button></div>
+      ${onAccount?'':`<button class="btn btn-ghost btn-sm" data-lay-editor>Open in my editor</button>`}
+      <button class="btn btn-ghost btn-sm" data-lay-reload title="${onAccount?'Re-read the account’s copy':'Re-read the file from disk'}">↻ Reload</button></div>
     <textarea class="lay-file" id="lay-file" spellcheck="false">${esc(LAYOUT_FILE)}</textarea>
     <div style="display:flex;align-items:center;gap:10px;margin-top:9px">
-      <button class="btn btn-primary btn-sm" data-lay-save>Save file</button>
-      <a href="#" onclick="toast('docs/LAYOUTS.md');return false" class="muted" style="font-size:12px">What can go in this file →</a></div>
+      <button class="btn btn-primary btn-sm" data-lay-save>${onAccount?'Save':'Save file'}</button>
+      <a href="#" onclick="toast('docs/LAYOUTS.md');return false" class="muted" style="font-size:12px">What can go in it →</a></div>
     ${err}
     <div class="sec" style="margin-top:16px"><span class="eyebrow">What it opens</span><span class="line"></span></div>
     <div class="snip-list">${cards||'<p class="muted" style="font-size:13px;margin:2px 0 10px">Nothing loaded.</p>'}</div>`;
@@ -889,7 +946,7 @@ function dlgLayouts(){
     if(!t)return;
     if(t.dataset.layEditor!==undefined){ toast(`${LAYOUT_PATH} — opened in the editor`); return; }
     if(t.dataset.layReload!==undefined){ reloadLayouts(); redraw();
-      toast(LAYOUT_ERROR?'File re-read — it still has an error':'File re-read'); if(typeof renderMain==='function')renderMain(); return; }
+      toast(LAYOUT_ERROR?'Re-read — it still has an error':'Re-read'); if(typeof renderMain==='function')renderMain(); return; }
     // Save: the textarea is the file. Parse first, keep the old layouts if it fails.
     LAYOUT_FILE=body.querySelector('#lay-file').value;
     const r=reloadLayouts(); redraw();

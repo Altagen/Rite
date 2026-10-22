@@ -60,7 +60,8 @@ web UI ended up with a dashboard nobody had decided on.
 | Admin console | **no** — server management lives in the web console | yes (if admin) |
 | Session persistence | — | admin setting |
 | SSH import | file path or paste | **paste only** |
-| Workspace file (presets + layouts) | yes — it is a machine | **no** — ADR 0023, so both sections are absent |
+| Workspace (presets + layouts) | a **file**, or the account's copy when signed in | the account's **sealed copy** — no filesystem to hold a file (ADR 0027) |
+| Key authentication | a path in a vault; carried or a path on a server | **carried only** — a path is read on the computer that connects (ADR 0028) |
 | Machine dashboard + Board | yes | **yes** — same cards, same markup (ADR 0019) |
 | Probing cards (containers, services) | governed by `clients` when attached; the user's own call in a vault | governed by `webui`; off there means off for everyone |
 | Agents on a library machine | yes | **yes** — it is an SSH session, like its terminal |
@@ -146,23 +147,32 @@ beside it:
   chevron keeps offering them, because someone who learned the chevron should not have
   to unlearn it.
 
-### One file for how this machine is set up
+### One document for how a workspace is set up
 
-The presets and the layouts are **one file** — `~/.config/rite/layouts.toml`, ADR 0023,
+The presets and the layouts are **one document** — ADR 0023, amended by ADR 0027,
 `docs/LAYOUTS.md`. `[[preset]]` is what the chevron offers, `[[layout]]` is the
 morning: what opens, where on the screen (`split`, `size`, `of`, `tab`), and on which
-machine. Both belong to the *machine* and neither is a secret, which is why they are a
-file rather than a row in an account's settings table — you version it, you copy it
-between computers, and a shared server never sees it.
+machine.
 
-That is a real divergence, and the mock states it: **`web.html` has no Layouts section,
-no Split presets section and no Layouts button**, because a browser talking to a shared
-server has no file and nothing stands in for one. One line says so per entry page
-(`WORKSPACE_FILE`), and `reloadLayouts()` in `rite.js` is where it takes effect.
+It sits on one of **two supports**, and the surface decides which:
+
+| Support | Where | Confidentiality |
+|---|---|---|
+| `~/.config/rite/layouts.toml` | the machine's filesystem | none needed — the reader's own disk |
+| a sealed blob | the account, scoped by user | AES-256-GCM under the user's key |
+
+A browser has no filesystem, so there it is the account's copy or nothing. A local vault
+has no account to seal to, so there it is the file. Only a desktop window signed into a
+server holds both, and `layoutSupport()` in `rite.js` is where that is decided —
+`STATE.layoutSource` being this computer's own preference, which is why it is a device one
+and does not travel. `STATE.layoutsOn` is the reader's switch, the second of ADR 0027's
+three gates; the first is the instance's `layouts_policy`, which a mock has no server to
+ask. `WORKSPACE_FILE` still answers "is there a FILE here", which picks the support rather
+than deciding the feature exists.
 
 **Settings ▸ Layouts leads with a card per layout** — what it opens, grouped by tab,
-resolved against the library this computer actually has — and the *Open the layouts
-file…* button sits underneath, for editing. It used to be a heading and that button, so
+resolved against the library this computer actually has — with the two switches above it
+and the editor button underneath. It used to be a heading and that button, so
 the only answer to "what do I have" was behind a click and below a textarea. Each card
 carries an **at startup** checkbox (not a radio: the file lets several open at once),
 which splices `startup` into the file.
@@ -179,6 +189,38 @@ without ever branching on what a pane displays. A terminal tab and an agent tab 
 the same structure, so a split, a preset or a layout is **one** feature rather than
 two implementations of it — exactly what `apps/desktop/src/panes/registry.ts` buys in
 the real client.
+
+### A key means two things
+
+Not where a file sits — **who may open a machine** (ADR 0028). Carried in the record, the
+key's text is sealed inside it, so every member of the collection can open the machine and
+its host sees one identity for all of them. Standing on each computer, the record holds a
+path and no secret, so only a member who has that file *there* can open it and the host
+records who did.
+
+Carried is the default, being the only support that works everywhere. A path is read by
+whichever process opens SSH — the member's own computer in a desktop window, the server's
+container in a browser — so a path-record is **desktop-only**, and the mock's form says so
+under the choice. A local vault has one support and no choice to offer, so none is drawn.
+
+A key already stored **names itself**: its fingerprint, its algorithm, and *Replace…*. An
+empty file input there read as "nothing was saved", which is how the real form behaved
+until it was noticed.
+
+### One pastille in the corner, for a vault as for an account
+
+The right-hand end of the bar holds **one control** in both contexts: a round glyph, a
+label, a small-caps chip and a chevron, opening a menu. A server session shows who is
+signed in — avatar, name, role — with Settings and Sign out inside. A local vault shows
+the one thing not already on screen: **whether it is open**. It deliberately does *not*
+say the vault's name, because the context pill on the other side of the bar already does,
+and the same fact twice on one bar is the duplication the nav exists to remove.
+
+The local workspace used to carry a bare padlock and no way to reach Settings at all, so
+the two contexts were two different ideas about what lives in that corner. Locking is now
+a menu item, which costs a click a bare button did not — so `vault.lock` is a keyboard
+command (`Mod+Shift+L`), named beside the item. Stepping away from the machine is a
+keystroke rather than a click and an aim.
 
 ### An overlay page carries the nav
 

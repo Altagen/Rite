@@ -226,11 +226,14 @@ function isLocal(){return false;}
 function probeGoverned(){return true;}
 let STATE={sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},
   myShell:'', /* '' = whatever the instance defaults to */
-  toolbar:{quick:true,agents:true,library:true,newTermMenu:true}};
-/* No workspace file in a browser: this shell talks to a shared server, and the file
-   belongs to a machine (ADR 0023). `rite.js` reads this to hide the Layouts button
-   and the "Split presets…" row the same way the app hides them when `/api/layouts`
-   answers that there is no file. */
+  toolbar:{quick:true,agents:true,library:true,newTermMenu:true},
+  /* ADR 0027: the reader's own switch, and — in a server context on a desktop — which
+     support this computer reads from. Both are device preferences, so neither travels. */
+  layoutsOn:true, layoutSource:'account'};
+/* No layouts FILE in a browser — there is no filesystem to read one from — so the
+   workspace here is the account's sealed copy (ADR 0027). This used to hide the Layouts
+   button and the "Split presets…" row altogether; now it only picks the support, and the
+   reader's own switch is what removes the feature. */
 const WORKSPACE_FILE=false;
 // The web UI opens terminals ON THE SERVER, so the shell is the server's default (set by the
 // admin in Instance settings), not a per-user pick. Choosing between local shells (fish/zsh/…)
@@ -487,6 +490,9 @@ function dlgNewFolder(parentId){const parent=parentId?find(parentId):null;
       if(parent){if(!parent.children)parent.children=[];parent.open=true;parent.children.unshift(node);}else LIB.unshift(node);
       renderSide();renderMain();toast(`Folder <span class="accent">${name}</span> created`);}});}
 function ncAuth(v){const pw=document.getElementById('nc-pw'),k=document.getElementById('nc-key');if(pw&&k){pw.style.display=v==='publicKey'?'none':'';k.style.display=v==='publicKey'?'':'none';}}
+/* Which of the two key supports the form is editing (ADR 0028 §1). */
+function ncKeySup(v){const c=document.getElementById('nc-key-carried'),p=document.getElementById('nc-key-path');
+  if(c&&p){c.style.display=v==='path'?'none':'';p.style.display=v==='path'?'':'none';}}
 function dlgNewConn(collName,existing){const e=existing||{};const auth=e.authType||'password';
   showModal({title:existing?'Edit machine':'New machine',subtitle:collName?('in “'+collName+'”'):'',wide:true,confirm:'Save',
   body:`<label class="field"><span>Name</span><input class="inp" id="nc-name" value="${e.name||''}" placeholder="Prod web"></label>
@@ -496,7 +502,31 @@ function dlgNewConn(collName,existing){const e=existing||{};const auth=e.authTyp
     <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>User</span><input class="inp" value="${e.user||''}" placeholder="deploy"></label>
       <label class="field" style="flex:1"><span>Authentication</span><select class="inp" id="nc-auth" onchange="ncAuth(this.value)"><option value="password" ${auth!=='publicKey'?'selected':''}>Password</option><option value="publicKey" ${auth==='publicKey'?'selected':''}>Public key</option></select></label></div>
     <div id="nc-pw" style="${auth==='publicKey'?'display:none':''}"><label class="field"><span>Password</span><input class="inp" type="password" placeholder="${existing?'••••••••':'password'}"></label></div>
-    <div id="nc-key" style="${auth==='publicKey'?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519"></label></div>
+    <!-- A key means two things, and in a server context the member chooses which (ADR 0028).
+         Carried: the key's text goes in the sealed record, so every member of the collection
+         can open the machine and its host sees one identity for all of them. On each
+         computer: a path, no secret in the record, and only a member who has that file can
+         open it — which a browser cannot, so such a machine is desktop-only. Carried is the
+         default: it is the only support that works everywhere. -->
+    <div id="nc-key" style="${auth==='publicKey'?'':'display:none'}">
+      <div class="field"><span>Key</span>
+        <label class="kchoice"><input type="radio" name="nc-keysup" value="carried" ${e.keySupport==='path'?'':'checked'} onchange="ncKeySup(this.value)">
+          <span><b>A shared key, in the record</b><span class="muted" style="display:block;font-size:12px">Every member of the collection can open this machine. Its host sees one identity for all of them.</span></span></label>
+        <label class="kchoice"><input type="radio" name="nc-keysup" value="path" ${e.keySupport==='path'?'checked':''} onchange="ncKeySup(this.value)">
+          <span><b>A key file on each computer</b><span class="muted" style="display:block;font-size:12px">Only a member who has that file, at that path, can open this machine. Desktop client only — a browser has no filesystem.</span></span></label>
+      </div>
+      <div id="nc-key-carried" style="${e.keySupport==='path'?'display:none':''}">
+        ${e.keyFingerprint
+          ? `<label class="field"><span>Private key file</span>
+              <span class="kstored"><code class="mono" style="font-size:12px;flex:1">${e.keyFingerprint}</code><span class="tag">${e.keyAlgorithm||'ssh-ed25519'}</span>
+              <button type="button" class="btn btn-ghost btn-sm" onclick="toast('Choose the replacement key file…')">Replace…</button></span>
+              <span class="muted" style="font-size:12px;display:block;margin-top:6px">Replace it to use another one. Saving anything else here keeps this key.</span></label>`
+          : `<label class="field"><span>Private key file</span><input class="inp" type="file">
+              <span class="muted" style="font-size:12px;display:block;margin-top:6px">Read in this page and sealed in the record — never uploaded as a file.</span></label>`}
+      </div>
+      <div id="nc-key-path" style="${e.keySupport==='path'?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519">
+        <span class="muted" style="font-size:12px;display:block;margin-top:6px">Read on the computer that connects, so this machine needs a desktop client.</span></label></div>
+    </div>
     ${swatchRow(e.color||'#56c7c0')}
     <div style="display:flex;gap:10px;align-items:flex-end"><label class="field" style="flex:1"><span>Keep-alive</span><select class="inp" onchange="this.closest('.body').querySelector('#nc-kai').style.display=this.value==='on'?'':'none'"><option value="off">Disabled</option><option value="on">Enabled</option></select></label>
       <label class="field" id="nc-kai" style="flex:1;display:none"><span>Interval (s)</span><input class="inp" value="30"></label></div>
@@ -614,14 +644,21 @@ const PREFS=[
         : prefRow('Server shell','Set by the administrator for every terminal on this server. Desktop users pick their own local shell.',
             `<code class="mono" style="font-size:13px;color:var(--muted)">${SERVER_SHELL}</code>`)) },
 
-  /* No "Split presets" and no "Layouts" here, and that is the ADR 0023 rule showing
-     through: both live in a workspace file, the file belongs to a MACHINE, and this
-     shell is a browser talking to a shared server. There is no file and nothing
-     stands in for one — a per-account copy in the server's database would make the
-     server hold what it is designed never to see. So the two sections are ABSENT
-     rather than empty, the Layouts button beside the tabs hides itself, and the split
-     chevron offers the plain divider and your snippets. The desktop app, which IS a
-     machine, is where this part of the setup lives (`WORKSPACE_FILE`, up top). */
+  /* Both sections ARE here now. They were absent, and the reason read as a property of
+     the model: both live in a workspace file, a file belongs to a machine, and a browser
+     has no filesystem — so a per-account copy was refused as something the server would
+     hold and is designed never to see.
+
+     That refused a PLAINTEXT row, and was then read as an impossibility. A copy sealed
+     client-side under the member's own key has neither property, and the mechanism was
+     already shipping for the personal library. ADR 0027: the account is the second
+     support, it is the default here, and what removes the feature is the reader's own
+     switch inside the section. */
+  { id:'splits', label:'Split presets', body:()=>
+      `<h4>Split presets</h4><p class="lede">A divider opens a plain terminal — that is the button. A preset is that same divider running one named command, offered by the chevron beside it.</p>`
+    + prefRow('Presets',`${SPLIT_PRESETS.length} in the account’s copy, plus the plain terminal`,`<button class="btn btn-sm" onclick="dlgSplitPrefs()">Edit presets…</button>`) },
+
+  { id:'layouts', label:'Layouts', body:()=>layoutsSettingsHTML() },
 
   { id:'machines', label:'Machine status', body:()=>
       `<h4>Machine status</h4><p class="lede"><span style="color:var(--amber)">Governed by the server</span> — it can only be narrowed. Passive “last seen” costs no network traffic; active probing does.</p>`

@@ -132,8 +132,9 @@
     <div class="spacer"></div>
     <span id="acts" style="display:flex;gap:10px;align-items:center"></span>
   </div>
-  <!-- Profile dropdown (server context): who you're signed in as on this server + account actions.
-       On a local vault there's no server account — the context pill + Lock convey the local identity. -->
+  <!-- Profile dropdown (server context): who is signed in on this server, and the personal
+       actions. A local vault has no account to show, so it gets the vault pastille below —
+       same corner, same shape, and Settings in both. -->
   <div class="pmenu" id="pmenu">
     <div class="pmenu-head"><span class="avatar" id="pmAv"></span><div><div class="pname" id="pmName" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span id="pmServer"></span></div></div></div>
     <div class="pi-sep"></div>
@@ -142,6 +143,17 @@
     <div class="pi" onclick="closeProfile();toast('Username copied')"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg> Copy username</div>
     <div class="pi-sep"></div>
     <div class="pi danger" onclick="closeProfile();signOutServer(STATE.ctx.id)"><svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 19H6a2 2 0 01-2-2V7a2 2 0 012-2h6"/></svg> Sign out</div>
+  </div>
+  <!-- Vault pastille dropdown (local-vault context). The same corner, the same grammar as
+       the account's: the local workspace used to carry a bare padlock and nothing to reach
+       Settings with, which made the two contexts two different ideas about what lives
+       there. It does NOT say the vault's name — the context pill already does, on the other
+       side of the bar — it says the one thing not already on screen: whether it is open. -->
+  <div class="pmenu" id="vmenu">
+    <div class="pmenu-head"><span class="avatar" id="vmGlyph"></span><div><div class="pname" id="vmName" style="font-size:14px"></div><div class="muted" style="font-size:12px" id="vmState"></div></div></div>
+    <div class="pi-sep"></div>
+    <div class="pi" id="vmLock"></div>
+    <div class="pi" onclick="closeVault();openSettings()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.1 5.1l2.1 2.1M16.8 16.8l2.1 2.1M18.9 5.1l-2.1 2.1M7.2 16.8l-2.1 2.1"/></svg> Settings</div>
   </div>
   <div style="flex:1;display:flex;min-height:0">
     <div class="side" id="side" style="width:290px"></div>
@@ -319,7 +331,10 @@ function probeGoverned(){return STATE.ctx.type==='server';}
 let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false,
   // Which toolbar buttons this person wants. Hiding one never grants or revokes
   // anything: the server policies and the keyboard shortcuts are unchanged.
-  toolbar:{shell:true,newTermMenu:true,focus:true,quick:true,agents:true,layouts:true}};
+  toolbar:{shell:true,newTermMenu:true,focus:true,quick:true,agents:true,layouts:true},
+  /* ADR 0027: the reader's own switch, and — in a server context on a desktop — which
+     support this computer reads from. Both are device preferences, so neither travels. */
+  layoutsOn:true, layoutSource:'account'};
 /* This shell IS a machine, so it has the workspace file — the presets and the layouts
    both live in it (ADR 0023). `web.html` says false, and that one line is the whole
    difference between the two shells here. */
@@ -791,8 +806,42 @@ function authSelect(p,e){e=e||{};const a=e.authType||'password';
   return `<select class="inp" id="${p}-auth" onchange="authToggle('${p}',this.value)"><option value="password" ${a==='password'?'selected':''}>Password</option><option value="publicKey" ${a==='publicKey'?'selected':''}>Public key (file)</option><option value="agent" ${a==='agent'?'selected':''}>SSH agent</option></select>`;}
 function authPanels(p,e){e=e||{};const a=e.authType||'password';
   return `<div id="${p}-pw" style="${a==='password'?'':'display:none'}"><label class="field"><span>Password</span><input class="inp" type="password" placeholder="${e.name?'••••••••':'password'}"></label></div>
-    <div id="${p}-key" style="${a==='publicKey'?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519"></label><label class="field"><span>Key passphrase (optional)</span><input class="inp" type="password" placeholder="if the key is encrypted"></label></div>
+    <div id="${p}-key" style="${a==='publicKey'?'':'display:none'}">${keyPanel(p,e)}<label class="field"><span>Key passphrase (optional)</span><input class="inp" type="password" placeholder="if the key is encrypted"></label></div>
     <div id="${p}-agent" style="${a==='agent'?'':'display:none'}">${agentPanel(p,e)}</div>`;}
+/* The key panel. A local vault has ONE support — a path, on the machine that will read it
+   — so there is no choice to offer and none is drawn. Signed into a server, the record is
+   shared and portable, so the member picks (ADR 0028 §1): carried in the record, or
+   standing on each computer. Carried is the default, being the only one a browser can use.
+
+   A path works for the reader here either way: in a remote context the LOCAL server opens
+   SSH (client-execute, ADR 0011 §4). What it does not do is work for a colleague or from a
+   browser, which is why the choice is on the record and not on the window. */
+function keyPanel(p,e){
+  e=e||{};
+  if(STATE.ctx.type!=='server')
+    return `<label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519"></label>`;
+  const onPath=e.keySupport==='path';
+  return `<div class="field"><span>Key</span>
+      <label class="kchoice"><input type="radio" name="${p}-keysup" value="carried" ${onPath?'':'checked'} onchange="keySupToggle('${p}',this.value)">
+        <span><b>A shared key, in the record</b><span class="muted" style="display:block;font-size:12px">Every member of the collection can open this machine. Its host sees one identity for all of them.</span></span></label>
+      <label class="kchoice"><input type="radio" name="${p}-keysup" value="path" ${onPath?'checked':''} onchange="keySupToggle('${p}',this.value)">
+        <span><b>A key file on each computer</b><span class="muted" style="display:block;font-size:12px">Only a member who has that file, at that path, can open this machine. Desktop client only.</span></span></label>
+    </div>
+    <div id="${p}-key-carried" style="${onPath?'display:none':''}">
+      ${e.keyFingerprint
+        ? `<label class="field"><span>Private key file</span>
+            <span class="kstored"><code class="mono" style="font-size:12px;flex:1">${e.keyFingerprint}</code><span class="tag">${e.keyAlgorithm||'ssh-ed25519'}</span>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toast('Choose the replacement key file…')">Replace…</button></span>
+            <span class="muted" style="font-size:12px;display:block;margin-top:6px">Replace it to use another one. Saving anything else here keeps this key.</span></label>`
+        : `<label class="field"><span>Private key file</span><input class="inp" type="file">
+            <span class="muted" style="font-size:12px;display:block;margin-top:6px">Read in this page and sealed in the record — never uploaded as a file.</span></label>`}
+    </div>
+    <div id="${p}-key-path" style="${onPath?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519">
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">Read on the computer that connects, so this machine needs a desktop client.</span></label></div>`;
+}
+function keySupToggle(p,v){const c=document.getElementById(p+'-key-carried'),k=document.getElementById(p+'-key-path');
+  if(c)c.style.display=v==='path'?'none':'';
+  if(k)k.style.display=v==='path'?'':'none';}
 function authToggle(p,v){const pw=document.getElementById(p+'-pw'),k=document.getElementById(p+'-key'),ag=document.getElementById(p+'-agent');
   if(pw)pw.style.display=v==='password'?'':'none';
   if(k)k.style.display=v==='publicKey'?'':'none';
@@ -1128,7 +1177,7 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
   ${STATE.toolbar.focus?`<button class="btn btn-ghost btn-sm" title="Focus mode (F11) — hide the toolbar, terminals fill the screen" onclick="toggleFocus()"><svg class="icon" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>`:''}
   ${(STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK)||!STATE.toolbar.quick?'':`<button class="btn btn-sm" onclick="dlgQuickSSH()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`}
   ${STATE.toolbar.agents?`<button class="btn btn-ghost btn-sm" title="Agents — the AI sessions running on the machines" onclick="openAgents()">${M.agent} <span class="lbl">Agents</span></button>`:''}
-  ${STATE.ctx.type==='vault'&&!STATE.ctx.locked?`<button class="btn btn-ghost btn-sm" title="Lock vault" onclick="lockVault('${STATE.ctx.id}')">${ICON.lock}</button>`:''}
+  ${STATE.ctx.type==='vault'?`<button class="profile" onclick="toggleVault(event)" title="${STATE.ctx.locked?'Vault locked':'Vault open'}"><span class="avatar" style="background:${STATE.ctx.locked?'var(--card2)':'rgba(86,199,192,.15)'};color:${STATE.ctx.locked?'var(--muted)':'var(--teal)'}">${ICON.lock}</span><span class="pmeta"><span class="pname">Vault</span><span class="prole ${STATE.ctx.locked?'locked':'unlocked'}">${STATE.ctx.locked?'Locked':'Open'}</span></span><span class="chev">${EXICON.chevD}</span></button>`:''}
   ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Discover collections offered to the joined teams" onclick="openDiscover()">${M.compass} <span class="lbl">Discover</span></button>
   <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
   <button class="btn btn-ghost btn-sm" title="Administration — users, teams, invitations, instance" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Administration</span></button>
@@ -1137,7 +1186,28 @@ function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHEL
 // Profile dropdown (server context). Populated from the active server context on open.
 function toggleProfile(e){e.stopPropagation();const a=document.getElementById('pmAv');a.textContent=(ORG.me||'?').slice(0,2).toUpperCase();a.style.background=avColor(ORG.me);document.getElementById('pmName').textContent=ORG.me;document.getElementById('pmServer').textContent=(STATE.ctx&&STATE.ctx.name)||'';document.getElementById('pmenu').classList.toggle('show');}
 function closeProfile(){document.getElementById('pmenu').classList.remove('show');}
-document.addEventListener('click',e=>{if(!e.target.closest('.profile')&&!e.target.closest('.pmenu'))closeProfile();});
+/* The vault pastille's menu. The vault action comes first: it is the one with a consequence,
+   and in the locked state it is the only reason the menu is open. Locking costs a click here
+   that a bare button did not — so `vault.lock` is a keyboard command (Mod+Shift+L), which is
+   better than a click and an aim for something done while standing up. */
+function toggleVault(e){
+  e.stopPropagation();
+  const locked=!!STATE.ctx.locked;
+  const g=document.getElementById('vmGlyph');
+  g.innerHTML=ICON.lock;
+  g.style.background=locked?'var(--card2)':'rgba(86,199,192,.15)';
+  g.style.color=locked?'var(--muted)':'var(--teal)';
+  document.getElementById('vmName').textContent=STATE.ctx.name||'Vault';
+  document.getElementById('vmState').textContent=locked?'Locked':'Open';
+  const act=document.getElementById('vmLock');
+  act.innerHTML=`${ICON.lock} ${locked?'Unlock vault':'Lock vault'}<span class="muted" style="margin-left:auto;font-size:11.5px">${locked?'':'⌘⇧L'}</span>`;
+  act.onclick=()=>{closeVault();
+    if(locked) dlgUnlock(STATE.ctx,()=>{STATE.ctx.locked=false;renderAll();});
+    else lockVault(STATE.ctx.id);};
+  document.getElementById('vmenu').classList.toggle('show');
+}
+function closeVault(){const m=document.getElementById('vmenu');if(m)m.classList.remove('show');}
+document.addEventListener('click',e=>{if(!e.target.closest('.profile')&&!e.target.closest('.pmenu')){closeProfile();closeVault();}});
 
 /* ================= focus mode (client/native only) =================
    Hide the toolbar so terminals fill the screen. Toggle via the toolbar button or F11; exit via

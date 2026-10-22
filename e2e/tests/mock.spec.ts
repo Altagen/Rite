@@ -455,24 +455,28 @@ for (const shell of ['web', 'desktop'] as const) {
     await expect(page.locator('.backdrop')).toContainText('Snippets');
     await page.locator('.backdrop [data-ok]').click();
 
-    // Everything past that point comes out of the workspace file, which a browser
-    // talking to a shared server does not have (ADR 0023). The divergence is checked
-    // here rather than left to be discovered: the same chevron, two honest answers.
-    if (shell === 'web') {
-      await page.locator('.termpane .split-more').first().click();
-      const rows = page.locator('.menu .row');
-      await expect(rows).toHaveCount(2); // the plain terminal, and Snippets…
-      await expect(rows.filter({ hasText: /Split presets/ })).toHaveCount(0);
-      await expect(rows.filter({ hasText: /Deploy watch/ })).toHaveCount(0);
-      expect(await page.evaluate(() => [SPLIT_PRESETS.length, PANE_LAYOUTS.length])).toEqual([
-        0, 0,
-      ]);
-      // And no Layouts button beside the tabs, for the same reason.
-      await expect(page.locator('button[title^="Layouts"]')).toHaveCount(0);
-      await page.keyboard.press('Escape');
-      expect(errs, 'the mock must not log errors').toEqual([]);
-      return;
-    }
+    // Everything past that point comes out of the workspace, and BOTH shells have one
+    // now: a browser reads the account's sealed copy (ADR 0027), where it used to read
+    // nothing at all. What still differs is the support, not the feature — asserted
+    // below rather than left to be discovered.
+    // Both answer "account", for two different reasons: a browser has no filesystem to
+    // read a file from, and the desktop mock boots signed into a server, where the
+    // account's copy is the default so two computers agree with nothing configured.
+    expect(await page.evaluate(() => layoutSupport())).toBe('account');
+    expect(await page.evaluate(() => [SPLIT_PRESETS.length > 0, PANE_LAYOUTS.length > 0])).toEqual([
+      true,
+      true,
+    ]);
+    // And the divergence is one switch, on the desktop only: a browser cannot read a file
+    // whatever it is asked, so the preference is not offered there and not honoured.
+    const asFile = await page.evaluate(() => {
+      STATE.layoutSource = 'file';
+      return layoutSupport();
+    });
+    expect(asFile).toBe(shell === 'desktop' ? 'file' : 'account');
+    await page.evaluate(() => {
+      STATE.layoutSource = 'account';
+    });
 
     // A preset is a name and a command, and both are the user's — `[[preset]]` in the
     // workspace file, so the chevron offers what the file declares.
@@ -783,12 +787,39 @@ test('desktop mock: Settings leads with the layout cards, and the startup switch
   await expect(cards.nth(0)).toContainText('this computer');
 
   // The cards are ABOVE the editor button — that is the whole change, so it is the
-  // geometry that is checked and not merely that both exist.
+  // geometry that is checked and not merely that both exist. This shell boots signed
+  // into a server, so the button is the account's: there is no path to show, because
+  // there is no file (ADR 0027).
   const cardsBox = await page.locator('[data-lay-cards]').boundingBox();
   const btnBox = await page
-    .locator('.prefs-pane button', { hasText: /Open the layouts file/ })
+    .locator('.prefs-pane button', { hasText: /Open the layouts/ })
     .boundingBox();
   expect(cardsBox!.y + cardsBox!.height).toBeLessThanOrEqual(btnBox!.y);
+  await expect(page.locator('.prefs-pane')).toContainText('Sealed under');
+  await expect(page.locator('.prefs-pane code', { hasText: /layouts\.toml/ })).toHaveCount(0);
+
+  // Switching this computer to its own file is one control, and it changes the support
+  // rather than the document: the path comes back, and so does "Open the layouts file…".
+  await page.locator('.prefs-pane select').first().selectOption('file');
+  await expect(page.locator('.prefs-pane code', { hasText: /layouts\.toml/ })).toHaveCount(1);
+  await expect(
+    page.locator('.prefs-pane button', { hasText: /Open the layouts file/ }),
+  ).toHaveCount(1);
+  await page.locator('.prefs-pane select').first().selectOption('account');
+
+  // The reader's own switch keeps its section: the way back on is inside it, so hiding
+  // the section when it is off would hide the switch (ADR 0027 gate 2).
+  await page
+    .locator('.prefs-pane .settings-row', { hasText: /Use layouts/ })
+    .locator('.toggle')
+    .click();
+  await expect(page.locator('[data-lay-cards]')).toHaveCount(0);
+  await expect(page.locator('.prefs-pane')).toContainText('off in settings');
+  await page
+    .locator('.prefs-pane .settings-row', { hasText: /Use layouts/ })
+    .locator('.toggle')
+    .click();
+  await expect(page.locator('[data-lay-cards] .snip-row')).toHaveCount(2);
 
   // "Deploy watch" does not open at startup, and the file is where that is stored.
   const toggle = cards.nth(1).locator('input[type=checkbox]');
@@ -930,13 +961,12 @@ for (const shell of ['web', 'desktop'] as const) {
     expect(await nav.count()).toBeGreaterThan(5);
     await expect(page.locator('.prefs-pane')).toHaveCount(1);
 
-    // Splits and Layouts are two entries, because they are two features — and both
-    // are entries only where there is a workspace file to hold them. On a shared
-    // server there is none and nothing stands in for one, so they are ABSENT from the
-    // rail rather than present and empty (ADR 0023).
-    const file = shell === 'desktop' ? 1 : 0;
-    await expect(nav.filter({ hasText: /Split presets/ })).toHaveCount(file);
-    await expect(nav.filter({ hasText: /Layouts/ })).toHaveCount(file);
+    // Splits and Layouts are two entries, because they are two features — and both are
+    // in BOTH shells now. They used to be absent from a browser, on the reading that a
+    // workspace is a file and a file belongs to a machine; ADR 0027 gave the account a
+    // sealed copy, so there is a support here too.
+    await expect(nav.filter({ hasText: /Split presets/ })).toHaveCount(1);
+    await expect(nav.filter({ hasText: /Layouts/ })).toHaveCount(1);
 
     // A preferences dialog has no footer at all: the ✕ is the only way out.
     await expect(page.locator('.backdrop [data-ok]')).toHaveCount(0);
