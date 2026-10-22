@@ -1578,3 +1578,57 @@ test('the account holds a layouts document the server cannot read, and the reade
   await page.getByTestId('layouts-enabled').click();
   await expect(page.getByText('Account morning').first()).toBeVisible();
 });
+
+/**
+ * A lying server cannot make this client derive a cheap hash of the password (ADR 0029).
+ *
+ * `prelogin` hands back the salt AND the Argon2 parameters, read from the account's row,
+ * and the client derived with them verbatim. So a compromised server could answer
+ * `mem: 8, iter: 1` and receive a value that costs nothing to brute-force back to the
+ * password offline. The vault's key uses a fixed local KDF, so the blobs are not handed
+ * over directly — but the password derives that key, so recovering it is recovering the
+ * vault. That is the server putting itself in a position to learn a secret, which is the
+ * one thing ADR 0011 says it must not be able to do.
+ *
+ * The hostile server is simulated here rather than argued about: the response is rewritten
+ * on the wire, which is exactly what a compromised instance would send. What the test
+ * insists on is that NOTHING is sent afterwards — a refusal that still posted the hash
+ * would have handed over the thing being protected — and that the screen names the cause
+ * instead of saying "wrong password", which would have the reader type it again.
+ */
+test('a server asking for a weak key derivation gets nothing', async ({ page }) => {
+  await signInAdmin(page);
+  await page.getByRole('button', { name: /^AD / }).click();
+  await page.getByTestId('pastille-sign-out').click();
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+
+  // Everything the page sends from here, so "nothing was sent" is a measurement.
+  const posted: string[] = [];
+  await page.route('**/api/server/**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'POST') posted.push(new URL(request.url()).pathname);
+    if (!request.url().includes('/api/server/prelogin')) return route.fallback();
+    // The lie: a real response, with the derivation cost removed.
+    const real = await route.fetch();
+    const body = await real.json();
+    await route.fulfill({
+      response: real,
+      json: { ...body, params: { mem: 8, iter: 1, par: 1 } },
+    });
+  });
+
+  await page.locator('#username').fill(ADMIN.username);
+  await page.locator('#password').fill(ADMIN.password);
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+
+  // Named, so the reader knows not to try again here.
+  await expect(page.getByText(/weaker key derivation/i)).toBeVisible({ timeout: 15_000 });
+  // Still on the sign-in screen: no session, no vault key.
+  await expect(page.getByText('Sign in to the server')).toBeVisible();
+  expect(await page.evaluate(() => sessionStorage.getItem('rite.sessionToken'))).toBeNull();
+  // And the hash never left: prelogin was asked, /login never was.
+  expect(posted.filter((p) => p.endsWith('/login'))).toEqual([]);
+  expect(posted.filter((p) => p.endsWith('/prelogin')).length).toBeGreaterThan(0);
+
+  await page.unroute('**/api/server/**');
+});

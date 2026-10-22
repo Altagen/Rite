@@ -99,6 +99,22 @@ impl KdfParams {
             par: 1,
         }
     }
+
+    /// Are these strong enough to STORE? (ADR 0029)
+    ///
+    /// `prelogin` hands these back to whoever logs in next, and that client derives with
+    /// them — so a row holding `mem: 8, iter: 1` is an instruction to every future client
+    /// to compute a hash that is cheap to brute-force back to the password. The floor on
+    /// the client is the mitigation that matters, because a parameter the server chose
+    /// cannot be policed by the server; this one stops the weak row existing at all, so a
+    /// client without the floor is not handed one.
+    ///
+    /// The baseline itself, not something below it: every client this project ships
+    /// registers with exactly these.
+    pub fn strong_enough(&self) -> bool {
+        let floor = Self::recommended();
+        self.mem >= floor.mem && self.iter >= floor.iter && self.par >= floor.par
+    }
 }
 
 /// What `prelogin` returns so the client can derive its auth hash.
@@ -183,6 +199,9 @@ pub async fn create_user(
     vault: &VaultKey,
     must_change: bool,
 ) -> Result<User> {
+    if !params.strong_enough() {
+        anyhow::bail!("key derivation parameters below this server's floor");
+    }
     let id = Uuid::new_v4().to_string();
     let verifier = hash_auth(auth_hash)?;
     let ts = now();
@@ -231,6 +250,11 @@ pub async fn set_credentials(
     vault: &VaultKey,
     must_change: bool,
 ) -> Result<bool> {
+    // Same floor as creation: a password change rewrites the row `prelogin` reads from, so
+    // it is a second way to plant weak parameters for every future login (ADR 0029).
+    if !params.strong_enough() {
+        anyhow::bail!("key derivation parameters below this server's floor");
+    }
     let verifier = hash_auth(auth_hash)?;
     let n = sqlx::query(
         "UPDATE users SET kdf_salt = ?, kdf_mem = ?, kdf_iter = ?, kdf_par = ?, auth_verifier = ?,
@@ -578,6 +602,60 @@ pub fn parse_hex_salt(s: &str) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ADR 0029. `prelogin` hands these back to whoever logs in next, and that client
+    /// derives with them — so a row holding weak parameters is an instruction to every
+    /// future client to compute a hash that is cheap to brute-force. The client's own
+    /// floor is the mitigation that matters; this one stops the weak row existing.
+    #[test]
+    fn kdf_parameters_below_the_baseline_are_not_strong_enough() {
+        let baseline = KdfParams::recommended();
+        assert!(
+            baseline.strong_enough(),
+            "the shipped baseline must pass its own floor"
+        );
+
+        // Each parameter on its own, because an `||` where an `&&` belongs would let two
+        // of the three through.
+        for weaker in [
+            KdfParams {
+                mem: baseline.mem - 1,
+                ..baseline
+            },
+            KdfParams { mem: 8, ..baseline },
+            KdfParams {
+                iter: 1,
+                ..baseline
+            },
+            KdfParams { par: 0, ..baseline },
+            KdfParams {
+                mem: 8,
+                iter: 1,
+                par: 0,
+            },
+        ] {
+            assert!(
+                !weaker.strong_enough(),
+                "{weaker:?} is below the baseline and must be refused"
+            );
+        }
+
+        // More than the baseline is a server asking for better, which is allowed.
+        assert!(
+            KdfParams {
+                mem: baseline.mem * 2,
+                ..baseline
+            }
+            .strong_enough()
+        );
+        assert!(
+            KdfParams {
+                iter: 4,
+                ..baseline
+            }
+            .strong_enough()
+        );
+    }
 
     /// Cross-impl proof: the Rust Argon2id derivation (used by the env admin
     /// bootstrap) must equal the browser's hash-wasm derivation byte-for-byte, or

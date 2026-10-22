@@ -1248,7 +1248,8 @@
     "errSetPassword": "La définition du mot de passe a échoué",
     "errTaken": "Ce nom d’utilisateur est déjà pris",
     "errTooMany": "Trop de tentatives d’inscription — réessayer dans quelques minutes",
-    "errInvite": "Cette invitation est invalide ou a expiré"
+    "errInvite": "Cette invitation est invalide ou a expiré",
+    "errWeakKdf": "Ce serveur a demandé une dérivation de clé plus faible que ce que ce client autorise. Rien n’a été envoyé. Ne pas réessayer ici : un serveur qui demande cela peut casser par force brute le mot de passe qu’il reçoit."
   },
   "fpc": {
     "title": "Définir un mot de passe personnel",

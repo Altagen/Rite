@@ -1248,7 +1248,8 @@
     "errSetPassword": "Failed to set the password",
     "errTaken": "That username is already taken",
     "errTooMany": "Too many sign-up attempts — please try again in a few minutes",
-    "errInvite": "That invitation is invalid or has expired"
+    "errInvite": "That invitation is invalid or has expired",
+    "errWeakKdf": "This server asked for a weaker key derivation than this client allows. Nothing was sent. Do not retry here: a server that asks for this can brute-force the password it receives."
   },
   "fpc": {
     "title": "Set a personal password",

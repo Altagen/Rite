@@ -13,6 +13,16 @@ This document outlines the security architecture, threat model, and best practic
 ## Cryptography Stack
 
 ### Key Derivation
+
+**The client decides the minimum cost** (ADR 0029). `prelogin` hands back the account's
+salt and Argon2 parameters, and those parameters are an instruction coming from the party
+this design distrusts: a compromised server answering `mem: 8, iter: 1` would receive an
+auth hash it could brute-force back to the password offline. So the client refuses anything
+below the OWASP baseline it registers with, says so instead of reporting a bad password,
+and sends nothing. A server asking for MORE is honoured. The server also refuses to store
+weak parameters, which protects a client that has no floor of its own rather than the
+attack above.
+
 - **Algorithm**: Argon2id (RFC 9106)
 - **Parameters**:
   - Memory: 64 MiB (default)

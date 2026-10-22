@@ -15,6 +15,7 @@ import {
   DEFAULT_KDF_PARAMS,
   createVaultKey,
   unwrapVaultKey,
+  WeakKdfError,
 } from '../utils/serverAuth';
 import { setSessionToken, clearSessionToken, getSessionToken } from '../utils/session';
 import { bytesToHex, hexToBytes } from '../utils/vaultCrypto';
@@ -230,7 +231,17 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         sessionExpired: false,
       });
     } catch (e) {
-      set({ error: translate('session.errLogin'), loading: false });
+      // A weak-KDF refusal is NOT a wrong password, and must not read as one: it says the
+      // server asked for a derivation this client will not perform (ADR 0029). Telling the
+      // reader "wrong password" there would have them type it again, into a server that is
+      // collecting cheap hashes of it.
+      set({
+        error:
+          e instanceof WeakKdfError
+            ? translate('session.errWeakKdf')
+            : translate('session.errLogin'),
+        loading: false,
+      });
       throw e;
     }
   },
