@@ -130,9 +130,9 @@ export function MemberPicker({
         }
       }
     } catch {
-      setError('Failed to load members');
+      setError(t('collections.errMembers'));
     }
-  }, [isCreate, collectionId, me, publicKey, privateKey]);
+  }, [isCreate, collectionId, me, publicKey, privateKey, t]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async initial load

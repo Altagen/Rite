@@ -391,4 +391,34 @@ check('and the allow-list has no stale entry', () => {
   assert.deepEqual(stale, [], `${stale.length} allow-list entr(y/ies) match nothing any more`);
 });
 
+/*
+ * One string must NOT be translated, and the locales have to quote it.
+ *
+ * The reset phrase is compared byte for byte in code (`utils/resetPhrase.ts`). A locale
+ * that translated it inside its instruction would ask for a phrase the comparison refuses
+ * — a reset nobody can complete, on the screen someone reaches when they are already
+ * locked out of their vault. So the instruction is held to quoting it verbatim.
+ */
+check('every locale quotes the reset phrase it asks for', () => {
+  const phrase = readFileSync(
+    new URL('../apps/desktop/src/utils/resetPhrase.ts', import.meta.url),
+    'utf8',
+  ).match(/RESET_PHRASE = '([^']+)'/);
+  assert.ok(phrase, 'resetPhrase.ts no longer declares one');
+  const missing = [];
+  for (const [name, dict] of Object.entries(LOCALES)) {
+    for (const key of ['unlock.resetConfirmLabel', 'unlock.resetConfirmPlaceholder']) {
+      const value = key.split('.').reduce((o, k) => (o == null ? o : o[k]), dict);
+      if (typeof value !== 'string' || !value.includes(phrase[1])) {
+        missing.push(`${name}: ${key}`);
+      }
+    }
+  }
+  assert.deepEqual(
+    missing,
+    [],
+    `these must contain «${phrase[1]}» verbatim: ${missing.join(', ')}`,
+  );
+});
+
 console.log(`\n${passed} checks passed`);

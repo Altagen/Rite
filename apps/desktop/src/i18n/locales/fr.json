@@ -385,7 +385,6 @@
     "jump": "Rebond",
     "lastUsed": "Dernier accès",
     "never": "—",
-    "justNow": "à l’instant",
     "portForwarding": "Redirection de ports",
     "manage": "Gérer…",
     "live": "{n} actifs",
@@ -1091,7 +1090,10 @@
     "sortHost": "Hôte",
     "import": "Importer",
     "folder": "Dossier",
-    "openNamed": "Ouvrir « {name} »"
+    "openNamed": "Ouvrir « {name} »",
+    "noMatch": "Aucune machine ne correspond au filtre.",
+    "folders": "Dossiers",
+    "machines": "Machines"
   },
   "term": {
     "dragPane": "Glisser pour réorganiser le panneau",
@@ -1174,7 +1176,8 @@
     "requested": "Demandé",
     "memberCountInline": "· {count} membre(s)",
     "membersCount": "Membres · {count}",
-    "offersCount": "Collections proposées à cette équipe · {count}"
+    "offersCount": "Collections proposées à cette équipe · {count}",
+    "errLoad": "Les équipes n’ont pas pu être chargées"
   },
   "tm": {
     "noSessions": "Aucune session de terminal active",
@@ -1474,9 +1477,27 @@
     "checking": "Vérification du statut…",
     "up": "Joignable · vérification active",
     "down": "Sans réponse · vérification active",
-    "passive": "{when} · passif (aucun sondage)"
+    "passive": "{when} · passif (aucun sondage)",
+    "lastConnected": "Dernière connexion {when}",
+    "neverConnected": "Jamais connectée"
   },
   "toast": {
     "close": "Fermer"
+  },
+  "time": {
+    "never": "Jamais",
+    "justNow": "à l’instant",
+    "minutesAgo": "il y a {n} min",
+    "hoursAgo": "il y a {n} h",
+    "daysAgo": "il y a {n} j",
+    "weeksAgo": "il y a {n} sem."
+  },
+  "collections": {
+    "errLoad": "Les collections n’ont pas pu être chargées",
+    "errMembers": "Les membres n’ont pas pu être chargés"
+  },
+  "import": {
+    "pickCollection": "Choisir une collection de destination.",
+    "pickHost": "Sélectionner au moins un hôte."
   }
 }

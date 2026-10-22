@@ -5,6 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { RESET_PHRASE } from '../utils/resetPhrase';
 import { RevealToggle } from './RevealToggle';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
@@ -278,7 +279,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   // first-run. Guarded by typing the confirmation phrase (mirrors the unlock screen).
   const [resetText, setResetText] = useState('');
   const resetVault = async () => {
-    if (resetText !== 'DELETE ALL DATA') return;
+    if (resetText !== RESET_PHRASE) return;
     try {
       await Backend.Auth.resetDatabase();
       window.location.reload();
@@ -1032,7 +1033,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     <button
                       type="button"
                       onClick={() => void resetVault()}
-                      disabled={resetText !== 'DELETE ALL DATA'}
+                      disabled={resetText !== RESET_PHRASE}
                       className="rounded-md border border-red-500/40 px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-500/10 disabled:opacity-40"
                     >
                       {t('settings.resetVault')}

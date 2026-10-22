@@ -63,12 +63,12 @@ export function TeamsDashboard() {
       setTeams(mine);
       setOffered(offers);
       setSelectedId((prev) =>
-        prev && mine.some((t) => t.id === prev) ? prev : (mine[0]?.id ?? null),
+        prev && mine.some((team) => team.id === prev) ? prev : (mine[0]?.id ?? null),
       );
     } catch {
-      setError('Failed to load teams');
+      setError(t('teams.errLoad'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async initial load

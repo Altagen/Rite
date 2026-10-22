@@ -5,6 +5,7 @@
  */
 
 import { useState } from 'react';
+import { RESET_PHRASE } from '../utils/resetPhrase';
 import { RevealToggle } from './RevealToggle';
 import { Backend } from '../utils/backend';
 import { useAuthStore } from '../store/authStore';
@@ -38,7 +39,7 @@ export function UnlockScreen({ asModal = false, onClose }: UnlockScreenProps = {
   };
 
   const handleReset = async () => {
-    if (resetConfirmText !== 'DELETE ALL DATA') {
+    if (resetConfirmText !== RESET_PHRASE) {
       return;
     }
 
@@ -134,9 +135,9 @@ export function UnlockScreen({ asModal = false, onClose }: UnlockScreenProps = {
                 </button>
                 <button
                   onClick={handleReset}
-                  disabled={resetConfirmText !== 'DELETE ALL DATA'}
+                  disabled={resetConfirmText !== RESET_PHRASE}
                   className={`flex-1 rounded-md px-4 py-2 text-sm font-medium ${
-                    resetConfirmText === 'DELETE ALL DATA'
+                    resetConfirmText === RESET_PHRASE
                       ? 'bg-red-600 text-white hover:bg-red-700'
                       : 'bg-muted text-muted-foreground cursor-not-allowed'
                   }`}

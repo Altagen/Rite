@@ -90,12 +90,12 @@ export function ImportSSHPasteModal({
 
   const doImport = async () => {
     if (!collectionId) {
-      setError('Choose a collection to import into.');
+      setError(t('import.pickCollection'));
       return;
     }
     const chosen = hosts.filter((h) => selected.has(h.name));
     if (chosen.length === 0) {
-      setError('Select at least one host.');
+      setError(t('import.pickHost'));
       return;
     }
     setBusy(true);

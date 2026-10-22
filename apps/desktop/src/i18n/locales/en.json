@@ -385,7 +385,6 @@
     "jump": "Jump",
     "lastUsed": "Last used",
     "never": "—",
-    "justNow": "just now",
     "portForwarding": "Port forwarding",
     "manage": "Manage…",
     "live": "{n} live",
@@ -1091,7 +1090,10 @@
     "sortHost": "Host",
     "import": "Import",
     "folder": "Folder",
-    "openNamed": "Open “{name}”"
+    "openNamed": "Open “{name}”",
+    "noMatch": "No machines match the filter.",
+    "folders": "Folders",
+    "machines": "Machines"
   },
   "term": {
     "dragPane": "Drag to reorganize pane",
@@ -1174,7 +1176,8 @@
     "requested": "Requested",
     "memberCountInline": "· {count} member(s)",
     "membersCount": "Members · {count}",
-    "offersCount": "Collections offered to this team · {count}"
+    "offersCount": "Collections offered to this team · {count}",
+    "errLoad": "Teams could not be loaded"
   },
   "tm": {
     "noSessions": "No active terminal sessions",
@@ -1474,9 +1477,27 @@
     "checking": "Checking status…",
     "up": "Reachable · active check",
     "down": "No response · active check",
-    "passive": "{when} · passive (no probe)"
+    "passive": "{when} · passive (no probe)",
+    "lastConnected": "Last connected {when}",
+    "neverConnected": "Never connected"
   },
   "toast": {
     "close": "Close"
+  },
+  "time": {
+    "never": "Never",
+    "justNow": "just now",
+    "minutesAgo": "{n}m ago",
+    "hoursAgo": "{n}h ago",
+    "daysAgo": "{n}d ago",
+    "weeksAgo": "{n}w ago"
+  },
+  "collections": {
+    "errLoad": "Collections could not be loaded",
+    "errMembers": "Members could not be loaded"
+  },
+  "import": {
+    "pickCollection": "Choose a collection to import into.",
+    "pickHost": "Select at least one host."
   }
 }

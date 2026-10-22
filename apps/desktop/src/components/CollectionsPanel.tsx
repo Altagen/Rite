@@ -90,9 +90,9 @@ export function CollectionsPanel() {
         prev && cols.some((c) => c.id === prev) ? prev : (cols[0]?.id ?? null),
       );
     } catch {
-      setError('Failed to load collections');
+      setError(t('collections.errLoad'));
     }
-  }, [publicKey, privateKey]);
+  }, [publicKey, privateKey, t]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async initial load
