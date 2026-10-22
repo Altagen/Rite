@@ -14,7 +14,7 @@ import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { disposeAllPanes, paneKind } from '../panes/registry';
 import { planLayout, type Layout } from '../store/layoutsFormat';
-import { useLayouts } from '../store/layouts';
+import { useLayouts, startupAlreadyRan, markStartupRan } from '../store/layouts';
 import { useToolbar } from '../store/toolbar';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
 import { useSettingsStore } from '../store/settingsStore';
@@ -261,10 +261,16 @@ export function Workspace({
   const toolbarPrefs = useToolbar();
   const layoutsFromFile = useLayouts((s) => s.layouts);
   const layoutsLoaded = useLayouts((s) => s.loaded);
+  // No workspace to read, no Layouts button: the instance may refuse the feature, or the
+  // reader may have turned it off, and a button that can only say "none" is not an answer
+  // (ADR 0027).
+  const layoutsAvailable = useLayouts((s) => s.available);
   const loadLayouts = useLayouts((s) => s.load);
+  // Re-read when the key arrives: on the account support the document is sealed under it,
+  // so a load before sign-in found nothing to unseal (ADR 0027).
   useEffect(() => {
-    if (!layoutsLoaded) void loadLayouts();
-  }, [layoutsLoaded, loadLayouts]);
+    void loadLayouts();
+  }, [loadLayouts, serverKeys.userKey]);
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{
     id: string;
     name: string;
@@ -1028,14 +1034,23 @@ export function Workspace({
    * than a dependency list, because the layouts arrive asynchronously. Switching vault
    * re-mounts this workspace, which is the one case where opening them again is the
    * right answer.
+   *
+   * In a browser the ref is not enough: F5 remounts everything, and "startup" means
+   * sitting down to work, not pressing reload. A session-scoped flag there, so a new tab
+   * or a relaunch honours it and a refresh does not (ADR 0027).
    */
   const startupOpened = useRef(false);
   useEffect(() => {
     if (startupOpened.current) return;
     if (!layoutsLoaded) return;
+    if (startupAlreadyRan()) {
+      startupOpened.current = true;
+      return;
+    }
     const atStartup = layoutsFromFile.filter((l) => l.startup);
     startupOpened.current = true;
     if (atStartup.length === 0) return;
+    markStartupRan();
     void (async () => {
       for (const layout of atStartup) await handleApplyLayout(layout);
     })();
@@ -2051,7 +2066,9 @@ export function Workspace({
                 onFocusPane={handleFocusPane}
                 onSplitRatioChange={handleSplitRatioChange}
                 onSwitchTab={handleSwitchTab}
-                onApplyLayout={toolbarPrefs.layouts ? handleApplyLayout : undefined}
+                onApplyLayout={
+                  toolbarPrefs.layouts && layoutsAvailable ? handleApplyLayout : undefined
+                }
                 layoutConnections={conns.connections ?? []}
                 layoutLibraryReadable={!isLocked}
                 onReorderTabs={handleReorderTabs}

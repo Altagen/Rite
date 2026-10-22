@@ -30,7 +30,7 @@ interface Props {
 
 export function LayoutsModal({ onClose, connections, libraryReadable }: Props) {
   const { t } = useTranslation();
-  const { text, path, layouts, error, load, save } = useLayouts();
+  const { text, path, support, layouts, error, load, save } = useLayouts();
   const [draft, setDraft] = useState(text);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -104,7 +104,11 @@ export function LayoutsModal({ onClose, connections, libraryReadable }: Props) {
                 {path}
               </code>
             ) : (
-              <span className="min-w-0 flex-1">{t('layouts.noPath')}</span>
+              // No path on the account's copy, and nothing missing: it is a sealed row,
+              // not a file somebody could open in an editor (ADR 0027).
+              <span className="min-w-0 flex-1">
+                {support === 'account' ? t('layouts.onAccount') : t('layouts.noPath')}
+              </span>
             )}
             <button
               type="button"
@@ -133,7 +137,7 @@ export function LayoutsModal({ onClose, connections, libraryReadable }: Props) {
               className="rounded bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
               data-testid="layouts-save"
             >
-              {t('layouts.save')}
+              {support === 'account' ? t('layouts.saveAccount') : t('layouts.save')}
             </button>
             {saved && !error && (
               <span className="text-xs text-muted-foreground" data-testid="layouts-saved">

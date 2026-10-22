@@ -1,20 +1,30 @@
 /**
- * The workspace file, as the app sees it (ADR 0023).
+ * The workspace, as the app sees it (ADR 0023, amended by ADR 0027).
  *
- * One file holds both features that describe this machine's setup: the split menu's
- * `[[preset]]` library and the `[[layout]]` that opens in the morning. The text comes
- * from `GET /api/layouts` and goes back with `PUT`; the server decides where that is,
- * and a shared server answers that there is NO file — presets and layouts are the
- * machine's, not the account's, so there is nothing to show and no substitute to
- * invent. `available` is how the rest of the app asks.
+ * One document holds both features that describe a setup: the split menu's `[[preset]]`
+ * library and the `[[layout]]` that opens in the morning. It sits on one of two supports:
+ *
+ * - a **file** on this machine — `GET`/`PUT /api/layouts`, the server picks the path;
+ * - the **account**, as a blob sealed under the user's key — `GET`/`PUT /api/user/layouts`,
+ *   which the server stores and cannot read.
+ *
+ * `layoutsVerdict` picks, and `available` is how the rest of the app asks. Unavailable now
+ * means one of three things — the instance refused, the reader turned it off, or there is
+ * no support to read — and `verdict` says which, so the editor can explain rather than
+ * vanish.
  *
  * The parsed contents and the raw text are both kept. The text is what you edit; the
- * presets and layouts are what the menus offer. A file that fails to parse leaves both
+ * presets and layouts are what the menus offer. A document that fails to parse leaves both
  * ALONE — a typo must not empty the menu you were using — and only sets `error`.
  */
 
 import { create } from 'zustand';
 import { Backend } from '../utils/backend';
+import { deviceStore } from '../utils/deviceStore';
+import { isNativeShell } from '../utils/nativeShell';
+import { useServerSession } from './serverSessionStore';
+import { encryptString, decryptString } from '../utils/vaultCrypto';
+import { layoutsVerdict, type LayoutsSupport, type LayoutsVerdict } from '../utils/layoutsPolicy';
 import {
   parseLayoutFile,
   formatLayoutFile,
@@ -115,14 +125,89 @@ export function takeLegacyPresets(): Preset[] {
   return presets;
 }
 
+/**
+ * The two switches the reader owns (ADR 0027 gates 2 and 3), both in `deviceStore`.
+ *
+ * `enabled` is the reader's: no layouts opening things for them, without asking an admin.
+ * `source` is the machine's: *does this one have a workspace of its own*. In the account it
+ * would mean switching the laptop switched the desktop too, which is what it exists to
+ * avoid — so it is a device preference even though everything beside it is on the account.
+ */
+const ENABLED_KEY = 'rite.layouts.enabled';
+const SOURCE_KEY = 'rite.layouts.source';
+
+export function readEnabled(): boolean {
+  return deviceStore.getItem(ENABLED_KEY) !== 'off';
+}
+
+/** Default `account`: two machines on one account then agree with nothing configured, and
+ *  divergence is the deliberate act rather than sameness. */
+export function readSource(): LayoutsSupport {
+  return deviceStore.getItem(SOURCE_KEY) === 'file' ? 'file' : 'account';
+}
+
+/**
+ * Has a startup layout already opened in this browser session (ADR 0027)?
+ *
+ * `sessionStorage`, not `deviceStore`: the question is about this sitting, not this
+ * machine. In the desktop shell the loopback port is new on every launch, so the store is
+ * empty there and a relaunch honours startup as it always did.
+ */
+const STARTUP_KEY = 'rite.layouts.startupRan';
+
+export function startupAlreadyRan(): boolean {
+  try {
+    return sessionStorage.getItem(STARTUP_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function markStartupRan(): void {
+  try {
+    sessionStorage.setItem(STARTUP_KEY, '1');
+  } catch {
+    /* no session storage: startup runs once per mount, as it did before */
+  }
+}
+
+/** Seal and unseal with the same primitives as the library tree (ADR 0016): the text is
+ *  the payload, so a blob written here is a file written there and back. */
+async function unseal(key: Uint8Array, blob: string): Promise<string> {
+  return new TextDecoder().decode(await decryptString(key, blob));
+}
+
+function seal(key: Uint8Array, text: string): Promise<string> {
+  return encryptString(key, new TextEncoder().encode(text));
+}
+
 interface LayoutsState {
-  /** The file's text, exactly as stored. */
+  /** The document's text, exactly as stored. */
   text: string;
-  /** Where the text lives, so it can be edited by hand too. */
+  /** Where the text lives, so it can be edited by hand too. Null on the account: there
+   *  is no path, only a row. */
   path: string | null;
-  /** Is there a file at all? False on a shared server: no presets, no layouts, no
-   *  editor — the features belong to a machine and this is not one (ADR 0023). */
+  /** Is there a workspace to read and write here, right now? */
   available: boolean;
+  /**
+   * Could there be one — i.e. does the section belong in Settings at all?
+   *
+   * Not the same question as `available`, and the difference is a dead end: the reader's
+   * own switch lives inside that section, so hiding it when they turn the feature off
+   * would hide the way back on. True when only the reader said no; false when the
+   * instance refused, or when nothing answered.
+   */
+  supported: boolean;
+  /** Why not, when not — the instance, the reader, or nothing to read (ADR 0027). */
+  verdict: LayoutsVerdict | null;
+  /** Which support answered. Null while unavailable. */
+  support: LayoutsSupport | null;
+  /** When the account's row was last written, by this machine or another one. Null on
+   *  the file path, where the machine is the only writer. */
+  updatedAt: number | null;
+  /** The reader's switch, and this machine's choice of support. */
+  enabled: boolean;
+  prefer: LayoutsSupport;
   /** What the split menu offers, falling back to the shipped two when the file says
    *  nothing at all. */
   presets: Preset[];
@@ -137,6 +222,11 @@ interface LayoutsState {
   savePresets: (presets: Preset[]) => Promise<void>;
   /** Turn one layout's `startup` on or off, by its position in the file. */
   setStartup: (index: number, startup: boolean) => Promise<void>;
+  /** Flip the reader's switch, then re-read. */
+  setEnabled: (enabled: boolean) => Promise<void>;
+  /** Flip this machine's support, then re-read. Switching away from the account does not
+   *  delete its copy: switching back finds it where it was (ADR 0027). */
+  setPrefer: (prefer: LayoutsSupport) => Promise<void>;
 }
 
 /** The presets to offer: what the file declares, or the shipped two when the file
@@ -150,17 +240,79 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
   text: '',
   path: null,
   available: false,
+  supported: false,
+  verdict: null,
+  support: null,
+  updatedAt: null,
+  enabled: readEnabled(),
+  prefer: readSource(),
   presets: [],
   layouts: [],
   error: null,
   loaded: false,
 
   load: async () => {
+    const enabled = readEnabled();
+    const prefer = readSource();
+    const { mode, userKey } = useServerSession.getState();
+    const verdict = layoutsVerdict({
+      mode,
+      userWants: enabled,
+      prefer,
+      native: isNativeShell(),
+    });
+    const off = {
+      available: false,
+      // The reader's own "off" keeps the section: that is where the switch is.
+      supported: !verdict.allowed && verdict.by === 'you',
+      support: null,
+      updatedAt: null,
+      presets: [],
+      layouts: [],
+      error: null,
+      loaded: true,
+      enabled,
+      prefer,
+      verdict,
+    };
+    if (!verdict.allowed) {
+      set(off);
+      return;
+    }
+
     try {
+      // The account's support waits for the key: the blob is sealed under it, and a
+      // locked session has nothing to unseal with. The reader signing in re-runs this.
+      if (verdict.support === 'account') {
+        if (!userKey) {
+          set({ ...off, supported: false });
+          return;
+        }
+        const row = await Backend.UserLayouts.get();
+        const text = row.blob ? await unseal(userKey, row.blob) : '';
+        const parse = parseLayoutFile(text);
+        set({
+          text,
+          path: null,
+          available: true,
+          supported: true,
+          support: 'account',
+          updatedAt: row.updatedAt,
+          presets: parse.error ? get().presets : resolvePresets(parse),
+          layouts: parse.error ? get().layouts : parse.layouts,
+          error: parse.error,
+          loaded: true,
+          enabled,
+          prefer,
+          verdict,
+        });
+        return;
+      }
+
       const file = await Backend.Layouts.get();
-      // No file is not an error and not an empty file: the feature is absent here.
+      // No file is not an error and not an empty file: there is no support here.
       if (file.text === null) {
-        set({ available: false, presets: [], layouts: [], error: null, loaded: true });
+        set({ ...off, supported: false });
         return;
       }
       let parse = parseLayoutFile(file.text);
@@ -181,18 +333,36 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
         text,
         path: file.path ?? null,
         available: true,
+        supported: true,
+        support: 'file',
+        updatedAt: null,
         // Same rule as save(): a file that does not parse does not empty the menu.
         presets: parse.error ? get().presets : resolvePresets(parse),
         layouts: parse.error ? get().layouts : parse.layouts,
         error: parse.error,
         loaded: true,
+        enabled,
+        prefer,
+        verdict,
       });
     } catch (error) {
-      // No file is a legitimate state (an older server has no endpoint); the buttons
-      // hide themselves and nothing else in the app depends on this.
-      console.warn('[layouts] could not read the workspace file:', error);
-      set({ loaded: true });
+      // An older server has neither endpoint; the buttons hide themselves and nothing
+      // else in the app depends on this.
+      console.warn('[layouts] could not read the workspace:', error);
+      set({ ...off, supported: false, verdict: null });
     }
+  },
+
+  setEnabled: async (enabled: boolean) => {
+    deviceStore.setItem(ENABLED_KEY, enabled ? 'on' : 'off');
+    set({ enabled });
+    await get().load();
+  },
+
+  setPrefer: async (prefer: LayoutsSupport) => {
+    deviceStore.setItem(SOURCE_KEY, prefer);
+    set({ prefer });
+    await get().load();
   },
 
   savePresets: async (presets: Preset[]) => {
@@ -207,10 +377,16 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
 
   save: async (text: string) => {
     const parse = parseLayoutFile(text);
-    // The text is saved even when it does not parse: it is the user's file, and
+    // The text is saved even when it does not parse: it is the user's document, and
     // refusing to store it would mean losing the half-finished edit they asked us
-    // to keep. What a bad file does not do is replace the layouts already loaded.
-    await Backend.Layouts.put(text);
+    // to keep. What a bad document does not do is replace the layouts already loaded.
+    if (get().support === 'account') {
+      const { userKey } = useServerSession.getState();
+      if (!userKey) throw new Error('layouts: no key to seal with');
+      await Backend.UserLayouts.set(await seal(userKey, text));
+    } else {
+      await Backend.Layouts.put(text);
+    }
     set({
       text,
       presets: parse.error ? get().presets : resolvePresets(parse),

@@ -275,7 +275,11 @@
     "autoCollapse": "Replier le panneau latéral en mode focus",
     "autoReconnectHint": "Désactivé par défaut. Activé, une session coupée se reconnecte automatiquement — un nouveau shell, donc l’historique, l’affichage et tout travail en cours sont perdus. Désactivé, le volet propose un bouton Reconnecter. Dans les deux cas, la coupure est signalée.",
     "dashCardsHint": "Ces deux cartes exécutent une commande sur l’hôte à chaque rafraîchissement. Désactivées, le reste du tableau de bord — adresse, redirections, tableau — reste intact.",
-    "changesNothingHere": ", donc ce réglage ne change rien ici."
+    "changesNothingHere": ", donc ce réglage ne change rien ici.",
+    "terminalThemeHint": "Appliqué immédiatement ; la translucidité apparaît sur les terminaux ouverts ensuite.",
+    "showMemberCountHint": "Le nombre à côté des collections partagées. L’icône reste dans les deux cas.",
+    "masterPasswordHint": "Il chiffre toutes les connexions de ce coffre : le changer les re-chiffre toutes.",
+    "autoCollapseHint": "En mode focus (F11), masquer aussi la bibliothèque — terminaux seuls."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -541,7 +545,7 @@
   "layouts": {
     "title": "Dispositions",
     "subtitle": "Ce qui s’ouvre en début de session",
-    "lede": "Quels terminaux s’ouvrent, dans quel ordre, sur quelles machines. C’est un fichier : versionnable, transportable d’un poste à l’autre. Une machine absente ouvre un shell simple avec une note — le reste s’ouvre quand même.",
+    "lede": "Quels terminaux s’ouvrent, dans quel ordre, sur quelles machines. Une machine absente ouvre un shell simple avec une note — le reste s’ouvre quand même.",
     "openFile": "Ouvrir le fichier…",
     "noPath": "Cette instance n’a pas dit où se trouve le fichier.",
     "reload": "↻ Recharger",
@@ -564,7 +568,22 @@
     "fellBackPreconnect": "Le hook pre-connect de {machine} n’est pas passé, donc ce panneau a ouvert un shell simple.",
     "fellBackFailed": "{machine} n’a pas pu s’ouvrir ({why}), donc ce panneau a ouvert un shell simple.",
     "startupHint": "Cocher « au démarrage » et la disposition s’ouvre d’elle-même au lancement de Rite — plusieurs peuvent l’être, chacune dans ses propres onglets. L’interrupteur écrit startup dans le fichier.",
-    "noneYet": "Aucune disposition. Ouvrir le fichier et décrire ce qui doit s’ouvrir en début de session."
+    "noneYet": "Aucune disposition. Ouvrir le fichier et décrire ce qui doit s’ouvrir en début de session.",
+    "offYou": "Les dispositions sont désactivées dans les paramètres.",
+    "offWebui": "Ce serveur désactive les dispositions dans l’interface web.",
+    "offClients": "Ce serveur désactive les dispositions pour ce client.",
+    "use": "Utiliser les dispositions",
+    "useHint": "Désactivé : rien ne s’ouvre en début de session, et les préréglages quittent le menu de division.",
+    "source": "Lire depuis",
+    "sourceHint": "La copie utilisée par ce poste. L’autre est conservée, et y revenir la retrouve intacte.",
+    "sourceAccount": "Le compte",
+    "sourceFile": "Un fichier sur ce poste",
+    "onAccount": "Scellé avec la clé du compte : le serveur la stocke et ne peut pas la lire.",
+    "onFile": "Un fichier sur ce poste : versionnable, transportable d’un poste à l’autre.",
+    "lastWritten": "Dernier enregistrement {when}.",
+    "lastWriteWins": "Une seule copie par compte. Si deux postes enregistrent, le second gagne, sans fusion.",
+    "open": "Ouvrir les dispositions…",
+    "saveAccount": "Enregistrer"
   },
   "auth": {
     "expired": "Session expirée.",
@@ -834,7 +853,16 @@
       "dashClientsLabel": "Autoriser les cartes de sondage du tableau de bord dans les clients attachés",
       "dashInterval": "Intervalle de rafraîchissement minimal",
       "dashIntervalDesc": "Plancher entre les rafraîchissements automatiques. Les clients appliquent leur propre plancher, donc un très petit nombre n’apporte pas grand-chose. Appuyer sur Rafraîchir n’est pas limité, et un tableau de bord que personne ne regarde ne sonde pas.",
-      "managedBy": "Défini par la configuration de cette instance ({origin}) — à changer là-bas, pas ici."
+      "managedBy": "Défini par la configuration de cette instance ({origin}) — à changer là-bas, pas ici.",
+      "layouts": "Dispositions",
+      "layoutsDesc": "Ce qui s’ouvre en début de session, et les préréglages du menu de division. Stocké sur le compte, scellé avec la clé du membre : ce serveur le conserve et ne peut pas le lire.",
+      "layoutsStrength": "Une politique, pas une application : la copie est chiffrée côté client, donc ce serveur ne distingue pas un enregistrement de dispositions d’une autre écriture. Les surfaces officielles respectent ces interrupteurs.",
+      "layoutsWebui": "Autoriser dans la web UI",
+      "layoutsWebuiDesc": "Un navigateur n’a pas de système de fichiers : il lit la copie du compte, ou rien.",
+      "layoutsWebuiLabel": "Autoriser les dispositions dans la web UI",
+      "layoutsClients": "Autoriser dans les clients attachés",
+      "layoutsClientsDesc": "Une fenêtre desktop choisit poste par poste entre la copie du compte et un fichier local. Désactivé retire les deux.",
+      "layoutsClientsLabel": "Autoriser les dispositions dans les clients attachés"
     },
     "teams": {
       "title": "Équipes",

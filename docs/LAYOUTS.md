@@ -1,8 +1,8 @@
-# The workspace file
+# The workspace
 
-Two things describe how this machine is set up: the commands your split menu offers,
-and what opens when you sit down. They live in one file, so they travel with you —
-commit it, copy it to another computer, send it to a colleague.
+Two things describe how a setup works: the commands your split menu offers, and what
+opens when you sit down. They live in one document — a file on your machine, or a
+sealed copy on your server account.
 
 ```toml
 # ~/.config/rite/layouts.toml
@@ -34,13 +34,14 @@ in the middle of an empty workspace, since a layout opens its own tabs — in **
 which machine, resolved against the library you actually have. Editing the file is the
 button underneath.
 
-## Why a file
+## Why a document and not a setting
 
 A **preset** is a reflex: the pane you are in, divided, running one command. A
 **layout** is the morning: several terminals, on several machines, arranged. They are
-two features, with two buttons — but they are the same kind of fact. They belong to
-*this machine*, they are worth keeping in version control next to the rest of your
-setup, and nothing in them is a secret. That is a file.
+two features, with two buttons — but they are the same kind of fact: configuration,
+worth keeping next to the rest of your setup. On your own disk nothing in them is a
+secret — `~/.ssh/config` has been plaintext forever. On a server they are sealed,
+because there the same names would be readable by someone else.
 
 Both dialogs show you the file and save it back; so does your own editor. The edits
 made with the mouse splice one thing and leave the rest as typed: the preset dialog
@@ -50,13 +51,55 @@ key. Your layouts, your comments and your blank lines survive either.
 Saving from the **file editor** is the exception, and the only one: it stores the whole
 textarea, so press **↻ Reload** before editing if the file may have changed under it.
 
-**On a shared server there is no file**, and no substitute — not a row in a settings
-table, which would be readable by that server and shared with every other account on
-it. Presets and layouts simply do not appear in the web UI of a server with accounts.
-A *desktop* client signed in to such a server keeps its own file: the machine names in
-it are resolved against whichever vault is open, on your computer, after unlock.
+## Two supports
+
+| Support | Where | Who it belongs to |
+| --- | --- | --- |
+| a file | this machine's filesystem | the machine |
+| a sealed copy | your server account | the account |
+
+The account's copy is encrypted in your browser or client, under your own key, and sent
+as a blob (`/api/user/layouts`). The server stores it and cannot read it, so the machine
+names in it are no more exposed than the connections already are. It is **personal**:
+there are no team layouts and no instance-wide default.
+
+A browser has no filesystem, so in the web UI it is the account's copy or nothing. A
+local vault has no account, so there it is the file, always. A desktop window signed in
+to a server has both, and chooses — see below.
+
+Switching away does not delete the other copy. Switching back finds it unchanged.
+
+### Three switches
+
+1. **The instance** decides whether the feature exists, and where: `layouts_policy` in
+   [SERVER.md](SERVER.md), two booleans, `webui` and `clients`. Both false is off.
+2. **You** decide whether to use it, in **Settings ▸ Layouts**. Your own switch, no
+   admin involved.
+3. **This computer** decides which support, in the same place — a desktop window on a
+   server only. It is a device preference, so choosing "a file" on the laptop leaves the
+   desktop alone.
+
+With everything open the source is **the account's copy**, so two computers agree with
+nothing configured. A desktop user who already keeps a `layouts.toml` and then signs in
+to a server does not see that file until they flip switch 3, once, on that computer.
+
+### One copy per account
+
+The account's copy is one row. Two computers signed in and both saving means the second
+save overwrites the first, with no merge and no warning — edit on the desktop in the
+morning and on the laptop in the afternoon, and the morning's work is gone. Two clients
+are not expected to edit one account at the same time; **Settings ▸ Layouts** shows when
+the copy was last saved. ADR 0027 has the reasoning.
+
+### At startup, in a browser
+
+A layout marked `startup` opens when Rite starts. In the web UI that means once per
+browser session: a new tab or a relaunch honours it, pressing F5 does not.
 
 ## Where the file is
+
+On the account there is no path: it is a row, not a file, and only Rite can open it.
+
 
 | Platform | Path |
 | --- | --- |

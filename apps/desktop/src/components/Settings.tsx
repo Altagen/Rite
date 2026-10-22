@@ -23,6 +23,7 @@ import {
 import { Dropdown } from './Dropdown';
 import { useToolbar, type ToolbarPrefs } from '../store/toolbar';
 import { useLayouts } from '../store/layouts';
+import { layoutsBlockedReason, type LayoutsSupport } from '../utils/layoutsPolicy';
 import { installedShells, type ShellChoice } from '../utils/shells';
 import { ShortcutsSettings } from './ShortcutsSettings';
 import { terminalPool, getTerminalThemeName, type TerminalThemeName } from '../utils/terminalPool';
@@ -111,7 +112,7 @@ const RAIL: {
   local?: true;
   native?: true;
   vault?: true;
-  /** Needs a workspace file, which a shared server does not have (ADR 0023). */
+  /** Needs a workspace to read: a file, or the account's sealed copy (ADR 0027). */
   file?: true;
   danger?: true;
 }[] = [
@@ -119,7 +120,7 @@ const RAIL: {
   { id: 'toolbar', i18n: 'settings.sec.toolbar' },
   { id: 'keyboard', i18n: 'settings.keyboard' },
   // Two entries, because they are two features. A preset is one command in one pane;
-  // a layout is what opens when you sit down, and it lives in a file.
+  // a layout is what opens at the start of a session. One document holds both.
   { id: 'splits', i18n: 'split.presets', file: true },
   { id: 'layouts', i18n: 'layouts.title', file: true },
   // Not `local`: on a server the shell is the server's, and "which shell do my
@@ -191,6 +192,18 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   // Two libraries, two dialogs. They shared one and that is what made them look
   // like one feature.
   const hasWorkspaceFile = useLayouts((st) => st.available);
+  // Not the same question: the reader's own switch lives inside the section, so the rail
+  // keeps it when they turn layouts off and drops it only when the instance refused or
+  // there is nothing to read (ADR 0027).
+  const layoutsSupported = useLayouts((st) => st.supported);
+  const layoutsSupport = useLayouts((st) => st.support);
+  const layoutsVerdictNow = useLayouts((st) => st.verdict);
+  const layoutsEnabled = useLayouts((st) => st.enabled);
+  const layoutsPrefer = useLayouts((st) => st.prefer);
+  const setLayoutsEnabled = useLayouts((st) => st.setEnabled);
+  const setLayoutsPrefer = useLayouts((st) => st.setPrefer);
+  const layoutsUpdatedAt = useLayouts((st) => st.updatedAt);
+  const layoutsBlocked = layoutsVerdictNow ? layoutsBlockedReason(layoutsVerdictNow) : null;
   // The cards, and the switch that writes `startup` back into the file. Selected one
   // by one so a change to the file's text does not re-render this whole dialog.
   const fileLayouts = useLayouts((st) => st.layouts);
@@ -349,7 +362,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
       (!r.local || isLocalContext) &&
       (!r.native || native) &&
       (!r.vault || hasVault) &&
-      (!r.file || hasWorkspaceFile),
+      (!r.file || layoutsSupported),
   );
   // …and if the active one disappears (a context switch), fall back to the first.
   const shown: SectionId = rail.some((r) => r.id === active)
@@ -410,7 +423,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               <SettingsHead title={t('settings.appearance')} />
               <SettingsRow
                 title={t('settings.terminalTheme')}
-                hint="Applies live; translucency shows on terminals opened afterwards."
+                hint={t('settings.terminalThemeHint')}
               >
                 <SettingsControl>
                   <Dropdown<TerminalThemeName>
@@ -431,7 +444,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               </SettingsRow>
               <SettingsToggle
                 title={t('settings.showMemberCount')}
-                hint="The number next to shared collections (the icon stays)"
+                hint={t('settings.showMemberCountHint')}
                 checked={showMemberCount}
                 onChange={setShowMemberCount}
               />
@@ -615,57 +628,118 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               </button>
             </section>
 
-            {/* Layouts: a file (docs/LAYOUTS.md). What opens, where, on which machine.
+            {/* Layouts (docs/LAYOUTS.md). What opens, where, on which machine.
               The cards lead, because the section used to be a title and a button that
               sent you somewhere else, while what you wanted to know — what do I have
               — was behind that button and below a textarea. */}
             <section hidden={shown !== 'layouts'} className="pb-2">
               <SettingsHead title={t('layouts.title')} hint={t('layouts.lede')} />
 
-              {/* A broken file is reported where you look first, not only inside the
-                editor: "no layouts" and "your file has a typo on line 12" are very
-                different facts and used to look identical here. */}
-              {layoutsError && (
-                <p
-                  className="mb-3 rounded border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed"
-                  data-testid="settings-layouts-error"
-                >
-                  <span className="font-semibold">{t('layouts.notLoaded')}</span>{' '}
-                  {layoutsError.line > 0 ? t('layouts.atLine', { line: layoutsError.line }) : null}{' '}
-                  {layoutsError.message}
-                  <span className="mt-1 block text-muted-foreground">
-                    {t('layouts.keptRunning')}
-                  </span>
+              {/* The reader's switch, then — on a server, in the desktop — this computer's
+                choice of support. Both are this device's, so neither travels (ADR 0027). */}
+              <SettingsToggle
+                title={t('layouts.use')}
+                hint={t('layouts.useHint')}
+                checked={layoutsEnabled}
+                onChange={(on) => void setLayoutsEnabled(on)}
+                testId="layouts-enabled"
+              />
+              {!isLocalContext && native && (
+                <SettingsRow title={t('layouts.source')} hint={t('layouts.sourceHint')}>
+                  <SettingsControl>
+                    <Dropdown<LayoutsSupport>
+                      value={layoutsPrefer}
+                      label={t('layouts.source')}
+                      testId="layouts-source"
+                      options={[
+                        { value: 'account', label: t('layouts.sourceAccount') },
+                        { value: 'file', label: t('layouts.sourceFile') },
+                      ]}
+                      onChange={(next) => void setLayoutsPrefer(next)}
+                    />
+                  </SettingsControl>
+                </SettingsRow>
+              )}
+
+              {/* Where the document actually is, and what that costs. On the account that
+                is the last-write-wins limitation, written where the editing happens. */}
+              {hasWorkspaceFile && (
+                <p className="mb-3 mt-3 text-xs leading-relaxed text-muted-foreground">
+                  {layoutsSupport === 'account' ? t('layouts.onAccount') : t('layouts.onFile')}
+                  {layoutsSupport === 'account' && (
+                    <span className="mt-1 block">{t('layouts.lastWriteWins')}</span>
+                  )}
+                  {layoutsUpdatedAt !== null && (
+                    <span className="mt-1 block">
+                      {t('layouts.lastWritten', {
+                        when: new Date(layoutsUpdatedAt * 1000).toLocaleString(),
+                      })}
+                    </span>
+                  )}
                 </p>
               )}
 
-              {fileLayouts.length > 0 ? (
-                <LayoutCards
-                  layouts={fileLayouts}
-                  connections={connections ?? []}
-                  libraryReadable={libraryReadable ?? false}
-                  onToggleStartup={(index, on) => void setLayoutStartup(index, on)}
-                />
-              ) : (
-                !layoutsError && (
-                  <p
-                    className="mb-3 text-xs text-muted-foreground"
-                    data-testid="settings-layouts-empty"
-                  >
-                    {t('layouts.noneYet')}
-                  </p>
-                )
+              {/* Turned off by the reader: say so where the cards would be, rather than
+                leaving a section that looks broken. */}
+              {!hasWorkspaceFile && layoutsBlocked && (
+                <p
+                  className="mb-3 mt-3 text-xs text-muted-foreground"
+                  data-testid="settings-layouts-blocked"
+                >
+                  {t(layoutsBlocked)}
+                </p>
               )}
 
-              <button
-                type="button"
-                onClick={() => setLayoutsOpen(true)}
-                className="mt-3 rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
-                data-testid="open-layouts-settings"
-              >
-                {t('layouts.openFile')}
-              </button>
-              <p className="mt-3 text-xs text-muted-foreground">{t('layouts.startupHint')}</p>
+              {hasWorkspaceFile && (
+                <>
+                  {/* A broken document is reported where you look first, not only inside
+                    the editor: "no layouts" and "a typo on line 12" are very different
+                    facts and used to look identical here. */}
+                  {layoutsError && (
+                    <p
+                      className="mb-3 rounded border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-xs leading-relaxed"
+                      data-testid="settings-layouts-error"
+                    >
+                      <span className="font-semibold">{t('layouts.notLoaded')}</span>{' '}
+                      {layoutsError.line > 0
+                        ? t('layouts.atLine', { line: layoutsError.line })
+                        : null}{' '}
+                      {layoutsError.message}
+                      <span className="mt-1 block text-muted-foreground">
+                        {t('layouts.keptRunning')}
+                      </span>
+                    </p>
+                  )}
+
+                  {fileLayouts.length > 0 ? (
+                    <LayoutCards
+                      layouts={fileLayouts}
+                      connections={connections ?? []}
+                      libraryReadable={libraryReadable ?? false}
+                      onToggleStartup={(index, on) => void setLayoutStartup(index, on)}
+                    />
+                  ) : (
+                    !layoutsError && (
+                      <p
+                        className="mb-3 text-xs text-muted-foreground"
+                        data-testid="settings-layouts-empty"
+                      >
+                        {t('layouts.noneYet')}
+                      </p>
+                    )
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setLayoutsOpen(true)}
+                    className="mt-3 rounded border border-border px-3 py-1.5 text-xs hover:bg-muted"
+                    data-testid="open-layouts-settings"
+                  >
+                    {layoutsSupport === 'account' ? t('layouts.open') : t('layouts.openFile')}
+                  </button>
+                  <p className="mt-3 text-xs text-muted-foreground">{t('layouts.startupHint')}</p>
+                </>
+              )}
             </section>
 
             {/* The toolbar is the person's own row. Hiding never grants or revokes. */}
@@ -880,7 +954,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               <section hidden={shown !== 'password'} className="pb-2">
                 <SettingsHead
                   title={t('settings.masterPassword')}
-                  hint="It encrypts every connection in this vault, so changing it re-keys them all."
+                  hint={t('settings.masterPasswordHint')}
                 />
                 <div className="max-w-sm space-y-2 pt-1">
                   <div className="relative">
@@ -985,7 +1059,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 <SettingsHead title={t('settings.focusMode')} />
                 <SettingsToggle
                   title={t('settings.autoCollapse')}
-                  hint="When you enter focus mode (F11), also hide the library sidebar for a terminals-only view."
+                  hint={t('settings.autoCollapseHint')}
                   checked={focusAutoCollapse}
                   onChange={setFocusAutoCollapse}
                 />

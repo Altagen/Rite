@@ -376,6 +376,14 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_set_layouts_policy: async (a) => {
+    await json('/api/admin/layouts-policy', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(a),
+    });
+    return null;
+  },
   admin_set_collection_policy: async (a) => {
     await json('/api/admin/collection-policy', {
       method: 'PATCH',
@@ -601,6 +609,17 @@ const routes: Record<string, Route> = {
       method: 'DELETE',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ userId: a.userId }),
+    });
+    return null;
+  },
+
+  // The account's layouts (ADR 0027): the same opaque-blob shape as the library.
+  user_layouts_get: () => json('/api/user/layouts'),
+  user_layouts_set: async (a) => {
+    await json('/api/user/layouts', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ blob: a.blob }),
     });
     return null;
   },

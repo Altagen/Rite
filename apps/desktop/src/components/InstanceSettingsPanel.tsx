@@ -6,7 +6,12 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
-import { Backend, type DashboardPolicy, type HealthcheckPolicy } from '../utils/backend';
+import {
+  Backend,
+  type DashboardPolicy,
+  type HealthcheckPolicy,
+  type LayoutsPolicy,
+} from '../utils/backend';
 import { Switch } from './Switch';
 
 const DEFAULT_HC: HealthcheckPolicy = {
@@ -19,6 +24,8 @@ const DEFAULT_HC: HealthcheckPolicy = {
 /** ADR 0019 defaults: both shells allowed. A server that has never been configured has
  *  not said no, and reading silence as a refusal would disable a shipped feature. */
 const DEFAULT_DASH: DashboardPolicy = { webui: true, clients: true, minInterval: 30 };
+/** ADR 0027: both true, so an instance that says nothing has the feature on. */
+const DEFAULT_LAYOUTS: LayoutsPolicy = { webui: true, clients: true };
 const HC_METHODS: { id: string; label: string }[] = [
   { id: 'tcp-connect', label: 'TCP-connect' },
   { id: 'icmp', label: 'ICMP' },
@@ -63,6 +70,7 @@ export function InstanceSettingsPanel() {
   const [confirmRole, setConfirmRole] = useState(false);
   const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
   const [dash, setDash] = useState<DashboardPolicy>(DEFAULT_DASH);
+  const [layouts, setLayouts] = useState<LayoutsPolicy>(DEFAULT_LAYOUTS);
   // ADR 0020: keys this instance holds as code, mapped to where each was declared.
   const [managed, setManaged] = useState<Record<string, string>>({});
   const [userInput, setUserInput] = useState('');
@@ -89,6 +97,7 @@ export function InstanceSettingsPanel() {
       setConfirmRole(mode.confirmRoleChange === true);
       setHc(mode.healthcheck ?? DEFAULT_HC);
       setDash(mode.dashboardPolicy ?? DEFAULT_DASH);
+      setLayouts(mode.layoutsPolicy ?? DEFAULT_LAYOUTS);
       setManaged(mode.managed ?? {});
     } catch {
       setError(t('admin.inst.errLoad'));
@@ -117,6 +126,17 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setDashboardPolicy(next);
     } catch (err) {
       setDash(prev);
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
+    }
+  };
+
+  const saveLayouts = async (next: LayoutsPolicy) => {
+    const prev = layouts;
+    setLayouts(next);
+    try {
+      await Backend.Admin.setLayoutsPolicy(next);
+    } catch (err) {
+      setLayouts(prev);
       setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
@@ -682,7 +702,7 @@ export function InstanceSettingsPanel() {
               onBlur={() => saveHc(hc)}
               className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             />
-            <span className="text-sm text-muted-foreground">seconds</span>
+            <span className="text-sm text-muted-foreground">{t('admin.inst.seconds')}</span>
           </div>
         </div>
 
@@ -741,8 +761,47 @@ export function InstanceSettingsPanel() {
               onBlur={() => saveDash(dash)}
               className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             />
-            <span className="text-sm text-muted-foreground">seconds</span>
+            <span className="text-sm text-muted-foreground">{t('admin.inst.seconds')}</span>
           </div>
+        </div>
+
+        {/* Layouts (ADR 0027). Two booleans and no third `enabled` flag: both off is the
+            feature off, and there is no second switch to contradict them. */}
+        <div className="border-t border-border p-4">
+          <div className="font-medium">{t('admin.inst.layouts')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.layoutsDesc')}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{t('admin.inst.layoutsStrength')}</p>
+          {managed.layouts_policy && <ManagedBy origin={managed.layouts_policy} />}
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.layoutsWebui')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.layoutsWebuiDesc')}</p>
+          </div>
+          <Switch
+            checked={layouts.webui}
+            label={t('admin.inst.layoutsWebuiLabel')}
+            disabled={!!managed.layouts_policy}
+            onChange={() => saveLayouts({ ...layouts, webui: !layouts.webui })}
+            testId="instance-layouts-webui"
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.layoutsClients')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('admin.inst.layoutsClientsDesc')}
+            </p>
+          </div>
+          <Switch
+            checked={layouts.clients}
+            label={t('admin.inst.layoutsClientsLabel')}
+            disabled={!!managed.layouts_policy}
+            onChange={() => saveLayouts({ ...layouts, clients: !layouts.clients })}
+            testId="instance-layouts-clients"
+          />
         </div>
       </div>
     </div>

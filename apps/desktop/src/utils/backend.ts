@@ -595,6 +595,15 @@ const ServerModeSchema = z.object({
     })
     .optional(),
   // Collection governance policy (admin → Collections). Absent ⇒ permissive defaults.
+  // Where layouts may be used (ADR 0027): `webui` for a browser, `clients` for a desktop
+  // window signed into this instance. Absent ⇒ both, like a server never configured.
+  // Policy only — the blob is sealed client-side, so the server cannot enforce it.
+  layoutsPolicy: z
+    .object({
+      webui: z.boolean(),
+      clients: z.boolean(),
+    })
+    .optional(),
   collectionPolicy: z
     .object({
       allowCreate: z.boolean(),
@@ -607,6 +616,7 @@ const ServerModeSchema = z.object({
 export type HealthcheckPolicy = NonNullable<z.infer<typeof ServerModeSchema>['healthcheck']>;
 export type CollectionPolicy = NonNullable<z.infer<typeof ServerModeSchema>['collectionPolicy']>;
 export type DashboardPolicy = NonNullable<z.infer<typeof ServerModeSchema>['dashboardPolicy']>;
+export type LayoutsPolicy = NonNullable<z.infer<typeof ServerModeSchema>['layoutsPolicy']>;
 // Active health-check probe (ADR 0017). The client sends host:port (decrypted from its own
 // blob) per target; the server returns a reachability verdict. `unsupported` ≠ `down` — it
 // means the method can't run (e.g. icmp without privileges), so the UI won't paint it offline.
@@ -878,6 +888,13 @@ export const BackendAdmin = {
   setHealthcheck: (policy: HealthcheckPolicy) =>
     invokeWithValidation(
       'admin_set_healthcheck',
+      z.null(),
+      policy as unknown as Record<string, unknown>,
+    ),
+  /** Set the layouts policy (org-admin, ADR 0027): where layouts may be used. */
+  setLayoutsPolicy: (policy: LayoutsPolicy) =>
+    invokeWithValidation(
+      'admin_set_layouts_policy',
       z.null(),
       policy as unknown as Record<string, unknown>,
     ),
@@ -1188,6 +1205,19 @@ export const BackendLibrary = {
   set: (blob: string) => invokeWithValidation('library_set', z.null(), { blob }),
 } as const;
 
+// The account's layouts, sealed client-side (ADR 0027). A second route rather than a shape
+// for `get_layouts`: that one answers with text the server read from a file, and here it
+// cannot, because it cannot decrypt. `updatedAt` is when the row was last written — by this
+// machine or another one on the same account.
+export const BackendUserLayouts = {
+  get: () =>
+    invokeWithValidation(
+      'user_layouts_get',
+      z.object({ blob: z.string().nullable(), updatedAt: z.number().nullable() }),
+    ),
+  set: (blob: string) => invokeWithValidation('user_layouts_set', z.null(), { blob }),
+} as const;
+
 /** A collection in a local vault (ADR 0018) — no members, no roles, no sharing. */
 const LocalCollectionSchema = z.object({
   id: z.string(),
@@ -1288,6 +1318,7 @@ export const Backend = {
   Vault: BackendVault,
   Collections: BackendCollections,
   Library: BackendLibrary,
+  UserLayouts: BackendUserLayouts,
   Local: BackendLocal,
 } as const;
 

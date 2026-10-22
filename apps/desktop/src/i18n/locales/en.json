@@ -275,7 +275,11 @@
     "autoCollapse": "Auto-collapse sidebar in focus mode",
     "autoReconnectHint": "Off by default. On, a dropped session reconnects automatically — a new shell, so history, on-screen output and any running job are lost. Off, the pane offers a Reconnect button. Either way the disconnection is reported.",
     "dashCardsHint": "These two cards run a command on the host each time they refresh. Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.",
-    "changesNothingHere": ", so this setting changes nothing here."
+    "changesNothingHere": ", so this setting changes nothing here.",
+    "terminalThemeHint": "Applies live; translucency shows on terminals opened afterwards.",
+    "showMemberCountHint": "The number next to shared collections. The icon stays either way.",
+    "masterPasswordHint": "It encrypts every connection in this vault, so changing it re-keys them all.",
+    "autoCollapseHint": "In focus mode (F11), also hide the library sidebar — terminals only."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -541,7 +545,7 @@
   "layouts": {
     "title": "Layouts",
     "subtitle": "What opens at the start of a session",
-    "lede": "Which terminals open, in what order, and on which machines. It is a file: versionable, and portable between computers. A machine this computer does not have opens a plain shell with a note in the pane — the rest of the layout still opens.",
+    "lede": "Which terminals open, in what order, and on which machines. A machine this computer does not have opens a plain shell with a note in the pane — the rest of the layout still opens.",
     "openFile": "Open the layouts file…",
     "noPath": "This instance did not say where the file is.",
     "reload": "↻ Reload",
@@ -564,7 +568,22 @@
     "fellBackPreconnect": "{machine}'s pre-connect hook did not pass, so this pane opened a plain shell.",
     "fellBackFailed": "{machine} would not open ({why}), so this pane opened a plain shell.",
     "startupHint": "Tick “at startup” and the layout opens itself when Rite starts — several may, each in its own tabs. The switch writes startup into the file.",
-    "noneYet": "No layouts yet. Open the file and describe what should open at the start of a session."
+    "noneYet": "No layouts yet. Open the file and describe what should open at the start of a session.",
+    "offYou": "Layouts are off in settings.",
+    "offWebui": "This server turns layouts off in the web UI.",
+    "offClients": "This server turns layouts off for this client.",
+    "use": "Use layouts",
+    "useHint": "Off: nothing opens at the start of a session, and the presets leave the split menu.",
+    "source": "Read from",
+    "sourceHint": "Which copy this computer uses. The other one is kept, and switching back finds it unchanged.",
+    "sourceAccount": "The account",
+    "sourceFile": "A file on this computer",
+    "onAccount": "Sealed under the account's key: the server stores it and cannot read it.",
+    "onFile": "A file on this computer: versionable, and portable between computers.",
+    "lastWritten": "Last saved {when}.",
+    "lastWriteWins": "One copy per account. Two computers saving means the second one wins, with no merge.",
+    "open": "Open layouts…",
+    "saveAccount": "Save"
   },
   "auth": {
     "expired": "Session expired.",
@@ -834,7 +853,16 @@
       "dashClientsLabel": "Allow the dashboard probing cards in attached clients",
       "dashInterval": "Minimum refresh interval",
       "dashIntervalDesc": "Floor between automatic refreshes. Clients apply a floor of their own, so a very small number buys little. Pressing Refresh is not limited, and a dashboard nobody watches does not poll.",
-      "managedBy": "Set by this instance's configuration ({origin}) — change it there, not here."
+      "managedBy": "Set by this instance's configuration ({origin}) — change it there, not here.",
+      "layouts": "Layouts",
+      "layoutsDesc": "What opens at the start of a session, and the split menu's presets. Stored on the account, sealed under the member's key: this server keeps it and cannot read it.",
+      "layoutsStrength": "Policy, not enforcement: the copy is encrypted client-side, so this server cannot tell a layouts save from any other write. The official surfaces honour these switches.",
+      "layoutsWebui": "Allow in the web UI",
+      "layoutsWebuiDesc": "A browser has no filesystem, so it reads the account's copy or nothing.",
+      "layoutsWebuiLabel": "Allow layouts in the web UI",
+      "layoutsClients": "Allow in attached clients",
+      "layoutsClientsDesc": "A desktop window picks per computer between the account's copy and a local file. Off removes both.",
+      "layoutsClientsLabel": "Allow layouts in attached clients"
     },
     "teams": {
       "title": "Teams",

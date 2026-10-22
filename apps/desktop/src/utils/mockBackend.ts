@@ -249,6 +249,7 @@ export async function mockInvoke(
     case 'admin_set_confirm_role_change':
     case 'admin_set_healthcheck':
     case 'admin_set_dashboard_policy':
+    case 'admin_set_layouts_policy':
     case 'admin_set_collection_policy':
     case 'admin_revoke_enrollment_token':
       return null;
@@ -525,6 +526,12 @@ export async function mockInvoke(
     case 'library_get':
       return { blob: null };
     case 'library_set':
+      return null;
+
+    // --- Account layouts (ADR 0027; dev mock: no account, so no blob) ---
+    case 'user_layouts_get':
+      return { blob: null, updatedAt: null };
+    case 'user_layouts_set':
       return null;
 
     // --- Context multiplexer (dev mock: local only, empty roster) ---

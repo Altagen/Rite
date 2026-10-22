@@ -42,8 +42,8 @@ interface Props {
 export function SplitMenu({ onSplitWith, direction, onConfigure, onClose }: Props) {
   const { t } = useTranslation();
   const { presets } = useSplits();
-  // No workspace file, no library to configure: the plain split and the snippets are
-  // all this menu has to offer on a shared server (ADR 0023).
+  // No workspace to read, no preset library to configure: the plain split and the
+  // snippets are all this menu has to offer then (ADR 0023, 0027).
   const hasWorkspaceFile = useLayouts((s) => s.available);
   const { snippets } = useSnippets();
   const ref = useRef<HTMLDivElement>(null);
