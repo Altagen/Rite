@@ -135,17 +135,43 @@ check('every relative link in the docs points at something', () => {
   assert.deepEqual(broken, [], `dead links:\n        ${broken.join('\n        ')}`);
 });
 
+/**
+ * Paths the documentation names that a DEPLOYMENT creates, not the repository.
+ *
+ * `deploy/admin_password.txt` is written by the turnkey compose flow on first start and
+ * read once; the gate's own step 5 consumes it. So its presence depends on what has been
+ * run on this machine, and asserting it made the check pass or fail for a reason that had
+ * nothing to do with the documentation — green all day, red after a gate, with no edit in
+ * between. Each entry says who creates it, because that is the thing a reader needs when
+ * the path is not there.
+ */
+const GENERATED = new Map([
+  [
+    'deploy/admin_password.txt',
+    'written by the compose turnkey start (ADR 0020) and consumed on first login',
+  ],
+]);
+
 check('every repository path the docs name in backticks exists', () => {
   const missing = [];
   const roots = /^(apps|packages|e2e|docs|deploy|\.github)\//;
   for (const [rel, text] of markdown) {
     for (const m of text.matchAll(/`([\w./@-]+)`/g)) {
       const path = m[1];
-      if (!roots.test(path) || path.includes('*')) continue;
+      if (!roots.test(path) || path.includes('*') || GENERATED.has(path)) continue;
       if (!existsSync(resolve(ROOT, path))) missing.push(`${rel}: ${path}`);
     }
   }
   assert.deepEqual(missing, [], `named but absent:\n        ${missing.join('\n        ')}`);
+});
+
+check('and every generated path on that list is still named by the docs', () => {
+  // The other half: an exemption for a path no document mentions any more is an exemption
+  // nobody will question. Same rule as the i18n gate's allow-list.
+  const stale = [...GENERATED.keys()].filter(
+    (path) => !markdown.some(([, text]) => text.includes(path)),
+  );
+  assert.deepEqual(stale, [], `exempted but unmentioned: ${stale.join(', ')}`);
 });
 
 check("the README's project tree is the project's tree", () => {
