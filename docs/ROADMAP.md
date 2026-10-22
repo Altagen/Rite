@@ -89,6 +89,11 @@ inside the server container. What is left is the code.
       but there is no mode where what you type keeps going to all of them
 
 ### 📦 Connection Management (Priority: MEDIUM)
+- [ ] A per-member override for a key PATH, in `deviceStore` (ADR 0028 §3 defers it). The
+      record's path is the contract today, which is what makes the guarantee legible — but
+      colleagues name their key files differently, so one of them will have to move a file.
+      The override weakens nothing (the key is still required); it costs a second place to
+      look when a connection fails, which is why it waits for a real complaint
 - [ ] Export connections (encrypted backup)
 - [ ] Import connections — an ssh_config import exists; this is about reading back a
       Rite export, which has no object until `Export connections` above exists
@@ -249,6 +254,11 @@ separate work left.
 - [ ] Layout tags and organization — the file has order and nothing else
 - [ ] Save the current arrangement AS a layout — the file is written by hand or by the
       editor in Settings; nothing captures what is on screen into it
+
+- [ ] A conflict guard on the account's layouts, if last-write-wins becomes a nuisance
+      (ADR 0027). The cheap parades in order of cost: show the last-saved time in the
+      editor — **done**, it comes back with the blob; then refuse a `PUT` carrying a stale
+      `updatedAt`; only then anything resembling a merge
 
 #### The profile, later: one file for the whole setup
 

@@ -152,11 +152,24 @@ task audit                # Security audit (cargo + pnpm)
 
 ### 1. Prepare Release
 
-Verify all tests pass:
+Run the gate. All five steps, including the turnkey acceptance — `task test` and `task
+lint` are the inner two and were what this said, which is a fraction of the bar:
+
 ```bash
-task test
-task lint
+task e2e                  # = sh e2e/gate.sh
+task audit                # advisories, cargo + pnpm
 ```
+
+The gate's step 5 **destroys `deploy_rite-data` and consumes
+`deploy/admin_password.txt`**, so it must not run against an instance someone is using.
+
+Then check the three records are current, because nothing else will:
+
+- `docs/ROADMAP.md` holds only what is LEFT — anything this release shipped is deleted
+  from it rather than ticked
+- every ADR the code cites exists in the decisions repository, and a decision taken
+  during the release has one
+- `design/mock/` describes the shipped screens, not the previous ones
 
 ### 2. Update Version
 
