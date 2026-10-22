@@ -192,8 +192,7 @@ async function toInfo(
 ): Promise<ConnectionInfo> {
   // Which key, for a record that carries one (ADR 0028 §6). Read here rather than in the
   // form: the form never receives the key material, and a fingerprint is not secret.
-  const identity =
-    r.authMethod.type === 'vaultKey' ? await keyIdentity(r.authMethod.key) : null;
+  const identity = r.authMethod.type === 'vaultKey' ? await keyIdentity(r.authMethod.key) : null;
   return {
     id,
     name: r.name,

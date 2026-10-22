@@ -110,7 +110,10 @@ export function ConnectionForm({
     connection?.collectionId ?? defaultCollectionId ?? collectionTargets?.[0]?.id ?? '',
   );
   const [color, setColor] = useState(connection?.color || '');
-  const icon = connection?.icon || ''; // TODO: Implement icon picker UI
+  // Carried through unchanged: a machine keeps the icon it has, and there is no picker to
+  // choose one with yet ("Custom tab icons and colors", docs/ROADMAP.md). The backlog lives
+  // in the roadmap, which gets read, rather than in a marker on a line of source.
+  const icon = connection?.icon || '';
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   const [hcOptOut, setHcOptOut] = useState(connection?.hc === false);
   const [notes, setNotes] = useState(connection?.notes || '');
@@ -223,7 +226,8 @@ export function ConnectionForm({
     // Switching support is a change in its own right: picking "a file on this computer" and
     // typing nothing must not quietly leave the machine carrying its key.
     const switchedSupport =
-      !!connection && (connection.authType === 'publicKey' ? 'path' : 'carried') !== auth.keySupport;
+      !!connection &&
+      (connection.authType === 'publicKey' ? 'path' : 'carried') !== auth.keySupport;
     if (auth.authType === 'publicKey' && (!hasStoredKey || switchedSupport)) {
       if (auth.keySupport === 'path' && !auth.keyPath.trim()) {
         newErrors.keyPath = t('connections.validation.keyPathRequired');

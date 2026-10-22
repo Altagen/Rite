@@ -1268,18 +1268,24 @@ async fn capabilities() -> Json<Value> {
 ///
 /// `RITE_BUILT_AT` still wins when a release pins one: a reproducible build wants a fixed
 /// value, and a packaged file's time is the packager's, not the build's.
-fn built_at() -> String {
-    let pinned = env!("RITE_BUILT_AT");
-    if !pinned.is_empty() {
-        return pinned.to_string();
-    }
-    std::env::current_exe()
-        .and_then(std::fs::metadata)
-        .and_then(|m| m.modified())
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| utc_stamp(d.as_secs() as i64))
-        .unwrap_or_else(|| "unknown".to_string())
+fn built_at() -> &'static str {
+    // Computed once: `/api/capabilities` is unauthenticated and answers the version
+    // handshake, so it should not stat the executable per request — and the value cannot
+    // change while this process runs.
+    static BUILT_AT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    BUILT_AT.get_or_init(|| {
+        let pinned = env!("RITE_BUILT_AT");
+        if !pinned.is_empty() {
+            return pinned.to_string();
+        }
+        std::env::current_exe()
+            .and_then(std::fs::metadata)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| utc_stamp(d.as_secs() as i64))
+            .unwrap_or_else(|| "unknown".to_string())
+    })
 }
 
 /// `YYYY-MM-DD HH:MM:SS` from an epoch second, so neither this nor the build needs a date
