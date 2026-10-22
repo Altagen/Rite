@@ -68,6 +68,7 @@ pub const SETTINGS: &[(&str, Shape)] = &[
     ("healthcheck_policy", Shape::Policy),
     ("collection_policy", Shape::Policy),
     ("dashboard_policy", Shape::Policy),
+    ("layouts_policy", Shape::Policy),
 ];
 
 fn shape_of(key: &str) -> Option<Shape> {
@@ -89,6 +90,9 @@ pub fn policy_default(key: &str) -> Value {
             "minInterval": 60,
         }),
         "dashboard_policy" => json!({ "webui": true, "clients": true, "minInterval": 30 }),
+        // Two booleans, no third `enabled` flag: `enabled = false, webui = true` is a state
+        // someone has to reconcile, and someone eventually reads the wrong one (ADR 0027).
+        "layouts_policy" => json!({ "webui": true, "clients": true }),
         "collection_policy" => json!({
             "allowCreate": true,
             "allowSharingOutsideTeams": true,
@@ -389,6 +393,13 @@ pub fn validate(key: &str, value: &Value) -> Result<()> {
                 }
             }
         }
+        "layouts_policy" => {
+            for field in ["webui", "clients"] {
+                if value.get(field).is_some_and(|v| !v.is_boolean()) {
+                    bail!("`{field}` must be true or false");
+                }
+            }
+        }
         "collection_policy" => {
             let role = value
                 .get("defaultRole")
@@ -589,6 +600,28 @@ webui = false
         assert!(validate("healthcheck_policy", &json!({ "active": "sometimes" })).is_err());
         assert!(validate("collection_policy", &json!({ "defaultRole": "owner" })).is_err());
         assert!(validate("collection_policy", &json!({ "maxMembers": -1 })).is_err());
+        // ADR 0027: two booleans, so a string that reads like one is still refused — a
+        // blob stored as given would turn layouts off for a whole organisation, and look
+        // exactly like an admin having turned them off.
+        assert!(validate("layouts_policy", &json!({ "webui": "yes" })).is_err());
+        assert!(validate("layouts_policy", &json!({ "clients": 1 })).is_err());
+        assert!(validate("layouts_policy", &json!({ "webui": false })).is_ok());
+    }
+
+    #[test]
+    fn a_partially_declared_layouts_policy_keeps_the_other_half() {
+        // The shipped default is both halves on. Declaring one must not drop the other:
+        // `[layouts_policy] webui = false` is one statement, not two.
+        let path = write("layouts", "[layouts_policy]\nwebui = false\n");
+        let cfg = InstanceConfig::load_from(path.to_str(), &[]).unwrap();
+        let policy = cfg.get("layouts_policy").unwrap();
+        assert_eq!(policy["webui"], json!(false), "what the file said");
+        assert_eq!(
+            policy["clients"],
+            json!(true),
+            "and the default underneath it"
+        );
+        std::fs::remove_file(path).ok();
     }
 
     #[test]

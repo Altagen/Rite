@@ -647,6 +647,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/admin/collection-policy", patch(set_collection_policy))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
         .route("/api/admin/dashboard-policy", patch(set_dashboard_policy))
+        .route("/api/admin/layouts-policy", patch(set_layouts_policy))
         .route("/api/healthcheck/probe", post(healthcheck_probe))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
         // guard-gated to admin); team management is per-team authorized in-handler.
@@ -822,6 +823,10 @@ pub fn build_router(state: ServerState) -> Router {
             put(vault_update_connection).delete(vault_delete_connection),
         )
         .route("/api/user/library", get(get_library).put(set_library))
+        .route(
+            "/api/user/layouts",
+            get(get_user_layouts).put(set_user_layouts),
+        )
         .route("/api/ssh-config/default-path", get(default_ssh_config_path))
         .route("/api/ssh-config/parse", post(parse_ssh_config))
         .route("/api/ssh/host-key/accept", post(accept_host_key))
@@ -1437,6 +1442,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "healthcheck": healthcheck,
         "collectionPolicy": collection_policy(&state).await?,
         "dashboardPolicy": dashboard_policy(&state).await?,
+        "layoutsPolicy": layouts_policy(&state).await?,
         "hostKey": state.host_key.as_deref(),
         // ADR 0020: the keys this instance holds as code. The console renders these
         // locked, with their origin, instead of offering a control that cannot work.
@@ -1462,6 +1468,16 @@ async fn healthcheck_policy(state: &ServerState) -> Result<Value, AppError> {
 /// sees it. Said plainly here because the admin copy has to say it too.
 async fn dashboard_policy(state: &ServerState) -> Result<Value, AppError> {
     state.setting_policy("dashboard_policy").await
+}
+
+/// Where layouts may be used (ADR 0027): `webui` for a browser, `clients` for a desktop
+/// window signed into this instance. Both false is the feature off.
+///
+/// Policy, not enforcement: the blob is sealed client-side, so the server cannot tell a
+/// layouts `PUT` from any other and has nothing to refuse. The route stays open and the
+/// surface honours the answer.
+async fn layouts_policy(state: &ServerState) -> Result<Value, AppError> {
+    state.setting_policy("layouts_policy").await
 }
 
 /// May a browser against this server run the dashboard's probing cards right now
@@ -1828,6 +1844,25 @@ async fn set_dashboard_policy(
     state
         .db
         .set_setting("dashboard_policy", &policy.to_string())
+        .await?;
+    nudge_mode_changed(&state);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Admin: set the layouts policy (ADR 0027).
+async fn set_layouts_policy(
+    State(state): State<ServerState>,
+    Json(policy): Json<Value>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "layouts_policy") {
+        return Ok(refusal);
+    }
+    if let Err(why) = config::validate("layouts_policy", &policy) {
+        return Ok((StatusCode::BAD_REQUEST, format!("{why:#}")).into_response());
+    }
+    state
+        .db
+        .set_setting("layouts_policy", &policy.to_string())
         .await?;
     nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -2438,6 +2473,32 @@ async fn get_library(
 ) -> Result<Json<Value>, AppError> {
     let blob = rite_core::library_store::get(state.db.pool(), &user.id).await?;
     Ok(Json(json!({ "blob": blob })))
+}
+
+/// The account's layouts, as a sealed blob (ADR 0027).
+///
+/// A second route rather than a shape for `/api/layouts`: that one returns `text`, and in
+/// accounts mode the server cannot, because it cannot decrypt. `updated_at` rides along so
+/// the editor can show when the other machine last wrote.
+async fn get_user_layouts(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Value>, AppError> {
+    let row = rite_core::layouts_store::get(state.db.pool(), &user.id).await?;
+    let (blob, updated_at) = match row {
+        Some((blob, at)) => (Some(blob), Some(at)),
+        None => (None, None),
+    };
+    Ok(Json(json!({ "blob": blob, "updatedAt": updated_at })))
+}
+
+async fn set_user_layouts(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<StatusCode, AppError> {
+    rite_core::layouts_store::set(state.db.pool(), &user.id, &req.blob).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn set_library(
@@ -3599,6 +3660,7 @@ const ADMIN_ROUTE_SETTINGS: &[&str] = &[
     "healthcheck",
     "host_key_verification_mode",
     "instance_name",
+    "layouts_policy",
     "open_registration",
     "session_persistence",
 ];

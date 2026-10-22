@@ -156,7 +156,7 @@ by TOFU instead.
 
 ## Configuring the instance as code
 
-Fourteen settings govern how an instance behaves. Declare any of them in a TOML file,
+Fifteen settings govern how an instance behaves. Declare any of them in a TOML file,
 point `RITE_CONFIG` at it, and they stop being something an administrator has to click:
 
 ```toml
@@ -190,13 +190,17 @@ minInterval = 60
 [collection_policy]       # ADR 0016
 allowCreate = true
 maxMembers  = 25
+
+[layouts_policy]          # ADR 0027
+webui   = true            # a browser reads the account's sealed copy
+clients = true            # a desktop window reads that copy, or a local file
 ```
 
 The full list: `instance_name`, `session_persistence`, `default_shell`,
 `allow_shell_choice`, `host_key_verification_mode`, `allow_quick_ssh`,
 `allow_secret_storage`, `allow_secret_reveal`, `open_registration`,
 `allow_invitations`, `confirm_role_change`, `healthcheck_policy`, `collection_policy`,
-`dashboard_policy`. A key outside that list stops the server, named — a typo should be
+`dashboard_policy`, `layouts_policy`. A key outside that list stops the server, named — a typo should be
 heard at start-up, not discovered months later as a setting that never applied. So does a
 value outside what a key accepts: `host_key_verification_mode = "trust-me"` is refused at
 start-up rather than falling back to strict while the console shows the typo.
