@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { openSettings } from './support/headerBar';
 import { ensureCollection, createMachine } from './support/localVault';
 
 /**
@@ -24,7 +25,7 @@ async function openDashboard(page: Page, machine: string) {
 
 /** Flip the per-device preference through the Settings switch a user would use. */
 async function setProbes(page: Page, on: boolean) {
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await openSettings(page);
   // Settings is a rail of sections and only the chosen one is rendered, so the
   // section has to be selected rather than scrolled to.
   await page.getByTestId('settings-nav-machines').click();
@@ -69,9 +70,7 @@ test('turning the probing cards off removes those two cards, and says who refuse
   await expect(card(page, 'Port forwarding')).toBeVisible();
   // …and the gap names this device's setting rather than a server that said nothing.
   await expect(page.getByText('Containers and services are not being checked')).toBeVisible();
-  await expect(
-    page.getByText('Container and service checks are off in settings.'),
-  ).toBeVisible();
+  await expect(page.getByText('Container and service checks are off in settings.')).toBeVisible();
 
   // Put it back, so the suite's other dashboard specs see a probing dashboard.
   await setProbes(page, true);

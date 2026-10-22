@@ -58,7 +58,6 @@ function ReauthNotice({ onSignOut }: { onSignOut: () => void }) {
 }
 
 export function AccountsShell() {
-  const { t } = useTranslation();
   const { user, userKey, logout, mode } = useServerSession();
   const conns = useAccountsConnectionsSource();
   const path = useRoutePath();
@@ -116,11 +115,11 @@ export function AccountsShell() {
       <Workspace
         auth={{
           // Accounts sessions have no separate lock: the vault key lives only in
-          // RAM, so "sign out" clears it (back to the login screen).
+          // RAM, so "sign out" clears it (back to the login screen). The pastille
+          // names the action itself, so no label travels through here any more.
           isLocked: false,
           lock: () => logout(),
           renderUnlockModal: () => null,
-          lockLabel: t('reauth.signOut'),
         }}
         conns={conns}
         instanceName={mode?.instanceName}

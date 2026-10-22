@@ -42,6 +42,12 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
   { id: 'pane.splitHorizontal', defaultBinding: 'Mod+Shift+H' },
   { id: 'pane.splitVertical', defaultBinding: 'Mod+Shift+D' },
   { id: 'pane.search', defaultBinding: 'Mod+F' },
+  // Locking is a safety reflex — the thing you do when you stand up — and it had no chord
+  // at all while four pane commands did. It needs one now that the button moved into the
+  // pastille's menu: a keystroke is better than the single click it replaced, and much
+  // better than a click plus an aim. Mod+Shift+L is free in gnome-terminal, konsole and
+  // xfce4-terminal, and is not one of the two RESERVED_BINDINGS below.
+  { id: 'vault.lock', defaultBinding: 'Mod+Shift+L' },
 ];
 
 /**

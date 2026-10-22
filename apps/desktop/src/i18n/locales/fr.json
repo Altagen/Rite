@@ -525,6 +525,12 @@
           "label": "Rechercher dans le panneau",
           "description": "Ouvre la barre de recherche par-dessus le terminal actif."
         }
+      },
+      "vault": {
+        "lock": {
+          "label": "Verrouiller le coffre",
+          "description": "Ferme le coffre et retire sa clé de la mémoire. Les connexions enregistrées cessent d’être lisibles jusqu’au déverrouillage ; les terminaux déjà ouverts continuent."
+        }
       }
     },
     "fixed": {
@@ -920,7 +926,13 @@
     "importedMachines": "{count} machine(s) importée(s)",
     "importedConnections": "{count} connexion(s) importée(s)",
     "closePaneTitle": "Fermer {count} terminaux ?",
-    "closePaneWhy": "Ce volet contient {count} sessions actives. Toutes se terminent."
+    "closePaneWhy": "Ce volet contient {count} sessions actives. Toutes se terminent.",
+    "vault": "Coffre",
+    "vaultOpen": "Coffre ouvert",
+    "vaultLocked": "Coffre verrouillé",
+    "chipOpen": "ouvert",
+    "chipLocked": "verrouillé",
+    "unlockVault": "Déverrouiller le coffre"
   },
   "lib": {
     "newSubFolder": "Nouveau sous-dossier",
@@ -1319,8 +1331,7 @@
   "reauth": {
     "title": "Session verrouillée",
     "why": "La clé du coffre ne vit qu’en mémoire. Se reconnecter pour déverrouiller les connexions.",
-    "signIn": "Se reconnecter",
-    "signOut": "Se déconnecter"
+    "signIn": "Se reconnecter"
   },
   "profile": {
     "hint": "Compte",

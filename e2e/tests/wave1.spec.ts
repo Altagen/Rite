@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext } from '@playwright/test';
+import { openSettings } from './support/headerBar';
 import { existsSync, readFileSync } from 'node:fs';
 
 /**
@@ -315,7 +316,7 @@ test('a shortcut can be remapped, and it is the new chord that fires', async ({
   await expect(page.locator('.xterm-screen')).toHaveCount(2, { timeout: 20_000 });
 
   // Every command is in one table, with what fires it.
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-keyboard').click();
   const row = page.getByTestId('shortcut-row-pane.splitHorizontal');
   await expect(row).toBeVisible();
@@ -325,7 +326,9 @@ test('a shortcut can be remapped, and it is the new chord that fires', async ({
 
   // Remapped by pressing the keys, not by typing their name.
   await page.getByTestId('shortcut-binding-pane.splitHorizontal').click();
-  await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText('waiting for keys…');
+  await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText(
+    'waiting for keys…',
+  );
   await page.keyboard.press('Control+Alt+J');
   await expect(page.getByTestId('shortcut-binding-pane.splitHorizontal')).toHaveText('Ctrl+Alt+J');
 
@@ -370,7 +373,7 @@ test('a reserved chord stored as an override is dropped, not honoured', async ({
   );
   await page.reload();
 
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-keyboard').click();
   // Back to its default, and listed as a default: no reset arrow, because there is
   // no override left to undo.
@@ -397,7 +400,7 @@ test('a reserved chord stored as an override is dropped, not honoured', async ({
  */
 test('settings shows one section at a time, chosen from the rail', async ({ page }) => {
   await page.goto('/');
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
 
   // It opens on the first section, and that one only.
   await expect(page.getByRole('heading', { name: 'Appearance' })).toBeVisible();
@@ -528,7 +531,7 @@ test('a layout opens from its file, and a missing machine falls back in place', 
   // beside the tabs is a permanent invitation to find out it is empty.
   await expect(page.getByTestId('layouts-button')).toHaveCount(0);
 
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-layouts').click();
   await page.getByTestId('open-layouts-settings').click();
 
@@ -769,7 +772,7 @@ test('a preference survives closing the dialog with the corner ✕', async ({ pa
 
   await page.goto('/');
 
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-security').click();
   await expect(page.getByTestId('auto-lock')).toContainText('Disabled');
   await expect(page.getByTestId('host-key-mode')).toContainText('Accept');
@@ -782,7 +785,7 @@ test('a preference survives closing the dialog with the corner ✕', async ({ pa
   // The ✕, not a Save button — there is no Save button.
   await page.getByRole('button', { name: 'Close settings' }).click();
 
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-security').click();
   await expect(page.getByTestId('auto-lock')).toContainText('3 minutes');
   await expect(page.getByTestId('host-key-mode')).toContainText('Strict');
@@ -812,7 +815,7 @@ test('a toolbar button can be hidden, and stays hidden', async ({ page }) => {
   const quickSsh = page.getByRole('button', { name: /Quick SSH/ });
   await expect(quickSsh).toBeVisible();
 
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-toolbar').click();
   await page.getByTestId('toolbar-quickSsh').click();
   await expect(page.getByTestId('toolbar-quickSsh')).toHaveAttribute('aria-checked', 'false');
@@ -825,7 +828,7 @@ test('a toolbar button can be hidden, and stays hidden', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Quick SSH/ })).toHaveCount(0);
 
   // Put it back, so the specs that follow see the toolbar they expect.
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-toolbar').click();
   await page.getByTestId('toolbar-quickSsh').click();
   await expect(page.getByTestId('toolbar-quickSsh')).toHaveAttribute('aria-checked', 'true');
@@ -851,7 +854,7 @@ test('hiding the toolbar shell picker leaves the setting in Settings', async ({
   await page.goto('/');
   await expect(page.getByTitle('Select default shell')).toBeVisible();
 
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-toolbar').click();
   await page.getByTestId('toolbar-shellPicker').click();
   await expect(page.getByTestId('toolbar-shellPicker')).toHaveAttribute('aria-checked', 'false');
@@ -882,7 +885,7 @@ test('hiding the toolbar shell picker leaves the setting in Settings', async ({
   );
 
   // Put the toolbar back, and the shell as it was, for the specs that follow.
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-toolbar').click();
   await page.getByTestId('toolbar-shellPicker').click();
   await page.getByRole('button', { name: 'Close settings' }).click();
@@ -934,7 +937,7 @@ test('hiding the "+" shell menu leaves "+" opening the default shell', async ({
     tabsBefore,
   );
 
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-toolbar').click();
   await page.getByTestId('toolbar-newTerminalMenu').click();
   await expect(page.getByTestId('toolbar-newTerminalMenu')).toHaveAttribute(
@@ -962,7 +965,7 @@ test('hiding the "+" shell menu leaves "+" opening the default shell', async ({
   await expect(strip.getByRole('button').nth(tabsBefore)).toBeVisible({ timeout: 15_000 });
 
   // Put the menu and the shell back for the specs that follow.
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-toolbar').click();
   await page.getByTestId('toolbar-newTerminalMenu').click();
   await page.getByRole('button', { name: 'Close settings' }).click();
@@ -1013,7 +1016,7 @@ test('Settings says which build is running, and agrees with the server', async (
   const reported = await (await request.get('/api/capabilities')).json();
 
   await page.goto('/');
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-system').click();
 
   // The version row agrees with the server, and that agreement proves little on its own:
@@ -1056,8 +1059,8 @@ test('settings are reachable with the vault locked', async ({ page, request }) =
   await page.reload();
 
   // Locked: Unlock is offered, and so is Settings.
-  await expect(page.getByRole('button', { name: 'Unlock' })).toBeVisible({ timeout: 15_000 });
-  await page.getByTitle('Settings').click();
+  await expect(page.getByTestId('vault-primary-action')).toBeVisible({ timeout: 15_000 });
+  await openSettings(page);
 
   // The per-device sections are all there and usable.
   for (const id of ['appearance', 'keyboard', 'splits', 'language', 'clipboard']) {
@@ -1095,7 +1098,7 @@ test('Settings leads with the layout cards, and the startup switch writes the fi
   await request.put('/api/layouts', { data: { value: '' } });
 
   await page.goto('/');
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-layouts').click();
 
   // Nothing in the file: say so plainly. "No layouts" and "your file has a typo" are
@@ -1151,7 +1154,7 @@ test('Settings leads with the layout cards, and the startup switch writes the fi
     data: { value: '[[layout]]\nname = "X"\n\n  [[layout.pane]]\n  size = 40\n' },
   });
   await page.reload();
-  await page.getByTitle('Settings').click();
+  await openSettings(page);
   await page.getByTestId('settings-nav-layouts').click();
   await expect(page.getByTestId('settings-layouts-error')).toContainText('Line 5');
   await expect(page.getByTestId('settings-layouts-empty')).toHaveCount(0);

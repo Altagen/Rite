@@ -525,6 +525,12 @@
           "label": "Search in pane",
           "description": "Opens the find bar over the focused terminal."
         }
+      },
+      "vault": {
+        "lock": {
+          "label": "Lock the vault",
+          "description": "Closes the vault and drops its key from memory. Saved connections stop being readable until it is unlocked again; terminals already open keep running."
+        }
       }
     },
     "fixed": {
@@ -920,7 +926,13 @@
     "importedMachines": "{count} machine(s) imported",
     "importedConnections": "{count} connection(s) imported",
     "closePaneTitle": "Close {count} terminals?",
-    "closePaneWhy": "This pane holds {count} live sessions. All of them end."
+    "closePaneWhy": "This pane holds {count} live sessions. All of them end.",
+    "vault": "Vault",
+    "vaultOpen": "Vault open",
+    "vaultLocked": "Vault locked",
+    "chipOpen": "open",
+    "chipLocked": "locked",
+    "unlockVault": "Unlock vault"
   },
   "lib": {
     "newSubFolder": "New sub-folder",
@@ -1319,8 +1331,7 @@
   "reauth": {
     "title": "Session locked",
     "why": "The vault key lives in memory only. Sign in again to unlock the connections.",
-    "signIn": "Sign in again",
-    "signOut": "Sign out"
+    "signIn": "Sign in again"
   },
   "profile": {
     "hint": "Account",

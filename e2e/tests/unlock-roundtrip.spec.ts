@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openSettings, unlockVault } from './support/headerBar';
 
 /**
  * The password you set is the password that opens the vault.
@@ -28,7 +29,7 @@ test('a password set in the UI unlocks the vault again', async ({ page, request 
 
   // The suite's vault is already set up, so change the password through the UI the
   // way a user would, then lock and come back with the same keystrokes.
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await openSettings(page);
   // Settings is a rail of sections and only the chosen one is rendered, so the
   // section has to be selected rather than scrolled to.
   await page.getByTestId('settings-nav-password').click();
@@ -47,7 +48,7 @@ test('a password set in the UI unlocks the vault again', async ({ page, request 
 
   // A locked vault does not take the screen over — base-first, the terminal still
   // works and the header offers Unlock. That is where the password prompt lives.
-  await page.getByRole('button', { name: 'Unlock' }).click();
+  await unlockVault(page);
   const field = page.locator('#password');
   await expect(field).toBeVisible({ timeout: 15_000 });
   await field.fill(TRICKY);
@@ -57,7 +58,7 @@ test('a password set in the UI unlocks the vault again', async ({ page, request 
   await expect(page.getByPlaceholder('Search connections…')).toBeVisible({ timeout: 15_000 });
 
   // Put the suite's password back so the specs that follow are unaffected.
-  await page.getByRole('button', { name: 'Settings' }).click();
+  await openSettings(page);
   // Settings is a rail of sections and only the chosen one is rendered, so the
   // section has to be selected rather than scrolled to.
   await page.getByTestId('settings-nav-password').click();
@@ -87,7 +88,7 @@ test('a wrong master password is refused in the language the app is set to', asy
   await page.goto('/');
 
   // The header's Unlock opens the dialog, which has an Unlock of its own.
-  await page.getByRole('button', { name: 'Unlock' }).first().click();
+  await unlockVault(page);
   const field = page.locator('#password');
   await expect(field).toBeVisible({ timeout: 15_000 });
   await field.fill('definitely-not-the-password');

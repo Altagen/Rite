@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
+import { useShortcut } from '../shortcuts/useShortcut';
 import { askConfirm } from '../utils/confirmPrompt';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
@@ -22,6 +23,7 @@ import { SecretPrompt } from './SecretPrompt';
 import { useTranslation } from '../i18n/i18n';
 import { LibrarySidebar } from './LibrarySidebar';
 import { ProfilePastille } from './ProfilePastille';
+import { VaultPastille } from './VaultPastille';
 import { OverflowNav, type NavAction } from './OverflowNav';
 import { useSettingsModal } from '../store/settingsModal';
 import { ConnectionForm } from './ConnectionForm';
@@ -32,7 +34,7 @@ import { MemberPicker } from './MemberPicker';
 import { BoardModal } from './BoardModal';
 import { CollectionEditDialog } from './CollectionEditDialog';
 import { CollectionFolderDialog } from './CollectionFolderDialog';
-import { IconTerminal, IconBolt, IconGear, IconLock, IconChevronDown } from './icons';
+import { IconTerminal, IconBolt, IconLock, IconChevronDown } from './icons';
 import { LibraryFolderDialog } from './LibraryFolderDialog';
 import { MoveToFolderDialog } from './MoveToFolderDialog';
 import { MoveMachineDialog } from './MoveMachineDialog';
@@ -99,9 +101,6 @@ export interface WorkspaceAuth {
   isFirstRun?: boolean;
   lock: () => void;
   renderUnlockModal: (props: { onClose: () => void }) => ReactNode;
-  // Label for the lock/sign-out button. Local vault → "Lock"; an accounts session
-  // has no separate lock (the key lives in RAM), so it signs out → "Sign out".
-  lockLabel?: string;
 }
 
 export function Workspace({
@@ -132,7 +131,9 @@ export function Workspace({
   // First run = no master password on this window's vault yet ⇒ "unlock" is really "create".
   const isFirstRun = auth.isFirstRun ?? false;
   const { t } = useTranslation();
-  const lockLabel = auth.lockLabel ?? t('main.lock');
+  // Locking moved into the pastille's menu, so it gets a chord: a safety action should
+  // not cost a click and an aim (ADR-less, but see commands.ts for why Mod+Shift+L).
+  useShortcut('vault.lock', () => lock(), !isLocked && !identity);
   // Locked-state vault picker (ADR 0014 multi-vault): the vaults the shell knows about + which
   // one this window holds, so "no vault open" offers the list + new/open instead of one button.
   const lockedVaults = isNativeShell() ? nativeVaults() : [];
@@ -1607,33 +1608,7 @@ export function Workspace({
         {/* Shell-provided always-visible actions (e.g. the notifications bell). */}
         {headerExtra}
 
-        {isLocked ? (
-          /* Locked, or no vault yet. Base-first (ADR 0014): this workspace already
-             runs local terminals and Quick SSH with no vault, so its preferences have
-             to be reachable here too — the theme, the keyboard, the splits and the
-             language are per-device and have nothing to do with a vault. Settings used
-             to vanish entirely in this state, which made every one of them hostage to
-             unlocking something they do not depend on. */
-          <>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="m-btn m-btn-ghost m-btn-sm"
-              title={t('settings.title')}
-            >
-              <IconGear className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
-              className="m-btn m-btn-primary m-btn-sm"
-              title={isFirstRun ? t('ws.createVaultTitle') : t('ws.unlockVaultTitle')}
-            >
-              <IconLock className="h-4 w-4" />
-              <span className="hidden md:inline">
-                {isFirstRun ? t('ws.createVault') : 'Unlock'}
-              </span>
-            </button>
-          </>
-        ) : identity ? (
+        {identity ? (
           // Accounts context: the pastille owns Settings + Sign out.
           <ProfilePastille
             username={identity.username}
@@ -1644,17 +1619,34 @@ export function Workspace({
           />
         ) : (
           <>
-            <button
-              onClick={() => setShowSettings(true)}
-              className="m-btn m-btn-ghost m-btn-sm"
-              title={t('settings.title')}
-            >
-              <IconGear className="h-4 w-4" />
-            </button>
-            <button onClick={() => lock()} className="m-btn m-btn-ghost m-btn-sm" title={lockLabel}>
-              <IconLock className="h-4 w-4" />
-              <span className="hidden md:inline">{lockLabel}</span>
-            </button>
+            {/* First run, or a locked vault: the call to action stays a primary BUTTON and
+                does not move into the menu. It is the one thing a new window is for, and
+                hiding "Create vault" behind a chevron costs a first-time reader the only
+                affordance that matters. The menu repeats it, for whoever opens the menu. */}
+            {isLocked && (
+              <button
+                onClick={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
+                className="m-btn m-btn-primary m-btn-sm"
+                title={isFirstRun ? t('ws.createVaultTitle') : t('ws.unlockVaultTitle')}
+                data-testid="vault-primary-action"
+              >
+                <IconLock className="h-4 w-4" />
+                <span className="hidden md:inline">
+                  {isFirstRun ? t('ws.createVault') : t('ws.unlockVault')}
+                </span>
+              </button>
+            )}
+            {/* Settings is reachable while locked, on purpose (base-first, ADR 0014): the
+                theme, the keyboard, the splits and the language are per-device and have
+                nothing to do with a vault. They used to vanish with it. */}
+            <VaultPastille
+              isLocked={isLocked}
+              isFirstRun={!!isFirstRun}
+              vaultLabel={nativeContext()?.label ?? undefined}
+              onLock={() => lock()}
+              onUnlock={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
+              onSettings={() => setShowSettings(true)}
+            />
           </>
         )}
       </header>
