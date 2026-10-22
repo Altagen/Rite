@@ -160,7 +160,7 @@ task e2e                  # = sh e2e/gate.sh
 task audit                # advisories, cargo + pnpm
 ```
 
-The gate's step 5 **destroys `deploy_rite-data` and consumes
+The gate's step 5 **destroys the `deploy_rite-data` volume and removes
 `deploy/admin_password.txt`**, so it must not run against an instance someone is using.
 
 Then check the three records are current, because nothing else will:

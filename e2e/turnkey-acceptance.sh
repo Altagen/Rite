@@ -59,14 +59,17 @@ CONTAINERFILE
 fi
 export RITE_IMAGE="$IMAGE"
 
-compose() { podman compose -f deploy/compose.yml "$@"; }
+# Both files: the bootstrap is an OVERRIDE now, so the acceptance exercises the
+# composition an operator actually types rather than a file that no longer carries the
+# secret. The base file on its own has no administrator to find.
+compose() { podman compose -f deploy/compose.yml -f deploy/compose.bootstrap.yml "$@"; }
 cleanup() {
   compose down -v >/dev/null 2>&1 || true
   rm -f deploy/admin_password.txt
 }
 trap cleanup EXIT
 
-echo "— starting from deploy/compose.yml, with nothing but a file and a secret"
+echo "— starting from deploy/compose.yml + compose.bootstrap.yml, with a file and a secret"
 echo -n 'Turnkey-Acceptance-P4ss!' > deploy/admin_password.txt
 compose up -d >/dev/null 2>&1
 

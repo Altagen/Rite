@@ -54,9 +54,10 @@ inside the server container. What is left is the code.
 - [ ] **A one-time bootstrap token, as an alternative to the password file.** A headless
       first start needs the plaintext password *once*, because the bootstrap derives the
       admin's vault key from it (ADR 0011) — a hash would make an account whose vault
-      cannot exist. So `deploy/admin_password.txt` holds a live admin password at rest
-      until someone deletes it, and the only mitigations today are its mode and a warning
-      in the log. The better shape: the server prints a single-use token on stdout at
+      cannot exist. So `deploy/compose.bootstrap.yml` — the opt-in override, no longer
+      wired into the deployment files — holds a live admin password at rest until someone
+      empties it, and the mitigations today are its mode, a warning in the log, and the
+      fact that nobody who skips the override has a secret at all. The better shape: the server prints a single-use token on stdout at
       first start, that token authorises exactly one `create the administrator` call, and
       it dies with it — no secret at rest, and the operator chooses the password. It
       changes the bootstrap contract (what a fresh instance accepts, and from whom), so it

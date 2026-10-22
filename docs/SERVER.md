@@ -41,12 +41,23 @@ tarballs, and rite-server lives in the registry as `ghcr.io/altagen/rite-server`
 So every path below starts from a compose file, and `deploy/` holds three ready
 to run.
 
-Each one expects an admin password next to it:
+**None of them asks you to prepare anything.** Start one, open it, and the first visit
+offers **Create the server administrator** — the same first run as a desktop vault, and no
+secret rests anywhere.
+
+### The administrator, without a browser
+
+For a headless start — the instance comes up with the account already created — add one
+override to whichever file you are using:
 
 ```bash
 install -m 600 /dev/null deploy/admin_password.txt
 printf '%s' 'a-strong-password' > deploy/admin_password.txt
+docker compose -f deploy/compose.yml -f deploy/compose.bootstrap.yml up
 ```
+
+That is ADR 0020's point: configured, not merely administrable. What it costs is a live
+admin password at rest on this host, so three things are worth knowing.
 
 **The mode matters.** A plain `echo >` creates the file with whatever the umask gives,
 which on most systems is readable by every account on the machine. Compose mounts it as a
@@ -54,47 +65,26 @@ secret, so inside the container it is a file under `/run/secrets` rather than an
 environment variable — `docker inspect`, `/proc/<pid>/environ` and a crash report do not
 carry it. The exposure left is the one on the host, and the mode is what closes it.
 
-**Empty it once the administrator has signed in** — `: > deploy/admin_password.txt`, not
-`rm`, because compose needs the file to exist for the next start. The server reads it at
-every start and only acts on it while no account exists, so after the first start it is a
-live admin password in a file that does nothing. A server that finds one still configured
-on a populated instance says so in its log.
+**Empty it once the administrator has signed in** — `: > deploy/admin_password.txt`. The
+server reads it at every start and only acts on it while no account exists, so afterwards
+it is a live admin password that does nothing. A server that finds one on an instance that
+already has accounts says so in its log. (`rm` works too, as long as you stop passing
+`-f deploy/compose.bootstrap.yml`: compose refuses to start when a secret's source is
+missing.)
 
-Why a password at all, and not a hash: the bootstrap creates a **vault**, and the vault key
-is derived from the password (ADR 0011). A hash would make an account that can sign in and
+**Why a password and not a hash.** The bootstrap creates a **vault**, and the vault key is
+derived from the password (ADR 0011). A hash would make an account that can sign in and
 whose vault cannot exist. So a browser-free bootstrap means the server sees the password
-once — and nothing else about this file is negotiable for that reason. In Swarm or
-Kubernetes, point the same `secrets:` stanza at a real secret store; the server reads
-`/run/secrets` either way.
+once — that is the whole reason this file exists in this shape. In Swarm or Kubernetes,
+point the same `secrets:` stanza at a real secret store; the server reads `/run/secrets`
+either way.
 
-### Not using it at all
+So, the two paths:
 
-The file is **required** by the three compose files here, and not because the server needs
-it: compose refuses to start when a secret's source is missing, so leaving it out fails
-before the container exists.
-
-```
-Error: statfs ./admin_password.txt: no such file or directory
-```
-
-To deploy without a password at rest, **create it empty**:
-
-```bash
-: > deploy/admin_password.txt
-```
-
-An empty file means *do not bootstrap*. The server creates no account, and the web UI
-offers **Create the server administrator** — the same first run as a desktop vault, with
-nothing secret on disk. An empty file does not fall back to `RITE_ADMIN_PASSWORD` either:
-emptying it is a decision, not a gap to fill.
-
-So the two paths, both from the same compose file:
-
-| `deploy/admin_password.txt` | What happens on first start |
-| --- | --- |
-| a password in it | the administrator exists before anyone opens a browser — turnkey (ADR 0020) |
-| empty | no account; the browser creates the administrator, and no secret rests anywhere |
-| absent | compose refuses to start |
+| What you run | What you prepare | First start |
+| --- | --- | --- |
+| `-f compose.yml` | nothing | the browser creates the administrator; nothing secret on disk |
+| `-f compose.yml -f compose.bootstrap.yml` | the password file | the administrator already exists |
 
 ## 1. Try it locally — no certificate at all
 
@@ -312,8 +302,9 @@ On first launch with no accounts, open the server in a browser: it shows
 **Create the server administrator**. That first account is the admin; afterwards
 the admin manages accounts from the users panel.
 
-For **headless/automated deploys**, the administrator is created at boot instead —
-every compose file in `deploy/` already does this:
+For **headless/automated deploys**, the administrator is created at boot instead. That is
+`deploy/compose.bootstrap.yml`, an override you add to whichever deployment file you are
+using — the deployment files themselves ask for nothing:
 
 ```yaml
 environment:
@@ -326,8 +317,8 @@ secrets:
 On a fresh server this creates the admin (the server derives the same Argon2id
 auth hash the browser would, so a later browser login just works). Prefer
 `RITE_ADMIN_PASSWORD_FILE` (a mounted secret) over `RITE_ADMIN_PASSWORD` — env
-vars leak via `ps` / `inspect`. It only acts when there are no accounts yet;
-change the password after the first login.
+vars leak via `ps` / `inspect`. It only acts when there are no accounts yet, and it says
+so in the log when it finds a password on an instance that already has them.
 
 Pair it with `RITE_CONFIG` (above) and the deployment comes up **configured**, not merely
 administrable: the administrator exists, the policies are the ones in your repository, and
