@@ -29,7 +29,7 @@ const COLOR = ['', 'bg-red-500', 'bg-amber-500', 'bg-yellow-500', 'bg-green-500'
 
 export function ForcePasswordChange() {
   const { t } = useTranslation();
-  const { user, changePassword, loading, error } = useServerSession();
+  const { user, changePassword, logout, loading, error } = useServerSession();
   const levels = ['', t('fpc.tooWeak'), t('fpc.fair'), t('fpc.good'), t('fpc.strong')];
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
@@ -110,6 +110,21 @@ export function ForcePasswordChange() {
           className="w-full rounded-md bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           {loading ? t('fpc.setting') : t('fpc.submit')}
+        </button>
+
+        {/* Blocking the app here is the point (ADR 0010 addendum): until the password is the
+            account's own, the admin who set it can still derive the vault key. Blocking is
+            not the same as trapping, though — this screen offered no exit at all, so landing
+            on it by signing in as the wrong account meant the window manager was the only way
+            out. Signing out bypasses nothing: the next sign-in lands here again. */}
+        <button
+          type="button"
+          onClick={() => logout()}
+          data-testid="fpc-sign-out"
+          title={t('fpc.signOutWhy')}
+          className="mt-3 w-full text-center text-xs text-muted-foreground hover:text-foreground"
+        >
+          {t('fpc.signOut')}
         </button>
       </form>
     </div>

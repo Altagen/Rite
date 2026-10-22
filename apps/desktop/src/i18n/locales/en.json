@@ -591,7 +591,9 @@
     "tokenOptional": "· optional",
     "haveAccount": "Already have an account?",
     "newHere": "New here?",
-    "haveToken": "Have an invitation token?"
+    "haveToken": "Have an invitation token?",
+    "backToLocal": "Back to the local vault",
+    "backToLocalWhy": "Switches this window to the local vault, where the context pill offers the others."
   },
   "admin": {
     "cancel": "Cancel",
@@ -1203,7 +1205,9 @@
     "good": "Good",
     "strong": "Strong",
     "setting": "Setting…",
-    "submit": "Set password & continue"
+    "submit": "Set password & continue",
+    "signOut": "Sign out instead",
+    "signOutWhy": "The password still has to change at the next sign-in — this only leaves the screen."
   },
   "hostKey": {
     "changed": "Host key changed",

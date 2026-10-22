@@ -591,7 +591,9 @@
     "tokenOptional": "· facultatif",
     "haveAccount": "Compte déjà existant ?",
     "newHere": "Première visite ?",
-    "haveToken": "Jeton d’invitation en main ?"
+    "haveToken": "Jeton d’invitation en main ?",
+    "backToLocal": "Retour au coffre local",
+    "backToLocalWhy": "Bascule cette fenêtre sur le coffre local, d’où la pastille de contexte propose les autres."
   },
   "admin": {
     "cancel": "Annuler",
@@ -1203,7 +1205,9 @@
     "good": "Bon",
     "strong": "Fort",
     "setting": "Enregistrement…",
-    "submit": "Définir et continuer"
+    "submit": "Définir et continuer",
+    "signOut": "Se déconnecter plutôt",
+    "signOutWhy": "Le mot de passe devra quand même changer à la prochaine connexion — ceci quitte seulement l’écran."
   },
   "hostKey": {
     "changed": "Clé d’hôte modifiée",

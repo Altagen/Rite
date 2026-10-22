@@ -6,6 +6,7 @@
  */
 
 import type { HttpErrorKind } from '../utils/httpError';
+import { isNativeShell, requestSwitchContext } from '../utils/nativeShell';
 import { useTranslation } from '../i18n/i18n';
 
 // Every HttpErrorKind, plus 'offline' (client-side) and a 'generic' fallback.
@@ -137,6 +138,21 @@ export function ConnectionError({
             </button>
           ) : null}
         </div>
+        {/* The worst place to have no exit: the server this window is pointed at is down, and
+            retrying is the only thing on offer. On the desktop the local vault is right there
+            and always exists (base-first, ADR 0014) — switching to it is the way out of a
+            server that is not coming back. A browser has nothing to switch to. */}
+        {isNativeShell() && (
+          <button
+            type="button"
+            data-testid="connerr-back-to-local"
+            onClick={() => requestSwitchContext({ kind: 'local' })}
+            title={t('auth.backToLocalWhy')}
+            className="mt-4 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {t('auth.backToLocal')}
+          </button>
+        )}
       </div>
     </div>
   );

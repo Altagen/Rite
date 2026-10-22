@@ -9,6 +9,7 @@
  */
 
 import { useState } from 'react';
+import { isNativeShell, requestSwitchContext } from '../utils/nativeShell';
 import { RevealToggle } from './RevealToggle';
 import { useTranslation } from '../i18n/i18n';
 import { useServerSession } from '../store/serverSessionStore';
@@ -68,6 +69,33 @@ export function ServerAuthScreen() {
   return (
     <div className="flex h-screen items-center justify-center bg-background text-foreground">
       <div className="w-full max-w-md space-y-8 p-8">
+        {/* The way out, on the desktop only.
+            A server window is dedicated to its context (ADR 0006/0014), so this screen had
+            no chrome at all and nothing to leave by: clicking the wrong server left the
+            person at a sign-in form for an account they may not have, with only the window
+            manager as an exit. Switching back to the local vault is the honest way out —
+            the base vault always exists (base-first, ADR 0014) and its context pill offers
+            every other server. In a browser there is nothing to switch to, so nothing shows. */}
+        {isNativeShell() && (
+          <button
+            type="button"
+            data-testid="auth-back-to-local"
+            onClick={() => requestSwitchContext({ kind: 'local' })}
+            title={t('auth.backToLocalWhy')}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />
+            </svg>
+            {t('auth.backToLocal')}
+          </button>
+        )}
         <div className="text-center">
           <h1 className="text-4xl font-bold">Rite</h1>
           {mode?.instanceName && (
