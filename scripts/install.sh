@@ -25,13 +25,30 @@ VERSION=""
 LOCAL_BIN=""
 MODE=install
 
+# Held here and not read back out of the file: piped through `sh`, this script has no
+# path to read — `$0` is `sh` — and --help is most needed exactly then.
+usage() {
+  cat <<'USAGE'
+Install Rite's desktop client.
+
+  install.sh                    latest release, into ~/.local
+  install.sh --prefix DIR       under DIR/bin and DIR/share instead
+  install.sh --version TAG      a release you name
+  install.sh --bin PATH         a binary you already have
+  install.sh --uninstall        remove what this wrote; the vault is untouched
+
+A launcher reads XDG_DATA_HOME and XDG_DATA_DIRS only, so --prefix outside them
+writes a correct entry that no menu will show. --prefix /usr/local is in them.
+USAGE
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --prefix) PREFIX=${2:?--prefix needs a directory}; shift 2 ;;
     --version) VERSION=${2:?--version needs a release tag}; shift 2 ;;
     --bin) LOCAL_BIN=${2:?--bin needs a path}; shift 2 ;;
     --uninstall) MODE=uninstall; shift ;;
-    --help|-h) sed -n '2,15p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --help|-h) usage; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -39,6 +56,12 @@ done
 # The two roots. FHS under a prefix, XDG otherwise — and XDG means the variables, not a
 # guess at what they usually hold.
 if [ -n "$PREFIX" ]; then
+  # Absolute, or `Exec=` ends up relative and the entry launches nothing. The directory
+  # may not exist yet, so this resolves it by hand rather than with `realpath -e`.
+  case "$PREFIX" in
+    /*) ;;
+    *) PREFIX="$(pwd)/$PREFIX" ;;
+  esac
   BIN_DIR="$PREFIX/bin"
   DATA_DIR="$PREFIX/share"
   XDG=0
@@ -84,13 +107,21 @@ if [ -n "$LOCAL_BIN" ]; then
 else
   need curl
   need tar
-  need sha256sum
 
   case "$(uname -s)" in
     Linux) os=linux ;;
     Darwin) os=macos ;;
     *) echo "unsupported system: $(uname -s)" >&2; exit 1 ;;
   esac
+  # 4. sha256sum is coreutils; macOS ships shasum. Resolved once, used once.
+  if command -v sha256sum >/dev/null 2>&1; then
+    SHA="sha256sum"
+  elif command -v shasum >/dev/null 2>&1; then
+    SHA="shasum -a 256"
+  else
+    echo "neither sha256sum nor shasum was found; cannot verify the download" >&2
+    exit 1
+  fi
   case "$(uname -m)" in
     x86_64|amd64) arch=x86_64 ;;
     aarch64|arm64) arch=aarch64 ;;
@@ -98,10 +129,11 @@ else
   esac
 
   if [ -z "$VERSION" ]; then
-    # No jq: one field out of one document, and requiring a JSON parser to install a
-    # terminal would be its own joke.
-    VERSION=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
-      | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)
+    # `releases/latest` redirects to `releases/tag/<tag>`, so the final URL carries the
+    # answer. No JSON parser, and no API: an unauthenticated API call is rate limited to
+    # sixty an hour per address, and the failure says nothing about why.
+    VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
+      "https://github.com/$REPO/releases/latest" | sed -n 's|.*/tag/||p')
     [ -n "$VERSION" ] || { echo "could not resolve the latest release" >&2; exit 1; }
   fi
 
@@ -116,7 +148,7 @@ else
 
   # --ignore-missing is what makes the file usable: it lists every platform's tarball and
   # only one was downloaded. Without it the three absent ones count as failures.
-  ( cd "$work" && sha256sum -c --ignore-missing checksums.txt >/dev/null ) \
+  ( cd "$work" && $SHA -c --ignore-missing checksums.txt >/dev/null ) \
     || { echo "checksum verification failed" >&2; exit 1; }
   echo "verified   $tarball"
 
@@ -130,6 +162,14 @@ mkdir -p "$BIN_DIR"
 # keeps running on the old one instead of having its executable rewritten underneath it.
 install -m755 "$SOURCE" "$TARGET"
 echo "installed  $TARGET"
+
+# A `.desktop` file and a hicolor theme are freedesktop, so on macOS the binary is the
+# whole install — a .app bundle is a different piece of work (ADR 0030 scope).
+if [ "$(uname -s)" != Linux ]; then
+  echo
+  echo "Desktop integration is Linux only: no launcher entry or icons were written."
+  exit 0
+fi
 
 # From here on the INSTALLED copy answers, so what is placed comes from the binary that
 # will actually run.

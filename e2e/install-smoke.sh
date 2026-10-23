@@ -108,9 +108,48 @@ for s in $SIZES; do
 done
 is "every icon is gone" "$left" "0"
 
+# ── the script, which is the path most people take ───────────────────────────────
+# The binary above placed its own files. Here the helper decides the paths and places
+# bytes the binary emits (ADR 0030 §1), so this is where the emitters are exercised.
+SCRIPT=scripts/install.sh
+echo
+echo "the installer script"
+
+# --help must work when the script is piped: `$0` is then `sh`, and reading its own file
+# was how this was written first — broken in the one mode where the reader has no copy.
+if cat "$SCRIPT" | sh -s -- --help 2>/dev/null | grep -q "Install Rite's desktop client"; then
+  ok "--help works when the script is piped"
+else
+  bad "--help prints nothing when piped"
+fi
+
+# A relative prefix must still produce an absolute Exec=, or the entry launches nothing.
+rel=$(mktemp -d /tmp/rite-script-bench.XXXXXX)
+( cd "$rel" && sh "$OLDPWD/$SCRIPT" --bin "$OLDPWD/$BIN" --prefix relative >/dev/null 2>&1 )
+rel_entry="$rel/relative/share/applications/$APP_ID.desktop"
+if [ -f "$rel_entry" ]; then
+  is "a relative prefix yields an absolute Exec" \
+    "$(sed -n 's/^Exec=//p' "$rel_entry")" "$rel/relative/bin/rite"
+else
+  bad "the script wrote no entry under a relative prefix"
+fi
+
+# The same four paths, placed by the script this time.
+sh "$SCRIPT" --bin "$BIN" --prefix "$rel/named" >/dev/null 2>&1
+for p in "$rel/named/bin/rite" "$rel/named/share/applications/$APP_ID.desktop"; do
+  [ -f "$p" ] && ok "the script placed ${p##*/}" || bad "the script did not place $p"
+done
+icons=$(find "$rel/named/share/icons" -name "$APP_ID.png" | wc -l | tr -d ' ')
+is "the script placed every icon" "$icons" "8"
+
+sh "$SCRIPT" --uninstall --prefix "$rel/named" >/dev/null 2>&1
+left=$(find "$rel/named" -type f 2>/dev/null | wc -l | tr -d ' ')
+is "the script's uninstall leaves nothing" "$left" "0"
+rm -rf "$rel"
+
 echo
 if [ "$fail" = 0 ]; then
-  echo "✅ install and uninstall hold, under a prefix of their own"
+  echo "✅ install and uninstall hold, from the binary and from the script"
   [ "$KEEP" = 1 ] && echo "   ($PREFIX kept — it was named, not invented)"
 else
   echo "❌ the install does not hold"
