@@ -123,11 +123,11 @@ fn admin_bootstrap_creds() -> Option<(String, String)> {
 
 /// The rule itself, with the environment read out of it so it can be tested.
 ///
-/// **An EMPTY password file means "do not bootstrap".** That is the documented way to get
-/// the browser's `Create the server administrator` out of a compose deployment: the shipped
-/// `deploy/compose.yml` declares the file as a secret, and compose refuses to start when a
-/// secret's source is missing — so the file cannot simply be left out. Emptying it can,
-/// and it leaves no password at rest.
+/// **An EMPTY password file means "do not bootstrap".** The bootstrap now lives in an
+/// override (`deploy/compose.bootstrap.yml`), so the ordinary way to get the browser's
+/// `Create the server administrator` is to leave that override out. Emptying the file is
+/// the other way — it keeps the override in place and leaves no password at rest, which is
+/// what an operator who has finished bootstrapping wants.
 ///
 /// An empty file does NOT fall through to `RITE_ADMIN_PASSWORD`: the operator who emptied
 /// it asked for no bootstrap, and silently using a variable they had also set would be the
@@ -149,11 +149,10 @@ fn resolve_bootstrap_creds(
 mod tests {
     use super::resolve_bootstrap_creds;
 
-    /// The documented opt-out (`docs/SERVER.md`): the shipped compose file declares the
-    /// password as a secret, and compose refuses to start when a secret's source is
-    /// missing — verified, it fails with `statfs … no such file or directory`. So the file
-    /// cannot be left out, and EMPTYING it is how an operator asks for the browser
-    /// bootstrap instead. That is a contract now, so it is pinned here.
+    /// The documented opt-out (`docs/SERVER.md`). Dropping the bootstrap override is the
+    /// first way out; EMPTYING the file is the second, for a deployment that keeps the
+    /// override — compose refuses to start when a secret's source is missing, so the file
+    /// has to exist. That is a contract now, so it is pinned here.
     #[test]
     fn an_empty_password_file_means_no_bootstrap() {
         let some = |s: &str| Some(s.to_string());
