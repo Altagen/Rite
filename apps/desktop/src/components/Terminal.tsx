@@ -4,6 +4,7 @@
  * Displays an interactive terminal using xterm.js connected to an SSH session
  */
 
+import type { SplitTarget } from '../types/pane';
 import { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -14,7 +15,11 @@ import { terminalPool } from '../utils/terminalPool';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 import { useAutoReconnect } from '../store/autoReconnect';
+import { useTranslation } from '../i18n/i18n';
+import { useShortcut, useBindingText } from '../shortcuts/useShortcut';
 import { SnippetsModal } from './SnippetsModal';
+import { SplitMenu } from './SplitMenu';
+import { SplitsModal } from './SplitsModal';
 
 // Global cache to track if a terminal has already been initialized
 // This prevents re-writing initial content on remount
@@ -28,6 +33,13 @@ interface TerminalProps {
   isFocused?: boolean; // Optional - whether this terminal pane is focused
   onSplitHorizontal?: () => void; // Optional - callback to split this terminal horizontally
   onSplitVertical?: () => void; // Optional - callback to split this terminal vertically
+  // Split and run something in the new pane — the chevron beside the split buttons.
+  // Absent for a kind that cannot split, exactly like the two above.
+  onSplitWith?: (direction: 'horizontal' | 'vertical', target: SplitTarget) => Promise<void>;
+  // Run once, as soon as this session is streaming — see TerminalSession.initialCommand.
+  initialCommand?: string;
+  /** Why this pane is not what was asked for — see TerminalSession.note. */
+  note?: string;
   onDetach?: () => void; // Optional - callback to detach this pane into a new tab
   onDragStart?: (e: React.DragEvent) => void; // Optional - callback when pane drag starts
   onDragEnd?: () => void; // Optional - callback when pane drag ends
@@ -55,16 +67,52 @@ interface ConnectionDeadEvent {
   reason: string;
 }
 
-export function Terminal({ connectionId, connectionName, onClose, sessionId: existingSessionId, isFocused, onSplitHorizontal, onSplitVertical, onDetach, onDragStart, onDragEnd, onDragOver, onDrop, isDragging }: TerminalProps) {
+export function Terminal({
+  connectionId,
+  connectionName,
+  onClose,
+  sessionId: existingSessionId,
+  isFocused,
+  onSplitHorizontal,
+  onSplitVertical,
+  onSplitWith,
+  initialCommand,
+  note,
+  onDetach,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
+  isDragging,
+}: TerminalProps) {
+  const { t } = useTranslation();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const sessionIdRef = useRef<string | null>(null);
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('connecting');
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>(
+    'connecting',
+  );
   const [error, setError] = useState<string | null>(null);
   const [isReconnecting, setIsReconnecting] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  // An initial command runs once per session, never again on a remount.
+  const initialCommandSentRef = useRef(false);
+
+  // The chords these buttons advertise, read from the engine that dispatches them —
+  // never spelled here. A hand-written tooltip is how `Split vertical (Ctrl+Shift+V)`
+  // outlived the default that moved off that chord.
+  const splitHChord = useBindingText('pane.splitHorizontal');
+  const splitVChord = useBindingText('pane.splitVertical');
+  const searchChord = useBindingText('pane.search');
+
+  // The split menu and the splits library, each open or not. Both are small enough
+  // to live beside the snippets panel rather than in a store.
+  const [splitMenuOpen, setSplitMenuOpen] = useState(false);
+  const [noteDismissed, setNoteDismissed] = useState(false);
+  const [splitsLibraryOpen, setSplitsLibraryOpen] = useState(false);
+
   // The live session id captured when the snippets panel is opened (null = closed).
   const [snippetSession, setSnippetSession] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -94,7 +142,9 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   // Helper to focus the terminal's textarea
   const focusTerminalTextarea = () => {
     if (!terminalRef.current) return;
-    const textarea = terminalRef.current.querySelector('.xterm-helper-textarea') as HTMLTextAreaElement;
+    const textarea = terminalRef.current.querySelector(
+      '.xterm-helper-textarea',
+    ) as HTMLTextAreaElement;
     if (textarea) {
       textarea.focus();
     }
@@ -135,7 +185,6 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
   // This ensures keyboard shortcuts work when programmatically focusing a pane
   useEffect(() => {
     if (isFocused && terminalRef.current) {
-      console.log('[Terminal] Focusing textarea for session:', existingSessionId);
       focusTerminalTextarea();
     }
   }, [isFocused, existingSessionId]);
@@ -172,7 +221,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
       fitAddon.fit();
 
-      // NOTE: Keyboard shortcuts (Ctrl+W, Ctrl+Shift+H, Ctrl+Shift+V) are handled
+      // NOTE: Keyboard shortcuts (pane.close, pane.split*, pane.search) are handled
       // at the TerminalManager level using capture phase to intercept before xterm
       // gets them. This is simpler and more reliable than attachCustomKeyEventHandler.
 
@@ -237,7 +286,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
 
       // First, dispose any existing I/O handlers to prevent duplicates
       if (instance.ioDisposables.length > 0) {
-        instance.ioDisposables.forEach(d => d.dispose());
+        instance.ioDisposables.forEach((d) => d.dispose());
         instance.ioDisposables = [];
       }
 
@@ -280,7 +329,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           // Decode base64 to get raw bytes, then decode bytes to UTF-8 string
           // This preserves terminal control sequences that would be lost with from_utf8_lossy
           const dataBase64 = payload.data;
-          const dataBytes = Uint8Array.from(atob(dataBase64), c => c.charCodeAt(0));
+          const dataBytes = Uint8Array.from(atob(dataBase64), (c) => c.charCodeAt(0));
           const decoder = new TextDecoder('utf-8', { fatal: false });
           const dataString = decoder.decode(dataBytes);
 
@@ -314,25 +363,30 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         }
       });
 
-      unlistenClosed = await transport().listen<TerminalClosedEvent>('terminal-closed', (payload) => {
-        if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
-          xtermRef.current.write('\r\n\nConnection closed\r\n');
-          setStatus('disconnected');
-          makeTerminalReadOnly(xtermRef.current);
-        }
-      });
+      unlistenClosed = await transport().listen<TerminalClosedEvent>(
+        'terminal-closed',
+        (payload) => {
+          if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
+            xtermRef.current.write('\r\n\nConnection closed\r\n');
+            setStatus('disconnected');
+            makeTerminalReadOnly(xtermRef.current);
+          }
+        },
+      );
 
       unlistenDead = await transport().listen<ConnectionDeadEvent>('connection-dead', (payload) => {
         if (payload.sessionId === sessionIdRef.current && xtermRef.current) {
           // Auto-reconnect is opt-in (off by default): reconnecting opens a NEW
           // shell, losing history and on-screen output — so we never force it.
           if (!isLocalTerminal && useAutoReconnect.getState().enabled) {
-            xtermRef.current.write('\r\n\n\x1b[33mConnection lost — reconnecting automatically…\x1b[0m\r\n');
+            xtermRef.current.write(
+              '\r\n\n\x1b[33mConnection lost — reconnecting automatically…\x1b[0m\r\n',
+            );
             reconnectRef.current(true);
           } else {
             xtermRef.current.write(`\r\n\n\x1b[31mConnection lost: ${payload.reason}\x1b[0m\r\n`);
             xtermRef.current.write(
-              '\x1b[33mReconnecting opens a new shell (history and on-screen output are lost). Use Reconnect when you\'re ready.\x1b[0m\r\n',
+              "\x1b[33mReconnecting opens a new shell (history and on-screen output are lost). Use Reconnect when you're ready.\x1b[0m\r\n",
             );
             setError(`Connection lost: ${payload.reason}`);
             setStatus('error');
@@ -349,7 +403,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         terminalInitializedCache.add(existingSessionId);
 
         // Write connection banner for SSH terminals before claiming buffered output,
-        // so the display order is: "Connected to X" → MOTD → shell prompt.
+        // so the display order is: t('term.connected') → MOTD → shell prompt.
         if (!isLocalTerminal) {
           term.write(`Connected to ${connectionNameRef.current}\r\n\n`);
         }
@@ -364,7 +418,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         try {
           const bufferedBase64 = await Backend.Terminal.claimSessionOutput(existingSessionId);
           if (bufferedBase64 && bufferedBase64.length > 0 && xtermRef.current) {
-            const dataBytes = Uint8Array.from(atob(bufferedBase64), c => c.charCodeAt(0));
+            const dataBytes = Uint8Array.from(atob(bufferedBase64), (c) => c.charCodeAt(0));
             const decoder = new TextDecoder('utf-8', { fatal: false });
             const dataString = decoder.decode(dataBytes);
             if (dataString.length > 0) {
@@ -376,15 +430,36 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           // claim is best-effort; streaming mode still activates on claim error
         }
 
-        // Fallback: if the buffer was empty (local terminal, or SSH connected
-        // so fast that no data arrived yet), send a newline after a short delay
-        // to make the shell re-display its prompt.
-        if (!promptDetectedRef.current) {
-          promptDetectionTimerRef.current = setTimeout(() => {
-            if (!promptDetectedRef.current && sessionIdRef.current && xtermRef.current) {
-              sendTerminalInput('\n');
-            }
-          }, isLocalTerminal ? 150 : 400);
+        // A pane opened with something to run (a split preset, a dashboard action)
+        // runs it here and nowhere else, because here is the first place the session
+        // is known to be readable: the claim above is what switched it out of the
+        // backend's buffer, and a shell discards whatever is queued while it sets the
+        // tty up — so sending early is not early, it is gone, leaving a clean prompt
+        // that looks like the pane was asked for nothing.
+        const runInitialCommand = () => {
+          if (!initialCommand || initialCommandSentRef.current) return;
+          if (!sessionIdRef.current) return;
+          initialCommandSentRef.current = true;
+          sendTerminalInput(`${initialCommand}\n`);
+        };
+
+        if (promptDetectedRef.current) {
+          // The claimed buffer already held a prompt: the shell is reading.
+          runInitialCommand();
+        } else {
+          // Fallback: the buffer was empty (local terminal, or SSH connected so fast
+          // that no data arrived yet), so a newline makes the shell re-display its
+          // prompt. The initial command rides the same timer rather than starting a
+          // second one — one readiness heuristic in this file, not two.
+          promptDetectionTimerRef.current = setTimeout(
+            () => {
+              if (!promptDetectedRef.current && sessionIdRef.current && xtermRef.current) {
+                sendTerminalInput('\n');
+              }
+              runInitialCommand();
+            },
+            isLocalTerminal ? 150 : 400,
+          );
         }
       } else {
         // Terminal already exists - reattaching to existing instance
@@ -436,7 +511,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
         }
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only recreates on session ID change
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only recreates on session ID change
   }, [existingSessionId]);
 
   const handleClose = async () => {
@@ -528,21 +603,22 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
     reconnectRef.current = handleReconnect;
   });
 
-  // Handle Ctrl+F for search
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        setShowSearch(true);
-      }
-      if (e.key === 'Escape' && showSearch) {
-        setShowSearch(false);
-        setSearchTerm('');
-      }
-    };
+  // Search is the focused pane's command, so only the focused pane answers it —
+  // before, every mounted terminal opened its own find bar on one keypress.
+  useShortcut('pane.search', () => setShowSearch(true), isFocused);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+  // Escape closes the find bar. Not a bound command: it is the dismissal every
+  // dialog in the app already uses, and making it remappable would let someone
+  // remove the only way out of a bar that covers the terminal.
+  useEffect(() => {
+    if (!showSearch) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setShowSearch(false);
+      setSearchTerm('');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, [showSearch]);
 
   const handleSearch = (direction: 'next' | 'previous') => {
@@ -580,15 +656,9 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
                 {status === 'connecting' && (
                   <div className="h-2 w-2 animate-pulse rounded-full bg-yellow-500" />
                 )}
-                {status === 'connected' && (
-                  <div className="h-2 w-2 rounded-full bg-green-500" />
-                )}
-                {status === 'disconnected' && (
-                  <div className="h-2 w-2 rounded-full bg-gray-500" />
-                )}
-                {status === 'error' && (
-                  <div className="h-2 w-2 rounded-full bg-red-500" />
-                )}
+                {status === 'connected' && <div className="h-2 w-2 rounded-full bg-green-500" />}
+                {status === 'disconnected' && <div className="h-2 w-2 rounded-full bg-gray-500" />}
+                {status === 'error' && <div className="h-2 w-2 rounded-full bg-red-500" />}
               </>
             )}
             <span className="text-sm font-medium">{connectionName}</span>
@@ -597,14 +667,12 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             <>
               {status === 'connecting' && (
                 <span className="text-xs text-muted-foreground">
-                  {isReconnecting ? 'Reconnecting...' : 'Connecting...'}
+                  {isReconnecting ? t('term.reconnecting') : t('term.connecting')}
                 </span>
               )}
-              {status === 'error' && error && (
-                <span className="text-xs text-red-500">{error}</span>
-              )}
+              {status === 'error' && error && <span className="text-xs text-red-500">{error}</span>}
               {status === 'disconnected' && (
-                <span className="text-xs text-muted-foreground">Disconnected</span>
+                <span className="text-xs text-muted-foreground">{t('term.disconnected')}</span>
               )}
             </>
           )}
@@ -624,7 +692,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
                 if (onDragEnd) onDragEnd();
               }}
               className="flex flex-col gap-0.5 p-1 cursor-move rounded hover:bg-muted transition-colors"
-              title="Drag to reorganize pane"
+              title={t('term.dragPane')}
             >
               <div className="flex gap-0.5">
                 <div className="h-1 w-1 rounded-full bg-muted-foreground/50" />
@@ -647,13 +715,18 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
               onClick={() => handleReconnect()}
               disabled={isReconnecting}
               className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-              title="Reconnect to server"
+              title={t('term.reconnect')}
             >
               <div className="flex items-center gap-1">
                 <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
                 </svg>
-                <span>Reconnect</span>
+                <span>{t('term.reconnect')}</span>
               </div>
             </button>
           )}
@@ -663,10 +736,15 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             <button
               onClick={onSplitHorizontal}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title="Split horizontal (Ctrl+Shift+H)"
+              title={t('term.splitH', { chord: splitHChord })}
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4"
+                />
               </svg>
             </button>
           )}
@@ -674,12 +752,56 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             <button
               onClick={onSplitVertical}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title="Split vertical (Ctrl+Shift+V)"
+              title={t('term.splitV', { chord: splitVChord })}
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ transform: 'rotate(90deg)' }}>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                style={{ transform: 'rotate(90deg)' }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 4H5a2 2 0 00-2 2v12a2 2 0 002 2h4m10-2V6a2 2 0 00-2-2h-4"
+                />
               </svg>
             </button>
+          )}
+
+          {/* Split with… — everything the plain buttons above deliberately do not do.
+              Narrow on purpose: most people never open it, and it must not read as a
+              third split action. */}
+          {onSplitWith && (
+            <div className="relative">
+              <button
+                onClick={() => setSplitMenuOpen((v) => !v)}
+                className="rounded px-0.5 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title={t('split.more')}
+                aria-haspopup="menu"
+                aria-expanded={splitMenuOpen}
+                data-testid="split-more"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 9l6 6 6-6"
+                  />
+                </svg>
+              </button>
+              {splitMenuOpen && (
+                <SplitMenu
+                  direction="horizontal"
+                  onSplitWith={onSplitWith}
+                  onConfigure={() => setSplitsLibraryOpen(true)}
+                  onClose={() => setSplitMenuOpen(false)}
+                />
+              )}
+            </div>
           )}
 
           {/* Detach button - move pane to new tab */}
@@ -687,10 +809,15 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             <button
               onClick={onDetach}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-              title="Detach to new tab"
+              title={t('term.detach')}
             >
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                />
               </svg>
             </button>
           )}
@@ -699,10 +826,15 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           <button
             onClick={() => setSnippetSession(sessionIdRef.current || existingSessionId || null)}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Snippets"
+            title={t('term.snippets')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 9l-3 3 3 3M16 9l3 3-3 3M13 6l-2 12"
+              />
             </svg>
           </button>
 
@@ -710,24 +842,55 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           <button
             onClick={() => setShowSearch(!showSearch)}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Search in terminal (Ctrl+F)"
+            title={t('term.searchIn', { chord: searchChord })}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
             </svg>
           </button>
 
           <button
             onClick={handleClose}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Close terminal"
+            title={t('term.closeTerminal')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
       </div>
+
+      {/* Why this pane is not what was asked for. A layout named a machine this
+          computer could not open, so the pane is a plain shell instead — and nothing
+          else on screen would say so. Dismissible, because once read it is noise. */}
+      {note && !noteDismissed && (
+        <div
+          className="flex w-full items-start gap-2 border-b border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs leading-relaxed flex-shrink-0"
+          data-testid="pane-note"
+        >
+          <span aria-hidden>⚠</span>
+          <span className="min-w-0 flex-1">{note}</span>
+          <button
+            onClick={() => setNoteDismissed(true)}
+            className="flex-none rounded px-1 text-muted-foreground hover:text-foreground"
+            aria-label={t('term.dismiss')}
+            title={t('term.dismiss')}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Search Bar */}
       {showSearch && (
@@ -742,7 +905,7 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
                 handleSearch(e.shiftKey ? 'previous' : 'next');
               }
             }}
-            placeholder="Search in terminal..."
+            placeholder={t('term.searchPlaceholder')}
             className="flex-1 rounded border border-border bg-input px-3 py-1 text-sm text-foreground focus:border-primary focus:outline-none"
             autoFocus
           />
@@ -750,20 +913,30 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
             onClick={() => handleSearch('previous')}
             disabled={!searchTerm}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-            title="Previous (Shift+Enter)"
+            title={t('term.prev')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 15l7-7 7 7"
+              />
             </svg>
           </button>
           <button
             onClick={() => handleSearch('next')}
             disabled={!searchTerm}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-            title="Next (Enter)"
+            title={t('term.next')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
             </svg>
           </button>
           <button
@@ -772,10 +945,15 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
               setSearchTerm('');
             }}
             className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Close (Escape)"
+            title={t('term.closeSearch')}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -789,6 +967,8 @@ export function Terminal({ connectionId, connectionName, onClose, sessionId: exi
           pointerEvents: isDragging ? 'none' : 'auto',
         }}
       />
+
+      {splitsLibraryOpen && <SplitsModal onClose={() => setSplitsLibraryOpen(false)} />}
 
       {snippetSession && (
         <SnippetsModal

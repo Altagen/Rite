@@ -1,0 +1,92 @@
+/* Rite mock — agent manager styles (shared by both shells, like machine.css).
+   Loaded after machine.css: the manager reuses the dashboard's card, note and
+   footer idioms on purpose, because it is the same kind of surface — a view you
+   browse, not a pane you work in. */
+
+  /* ---- a tab that holds a VIEW must not look like a tab that holds PANES ----
+     This is not an agent concern on its own, but the agent manager is what exposed
+     it: "Agents" and a resumed agent both wore the robot, and nothing said which
+     one you could type into. Views — a collection, a machine dashboard, the agent
+     manager — are outlined; tabs holding panes stay filled and keep the terminal
+     icon. Three classes deep so the shells' own `.mtab.on` cannot win by order. */
+  .mtab.view{border:1px dashed var(--border2);background:transparent}
+  .mtab.view.on{border-style:dashed;border-color:var(--accent);background:transparent;color:var(--accent)}
+  .mtab.view .icon{opacity:.85}
+
+  /* A themed menu can hold a whole fleet, so it is bounded and scrolls rather than
+     running off the bottom of the window — `floatMenu` positions from a row-count
+     estimate and cannot know a row carries a subtitle. */
+  .menu{max-height:70vh;overflow:auto}
+
+  /* ---- panes side by side, with the divider a terminal split already uses ---- */
+  .psplit{height:100%;display:flex;align-items:stretch}
+  .pdiv{flex:none;width:10px;cursor:col-resize;display:grid;place-items:center;align-self:stretch}
+  .pdiv i{display:block;width:2px;height:34px;border-radius:2px;background:var(--border2)}
+  .pdiv:hover i{background:var(--accent);height:60px}
+
+  /* An agent pane is a terminal — same chrome, same splits, same everything — so it
+     is marked, not redesigned: one purple edge and a purple header rule. Enough to
+     find it in a four-pane tab, not enough to make it a different kind of surface. */
+  .agentpane{border-color:color-mix(in oklab,var(--purple) 60%,var(--border))}
+  .agentpane .termpane-hdr{border-bottom-color:color-mix(in oklab,var(--purple) 55%,var(--border));
+    background:linear-gradient(to right,color-mix(in oklab,var(--purple) 14%,var(--card)),var(--card) 55%)}
+  .agentpane .termpane-hdr .st{box-shadow:0 0 6px color-mix(in oklab,var(--purple) 70%,transparent)}
+
+  /* The header carries more than a terminal's does — project, tool, machine, working
+     directory — and a pane is often half a screen wide. It truncates from the least
+     important end instead of wrapping into two lines and shoving the actions down. */
+  .agentpane .termpane-hdr .who{flex:1;min-width:0;gap:7px}
+  .agentpane .who .chip-sm{flex:none;white-space:nowrap}
+  .agentpane .who .name{flex:none;max-width:40%}
+  .agentpane .who .muted{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  @media (max-width:1100px){ .agentpane .who .muted{display:none} }
+
+  /* A tool block is a list, so it always spans the grid rather than sitting in a
+     320px column beside another list. */
+  .atool{grid-column:1/-1}
+  .atool.off{opacity:.62}
+  .atool .dcard-h .icon{color:var(--purple)}
+  .alist{display:flex;flex-direction:column;gap:6px}
+
+  /* One conversation. Read left to right: is it working, what is it doing, where,
+     when was it last alive, and how do I get back into it. */
+  .arow{display:flex;align-items:center;gap:11px;padding:9px 11px;border:1px solid var(--border);border-radius:9px;background:var(--card2)}
+  .arow:hover{border-color:var(--accent)}
+  .ameta{flex:1;min-width:0}
+  .atitle{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .asub{display:block;font-size:11.5px;color:var(--fg-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+  .aage{font-size:12px;color:var(--muted);white-space:nowrap;flex:none}
+
+  /* An adapter that cannot answer says so here, in the tool's own block — never by
+     leaving the list empty, which reads as "you have no agents". */
+  .anote{display:flex;gap:9px;align-items:flex-start;border:1px dashed var(--border2);border-radius:9px;padding:10px 12px;color:var(--muted);font-size:12.5px;line-height:1.55}
+  .anote .icon{width:15px;height:15px;flex:none;margin-top:2px;color:var(--fg-dim)}
+  .anote .mono{color:var(--fg-dim)}
+
+  /* Never probed is a state, not an empty list. */
+  .aempty{grid-column:1/-1;display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;border:1px dashed var(--border2);border-radius:12px;padding:30px 22px}
+
+  @media (max-width:760px){
+    .arow{flex-wrap:wrap;row-gap:8px}
+    .ameta{min-width:150px}
+  }
+
+  /* ---- what is in effect: provenance on every row ---- */
+  .alayer{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--border);
+    border-radius:5px;padding:2px 7px;flex:none;color:var(--muted)}
+  .alayer.project{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 45%,transparent)}
+  .alayer.user{color:var(--teal);border-color:color-mix(in oklab,var(--teal) 45%,transparent)}
+  /* Loaded by neither layer — shown, not hidden, because "why is my skill not
+     applying" is answered by seeing the copy that lost. */
+  .arow.shadowed{opacity:.5}
+  .arow.shadowed .atitle{text-decoration:line-through;text-decoration-color:var(--muted)}
+  /* A hook is a command that runs unattended, so it is never drawn as a quiet row. */
+  .arow.hook{border-color:color-mix(in oklab,var(--amber) 30%,var(--border))}
+  .arow.hook.foreign{border-color:color-mix(in oklab,var(--amber) 70%,transparent);
+    background:color-mix(in oklab,var(--amber) 7%,var(--card2))}
+
+  /* The split button splits plainly; this opens everything else. Narrow on purpose:
+     most people never need it, and it must not look like a seventh action. */
+  .split-more{padding:2px 0 !important;width:14px;margin-left:-4px;opacity:.7}
+  .split-more:hover{opacity:1}
+  .split-more .icon{width:13px;height:13px}

@@ -1,349 +1,118 @@
-# RITE - Installation Guide
+# Installing RITE
 
-Complete installation guide for RITE on different platforms.
+What a release ships, and how to run it. Building from source is in the
+[README](./README.md); running an instance for a team is in [docs/SERVER.md](docs/SERVER.md).
 
-## Installation from Package (Recommended)
+## What a release contains
 
-### Linux - Debian/Ubuntu (.deb)
+Every tag publishes, on its [release page](https://github.com/Altagen/Rite/releases):
 
-```bash
-# Download from GitHub Releases
-wget https://github.com/<org>/Rite/releases/download/0.1.0/RITE_0.1.0_amd64.deb
+| Asset | Contents |
+|-------|----------|
+| `rite-<version>-linux-x86_64.tar.gz` | the desktop client, one binary |
+| `rite-<version>-linux-aarch64.tar.gz` | same, ARM64 |
+| `rite-<version>-macos-x86_64.tar.gz` | same, Intel Macs |
+| `rite-<version>-macos-aarch64.tar.gz` | same, Apple Silicon |
+| `rite-<version>-checksums.txt` | SHA-256 of every tarball above |
+| `sbom-<version>.json` | CycloneDX bill of materials for the client |
 
-# Verify checksum
-sha256sum -c RITE_0.1.0_amd64.deb.sha256
+The server is a container image rather than a release asset:
+`ghcr.io/altagen/rite-server:<version>`, built for linux/amd64 and linux/arm64.
 
-# Install
-sudo dpkg -i RITE_0.1.0_amd64.deb
+There are no `.deb`, `.rpm`, `.dmg` or AppImage packages, and no auto-update. The
+client is a single binary; an update is a new binary in place of the old one.
 
-# Install dependencies if needed
-sudo apt-get install -f
-```
-
-### Linux - Fedora/RHEL (.rpm)
-
-```bash
-# Download from GitHub Releases
-wget https://github.com/<org>/Rite/releases/download/0.1.0/RITE-0.1.0-1.x86_64.rpm
-
-# Verify checksum
-sha256sum -c RITE-0.1.0-1.x86_64.rpm.sha256
-
-# Install
-sudo dnf install ./RITE-0.1.0-1.x86_64.rpm
-
-# Or with rpm
-sudo rpm -i RITE-0.1.0-1.x86_64.rpm
-```
-
-### Linux - tar.gz Archive (Universal)
+## Desktop client
 
 ```bash
-# Download from GitHub Releases
-wget https://github.com/<org>/Rite/releases/download/0.1.0/rite-0.1.0-linux-x86_64.tar.gz
+VERSION=0.2.4
+BASE=https://github.com/Altagen/Rite/releases/download/$VERSION
 
-# Verify checksum
-sha256sum -c rite-0.1.0-linux-x86_64.tar.gz.sha256
+curl -fLO $BASE/rite-$VERSION-linux-x86_64.tar.gz
+curl -fLO $BASE/rite-$VERSION-checksums.txt
+sha256sum -c --ignore-missing rite-$VERSION-checksums.txt
 
-# Extract (contains binary only)
-tar -xzf rite-0.1.0-linux-x86_64.tar.gz
-
-# Install to ~/.local/bin
-mkdir -p ~/.local/bin
-mv rite-0.1.0-linux-x86_64 ~/.local/bin/rite
-chmod +x ~/.local/bin/rite
-
-# Ensure ~/.local/bin is in PATH
-echo $PATH | grep -q "$HOME/.local/bin" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+tar -xzf rite-$VERSION-linux-x86_64.tar.gz
+install -Dm755 rite ~/.local/bin/rite
 ```
 
-### macOS (.dmg)
+`--ignore-missing` is what makes the checksum file usable: it lists every platform's
+tarball, and you downloaded one. Without it, `sha256sum` reports the three you do not
+have as failures and exits non-zero on a download that was fine.
+
+If `~/.local/bin` is not on your `PATH`, either add it or put the binary somewhere that
+is. Then `rite` opens the window.
+
+### Linux system libraries
+
+The client renders in a WebKitGTK webview, which it does not carry. These are runtime
+packages, not the `-dev` ones a source build needs:
 
 ```bash
-# Download from GitHub Releases
-# For Intel Macs:
-wget https://github.com/<org>/Rite/releases/download/0.1.0/RITE_0.1.0_x64.dmg
+# Debian / Ubuntu
+sudo apt-get install libwebkit2gtk-4.1-0 libgtk-3-0
 
-# For Apple Silicon:
-wget https://github.com/<org>/Rite/releases/download/0.1.0/RITE_0.1.0_aarch64.dmg
+# Fedora / RHEL
+sudo dnf install webkit2gtk4.1 gtk3
 
-# Verify checksum
-shasum -a 256 -c RITE_0.1.0_*.dmg.sha256
-
-# Mount and install
-open RITE_0.1.0_*.dmg
-# Drag RITE.app to Applications
+# Arch
+sudo pacman -S webkit2gtk-4.1 gtk3
 ```
 
-## System Dependencies
-
-### Debian/Ubuntu
-
-```bash
-sudo apt-get update
-sudo apt-get install \
-  libwebkit2gtk-4.1-0 \
-  libgtk-3-0
-```
-
-### Fedora/RHEL
-
-```bash
-sudo dnf install \
-  webkit2gtk4.1 \
-  gtk3
-```
-
-### Arch Linux
-
-```bash
-sudo pacman -S \
-  webkit2gtk \
-  gtk3
-```
+Missing them, the binary fails to start with a loader error naming
+`libwebkit2gtk-4.1.so.0` — a packaging problem, not a RITE one.
 
 ### macOS
 
-No additional dependencies required.
-
-## Installation from Source
-
-### Prerequisites
-
-- **Rust**: 1.70+ ([rustup.rs](https://rustup.rs/))
-- **Node.js**: 20+ ([nodejs.org](https://nodejs.org/))
-- **pnpm**: 8+ (`npm install -g pnpm`)
-- **go-task**: 3+ ([taskfile.dev](https://taskfile.dev/installation/))
-
-### Build Dependencies
-
-#### Debian/Ubuntu
+The same tarball, unpacked the same way. The binary is unsigned and unnotarised, so a
+download through a browser carries a quarantine flag and Gatekeeper refuses to open it:
 
 ```bash
-sudo apt-get install \
-  libwebkit2gtk-4.1-dev \
-  build-essential \
-  curl wget file \
-  libssl-dev \
-  libgtk-3-dev \
-  libayatana-appindicator3-dev \
-  librsvg2-dev
+xattr -d com.apple.quarantine rite
 ```
 
-#### Fedora/RHEL
+A download with `curl` is not quarantined and needs nothing.
+
+## Server
+
+One image, the configuration outside it:
 
 ```bash
-sudo dnf install \
-  webkit2gtk4.1-devel \
-  openssl-devel \
-  curl wget file \
-  gtk3-devel \
-  libappindicator-gtk3-devel \
-  librsvg2-devel
+podman pull ghcr.io/altagen/rite-server:0.2.4
 ```
 
-#### Arch Linux
+[docs/SERVER.md](docs/SERVER.md) covers what it needs to be useful: a volume for the
+database, TLS, the first administrator, and the instance policies that a deployment
+declares as code.
+
+## Where it keeps state
+
+The client writes under one directory, and nothing outside it:
+
+| Path (Linux) | Contents |
+|--------------|----------|
+| `~/.local/share/rite/vault.db` | the encrypted vault: machines, collections, secrets |
+| `~/.local/share/rite/device.json` | this machine's UI preferences |
+| `~/.local/share/rite/vaults.json` | which vault files this client knows about |
+| `~/.config/rite/layouts.toml` | the workspace file: presets and layouts ([docs/LAYOUTS.md](docs/LAYOUTS.md)) |
+
+On macOS both directories are `~/Library/Application Support/rite/`.
+
+The vault is encrypted with a key derived from your passphrase (Argon2id), so a copy of
+`vault.db` is worth nothing without it — and unrecoverable if you forget it.
+
+## Uninstalling
 
 ```bash
-sudo pacman -S \
-  webkit2gtk \
-  base-devel \
-  curl wget file \
-  openssl \
-  gtk3 \
-  libappindicator-gtk3 \
-  librsvg \
-  go-task
+rm ~/.local/bin/rite                  # the binary
+rm -rf ~/.local/share/rite ~/.config/rite   # every trace, vault included
 ```
 
-#### macOS
-
-```bash
-# Install Xcode command line tools
-xcode-select --install
-
-# Install Homebrew if not already installed
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# Install go-task
-brew install go-task
-```
-
-### Build Steps
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/<org>/Rite.git
-cd Rite
-
-# 2. Install dependencies
-pnpm install
-
-# 3. Build for current platform
-task build
-
-# Binary will be at:
-# - Linux: apps/desktop/src-tauri/target/release/rite
-# - macOS: apps/desktop/src-tauri/target/release/rite
-
-# 4. Or build with all artifacts (packages)
-task prepare-release
-
-# Artifacts will be in ./dist/
-```
-
-### Local Installation
-
-```bash
-# Linux - from binary
-sudo cp apps/desktop/src-tauri/target/release/rite /usr/local/bin/
-
-# Or install generated .deb package
-task install
-
-# macOS - copy app
-cp -r apps/desktop/src-tauri/target/release/bundle/macos/RITE.app /Applications/
-```
-
-## Verify Installation
-
-```bash
-# Check RITE is installed
-which rite
-
-# Show version
-rite --version
-
-# Or launch GUI
-rite
-```
-
-## Initial Configuration
-
-On first launch, RITE creates:
-
-### Linux
-- **Config**: `~/.config/rite/`
-- **Data**: `~/.local/share/rite/`
-- **Database**: `~/.local/share/rite/vault.db`
-
-### macOS
-- **Config**: `~/Library/Application Support/rite/`
-- **Data**: `~/Library/Application Support/rite/`
-- **Database**: `~/Library/Application Support/rite/vault.db`
-
-## Uninstallation
-
-### Debian/Ubuntu
-
-```bash
-sudo apt-get remove rite
-```
-
-### Fedora/RHEL
-
-```bash
-sudo dnf remove rite
-# or
-sudo rpm -e rite
-```
-
-### tar.gz Archive
-
-```bash
-rm ~/.local/bin/rite
-```
-
-### macOS
-
-```bash
-# Remove application
-rm -rf /Applications/RITE.app
-
-# Or if installed via Homebrew (future)
-brew uninstall rite
-```
-
-### Remove User Data
-
-```bash
-# Linux
-rm -rf ~/.config/rite
-rm -rf ~/.local/share/rite
-
-# macOS
-rm -rf ~/Library/Application\ Support/rite
-```
+The second command destroys the vault. Nothing else holds a copy.
 
 ## Updating
 
-### Packages
-
-```bash
-# Download new version from GitHub Releases
-# Then reinstall as above
-```
-
-### From Source
-
-```bash
-cd Rite
-git pull
-pnpm install
-task build
-task install
-```
-
-## Auto-Update Support
-
-⚠️ **Not yet available** - Auto-update will be added in a future version.
-
-For now, updates must be done manually.
-
-## Troubleshooting
-
-### "Command not found: rite"
-
-Verify binary is in PATH:
-```bash
-# Linux
-echo $PATH | grep -q "$HOME/.local/bin" || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
-# macOS
-echo $PATH
-```
-
-### "Library not found: libwebkit2gtk"
-
-Install system dependencies (see System Dependencies section above).
-
-### "Permission denied"
-
-```bash
-chmod +x ~/.local/bin/rite
-```
-
-### Database Locked / Permissions
-
-```bash
-# Linux
-chmod 600 ~/.local/share/rite/vault.db
-
-# macOS
-chmod 600 ~/Library/Application\ Support/rite/vault.db
-```
-
-## Documentation
-
-- [README.md](./README.md) - Overview
-- [QUICKSTART.md](./QUICKSTART.md) - Quick start guide
-- [RELEASE.md](./RELEASE.md) - Release process
-- [ROADMAP.md](./docs/ROADMAP.md) - Planned features
-
-## Support
-
-- **Issues**: https://github.com/<org>/Rite/issues
-- **Discussions**: https://github.com/<org>/Rite/discussions
-- **Documentation**: ./docs/
+Download the new tarball, verify it, replace the binary. The vault is migrated in place
+the first time a client that needs a newer schema opens it, and never migrated backward:
+once a newer client has opened a vault, going back to an older one is a restore from your
+own backup, not a downgrade.

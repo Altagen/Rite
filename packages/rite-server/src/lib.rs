@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocketUpgrade};
-use axum::extract::{Path, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -183,6 +183,17 @@ impl VaultKeyHolder {
 /// In-memory per-username login throttle: after `MAX_FAILURES` failures within
 /// `WINDOW`, the account is locked for `LOCKOUT`. Resets on server restart
 /// (acceptable — an attacker who can restart the server has bigger leverage).
+///
+/// The key is a username off an unauthenticated request, so two things are not
+/// optional. It is REJECTED unless it could name an account at all — the same 1-64
+/// characters registration enforces — and expired entries are swept on write, with a
+/// hard cap behind that. Without either, anyone could grow this map until the process
+/// died, one failed login at a time, and nothing would ever remove what they added.
+///
+/// What it does NOT do is throttle by address: one password tried against a thousand
+/// usernames meets a fresh counter each time. Fixing that needs a client address, and
+/// behind a reverse proxy that means trusting a header — a per-instance decision, so
+/// it is a roadmap item and not a silent default here.
 #[derive(Default)]
 struct LoginLimiter {
     inner: std::sync::Mutex<HashMap<String, Attempt>>,
@@ -192,12 +203,31 @@ struct Attempt {
     failures: u32,
     window_start: std::time::Instant,
     locked_until: Option<std::time::Instant>,
+    /// When this entry was last written. Eviction order, and it has to be "last seen"
+    /// rather than "window start": an account actually under attack is touched over and
+    /// over, so it must look RECENT, while each made-up name in a flood is touched once.
+    last_seen: std::time::Instant,
 }
 
 impl LoginLimiter {
     const MAX_FAILURES: u32 = 5;
     const WINDOW: std::time::Duration = std::time::Duration::from_secs(60);
     const LOCKOUT: std::time::Duration = std::time::Duration::from_secs(60);
+    /// Above this many tracked usernames, a write sweeps to make room. A real instance
+    /// holds a handful of entries; this is only ever reached by someone trying names
+    /// rather than passwords — which is password spraying, and which this limiter does
+    /// NOT stop: it keys on the name, so a thousand names collect one failure each and
+    /// nothing reaches MAX_FAILURES. Counting by address is the missing half and waits
+    /// for a trusted-proxy setting (ADR 0026) — reading `X-Forwarded-For` without one is
+    /// worse than not counting, since the header is the attacker's to write.
+    const MAX_TRACKED: usize = 10_000;
+
+    /// Whether this string could name an account, which is the only reason to remember
+    /// it. Same bound as registration (`1-64`), so a name no account can have is not
+    /// worth a map entry.
+    fn trackable(username: &str) -> bool {
+        !username.is_empty() && username.chars().count() <= 64
+    }
 
     /// Seconds to wait if currently locked, else `None`.
     fn locked_for(&self, username: &str) -> Option<u64> {
@@ -209,13 +239,50 @@ impl LoginLimiter {
     }
 
     fn record_failure(&self, username: &str) {
+        if !Self::trackable(username) {
+            return;
+        }
         let now = std::time::Instant::now();
         let mut map = self.inner.lock().unwrap();
+        // Make room, in two steps, and never by refusing to track a new name — that was
+        // the first version of this and it was worse than no cap at all: flooding the map
+        // with made-up names would then stop any real account from ever reaching its
+        // lockout, which is disabling the defence rather than tripping it. A unit test
+        // below holds that line.
+        //
+        // So: sweep what can no longer refuse anyone (window run out, no lockout left),
+        // and if that was not enough, evict the least recently seen entry that is not
+        // currently locked. A locked entry is the one doing work, so it is kept; an
+        // account under attack is written to repeatedly, so it stays recent and survives
+        // a flood of names touched once each.
+        if map.len() >= Self::MAX_TRACKED && !map.contains_key(username) {
+            map.retain(|_, a| {
+                a.locked_until.is_some_and(|u| u > now)
+                    || now.duration_since(a.window_start) <= Self::WINDOW
+            });
+            while map.len() >= Self::MAX_TRACKED {
+                let victim = map
+                    .iter()
+                    .filter(|(_, a)| !a.locked_until.is_some_and(|u| u > now))
+                    .min_by_key(|(_, a)| a.last_seen)
+                    .map(|(k, _)| k.clone());
+                match victim {
+                    Some(k) => {
+                        map.remove(&k);
+                    }
+                    // Every entry is actively locked out. That is MAX_TRACKED accounts
+                    // under lockout at once, which is not a map-size problem any more.
+                    None => return,
+                }
+            }
+        }
         let a = map.entry(username.to_string()).or_insert(Attempt {
             failures: 0,
             window_start: now,
             locked_until: None,
+            last_seen: now,
         });
+        a.last_seen = now;
         if now.duration_since(a.window_start) > Self::WINDOW {
             a.failures = 0;
             a.window_start = now;
@@ -558,6 +625,10 @@ pub fn build_router(state: ServerState) -> Router {
             patch(set_session_persistence),
         )
         .route("/api/admin/default-shell", patch(set_default_shell))
+        .route("/api/admin/shell-choice", patch(set_shell_choice))
+        .route("/api/admin/host-key-mode", patch(set_host_key_mode))
+        .route("/api/admin/secret-storage", patch(set_secret_storage))
+        .route("/api/admin/secret-reveal", patch(set_secret_reveal))
         .route("/api/admin/quick-ssh", patch(set_quick_ssh))
         .route("/api/admin/registration", patch(set_open_registration))
         .route("/api/admin/invitations", patch(set_allow_invitations))
@@ -576,6 +647,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/admin/collection-policy", patch(set_collection_policy))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
         .route("/api/admin/dashboard-policy", patch(set_dashboard_policy))
+        .route("/api/admin/layouts-policy", patch(set_layouts_policy))
         .route("/api/healthcheck/probe", post(healthcheck_probe))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
         // guard-gated to admin); team management is per-team authorized in-handler.
@@ -701,6 +773,8 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/auth/validate-password", post(validate_password))
         .route("/api/settings", get(settings))
         .route("/api/settings/{key}", get(get_setting).put(set_setting))
+        // Layouts (docs/LAYOUTS.md): what opens when you sit down.
+        .route("/api/layouts", get(get_layouts).put(put_layouts))
         // Local-vault collections (ADR 0018): collections, their machines and their
         // boards, all decrypted in rite-core with the master key. Plaintext over
         // loopback to the local webview, which never receives credentials — the
@@ -721,6 +795,10 @@ pub fn build_router(state: ServerState) -> Router {
         .route(
             "/api/local/collections/{id}/machines/{item}",
             put(local_update_machine).delete(local_delete_machine),
+        )
+        .route(
+            "/api/local/collections/{id}/machines/{item}/secret",
+            get(local_reveal_machine_secret),
         )
         .route(
             "/api/local/collections/{id}/board",
@@ -745,6 +823,10 @@ pub fn build_router(state: ServerState) -> Router {
             put(vault_update_connection).delete(vault_delete_connection),
         )
         .route("/api/user/library", get(get_library).put(set_library))
+        .route(
+            "/api/user/layouts",
+            get(get_user_layouts).put(set_user_layouts),
+        )
         .route("/api/ssh-config/default-path", get(default_ssh_config_path))
         .route("/api/ssh-config/parse", post(parse_ssh_config))
         .route("/api/ssh/host-key/accept", post(accept_host_key))
@@ -934,13 +1016,31 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
         // tokens), which a `manager` may also reach. Everything else under /api/admin (instance
         // config, collection oversight/escrow, group keys) stays admin-only.
         if path.starts_with("/api/admin") {
-            let org = path.starts_with("/api/admin/teams")
-                || path.starts_with("/api/admin/users")
-                || path.starts_with("/api/admin/enrollment-tokens");
+            // Compared segment by segment, not by bare prefix: `starts_with` on
+            // "/api/admin/users" also matches "/api/admin/users-export", so a route added
+            // later with a name that merely BEGINS like one of these would have been handed
+            // to managers without anyone deciding that. The admin case fails closed and
+            // needs no list; this one opens a door, so it names its three doors exactly.
+            let org = ["teams", "users", "enrollment-tokens"].iter().any(|seg| {
+                path.strip_prefix("/api/admin/")
+                    .is_some_and(|rest| rest == *seg || rest.starts_with(&format!("{seg}/")))
+            });
             let allowed = user.role == Role::Admin || (org && user.role == Role::Manager);
             if !allowed {
                 return (StatusCode::FORBIDDEN, "insufficient role").into_response();
             }
+        }
+        // A local vault is one person's own machine (ADR 0018), and a shared server is not
+        // that. These routes were reachable by any session here and failed only because
+        // `master_key` had nothing to give — a 500 held up by the deployment rather than by
+        // the code, on a family of routes that now includes reading a stored secret. Say no
+        // instead, so the answer is a property of the server and not of its vault's state.
+        if path.starts_with("/api/local") {
+            return (
+                StatusCode::GONE,
+                "this is a shared server; /api/local/* is a local vault's own store",
+            )
+                .into_response();
         }
         req.extensions_mut().insert(Arc::new(user));
     }
@@ -1149,9 +1249,62 @@ const MIN_CLIENT: &str = "0.1.2";
 async fn capabilities() -> Json<Value> {
     Json(json!({
         "version": env!("CARGO_PKG_VERSION"),
+        // What this build is, for a bug report and for the Settings ▸ System section.
+        // `unknown` is honest: a build made outside a checkout and given no build argument
+        // does not know its commit, and guessing would be worse than saying so.
+        "commit": env!("RITE_COMMIT"),
+        "builtAt": built_at(),
         "apiVersion": API_VERSION,
         "minClient": MIN_CLIENT,
     }))
+}
+
+/// When this binary was produced, as `YYYY-MM-DD HH:MM:SS` UTC.
+///
+/// Read from the FILE, not stamped at compile time. A build script runs only when one of
+/// its inputs changes, so a compile-time stamp survives the rebuild it is supposed to
+/// describe — a new frontend copied into `web/` relinks the binary and leaves the date
+/// where it was. The executable's own timestamp cannot drift from the executable.
+///
+/// `RITE_BUILT_AT` still wins when a release pins one: a reproducible build wants a fixed
+/// value, and a packaged file's time is the packager's, not the build's.
+fn built_at() -> &'static str {
+    // Computed once: `/api/capabilities` is unauthenticated and answers the version
+    // handshake, so it should not stat the executable per request — and the value cannot
+    // change while this process runs.
+    static BUILT_AT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    BUILT_AT.get_or_init(|| {
+        let pinned = env!("RITE_BUILT_AT");
+        if !pinned.is_empty() {
+            return pinned.to_string();
+        }
+        std::env::current_exe()
+            .and_then(std::fs::metadata)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| utc_stamp(d.as_secs() as i64))
+            .unwrap_or_else(|| "unknown".to_string())
+    })
+}
+
+/// `YYYY-MM-DD HH:MM:SS` from an epoch second, so neither this nor the build needs a date
+/// crate. Civil-from-days is Howard Hinnant's algorithm, on an era starting 0000-03-01.
+fn utc_stamp(secs: i64) -> String {
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    let (hh, mm, ss) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}:{ss:02}")
 }
 
 async fn first_run(State(state): State<ServerState>) -> Result<Json<bool>, AppError> {
@@ -1164,8 +1317,14 @@ async fn locked(State(state): State<ServerState>) -> Json<bool> {
 
 async fn settings(
     State(state): State<ServerState>,
-) -> Result<Json<HashMap<String, String>>, AppError> {
-    Ok(Json(state.db.get_all_settings().await?))
+    user: Option<Extension<Arc<User>>>,
+) -> Result<Response, AppError> {
+    // Same owner as the per-key route: on a shared server this is the instance's
+    // configuration, not a person's preferences (`settings_route_refusal`).
+    if let Some(refusal) = settings_route_refusal(&state, &user) {
+        return Ok(refusal);
+    }
+    Ok(Json(state.db.get_all_settings().await?).into_response())
 }
 
 async fn list_sessions(
@@ -1274,6 +1433,32 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
     // for terminals opened on this server (web users don't pick their own); and whether ad-hoc
     // Quick SSH is allowed (off by default — connections should live in collections).
     let default_shell = state.setting_text("default_shell", "bash").await?;
+    // What this instance can run, and whether a member may deviate from the default within
+    // it. Off by default: on a shared server the terminals are the administrator's business
+    // until they say otherwise, so an instance that upgrades and says nothing is unchanged.
+    let shells = offered_shells().to_vec();
+    let allow_shell_choice = state.setting_bool("allow_shell_choice", false).await?;
+    // ADR 0024 §4. One switch over every secret a record can keep — an SSH password, a key
+    // passphrase, a carried key — because it governed only the passphrase before, and
+    // forbidding a stored passphrase while allowing a stored password is the appearance of
+    // hardening rather than hardening: the target that takes one usually takes the other.
+    //
+    // Permissive by default, so an instance that upgrades and says nothing is unchanged.
+    // The member's own default is the careful one: both "remember" boxes start unchecked,
+    // and a machine that keeps nothing is asked at connect time instead.
+    //
+    // It binds the client and not the data, and that is not a gap to close later. The
+    // record is sealed before it reaches an instance (ADR 0011) — `/api/vault/connections`
+    // stores opaque blobs — so no server-side check can tell one holding a password from
+    // one that does not. The same is true of `allow_secret_reveal` below.
+    let allow_secret_storage = state.setting_bool("allow_secret_storage", true).await?;
+    let allow_secret_reveal = state.setting_bool("allow_secret_reveal", true).await?;
+    // How this server verifies host keys for the connections it opens — a policy, not a
+    // preference, since every terminal here runs on it. The client shows it read-only
+    // rather than offering a dropdown it is not allowed to use.
+    let host_key_verification = state
+        .setting_text("host_key_verification_mode", "strict")
+        .await?;
     let allow_quick_ssh = state.setting_bool("allow_quick_ssh", false).await?;
     // Self-service registration (ADR 0015 phase 1). Off by default — an invite-only instance
     // leaves it off; turning it on lets the sign-in screen offer "Create an account".
@@ -1293,6 +1478,11 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "serveAdmin": state.serve_admin,
         "serveWebui": state.serve_webui,
         "defaultShell": default_shell,
+        "shells": shells,
+        "allowShellChoice": allow_shell_choice,
+        "allowSecretStorage": allow_secret_storage,
+        "allowSecretReveal": allow_secret_reveal,
+        "hostKeyVerification": host_key_verification,
         "allowQuickSsh": allow_quick_ssh,
         "openRegistration": open_registration,
         "allowInvitations": allow_invitations,
@@ -1300,6 +1490,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "healthcheck": healthcheck,
         "collectionPolicy": collection_policy(&state).await?,
         "dashboardPolicy": dashboard_policy(&state).await?,
+        "layoutsPolicy": layouts_policy(&state).await?,
         "hostKey": state.host_key.as_deref(),
         // ADR 0020: the keys this instance holds as code. The console renders these
         // locked, with their origin, instead of offering a control that cannot work.
@@ -1325,6 +1516,16 @@ async fn healthcheck_policy(state: &ServerState) -> Result<Value, AppError> {
 /// sees it. Said plainly here because the admin copy has to say it too.
 async fn dashboard_policy(state: &ServerState) -> Result<Value, AppError> {
     state.setting_policy("dashboard_policy").await
+}
+
+/// Where layouts may be used (ADR 0027): `webui` for a browser, `clients` for a desktop
+/// window signed into this instance. Both false is the feature off.
+///
+/// Policy, not enforcement: the blob is sealed client-side, so the server cannot tell a
+/// layouts `PUT` from any other and has nothing to refuse. The route stays open and the
+/// surface honours the answer.
+async fn layouts_policy(state: &ServerState) -> Result<Value, AppError> {
+    state.setting_policy("layouts_policy").await
 }
 
 /// May a browser against this server run the dashboard's probing cards right now
@@ -1379,6 +1580,25 @@ fn managed_refusal(state: &ServerState, key: &str) -> Option<Response> {
     })
 }
 
+/// Tell every connected client that `/api/server/mode` changed.
+///
+/// ADR 0017's live distribution was wired to two policies — health-check and dashboard —
+/// and nothing else, although fourteen handlers write a setting that `server_mode` reports.
+/// So renaming the instance left every open client showing the old name on its context
+/// pastille until the person signed out and back in, and the same was true of open
+/// registration, Quick SSH, the default shell and the host-key mode: the admin flipped a
+/// switch, watched nothing happen, and had no way to tell that from a switch that does not
+/// work.
+///
+/// Payload-less and session-less, so it reaches every socket (see `event_visible_to`). The
+/// client re-pulls the mode; this carries no state of its own, which is why it is safe to
+/// send on any change.
+fn nudge_mode_changed(state: &ServerState) {
+    let _ = state
+        .events_tx
+        .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
+}
+
 async fn set_instance_name(
     State(state): State<ServerState>,
     Json(req): Json<InstanceNameReq>,
@@ -1390,6 +1610,7 @@ async fn set_instance_name(
         .db
         .set_setting("instance_name", req.name.trim())
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1410,7 +1631,13 @@ async fn set_session_persistence(
         .db
         .set_setting("session_persistence", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+#[derive(Deserialize)]
+struct ModeReq {
+    mode: String,
 }
 
 #[derive(Deserialize)]
@@ -1428,10 +1655,107 @@ async fn set_default_shell(
         return Ok(refusal);
     }
     let shell = req.shell.trim();
-    if !["bash", "sh", "zsh", "fish"].contains(&shell) {
-        return Ok((StatusCode::BAD_REQUEST, "unsupported shell").into_response());
+    // Against what the machine HAS, not against the four Rite knows about: setting the
+    // instance to a shell the container lacks pointed every terminal on it at a program
+    // that is not there.
+    let offered = offered_shells();
+    if !offered.iter().any(|name| name == shell) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            format!("this server runs {}", offered.join(", ")),
+        )
+            .into_response());
     }
     state.db.set_setting("default_shell", shell).await?;
+    nudge_mode_changed(&state);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Let members pick their own shell among the ones this instance offers (org-admin only).
+/// Off by default: the default shell is then the only shell, which is how a server behaved
+/// before this existed. The choice is always a name from `offered_shells`, resolved server
+/// side, so delegating it hands over no path.
+async fn set_shell_choice(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "allow_shell_choice") {
+        return Ok(refusal);
+    }
+    state
+        .db
+        .set_setting("allow_shell_choice", if req.enabled { "1" } else { "0" })
+        .await?;
+    nudge_mode_changed(&state);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// How this server verifies host keys, for every connection it opens (org-admin only).
+///
+/// It had no validated route and no console row, although the web UI reports it read-only
+/// and `rite-core` reads it for every connection: the only way to set it on a server was
+/// the generic settings route, which is also how a regular account used to be able to turn
+/// verification off for everyone. A security policy the console cannot show is a policy
+/// nobody audits.
+async fn set_host_key_mode(
+    State(state): State<ServerState>,
+    Json(req): Json<ModeReq>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "host_key_verification_mode") {
+        return Ok(refusal);
+    }
+    let mode = req.mode.trim();
+    if !HOST_KEY_MODES.contains(&mode) {
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            format!("expected one of {}", HOST_KEY_MODES.join(", ")),
+        )
+            .into_response());
+    }
+    state
+        .db
+        .set_setting("host_key_verification_mode", mode)
+        .await?;
+    nudge_mode_changed(&state);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Whether a member may keep a key passphrase in their vault (org-admin only, ADR 0024 §4).
+/// Off: the passphrase is asked at each connection and never written.
+async fn set_secret_storage(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "allow_secret_storage") {
+        return Ok(refusal);
+    }
+    state
+        .db
+        .set_setting("allow_secret_storage", if req.enabled { "1" } else { "0" })
+        .await?;
+    nudge_mode_changed(&state);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Whether a stored secret may be read back (org-admin only, ADR 0024 §4-5).
+///
+/// On a shared server this binds the UI and not the data: a client decrypts the record it
+/// connects with, so a member holds their own plaintext and a viewer holds a shared item's.
+/// It stops the accidents — a secret on screen during a screen share, a casual copy — and
+/// the boundary that does hold is membership. On a local vault it is a real refusal,
+/// because there the key lives in rite-core and the caller is another process.
+async fn set_secret_reveal(
+    State(state): State<ServerState>,
+    Json(req): Json<EnabledReq>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "allow_secret_reveal") {
+        return Ok(refusal);
+    }
+    state
+        .db
+        .set_setting("allow_secret_reveal", if req.enabled { "1" } else { "0" })
+        .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1448,6 +1772,7 @@ async fn set_quick_ssh(
         .db
         .set_setting("allow_quick_ssh", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1464,6 +1789,7 @@ async fn set_open_registration(
         .db
         .set_setting("open_registration", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1480,6 +1806,7 @@ async fn set_allow_invitations(
         .db
         .set_setting("allow_invitations", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1502,6 +1829,7 @@ async fn set_confirm_role_change(
         .db
         .set_setting("confirm_role_change", if req.enabled { "1" } else { "0" })
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1521,6 +1849,7 @@ async fn set_collection_policy(
         .db
         .set_setting("collection_policy", &policy.to_string())
         .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1543,12 +1872,7 @@ async fn set_healthcheck(
         .db
         .set_setting("healthcheck_policy", &policy.to_string())
         .await?;
-    // Live distribution (ADR 0017): nudge every connected client to re-pull the
-    // policy now instead of waiting for its next throttled poll. A payload-less,
-    // session-less event broadcasts to all sockets (see `event_visible_to`).
-    let _ = state
-        .events_tx
-        .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1569,11 +1893,26 @@ async fn set_dashboard_policy(
         .db
         .set_setting("dashboard_policy", &policy.to_string())
         .await?;
-    // Same live distribution as ADR 0017: clients re-pull now rather than at their next
-    // poll, so turning the cards off takes effect while the admin is still watching.
-    let _ = state
-        .events_tx
-        .send(json!({ "event": "policy-updated", "payload": {} }).to_string());
+    nudge_mode_changed(&state);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Admin: set the layouts policy (ADR 0027).
+async fn set_layouts_policy(
+    State(state): State<ServerState>,
+    Json(policy): Json<Value>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "layouts_policy") {
+        return Ok(refusal);
+    }
+    if let Err(why) = config::validate("layouts_policy", &policy) {
+        return Ok((StatusCode::BAD_REQUEST, format!("{why:#}")).into_response());
+    }
+    state
+        .db
+        .set_setting("layouts_policy", &policy.to_string())
+        .await?;
+    nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -1727,7 +2066,7 @@ async fn server_login(
     if let Some(wait) = state.login_limiter.locked_for(&req.username) {
         return Ok((
             StatusCode::TOO_MANY_REQUESTS,
-            Json(json!({ "error": "too many attempts, try again later", "retryAfter": wait })),
+            Json(json!({ "error": "too many attempts — try again later", "retryAfter": wait })),
         )
             .into_response());
     }
@@ -1784,7 +2123,7 @@ async fn server_bootstrap(
     if server_auth::has_any_user(state.db.pool()).await? {
         return Ok((
             StatusCode::CONFLICT,
-            Json(json!({ "error": "server already initialised" })),
+            Json(json!({ "error": "server already initialized" })),
         )
             .into_response());
     }
@@ -2041,7 +2380,7 @@ async fn admin_create_token(
             return Ok((
                 StatusCode::FORBIDDEN,
                 Json(
-                    json!({ "error": "you can't grant membership to a team you don't administer" }),
+                    json!({ "error": "membership can only be granted to a team the caller administers" }),
                 ),
             )
                 .into_response());
@@ -2099,7 +2438,7 @@ async fn admin_revoke_token(
         Some(role) if caller.role != Role::Admin && role != Role::User => {
             return Ok((
                 StatusCode::FORBIDDEN,
-                Json(json!({ "error": "you can't manage this token" })),
+                Json(json!({ "error": "this token is not the caller's to manage" })),
             )
                 .into_response());
         }
@@ -2182,6 +2521,32 @@ async fn get_library(
 ) -> Result<Json<Value>, AppError> {
     let blob = rite_core::library_store::get(state.db.pool(), &user.id).await?;
     Ok(Json(json!({ "blob": blob })))
+}
+
+/// The account's layouts, as a sealed blob (ADR 0027).
+///
+/// A second route rather than a shape for `/api/layouts`: that one returns `text`, and in
+/// accounts mode the server cannot, because it cannot decrypt. `updated_at` rides along so
+/// the editor can show when the other machine last wrote.
+async fn get_user_layouts(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Value>, AppError> {
+    let row = rite_core::layouts_store::get(state.db.pool(), &user.id).await?;
+    let (blob, updated_at) = match row {
+        Some((blob, at)) => (Some(blob), Some(at)),
+        None => (None, None),
+    };
+    Ok(Json(json!({ "blob": blob, "updatedAt": updated_at })))
+}
+
+async fn set_user_layouts(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<StatusCode, AppError> {
+    rite_core::layouts_store::set(state.db.pool(), &user.id, &req.blob).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn set_library(
@@ -2293,7 +2658,7 @@ async fn admin_set_status(
     if id == current.id {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "you can't change your own status" })),
+            Json(json!({ "error": "an account cannot change its own status" })),
         )
             .into_response());
     }
@@ -2306,7 +2671,7 @@ async fn admin_set_status(
     if !can_manage(current.role, target_role) {
         return Ok((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "you can't manage an account at or above your level" })),
+            Json(json!({ "error": "an account at or above the caller's level cannot be managed" })),
         )
             .into_response());
     }
@@ -2335,7 +2700,7 @@ async fn admin_set_role(
     if id == current.id {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "you can't change your own role" })),
+            Json(json!({ "error": "an account cannot change its own role" })),
         )
             .into_response());
     }
@@ -2346,7 +2711,7 @@ async fn admin_set_role(
     if !can_manage(current.role, target_role) {
         return Ok((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "you can't manage an account at or above your level" })),
+            Json(json!({ "error": "an account at or above the caller's level cannot be managed" })),
         )
             .into_response());
     }
@@ -2356,7 +2721,7 @@ async fn admin_set_role(
         return Ok((
             StatusCode::BAD_REQUEST,
             Json(
-                json!({ "error": "can't change an admin's role here — disable or delete instead" }),
+                json!({ "error": "an admin's role cannot be changed here — disable or delete the account instead" }),
             ),
         )
             .into_response());
@@ -2367,7 +2732,7 @@ async fn admin_set_role(
     if !assign_ok {
         return Ok((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "you can't assign a role at or above your level" })),
+            Json(json!({ "error": "a role at or above the caller's own cannot be assigned" })),
         )
             .into_response());
     }
@@ -2410,7 +2775,7 @@ async fn admin_reset_user(
     if !can_manage(current.role, target_role) {
         return Ok((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "you can't manage an account at or above your level" })),
+            Json(json!({ "error": "an account at or above the caller's level cannot be managed" })),
         )
             .into_response());
     }
@@ -2447,7 +2812,7 @@ async fn admin_delete_user(
     if id == current.id {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "you can't delete yourself" })),
+            Json(json!({ "error": "an account cannot delete itself" })),
         )
             .into_response());
     }
@@ -2457,7 +2822,7 @@ async fn admin_delete_user(
     if !can_manage(current.role, target_role) {
         return Ok((
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "you can't manage an account at or above your level" })),
+            Json(json!({ "error": "an account at or above the caller's level cannot be managed" })),
         )
             .into_response());
     }
@@ -2502,10 +2867,28 @@ async fn can_view_team(state: &ServerState, user: &User, team_id: &str) -> Resul
     )
 }
 
+/// `?q=` filters by name, `?limit=`/`?offset=` cut the page. Absent, it is the first 25 —
+/// not the whole table, which is what this used to return on every open of the console.
+#[derive(Deserialize)]
+struct TeamsQuery {
+    q: Option<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+}
+
 async fn admin_list_teams(
     State(state): State<ServerState>,
-) -> Result<Json<Vec<rite_core::teams::Team>>, AppError> {
-    Ok(Json(rite_core::teams::list_teams(state.db.pool()).await?))
+    Query(params): Query<TeamsQuery>,
+) -> Result<Json<rite_core::teams::TeamPage>, AppError> {
+    Ok(Json(
+        rite_core::teams::list_teams_page(
+            state.db.pool(),
+            params.q.as_deref(),
+            params.limit.unwrap_or(25),
+            params.offset.unwrap_or(0),
+        )
+        .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -3306,11 +3689,68 @@ async fn delete_collection_item_ep(
 
 // --- settings (per-key) -----------------------------------------------------
 
+/// Instance settings that belong to a validated `/api/admin/*` route.
+///
+/// Those routes check the value and honour the configuration lock (ADR 0020); this one
+/// takes a string. `default_shell` is the clearest case — four names are allowed there,
+/// and any path at all would be allowed here — but each of these is a policy the whole
+/// instance obeys, so none of them is this route's to write.
+const ADMIN_ROUTE_SETTINGS: &[&str] = &[
+    "allow_invitations",
+    "allow_quick_ssh",
+    "allow_secret_reveal",
+    "allow_secret_storage",
+    "allow_shell_choice",
+    "collection_policy",
+    "confirm_role_change",
+    "dashboard_policy",
+    "default_shell",
+    "healthcheck",
+    "host_key_verification_mode",
+    "instance_name",
+    "layouts_policy",
+    "open_registration",
+    "session_persistence",
+];
+
+/// Who may read and write this table through the generic route.
+///
+/// In a local vault it is the person's own machine and their own settings file: anyone
+/// who got past the loopback token is that person (ADR 0009). On a shared server the
+/// same table is the INSTANCE's — `rite-core` reads `host_key_verification_mode` from it
+/// for every connection it opens, for everyone — and the role check only ever covered
+/// `/api/admin`, so any account could write any key here: a regular user could turn
+/// host-key verification off for the whole instance, or hand the server a `default_shell`
+/// the admin route would have refused. Device preferences (auto-lock, clipboard) are the
+/// client's own and no longer travel here at all (`settingsStore.ts`).
+fn settings_route_refusal(
+    state: &ServerState,
+    user: &Option<Extension<Arc<User>>>,
+) -> Option<Response> {
+    if !state.accounts {
+        return None;
+    }
+    match as_user(user).map(|u| u.role) {
+        Some(Role::Admin) => None,
+        _ => Some(
+            (
+                StatusCode::FORBIDDEN,
+                "on a shared server these are instance settings: an administrator changes                  them in the console (/api/admin/*), and this client keeps its own                  preferences for itself",
+            )
+                .into_response(),
+        ),
+    }
+}
+
 async fn get_setting(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Path(key): Path<String>,
-) -> Result<Json<Option<String>>, AppError> {
-    Ok(Json(state.db.get_setting(&key).await?))
+) -> Result<Response, AppError> {
+    if let Some(refusal) = settings_route_refusal(&state, &user) {
+        return Ok(refusal);
+    }
+    Ok(Json(state.db.get_setting(&key).await?).into_response())
 }
 
 #[derive(Deserialize)]
@@ -3320,11 +3760,172 @@ struct ValueReq {
 
 async fn set_setting(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Path(key): Path<String>,
     Json(req): Json<ValueReq>,
-) -> Result<StatusCode, AppError> {
+) -> Result<Response, AppError> {
+    if let Some(refusal) = settings_route_refusal(&state, &user) {
+        return Ok(refusal);
+    }
+    if state.accounts {
+        if ADMIN_ROUTE_SETTINGS.contains(&key.as_str()) {
+            return Ok((
+                StatusCode::CONFLICT,
+                format!(
+                    "`{key}` is an instance policy with its own validated route under /api/admin"
+                ),
+            )
+                .into_response());
+        }
+        if let Some(refusal) = managed_refusal(&state, &key) {
+            return Ok(refusal);
+        }
+    }
     state.db.set_setting(&key, &req.value).await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Where this computer keeps its workspace file. `None` when the platform has no
+/// config directory, which is also how a deployment with no filesystem behaves.
+///
+/// `RITE_LAYOUTS_FILE` overrides the location so the file can live in a dotfiles
+/// repository or beside a project. `dirs::config_dir()` reads `XDG_CONFIG_HOME`
+/// before `$HOME/.config`, which is what a test harness has to pin to stay out of
+/// the real one.
+fn layouts_path() -> Option<std::path::PathBuf> {
+    if let Some(custom) = std::env::var_os("RITE_LAYOUTS_FILE") {
+        if !custom.is_empty() {
+            return Some(std::path::PathBuf::from(custom));
+        }
+    }
+    dirs::config_dir().map(|d| d.join("rite").join("layouts.toml"))
+}
+
+/// Is there a workspace file to offer at all? (ADR 0023)
+///
+/// A single-operator instance gets a file it can also edit by hand; a shared server gets
+/// nothing *here*. What this refuses is a settings ROW — plaintext in a table with no
+/// owner column, so one account's machine names would be both readable by the server and
+/// overwritable by a colleague. Layouts on an account are neither refused nor here: ADR
+/// 0027 keeps them as a blob sealed under the user's own key at `/api/user/layouts`, the
+/// way `/api/user/library` already does. So this answers None in accounts mode and the
+/// client reads that route instead — two supports, two honest contracts.
+fn layouts_file(accounts: bool) -> Option<std::path::PathBuf> {
+    if accounts { None } else { layouts_path() }
+}
+
+/// What a new installation sees instead of an empty box: the shape of the file, as
+/// documented. Nothing is written to disk until the user saves, so Reload on an
+/// untouched installation shows this again rather than an empty file.
+const LAYOUTS_TEMPLATE: &str = r##"# Your workspace: the commands the split menu offers, and what opens in the morning.
+# Every key is documented in docs/LAYOUTS.md.
+
+# [[preset]]
+# name = "Logs"
+# command = "journalctl -fu app"
+
+# [[layout]]
+# name = "Morning"
+# startup = true
+#
+#   [[layout.pane]]
+#   command = ""                   # the first pane is the whole tab
+#
+#   [[layout.pane]]
+#   machine = "web-01"             # a machine from your library, by name
+#   preset = "Logs"                # or command = "..." — one or the other
+#   split = "right"                # right, down, left, up — of the previous pane
+#   size = "40%"                   # this pane's share of what it cuts
+"##;
+
+#[derive(Serialize)]
+struct LayoutsFile {
+    /// The file's text, or `None` where there is no file — which is how a shell is
+    /// told the feature does not exist here, rather than being handed a substitute.
+    text: Option<String>,
+    /// Where the text came from, so it can be edited by hand too.
+    path: Option<String>,
+}
+
+async fn get_layouts(State(state): State<ServerState>) -> Result<Json<LayoutsFile>, AppError> {
+    if let Some(path) = layouts_file(state.accounts) {
+        let text = match tokio::fs::read_to_string(&path).await {
+            Ok(t) => t,
+            // A missing file is the normal state of a fresh install, not a failure.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => LAYOUTS_TEMPLATE.to_string(),
+            Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display()).into()),
+        };
+        return Ok(Json(LayoutsFile {
+            text: Some(text),
+            path: Some(path.display().to_string()),
+        }));
+    }
+    Ok(Json(LayoutsFile {
+        text: None,
+        path: None,
+    }))
+}
+
+async fn put_layouts(
+    State(state): State<ServerState>,
+    Json(req): Json<ValueReq>,
+) -> Result<StatusCode, AppError> {
+    if let Some(path) = layouts_file(state.accounts) {
+        if let Some(dir) = path.parent() {
+            tokio::fs::create_dir_all(dir)
+                .await
+                .map_err(|e| anyhow::anyhow!("creating {}: {e}", dir.display()))?;
+        }
+        tokio::fs::write(&path, &req.value)
+            .await
+            .map_err(|e| anyhow::anyhow!("writing {}: {e}", path.display()))?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    // No file, and nowhere else to put it: there is nothing to save, and saying so is
+    // better than accepting bytes that would go into a shared table.
+    Ok(StatusCode::NOT_FOUND)
+}
+
+#[cfg(test)]
+mod layouts_tests {
+    use super::*;
+
+    /// The two modes, pinned (ADR 0023). A single-operator instance hands out a path
+    /// so the file can also be edited by hand; a shared server offers no file — and no
+    /// substitute, which is the half that made the first attempt wrong.
+    #[test]
+    fn a_server_has_no_file_to_offer() {
+        assert_eq!(layouts_file(true), None);
+        assert_eq!(layouts_file(false), layouts_path());
+    }
+
+    /// `RITE_LAYOUTS_FILE` wins, so the file can live in a dotfiles repository or
+    /// beside a project. The variable is process-global, so this puts it back; nothing
+    /// else in the suite reads it.
+    #[test]
+    fn an_explicit_path_wins() {
+        let before = std::env::var_os("RITE_LAYOUTS_FILE");
+        unsafe { std::env::set_var("RITE_LAYOUTS_FILE", "/tmp/rite-workspace-elsewhere.toml") };
+        let found = layouts_path();
+        match before {
+            Some(v) => unsafe { std::env::set_var("RITE_LAYOUTS_FILE", v) },
+            None => unsafe { std::env::remove_var("RITE_LAYOUTS_FILE") },
+        }
+        assert_eq!(
+            found,
+            Some(std::path::PathBuf::from(
+                "/tmp/rite-workspace-elsewhere.toml"
+            ))
+        );
+    }
+
+    /// The template is a comment block: valid TOML that declares no layout, so a
+    /// fresh install parses to zero layouts instead of to an error.
+    #[test]
+    fn the_template_parses_to_nothing() {
+        let t: toml::Table = LAYOUTS_TEMPLATE.parse().expect("the template must be TOML");
+        assert!(t.is_empty(), "the template must declare no layout: {t:?}");
+    }
 }
 
 // --- connections ------------------------------------------------------------
@@ -3618,7 +4219,7 @@ async fn add_server(
     if !is_valid_remote_url(&url) {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "remote must be https:// (http:// only on loopback)" })),
+            Json(json!({ "error": "this address needs https:// — plain http:// is accepted only for 127.0.0.1 and localhost" })),
         )
             .into_response());
     }
@@ -3707,7 +4308,7 @@ async fn update_server(
     if !is_valid_remote_url(&url) {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "remote must be https:// (http:// only on loopback)" })),
+            Json(json!({ "error": "this address needs https:// — plain http:// is accepted only for 127.0.0.1 and localhost" })),
         )
             .into_response());
     }
@@ -3789,7 +4390,7 @@ async fn probe_remote(
     if !is_valid_remote_url(&url) {
         return Ok((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "remote must be https:// (http:// only on loopback)" })),
+            Json(json!({ "error": "this address needs https:// — plain http:// is accepted only for 127.0.0.1 and localhost" })),
         )
             .into_response());
     }
@@ -3944,10 +4545,44 @@ struct ShellsReq {
     shells: Vec<String>,
 }
 
+/// Paths this route will admit to knowing about.
+///
+/// It used to answer for whatever paths the caller sent, which made it an existence
+/// oracle for any authenticated account: ask about `/etc/shadow` or `/root/.ssh/id_rsa`
+/// and the answer came back. The client only ever asks about shells
+/// (`apps/desktop/src/utils/shells.ts`), so that is all it can ask about.
+const KNOWN_SHELL_PATHS: &[&str] = &[
+    "/bin/bash",
+    "/bin/csh",
+    "/bin/dash",
+    "/bin/fish",
+    "/bin/ksh",
+    "/bin/sh",
+    "/bin/zsh",
+    "/usr/bin/bash",
+    "/usr/bin/csh",
+    "/usr/bin/dash",
+    "/usr/bin/elvish",
+    "/usr/bin/fish",
+    "/usr/bin/ksh",
+    "/usr/bin/nu",
+    "/usr/bin/pwsh",
+    "/usr/bin/sh",
+    "/usr/bin/tcsh",
+    "/usr/bin/xonsh",
+    "/usr/bin/zsh",
+    "/usr/local/bin/bash",
+    "/usr/local/bin/fish",
+    "/usr/local/bin/nu",
+    "/usr/local/bin/pwsh",
+    "/usr/local/bin/zsh",
+];
+
 async fn installed_shells(Json(req): Json<ShellsReq>) -> Json<Vec<String>> {
     Json(
         req.shells
             .into_iter()
+            .filter(|p| KNOWN_SHELL_PATHS.contains(&p.as_str()))
             .filter(|p| std::path::Path::new(p).exists())
             .collect(),
     )
@@ -3960,17 +4595,119 @@ struct LocalReq {
     shell: Option<String>,
 }
 
+/// The instance's shell, as something a PTY can spawn.
+///
+/// `default_shell` holds a bare name, restricted to four by its admin route, so look for
+/// it in the usual places; `LocalSession` resolves what it cannot find against its own
+/// fallback list.
+fn clamped_shell_name(raw: &str) -> &str {
+    match raw.trim() {
+        n @ ("bash" | "sh" | "zsh" | "fish") => n,
+        // Anything else was written by something other than the admin route — which only
+        // accepts those four — so it is not a shell this server agreed to run.
+        _ => "bash",
+    }
+}
+
+/// How a host key may be treated, in the order the console offers them. `strict` is the
+/// default and the only one that refuses an unknown host; the others exist for a first
+/// connection to a machine whose key nobody has recorded yet.
+const HOST_KEY_MODES: [&str; 3] = ["strict", "warn", "accept"];
+
+/// The four agreed shell names, in the order the console offers them.
+const AGREED_SHELLS: [&str; 4] = ["bash", "sh", "zsh", "fish"];
+
+/// Where a shell name is looked for. One list, so the probe below and the path the
+/// session is given can never disagree about what "zsh" means.
+const SHELL_DIRS: [&str; 3] = ["/usr/bin", "/bin", "/usr/local/bin"];
+
+/// The resolved path for an agreed shell name, if this machine has it.
+///
+/// The membership test lives here rather than in the callers, so the only way to obtain
+/// a path is to have named one of the four: `shell_path_of("../bin/sh")` would otherwise
+/// join to `/usr/bin/../bin/sh`, which exists. A caller that forgets to check is then
+/// still safe, and the property is testable in one place.
+fn shell_path_of(name: &str) -> Option<String> {
+    if !AGREED_SHELLS.contains(&name) {
+        return None;
+    }
+    SHELL_DIRS
+        .iter()
+        .map(|dir| format!("{dir}/{name}"))
+        .find(|candidate| std::path::Path::new(candidate).exists())
+}
+
+/// The shells this instance can actually run.
+///
+/// The console used to offer all four whatever the container held, and a minimal server
+/// image has two of them: picking one of the others set every terminal on the instance to
+/// a program that is not installed. So the offer is a probe, not a list — and it is also
+/// the set a member may choose from, which is why nothing downstream has to re-derive it.
+fn offered_shells() -> &'static [String] {
+    // Probed once. Not for the syscalls — `/api/server/mode` is fetched a handful of times
+    // per client, not polled — but because the answer must not move under the feature: the
+    // console offers this set, a member picks from it and `chosen_shell_path` resolves
+    // against it, and a set that changed between two of those calls would turn a valid
+    // pick into a fallback with nothing to explain it. A container gains a shell by being
+    // rebuilt, which restarts this process anyway.
+    static OFFERED: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    OFFERED.get_or_init(|| {
+        AGREED_SHELLS
+            .iter()
+            .filter(|name| shell_path_of(name).is_some())
+            .map(|name| (*name).to_string())
+            .collect()
+    })
+}
+
+/// The shell this server runs for a member who asked for `asked`.
+///
+/// `asked` is a NAME, never a path: a path from a client is how any binary in the
+/// container became a PTY the caller could drive. A name this instance does not offer —
+/// a stale pick, a client that guessed — falls back to the instance default rather than
+/// failing, because the default is always something this machine has.
+async fn chosen_shell_path(state: &ServerState, asked: Option<&str>) -> Result<String, AppError> {
+    if state.setting_bool("allow_shell_choice", false).await? {
+        if let Some(path) = asked.map(str::trim).and_then(shell_path_of) {
+            return Ok(path);
+        }
+    }
+    server_shell_path(state).await
+}
+
+async fn server_shell_path(state: &ServerState) -> Result<String, AppError> {
+    let setting = state.setting_text("default_shell", "bash").await?;
+    let name = clamped_shell_name(&setting);
+    // An administrator who picked a shell this machine has since lost (or never had, from
+    // before the console probed) still gets a terminal: bash is in every image we ship.
+    Ok(shell_path_of(name)
+        .or_else(|| shell_path_of("bash"))
+        .unwrap_or_else(|| name.to_string()))
+}
+
 async fn create_local(
     State(state): State<ServerState>,
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<LocalReq>,
 ) -> Result<Json<Value>, AppError> {
+    // On a shared server the shell is the instance's choice, which is what the client is
+    // told (`defaultShell` in /api/server/mode, shown read-only). The caller used to name
+    // the program instead: any path that existed in the container was spawned in a PTY it
+    // could then drive, for any account and whatever the administrator had chosen. On a
+    // local vault the shell stays the person's own — it is their machine.
+    let shell = if state.accounts {
+        Some(chosen_shell_path(&state, req.shell.as_deref()).await?)
+    } else {
+        req.shell
+    };
     let id = state
         .sessions
-        .create_local_session(state.events_sink(), req.shell)
+        .create_local_session(state.events_sink(), shell.clone())
         .await?;
     state.record_session_owner(&id, as_user(&user));
-    Ok(Json(json!({ "sessionId": id })))
+    // The shell the session was given, so a client (and a test) can see that on a server
+    // the answer is the instance's and not whatever was asked for.
+    Ok(Json(json!({ "sessionId": id, "shell": shell })))
 }
 
 #[derive(Deserialize)]
@@ -3982,13 +4719,29 @@ struct StartForwardReq {
     local_port: u16,
     remote_host: String,
     remote_port: u16,
+    /// See `ConnectSshReq`.
+    #[serde(default)]
+    session_secret: Option<String>,
+}
+
+/// Where a forward may listen.
+///
+/// On a shared server the listening socket is the SERVER's, so a caller-chosen bind host
+/// would publish a tunnel into whatever that machine can reach, to whoever can reach the
+/// machine. Loopback there, whatever was asked. On a local vault it is the person's own
+/// computer and their own choice.
+fn forward_bind_host(accounts: bool, asked: Option<&str>) -> &str {
+    if accounts {
+        return "127.0.0.1";
+    }
+    asked.unwrap_or("127.0.0.1")
 }
 
 async fn start_forward(
     State(state): State<ServerState>,
     Json(req): Json<StartForwardReq>,
 ) -> Result<Json<rite_core::terminal::PortForwardInfo>, AppError> {
-    let bind_host = req.bind_host.as_deref().unwrap_or("127.0.0.1");
+    let bind_host = forward_bind_host(state.accounts, req.bind_host.as_deref());
     let info = state
         .sessions
         .start_local_forward(
@@ -3998,6 +4751,7 @@ async fn start_forward(
             &req.remote_host,
             req.remote_port,
             state.events_sink(),
+            req.session_secret.clone(),
         )
         .await?;
     Ok(Json(info))
@@ -4029,9 +4783,16 @@ struct StartQuickForwardReq {
 async fn start_quick_forward(
     State(state): State<ServerState>,
     Json(req): Json<StartQuickForwardReq>,
-) -> Result<Json<rite_core::terminal::PortForwardInfo>, AppError> {
-    let bind_host = req.bind_host.as_deref().unwrap_or("127.0.0.1");
-    let auth: AuthMethod = req.auth_method.into();
+) -> Result<Response, AppError> {
+    let bind_host = forward_bind_host(state.accounts, req.bind_host.as_deref());
+    let auth = match quick_auth(&state, req.auth_method) {
+        Ok(auth) => auth,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
+    let hops = match quick_hops(&state, req.jumps) {
+        Ok(hops) => hops,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
     let mut connection = quick_connection("fwd", &req.host, req.port, &req.username, auth.clone());
     connection.id = req.connection_id;
     let info = state
@@ -4039,7 +4800,7 @@ async fn start_quick_forward(
         .start_quick_local_forward(
             connection,
             auth,
-            quick_hops(req.jumps),
+            hops,
             bind_host,
             req.local_port,
             &req.remote_host,
@@ -4047,7 +4808,7 @@ async fn start_quick_forward(
             state.events_sink(),
         )
         .await?;
-    Ok(Json(info))
+    Ok(Json(info).into_response())
 }
 
 async fn stop_forward(
@@ -4101,6 +4862,25 @@ struct LocalMachine {
     port: u16,
     username: String,
     auth_type: String,
+    /// The key file this machine uses, when it names one (ADR 0024 §6). A path is not a
+    /// secret, and withholding it meant a key-based machine reopened as "Password" — so
+    /// typing a password there silently converted it to password authentication.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    key_path: Option<String>,
+    /// Whether a key passphrase is kept with this machine (ADR 0024 §4). Not a secret: it
+    /// is the difference between "this key has no passphrase" and "it has one and Rite
+    /// holds it", and without it the form's "remember this passphrase" box could only ever
+    /// render unticked — on a machine whose passphrase is in fact stored.
+    has_stored_passphrase: bool,
+    /// Whether an SSH password is kept with this machine (ADR 0024 §4). Its sibling above,
+    /// and not a secret for the same reason: without it the form's "remember this password"
+    /// box could only render unticked on a machine whose password is in fact stored.
+    has_stored_password: bool,
+    /// This machine keeps no key passphrase / no password, so whoever opens it must ask
+    /// (ADR 0024 §4). Published because the local vault's client cannot derive the first:
+    /// a key with no passphrase and a key whose passphrase was not kept both hold none.
+    needs_passphrase: bool,
+    needs_password: bool,
     color: Option<String>,
     icon: Option<String>,
     folder: Option<String>,
@@ -4128,12 +4908,15 @@ impl LocalMachine {
         Self {
             id: m.id,
             collection_id: collection_id.to_string(),
-            auth_type: match r.auth_method {
-                AuthMethod::Password { .. } => "password",
-                AuthMethod::PublicKey { .. } => "publicKey",
-                AuthMethod::Agent { .. } => "agent",
-            }
-            .to_string(),
+            auth_type: r.auth_method.type_str().to_string(),
+            key_path: match &r.auth_method {
+                AuthMethod::PublicKey { key_path, .. } => Some(key_path.clone()),
+                _ => None,
+            },
+            has_stored_passphrase: r.auth_method.has_stored_passphrase(),
+            has_stored_password: r.auth_method.has_stored_password(),
+            needs_passphrase: r.needs_passphrase,
+            needs_password: r.needs_password,
             name: r.name,
             protocol: r.protocol,
             hostname: r.hostname,
@@ -4260,6 +5043,44 @@ async fn local_create_machine(
 
 /// A partial edit: the UI never receives credentials, so it cannot send a whole
 /// record back. Absent fields keep what is stored (see `MachinePatch`).
+/// Read back one machine's stored secret (ADR 0024 §5-6).
+///
+/// Only here. In accounts mode the client already holds the plaintext it connects with,
+/// so there is nothing for a server route to hand over — and nothing for it to withhold,
+/// which the ADR says plainly. On a local vault the key lives in this process, so
+/// `allow_secret_reveal` is a refusal rather than a convention.
+///
+/// A path is not a secret and comes back regardless; it is what tells the form which key a
+/// machine uses. What is secret comes back only here, only on this explicit request.
+async fn local_reveal_machine_secret(
+    State(state): State<ServerState>,
+    Path((id, item)): Path<(String, String)>,
+) -> Result<Response, AppError> {
+    if !state.setting_bool("allow_secret_reveal", true).await? {
+        return Ok((
+            StatusCode::FORBIDDEN,
+            "this vault is set to keep its secrets unreadable",
+        )
+            .into_response());
+    }
+    let key = master_key(&state).await?;
+    let machines = rite_core::local_collections::list_machines(state.db.pool(), &key, &id).await?;
+    let Some(machine) = machines.into_iter().find(|m| m.id == item) else {
+        return Ok((StatusCode::NOT_FOUND, "unknown machine").into_response());
+    };
+    Ok(Json(match machine.record.auth_method {
+        AuthMethod::Password { password } => json!({ "password": password }),
+        AuthMethod::PublicKey {
+            key_path,
+            passphrase,
+        } => json!({ "keyPath": key_path, "passphrase": passphrase }),
+        AuthMethod::VaultKey { key, passphrase } => json!({ "key": key, "passphrase": passphrase }),
+        // Nothing is stored for an agent, which is the point of using one.
+        AuthMethod::Agent { .. } => json!({}),
+    })
+    .into_response())
+}
+
 async fn local_update_machine(
     State(state): State<ServerState>,
     Path((id, item)): Path<(String, String)>,
@@ -4303,6 +5124,10 @@ async fn local_set_board(
 struct ConnectSshReq {
     #[serde(rename = "connectionId")]
     connection_id: String,
+    /// A secret the client was asked for because this machine keeps none (ADR 0024 §4).
+    /// Used for this session and written nowhere.
+    #[serde(default, rename = "sessionSecret")]
+    session_secret: Option<String>,
 }
 
 async fn connect_ssh(
@@ -4345,6 +5170,7 @@ async fn connect_ssh(
             req.connection_id.clone(),
             state.events_sink(),
             state.interactive_provider(as_user(&user)),
+            req.session_secret.clone(),
         )
         .await?;
     // Record "last used" in the local vault (ADR 0017 passive status). This is the local
@@ -4374,6 +5200,13 @@ enum QuickAuthMethod {
         key_path: String,
         passphrase: Option<String>,
     },
+    /// A key the client carried, for this session only (ADR 0024). The server decodes it
+    /// in memory to authenticate and stores nothing — the same rule the password above
+    /// has followed since ADR 0011.
+    VaultKey {
+        key: String,
+        passphrase: Option<String>,
+    },
     Agent {
         identity: Option<String>,
         #[serde(default)]
@@ -4381,10 +5214,51 @@ enum QuickAuthMethod {
     },
 }
 
+/// Convert a quick auth method, refusing a key path where this server would read it off
+/// its own filesystem (ADR 0028 §4).
+///
+/// `terminal.rs` reads `key_path` in the process that opens SSH. On a desktop pointed at a
+/// server that is the member's own machine, which is the whole point of the support. Here,
+/// in accounts mode, it is this container: a path a member cannot write to, and a file an
+/// administrator does put there would authenticate EVERY account that can read the record.
+/// That is a shared credential with none of a shared credential's honesty, chosen by
+/// nobody. A path-record is a desktop record, and this is where that is true rather than
+/// merely asked of the UI.
+///
+/// Every handler taking a `QuickAuthMethod` goes through here; `e2e/key-support-check.mjs`
+/// fails the build if one converts with `.into()` instead.
+fn quick_auth(state: &ServerState, quick: QuickAuthMethod) -> Result<AuthMethod, KeyPathRefused> {
+    if state.accounts && matches!(quick, QuickAuthMethod::PublicKey { .. }) {
+        return Err(KeyPathRefused);
+    }
+    Ok(quick.into())
+}
+
+/// The refusal above, as a unit rather than as a `Response`: a response is 128 bytes, and an
+/// `Err` variant that wide widens every `Result` in the call chain (clippy's
+/// `result_large_err`, and it is right).
+struct KeyPathRefused;
+
+impl IntoResponse for KeyPathRefused {
+    fn into_response(self) -> Response {
+        let why = "a key path is read on the machine that opens SSH — this one is a server, so the key has to travel with the record, or the machine needs a desktop client";
+        (StatusCode::BAD_REQUEST, why).into_response()
+    }
+}
+
 impl From<QuickAuthMethod> for AuthMethod {
     fn from(quick: QuickAuthMethod) -> Self {
         match quick {
-            QuickAuthMethod::Password { password } => AuthMethod::Password { password },
+            // Always `Some`: a quick connect carries the password it was given, whether the
+            // person typed it into Quick SSH or was asked for it because the machine keeps
+            // none (ADR 0024 §4). A request with the field missing is a 422, not a silent
+            // attempt with no password.
+            QuickAuthMethod::Password { password } => AuthMethod::Password {
+                password: Some(password),
+            },
+            QuickAuthMethod::VaultKey { key, passphrase } => {
+                AuthMethod::VaultKey { key, passphrase }
+            }
             QuickAuthMethod::PublicKey {
                 key_path,
                 passphrase,
@@ -4412,12 +5286,17 @@ struct QuickHop {
 
 /// Build the in-memory hop chain the transport takes. Hops are ad-hoc like the target:
 /// never persisted, never written to the vault.
-fn quick_hops(hops: Vec<QuickHop>) -> Vec<(Connection, AuthMethod)> {
+fn quick_hops(
+    state: &ServerState,
+    hops: Vec<QuickHop>,
+) -> Result<Vec<(Connection, AuthMethod)>, KeyPathRefused> {
     hops.into_iter()
         .map(|h| {
-            let auth: AuthMethod = h.auth_method.into();
+            // A hop authenticates like any other target, so it is refused like one: a jump
+            // host reached with a path would read the same container.
+            let auth = quick_auth(state, h.auth_method)?;
             let conn = quick_connection("jump", &h.host, h.port, &h.username, auth.clone());
-            (conn, auth)
+            Ok((conn, auth))
         })
         .collect()
 }
@@ -4469,15 +5348,56 @@ struct QuickSshReq {
     /// Resolved jump chain, outermost-first. Absent/empty ⇒ direct.
     #[serde(default)]
     jumps: Vec<QuickHop>,
+    /// Where this target came from, when it came from a collection: the item the client
+    /// decrypted and the collection holding it. Absent ⇒ ad-hoc, which a server may
+    /// forbid. Checked against membership, so claiming an item is not a way in.
+    #[serde(default)]
+    collection_id: Option<String>,
+    #[serde(default)]
+    item_id: Option<String>,
 }
 
 async fn quick_ssh(
     State(state): State<ServerState>,
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<QuickSshReq>,
-) -> Result<Json<Value>, AppError> {
+) -> Result<Response, AppError> {
+    // `allow_quick_ssh` is off unless an instance says otherwise, and it was enforced
+    // nowhere: the client hid its button while this route accepted any host and port from
+    // any account — an outbound SSH connection from the server into whatever it can reach.
+    //
+    // It was missed because this is also how a SAVED connection opens: zero-knowledge
+    // means the browser decrypts the target and hands it over (ADR 0011), so the two
+    // requests look alike. They are told apart now by what the saved one can prove — the
+    // collection item it came from, checked against this caller's membership.
+    if state.accounts && !state.setting_bool("allow_quick_ssh", false).await? {
+        let from_a_collection = match (&req.collection_id, &req.item_id, as_user(&user)) {
+            (Some(collection), Some(item), Some(caller)) => {
+                coll_role(&state, caller, collection).await?.is_some()
+                    && coll::list_items(state.db.pool(), collection)
+                        .await?
+                        .iter()
+                        .any(|i| &i.id == item)
+            }
+            _ => false,
+        };
+        if !from_a_collection {
+            return Ok((
+                StatusCode::FORBIDDEN,
+                "ad-hoc Quick SSH is disabled by this server",
+            )
+                .into_response());
+        }
+    }
     // Ad-hoc connection, never persisted (mirrors the desktop quick_ssh_connect).
-    let auth: AuthMethod = req.auth_method.clone().into();
+    let auth = match quick_auth(&state, req.auth_method.clone()) {
+        Ok(auth) => auth,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
+    let hops = match quick_hops(&state, req.jumps) {
+        Ok(hops) => hops,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
     let mut connection =
         quick_connection("quick", &req.host, req.port, &req.username, auth.clone());
     connection.metadata.icon = Some("⚡".to_string());
@@ -4489,11 +5409,11 @@ async fn quick_ssh(
             auth,
             state.events_sink(),
             state.interactive_provider(as_user(&user)),
-            quick_hops(req.jumps),
+            hops,
         )
         .await?;
     state.record_session_owner(&id, as_user(&user));
-    Ok(Json(json!({ "sessionId": id })))
+    Ok(Json(json!({ "sessionId": id })).into_response())
 }
 
 /// Run a one-shot command on a saved connection (agentless dashboard detection) and
@@ -4503,6 +5423,9 @@ async fn quick_ssh(
 struct MachineExecReq {
     connection_id: String,
     command: String,
+    /// See `ConnectSshReq`.
+    #[serde(default)]
+    session_secret: Option<String>,
 }
 
 async fn machine_exec(
@@ -4514,7 +5437,12 @@ async fn machine_exec(
     }
     let out = state
         .sessions
-        .run_remote_command(&req.connection_id, state.events_sink(), &req.command)
+        .run_remote_command(
+            &req.connection_id,
+            state.events_sink(),
+            &req.command,
+            req.session_secret.clone(),
+        )
         .await?;
     Ok(Json(out).into_response())
 }
@@ -4551,17 +5479,18 @@ async fn machine_exec_quick(
     if !dashboard_probes_allowed(&state).await? {
         return Ok(probes_refused());
     }
-    let auth: AuthMethod = req.auth_method.into();
+    let auth = match quick_auth(&state, req.auth_method) {
+        Ok(auth) => auth,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
+    let hops = match quick_hops(&state, req.jumps) {
+        Ok(hops) => hops,
+        Err(refusal) => return Ok(refusal.into_response()),
+    };
     let connection = quick_connection("exec", &req.host, req.port, &req.username, auth.clone());
     let out = state
         .sessions
-        .run_quick_remote_command(
-            connection,
-            auth,
-            state.events_sink(),
-            &req.command,
-            &quick_hops(req.jumps),
-        )
+        .run_quick_remote_command(connection, auth, state.events_sink(), &req.command, &hops)
         .await?;
     Ok(Json(out).into_response())
 }
@@ -4977,6 +5906,14 @@ mod tests {
     }
 
     #[tokio::test]
+    /// The handshake ADR 0008 rests on, pinned to exact values.
+    ///
+    /// This test asserted only that the route answered 200 — under a name that claims it
+    /// reports a version. A release could have shipped reporting anything, or nothing, and
+    /// this would have stayed green. Pinned now, so a bump has to come through here on
+    /// purpose: `version` is the release, `apiVersion` moves ONLY on a breaking change
+    /// (0.2.4 added routes and fields, which are additive, so it does not move), and
+    /// `minClient` is the oldest client this server still talks to.
     async fn capabilities_reports_version() {
         let app = build_router(test_state().await);
         let res = app
@@ -4988,6 +5925,40 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            payload["version"], "0.2.4",
+            "the release this server reports (Cargo.toml's workspace version)"
+        );
+        assert_eq!(
+            payload["apiVersion"], 1,
+            "additive changes do not move this"
+        );
+        assert_eq!(
+            payload["minClient"], "0.1.2",
+            "the oldest client still supported"
+        );
+
+        // What the build is, which Settings ▸ System shows and a bug report asks for.
+        // Asserted as shapes rather than values — they differ between a checkout and a
+        // release image by design — but never empty and never missing: an absent field
+        // renders as a blank row that reads like a bug in the page.
+        let commit = payload["commit"].as_str().expect("commit is a string");
+        assert!(
+            !commit.is_empty(),
+            "a build says what it is, or says `unknown`"
+        );
+        // `YYYY-MM-DD HH:MM:SS`, with the time, because the date alone could not tell two
+        // builds of the same afternoon apart — and that is exactly when it is asked.
+        let built = payload["builtAt"].as_str().expect("builtAt is a string");
+        assert!(
+            built.len() == 19 && built.split('-').count() == 3 && built.split(':').count() == 3,
+            "a build stamp is YYYY-MM-DD HH:MM:SS, got {built}"
+        );
     }
 
     #[tokio::test]
@@ -5038,5 +6009,162 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    /// A forward's listening socket belongs to whoever runs the process: the person's own
+    /// computer in a local vault, the shared machine on a server. Asking for 0.0.0.0 there
+    /// would publish a tunnel into whatever that machine can reach.
+    #[test]
+    fn a_server_forward_listens_on_loopback_whatever_was_asked() {
+        assert_eq!(forward_bind_host(true, Some("0.0.0.0")), "127.0.0.1");
+        assert_eq!(forward_bind_host(true, Some("10.0.0.5")), "127.0.0.1");
+        assert_eq!(forward_bind_host(true, None), "127.0.0.1");
+        // A local vault is the person's own machine, and their own choice.
+        assert_eq!(forward_bind_host(false, Some("0.0.0.0")), "0.0.0.0");
+        assert_eq!(forward_bind_host(false, None), "127.0.0.1");
+    }
+
+    /// `default_shell` is written by a route that accepts four names. Anything else in
+    /// that row was put there by something that bypassed it, so it is not run.
+    #[test]
+    fn only_the_four_agreed_shells_are_run() {
+        for ok in ["bash", "sh", "zsh", "fish", " fish "] {
+            assert_eq!(clamped_shell_name(ok), ok.trim());
+        }
+        for not_ok in ["/usr/bin/env", "/bin/bash", "env", "", "python3"] {
+            assert_eq!(clamped_shell_name(not_ok), "bash");
+        }
+    }
+
+    /// The offer is a probe, not a list.
+    ///
+    /// The console used to offer four shells whatever the container had; the two it did
+    /// not have pointed every terminal on the instance at a missing program. Pinned
+    /// against the filesystem rather than against a constant, because a test that agrees
+    /// with `AGREED_SHELLS` would pass on the bug.
+    #[test]
+    fn a_shell_is_offered_only_where_it_exists() {
+        let offered = offered_shells();
+        for name in AGREED_SHELLS {
+            let on_disk = ["/usr/bin", "/bin", "/usr/local/bin"]
+                .iter()
+                .any(|dir| std::path::Path::new(&format!("{dir}/{name}")).exists());
+            assert_eq!(
+                offered.iter().any(|o| o == name),
+                on_disk,
+                "{name} is offered iff this machine has it"
+            );
+        }
+        // Whatever else is true of this machine, the shell every image ships is runnable.
+        assert!(
+            shell_path_of("sh").is_some(),
+            "no /bin/sh on the test machine"
+        );
+    }
+
+    /// A name resolves to the path the session is given; anything shaped like a path
+    /// resolves to nothing. This is the property that keeps a delegated choice safe:
+    /// `chosen_shell_path` can only ever hand over what `shell_path_of` found.
+    #[test]
+    fn a_shell_is_named_never_pathed() {
+        let sh = shell_path_of("sh").expect("sh");
+        assert!(sh.ends_with("/sh"), "{sh} is a resolved path");
+        // `/usr/bin/../bin/sh` exists, so "it did not resolve" has to be asserted on the
+        // resolver itself and not inferred from the input not being an agreed name — that
+        // reading is true of every path and tests nothing.
+        for not_a_name in ["/bin/sh", "../bin/sh", "sh ", "/usr/bin/env", "sh;id", ""] {
+            assert!(
+                shell_path_of(not_a_name).is_none(),
+                "{not_a_name} must not resolve to a shell"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod login_limiter_tests {
+    use super::LoginLimiter;
+
+    /// The key is a username off an unauthenticated request, so the map it grows has to
+    /// have a ceiling. Both halves are asserted because either alone leaves the hole:
+    /// refusing untrackable names does not stop a million valid-looking ones, and a cap
+    /// without a sweep would lock the map at its limit and stop defending real accounts.
+    #[test]
+    fn it_refuses_to_remember_a_name_no_account_could_have() {
+        assert!(!LoginLimiter::trackable(""), "an empty name names nothing");
+        assert!(
+            !LoginLimiter::trackable(&"a".repeat(65)),
+            "65 characters is past what registration allows, so no account has it"
+        );
+        assert!(
+            LoginLimiter::trackable("a"),
+            "one character is a legal name"
+        );
+        assert!(
+            LoginLimiter::trackable(&"a".repeat(64)),
+            "64 characters is the registration bound itself, not past it"
+        );
+        // Counted in characters and not bytes, or a name of emoji would be refused for
+        // being long while naming a perfectly legal account.
+        assert!(
+            LoginLimiter::trackable(&"é".repeat(64)),
+            "64 multi-byte characters are 64 characters"
+        );
+    }
+
+    #[test]
+    fn it_stops_growing_when_the_names_are_made_up() {
+        let limiter = LoginLimiter::default();
+        for i in 0..(LoginLimiter::MAX_TRACKED + 500) {
+            limiter.record_failure(&format!("made-up-{i}"));
+        }
+        let tracked = limiter.inner.lock().unwrap().len();
+        assert!(
+            tracked <= LoginLimiter::MAX_TRACKED,
+            "the map must not pass its cap, holds {tracked}"
+        );
+        // And an untrackable name adds nothing at all, cap or no cap.
+        let before = limiter.inner.lock().unwrap().len();
+        limiter.record_failure(&"x".repeat(65));
+        assert_eq!(limiter.inner.lock().unwrap().len(), before);
+    }
+
+    /// The realistic shape of the attack: fail against one account, flood the map to try
+    /// to evict its counter, fail again. This is what decides the eviction KEY — on
+    /// `window_start` alice looks older than every made-up name (her window opened first)
+    /// and is evicted every round, so she never reaches five; on `last_seen` she is the
+    /// most recently touched entry there is, and survives.
+    #[test]
+    fn a_flood_between_failures_does_not_reset_the_count() {
+        let limiter = LoginLimiter::default();
+        let mut flooded = 0;
+        for _ in 0..LoginLimiter::MAX_FAILURES {
+            limiter.record_failure("alice");
+            for _ in 0..(LoginLimiter::MAX_TRACKED / 2) {
+                limiter.record_failure(&format!("noise-{flooded}"));
+                flooded += 1;
+            }
+        }
+        assert!(
+            limiter.locked_for("alice").is_some(),
+            "five failures lock the account even when each is followed by a flood"
+        );
+    }
+
+    /// A real account still gets its lockout while that is going on — the defence has to
+    /// survive the thing it defends against.
+    #[test]
+    fn a_real_account_is_still_locked_out_under_a_name_flood() {
+        let limiter = LoginLimiter::default();
+        for i in 0..LoginLimiter::MAX_TRACKED {
+            limiter.record_failure(&format!("flood-{i}"));
+        }
+        for _ in 0..LoginLimiter::MAX_FAILURES {
+            limiter.record_failure("alice");
+        }
+        assert!(
+            limiter.locked_for("alice").is_some(),
+            "alice must be locked after her failures, flood or no flood"
+        );
     }
 }

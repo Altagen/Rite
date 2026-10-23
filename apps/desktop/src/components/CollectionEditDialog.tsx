@@ -11,11 +11,25 @@
 import { useState } from 'react';
 import { Backend } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
-import { generateCollectionKeys, sealCollectionKey, encryptCollectionField } from '../utils/collectionCrypto';
+import {
+  generateCollectionKeys,
+  sealCollectionKey,
+  encryptCollectionField,
+} from '../utils/collectionCrypto';
 import { escrowForCreate } from '../utils/adminGroup';
 import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
+import { useTranslation } from '../i18n/i18n';
 
-const COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#94a3b8'];
+const COLORS = [
+  '#6366f1',
+  '#0ea5e9',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#a855f7',
+  '#14b8a6',
+  '#94a3b8',
+];
 
 export function CollectionEditDialog({
   collectionId,
@@ -41,6 +55,7 @@ export function CollectionEditDialog({
   onPersist?: (name: string, color: string | null, hc: boolean | null) => Promise<void>;
 }) {
   const { publicKey, privateKey } = useServerSession();
+  const { t } = useTranslation();
   const [name, setName] = useState(initialName ?? '');
   const [color, setColor] = useState(initialColor ?? COLORS[0]);
   // Active health-check for this collection (owner setting). Off ⇒ hc=false in the sealed header.
@@ -60,7 +75,11 @@ export function CollectionEditDialog({
       } else if (editing) {
         // Rename: re-encrypt the header (metaKey), preserving the collection's folders.
         if (!publicKey || !privateKey) throw new Error('session keys unavailable');
-        const { metaKey, header } = await readCollectionHeader(collectionId!, publicKey, privateKey);
+        const { metaKey, header } = await readCollectionHeader(
+          collectionId!,
+          publicKey,
+          privateKey,
+        );
         await writeCollectionHeader(collectionId!, metaKey, {
           ...header,
           name: name.trim(),
@@ -72,7 +91,11 @@ export function CollectionEditDialog({
         // encrypted with metaKey; items will use the separate itemsKey (ADR 0016).
         if (!publicKey) throw new Error('session keys unavailable');
         const { metaKey, itemsKey } = generateCollectionKeys();
-        const nameEnc = await encryptCollectionField(metaKey, { name: name.trim(), color, hc: hcOn ? null : false });
+        const nameEnc = await encryptCollectionField(metaKey, {
+          name: name.trim(),
+          color,
+          hc: hcOn ? null : false,
+        });
         await Backend.Collections.create(
           nameEnc,
           await sealCollectionKey(publicKey, metaKey),
@@ -83,42 +106,47 @@ export function CollectionEditDialog({
       onSaved();
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Action failed');
+      setError(err instanceof Error ? err.message : t('collEdit.errAction'));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
       <form
         onSubmit={save}
         className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="mb-1 text-lg font-semibold">{editing ? 'Rename collection' : 'New collection'}</h3>
+        <h3 className="mb-1 text-lg font-semibold">
+          {editing ? t('collEdit.rename') : t('collEdit.new')}
+        </h3>
         {/* Say why there is nobody to add here — the mock's local dialog does the same. */}
         <p className="mb-3 text-xs text-muted-foreground">
-          {onPersist
-            ? 'A group of machines with its own folders and board. Sharing needs a server.'
-            : 'A group of machines with its own folders and board.'}
+          {onPersist ? t('collEdit.whyLocal') : t('collEdit.why')}
         </p>
 
         {error && (
-          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">{error}</div>
+          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">
+            {error}
+          </div>
         )}
 
-        <label className="mb-1 block text-sm font-medium">Name</label>
+        <label className="mb-1 block text-sm font-medium">{t('dlg.name')}</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoFocus
-          placeholder="e.g. Production DBs"
+          placeholder={t('collEdit.phName')}
           className="mb-4 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           disabled={busy}
         />
 
-        <label className="mb-1 block text-sm font-medium">Colour</label>
+        <label className="mb-1 block text-sm font-medium">{t('dlg.colour')}</label>
         <div className="mb-5 flex flex-wrap gap-2">
           {COLORS.map((c) => (
             <button
@@ -127,7 +155,7 @@ export function CollectionEditDialog({
               onClick={() => setColor(c)}
               className={`h-7 w-7 rounded-full ${color === c ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card' : ''}`}
               style={{ backgroundColor: c }}
-              aria-label={`colour ${c}`}
+              aria-label={t('dlg.colourAria', { hex: c })}
             />
           ))}
         </div>
@@ -143,26 +171,28 @@ export function CollectionEditDialog({
             disabled={busy}
           />
           <span>
-            <span className="block text-sm font-medium">Active health-check for this collection</span>
+            <span className="block text-sm font-medium">{t('collEdit.hc')}</span>
             <span className="block text-xs text-muted-foreground">
-              {onPersist
-                ? "When off, this collection's machines are never actively probed."
-                : "When off, members never actively probe this collection's machines."}{' '}
-              Passive &ldquo;last seen&rdquo; still shows.
+              {onPersist ? t('collEdit.hcOffLocal') : t('collEdit.hcOffShared')}{' '}
+              {t('collEdit.hcPassive')}
             </span>
           </span>
         </label>
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
-            Cancel
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+          >
+            {t('dlg.cancel')}
           </button>
           <button
             type="submit"
             disabled={busy || !name.trim()}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {editing ? 'Save' : 'Create'}
+            {editing ? t('dlg.save') : t('dlg.create')}
           </button>
         </div>
       </form>

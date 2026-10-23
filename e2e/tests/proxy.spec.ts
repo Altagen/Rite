@@ -15,7 +15,8 @@ const argon2id: (opts: {
   outputType: 'hex' | 'binary';
 }) => Promise<string & Uint8Array> = requireFromApp('hash-wasm').argon2id;
 
-const hexToBytes = (h: string) => new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
+const hexToBytes = (h: string) =>
+  new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
 
 /**
  * Context multiplexer proxy (ADR 0012 phase 2/3). The local server (:1424) adds
@@ -36,15 +37,23 @@ test('connect to a remote server through the local proxy', async ({ page }) => {
   await password.fill(strong);
   await page.locator('#confirmPassword').fill(strong);
   await page.locator('button[type="submit"]').click();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
 
   // Add the remote to the roster and switch to it. The context hub is native-only
   // (the browser has no shell), so drive the mux's roster/active endpoints directly,
   // then reload — the local server reboots proxied to the remote.
   await page.evaluate(async () => {
     const post = (path: string, body: unknown) =>
-      fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const s = await (await post('/api/context/servers', { url: 'http://127.0.0.1:1423', label: 'TeamServer' })).json();
+      fetch(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const s = await (
+      await post('/api/context/servers', { url: 'http://127.0.0.1:1423', label: 'TeamServer' })
+    ).json();
     await post('/api/context/active', { server: s.id });
   });
   await page.reload();
@@ -56,7 +65,9 @@ test('connect to a remote server through the local proxy', async ({ page }) => {
   await page.getByRole('button', { name: /^sign in$/i }).click();
 
   // The proxied login lands in the remote's workspace — served through the proxy.
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 });
 
 test('a remote terminal streams over the WebSocket proxy', async ({ page }) => {
@@ -66,7 +77,9 @@ test('a remote terminal streams over the WebSocket proxy', async ({ page }) => {
   await page.locator('#username').fill('envadmin');
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // Drive a terminal ON THE REMOTE and listen on the proxied /ws — all same-origin
   // to :1424, which bridges to :1423's /ws.
@@ -126,7 +139,9 @@ test('vault connections are stored zero-knowledge on the remote (ADR 0011)', asy
   await page.locator('#username').fill('envadmin');
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // Create a connection with a distinctive host through the mux (:1424). The mux
   // encrypts it with the held key and stores an opaque blob on the remote.
@@ -203,7 +218,9 @@ test('client-execute: a saved connection opens SSH locally and streams over the 
   await page.locator('#username').fill('envadmin');
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   const output = await page.evaluate(async () => {
     const post = (path: string, body?: unknown) =>
@@ -286,7 +303,9 @@ test('client-execute: a saved connection opens SSH locally and streams over the 
  * So the assertion is about the client's behaviour, and the proof that it is policy is
  * that no request leaves at all: there is nothing for the remote to have refused.
  */
-test('an attached client obeys clients:false, and it is the client that obeys (ADR 0019)', async ({ page }) => {
+test('an attached client obeys clients:false, and it is the client that obeys (ADR 0019)', async ({
+  page,
+}) => {
   // The gate asks which shell this is, and the answer picks which half of the policy
   // applies. In a browser-driven test that answer has to be injected — the launch token
   // is what the native shell puts there (ADR 0009/0014).
@@ -299,7 +318,9 @@ test('an attached client obeys clients:false, and it is the client that obeys (A
   await page.locator('#username').fill('envadmin');
   await page.locator('#password').fill('EnvPass123!');
   await page.getByRole('button', { name: /^sign in$/i }).click();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // The remote admin refuses attached clients. Sent through the mux, as this client's
   // own admin console would: /api is reverse-proxied to the remote, which holds the policy.
@@ -327,8 +348,12 @@ test('an attached client obeys clients:false, and it is the client that obeys (A
         port: 2222,
         username: 'riteuser',
         authMethod: { type: 'password', password: 'ritepass123' },
-        color: null, icon: null, folder: null, notes: null,
-        sshKeepAliveOverride: null, sshKeepAliveInterval: null,
+        color: null,
+        icon: null,
+        folder: null,
+        notes: null,
+        sshKeepAliveOverride: null,
+        sshKeepAliveInterval: null,
       }),
     });
     return r.status;
@@ -341,13 +366,19 @@ test('an attached client obeys clients:false, and it is the client that obeys (A
   });
 
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.getByText('policy-client-box').first().click();
 
   // The dashboard opens, minus the two cards that would have run something.
-  await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(page.getByText('Containers and services are not being checked')).toBeVisible();
-  await expect(page.getByText('Your server turns off container and service checks for this client.')).toBeVisible();
+  await expect(
+    page.getByText('This server turns off container and service checks for this client.'),
+  ).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Containers', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Services', exact: true })).toHaveCount(0);
   // Port forwarding is untouched: refusing to probe is not refusing the dashboard.
@@ -360,8 +391,18 @@ test('an attached client obeys clients:false, and it is the client that obeys (A
   // Allowed again: the same client probes, from its own network position.
   expect(await set(true)).toBe(204);
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
   await page.getByText('policy-client-box').first().click();
-  await expect(page.getByRole('heading', { name: 'Containers', exact: true })).toBeVisible({ timeout: 30_000 });
-  expect(execs.length, 'and now it does send one').toBeGreaterThan(0);
+  await expect(page.getByRole('heading', { name: 'Containers', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+  // Polled, not snapshotted: the card renders and *then* probes, so the heading being
+  // visible does not mean the request has left yet. Asserting on the array right here
+  // reads an empty list whenever the machine is a few milliseconds slow — which is
+  // what it did, twice, on an otherwise green gate.
+  await expect
+    .poll(() => execs.length, { message: 'and now it does send one', timeout: 15_000 })
+    .toBeGreaterThan(0);
 });

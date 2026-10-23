@@ -60,6 +60,10 @@
     --input: 225 28.6% 11%;
     --ring: 224.1 85.8% 72.4%;
     --radius: 0.75rem;
+
+    /* The checkmark a checkbox wears, as a mask so it takes the box's colour and
+       scales with it (see the control rules below). */
+    --rite-tick: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 12.8l5 5 10-10.6'/%3E%3C/svg%3E");
   }
 }
 
@@ -76,6 +80,133 @@
   }
   button:not([disabled]) {
     cursor: pointer;
+  }
+}
+
+@layer base {
+  /* ---- the controls the engine would otherwise draw itself -----------------
+     One bundle, two engines: WebKitGTK behind the desktop window, whatever the
+     browser uses in a tab. Anything left to the UA is therefore drawn twice and
+     differently — a GTK checkbox beside a Chromium one, two dropdown buttons, two
+     scrollbars — from the same stylesheet, for the same account. Someone noticed
+     the checkboxes before any test did.
+
+     `color-scheme: dark` above covers what no page can style (a <select>'s open
+     list); these rules cover what a page can. Shapes from design/mock/rite.css —
+     `input.inp, select.inp` for the boxes, `.scroll::-webkit-scrollbar` for the
+     bars — so the prototype and both shells describe one control each.
+     ------------------------------------------------------------------------ */
+
+  /* The closed box is ours; the open list stays the engine's, in both engines. The
+     chevron is a fixed muted grey rather than currentColor, which a data URI cannot
+     read — Rite ships one palette, so there is nothing for it to follow. */
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23858da3' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 0.85rem;
+    padding-right: 1.9rem;
+  }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    appearance: none;
+    flex: none;
+    display: inline-grid;
+    place-content: center;
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid hsl(var(--border2));
+    background: hsl(var(--input));
+    border-radius: 0.3rem;
+  }
+  input[type='radio'] {
+    border-radius: 50%;
+  }
+  input[type='checkbox']:checked,
+  input[type='radio']:checked {
+    background: hsl(var(--primary));
+    border-color: hsl(var(--primary));
+  }
+  /* The tick is drawn, not written: a character would be the engine's font again. It
+     is masked rather than sized, so it follows a box the caller made smaller (the
+     layout cards use `h-3 w-3`, the dashboard `h-4 w-4`). */
+  input[type='checkbox']:checked::after,
+  input[type='radio']:checked::after {
+    content: '';
+    width: 100%;
+    height: 100%;
+    background: hsl(var(--primary-foreground));
+  }
+  input[type='checkbox']:checked::after {
+    -webkit-mask: var(--rite-tick) center / 72% 72% no-repeat;
+    mask: var(--rite-tick) center / 72% 72% no-repeat;
+  }
+  input[type='radio']:checked::after {
+    -webkit-mask: radial-gradient(circle at center, #000 0 27%, transparent 28%);
+    mask: radial-gradient(circle at center, #000 0 27%, transparent 28%);
+  }
+  input[type='checkbox']:disabled,
+  input[type='radio']:disabled {
+    opacity: 0.5;
+  }
+
+  /* A spinner is a different widget in each engine, and every one of these boxes is
+     typed into rather than nudged. */
+  input[type='number'] {
+    appearance: textfield;
+  }
+  input[type='number']::-webkit-inner-spin-button,
+  input[type='number']::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+
+  ::placeholder {
+    color: hsl(var(--muted-foreground));
+    opacity: 1;
+  }
+
+  /* Scrollbars, from the mock. The -webkit- form only: adding `scrollbar-width`
+     would win in Chromium and lose in WebKitGTK, which is the divergence this is
+     here to remove. Firefox has no -webkit- scrollbar at all, so it — and only it —
+     gets the standard properties. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border2));
+    border-radius: 9px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
+    background-clip: content-box;
+  }
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: hsl(var(--border2)) transparent;
+    }
+  }
+
+  /* One focus ring, since each engine has its own idea of one. Keyboard only, so a
+     mouse click does not leave it behind; a field also takes the accent border the
+     mock gives it. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring) / 0.55);
+    outline-offset: 1px;
+  }
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    border-color: hsl(var(--primary));
   }
 }
 
@@ -126,6 +257,16 @@
     padding: 5px 10px;
     font-size: 13px;
     border-radius: 7px;
+  }
+  /* The nav entry for the surface you are already on (design/mock/rite.css .btn.nav-on).
+     Marked rather than dropped: a nav that hides its own entry shifts the others under
+     the cursor each time you move. */
+  .m-btn.nav-on,
+  .m-btn.nav-on:hover {
+    background: hsl(var(--primary) / 0.15);
+    border-color: hsl(var(--primary) / 0.35);
+    color: hsl(var(--foreground));
+    cursor: default;
   }
 
   /* pill / chip + status dot + tag */

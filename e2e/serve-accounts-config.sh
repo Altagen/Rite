@@ -15,12 +15,23 @@ cat > "$HOME/rite.toml" <<'TOML'
 instance_name     = "Configured by file"
 open_registration = true    # NOT the default: the check can only discriminate on a flip
 allow_quick_ssh   = true
+# Declared so the console's lock is exercised on a secrets policy too, and NOT at its
+# default: a check can only discriminate on a flip (ADR 0024 §4).
+allow_secret_reveal = false
+# A security policy declared as code, at a value that is NOT the default, so the lock and
+# the reported value are both discriminating.
+host_key_verification_mode = "warn"
 
 [dashboard_policy]
 webui = false
 
 [collection_policy]
 maxMembers = 7
+
+# ADR 0027, and NOT at its default: declared false for the web UI so the lock and the
+# reported value are both discriminating.
+[layouts_policy]
+webui = false
 TOML
 
 # A secret the way a container runtime mounts one: a file whose whole content is the

@@ -6,9 +6,10 @@
  * Overview and Collections are new. Admin-role gating is the caller's.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { askConfirm } from '../utils/confirmPrompt';
+import { useTranslation } from '../i18n/i18n';
 import { useServerSession } from '../store/serverSessionStore';
-import { navigate } from '../store/route';
 import {
   Backend,
   type ServerUser,
@@ -31,24 +32,64 @@ import { TeamsPanel } from './TeamsPanel';
 import { InstanceSettingsPanel } from './InstanceSettingsPanel';
 import { DangerZone } from './DangerZone';
 import { IconUsers, IconShield, IconGear, IconCollection } from './icons';
-import { ProfilePastille } from './ProfilePastille';
-import { useSettingsModal } from '../store/settingsModal';
-import { isNativeShell } from '../utils/nativeShell';
+import { OverlayHeaderControls } from './OverlayHeaderControls';
+import { isNativeShell, nativeContext } from '../utils/nativeShell';
+import { Switch } from './Switch';
 import riteLogo from '../assets/rite.png';
 
 type Sec = 'overview' | 'users' | 'invitations' | 'teams' | 'collections' | 'instance';
 type Role = 'admin' | 'manager' | 'user';
 
-// Sections are gated on TWO axes: the account role (managers do org only — users + teams), and the
-// shell (the desktop client hides heavy INSTANCE administration, which lives in the web console —
-// Bitwarden/Vaultwarden model). The API guard is the real boundary; this is UX.
-const NAV: { id: Sec; label: string; icon: React.ReactNode; roles: Role[]; webOnly?: boolean }[] = [
-  { id: 'overview', label: 'Overview', icon: <IconGrid />, roles: ['admin'], webOnly: true },
-  { id: 'users', label: 'Users', icon: <IconUsers className="h-4 w-4" />, roles: ['admin', 'manager'] },
-  { id: 'invitations', label: 'Invitations', icon: <IconTicket />, roles: ['admin', 'manager'] },
-  { id: 'teams', label: 'Teams', icon: <IconUsers className="h-4 w-4" />, roles: ['admin', 'manager'] },
-  { id: 'collections', label: 'Collections', icon: <IconCollection className="h-4 w-4" />, roles: ['admin'] },
-  { id: 'instance', label: 'Instance', icon: <IconGear className="h-4 w-4" />, roles: ['admin'], webOnly: true },
+// Sections are gated on TWO axes (ADR 0025): the account role (managers do org only — users
+// + teams), and the shell (the client holds the PEOPLE, the web console holds the POLICY).
+// The API guard is the real boundary and it is the role, never the shell — a client with an
+// admin session can still PATCH the instance, so no code may read a hidden rail as a
+// permission.
+const NAV: {
+  id: Sec;
+  labelKey: string;
+  icon: React.ReactNode;
+  roles: Role[];
+  webOnly?: boolean;
+}[] = [
+  {
+    id: 'overview',
+    labelKey: 'admin.nav.overview',
+    icon: <IconGrid />,
+    roles: ['admin'],
+    webOnly: true,
+  },
+  {
+    id: 'users',
+    labelKey: 'admin.nav.users',
+    icon: <IconUsers className="h-4 w-4" />,
+    roles: ['admin', 'manager'],
+  },
+  {
+    id: 'invitations',
+    labelKey: 'admin.nav.invitations',
+    icon: <IconTicket />,
+    roles: ['admin', 'manager'],
+  },
+  {
+    id: 'teams',
+    labelKey: 'admin.nav.teams',
+    icon: <IconUsers className="h-4 w-4" />,
+    roles: ['admin', 'manager'],
+  },
+  {
+    id: 'collections',
+    labelKey: 'admin.nav.collections',
+    icon: <IconCollection className="h-4 w-4" />,
+    roles: ['admin'],
+  },
+  {
+    id: 'instance',
+    labelKey: 'admin.nav.instance',
+    icon: <IconGear className="h-4 w-4" />,
+    roles: ['admin'],
+    webOnly: true,
+  },
 ];
 
 function IconGrid() {
@@ -72,8 +113,10 @@ function IconTicket() {
 }
 
 export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}) {
-  const { mode, logout, user } = useServerSession();
-  const setSettingsOpen = useSettingsModal((s) => s.setOpen);
+  const { t } = useTranslation();
+  const { mode, user } = useServerSession();
+  // The header, for OverflowNav's fit measurement (see OverlayHeaderControls).
+  const appbarRef = useRef<HTMLElement>(null);
   const role = (user?.role ?? 'user') as Role;
   const native = isNativeShell();
   // Instance master switch (admin → Instance): with invitations off, hide the tab entirely —
@@ -90,7 +133,10 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
   // Default to an always-visible section; the nav only offers visible ones, so `sec` stays valid.
   const [sec, setSec] = useState<Sec>(nav[0]?.id ?? 'teams');
   // "Admin" only for a full admin on the web console; otherwise it's the org surface.
-  const label = role === 'admin' && !native ? 'Admin' : 'Organization';
+  const label = role === 'admin' && !native ? t('admin.badgeAdmin') : t('admin.badgeOrg');
+  // The address of the console that DOES carry instance policy. Only a server-context
+  // window has one; a local-vault window has no server to point at.
+  const consoleUrl = native ? (nativeContext()?.url ?? null) : null;
   // Some sections are hidden here (native shell, or a manager) ⇒ point instance admin at the web.
   const hasHidden = nav.length < NAV.filter((n) => n.roles.includes(role)).length || native;
 
@@ -98,23 +144,14 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
   // turns invitations off while it's open via a live policy push) we fall back without an effect.
   const activeSec = nav.some((n) => n.id === sec) ? sec : (nav[0]?.id ?? 'teams');
 
-  // Esc closes the admin surface (two-worlds: it's a mode you open and close), unless it's the
-  // only screen (web console with no connection manager behind it) or the Settings modal is open
-  // over it (Esc there is the modal's).
-  const settingsOpen = useSettingsModal((s) => s.open);
-  useEffect(() => {
-    if (hideBack || settingsOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') navigate('/');
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [hideBack, settingsOpen]);
+  // Esc and the way back are the shared bar's now (OverlayHeaderControls), so the console
+  // behaves like every other overlay page. `hideBack` is the admin-only deployment: nothing
+  // sits behind the console, so Esc must not navigate into it.
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
       {/* Top bar — a distinct admin surface */}
-      <header className="m-appbar">
+      <header ref={appbarRef} className="m-appbar m-appbar-fit">
         <div className="m-brand flex items-center gap-2.5">
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
           <span className="rounded-md border border-primary/40 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-primary">
@@ -122,29 +159,13 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
           </span>
         </div>
         {mode?.instanceName && (
-          <span className="m-chip" title="Server instance">
+          <span className="m-chip" title={t('admin.instanceTitle')}>
             <span className="m-dot" />
             {mode.instanceName}
           </span>
         )}
         <span className="m-spacer" />
-        {!hideBack && (
-          <button onClick={() => navigate('/')} className="m-btn m-btn-sm" title="Close — back to the app (Esc)">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M18 6L6 18" />
-            </svg>
-            <span className="hidden md:inline">Close</span>
-          </button>
-        )}
-        {user && (
-          <ProfilePastille
-            username={user.username}
-            role={user.role}
-            instanceName={mode?.instanceName}
-            onSettings={() => setSettingsOpen(true)}
-            onSignOut={() => logout()}
-          />
-        )}
+        <OverlayHeaderControls appbarRef={appbarRef} escapes={!hideBack} />
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -153,6 +174,7 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
           {nav.map((n) => (
             <button
               key={n.id}
+              data-testid={`admin-nav-${n.id}`}
               onClick={() => setSec(n.id)}
               className={`flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition ${
                 activeSec === n.id
@@ -161,15 +183,32 @@ export function AdminDashboard({ hideBack = false }: { hideBack?: boolean } = {}
               }`}
             >
               <span className="grid place-items-center opacity-85">{n.icon}</span>
-              {n.label}
+              {t(n.labelKey)}
             </button>
           ))}
           {hasHidden && (
-            <p className="mt-auto px-2 pt-3 text-[11px] leading-relaxed text-muted-foreground">
-              {native
-                ? 'Server settings live in the web console — open the server URL in a browser.'
-                : 'Instance administration is limited to admins.'}
-            </p>
+            <div className="mt-auto px-2 pt-3 text-[11px] leading-relaxed text-muted-foreground">
+              {/* It used to say "open the server URL in a browser" without saying which URL,
+                  which is advice the reader cannot act on — the client knows the address. */}
+              {!native ? (
+                <p>{t('admin.hiddenManager')}</p>
+              ) : consoleUrl ? (
+                <>
+                  <p>{t('admin.hiddenNative')}</p>
+                  <button
+                    type="button"
+                    data-testid="open-web-console"
+                    onClick={() => window.open(consoleUrl, '_blank', 'noopener,noreferrer')}
+                    title={t('admin.openConsole')}
+                    className="mt-1 break-all text-left font-mono text-[11px] text-primary hover:underline"
+                  >
+                    {consoleUrl}
+                  </button>
+                </>
+              ) : (
+                <p>{t('admin.hiddenNativeNoUrl')}</p>
+              )}
+            </div>
           )}
         </nav>
 
@@ -209,9 +248,12 @@ function activityAgo(seconds: number): string {
 }
 
 function Overview({ onGo }: { onGo: (s: Sec) => void }) {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<ServerUser[] | null>(null);
   useEffect(() => {
-    Backend.Admin.listUsers().then(setUsers).catch(() => setUsers([]));
+    Backend.Admin.listUsers()
+      .then(setUsers)
+      .catch(() => setUsers([]));
   }, []);
   const admins = users?.filter((u) => u.role === 'admin').length ?? 0;
   const active = users?.filter((u) => u.status === 'active').length ?? 0;
@@ -222,34 +264,50 @@ function Overview({ onGo }: { onGo: (s: Sec) => void }) {
   return (
     <>
       <div className="mb-5 flex items-center gap-3.5">
-        <h1 className="text-[22px] font-bold">Overview</h1>
-        <span className="text-[13px] text-muted-foreground">This Rite instance at a glance</span>
+        <h1 className="text-[22px] font-bold">{t('admin.nav.overview')}</h1>
+        <span className="text-[13px] text-muted-foreground">{t('admin.dash.subtitle')}</span>
       </div>
       <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(200px,1fr))]">
         <button onClick={() => onGo('users')} className="text-left">
-          <StatCard k="Users" v={users ? users.length : '…'} d={users ? `${active} active` : undefined} />
+          <StatCard
+            k={t('admin.dash.statUsers')}
+            v={users ? users.length : '…'}
+            d={users ? t('admin.dash.statUsersActive', { count: active }) : undefined}
+          />
         </button>
-        <StatCard k="Admins" v={users ? admins : '…'} d="with full server access" />
+        <StatCard
+          k={t('admin.dash.statAdmins')}
+          v={users ? admins : '…'}
+          d={t('admin.dash.statAdminsNote')}
+        />
         <button onClick={() => onGo('teams')} className="text-left">
-          <StatCard k="Teams" v="—" d="open Teams to manage" />
+          <StatCard k={t('admin.dash.statTeams')} v="—" d={t('admin.dash.statTeamsNote')} />
         </button>
-        <StatCard k="Live sessions" v="—" d="terminals open now" />
+        <StatCard k={t('admin.dash.statSessions')} v="—" d={t('admin.dash.statSessionsNote')} />
       </div>
 
       <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="border-b border-border px-4 py-3 text-sm font-semibold">Recent activity</div>
+        <div className="border-b border-border px-4 py-3 text-sm font-semibold">
+          {t('admin.dash.recent')}
+        </div>
         {users === null ? (
-          <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
+          <div className="px-4 py-4 text-sm text-muted-foreground">{t('admin.dash.loading')}</div>
         ) : recent.length === 0 ? (
-          <div className="px-4 py-4 text-sm text-muted-foreground">No activity yet.</div>
+          <div className="px-4 py-4 text-sm text-muted-foreground">
+            {t('admin.dash.noActivity')}
+          </div>
         ) : (
           recent.map((u) => (
-            <div key={u.id} className="flex items-center gap-3 border-b border-border px-4 py-2.5 text-sm last:border-b-0">
+            <div
+              key={u.id}
+              className="flex items-center gap-3 border-b border-border px-4 py-2.5 text-sm last:border-b-0"
+            >
               <span className="grid h-7 w-7 flex-none place-items-center rounded-full bg-primary/15 text-xs font-semibold uppercase text-primary">
                 {u.username.slice(0, 2)}
               </span>
               <span className="min-w-0 flex-1">
-                <b>{u.username}</b> <span className="text-muted-foreground">joined</span>
+                <b>{u.username}</b>{' '}
+                <span className="text-muted-foreground">{t('admin.dash.joined')}</span>
               </span>
               <span className="flex-none text-muted-foreground">{activityAgo(u.createdAt)}</span>
             </div>
@@ -261,14 +319,12 @@ function Overview({ onGo }: { onGo: (s: Sec) => void }) {
 }
 
 function ZkBanner() {
+  const { t } = useTranslation();
   return (
     <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3.5 text-[13px] text-foreground/80">
       <IconShield className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
       <div>
-        <b>Zero-knowledge.</b> The server never sees a key. Collection <b>names</b> are readable here only through the
-        Admin-group escrow — machine credentials stay sealed to members and are never shown. Collections created before
-        the escrow existed appear by id until re-keyed. You can decrypt names, remove a member, delete a collection, and
-        grant a member <b>name/roster</b> access; full <b>machine</b> access still needs a member to seal the item key.
+        <b>{t('admin.zkTitle')}</b> {t('admin.zkBody')}
       </div>
     </div>
   );
@@ -286,23 +342,10 @@ const DEFAULT_COLL_POLICY: CollectionPolicy = {
   defaultRole: 'viewer',
 };
 
-function PolicyToggle({ on, disabled, onClick }: { on: boolean; disabled?: boolean; onClick: () => void }) {
-  return (
-    <button
-      role="switch"
-      aria-checked={on}
-      disabled={disabled}
-      onClick={onClick}
-      className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${on ? 'bg-primary' : 'bg-muted'}`}
-    >
-      <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${on ? 'translate-x-5' : 'translate-x-0'}`} />
-    </button>
-  );
-}
-
 /** Server-wide collection governance (mock admin → Collections): who may create, share, how
  *  many members, and the default role. Optimistic saves; reverts on failure. */
 function CollectionPolicyPanel() {
+  const { t } = useTranslation();
   const [p, setP] = useState<CollectionPolicy>(DEFAULT_COLL_POLICY);
   const [err, setErr] = useState<string | null>(null);
   // ADR 0020: when the instance holds this policy as code, the controls go inert and say
@@ -325,40 +368,50 @@ function CollectionPolicyPanel() {
       await Backend.Admin.setCollectionPolicy(next);
     } catch (e) {
       setP(prev);
-      setErr(e instanceof Error ? e.message : 'Failed to save');
+      setErr(e instanceof Error ? e.message : t('admin.coll.saveFailed'));
     }
   };
-  const row = 'flex flex-wrap items-center justify-between gap-4 border-t border-border p-4 first:border-t-0';
+  const row =
+    'flex flex-wrap items-center justify-between gap-4 border-t border-border p-4 first:border-t-0';
   return (
     <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
-      {err && <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-600">{err}</div>}
+      {err && (
+        <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-600">
+          {err}
+        </div>
+      )}
       {managedBy && (
         <div className="border-b border-border bg-muted/40 px-4 py-2 text-sm text-amber-500">
-          Set by this instance&apos;s configuration (<code className="font-mono">{managedBy}</code>) — change it there,
-          not here.
+          {t('admin.managedBy', { origin: managedBy })}— change it there, not here.
         </div>
       )}
       <div className={row}>
         <div>
-          <div className="font-medium">Allow users to create collections</div>
-          <p className="mt-1 text-sm text-muted-foreground">When off, only admins provision collections.</p>
+          <div className="font-medium">{t('admin.coll.allowCreate')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.coll.allowCreateNote')}</p>
         </div>
-        <PolicyToggle on={p.allowCreate} disabled={!!managedBy} onClick={() => save({ ...p, allowCreate: !p.allowCreate })} />
-      </div>
-      <div className={row}>
-        <div>
-          <div className="font-medium">Allow sharing outside teams</div>
-          <p className="mt-1 text-sm text-muted-foreground">Members can add anyone in the directory, not just teammates.</p>
-        </div>
-        <PolicyToggle
-          on={p.allowSharingOutsideTeams}
+        <Switch
+          checked={p.allowCreate}
+          label={t('admin.coll.allowCreate')}
           disabled={!!managedBy}
-          onClick={() => save({ ...p, allowSharingOutsideTeams: !p.allowSharingOutsideTeams })}
+          onChange={() => save({ ...p, allowCreate: !p.allowCreate })}
         />
       </div>
       <div className={row}>
         <div>
-          <div className="font-medium">Max members per collection</div>
+          <div className="font-medium">{t('admin.coll.allowSharing')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.coll.allowSharingNote')}</p>
+        </div>
+        <Switch
+          checked={p.allowSharingOutsideTeams}
+          label={t('admin.coll.allowSharing')}
+          disabled={!!managedBy}
+          onChange={() => save({ ...p, allowSharingOutsideTeams: !p.allowSharingOutsideTeams })}
+        />
+      </div>
+      <div className={row}>
+        <div>
+          <div className="font-medium">{t('admin.coll.maxMembers')}</div>
           <p className="mt-1 text-sm text-muted-foreground">0 = unlimited.</p>
         </div>
         <input
@@ -373,13 +426,15 @@ function CollectionPolicyPanel() {
       </div>
       <div className={row}>
         <div>
-          <div className="font-medium">Default role for new members</div>
-          <p className="mt-1 text-sm text-muted-foreground">Applied when someone is added to a collection.</p>
+          <div className="font-medium">{t('admin.coll.defaultRole')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.coll.defaultRoleNote')}</p>
         </div>
         <select
           value={p.defaultRole}
           disabled={!!managedBy}
-          onChange={(e) => save({ ...p, defaultRole: e.target.value as CollectionPolicy['defaultRole'] })}
+          onChange={(e) =>
+            save({ ...p, defaultRole: e.target.value as CollectionPolicy['defaultRole'] })
+          }
           className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
         >
           <option value="viewer">viewer</option>
@@ -391,6 +446,7 @@ function CollectionPolicyPanel() {
 }
 
 function CollectionsGovernance() {
+  const { t } = useTranslation();
   const { publicKey, privateKey } = useServerSession();
   const [colls, setColls] = useState<CollectionSummary[] | null>(null);
   const [names, setNames] = useState<Map<string, CollName>>(new Map());
@@ -416,7 +472,9 @@ function CollectionsGovernance() {
     if (!sec) return;
     setGroup(g);
     setSecret(sec);
-    Backend.Collections.directory().then(setDirectory).catch(() => setDirectory([]));
+    Backend.Collections.directory()
+      .then(setDirectory)
+      .catch(() => setDirectory([]));
     const map = new Map<string, CollName>();
     for (const c of all) {
       if (!c.metaKeyGroupEnc) continue;
@@ -439,7 +497,9 @@ function CollectionsGovernance() {
     setSel(id);
     setMembers(null);
     setAddTarget('');
-    Backend.Admin.collectionMembers(id).then(setMembers).catch(() => setMembers([]));
+    Backend.Admin.collectionMembers(id)
+      .then(setMembers)
+      .catch(() => setMembers([]));
   };
   const removeMember = async (id: string, userId: string) => {
     await Backend.Admin.removeCollectionMember(id, userId).catch(() => {});
@@ -456,7 +516,11 @@ function CollectionsGovernance() {
     if (!coll?.metaKeyGroupEnc || !group || !secret || !entry?.publicKey) return;
     try {
       const metaKey = await unsealMetaKey(group, secret, coll.metaKeyGroupEnc);
-      await Backend.Admin.addCollectionMemberMeta(id, userId, await sealCollectionKeyToHex(entry.publicKey, metaKey));
+      await Backend.Admin.addCollectionMemberMeta(
+        id,
+        userId,
+        await sealCollectionKeyToHex(entry.publicKey, metaKey),
+      );
       setAddTarget('');
       open(id);
     } catch {
@@ -464,7 +528,13 @@ function CollectionsGovernance() {
     }
   };
   const del = async (id: string) => {
-    if (!window.confirm('Force-delete this collection for every member? Its encrypted machines are lost.')) return;
+    const ok = await askConfirm({
+      title: t('admin.coll.confirmDeleteTitle'),
+      body: t('admin.coll.confirmDelete'),
+      action: t('dlg.delete'),
+      danger: true,
+    });
+    if (!ok) return;
     await Backend.Admin.deleteCollection(id).catch(() => {});
     setSel(null);
     load();
@@ -475,29 +545,61 @@ function CollectionsGovernance() {
   if (sel) {
     return (
       <>
-        <button onClick={() => setSel(null)} className="mb-4 flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground">
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <button
+          onClick={() => setSel(null)}
+          className="mb-4 flex items-center gap-1 text-sm font-semibold text-muted-foreground hover:text-foreground"
+        >
+          <svg
+            className="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
           </svg>
-          Collections
+          {t('admin.nav.collections')}
         </button>
         <h1 className="mb-4 text-[22px] font-bold">{label(sel)}</h1>
         <div className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
           <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-            Members {members ? `· ${members.length}` : ''}
+            {members
+              ? t('admin.coll.membersCountN', { count: members.length })
+              : t('admin.coll.membersCount')}
           </div>
           {members === null ? (
-            <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
+            <div className="px-4 py-4 text-sm text-muted-foreground">{t('admin.coll.loading')}</div>
           ) : members.length === 0 ? (
-            <div className="px-4 py-4 text-sm text-muted-foreground">No members.</div>
+            <div className="px-4 py-4 text-sm text-muted-foreground">
+              {t('admin.coll.noMembers')}
+            </div>
           ) : (
             members.map((m) => (
-              <div key={m.userId} className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
+              <div
+                key={m.userId}
+                className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+              >
                 <span className="flex-1 font-medium">{m.username}</span>
-                <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">{m.role}</span>
-                <button onClick={() => removeMember(sel, m.userId)} className="rounded p-1 text-red-500 hover:bg-red-500/10" title="Remove member">
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
+                  {m.role}
+                </span>
+                <button
+                  onClick={() => removeMember(sel, m.userId)}
+                  className="rounded p-1 text-red-500 hover:bg-red-500/10"
+                  title={t('admin.coll.removeMember')}
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"
+                    />
                   </svg>
                 </button>
               </div>
@@ -511,11 +613,9 @@ function CollectionsGovernance() {
           const candidates = directory.filter((d) => !taken.has(d.id) && d.publicKey);
           return (
             <div className="mb-4 rounded-2xl border border-border bg-card p-4">
-              <div className="text-sm font-semibold">Grant name / roster access</div>
+              <div className="text-sm font-semibold">{t('admin.coll.grantTitle')}</div>
               <p className="mb-3 mt-0.5 text-xs text-muted-foreground">
-                {canAdd
-                  ? 'Adds the user to the roster and lets them see the collection name. Machine access still needs a member to seal the item key.'
-                  : 'Available once the collection is escrowed to the Admin group (created after the escrow, or re-keyed).'}
+                {canAdd ? t('admin.coll.grantNote') : t('admin.coll.grantUnavailable')}
               </p>
               <div className="flex items-center gap-2">
                 <select
@@ -525,7 +625,9 @@ function CollectionsGovernance() {
                   className="min-w-0 flex-1 rounded-md border border-border bg-input px-2.5 py-1.5 text-sm disabled:opacity-50"
                 >
                   <option value="">
-                    {candidates.length === 0 ? 'No users to add' : 'Select a user…'}
+                    {candidates.length === 0
+                      ? t('admin.coll.noCandidates')
+                      : t('admin.coll.pickUser')}
                   </option>
                   {candidates.map((d) => (
                     <option key={d.id} value={d.id}>
@@ -538,14 +640,14 @@ function CollectionsGovernance() {
                   disabled={!canAdd || !addTarget}
                   className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
-                  Add
+                  {t('admin.coll.add')}
                 </button>
               </div>
             </div>
           );
         })()}
         <DangerZone
-          title="Delete collection"
+          title={t('admin.coll.deleteTitle')}
           desc="Force-remove it for every member. The encrypted machines are lost."
           action="Delete collection"
           onAction={() => del(sel)}
@@ -563,31 +665,31 @@ function CollectionsGovernance() {
   return (
     <>
       <div className="mb-5">
-        <h1 className="text-[22px] font-bold">Collection governance</h1>
-        <span className="text-[13px] text-muted-foreground">Policies + oversight, server-wide</span>
+        <h1 className="text-[22px] font-bold">{t('admin.coll.title')}</h1>
+        <span className="text-[13px] text-muted-foreground">{t('admin.coll.subtitle')}</span>
       </div>
       <ZkBanner />
       <CollectionPolicyPanel />
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
         <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 border-b border-border px-4 py-3">
-          <span className="text-sm font-semibold">Shared collections</span>
+          <span className="text-sm font-semibold">{t('admin.coll.shared')}</span>
           {personal > 0 && (
             <span className="text-xs text-muted-foreground">
-              {personal} personal — kept private, not shown
+              {t('admin.coll.personalHidden', { count: personal })}
             </span>
           )}
         </div>
         <div className="grid grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b border-border px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          <span>Collection</span>
-          <span className="text-right">Members</span>
-          <span className="text-right">Machines</span>
+          <span>{t('admin.coll.colName')}</span>
+          <span className="text-right">{t('admin.coll.colMembers')}</span>
+          <span className="text-right">{t('admin.coll.colMachines')}</span>
           <span className="w-6" />
         </div>
         {shared === null ? (
-          <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
+          <div className="px-4 py-4 text-sm text-muted-foreground">{t('admin.coll.loading')}</div>
         ) : shared.length === 0 ? (
           <div className="px-4 py-4 text-sm text-muted-foreground">
-            No shared collections{personal > 0 ? ' — personal ones stay private' : ''}.
+            {personal > 0 ? t('admin.coll.noSharedPersonal') : t('admin.coll.noShared')}
           </div>
         ) : (
           shared.map((c) => (
@@ -602,7 +704,13 @@ function CollectionsGovernance() {
               </span>
               <span className="text-right text-sm">{c.memberCount}</span>
               <span className="text-right text-sm">{c.itemCount}</span>
-              <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg
+                className="h-4 w-4 text-muted-foreground"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
               </svg>
             </button>

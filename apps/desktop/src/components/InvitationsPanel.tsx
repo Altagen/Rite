@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useServerSession } from '../store/serverSessionStore';
+import { useTranslation } from '../i18n/i18n';
 import { Backend, type EnrollmentToken, type MintedToken } from '../utils/backend';
 
 type TeamOption = { id: string; name: string };
@@ -39,11 +40,16 @@ function RoleBadge({ role }: { role: EnrollmentToken['role'] }) {
         ? 'bg-amber-500/15 text-amber-600'
         : 'bg-secondary text-muted-foreground';
   return (
-    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cls}`}>{role}</span>
+    <span
+      className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${cls}`}
+    >
+      {role}
+    </span>
   );
 }
 
 export function InvitationsPanel() {
+  const { t } = useTranslation();
   const { user } = useServerSession();
   const isAdmin = user?.role === 'admin';
   const [tokens, setTokens] = useState<EnrollmentToken[] | null>(null);
@@ -76,7 +82,7 @@ export function InvitationsPanel() {
       await Backend.Admin.revokeEnrollmentToken(id);
       load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to revoke');
+      setErr(e instanceof Error ? e.message : t('admin.invites.errRevoke'));
     }
   };
 
@@ -95,46 +101,46 @@ export function InvitationsPanel() {
   return (
     <>
       <div className="mb-5 flex items-center gap-3.5">
-        <h1 className="text-[22px] font-bold">Invitations</h1>
-        <span className="text-[13px] text-muted-foreground">Enrollment tokens · single-use</span>
+        <h1 className="text-[22px] font-bold">{t('admin.invites.title')}</h1>
+        <span className="text-[13px] text-muted-foreground">{t('admin.invites.subtitle')}</span>
         <span className="flex-1" />
         <button
           onClick={() => setShowGen(true)}
           className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
-          + Generate token
+          {t('admin.invites.generateBtn')}
         </button>
       </div>
 
       <div className="mb-4 flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3.5 text-[13px] text-foreground/80">
-        <span>
-          A token grants <b>membership + role immediately</b> on redeem; access to a collection&apos;s encrypted machines
-          still follows the usual <b>member grant</b>. Tokens are <b>single-use</b>, <b>hashed at rest</b>, and the full
-          value is shown <b>once</b>.
-        </span>
+        <span>{t('admin.invites.banner')}</span>
       </div>
 
-      {err && <div className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">{err}</div>}
+      {err && (
+        <div className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+          {err}
+        </div>
+      )}
 
       {reveal && (
         <div className="mb-4 rounded-2xl border border-dashed border-primary/50 bg-card p-4">
-          <div className="mb-1 text-sm font-semibold">Copy this token now</div>
-          <p className="mb-3 text-xs text-muted-foreground">
-            The server keeps only a hash — you won&apos;t be able to see it again. Share it out-of-band.
-          </p>
+          <div className="mb-1 text-sm font-semibold">{t('admin.invites.revealTitle')}</div>
+          <p className="mb-3 text-xs text-muted-foreground">{t('admin.invites.revealWhy')}</p>
           <div className="flex items-center gap-2.5">
-            <code className="min-w-0 flex-1 break-all rounded-md bg-input px-3 py-2 font-mono text-sm">{reveal.token}</code>
+            <code className="min-w-0 flex-1 break-all rounded-md bg-input px-3 py-2 font-mono text-sm">
+              {reveal.token}
+            </code>
             <button
               onClick={() => copy(reveal.token)}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-secondary"
             >
-              {copied ? 'Copied' : 'Copy'}
+              {copied ? t('admin.invites.copied') : t('admin.invites.copy')}
             </button>
             <button
               onClick={() => setReveal(null)}
               className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
-              Done
+              {t('admin.invites.done')}
             </button>
           </div>
         </div>
@@ -142,51 +148,56 @@ export function InvitationsPanel() {
 
       <div className="overflow-hidden rounded-2xl border border-border bg-card">
         <div className="grid grid-cols-[1fr_auto_1.2fr_auto_auto] items-center gap-4 border-b border-border px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-          <span>Token</span>
-          <span>Role</span>
-          <span>Teams</span>
-          <span>Expires</span>
-          <span className="text-right">Actions</span>
+          <span>{t('admin.invites.colToken')}</span>
+          <span>{t('admin.invites.colRole')}</span>
+          <span>{t('admin.invites.colTeams')}</span>
+          <span>{t('admin.invites.colExpires')}</span>
+          <span className="text-right">{t('admin.invites.colActions')}</span>
         </div>
         {tokens === null ? (
-          <div className="px-4 py-4 text-sm text-muted-foreground">Loading…</div>
+          <div className="px-4 py-4 text-sm text-muted-foreground">
+            {t('admin.invites.loading')}
+          </div>
         ) : tokens.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-muted-foreground">
-            No invitation tokens yet. Generate one to onboard a member without being present.
+            {t('admin.invites.empty')}
           </div>
         ) : (
-          tokens.map((t) => {
-            const st = status(t);
+          tokens.map((tok) => {
+            const st = status(tok);
             return (
               <div
-                key={t.id}
+                key={tok.id}
                 className={`grid grid-cols-[1fr_auto_1.2fr_auto_auto] items-center gap-4 border-b border-border px-4 py-3 text-sm last:border-b-0 ${
                   st === 'active' ? '' : 'opacity-60'
                 }`}
               >
-                <code className="truncate rounded bg-input px-2 py-0.5 font-mono text-[13px]">{t.prefix}…</code>
-                <RoleBadge role={t.role} />
+                <code className="truncate rounded bg-input px-2 py-0.5 font-mono text-[13px]">
+                  {tok.prefix}…
+                </code>
+                <RoleBadge role={tok.role} />
                 <span className="truncate text-[13px]">
-                  {t.teams.length === 0 ? (
+                  {tok.teams.length === 0 ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
-                    t.teams.map((g, i) => (
+                    tok.teams.map((g, i) => (
                       <span key={g.teamId}>
                         {i > 0 && ', '}
-                        {teamName(g.teamId)} <span className="text-muted-foreground">· {g.teamRole}</span>
+                        {teamName(g.teamId)}{' '}
+                        <span className="text-muted-foreground">· {g.teamRole}</span>
                       </span>
                     ))
                   )}
                 </span>
                 <span className="text-[13px] text-muted-foreground">
-                  {st === 'used' ? 'used' : expiryLabel(t)}
+                  {st === 'used' ? t('admin.invites.used') : expiryLabel(tok)}
                 </span>
                 <span className="text-right">
                   <button
-                    onClick={() => revoke(t.id)}
+                    onClick={() => revoke(tok.id)}
                     className="rounded px-2 py-1 text-sm font-medium text-red-500 hover:bg-red-500/10"
                   >
-                    {st === 'active' ? 'Revoke' : 'Remove'}
+                    {st === 'active' ? t('admin.invites.revoke') : t('admin.invites.remove')}
                   </button>
                 </span>
               </div>
@@ -222,6 +233,7 @@ function GenerateDialog({
   onClose: () => void;
   onCreated: (minted: MintedToken) => void;
 }) {
+  const { t } = useTranslation();
   const [role, setRole] = useState<'user' | 'manager'>('user');
   const [picked, setPicked] = useState<Record<string, 'admin' | 'member'>>({});
   // '' = never expires; otherwise a 'YYYY-MM-DD' date (the token dies at the end of that day).
@@ -252,7 +264,7 @@ function GenerateDialog({
       });
       onCreated(minted);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to generate the token');
+      setErr(e instanceof Error ? e.message : t('admin.invites.errGenerate'));
       setBusy(false);
     }
   };
@@ -266,17 +278,19 @@ function GenerateDialog({
         className="w-full max-w-md rounded-2xl border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold">Generate an invitation token</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          The holder self-registers with this recipe already applied. You&apos;ll see the token once.
-        </p>
+        <h3 className="text-lg font-semibold">{t('admin.invites.genTitle')}</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{t('admin.invites.genWhy')}</p>
 
-        {err && <div className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">{err}</div>}
+        {err && (
+          <div className="mt-3 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-600">
+            {err}
+          </div>
+        )}
 
         <div className="mt-4 space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="tk-role" className="text-sm font-medium">
-              Org role
+              {t('admin.invites.orgRole')}
             </label>
             <select
               id="tk-role"
@@ -288,16 +302,14 @@ function GenerateDialog({
               {isAdmin && <option value="manager">manager</option>}
             </select>
             <p className="text-xs text-muted-foreground">
-              {isAdmin
-                ? 'Admins can mint user or manager tokens (never admin).'
-                : 'Managers can mint user tokens only.'}
+              {isAdmin ? t('admin.invites.orgRoleAdmin') : t('admin.invites.orgRoleManager')}
             </p>
           </div>
 
           <div className="space-y-1.5">
-            <span className="text-sm font-medium">Add to teams</span>
+            <span className="text-sm font-medium">{t('admin.invites.addTeams')}</span>
             {teams.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No teams yet.</p>
+              <p className="text-sm text-muted-foreground">{t('admin.invites.noTeams')}</p>
             ) : (
               <div className="max-h-44 space-y-1 overflow-auto rounded-lg border border-border p-2">
                 {teams.map((t) => {
@@ -312,7 +324,12 @@ function GenerateDialog({
                       {on && (
                         <select
                           value={picked[t.id]}
-                          onChange={(e) => setPicked((p) => ({ ...p, [t.id]: e.target.value as 'admin' | 'member' }))}
+                          onChange={(e) =>
+                            setPicked((p) => ({
+                              ...p,
+                              [t.id]: e.target.value as 'admin' | 'member',
+                            }))
+                          }
                           className="rounded border border-input bg-background px-1.5 py-1 text-xs"
                         >
                           <option value="member">member</option>
@@ -328,7 +345,7 @@ function GenerateDialog({
 
           <div className="space-y-1.5">
             <label htmlFor="tk-expiry" className="text-sm font-medium">
-              Expires
+              {t('admin.invites.expires')}
             </label>
             <div className="flex flex-wrap gap-1.5">
               {QUICK_DAYS.map((d) => {
@@ -339,10 +356,12 @@ function GenerateDialog({
                     key={d}
                     onClick={() => setExpiry(addDaysISO(d))}
                     className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                      on ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-secondary'
+                      on
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border hover:bg-secondary'
                     }`}
                   >
-                    {d} days
+                    {t('admin.invites.quickDays', { days: d })}
                   </button>
                 );
               })}
@@ -350,10 +369,12 @@ function GenerateDialog({
                 type="button"
                 onClick={() => setExpiry('')}
                 className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                  expiry === '' ? 'border-primary bg-primary/10 text-primary' : 'border-border hover:bg-secondary'
+                  expiry === ''
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border hover:bg-secondary'
                 }`}
               >
-                No expiration
+                {t('admin.invites.noExpiration')}
               </button>
             </div>
             <input
@@ -365,21 +386,26 @@ function GenerateDialog({
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             />
             <p className="text-xs text-muted-foreground">
-              {expiry ? `The token stops working after ${expiry}.` : 'The token never expires — revoke it manually.'}
+              {expiry
+                ? t('admin.invites.expiresAfter', { date: expiry })
+                : t('admin.invites.neverExpires')}
             </p>
           </div>
         </div>
 
         <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-secondary">
-            Cancel
+          <button
+            onClick={onClose}
+            className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-secondary"
+          >
+            {t('admin.cancel')}
           </button>
           <button
             onClick={generate}
             disabled={busy}
             className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {busy ? 'Generating…' : 'Generate'}
+            {busy ? t('admin.invites.generating') : t('admin.invites.generate')}
           </button>
         </div>
       </div>

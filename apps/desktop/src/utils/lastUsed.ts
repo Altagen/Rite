@@ -4,12 +4,13 @@
  * blob — so it's private, per-user, needs no re-encryption, and works even for view-only
  * collections. Connection ids are UUIDs, so one flat map is collision-free across accounts.
  */
+import { deviceStore } from '../utils/deviceStore';
 
 const KEY = 'rite.lastUsed';
 
 function readAll(): Record<string, number> {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = deviceStore.getItem(KEY);
     return raw ? (JSON.parse(raw) as Record<string, number>) : {};
   } catch {
     return {};
@@ -26,7 +27,7 @@ export function recordLastUsed(id: string): void {
   try {
     const all = readAll();
     all[id] = Math.floor(Date.now() / 1000);
-    localStorage.setItem(KEY, JSON.stringify(all));
+    deviceStore.setItem(KEY, JSON.stringify(all));
   } catch {
     // storage unavailable — passive status just won't persist; not fatal.
   }

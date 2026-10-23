@@ -7,6 +7,7 @@
  */
 
 import { create } from 'zustand';
+import { translate } from '../i18n/translate';
 import { Backend, type ServerMode, type ServerUser } from '../utils/backend';
 import {
   deriveAuthHash,
@@ -14,6 +15,7 @@ import {
   DEFAULT_KDF_PARAMS,
   createVaultKey,
   unwrapVaultKey,
+  WeakKdfError,
 } from '../utils/serverAuth';
 import { setSessionToken, clearSessionToken, getSessionToken } from '../utils/session';
 import { bytesToHex, hexToBytes } from '../utils/vaultCrypto';
@@ -112,6 +114,44 @@ interface ServerSessionState {
   clearError: () => void;
 }
 
+/**
+ * May this endpoint offer Quick SSH? A shared server governs the capability and forbids
+ * it by default (`allow_quick_ssh`, ADR 0020); in a local vault the user is their own
+ * authority. One function because two readers must not disagree: the toolbar button
+ * (`Workspace.tsx`) and the preference that shows it (`Settings.tsx`). A preference for
+ * a button the server will never render says you have a choice you do not have.
+ */
+/**
+ * The shells a member may pick from on this server, newest-policy-first.
+ *
+ * Empty in every case where the choice is not theirs: a local vault (their machine, their
+ * shell — this is not that question), an instance that keeps the decision, and a server
+ * too old to have probed. So a caller can render a picker on a non-empty list and needs
+ * no second condition.
+ */
+export function serverShellChoices(mode: ServerMode | null | undefined): string[] {
+  if (!mode?.accounts || mode.allowShellChoice !== true) return [];
+  return mode.shells ?? [];
+}
+
+/**
+ * The shell a new terminal opens on this server: this person's pick when the instance
+ * allows one and still offers it, the instance default otherwise. A pick the instance has
+ * since withdrawn falls back here rather than travelling — and it could not survive as a
+ * path anyway, since the server resolves the name itself.
+ */
+export function effectiveServerShell(
+  mode: ServerMode | null | undefined,
+  picked: string | undefined,
+): string {
+  const offered = serverShellChoices(mode);
+  return picked && offered.includes(picked) ? picked : (mode?.defaultShell ?? 'bash');
+}
+
+export function quickSshAllowed(mode: ServerMode | null | undefined): boolean {
+  return !mode?.accounts || mode.allowQuickSsh === true;
+}
+
 export const useServerSession = create<ServerSessionState>((set, get) => ({
   mode: null,
   user: null,
@@ -191,7 +231,17 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         sessionExpired: false,
       });
     } catch (e) {
-      set({ error: 'Invalid username or password', loading: false });
+      // A weak-KDF refusal is NOT a wrong password, and must not read as one: it says the
+      // server asked for a derivation this client will not perform (ADR 0029). Telling the
+      // reader "wrong password" there would have them type it again, into a server that is
+      // collecting cheap hashes of it.
+      set({
+        error:
+          e instanceof WeakKdfError
+            ? translate('session.errWeakKdf')
+            : translate('session.errLogin'),
+        loading: false,
+      });
       throw e;
     }
   },
@@ -206,12 +256,18 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         deriveAuthHash(password, salt, DEFAULT_KDF_PARAMS),
         createVaultKey(password),
       ]);
-      const { token, user } = await Backend.Server.bootstrap(username, salt, DEFAULT_KDF_PARAMS, authHash, {
-        masterSalt: vaultKey.masterSaltHex,
-        protectedUserKey: vaultKey.protectedUserKey,
-        publicKey: vaultKey.publicKeyHex,
-        protectedPrivateKey: vaultKey.protectedPrivateKey,
-      });
+      const { token, user } = await Backend.Server.bootstrap(
+        username,
+        salt,
+        DEFAULT_KDF_PARAMS,
+        authHash,
+        {
+          masterSalt: vaultKey.masterSaltHex,
+          protectedUserKey: vaultKey.protectedUserKey,
+          publicKey: vaultKey.publicKeyHex,
+          protectedPrivateKey: vaultKey.protectedPrivateKey,
+        },
+      );
       setSessionToken(token);
       await syncLocalVault(vaultKey.userKey);
       const mode = get().mode;
@@ -230,7 +286,10 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         mode: mode ? { ...mode, needsBootstrap: false } : mode,
       });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : 'Failed to create the admin', loading: false });
+      set({
+        error: e instanceof Error ? e.message : translate('session.errCreateAdmin'),
+        loading: false,
+      });
       throw e;
     }
   },
@@ -278,16 +337,16 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
     } catch (e) {
       const msg =
         e instanceof RiteHttpError && e.status === 409
-          ? 'That username is already taken'
+          ? translate('session.errTaken')
           : e instanceof RiteHttpError && e.status === 429
-            ? 'Too many sign-up attempts — please try again in a few minutes'
+            ? translate('session.errTooMany')
             : e instanceof RiteHttpError && e.status === 403
               ? inviteToken
-                ? 'That invitation is invalid or has expired'
-                : 'Registration is closed on this server'
+                ? translate('session.errInvite')
+                : translate('session.errClosed')
               : e instanceof Error
                 ? e.message
-                : 'Failed to create your account';
+                : translate('session.errCreateAccount');
       set({ error: msg, loading: false });
       throw e;
     }
@@ -323,7 +382,10 @@ export const useServerSession = create<ServerSessionState>((set, get) => ({
         loading: false,
       });
     } catch (e) {
-      set({ error: e instanceof Error ? e.message : 'Failed to set the password', loading: false });
+      set({
+        error: e instanceof Error ? e.message : translate('session.errSetPassword'),
+        loading: false,
+      });
       throw e;
     }
   },

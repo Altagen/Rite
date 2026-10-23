@@ -32,6 +32,22 @@ updates:
       - "dependencies"
       - "rust"
 
+  # Container base images. Added with the digest pin on the runtime stage: a digest
+  # that nobody advances is just old Debian held still, which is worse than a tag.
+  - package-ecosystem: "docker"
+    directory: "/"
+    target-branch: "develop"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Paris"
+    commit-message:
+      prefix: "build(deps)"
+    labels:
+      - "dependencies"
+      - "docker"
+
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"

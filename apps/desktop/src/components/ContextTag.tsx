@@ -8,18 +8,21 @@
  * key is nowhere in memory. A server is neither: it is labelled for what it is.
  */
 
+import { useTranslation } from '../i18n/i18n';
+
 export type ContextTagState = 'locked' | 'open' | 'server';
 
 const LABEL: Record<ContextTagState, string> = {
-  locked: 'Locked',
-  open: 'Open',
-  server: 'Server',
+  locked: 'ctx.locked',
+  open: 'ctx.open',
+  server: 'ctx.server',
 };
 
 export function ContextTag({ state }: { state: ContextTagState }) {
+  const { t } = useTranslation();
   return (
     <span className={`m-tag m-tag-${state} flex-none text-[11px] normal-case tracking-[0.02em]`}>
-      {LABEL[state]}
+      {t(LABEL[state])}
     </span>
   );
 }
@@ -31,7 +34,10 @@ export function ContextDot({ state }: { state: ContextTagState }) {
 
 /** "● current" beside the name of the context this window already holds. */
 export function CurrentMark() {
-  return <span className="ml-1 flex-none text-[10px] font-bold text-primary">● current</span>;
+  const { t } = useTranslation();
+  return (
+    <span className="ml-1 flex-none text-[10px] font-bold text-primary">● {t('ctx.current')}</span>
+  );
 }
 
 /** The mock's five badge gradients, picked from the name so a vault keeps its colour. */

@@ -48,7 +48,7 @@ pub enum Shape {
     Policy,
 }
 
-/// The ten settings an instance may declare. Anything outside this list is a typo.
+/// The settings an instance may declare. Anything outside this list is a typo.
 ///
 /// `remote_servers` is deliberately absent: it is a desktop client's multiplexer roster
 /// (ADR 0012), not instance configuration, and it is stored in the same table only because
@@ -57,13 +57,18 @@ pub const SETTINGS: &[(&str, Shape)] = &[
     ("instance_name", Shape::Text),
     ("session_persistence", Shape::Bool),
     ("default_shell", Shape::Text),
+    ("host_key_verification_mode", Shape::Text),
     ("allow_quick_ssh", Shape::Bool),
+    ("allow_shell_choice", Shape::Bool),
+    ("allow_secret_storage", Shape::Bool),
+    ("allow_secret_reveal", Shape::Bool),
     ("open_registration", Shape::Bool),
     ("allow_invitations", Shape::Bool),
     ("confirm_role_change", Shape::Bool),
     ("healthcheck_policy", Shape::Policy),
     ("collection_policy", Shape::Policy),
     ("dashboard_policy", Shape::Policy),
+    ("layouts_policy", Shape::Policy),
 ];
 
 fn shape_of(key: &str) -> Option<Shape> {
@@ -85,6 +90,9 @@ pub fn policy_default(key: &str) -> Value {
             "minInterval": 60,
         }),
         "dashboard_policy" => json!({ "webui": true, "clients": true, "minInterval": 30 }),
+        // Two booleans, no third `enabled` flag: `enabled = false, webui = true` is a state
+        // someone has to reconcile, and someone eventually reads the wrong one (ADR 0027).
+        "layouts_policy" => json!({ "webui": true, "clients": true }),
         "collection_policy" => json!({
             "allowCreate": true,
             "allowSharingOutsideTeams": true,
@@ -333,8 +341,21 @@ pub fn validate(key: &str, value: &Value) -> Result<()> {
                 bail!("expected a string");
             }
         }
+        "host_key_verification_mode" => {
+            // Validated by value, not merely by type: an instance that declares a typo
+            // here would come up with `rite-core` falling back to strict and the console
+            // showing the typo, which reads as a policy that is set and is not.
+            match value.as_str() {
+                Some("strict") | Some("warn") | Some("accept") => {}
+                Some(other) => bail!("expected strict, warn or accept, not `{other}`"),
+                None => bail!("expected a string"),
+            }
+        }
         "session_persistence"
         | "allow_quick_ssh"
+        | "allow_shell_choice"
+        | "allow_secret_storage"
+        | "allow_secret_reveal"
         | "open_registration"
         | "allow_invitations"
         | "confirm_role_change" => {
@@ -369,6 +390,13 @@ pub fn validate(key: &str, value: &Value) -> Result<()> {
                 match interval.as_u64() {
                     Some(n) if (1..=3600).contains(&n) => {}
                     _ => bail!("`minInterval` must be a whole number of seconds, 1 to 3600"),
+                }
+            }
+        }
+        "layouts_policy" => {
+            for field in ["webui", "clients"] {
+                if value.get(field).is_some_and(|v| !v.is_boolean()) {
+                    bail!("`{field}` must be true or false");
                 }
             }
         }
@@ -572,6 +600,28 @@ webui = false
         assert!(validate("healthcheck_policy", &json!({ "active": "sometimes" })).is_err());
         assert!(validate("collection_policy", &json!({ "defaultRole": "owner" })).is_err());
         assert!(validate("collection_policy", &json!({ "maxMembers": -1 })).is_err());
+        // ADR 0027: two booleans, so a string that reads like one is still refused — a
+        // blob stored as given would turn layouts off for a whole organisation, and look
+        // exactly like an admin having turned them off.
+        assert!(validate("layouts_policy", &json!({ "webui": "yes" })).is_err());
+        assert!(validate("layouts_policy", &json!({ "clients": 1 })).is_err());
+        assert!(validate("layouts_policy", &json!({ "webui": false })).is_ok());
+    }
+
+    #[test]
+    fn a_partially_declared_layouts_policy_keeps_the_other_half() {
+        // The shipped default is both halves on. Declaring one must not drop the other:
+        // `[layouts_policy] webui = false` is one statement, not two.
+        let path = write("layouts", "[layouts_policy]\nwebui = false\n");
+        let cfg = InstanceConfig::load_from(path.to_str(), &[]).unwrap();
+        let policy = cfg.get("layouts_policy").unwrap();
+        assert_eq!(policy["webui"], json!(false), "what the file said");
+        assert_eq!(
+            policy["clients"],
+            json!(true),
+            "and the default underneath it"
+        );
+        std::fs::remove_file(path).ok();
     }
 
     #[test]
@@ -612,6 +662,45 @@ webui = false
         assert!(
             !cfg.is_managed("instance_name"),
             "undeclared keys stay the console's"
+        );
+    }
+
+    /// `toml_to_json` is the one place TOML meets JSON, and a `toml` major can reshape
+    /// either side of it. Two of its arms are reachable from no key the schema accepts —
+    /// a float and a datetime — so nothing else in this suite touches them, and
+    /// `toml_datetime` went from 0.7 to 1.1 in the bump that brought this test.
+    ///
+    /// Exact values rather than a round-trip, and the same values pass under both
+    /// versions of the crate: that is what makes this evidence of no change rather than
+    /// agreement with whatever the new one happens to do.
+    #[test]
+    fn every_toml_value_converts_to_the_json_it_always_did() {
+        let parsed: toml::Value = toml::from_str(
+            r#"
+text  = "a string"
+whole = 42
+ratio = 0.5
+flag  = true
+stamp = 1979-05-27T07:32:00Z
+list  = [1, "two", false]
+
+[nested]
+inner = "deep"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            toml_to_json(&parsed),
+            json!({
+                "text": "a string",
+                "whole": 42,
+                "ratio": 0.5,
+                "flag": true,
+                "stamp": "1979-05-27T07:32:00Z",
+                "list": [1, "two", false],
+                "nested": { "inner": "deep" },
+            })
         );
     }
 }

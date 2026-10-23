@@ -11,6 +11,10 @@
 # A self-signed certificate encrypts exactly as well as any other. What it does
 # not do is prove anything to a browser, which is why mkcert exists: it installs
 # a local authority so the certificate is genuinely trusted on this machine.
+#
+# Nothing to prepare: the first visit offers **Create the server administrator**, and no
+# secret rests anywhere. For a headless start with the administrator already created, add
+# the override — `-f deploy/compose.bootstrap.yml` (see that file, and docs/SERVER.md).
 services:
   rite:
     image: ghcr.io/altagen/rite-server:latest
@@ -22,17 +26,9 @@ services:
       RITE_ADDR: "0.0.0.0:1421"
       RITE_TLS_CERT: /etc/rite/tls/cert.pem
       RITE_TLS_KEY: /etc/rite/tls/key.pem
-      RITE_ADMIN_USER: admin
-      RITE_ADMIN_PASSWORD_FILE: /run/secrets/rite_admin_password
-    secrets:
-      - rite_admin_password
     volumes:
       - ./tls:/etc/rite/tls:ro
       - rite-data:/home/rite/.local/share/rite
-
-secrets:
-  rite_admin_password:
-    file: ./admin_password.txt
 
 volumes:
   rite-data:

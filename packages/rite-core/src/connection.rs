@@ -44,11 +44,23 @@ impl Protocol {
 }
 
 /// Authentication method for SSH
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+///
+/// `Debug` is hand-written below: this enum holds the only plaintext secrets Rite ever
+/// has, and a derived `Debug` would print them the first time anyone adds a log line.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum AuthMethod {
     Password {
-        password: String,
+        /// Absent ⇒ password authentication with nothing kept: the client asks at connect
+        /// time and supplies it for that session only, which is the contract `passphrase`
+        /// below has always had. An instance that forbids stored secrets (ADR 0024 §4)
+        /// leaves every password record in this shape.
+        ///
+        /// `default` keeps a record written before the field was optional readable — a
+        /// JSON string deserialises to `Some` — and `skip_serializing_if` keeps one
+        /// written on either side byte-identical rather than merely equivalent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        password: Option<String>,
     },
     PublicKey {
         /// The browser sends `keyPath`; `rename_all` on an enum renames variants,
@@ -59,6 +71,26 @@ pub enum AuthMethod {
         /// Omitted when absent, as the browser does — `passphrase?: string` simply
         /// disappears from JSON.stringify, so skipping it keeps a record written on
         /// either side byte-identical rather than merely equivalent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        passphrase: Option<String>,
+    },
+    /// A private key carried in the record itself, rather than named on disk (ADR 0024).
+    ///
+    /// `key_path` above is read by whichever process opens SSH. On a desktop that is the
+    /// person's own machine and a path is the better answer — the key stays on their disk.
+    /// On a shared server it is the server's container, where a browser cannot put a file
+    /// and anything an administrator puts is one credential for every account that can
+    /// read the path. So the web UI carries the key instead.
+    ///
+    /// This lives inside the encrypted credentials like every other variant
+    /// (`encrypt_credentials` serialises the whole enum), so ADR 0011 holds by
+    /// construction: there is no plaintext column it could land in by accident.
+    VaultKey {
+        /// The private key's text, exactly as the file held it — still encrypted by its
+        /// own passphrase if it had one.
+        key: String,
+        /// Omitted when absent, like the variant above: a passphrase the member chose not
+        /// to store is asked for at connect time and never written here.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         passphrase: Option<String>,
     },
@@ -73,6 +105,62 @@ pub enum AuthMethod {
         #[serde(default)]
         forward: bool,
     },
+}
+
+impl AuthMethod {
+    /// The name the clients know this method by.
+    ///
+    /// One function, because three places computed it by hand — `to_info` here,
+    /// `vault_conn::auth_type` and `LocalMachine::from_stored` — and a fourth variant had
+    /// to be added to each of them. Now a new variant is one edit the compiler points at.
+    pub fn type_str(&self) -> &'static str {
+        match self {
+            AuthMethod::Password { .. } => "password",
+            AuthMethod::PublicKey { .. } => "publicKey",
+            AuthMethod::VaultKey { .. } => "vaultKey",
+            AuthMethod::Agent { .. } => "agent",
+        }
+    }
+}
+
+/// Says which method, and the shape of what it holds — never the bytes.
+///
+/// Hand-written because the derived version printed the password, the passphrase and (with
+/// `VaultKey`) a whole private key. Nothing logs an `AuthMethod` today, but that is a fact
+/// about the current call sites and not about the type: a `debug!("{auth:?}")` added in a
+/// year would have put a key in the server's log, which is the one place ADR 0011 promises
+/// a secret never reaches. A path is kept — it names a file, it is not its contents.
+impl std::fmt::Debug for AuthMethod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthMethod::Password { .. } => f.write_str("Password(<redacted>)"),
+            AuthMethod::PublicKey {
+                key_path,
+                passphrase,
+            } => write!(
+                f,
+                "PublicKey {{ key_path: {key_path:?}, passphrase: {} }}",
+                if passphrase.is_some() {
+                    "<redacted>"
+                } else {
+                    "none"
+                }
+            ),
+            AuthMethod::VaultKey { key, passphrase } => write!(
+                f,
+                "VaultKey {{ key: <redacted {} bytes>, passphrase: {} }}",
+                key.len(),
+                if passphrase.is_some() {
+                    "<redacted>"
+                } else {
+                    "none"
+                }
+            ),
+            AuthMethod::Agent { identity, forward } => {
+                write!(f, "Agent {{ identity: {identity:?}, forward: {forward} }}")
+            }
+        }
+    }
 }
 
 /// Connection metadata (not encrypted)
@@ -171,6 +259,22 @@ pub struct CreateConnectionInput {
     pub jump: Option<String>,                    // jump host: id of another connection
     #[serde(default)]
     pub forwards: Option<Vec<PortForwardConfig>>, // saved port forwards
+    /// This machine keeps no key passphrase, so opening it must ask (ADR 0024 §4).
+    ///
+    /// Not derivable, which is why it is stored: a key with no passphrase at all and a key
+    /// whose passphrase Rite was told not to keep both arrive here holding none, and only
+    /// one of them should be asked about. The accounts path has recorded this since the
+    /// prompt shipped; the local vault did not, so a local machine saved with the box
+    /// unticked stored nothing and then failed to authenticate instead of asking.
+    #[serde(default)]
+    pub needs_passphrase: bool,
+    /// This machine keeps no SSH password, so opening it must ask (ADR 0024 §4).
+    ///
+    /// Derivable in principle — password authentication with nothing stored always wants
+    /// one — but stored beside its sibling so both paths read the same field instead of
+    /// one of them inferring it.
+    #[serde(default)]
+    pub needs_password: bool,
 }
 
 /// Input for updating a connection
@@ -194,6 +298,116 @@ pub struct UpdateConnectionInput {
     pub jump: Option<Option<String>>,                    // Nested Option to allow clearing
     #[serde(default)]
     pub forwards: Option<Vec<PortForwardConfig>>, // Some ⇒ replace the whole list
+    /// Drop the stored key passphrase, keeping everything else about the key (ADR 0024 §4).
+    ///
+    /// Needed because a client editing a machine does not hold its secrets: it cannot send
+    /// an `auth_method` with the passphrase removed, since it never had the key. Without
+    /// it, unticking "remember this passphrase" changed nothing — the update omitted
+    /// `auth_method`, so the stored one was kept, passphrase included.
+    ///
+    /// Honoured where this struct is actually applied: `vault_conn::merge_update` (a
+    /// desktop editing a machine on a server) and `local_collections::patch_machine` (its
+    /// own vault). `Connection::update` below does not read it, because no route has
+    /// called `ConnectionsManager` since ADR 0018 moved local vaults into collections —
+    /// handling it there would be code no test could reach.
+    #[serde(default)]
+    pub forget_passphrase: bool,
+    /// Drop the stored SSH password, keeping the machine (ADR 0024 §4). The sibling of
+    /// `forget_passphrase`, needed for the same reason: a client editing a machine does
+    /// not hold its secrets, so unticking "remember this password" cannot be expressed as
+    /// an `auth_method` with the password taken out.
+    #[serde(default)]
+    pub forget_password: bool,
+}
+
+impl AuthMethod {
+    /// Whether a key passphrase is kept with this method.
+    ///
+    /// Not a secret — it is the difference between "this key has no passphrase" and "it
+    /// has one and Rite holds it", which the form has to show or its checkbox lies.
+    pub fn has_stored_passphrase(&self) -> bool {
+        match self {
+            AuthMethod::PublicKey { passphrase, .. } | AuthMethod::VaultKey { passphrase, .. } => {
+                passphrase.is_some()
+            }
+            _ => false,
+        }
+    }
+
+    /// The same method with no passphrase kept.
+    pub fn without_passphrase(self) -> Self {
+        match self {
+            AuthMethod::PublicKey { key_path, .. } => AuthMethod::PublicKey {
+                key_path,
+                passphrase: None,
+            },
+            AuthMethod::VaultKey { key, .. } => AuthMethod::VaultKey {
+                key,
+                passphrase: None,
+            },
+            other => other,
+        }
+    }
+
+    /// Whether an SSH password is kept with this method.
+    ///
+    /// The sibling of `has_stored_passphrase`, and not a secret for the same reason: it is
+    /// the difference between "ask me every time" and "Rite holds it", which the form has
+    /// to show or its checkbox lies about its own state.
+    pub fn has_stored_password(&self) -> bool {
+        matches!(self, AuthMethod::Password { password } if password.is_some())
+    }
+
+    /// The same method with no password kept.
+    pub fn without_password(self) -> Self {
+        match self {
+            AuthMethod::Password { .. } => AuthMethod::Password { password: None },
+            other => other,
+        }
+    }
+
+    /// The same method with a secret supplied for this session only (ADR 0024 §4).
+    ///
+    /// A record that keeps nothing has an empty slot, and the client that was asked fills
+    /// it on the way in; nothing writes it back. Which slot follows from the method, so a
+    /// caller passes one string and does not have to know whether this machine wants a
+    /// password or a passphrase — the two prompts differ to a reader, not to a resolver.
+    ///
+    /// A method that already holds its secret is returned untouched: the stored one wins,
+    /// because a client that sends a secret for a machine that keeps one is answering a
+    /// question nobody asked.
+    pub fn with_session_secret(self, secret: String) -> Self {
+        match self {
+            AuthMethod::Password { password: None } => AuthMethod::Password {
+                password: Some(secret),
+            },
+            AuthMethod::PublicKey {
+                key_path,
+                passphrase: None,
+            } => AuthMethod::PublicKey {
+                key_path,
+                passphrase: Some(secret),
+            },
+            AuthMethod::VaultKey {
+                key,
+                passphrase: None,
+            } => AuthMethod::VaultKey {
+                key,
+                passphrase: Some(secret),
+            },
+            already => already,
+        }
+    }
+
+    /// Whether this method keeps any secret at all, which is what an instance's
+    /// stored-secret policy is about (ADR 0024 §4). A key path is not one — it names a
+    /// file, it is not its contents — but a carried `VaultKey` is, and so is either of
+    /// the two above.
+    pub fn has_stored_secret(&self) -> bool {
+        self.has_stored_password()
+            || self.has_stored_passphrase()
+            || matches!(self, AuthMethod::VaultKey { .. })
+    }
 }
 
 impl Connection {
@@ -256,11 +470,7 @@ impl Connection {
 
     /// Convert to ConnectionInfo (safe for frontend)
     pub fn to_info(&self) -> ConnectionInfo {
-        let auth_type = match &self.auth_method {
-            AuthMethod::Password { .. } => "password".to_string(),
-            AuthMethod::PublicKey { .. } => "publicKey".to_string(),
-            AuthMethod::Agent { .. } => "agent".to_string(),
-        };
+        let auth_type = self.auth_method.type_str().to_string();
 
         ConnectionInfo {
             id: self.id.clone(),
@@ -335,5 +545,131 @@ impl Connection {
 
         self.updated_at = Utc::now().timestamp_millis();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MARKER: &str = "-----BEGIN OPENSSH PRIVATE KEY-----\nSECRET-KEY-BYTES-DO-NOT-LEAK\n";
+
+    fn vault_key_connection() -> Connection {
+        Connection::new(CreateConnectionInput {
+            name: "scaleway".into(),
+            protocol: "ssh".into(),
+            hostname: "10.0.0.9".into(),
+            port: 22,
+            username: "root".into(),
+            auth_method: AuthMethod::VaultKey {
+                key: MARKER.into(),
+                passphrase: Some("PASSPHRASE-DO-NOT-LEAK".into()),
+            },
+            color: None,
+            icon: None,
+            folder: None,
+            notes: None,
+            ssh_keep_alive_override: None,
+            ssh_keep_alive_interval: None,
+            preconnect: None,
+            jump: None,
+            forwards: None,
+            needs_passphrase: false,
+            needs_password: false,
+        })
+        .expect("a connection")
+    }
+
+    /// The point of ADR 0024 §1: a carried key is inside the encrypted credentials, so it
+    /// inherits ADR 0011 rather than relying on anyone remembering to encrypt it.
+    ///
+    /// Asserted on the ciphertext, not on the shape of the code: searching the bytes for
+    /// the key is the only form of this claim that a future refactor cannot quietly break.
+    #[test]
+    fn a_carried_key_is_only_ever_in_the_ciphertext() {
+        let conn = vault_key_connection();
+        let master = MasterKey::derive("test-password", b"0123456789abcdef").expect("key");
+        let (ciphertext, nonce) = conn.encrypt_credentials(&master).expect("encrypted");
+
+        let needle = MARKER.as_bytes();
+        assert!(
+            !ciphertext.windows(needle.len()).any(|w| w == needle),
+            "the key's bytes appear in what is stored"
+        );
+        let pass = b"PASSPHRASE-DO-NOT-LEAK";
+        assert!(
+            !ciphertext.windows(pass.len()).any(|w| w == pass),
+            "the passphrase's bytes appear in what is stored"
+        );
+
+        // …and it is genuinely there, so the assertions above are not passing on an empty
+        // blob: the round trip returns exactly what went in.
+        match Connection::decrypt_credentials(&ciphertext, &nonce, &master).expect("decrypted") {
+            AuthMethod::VaultKey { key, passphrase } => {
+                assert_eq!(key, MARKER);
+                assert_eq!(passphrase.as_deref(), Some("PASSPHRASE-DO-NOT-LEAK"));
+            }
+            other => panic!("round-tripped into {other:?}"),
+        }
+    }
+
+    /// What the client is told about a stored key: which method, never the key.
+    #[test]
+    fn the_info_a_client_gets_names_the_method_and_nothing_secret() {
+        let info = vault_key_connection().to_info();
+        assert_eq!(info.auth_type, "vaultKey");
+        let rendered = format!("{info:?}");
+        assert!(
+            !rendered.contains("SECRET-KEY-BYTES"),
+            "info carries the key: {rendered}"
+        );
+        assert!(
+            !rendered.contains("PASSPHRASE-DO-NOT-LEAK"),
+            "info carries the passphrase"
+        );
+    }
+
+    /// `Debug` is the leak that has not happened yet: nothing logs an `AuthMethod` today,
+    /// which is a fact about today's call sites and not about the type.
+    #[test]
+    fn debug_prints_the_method_and_never_the_secret() {
+        let key = AuthMethod::VaultKey {
+            key: MARKER.into(),
+            passphrase: Some("PASSPHRASE-DO-NOT-LEAK".into()),
+        };
+        let rendered = format!("{key:?}");
+        assert!(
+            rendered.starts_with("VaultKey"),
+            "it still says which method: {rendered}"
+        );
+        assert!(
+            !rendered.contains("SECRET-KEY-BYTES"),
+            "the key is printed: {rendered}"
+        );
+        assert!(
+            !rendered.contains("PASSPHRASE-DO-NOT-LEAK"),
+            "the passphrase is printed"
+        );
+
+        let password = AuthMethod::Password {
+            password: Some("PASSPHRASE-DO-NOT-LEAK".into()),
+        };
+        assert!(!format!("{password:?}").contains("PASSPHRASE-DO-NOT-LEAK"));
+
+        // A path names a file; it is not its contents, and losing it from a log would cost
+        // the one thing these lines are read for.
+        let on_disk = AuthMethod::PublicKey {
+            key_path: "/home/me/.ssh/id_ed25519".into(),
+            passphrase: Some("PASSPHRASE-DO-NOT-LEAK".into()),
+        };
+        let rendered = format!("{on_disk:?}");
+        assert!(
+            rendered.contains("/home/me/.ssh/id_ed25519"),
+            "the path is kept: {rendered}"
+        );
+        assert!(
+            !rendered.contains("PASSPHRASE-DO-NOT-LEAK"),
+            "the passphrase is printed"
+        );
     }
 }

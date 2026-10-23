@@ -5,6 +5,7 @@
  * This allows terminals to persist when React remounts components during pane reorganization
  */
 
+import { deviceStore } from '../utils/deviceStore';
 import { Terminal as XTerm, IDisposable, ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -45,7 +46,8 @@ const THEMES: Record<TerminalThemeName, ITheme> = {
 };
 
 export function getTerminalThemeName(): TerminalThemeName {
-  const v = (typeof localStorage !== 'undefined' && localStorage.getItem(THEME_STORAGE)) as TerminalThemeName | null;
+  const v = (typeof localStorage !== 'undefined' &&
+    deviceStore.getItem(THEME_STORAGE)) as TerminalThemeName | null;
   return v && v in THEMES ? v : 'dark';
 }
 
@@ -142,7 +144,7 @@ class TerminalPool {
    */
   setTheme(name: TerminalThemeName): void {
     try {
-      localStorage.setItem(THEME_STORAGE, name);
+      deviceStore.setItem(THEME_STORAGE, name);
     } catch {
       // ignore storage failures — the theme still applies for this session
     }

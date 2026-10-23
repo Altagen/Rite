@@ -59,23 +59,143 @@ CONTAINERFILE
 fi
 export RITE_IMAGE="$IMAGE"
 
-compose() { podman compose -f deploy/compose.yml "$@"; }
-cleanup() {
+# Both files: the bootstrap is an OVERRIDE now, so the acceptance exercises the
+# composition an operator actually types rather than a file that no longer carries the
+# secret. The base file on its own has no administrator to find — which is phase 1.
+plain() { podman compose -f deploy/compose.yml "$@"; }
+compose() { podman compose -f deploy/compose.yml -f deploy/compose.bootstrap.yml "$@"; }
+# The data volume, by name. `podman compose down -v` removes it only while tearing down a
+# container that exists: with nothing running it errors, the `|| true` swallows that, and
+# the volume survives — a four-day-old one is what made phase 1 read as a regression. So
+# the volume is removed explicitly. The name is how compose derives it: the project is the
+# directory holding the file (`deploy`), plus the declared volume.
+DATA_VOLUME=deploy_rite-data
+
+wipe() {
   compose down -v >/dev/null 2>&1 || true
+  plain down -v >/dev/null 2>&1 || true
+  podman volume rm -f "$DATA_VOLUME" >/dev/null 2>&1 || true
+}
+
+cleanup() {
+  wipe
   rm -f deploy/admin_password.txt
 }
 trap cleanup EXIT
 
-echo "— starting from deploy/compose.yml, with nothing but a file and a secret"
+await_health() {
+  i=0
+  while [ $i -lt 40 ]; do
+    curl -sf http://127.0.0.1:1421/api/health >/dev/null 2>&1 && return 0
+    sleep 1
+    i=$((i + 1))
+  done
+  echo "  ✘ the server never answered /api/health" >&2
+  return 1
+}
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Phase 1 — the DEFAULT path: nothing to prepare.
+#
+# The deployment files used to wire the bootstrap secret, which made
+# `deploy/admin_password.txt` a condition of starting at all: compose refuses to start
+# when a secret's source is missing. So the documented way to decline the feature was to
+# create the file empty, which is not a thing anyone does. The files ask for nothing now,
+# and this phase is what keeps that true — it starts with NO password file on disk, and a
+# file left behind by a previous run would hide a regression here.
+# ───────────────────────────────────────────────────────────────────────────────
+echo "— phase 1: deploy/compose.yml alone, with nothing prepared"
+# From an EMPTY data volume, not merely from a stopped container. Both phases publish on
+# the same compose project, so the volume survives between runs — and phase 2 leaves an
+# administrator in it. Starting phase 1 on top of that found `needsBootstrap: false` and
+# read as "the default path needs something prepared", which is the opposite of the truth.
+# The claim here is about a FRESH instance, so the freshness is made, not hoped for.
+wipe
+rm -f deploy/admin_password.txt
+# Not `>/dev/null` and out: this is the one command the phase is about. The regression it
+# guards — the bootstrap secret wired back into a deployment file — shows up here as
+# compose refusing to start, and `set -e` would end the script with a bare exit 125 and no
+# line saying why. So it says why.
+if ! plain up -d >/dev/null 2>&1; then
+  why=$(plain up -d 2>&1)
+  echo "  ✘ deploy/compose.yml did not start with nothing prepared:"
+  printf '%s\n' "$why" | sed 's/^/      /' | tail -4
+  echo
+  # Two causes, and naming the wrong one costs a whole run. The first time this fired it
+  # was the port, and the hint spoke about a secret.
+  case "$why" in
+    *"address already in use"*)
+      echo "    Something else is already serving 127.0.0.1:1421 — a review instance, or a"
+      echo "    container from an earlier run. Stop it and run this again; the phase needs the"
+      echo "    port to prove what a fresh deployment does." ;;
+    *statfs*)
+      echo "    A \`statfs … admin_password.txt\` means the bootstrap secret has been wired"
+      echo "    back into the deployment file. It belongs in deploy/compose.bootstrap.yml, so"
+      echo "    that starting Rite needs nothing prepared." ;;
+  esac
+  exit 1
+fi
+await_health
+
+plain_mode=$(curl -sf http://127.0.0.1:1421/api/server/mode)
+p1=0
+pcheck() {
+  if printf '%s' "$plain_mode" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if ($2) else 1)" 2>/dev/null; then
+    echo "  ✓ $1"
+  else
+    echo "  ✘ $1"
+    p1=1
+  fi
+}
+pcheck "it starts with no password file at all"      "d['accounts'] is True"
+# Said before the claim below, because the two failures look identical and are not: an
+# instance that already has accounts says `needsBootstrap: false` for a reason that has
+# nothing to do with what this phase is about.
+if printf '%s' "$plain_mode" | grep -q '"needsBootstrap":false'; then
+  echo "  ⚠ this instance already has accounts — the $DATA_VOLUME volume was not empty,"
+  echo "    so what follows measures a leftover deployment and not the default path."
+fi
+# The claim that matters: the first visit is asked to create the administrator, so no
+# credential had to exist anywhere for this instance to be usable.
+pcheck "and asks the first visitor to create the administrator" "d['needsBootstrap'] is True"
+# Configured all the same — the TOML is not where secrets live, so the two are
+# independent. An instance can be fully declared and still have no account.
+pcheck "while still being configured from the file" "d['instanceName'] == 'Rite'"
+pcheck "with its settings published as managed"     "len(d['managed']) >= 4"
+
+# And the administrator can then be created, which is the whole point of the path: this is
+# the API call the first-run screen makes, under the name it fixes (utils/adminUsername.ts).
+created=$(curl -sf -o /dev/null -w '%{http_code}' -X POST \
+  http://127.0.0.1:1421/api/server/bootstrap \
+  -H 'content-type: application/json' \
+  -d '{"username":"admin","salt":"00112233445566778899aabbccddeeff","params":{"mem":19456,"iter":2,"par":1},"authHash":"3c9a1f5e7d2b48c6a0e5f1d3b7c92a4e6f8d0b2c4a6e8f1d3b5c7a9e1f3d5b7c","masterSalt":"ffeeddccbbaa99887766554433221100","protectedUserKey":"v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","publicKey":"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff","protectedPrivateKey":"v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}' || true)
+if [ "$created" = "200" ] || [ "$created" = "201" ]; then
+  echo "  ✓ and the browser's own bootstrap call is accepted"
+else
+  echo "  ✘ the browser's bootstrap call was refused ($created)"
+  p1=1
+fi
+
+plain down -v >/dev/null 2>&1
+
+if [ "$p1" -ne 0 ]; then
+  echo
+  echo "❌ the default path needs something prepared — that is the regression this phase exists for"
+  exit 1
+fi
+echo
+
+# ───────────────────────────────────────────────────────────────────────────────
+# Phase 2 — the OPT-IN: ADR 0020's turnkey claim.
+# ───────────────────────────────────────────────────────────────────────────────
+
+echo "— phase 2: + deploy/compose.bootstrap.yml, with a file and a secret"
+# Same reason: the bootstrap only acts while no account exists, so phase 1's own
+# administrator would make this phase pass without the secret doing anything.
+wipe
 echo -n 'Turnkey-Acceptance-P4ss!' > deploy/admin_password.txt
 compose up -d >/dev/null 2>&1
-
-i=0
-while [ $i -lt 40 ]; do
-  curl -sf http://127.0.0.1:1421/api/health >/dev/null 2>&1 && break
-  sleep 1
-  i=$((i + 1))
-done
+await_health
 
 mode=$(curl -sf http://127.0.0.1:1421/api/server/mode)
 
@@ -119,7 +239,7 @@ check "each one names where it was set"                "all(v.endswith('rite.tom
 
 if [ "$fail" -eq 0 ]; then
   echo
-  echo "✅ turnkey acceptance passed — configured, not merely administrable"
+  echo "✅ both paths pass — nothing to prepare, and turnkey when asked for"
 else
   echo
   echo "❌ turnkey acceptance failed"

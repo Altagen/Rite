@@ -5,6 +5,7 @@
 <title>Rite · desktop mock</title>
 <link rel="stylesheet" href="rite.css">
 <link rel="stylesheet" href="machine.css">
+<link rel="stylesheet" href="agents.css">
 <style>
   #ctxmenu{position:absolute;left:0;top:calc(100% + 8px);width:320px;background:var(--card);border:1px solid var(--border2);border-radius:14px;box-shadow:var(--shadow);padding:8px;display:none;z-index:40}#ctxmenu.show{display:block}
   .side-hdr{display:flex;align-items:center;gap:4px;padding:4px 8px 6px 14px}
@@ -131,8 +132,9 @@
     <div class="spacer"></div>
     <span id="acts" style="display:flex;gap:10px;align-items:center"></span>
   </div>
-  <!-- Profile dropdown (server context): who you're signed in as on this server + account actions.
-       On a local vault there's no server account — the context pill + Lock convey the local identity. -->
+  <!-- Profile dropdown (server context): who is signed in on this server, and the personal
+       actions. A local vault has no account to show, so it gets the vault pastille below —
+       same corner, same shape, and Settings in both. -->
   <div class="pmenu" id="pmenu">
     <div class="pmenu-head"><span class="avatar" id="pmAv"></span><div><div class="pname" id="pmName" style="font-size:14px"></div><div class="muted" style="font-size:12px">Signed in · <span id="pmServer"></span></div></div></div>
     <div class="pi-sep"></div>
@@ -141,6 +143,17 @@
     <div class="pi" onclick="closeProfile();toast('Username copied')"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg> Copy username</div>
     <div class="pi-sep"></div>
     <div class="pi danger" onclick="closeProfile();signOutServer(STATE.ctx.id)"><svg viewBox="0 0 24 24"><path d="M16 17l5-5-5-5M21 12H9M12 19H6a2 2 0 01-2-2V7a2 2 0 012-2h6"/></svg> Sign out</div>
+  </div>
+  <!-- Vault pastille dropdown (local-vault context). The same corner, the same grammar as
+       the account's: the local workspace used to carry a bare padlock and nothing to reach
+       Settings with, which made the two contexts two different ideas about what lives
+       there. It does NOT say the vault's name — the context pill already does, on the other
+       side of the bar — it says the one thing not already on screen: whether it is open. -->
+  <div class="pmenu" id="vmenu">
+    <div class="pmenu-head"><span class="avatar" id="vmGlyph"></span><div><div class="pname" id="vmName" style="font-size:14px"></div><div class="muted" style="font-size:12px" id="vmState"></div></div></div>
+    <div class="pi-sep"></div>
+    <div class="pi" id="vmLock"></div>
+    <div class="pi" onclick="closeVault();openSettings()"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.1 5.1l2.1 2.1M16.8 16.8l2.1 2.1M18.9 5.1l-2.1 2.1M7.2 16.8l-2.1 2.1"/></svg> Settings</div>
   </div>
   <div style="flex:1;display:flex;min-height:0">
     <div class="side" id="side" style="width:290px"></div>
@@ -154,12 +167,17 @@
 <!-- Focus-mode hint: only shown in focus mode; fades but stays faintly so the user is never trapped. -->
 <div id="focusHint">Focus mode · <kbd>Esc</kbd> or <kbd>F11</kbd> to exit · hover the top edge to reveal the toolbar</div>
 
+<script src="esc.js"></script>
 <script src="rite.js"></script>
 <script src="full-data.js"></script>
 <script src="machine.js"></script>
+<script src="agents.js"></script>
 <script>
 /* ---- icons specific to this mock ---- */
 const M={
+  // Agent = an AI coding session: a head with an antenna, never a machine's stacked
+  // units — an agent belongs to no host, which is exactly why it gets a pane.
+  agent:'<svg class="icon" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="11" rx="2.5"/><path d="M12 8V5M9 13h.01M15 13h.01M9.5 16.5h5"/><circle cx="12" cy="3.6" r="1.4"/></svg>',
   // Folder = your personal organiser (a plain folder).
   folder:'<svg class="icon" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>',
   // Collection = a shareable group of machines (stacked layers = "a set").
@@ -305,10 +323,22 @@ function jumpChain(cn){const out=[];const seen=new Set();let j=cn&&cn.jump;while
    attached client: it probes from its own network position, so `clients` governs it —
    and in a local vault nothing governs it but the user. */
 const DASH_SHELL='clients';
+// The desktop can run an agent on this machine itself (client-execute); a browser cannot.
+const AGENT_SHELL='desktop';
 // A server governs the probing cards only when we are actually in a server context. A local
 // vault — or the base workspace — has no authority to consult: it is the user's own network.
 function probeGoverned(){return STATE.ctx.type==='server';}
-let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false};
+let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false,
+  // Which toolbar buttons this person wants. Hiding one never grants or revokes
+  // anything: the server policies and the keyboard shortcuts are unchanged.
+  toolbar:{shell:true,newTermMenu:true,focus:true,quick:true,agents:true,layouts:true},
+  /* ADR 0027: the reader's own switch, and — in a server context on a desktop — which
+     support this computer reads from. Both are device preferences, so neither travels. */
+  layoutsOn:true, layoutSource:'account'};
+/* This shell IS a machine, so it has the workspace file — the presets and the layouts
+   both live in it (ADR 0023). `web.html` says false, and that one line is the whole
+   difference between the two shells here. */
+const WORKSPACE_FILE=true;
 const SHELLS=[{name:'fish',path:'/usr/bin/fish',icon:'🐠',installed:true},{name:'bash',path:'/bin/bash',icon:'🐚',installed:true},{name:'zsh',path:'/usr/bin/zsh',icon:'⚡',installed:true},{name:'sh',path:'/bin/sh',icon:'📜',installed:false}];
 // Quick SSH in a SERVER context follows the server policy (off by default — server
 // connections belong in collections). A local vault is self-governed → always available.
@@ -368,10 +398,10 @@ function setIcon(type,id){const it=__iconItem(type,id);if(!it)return;document.ge
 function clearIcon(type,id){const it=__iconItem(type,id);if(it){delete it.img;delete it.emoji;refreshCtx();toast('Icon reset');}}
 /* Add a server — probes it; unreachable is fine (add anyway, fix later). Nothing
    is created remotely until you sign in. Overrides the generic mock dialog. */
-function dlgAddServer(){showModal({title:'Add a server',subtitle:"A Rite server holds your connections (its own login).",confirm:'Add',
+function dlgAddServer(){showModal({title:'Add a server',subtitle:"A Rite server holds the connections (its own login).",confirm:'Add',
   body:`<label class="field"><span>Server URL</span><input class="inp" id="as-url" placeholder="https://rite.example.com"></label>
     <label class="field"><span>Label (optional)</span><input class="inp" id="as-label" placeholder="Team"></label>
-    <p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.key} We check the server when you add it. If it's unreachable you can still add it and connect (or fix the URL) later — <b>nothing is created remotely</b> until you sign in.</p>`,
+    <p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.key} The server is checked when added. If it's unreachable it can still be added, and connected to (or the URL fixed) later — <b>nothing is created remotely</b> before sign-in.</p>`,
   onConfirm:(m)=>{const url=(m.querySelector('#as-url').value||'').trim();if(!url)return false;const label=(m.querySelector('#as-label').value||'').trim();
     const reachable=/^https?:\/\/[^\s]+\.[^\s]+/.test(url);
     DATA.servers.push({id:'s-'+Math.random().toString(36).slice(2,7),name:label||url.replace(/^https?:\/\//,''),url,badge:['s1','s2'][DATA.servers.length%2],online:reachable});
@@ -383,7 +413,7 @@ function dlgAddServer(){showModal({title:'Add a server',subtitle:"A Rite server 
    is set. "Change location…" opens a save dialog (simulated here). */
 function dlgNewVault(){
   const defFile='~/.local/share/rite/vault.db';
-  showModal({title:'Create a local vault',subtitle:'An encrypted database on this machine. Next you’ll set its master password.',confirm:'Create vault',
+  showModal({title:'Create a local vault',subtitle:'An encrypted database on this machine. A master password is set next.',confirm:'Create vault',
     body:`<label class="field"><span>Name <span class="muted" style="font-weight:400">(optional)</span></span><input class="inp" id="nv-name" placeholder="e.g. Personal"></label>
       <div class="field"><span>Location</span>
         <div class="row" style="border:1px solid var(--border);border-radius:9px;padding:8px 10px;gap:8px;cursor:default">
@@ -401,7 +431,7 @@ function dlgCreatePassword(name,file){
   const bd=showModal({title:'Set the master password',subtitle:file,confirm:'Create & open',
     body:`<label class="field"><span>Master password</span><input class="inp" id="nv-pw" type="password" placeholder="Create a strong password"><div class="strength"><i id="nv-str"></i></div><div class="muted" style="font-size:11px;margin-top:5px">At least 12 characters — aim for 16+.</div></label>
       <label class="field"><span>Confirm master password</span><input class="inp" id="nv-pw2" type="password" placeholder="Repeat it"><div id="nv-match" style="font-size:11px;margin-top:5px;height:14px"></div></label>
-      <p class="muted" style="font-size:12px;margin:2px 0 0">If you lose this password, the vault can't be decrypted — there's no recovery (zero-knowledge). The vault joins your list only once the password is set.</p>`,
+      <p class="muted" style="font-size:12px;margin:2px 0 0">If this password is lost, the vault can't be decrypted — there's no recovery (zero-knowledge). The vault joins the list only once the password is set.</p>`,
     onConfirm:(m)=>{const pw=m.querySelector('#nv-pw').value,pw2=m.querySelector('#nv-pw2').value;
       if(pw.length<12||pw!==pw2)return false; // guarded by the disabled button too
       const nm=name||((file.split('/').pop()||'').replace(/\.db$/,''))||'Local vault';
@@ -425,26 +455,26 @@ function dlgEditServer(id){const s=DATA.servers.find(x=>x.id===id);if(!s)return;
   showModal({title:'Edit server',confirm:'Save',
     body:`<label class="field"><span>Label</span><input class="inp" id="es-label" value="${s.name}"></label>
       <label class="field"><span>Server URL</span><input class="inp" id="es-url" value="${s.url}"></label>
-      <p class="muted" style="font-size:12px;margin:8px 0 0">Changing the URL re-checks the server next time you open it. Your saved connections are unaffected.</p>`,
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Changing the URL re-checks the server at the next open. Saved connections are unaffected.</p>`,
     onConfirm:(m)=>{s.name=(m.querySelector('#es-label').value||'').trim()||s.name;s.url=(m.querySelector('#es-url').value||'').trim()||s.url;refreshCtx();toast('Server updated');}});}
 function dlgRenameVault(id){const v=DATA.vaults.find(x=>x.id===id);if(!v)return;document.getElementById('ctxmenu').classList.remove('show');
   showModal({title:'Rename vault',subtitle:v.file,confirm:'Save',
     body:`<label class="field"><span>Name</span><input class="inp" id="rv-name" value="${v.name}"></label>
-      <p class="muted" style="font-size:12px;margin:8px 0 0">Renames it in your list only — the file on disk is not moved.</p>`,
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Renames it in the list only — the file on disk is not moved.</p>`,
     onConfirm:(m)=>{v.name=(m.querySelector('#rv-name').value||'').trim()||v.name;refreshCtx();toast('Vault renamed');}});}
 /* Removing a SERVER forgets it locally — the remote account is untouched. */
 function removeServer(id){const s=DATA.servers.find(x=>x.id===id);if(!s)return;document.getElementById('ctxmenu').classList.remove('show');
   showModal({title:`Remove “${s.name}”?`,subtitle:s.url,confirm:'Remove from my servers',
     body:`<div class="card" style="padding:12px;border-color:rgba(124,156,245,.35);background:rgba(124,156,245,.06)">
-        <p style="margin:0;font-size:13px">This only removes the server from <b>this device</b>. <b>Your account on the server is NOT deleted</b> — nothing is touched remotely.</p>
-        <p style="margin:8px 0 0;font-size:13px;color:var(--muted)">To come back: add it again with its URL and sign in with your password (which decrypts your key).</p></div>`,
+        <p style="margin:0;font-size:13px">This only removes the server from <b>this device</b>. <b>The account on the server is NOT deleted</b> — nothing is touched remotely.</p>
+        <p style="margin:8px 0 0;font-size:13px;color:var(--muted)">To come back: add it again with its URL and sign in (the password decrypts the key).</p></div>`,
     onConfirm:()=>{const i=DATA.servers.findIndex(x=>x.id===id);if(i>=0)DATA.servers.splice(i,1);
       if(STATE.ctx.type==='server'&&STATE.ctx.id===id){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
       refreshCtx();toast(`Removed <span class="accent">${s.name}</span> from this device`);}});}
 /* Removing a LOCAL VAULT forgets it; deleting the file is a separate opt-in. */
 function removeVault(id){const v=DATA.vaults.find(x=>x.id===id);if(!v)return;document.getElementById('ctxmenu').classList.remove('show');
   showModal({title:`Remove “${v.name}”?`,subtitle:v.file,confirm:'Remove',
-    body:`<p style="font-size:13px;margin:0 0 10px">Removes this vault from your list. The database file stays on disk — you can open it again anytime.</p>
+    body:`<p style="font-size:13px;margin:0 0 10px">Removes this vault from the list. The database file stays on disk and can be opened again.</p>
       <label class="mrow" style="cursor:pointer;padding:10px;border:1px solid rgba(247,118,142,.3);border-radius:9px;background:rgba(247,118,142,.06)"
         onclick="const c=this.querySelector('.chk');c.classList.toggle('on');c.textContent=c.classList.contains('on')?'✓':'';const nc=document.getElementById('rmv-nc');if(nc)nc.style.display=c.classList.contains('on')?'block':'none'">
         <span class="chk"></span><div class="grow"><div class="title" style="color:var(--red)">Also delete the file permanently</div><div class="sub">Irreversible — erases <span class="mono">${v.file}</span> and all its connections.</div></div></label>
@@ -481,7 +511,7 @@ function renderCtxMgr(){const el=document.getElementById('ctxmgr');if(!el)return
     <button class="btn btn-ghost btn-sm" style="color:var(--red)" title="Remove access" onclick="removeServer('${s.id}')">${EXICON.trash}</button></div>`;
   el.innerHTML=`<div class="mgr-wrap">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px"><h1 style="font-size:22px">Contexts</h1><div style="flex:1"></div><button class="btn btn-ghost btn-sm" onclick="closeCtxMgr()">✕ Close</button></div>
-    <p class="muted" style="margin:0 0 20px;font-size:14px">Manage your local vaults and saved servers. Removing a server only forgets it here — your remote account stays.</p>
+    <p class="muted" style="margin:0 0 20px;font-size:14px">Local vaults and saved servers. Removing a server only forgets it here — the remote account stays.</p>
     <div class="sec"><span class="eyebrow">Local vaults</span><span class="line"></span></div>
     <div class="mgr-grid">${DATA.vaults.map(vcard).join('')}<button class="dashed" onclick="dlgNewVault()">${ICON.plus} New local vault</button></div>
     <div class="sec"><span class="eyebrow">Servers</span><span class="line"></span></div>
@@ -499,7 +529,7 @@ function renderSide(){const s=document.getElementById('side'),c=STATE.ctx;
     document.body.appendChild(r);return;}
   const hide=`<div style="display:flex;justify-content:flex-end;padding:8px"><button class="btn btn-ghost btn-sm" style="padding:4px" title="Hide panel" onclick="STATE.sideCollapsed=true;renderAll()"><svg class="icon" viewBox="0 0 24 24"><path d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg></button></div>`;
   if(c.type==='home'){const has=DATA.vaults.length>0;s.style.width='290px';s.style.borderRight='';
-    s.innerHTML=hide+`<div class="empty" style="height:calc(100% - 44px)"><div>${ICON.term}</div><div class="big">${has?'Base session — terminal & Quick SSH in the toolbar. Pick a vault or server (top-left) for your saved connections.':'No vault yet — create one to save connections. The terminal & Quick SSH work without it.'}</div><button class="btn btn-primary btn-sm" onclick="dlgNewVault()">${has?'New local vault':'Create local vault'}</button></div>`;return;}
+    s.innerHTML=hide+`<div class="empty" style="height:calc(100% - 44px)"><div>${ICON.term}</div><div class="big">${has?'Base session — terminal & Quick SSH in the toolbar. Pick a vault or server (top-left) for the saved connections.':'No vault yet — create one to save connections. The terminal & Quick SSH work without it.'}</div><button class="btn btn-primary btn-sm" onclick="dlgNewVault()">${has?'New local vault':'Create local vault'}</button></div>`;return;}
   if(c.type==='vault'&&c.locked){s.style.width='290px';s.style.borderRight='';
     s.innerHTML=hide+`<div class="empty" style="height:calc(100% - 44px)"><div>${ICON.lock}</div><div class="big">“${c.name}” is locked.</div><button class="btn btn-primary btn-sm" onclick="dlgUnlock(STATE.ctx,()=>{STATE.ctx.locked=false;renderAll()})">Unlock</button></div>`;return;}
   s.style.width='290px';s.style.borderRight='';
@@ -548,20 +578,34 @@ function renderMain(){
   const tabActs=`<button class="mtab-act" title="Rename tab" onclick="event.stopPropagation();toast('Rename tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button><button class="mtab-act mtab-close" title="Close tab" onclick="event.stopPropagation();toast('Close tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>`;
   const mach=STATE.machineView?machineByName(STATE.machineView):null;
   mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Local Terminal (${STATE.defaultShell})</span>${tabActs}</div>
-    ${coll?`<div class="mtab ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
-    ${mach?`<div class="mtab ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
-    <button class="mtab-new" title="New terminal" onclick="toast('New terminal')">${ICON.plus}${EXICON.chevD}</button>`;
+    ${coll?`<div class="mtab view ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
+    ${mach?`<div class="mtab view ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
+    ${agentTabsHTML()}
+    ${layoutsBtnHTML()}
+    ${STATE.toolbar.newTermMenu
+      ? `<button class="mtab-new" title="New terminal — pick a shell for this one" onclick="newTermMenu(event)">${ICON.plus}${EXICON.chevD}</button>`
+      : `<button class="mtab-new" title="New terminal (${STATE.defaultShell})" onclick="toast('New terminal · ${STATE.defaultShell}')">${ICON.plus}</button>`}`;
   const b=document.getElementById('mbody');
+  if(STATE.mainTab==='agents'){ b.innerHTML=agentsViewHTML(); return; }
+  if(STATE.mainTab==='agent'&&STATE.agentTab){ b.innerHTML=paneTabHTML(STATE.agentTab); return; }
   if(STATE.mainTab==='machine'&&mach){ b.innerHTML=machineDashboard(mach); return; }
   if(STATE.ctx.type==='home'||STATE.mainTab==='term'||!coll){ b.innerHTML=paneGrid(); return; }
   b.innerHTML=cardsView(coll);
 }
-function paneGrid(){if(STATE.ctx.type==='home')return `<div class="pane-wrap focused">${termHTML(null)}</div>`;
-  // A split = two termpanes side by side (each carries its own header, ISO with
-  // the web UI's Terminal.tsx pane). Only the focused pane gets the blue ring.
-  return `<div style="height:100%;display:flex;gap:10px">
-    <div class="pane-wrap focused" style="flex:1">${termHTML('deploy@10.0.0.5')}</div>
-    <div class="pane-wrap" style="flex:1">${termHTML('deploy@10.0.0.4')}</div></div>`;}
+// The terminal tab holds the same pane list an agent tab does, rendered by the same
+// `paneTabHTML` — so splits, presets and layouts are one feature, not two. Seeded
+// from the context (home = one local shell, a vault/server = the two-pane demo) and
+// re-seeded only when the context itself changes, so panes you opened survive a
+// render but not a switch to somewhere they do not belong.
+function defaultTermTab(sig){
+  return sig==='home'
+    ? { sig, host:null, focus:0, panes:[{kind:'term',host:null}] }
+    : { sig, host:'deploy@10.0.0.5', focus:0,
+        panes:[{kind:'term',host:'deploy@10.0.0.5'},{kind:'term',host:'deploy@10.0.0.4'}] };}
+function paneGrid(){
+  const sig = STATE.ctx.type==='home' ? 'home' : 'ctx';
+  if(!STATE.termTab || STATE.termTab.sig!==sig) STATE.termTab = defaultTermTab(sig);
+  return paneTabHTML(STATE.termTab);}
 function cardsView(coll){
   const sortF=list=>{const c=[...list];if(STATE.sort==='name')c.sort((a,b)=>a.name.localeCompare(b.name));if(STATE.sort==='host')c.sort((a,b)=>a.host.localeCompare(b.host));return c;};
   const card=cn=>`<div class="ccard" ondblclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')" onclick="openMachine('${cn.name}')" title="Click: dashboard · double-click: connect">
@@ -653,7 +697,7 @@ function collectMachines(node){let out=[...(node.conns||[])];(node.children||[])
 function dlgNewFolder(parentId){const parent=parentId?find(parentId):null;
   const shared=!!parent&&(parent.type==='coll'||underColl(parentId));
   showModal({title:shared&&!isLocal()?'New folder in collection':'New folder',
-    subtitle:parent?`inside “${parent.name}”${shared&&!isLocal()?' · shared with the collection':''}`:'Your personal organiser — colour it to spot it fast.',confirm:'Create',
+    subtitle:parent?`inside “${parent.name}”${shared&&!isLocal()?' · shared with the collection':''}`:'A personal organiser — colour it to spot it fast.',confirm:'Create',
     body:`<label class="field"><span>Name</span><input class="inp" id="fname" placeholder="${shared?'e.g. Web servers':'e.g. Client Beta'}"></label>${swatchRow(COLORS[0])}
       ${shared?`<p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.users} Part of the collection — everyone who has it sees this folder. Owners &amp; editors can change it (re-encrypts).</p>`:''}`,
     onConfirm:(m)=>{const name=(m.querySelector('#fname').value||'').trim()||'New folder';
@@ -670,7 +714,7 @@ function dlgNewLocalColl(){
   showModal({title:'New collection',subtitle:'A group of machines with its own folders and board.',confirm:'Create',
     body:`<label class="field"><span>Name</span><input class="inp" id="lc-name" placeholder="Home lab" autofocus></label>
       ${swatchRow(COLORS[1])}
-      <p class="muted" style="font-size:12px;margin:10px 0 0">Local vault — collections organise your machines. Sharing needs a server.</p>`,
+      <p class="muted" style="font-size:12px;margin:10px 0 0">Local vault — collections organise the machines. Sharing needs a server.</p>`,
     onConfirm:m=>{const name=(m.querySelector('#lc-name').value||'').trim()||'New collection';
       lib().unshift({id:'c-'+Math.random().toString(36).slice(2,7),type:'coll',color:__pickColor,name,open:true,conns:[]});
       renderAll();toast(`Collection <span class="accent">${name}</span> created`);}});}
@@ -690,7 +734,7 @@ function dlgImportSSH(collName){
       <label class="field"><span>Into collection</span><select class="inp" id="impcoll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
       <div class="eyebrow" style="margin:4px 0 6px">Hosts</div>
       <div class="scroll" style="max-height:230px;overflow:auto">${SSH_HOSTS.map(row).join('')}</div>
-      <p class="muted" style="font-size:12px;margin:9px 0 0">${EXICON.key} Selected hosts become machines in the collection (edit them after). They're encrypted with the collection key — never leave your device in clear.</p>`,
+      <p class="muted" style="font-size:12px;margin:9px 0 0">${EXICON.key} Selected hosts become machines in the collection (edit them after). They're encrypted with the collection key — never leave this device in clear.</p>`,
     onConfirm:(m)=>{const n=m.querySelectorAll('.chk.on').length,into=m.querySelector('#impcoll').value;
       toast(`Imported <span class="accent">${n}</span> machine${n>1?'s':''} into ${into}`);}});}
 function folderMenu(id,e){const f=find(id),shared=underColl(id);floatMenu(e,[
@@ -748,11 +792,11 @@ function agentPanel(p,e){e=e||{};
         <span class="muted" style="${mono}">${k.fp}</span>
         <span style="margin-left:auto;flex:none;font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;${k.hw?'background:color-mix(in oklab,var(--accent) 20%,transparent);color:var(--accent)':'background:var(--card2);color:var(--muted)'}">${k.hw?'hardware · FIDO':k.type}</span>
       </div>`).join('')}</div>
-      <p class="muted" style="font-size:12px;line-height:1.55;margin:10px 0 0">Rite asks the agent to sign — your key and passphrase never leave it, and <b>nothing is stored in Rite</b>. Hardware keys (YubiKey/FIDO) work only this way.</p>
+      <p class="muted" style="font-size:12px;line-height:1.55;margin:10px 0 0">Rite asks the agent to sign — the key and its passphrase never leave it, and <b>nothing is stored in Rite</b>. Hardware keys (YubiKey/FIDO) work only this way.</p>
     </div>
     <label style="display:flex;gap:10px;align-items:flex-start;margin-top:11px;cursor:pointer">
       <input type="checkbox" id="${p}-agent-fwd" ${e.agentForward?'checked':''} style="margin-top:3px;flex:none">
-      <span><b style="font-size:13px">Forward agent to this host</b><span class="muted" style="display:block;font-size:12px;line-height:1.5;margin-top:2px">⚠ Lets the remote machine reuse your local keys to hop onward (agent forwarding). Powerful but risky — a compromised host could use your agent. Leave off unless you need it.</span></span>
+      <span><b style="font-size:13px">Forward agent to this host</b><span class="muted" style="display:block;font-size:12px;line-height:1.5;margin-top:2px">⚠ Lets the remote machine reuse the local keys to hop onward (agent forwarding). Powerful but risky — a compromised host could use the agent. Leave off unless needed.</span></span>
     </label>`;
 }
 /* Shared authentication section — one source of truth for New machine AND Quick
@@ -762,8 +806,42 @@ function authSelect(p,e){e=e||{};const a=e.authType||'password';
   return `<select class="inp" id="${p}-auth" onchange="authToggle('${p}',this.value)"><option value="password" ${a==='password'?'selected':''}>Password</option><option value="publicKey" ${a==='publicKey'?'selected':''}>Public key (file)</option><option value="agent" ${a==='agent'?'selected':''}>SSH agent</option></select>`;}
 function authPanels(p,e){e=e||{};const a=e.authType||'password';
   return `<div id="${p}-pw" style="${a==='password'?'':'display:none'}"><label class="field"><span>Password</span><input class="inp" type="password" placeholder="${e.name?'••••••••':'password'}"></label></div>
-    <div id="${p}-key" style="${a==='publicKey'?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519"></label><label class="field"><span>Key passphrase (optional)</span><input class="inp" type="password" placeholder="if the key is encrypted"></label></div>
+    <div id="${p}-key" style="${a==='publicKey'?'':'display:none'}">${keyPanel(p,e)}<label class="field"><span>Key passphrase (optional)</span><input class="inp" type="password" placeholder="if the key is encrypted"></label></div>
     <div id="${p}-agent" style="${a==='agent'?'':'display:none'}">${agentPanel(p,e)}</div>`;}
+/* The key panel. A local vault has ONE support — a path, on the machine that will read it
+   — so there is no choice to offer and none is drawn. Signed into a server, the record is
+   shared and portable, so the member picks (ADR 0028 §1): carried in the record, or
+   standing on each computer. Carried is the default, being the only one a browser can use.
+
+   A path works for the reader here either way: in a remote context the LOCAL server opens
+   SSH (client-execute, ADR 0011 §4). What it does not do is work for a colleague or from a
+   browser, which is why the choice is on the record and not on the window. */
+function keyPanel(p,e){
+  e=e||{};
+  if(STATE.ctx.type!=='server')
+    return `<label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519"></label>`;
+  const onPath=e.keySupport==='path';
+  return `<div class="field"><span>Key</span>
+      <label class="kchoice"><input type="radio" name="${p}-keysup" value="carried" ${onPath?'':'checked'} onchange="keySupToggle('${p}',this.value)">
+        <span><b>A shared key, in the record</b><span class="muted" style="display:block;font-size:12px">Every member of the collection can open this machine. Its host sees one identity for all of them.</span></span></label>
+      <label class="kchoice"><input type="radio" name="${p}-keysup" value="path" ${onPath?'checked':''} onchange="keySupToggle('${p}',this.value)">
+        <span><b>A key file on each computer</b><span class="muted" style="display:block;font-size:12px">Only a member who has that file, at that path, can open this machine. Desktop client only.</span></span></label>
+    </div>
+    <div id="${p}-key-carried" style="${onPath?'display:none':''}">
+      ${e.keyFingerprint
+        ? `<label class="field"><span>Private key file</span>
+            <span class="kstored"><code class="mono" style="font-size:12px;flex:1">${e.keyFingerprint}</code><span class="tag">${e.keyAlgorithm||'ssh-ed25519'}</span>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="toast('Choose the replacement key file…')">Replace…</button></span>
+            <span class="muted" style="font-size:12px;display:block;margin-top:6px">Replace it to use another one. Saving anything else here keeps this key.</span></label>`
+        : `<label class="field"><span>Private key file</span><input class="inp" type="file">
+            <span class="muted" style="font-size:12px;display:block;margin-top:6px">Read in this page and sealed in the record — never uploaded as a file.</span></label>`}
+    </div>
+    <div id="${p}-key-path" style="${onPath?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519">
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">Read on the computer that connects, so this machine needs a desktop client.</span></label></div>`;
+}
+function keySupToggle(p,v){const c=document.getElementById(p+'-key-carried'),k=document.getElementById(p+'-key-path');
+  if(c)c.style.display=v==='path'?'none':'';
+  if(k)k.style.display=v==='path'?'':'none';}
 function authToggle(p,v){const pw=document.getElementById(p+'-pw'),k=document.getElementById(p+'-key'),ag=document.getElementById(p+'-agent');
   if(pw)pw.style.display=v==='password'?'':'none';
   if(k)k.style.display=v==='publicKey'?'':'none';
@@ -779,14 +857,14 @@ function dlgNewConn(collName,existing){const e=existing||{};
     ${authPanels('nc',e)}
     <label class="field"><span>Jump host <span class="muted" style="font-weight:400">(optional)</span></span>
       <select class="inp" id="nc-jump"><option value="">Direct — no jump</option>${allColls().map(c=>{const opts=(c.conns||[]).filter(m=>m.name!==e.name).map(m=>`<option value="${m.name}" ${e.jump===m.name?'selected':''}>${m.name} — ${m.user?m.user+'@':''}${m.host}</option>`).join('');return opts?`<optgroup label="${c.name}">${opts}</optgroup>`:'';}).join('')}</select>
-      <span class="muted" style="font-size:12px;display:block;margin-top:6px">Reach this machine <b>through</b> another (a bastion). Rite opens the jump first, then tunnels the SSH session to the target — like OpenSSH <code style="font-family:ui-monospace,monospace">ProxyJump</code>. <b>Chainable</b>: if the jump itself has a jump, the whole path is built. Your key is never copied onto the bastion — auth happens end-to-end with the target.</span></label>
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">Reach this machine <b>through</b> another (a bastion). Rite opens the jump first, then tunnels the SSH session to the target — like OpenSSH <code style="font-family:ui-monospace,monospace">ProxyJump</code>. <b>Chainable</b>: if the jump itself has a jump, the whole path is built. The key is never copied onto the bastion — auth happens end-to-end with the target.</span></label>
     ${swatchRow(e.color||'#56c7c0')}
     <div style="display:flex;gap:10px;align-items:flex-end"><label class="field" style="flex:1"><span>Keep-alive</span><select class="inp" id="nc-ka" onchange="document.getElementById('nc-kai').style.display=this.value==='on'?'':'none'"><option value="off" ${e.sshKeepAliveOverride==='enabled'?'':'selected'}>Disabled</option><option value="on" ${e.sshKeepAliveOverride==='enabled'?'selected':''}>Enabled</option></select></label>
       <label class="field" id="nc-kai" style="flex:1;${e.sshKeepAliveOverride==='enabled'?'':'display:none'}"><span>Interval (s)</span><input class="inp" value="${e.sshKeepAliveInterval||30}"></label></div>
     <label class="field"><span>Health-check</span><select class="inp" id="nc-hc"><option value="inherit" ${e.hc===false?'':'selected'}>Follow the collection / server policy</option><option value="off" ${e.hc===false?'selected':''}>Never probe this machine</option></select>
       <span class="muted" style="font-size:12px;display:block;margin-top:6px">A machine can opt out of active probing; it can't opt into more than allowed.</span></label>
     <label class="field"><span>Pre-connect command <span class="muted" style="font-weight:400">(optional)</span></span><textarea class="inp mono" id="nc-preconnect" oninput="autoGrow(this)" placeholder="wg-quick up wg0&#10;# one line, or a mini-script (fail-fast)" spellcheck="false" rows="${e.preconnect?Math.min((e.preconnect.match(/\n/g)||[]).length+1,6):2}" style="resize:vertical;overflow:auto;min-height:52px;line-height:1.5">${e.preconnect||''}</textarea>
-      <span class="muted" style="font-size:12px;display:block;margin-top:6px">A <b>local</b> command run <b>before</b> connecting — one line, or a few lines for a mini-script (<b>fail-fast</b>: any line failing aborts). <code style="font-family:ui-monospace,monospace">tailscale up</code>, <code style="font-family:ui-monospace,monospace">aws sso login</code>, <code style="font-family:ui-monospace,monospace">kinit</code>, mount a VPN… Interactive prompts (password, browser) run in a small terminal. If it fails, Rite <b>won't connect</b> and shows why. Runs on your machine, never on the server.</span></label>
+      <span class="muted" style="font-size:12px;display:block;margin-top:6px">A <b>local</b> command run <b>before</b> connecting — one line, or a few lines for a mini-script (<b>fail-fast</b>: any line failing aborts). <code style="font-family:ui-monospace,monospace">tailscale up</code>, <code style="font-family:ui-monospace,monospace">aws sso login</code>, <code style="font-family:ui-monospace,monospace">kinit</code>, mount a VPN… Interactive prompts (password, browser) run in a small terminal. If it fails, Rite <b>won't connect</b> and shows why. Runs on this machine, never on the server.</span></label>
     <label class="field"><span>Notes</span><textarea class="inp" id="nc-notes" rows="2" placeholder="Optional notes…">${e.notes||''}</textarea></label>
     <label class="field"><span>Collection</span><select class="inp" id="nc-coll">${allColls().map(c=>`<option ${c.name===collName?'selected':''}>${c.name}</option>`).join('')}</select></label>
     ${(()=>{const c=allColls().find(x=>x.name===collName);return c&&c.shared?`<p class="muted" style="font-size:12px;margin:6px 0 0">${EXICON.users} Shared collection — saving re-encrypts for all ${c.members.length} members (needs write access · RBAC).</p>`:'';})()}`,
@@ -821,7 +899,7 @@ function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',
       ${ORG.teams.map(t=>`<span class="chip" style="cursor:pointer" onclick="mpTeam('${t.name}')">${EXICON.users} ${t.name} <span class="muted">${t.members.length}</span></span>`).join('')}</div>
     <div class="search" style="margin:0 0 6px">${EXICON.search}<input id="mpsearch" autocomplete="off" placeholder="Add someone — type a username…" oninput="mpResults()"></div>
     <div id="mpresults" style="margin-bottom:8px"></div>
-    <label class="field"><span>Put in folder (your personal organisation — view only)</span><select class="inp"><option>(no folder)</option>${folders.map(f=>`<option>${f}</option>`).join('')}</select></label>
+    <label class="field"><span>Put in folder (personal organisation — view only)</span><select class="inp"><option>(no folder)</option>${folders.map(f=>`<option>${f}</option>`).join('')}</select></label>
     <p class="muted" style="font-size:12px;margin:8px 0 0">${EXICON.key} Members hold the collection key. <b style="color:var(--fg-dim)">Owner</b> manages sharing &amp; settings (rename/delete/transfer) · <b style="color:var(--fg-dim)">Editor</b> adds/edits machines (re-encrypts) · <b style="color:var(--fg-dim)">Viewer</b> can only connect.</p>`;
   const bd=showModal({title:isNew?'New collection':`Share · ${coll.name}`,subtitle:`${chosen.size} member${chosen.size>1?'s':''}`,wide:true,body,confirm:isNew?'Create':'Save',
     onConfirm:()=>{if(isNew){const name=(bd.querySelector('input')?.value||'').trim()||'New collection';
@@ -832,7 +910,7 @@ function openMemberPicker(collId,isNew){const coll=collId?find(collId):{name:'',
 // The chosen members — always shown, with role + remove. Adding is via the typeahead.
 function mpRenderMembers(){const {bd,chosen,roles}=window.__mp;const owners=[...chosen].filter(u=>roles[u]==='owner');
   bd.querySelector('#mpmembers').innerHTML=[...chosen].map(u=>{const me=u===ORG.me;const lockOwner=roles[u]==='owner'&&owners.length<2;const info=ORG.users.find(x=>x.u===u)||{role:'user'};
-    return `<div class="mrow" style="cursor:default">${av(u)}<div class="grow"><div class="title">${u}${roles[u]==='owner'?' <span title="owner">👑</span>':''}${me?' <span class="muted" style="font-size:12px">(you)</span>':''}</div><div class="sub">${info.role}</div></div>${roleSel(u,roles[u]||'viewer',lockOwner)}${me?'':`<button class="btn btn-ghost btn-sm" title="Remove" style="padding:4px;color:var(--red)" onclick="mpRemove('${u}')">${EXICON.trash}</button>`}</div>`;}).join('');
+    return `<div class="mrow" style="cursor:default">${av(u)}<div class="grow"><div class="title">${u}${roles[u]==='owner'?' <span title="owner">👑</span>':''}${me?' <span class="muted" style="font-size:12px">(this account)</span>':''}</div><div class="sub">${info.role}</div></div>${roleSel(u,roles[u]||'viewer',lockOwner)}${me?'':`<button class="btn btn-ghost btn-sm" title="Remove" style="padding:4px;color:var(--red)" onclick="mpRemove('${u}')">${EXICON.trash}</button>`}</div>`;}).join('');
   const cnt=bd.querySelector('#mpcount');if(cnt)cnt.textContent=`${chosen.size} member${chosen.size>1?'s':''} · ${owners.length} owner${owners.length>1?'s':''}`;
   const p=bd.querySelector('header p');if(p)p.textContent=`${chosen.size} member${chosen.size>1?'s':''}`;}
 // Typeahead: only search once you type a prefix — never ship the whole directory.
@@ -856,14 +934,14 @@ function openHostKey(){showModal({title:'Unknown host key',subtitle:'First conne
    it renders one or many prompts, each masked unless the server says to echo. */
 const KBD_DEMO={host:'alex@web-03.acme.io:22',name:'Two-factor authentication',
   note:'✓ Primary auth accepted — one more step.',
-  instruction:'Enter the 6-digit code from your authenticator app.',
+  instruction:'The 6-digit code from the authenticator app.',
   prompts:[{label:'Verification code:',echo:false}]};
 function openKbdInteractive(ch){ch=ch||KBD_DEMO;
-  showModal({title:ch.name||'Server verification',subtitle:'The server needs more to sign you in.',confirm:'Verify',
+  showModal({title:ch.name||'Server verification',subtitle:'The server needs more to complete sign-in.',confirm:'Verify',
   body:`${ch.note?`<p style="color:var(--accent);font-size:12.5px;font-weight:600;margin:0 0 10px">${ch.note}</p>`:''}<div class="card" style="padding:11px 13px;display:flex;gap:10px;align-items:center"><span style="color:var(--accent)">${EXICON.shield}</span><b class="mono" style="font-size:13px">${ch.host}</b></div>
     ${ch.instruction?`<p class="muted" style="font-size:13px;margin:12px 0 2px">${ch.instruction}</p>`:''}
     ${ch.prompts.map((pr,i)=>`<label class="field"><span>${pr.label}</span><input class="inp" type="${pr.echo?'text':'password'}" ${i===0?'autofocus':''} placeholder="${pr.echo?'':'••••••'}"></label>`).join('')}
-    <p class="muted" style="font-size:12px;margin:10px 0 0">Requested by the server (keyboard-interactive). Your answer is sent to the server to sign in — <b>nothing is stored by Rite</b>.</p>`,
+    <p class="muted" style="font-size:12px;margin:10px 0 0">Requested by the server (keyboard-interactive). The answer goes to the server to sign in — <b>nothing is stored by Rite</b>.</p>`,
   onConfirm:()=>toast('Verifying with the server…')});}
 /* Simulate connecting to a machine: the primary auth runs, then (for the demo)
    the server asks for a second factor via keyboard-interactive — the real path
@@ -877,7 +955,7 @@ function connectMachine(host,name){
   else toast(`▶ ${name} · authenticating…`);
   setTimeout(()=>openKbdInteractive({host,name:'Two-factor authentication',
     note:'✓ Primary auth accepted — one more step.',
-    instruction:'Enter the 6-digit code from your authenticator app.',
+    instruction:'The 6-digit code from the authenticator app.',
     prompts:[{label:'Verification code:',echo:false}]}),chain.length?950:650);}
 /* Reconnect (P2 UX): a dropped SSH session is NEVER force-reconnected — reconnecting
    opens a new shell (history + on-screen output + any running job are lost). If the
@@ -901,9 +979,9 @@ function runPreconnect(willFail){const o=PRECONNECT;
     ?['[#] ip link add wg0 type wireguard','RTNETLINK answers: Operation not permitted','Unable to access interface: Operation not permitted']
     :['[#] ip link add wg0 type wireguard','[#] wg setconf wg0 /dev/fd/63','[#] ip -4 address add 10.9.0.2/24 dev wg0','[#] ip link set mtu 1420 up dev wg0'];
   const base=`<span style="color:var(--accent)">$ ${o.cmd}</span>\n`;
-  const bd=showModal({title:'Pre-connect',subtitle:`Runs on your machine before connecting to ${o.host}`,wide:true,confirm:'Cancel',
+  const bd=showModal({title:'Pre-connect',subtitle:`Runs on this machine before connecting to ${o.host}`,wide:true,confirm:'Cancel',
     body:`<div style="background:var(--bg);border:1px solid var(--border);border-radius:9px;overflow:hidden">
-        <div style="padding:5px 11px;border-bottom:1px solid var(--border);font:600 11px ui-monospace,monospace;color:var(--muted);display:flex;align-items:center;gap:7px"><span class="pst check"></span> <span id="pc-hdr">pre-connect · running on your machine · interactive</span></div>
+        <div style="padding:5px 11px;border-bottom:1px solid var(--border);font:600 11px ui-monospace,monospace;color:var(--muted);display:flex;align-items:center;gap:7px"><span class="pst check"></span> <span id="pc-hdr">pre-connect · running on this machine · interactive</span></div>
         <div id="pc-out" style="font-family:ui-monospace,monospace;font-size:12px;line-height:1.5;padding:10px 12px;white-space:pre-wrap;max-height:220px;overflow:auto;min-height:104px">${base}<span class="cursor"></span></div>
       </div>
       <p id="pc-note" class="muted" style="font-size:12px;margin:11px 0 0">Running… interactive prompts (a password, a browser) would appear right here.</p>`,
@@ -925,33 +1003,122 @@ function runPreconnect(willFail){const o=PRECONNECT;
       } }
   };
   setTimeout(step,450);}
-function openSettings(){showModal({title:'Settings',wide:true,confirm:'Done',body:`
-  <div class="settings-row"><div><b>Interface language</b><div class="muted" style="font-size:12px">English / Français</div></div><select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select></div>
-  <div class="settings-row"><div><b>Theme</b><div class="muted" style="font-size:12px">Dark / light</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
-  <div class="settings-row"><div><b>Auto-lock vault</b><div class="muted" style="font-size:12px">After inactivity</div></div><select class="inp" style="width:auto"><option>Disabled</option><option>1 min</option><option>3 min</option><option selected>5 min</option><option>Custom…</option></select></div>
-  <div class="settings-row"><div><b>Auto-clear clipboard</b><div class="muted" style="font-size:12px">Clear 30s after a copy (security)</div></div><div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div></div>
-  <div class="settings-row"><div><b>Default shell</b><div class="muted" style="font-size:12px">New local terminals (also in the toolbar)</div></div><select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name}${s.installed?'':' (not installed)'}</option>`).join('')}</select></div>
-  <div class="settings-row"><div><b>SSH host-key verification</b><div class="muted" style="font-size:12px">How unknown server keys are handled</div></div><select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select></div>
-  <div class="settings-row"><div><b>Auto-reconnect lost SSH connections</b><div class="muted" style="font-size:12px">Off by default. On → a dropped session reconnects automatically (a <b>new shell</b>: history, on-screen output and any running job are lost). Off → we show a <b>Reconnect</b> button instead. Either way you're told you were disconnected.</div></div><div class="toggle ${STATE.autoReconnect?'on':''}" onclick="this.classList.toggle('on');STATE.autoReconnect=this.classList.contains('on');renderMain()"><i></i></div></div>
-  <div class="settings-row"><div><b>Machine status</b><div class="muted" style="font-size:12px">${STATE.ctx.type==='server'?'<span style="color:var(--amber)">Governed by your server</span> — you can only narrow it.':'You govern this for this local vault.'} Passive “last seen” costs no network traffic; active probing does.</div></div><select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select></div>
-  <div class="settings-row"><div><b>Container &amp; service cards on the machine dashboard</b><div class="muted" style="font-size:12px">These two cards run a command on the host each time they refresh. Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.${STATE.ctx.type==='server'&&STATE.dashPolicy.clients===false?' <span style="color:var(--amber)">Your server turns them off for this client</span>, so this changes nothing here.':''}</div></div><div class="toggle ${STATE.machineProbes?'on':''}" onclick="this.classList.toggle('on');STATE.machineProbes=this.classList.contains('on');renderAll()"><i></i></div></div>
-  <div class="settings-row"><div><b>Show member count on collections</b><div class="muted" style="font-size:12px">The number next to shared collections (the 👥 shared icon stays either way)</div></div><div class="toggle ${STATE.showMemberCount?'on':''}" onclick="this.classList.toggle('on');STATE.showMemberCount=this.classList.contains('on');renderAll()"><i></i></div></div>
-  <div class="settings-row"><div><b>Auto-collapse sidebar in focus mode</b><div class="muted" style="font-size:12px">When you enter focus mode (F11), also hide the library sidebar for a terminals-only view.</div></div><div class="toggle ${STATE.focusCollapseSidebar?'on':''}" onclick="this.classList.toggle('on');STATE.focusCollapseSidebar=this.classList.contains('on')"><i></i></div></div>
-  <div class="settings-row" style="display:block;padding-top:14px"><b>Keyboard shortcuts</b><div class="muted" style="font-size:12px;margin-bottom:6px">Reference — not editable.</div>
-    <table class="sc-tbl"><thead><tr><th>Action</th><th>Keys</th><th>Description</th></tr></thead><tbody>
-      <tr><td>Focus mode</td><td><kbd>F11</kbd></td><td class="d">Hide the toolbar so terminals fill the screen. <kbd>Esc</kbd> or <kbd>F11</kbd> to exit; hover the top edge to reveal the toolbar.</td></tr>
+/* The desktop shell's own sections. The chrome (the rail, the ✕-only dialog) is in
+   rite.js; what differs here is WHICH sections exist: this shell has a local shell,
+   focus mode and, once a vault is open, a master password and a danger zone. */
+const PREFS=[
+  { id:'appearance', label:'Appearance', body:()=>
+      prefRow('Theme','Dark / light',`<div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div>`)
+    + prefRow('Show member count on collections','The number next to shared collections (the 👥 shared icon stays either way)',prefToggle('showMemberCount','renderAll()')) },
+
+  /* The toolbar is the one row of the app every person sees all day, and the
+     right contents differ per person: a Quick SSH user and someone who only opens
+     saved machines do not want the same buttons. These toggles only ever HIDE —
+     a server that forbids Quick SSH still forbids it, and hiding a button you are
+     not allowed to use is not the same promise as turning the rule off. */
+  { id:'toolbar', label:'Toolbar', body:()=>
+      `<h4>Toolbar</h4><p class="lede">What sits along the top of the window. Hiding a button never changes what're allowed to do — a shortcut or a menu still reaches it.</p>`
+    + prefRow('Shell picker','The dropdown next to <b>Terminal</b>, for picking the shell a new local terminal opens. Hiding it leaves the setting itself in <b>Terminals</b>, above.',prefToggle('toolbar.shell','renderActs()'))
+    + prefRow('Shell menu on “+”','The chevron on the <b>+</b> beside the tabs, to open one terminal with another shell without changing the default. Hiding it leaves <b>+</b> opening the default shell.',prefToggle('toolbar.newTermMenu','renderMain()'))
+    + prefRow('Focus mode','The F11 button. The key works either way.',prefToggle('toolbar.focus','renderActs()'))
+    + prefRow('Quick SSH','One-off connections that aren\'t in a collection.'
+        + (STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK?' <span style="color:var(--amber)">The server turns this off</span>, so it is hidden regardless.':''),
+        prefToggle('toolbar.quick','renderActs()'))
+    + prefRow('Agents','The AI sessions running on the machines.',prefToggle('toolbar.agents','renderActs()'))
+    + prefRow('Layouts','The button beside the tabs. It hides itself when no layout exists.',prefToggle('toolbar.layouts','renderMain()')) },
+
+  { id:'keyboard', label:'Keyboard', body:()=>
+      `<h4>Keyboard</h4><p class="lede">Click a chord to record a new one. Reserved chords (${'<kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd>'}, ${'<kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>C</kbd>'}) belong to the terminal and are refused.</p>
+      <table class="sc-tbl"><thead><tr><th>Action</th><th>Keys</th><th>Description</th></tr></thead><tbody>
+      <tr><td>Split horizontally</td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>H</kbd></td><td class="d">Split the focused pane into top / bottom.</td></tr>
+      <tr><td>Split vertically</td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>D</kbd></td><td class="d">Split the focused pane into left / right.</td></tr>
       <tr><td>Close terminal pane</td><td><kbd>Ctrl</kbd> <kbd>W</kbd></td><td class="d">Close the focused split pane.</td></tr>
-      <tr><td>Split horizontally</td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>H</kbd></td><td class="d">Split the pane into top / bottom.</td></tr>
-      <tr><td>Split vertically</td><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>V</kbd></td><td class="d">Split the pane into left / right.</td></tr>
-      <tr><td>Find in terminal</td><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>F</kbd></td><td class="d">Search the terminal scrollback.</td></tr>
-      <tr><td>Close find / dialog</td><td><kbd>Esc</kbd></td><td class="d">Dismiss the search bar or an open dialog.</td></tr>
-    </tbody></table></div>
-  <div class="settings-row" style="border:none;border-top:1px solid rgba(247,118,142,.25);margin-top:8px;padding-top:14px"><div><b style="color:var(--red)">Reset vault</b><div class="muted" style="font-size:12px">Erase the master password and all connections — irreversible</div></div><button class="btn btn-sm" style="color:var(--red);border-color:rgba(247,118,142,.4)" onclick="dlgResetVault()">Reset…</button></div>`});}
+      <tr><td>Find in terminal</td><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>F</kbd></td><td class="d">Search the focused pane's scrollback.</td></tr>
+      </tbody></table>
+      <p class="lede" style="margin-top:10px">Fixed, because the shell owns them: <kbd>F11</kbd> focus mode · <kbd>Esc</kbd> dismiss.</p>` },
+
+  /* "Default shell" used to be a path you typed, while the toolbar offered the
+     shells you actually have installed — two editors for one setting, and the worse
+     one was in the preferences. Same picker here as up there, same value. */
+  { id:'terminals', label:'Terminals', body:()=>
+      `<h4>Terminals</h4><p class="lede">What a new local terminal opens. This is the same setting as the picker in the toolbar — changing it either way changes both.</p>`
+    + prefRow('Shell','Detected on this computer',
+        `<select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name} — ${s.path}${s.installed?'':' (not installed)'}</option>`).join('')}</select>`)
+    + prefRow('Custom path','For a shell Rite didn\'t find',`<input class="inp mono" style="width:190px" placeholder="/opt/bin/nu" onchange="if(this.value.trim()){STATE.defaultShell=this.value.trim();renderActs()}">`) },
+
+  { id:'splits', label:'Split presets', body:()=>
+      `<h4>Split presets</h4><p class="lede">A divider opens a plain terminal — that is the button. A preset is that same divider running one named command, offered by the chevron beside it.</p>`
+    + prefRow('Presets',`${SPLIT_PRESETS.length} in <code>${LAYOUT_PATH}</code>, plus the plain terminal`,`<button class="btn btn-sm" onclick="dlgSplitPrefs()">Edit presets…</button>`) },
+
+  /* Layouts are NOT splits, and sharing a settings row said they were. A preset is
+     one command in one pane; a layout is the morning — what opens, where, on which
+     machine — and it lives in a file you can commit and carry. Own section, own
+     editor, own documentation.
+
+     The section LEADS with a card per layout (`layoutsSettingsHTML`, shared with the
+     editor): three rows of prose and a button that sent you elsewhere meant the only
+     answer to "what do I have" was behind a click, under a textarea. */
+  { id:'layouts', label:'Layouts', body:()=>layoutsSettingsHTML() },
+
+  { id:'machines', label:'Machine status', body:()=>
+      `<h4>Machine status</h4><p class="lede">${STATE.ctx.type==='server'?'<span style="color:var(--amber)">Governed by the server</span> — it can only be narrowed.':'Governed here, for this local vault.'} Passive “last seen” costs no network traffic; active probing does.</p>`
+    + prefRow('Health-check','',`<select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select>`)
+    + prefRow('Container &amp; service cards on the machine dashboard',`These two cards run a command on the host each time they refresh. Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.${STATE.ctx.type==='server'&&STATE.dashPolicy.clients===false?' <span style="color:var(--amber)">The server turns them off for this client</span>, so this changes nothing here.':''}`,prefToggle('machineProbes','renderAll()')) },
+
+  { id:'security', label:'Security', body:()=>
+      `<h4>Security</h4><p class="lede">Applies on change.</p>`
+    + prefRow('Auto-lock vault','After inactivity',`<select class="inp" style="width:auto"><option>Disabled</option><option>1 min</option><option>3 min</option><option selected>5 min</option><option>Custom…</option></select>`)
+     },
+
+  { id:'ssh', label:'SSH connections', body:()=>
+      `<h4>SSH</h4>`
+    + prefRow('Host-key verification','How unknown server keys are handled',`<select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select>`)
+    + prefRow('Auto-reconnect lost connections','Off by default. On → a dropped session reconnects automatically (a <b>new shell</b>: history, on-screen output and any running job are lost). Off → a <b>Reconnect</b> button instead. Either way the disconnection is reported.',prefToggle('autoReconnect','renderMain()')) },
+
+  /* Its own rail entry, as in the app: one row, and the rail is how a setting is found at
+     all now. It used to be a line inside Security, which is where nobody looked for it. */
+  { id:'clipboard', label:'Clipboard', body:()=>
+      `<h4>Clipboard</h4>`
+    + prefRow('Auto-clear clipboard','Clear the clipboard 30 seconds after a copy',`<div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div>`) },
+
+  { id:'focus', label:'Focus mode', body:()=>
+      `<h4>Focus mode</h4><p class="lede">F11 hides the toolbar so terminals fill the screen.</p>`
+    + prefRow('Auto-collapse sidebar','Also hide the library for a terminals-only view',prefToggle('focusCollapseSidebar')) },
+
+  { id:'language', label:'Language', body:()=>
+      prefRow('Interface language','English / Français',`<select class="inp" style="width:auto" onchange="STATE.lang=this.value;toast('Language: '+(this.value==='fr'?'Français':'English'))"><option value="en" ${STATE.lang==='en'?'selected':''}>English</option><option value="fr" ${STATE.lang==='fr'?'selected':''}>Français</option></select>`) },
+
+  { id:'system', label:'System', body:()=>
+      `<h4>System</h4><p class="lede">What is running, and what it talks to. The first thing anyone is asked for in a bug report, and the only place a version mismatch between a client and its server is visible (ADR 0008).</p>`
+    + prefRow('Rite','This build.',`<code class="mono" style="font-size:13px">${BUILD.version} <span style="color:var(--muted)">(${BUILD.commit})</span></code>`)
+    + prefRow('Built','When this build was made.',`<code class="mono" style="font-size:13px;color:var(--muted)">${BUILD.date}</code>`)
+    + prefRow('Shell','Where the interface is running. The same bundle runs in both.',`<code class="mono" style="font-size:13px;color:var(--muted)">desktop window</code>`)
+    + (STATE.ctx.type==='server'
+        ? prefRow('Server','The instance this window is connected to, and the API it speaks.',
+            `<code class="mono" style="font-size:13px">${SERVER_BUILD.version} <span style="color:var(--muted)">· API v${SERVER_BUILD.api}</span></code>`)
+        : '')
+    + `<p class="lede" style="margin-top:14px">Nothing here is sent anywhere. <a href="#" onclick="copyDiagnostics();return false">Copy as text</a> for a bug report.</p>` },
+
+  { id:'password', label:'Master password', when:prefsHasVault, body:()=>
+      `<h4>Master password</h4><p class="lede">The password that opens <b>${(STATE.ctx&&STATE.ctx.name)||'this vault'}</b>. Changing it re-wraps the vault key; the machines are not re-encrypted.</p>
+      <label class="field"><span>Current password</span><input class="inp" type="password" placeholder="••••••••"></label>
+      <label class="field"><span>New password</span><input class="inp" type="password" data-pw placeholder="••••••••"><div class="strength"><i></i></div></label>
+      <label class="field"><span>Confirm new password</span><input class="inp" type="password" placeholder="••••••••"></label>
+      <button class="btn btn-primary btn-sm" onclick="toast('Password changed')">Change password</button>` },
+
+  { id:'danger', label:'Danger zone', when:prefsHasVault, danger:true, body:()=>
+      `<h4 style="color:var(--red)">Danger zone</h4><p class="lede">Only ever about the vault in use here. Removing a vault that is <i>not</i> in — and deleting its file — is in the vault manager instead, where the list of vaults is.</p>
+      <div class="settings-row" style="border:none"><div><b style="color:var(--red)">Reset this vault</b><div class="muted" style="font-size:12px">Erase its master password and every connection it holds. Irreversible.</div></div><button class="btn btn-sm" style="color:var(--red);border-color:rgba(247,118,142,.4)" onclick="this.closest('.backdrop').remove();dlgResetVault()">Reset…</button></div>` },
+];
+/* A vault has to be OPEN for these two to mean anything: with none, there is no
+   master password to change and nothing to reset. */
+function prefsHasVault(){ const c=STATE.ctx; return !!(c && ((c.type==='vault' && !c.locked) || c.type==='server')); }
+function openSettings(at){ return openPrefs(PREFS,at); }
 /* Reset the current vault ("start fresh") — wipes its master password, connections AND name/icon,
    then returns to the base workspace (a vault isn't mandatory). Irreversible ⇒ type the vault name. */
 function dlgResetVault(){const nm=(STATE.ctx&&STATE.ctx.name)||'this vault';
   showModal({title:`Reset “${nm}”?`,confirm:'Reset & start fresh',
-  body:`<div class="card" style="padding:12px;border-color:rgba(247,118,142,.35);background:rgba(247,118,142,.06)"><p style="margin:0;font-size:13px;color:var(--fg)">This <b>permanently erases</b> its master password, every connection, and its name/icon. You'll return to the base workspace — it can't be undone (zero-knowledge).</p></div>
+  body:`<div class="card" style="padding:12px;border-color:rgba(247,118,142,.35);background:rgba(247,118,142,.06)"><p style="margin:0;font-size:13px;color:var(--fg)">This <b>permanently erases</b> its master password, every connection, and its name/icon. The base workspace comes back — irreversible (zero-knowledge).</p></div>
     <label class="field" style="margin-top:12px"><span>Type <b class="mono">${nm}</b> to confirm</span><input class="inp" id="reset-confirm" placeholder="${nm}"></label>`,
   onConfirm:(m)=>{if((m.querySelector('#reset-confirm').value||'').trim()!==nm)return false;
     if(STATE.ctx&&STATE.ctx.type==='vault'){STATE.ctx={type:'home'};STATE.selColl=null;STATE.mainTab='term';}
@@ -966,12 +1133,12 @@ function dlgResetVault(){const nm=(STATE.ctx&&STATE.ctx.name)||'this vault';
    A local vault is single-user: no teams, no sharing requests. These only exist when
    the current context is a SERVER (ADR 0016/0017). */
 function inboxRows(limit){
-  if(!ORG.accessRequests.length)return `<div style="text-align:center;color:var(--muted);padding:22px 0">No pending requests — you're all caught up.</div>`;
+  if(!ORG.accessRequests.length)return `<div style="text-align:center;color:var(--muted);padding:22px 0">No pending requests.</div>`;
   return (limit?ORG.accessRequests.slice(0,limit):ORG.accessRequests).map((r,i)=>`<div class="mrow" style="cursor:default;gap:11px">${av(r.user)}<div class="grow"><div class="title"><b>${r.user}</b> requests access to <b>${r.coll}</b></div><div class="sub">${r.team?`discovered via team ${r.team} · `:''}${r.when}</div></div><button class="btn btn-ghost btn-sm" onclick="dismissReq(${i})">Dismiss</button><button class="btn btn-primary btn-sm" onclick="grantReq(${i})">${EXICON.key} Grant</button></div>`).join('');
 }
 function openInbox(){document.querySelectorAll('.backdrop').forEach(b=>b.remove());const bd=document.createElement('div');bd.className='backdrop show';
   const total=ORG.accessRequests.length, CAP=5;
-  bd.innerHTML=`<div class="modal" style="max-width:540px"><header><h3>Notifications</h3><p>People asking to join collections you can grant.${total>CAP?` Showing the latest ${CAP} of ${total}.`:''}</p></header><div class="body" id="inboxBody" style="max-height:52vh;overflow:auto">${inboxRows(CAP)}</div><div class="foot" style="justify-content:space-between"><button class="btn btn-ghost btn-sm" onclick="location.href='notifications.html'">See all notifications →</button><button class="btn btn-ghost" onclick="this.closest('.backdrop').remove()">Close</button></div></div>`;
+  bd.innerHTML=`<div class="modal" style="max-width:540px"><header><h3>Notifications</h3><p>Requests to join grantable collections.${total>CAP?` Showing the latest ${CAP} of ${total}.`:''}</p></header><div class="body" id="inboxBody" style="max-height:52vh;overflow:auto">${inboxRows(CAP)}</div><div class="foot" style="justify-content:space-between"><button class="btn btn-ghost btn-sm" onclick="location.href='notifications.html'">See all notifications →</button><button class="btn btn-ghost" onclick="this.closest('.backdrop').remove()">Close</button></div></div>`;
   bd.addEventListener('click',e=>{if(e.target===bd)bd.remove();});document.body.appendChild(bd);}
 function refreshInbox(){const b=document.getElementById('inboxBody');if(b)b.innerHTML=inboxRows(5);renderActs();}
 function grantReq(i){const r=ORG.accessRequests[i];toast(`Sealed machine access to <span class="accent">${r.user}</span> · ${r.coll}`);ORG.accessRequests.splice(i,1);refreshInbox();}
@@ -986,36 +1153,67 @@ function discBody(){const ME=ORG.me;
   const row=c=>{const mine=c.members.includes(ME),pending=DREQ.has(c.offer.label);
     const badge=mine?`<span style="font-size:11px;font-weight:700;color:var(--green)">MEMBER</span>`:pending?`<span style="font-size:11px;font-weight:700;color:var(--amber)">REQUESTED</span>`:'';
     const btn=mine?`<button class="btn btn-sm" onclick="toast('Opening…')">Open</button>`:pending?`<button class="btn btn-sm" disabled style="opacity:.55;cursor:default">Awaiting a grant</button>`:`<button class="btn btn-primary btn-sm" onclick="discReq('${c.offer.label}')">Request access</button>`;
-    const sub=mine?"You're a member — open it any time":"Machines stay encrypted until a member grants you";
+    const sub=mine?"Member — open it any time":"Machines stay encrypted until a member grants access";
     return `<div class="oc"><span class="oc-ic">${M.coll}</span><div class="oc-txt"><div class="oc-label">${c.offer.label}</div><div class="oc-sub">${sub}</div></div><div class="oc-act">${badge}${btn}</div></div>`;};
   const allCol=myteams.every(t=>DCOLL.has(t.name));
-  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px"><p class="muted" style="font-size:13px;margin:0">Collections offered to the teams you're in — request access and a member grants you the key.</p><button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="discToggleAll()">${allCol?'Expand all':'Collapse all'}</button></div>
-    <div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Labels are for discovery, not secrets.</b> Visible to your team (and the server) so you can find and request access; machines and private names stay end-to-end encrypted until a member grants you.</div></div>
+  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px"><p class="muted" style="font-size:13px;margin:0">Collections offered to the joined teams' — request access and a member grants the key.</p><button class="btn btn-ghost btn-sm" style="flex-shrink:0" onclick="discToggleAll()">${allCol?'Expand all':'Collapse all'}</button></div>
+    <div class="zk"><span class="ic">${EXICON.shield}</span><div><b>Labels are for discovery, not secrets.</b> Visible to the team and the server, so a collection can be found and access requested; machines and private names stay end-to-end encrypted until a member grants access.</div></div>
     ${myteams.map(t=>{const o=offeredTo(t.name),col=DCOLL.has(t.name);
       return `<div class="disc-panel ${col?'collapsed':''}"><button class="disc-h" onclick="toggleTeam('${t.name}')" title="${col?'Expand':'Collapse'}"><span class="tname">${EXICON.users} ${t.name}</span><span class="disc-count">${o.length} offered</span><span class="disc-chev ${col?'':'open'}">${EXICON.chevD}</span></button>${col?'':(o.length?o.map(row).join(''):'<div class="disc-empty">No collections offered to this team yet.</div>')}</div>`;}).join('')}`;}
 function openDiscover(){document.querySelectorAll('.backdrop').forEach(b=>b.remove());showModal({title:'Discover',wide:true,body:`<div id="discBody">${discBody()}</div>`,confirm:'Done'});}
 function discRefresh(){const el=document.getElementById('discBody');if(el)el.innerHTML=discBody();}
 function toggleTeam(name){DCOLL.has(name)?DCOLL.delete(name):DCOLL.add(name);discRefresh();}
 function discToggleAll(){const my=ORG.teams.filter(t=>t.members.includes(ORG.me));if(my.every(t=>DCOLL.has(t.name)))DCOLL.clear();else my.forEach(t=>DCOLL.add(t.name));discRefresh();}
-function discReq(label){DREQ.add(label);toast('Requested access to <span class="accent">'+label+'</span> — a member will grant you the key');discRefresh();}
+function discReq(label){DREQ.add(label);toast('Requested access to <span class="accent">'+label+'</span> — a member grants the key');discRefresh();}
 
 /* ================= wire ================= */
+/* What a build knows about itself. In the app these come from the binary that serves the
+   page — one source, so the bundle and the binary cannot disagree about which they are. */
+const BUILD = { version: '0.2.4', commit: '3e60b68', date: '2026-10-17' };
+const SERVER_BUILD = { version: '0.2.4', api: 1 };
+function copyDiagnostics(){toast('Copied: Rite '+BUILD.version+' ('+BUILD.commit+') \u00b7 desktop');}
 function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on this system`);return;}STATE.defaultShell=s.name;renderActs();toast(`${s.name} set as default shell`);}})));}
+/* The tab strip's "+" opens ONE terminal with a shell and leaves the default alone;
+   `shellMenu` above sets the default. Two questions, which is why they are two
+   preferences: hiding the picker used to leave this one still asking. */
+function newTermMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on this system`);return;}toast(`New terminal · ${s.name}`);}})));}
 function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHELLS[0];
   document.getElementById('acts').innerHTML=`<button class="btn btn-primary btn-sm" title="New local terminal (${sh.name})" onclick="toast('New local terminal · ${sh.name}')">${ICON.plus} <span class="lbl">Terminal</span></button>
-  <button class="btn btn-sm" title="Default shell" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>
-  <button class="btn btn-ghost btn-sm" title="Focus mode (F11) — hide the toolbar, terminals fill the screen" onclick="toggleFocus()"><svg class="icon" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
-  ${STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK?'':`<button class="btn btn-sm" onclick="dlgQuickSSH()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`}
-  ${STATE.ctx.type==='vault'&&!STATE.ctx.locked?`<button class="btn btn-ghost btn-sm" title="Lock vault" onclick="lockVault('${STATE.ctx.id}')">${ICON.lock}</button>`:''}
-  ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Discover collections offered to your teams" onclick="openDiscover()">${M.compass} <span class="lbl">Discover</span></button>
+  ${STATE.toolbar.shell?`<button class="btn btn-sm" title="Shell for new local terminals — the same setting as Settings ▸ Terminals" onclick="shellMenu(event)"><span>${sh.icon}</span> <span class="lbl">${sh.name}</span> ${EXICON.chevD}</button>`:''}
+  ${STATE.toolbar.focus?`<button class="btn btn-ghost btn-sm" title="Focus mode (F11) — hide the toolbar, terminals fill the screen" onclick="toggleFocus()"><svg class="icon" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>`:''}
+  ${(STATE.ctx.type==='server'&&!SERVER_ALLOW_QUICK)||!STATE.toolbar.quick?'':`<button class="btn btn-sm" onclick="dlgQuickSSH()">${ICON.bolt} <span class="lbl">Quick SSH</span></button>`}
+  ${STATE.toolbar.agents?`<button class="btn btn-ghost btn-sm" title="Agents — the AI sessions running on the machines" onclick="openAgents()">${M.agent} <span class="lbl">Agents</span></button>`:''}
+  ${STATE.ctx.type==='vault'?`<button class="profile" onclick="toggleVault(event)" title="${STATE.ctx.locked?'Vault locked':'Vault open'}"><span class="avatar" style="background:${STATE.ctx.locked?'var(--card2)':'rgba(86,199,192,.15)'};color:${STATE.ctx.locked?'var(--muted)':'var(--teal)'}">${ICON.lock}</span><span class="pmeta"><span class="pname">Vault</span><span class="prole ${STATE.ctx.locked?'locked':'unlocked'}">${STATE.ctx.locked?'Locked':'Open'}</span></span><span class="chev">${EXICON.chevD}</span></button>`:''}
+  ${STATE.ctx.type==='server'?`<button class="btn btn-ghost btn-sm" title="Discover collections offered to the joined teams" onclick="openDiscover()">${M.compass} <span class="lbl">Discover</span></button>
   <button class="btn btn-ghost btn-sm" style="position:relative" title="Notifications" onclick="openInbox()">${M.bell}${ORG.accessRequests.length?'<span class="notif"></span>':''}</button>
   <button class="btn btn-ghost btn-sm" title="Administration — users, teams, invitations, instance" onclick="location.href='admin.html'">${EXICON.shield} <span class="lbl">Administration</span></button>
-  <button class="profile" onclick="toggleProfile(event)" title="Your account on ${STATE.ctx.name}"><span class="avatar" style="background:${avColor(ORG.me)}">${(ORG.me||'?').slice(0,2).toUpperCase()}</span><span class="pmeta"><span class="pname">${ORG.me}</span><span class="prole role-admin">admin</span></span><span class="chev">${EXICON.chevD}</span></button>`:''}
+  <button class="profile" onclick="toggleProfile(event)" title="Account on ${STATE.ctx.name}"><span class="avatar" style="background:${avColor(ORG.me)}">${(ORG.me||'?').slice(0,2).toUpperCase()}</span><span class="pmeta"><span class="pname">${ORG.me}</span><span class="prole role-admin">admin</span></span><span class="chev">${EXICON.chevD}</span></button>`:''}
   ${STATE.ctx.type!=='home'?`<button class="btn btn-ghost btn-sm" title="Open in new window" onclick="openInNewWindow('${STATE.ctx.name}')">${EXICON.split}</button>`:''}`;}
 // Profile dropdown (server context). Populated from the active server context on open.
 function toggleProfile(e){e.stopPropagation();const a=document.getElementById('pmAv');a.textContent=(ORG.me||'?').slice(0,2).toUpperCase();a.style.background=avColor(ORG.me);document.getElementById('pmName').textContent=ORG.me;document.getElementById('pmServer').textContent=(STATE.ctx&&STATE.ctx.name)||'';document.getElementById('pmenu').classList.toggle('show');}
 function closeProfile(){document.getElementById('pmenu').classList.remove('show');}
-document.addEventListener('click',e=>{if(!e.target.closest('.profile')&&!e.target.closest('.pmenu'))closeProfile();});
+/* The vault pastille's menu. The vault action comes first: it is the one with a consequence,
+   and in the locked state it is the only reason the menu is open. Locking costs a click here
+   that a bare button did not — so `vault.lock` is a keyboard command (Mod+Shift+L), which is
+   better than a click and an aim for something done while standing up. */
+function toggleVault(e){
+  e.stopPropagation();
+  const locked=!!STATE.ctx.locked;
+  const g=document.getElementById('vmGlyph');
+  g.innerHTML=ICON.lock;
+  g.style.background=locked?'var(--card2)':'rgba(86,199,192,.15)';
+  g.style.color=locked?'var(--muted)':'var(--teal)';
+  document.getElementById('vmName').textContent=STATE.ctx.name||'Vault';
+  document.getElementById('vmState').textContent=locked?'Locked':'Open';
+  const act=document.getElementById('vmLock');
+  act.innerHTML=`${ICON.lock} ${locked?'Unlock vault':'Lock vault'}<span class="muted" style="margin-left:auto;font-size:11.5px">${locked?'':'⌘⇧L'}</span>`;
+  act.onclick=()=>{closeVault();
+    if(locked) dlgUnlock(STATE.ctx,()=>{STATE.ctx.locked=false;renderAll();});
+    else lockVault(STATE.ctx.id);};
+  document.getElementById('vmenu').classList.toggle('show');
+}
+function closeVault(){const m=document.getElementById('vmenu');if(m)m.classList.remove('show');}
+document.addEventListener('click',e=>{if(!e.target.closest('.profile')&&!e.target.closest('.pmenu')){closeProfile();closeVault();}});
 
 /* ================= focus mode (client/native only) =================
    Hide the toolbar so terminals fill the screen. Toggle via the toolbar button or F11; exit via
@@ -1043,6 +1241,9 @@ document.addEventListener('keydown',e=>{
 });
 function renderAll(){renderPill();renderActs();renderSide();renderMain();}
 STATE.ctx=Object.assign({type:'server'},DATA.servers[0]); // start on a server to show collections
+// This page has now said whether it has a workspace file; the first read in
+// rite.js could not see that answer.
+reloadLayouts();
 renderAll();
 </script>
 </body>

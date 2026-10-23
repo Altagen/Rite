@@ -41,11 +41,77 @@ tarballs, and rite-server lives in the registry as `ghcr.io/altagen/rite-server`
 So every path below starts from a compose file, and `deploy/` holds three ready
 to run.
 
-Each one expects an admin password next to it:
+**None of them asks you to prepare anything.** Start one, open it, and the first visit
+offers **Create the server administrator** — the same first run as a desktop vault, and no
+secret rests anywhere. That screen asks for a password and nothing else: the account is
+`admin`, shown but not editable. One account an instance cannot be opened without, named
+by convention rather than by whoever gets there first.
+
+### The administrator, without a browser
+
+For a headless start — the instance comes up with the account already created — add one
+override to whichever file you are using:
 
 ```bash
-echo -n 'a-strong-password' > deploy/admin_password.txt
+install -m 600 /dev/null deploy/admin_password.txt
+printf '%s' 'a-strong-password' > deploy/admin_password.txt
+docker compose -f deploy/compose.yml -f deploy/compose.bootstrap.yml up
 ```
+
+The account is `admin` here too: the override reads `RITE_ADMIN_USER` and falls back to
+`admin`. Setting that variable is the one way to choose another name — the browser path
+does not offer it.
+
+That is ADR 0020's point: configured, not merely administrable. What it costs is a live
+admin password at rest on this host, so three things are worth knowing.
+
+**The mode matters.** A plain `echo >` creates the file with whatever the umask gives,
+which on most systems is readable by every account on the machine. Compose mounts it as a
+secret, so inside the container it is a file under `/run/secrets` rather than an
+environment variable — `docker inspect`, `/proc/<pid>/environ` and a crash report do not
+carry it. The exposure left is the one on the host, and the mode is what closes it.
+
+**Empty it once the administrator has signed in** — `: > deploy/admin_password.txt`. The
+server reads it at every start and only acts on it while no account exists, so afterwards
+it is a live admin password that does nothing. A server that finds one on an instance that
+already has accounts says so in its log. (`rm` works too, as long as you stop passing
+`-f deploy/compose.bootstrap.yml`: compose refuses to start when a secret's source is
+missing.)
+
+**Why a password and not a hash.** The bootstrap creates a **vault**, and the vault key is
+derived from the password (ADR 0011). A hash would make an account that can sign in and
+whose vault cannot exist. So a browser-free bootstrap means the server sees the password
+once — that is the whole reason this file exists in this shape.
+
+### Why a path, and not a variable
+
+`RITE_ADMIN_PASSWORD_FILE` names a **path**, and a path is what every secret manager
+already produces. The `admin_password.txt` beside these files is only what that path points
+at on a laptop with no secret manager at all:
+
+| Where the secret lives | What the server is given |
+| --- | --- |
+| a compose or Swarm secret | `/run/secrets/rite_admin_password` (tmpfs, never on disk) |
+| a Kubernetes Secret, mounted as a volume | one file per key, on a memory-backed volume |
+| Vault, through the agent or the CSI driver | a rendered file at a path you choose |
+| a systemd unit with `LoadCredential=` | `$CREDENTIALS_DIRECTORY/<name>` |
+| nothing — a laptop | `./admin_password.txt`, which is the case above with no manager |
+
+So the server supports all of them by supporting none of them specifically. Nothing in it
+knows what Kubernetes is.
+
+The variable form, `RITE_ADMIN_PASSWORD`, exists as a fallback and is **the one to avoid**:
+an environment is readable through `docker inspect` and `/proc/<pid>/environ`, it is
+inherited by every child process, and it lands in crash reports. That is why the `_FILE`
+convention exists across container images at all — Postgres, MySQL and the rest read their
+passwords the same way, for the same reason.
+
+So, the two paths:
+
+| What you run | What you prepare | First start |
+| --- | --- | --- |
+| `-f compose.yml` | nothing | the browser creates the administrator; nothing secret on disk |
+| `-f compose.yml -f compose.bootstrap.yml` | the password file | the administrator already exists |
 
 ## 1. Try it locally — no certificate at all
 
@@ -156,14 +222,31 @@ by TOFU instead.
 
 ## Configuring the instance as code
 
-Ten settings govern how an instance behaves. Declare any of them in a TOML file, point
-`RITE_CONFIG` at it, and they stop being something an administrator has to click:
+Fifteen settings govern how an instance behaves. Declare any of them in a TOML file,
+point `RITE_CONFIG` at it, and they stop being something an administrator has to click:
 
 ```toml
 instance_name     = "Acme Corp"
 open_registration = false
 allow_quick_ssh   = false
 default_shell     = "bash"
+
+# What a terminal on this server opens, and whether a member may deviate. The console
+# offers only the shells this server has installed; `allow_shell_choice` is off by
+# default, which makes `default_shell` the only shell.
+allow_shell_choice = false
+
+# How an unknown SSH host key is treated — one policy for everyone, since every
+# connection runs here. `strict` refuses it; `warn` and `accept` do not.
+host_key_verification_mode = "strict"
+
+# What may rest in a member's own vault (ADR 0024). One switch over every secret a
+# record can keep — an SSH password, a key passphrase, a carried key — because
+# forbidding one while allowing another hardens nothing. Both bind the client and not
+# the data: a record is sealed before it reaches the instance, so nothing here can
+# check it afterwards. Off, each secret is asked for at every connection instead.
+allow_secret_storage = true
+allow_secret_reveal  = true
 
 [dashboard_policy]        # ADR 0019
 webui       = false       # the web UI may not run the probing cards
@@ -173,13 +256,20 @@ minInterval = 60
 [collection_policy]       # ADR 0016
 allowCreate = true
 maxMembers  = 25
+
+[layouts_policy]          # ADR 0027
+webui   = true            # a browser reads the account's sealed copy
+clients = true            # a desktop window reads that copy, or a local file
 ```
 
 The full list: `instance_name`, `session_persistence`, `default_shell`,
-`allow_quick_ssh`, `open_registration`, `allow_invitations`, `confirm_role_change`,
-`healthcheck_policy`, `collection_policy`, `dashboard_policy`. A key outside that list
-stops the server, named — a typo should be heard at start-up, not discovered months later
-as a setting that never applied.
+`allow_shell_choice`, `host_key_verification_mode`, `allow_quick_ssh`,
+`allow_secret_storage`, `allow_secret_reveal`, `open_registration`,
+`allow_invitations`, `confirm_role_change`, `healthcheck_policy`, `collection_policy`,
+`dashboard_policy`, `layouts_policy`. A key outside that list stops the server, named — a typo should be
+heard at start-up, not discovered months later as a setting that never applied. So does a
+value outside what a key accepts: `host_key_verification_mode = "trust-me"` is refused at
+start-up rather than falling back to strict while the console shows the typo.
 
 Any key can also be set from the environment, which wins over the file:
 
@@ -239,8 +329,9 @@ On first launch with no accounts, open the server in a browser: it shows
 **Create the server administrator**. That first account is the admin; afterwards
 the admin manages accounts from the users panel.
 
-For **headless/automated deploys**, the administrator is created at boot instead —
-every compose file in `deploy/` already does this:
+For **headless/automated deploys**, the administrator is created at boot instead. That is
+`deploy/compose.bootstrap.yml`, an override you add to whichever deployment file you are
+using — the deployment files themselves ask for nothing:
 
 ```yaml
 environment:
@@ -253,9 +344,70 @@ secrets:
 On a fresh server this creates the admin (the server derives the same Argon2id
 auth hash the browser would, so a later browser login just works). Prefer
 `RITE_ADMIN_PASSWORD_FILE` (a mounted secret) over `RITE_ADMIN_PASSWORD` — env
-vars leak via `ps` / `inspect`. It only acts when there are no accounts yet;
-change the password after the first login.
+vars leak via `ps` / `inspect`. It only acts when there are no accounts yet, and it says
+so in the log when it finds a password on an instance that already has them.
 
 Pair it with `RITE_CONFIG` (above) and the deployment comes up **configured**, not merely
 administrable: the administrator exists, the policies are the ones in your repository, and
 nobody has opened a browser.
+
+## The console is smaller on the desktop client, on purpose
+
+*The decision and its alternatives: ADR 0025 — the client holds the people, the web console holds the policy.*
+
+Sign in to a server from the desktop client as an administrator and the button reads
+**Organization**, not **Admin**. Two sections are missing from its left rail: **Overview**
+and **Instance**.
+
+This is a **product decision, not a security boundary**, and the distinction matters:
+
+- The API does **not** care which shell you are using. A desktop client holding an admin
+  session can still `PATCH /api/admin/instance`; nothing refuses it. The real guard is the
+  account's **role**, enforced server-side on every admin route, and it is the same guard
+  for a browser and for the client.
+- What differs is what the interface *offers*. Instance administration — the name, open
+  registration, the host-key policy, what may rest in a vault, the health-check and
+  dashboard policies — is heavy, instance-wide, and rarely done. It belongs on the surface
+  you reach deliberately, which is the web console. The same split as Bitwarden and
+  Vaultwarden: the client is for using the thing, the web console for governing it.
+- Everything an administrator does *often* is in the client: users, invitations, teams,
+  collections. Those are not web-only.
+
+So "Organization" is the honest name for what the client shows — the organisation's people
+and groups — where "Admin" would promise the instance settings that are not there. The rail
+says as much in a note at its foot, pointing at the server's URL.
+
+If you need the instance settings, open the server's address in a browser and sign in
+there. Nothing has to be enabled for that; it is the same server and the same account.
+
+**A consequence worth knowing**: with `RITE_SERVE_WEBUI=off` the web console is the whole
+surface, and with `RITE_SERVE_ADMIN=off` there is no console at all. Turning both off
+leaves an instance that serves terminals and cannot be administered through any interface —
+`RITE_CONFIG` is then the only way to change it, which is a legitimate shape for a
+deployment managed entirely as code.
+
+## The server speaks English, for now
+
+The client ships English and French and lets a member switch. `rite-server` does not: its
+refusals cross the wire as English prose — `invalid credentials`, `too many attempts — try
+again later` — and the client shows them as they arrive. So a French member meets English
+in the handful of places a server refusal surfaces.
+
+**This is a decision, not an oversight.** Translating them properly means the server
+returning a stable error *code* per refusal — `invalid_credentials`,
+`remote_requires_https` — which the client looks up in its locales, with the prose moving
+out of Rust entirely. That is the right design. It is also a change to the API contract,
+touching every handler that refuses, and ADR 0008 makes that contract something clients
+negotiate against. With no users on the thing yet, it is cheap to change later and
+expensive to get wrong now.
+
+What did not wait is consistency. The messages had been written one at a time and drifted:
+eight addressed the caller in the second person, two throttles said the same thing with
+different punctuation, and one word was British in an American file.
+`e2e/server-errors-check.mjs` holds the shape from now on — no message addresses its
+caller, each is a lower-case fragment rather than a sentence (the client frames it), and an
+afterthought is joined with an em dash rather than a comma.
+
+**Reopen this** when there is a deployment whose members do not read English, or when a
+refusal needs to carry structured data a client should act on rather than display. Either
+one changes the premise; until then the server speaks one language, consistently.

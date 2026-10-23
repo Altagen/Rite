@@ -16,7 +16,10 @@ const row = (page: Page, name: string) =>
 
 /** Dismiss an open floating menu by clicking its click-away overlay. */
 const clickAway = (page: Page) =>
-  page.locator('div.fixed.inset-0.z-10').first().click({ position: { x: 4, y: 4 } });
+  page
+    .locator('div.fixed.inset-0.z-10')
+    .first()
+    .click({ position: { x: 4, y: 4 } });
 
 test('a local collection exposes nothing about members or sharing', async ({ page, request }) => {
   const collectionId = await createCollection(request, 'e2e-solo');
@@ -100,7 +103,9 @@ test('renaming a folder moves the machines that were in it', async ({ page, requ
   const expand = coll.getByRole('button', { name: 'Expand' });
   if (await expand.count()) await expand.click();
 
-  const folder = page.locator('.m-tnode').filter({ has: page.locator('span.m-nm', { hasText: /^Old$/ }) });
+  const folder = page
+    .locator('.m-tnode')
+    .filter({ has: page.locator('span.m-nm', { hasText: /^Old$/ }) });
   await folder.hover();
   await folder.getByRole('button', { name: 'Folder menu' }).click();
   await page.getByRole('button', { name: 'Rename…' }).click();

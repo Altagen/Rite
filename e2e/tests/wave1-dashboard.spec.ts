@@ -16,7 +16,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
 // Connection names are deliberately card-name-free ("e2e-dash-a", not
 // "e2e-dash-containers"): the suite shares one vault, so a row named after a card
 // would make a locator for that card's title ambiguous.
-import { createCollection, createMachine, SSH } from './support/localVault';
+import { createCollection, createMachine } from './support/localVault';
 
 let dashCollection: string | null = null;
 async function createConnection(api: APIRequestContext, name: string): Promise<string> {
@@ -28,7 +28,10 @@ test.beforeEach(async ({ request }) => {
   await request.put('/api/settings/host_key_verification_mode', { data: { value: 'accept' } });
 });
 
-test('containers card lists what the host runs, with per-row actions', async ({ page, request }) => {
+test('containers card lists what the host runs, with per-row actions', async ({
+  page,
+  request,
+}) => {
   await createConnection(request, 'e2e-dash-a');
   await page.goto('/');
   await page.getByText('e2e-dash-a').click();
@@ -87,11 +90,18 @@ test('pinning a container survives switching to the Pinned view', async ({ page,
 });
 
 test('services card surfaces failed units and filters on them', async ({ page, request }) => {
+  // See the pre-connect test in wave1.spec.ts: the per-test budget is what runs out
+  // first when the machine is busy, and it fails naming an assertion that did not.
+  test.slow();
   await createConnection(request, 'e2e-dash-d');
   await page.goto('/');
   await page.getByText('e2e-dash-d').click();
 
-  await expect(page.getByText('nginx.service')).toBeVisible({ timeout: 30_000 });
+  // A long wait on purpose: this asserts that output ARRIVES, not how fast. The card runs
+  // a command over SSH and parses it, and on a machine that is also compiling something
+  // the first paint has taken longer than 30s — which failed the suite while saying
+  // nothing about the product.
+  await expect(page.getByText('nginx.service')).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText('postgresql.service')).toBeVisible();
   // A failed unit is counted on the card header — the thing a sysadmin looks for.
   await expect(page.getByText('1 failed')).toBeVisible();
@@ -116,12 +126,15 @@ test('expanding the containers card reveals the wide table with live stats', asy
   await createConnection(request, 'e2e-dash-e');
   await page.goto('/');
   await page.getByText('e2e-dash-e').click();
-  await expect(page.getByText('web', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText('web', { exact: true })).toBeVisible({ timeout: 90_000 });
 
   // Collapsed: no table columns.
   await expect(page.getByRole('columnheader', { name: 'CPU' })).toBeHidden();
 
-  const containersCard = page.locator('div').filter({ hasText: /^Containers/ }).first();
+  const containersCard = page
+    .locator('div')
+    .filter({ hasText: /^Containers/ })
+    .first();
   await containersCard.getByTitle('Expand for more detail').click();
 
   // Wide adds the columns, and CPU/Mem are fetched lazily only now.
@@ -132,7 +145,10 @@ test('expanding the containers card reveals the wide table with live stats', asy
   await expect(page.getByText('3 days ago').first()).toBeVisible();
 });
 
-test('Customize hides a card and the choice persists across a reload', async ({ page, request }) => {
+test('Customize hides a card and the choice persists across a reload', async ({
+  page,
+  request,
+}) => {
   await createConnection(request, 'e2e-dash-f');
   await page.goto('/');
   await page.getByText('e2e-dash-f').click();

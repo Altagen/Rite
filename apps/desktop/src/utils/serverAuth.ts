@@ -7,7 +7,16 @@
  * phase 2) is a separate client-side derivation that is never sent.
  */
 
-import { argon2id } from 'hash-wasm';
+/**
+ * Argon2id, loaded on demand.
+ *
+ * `hash-wasm` is a WASM blob needed only where a password is turned into a key: signing
+ * in to a server, and unlocking a vault. Neither happens before the page is on screen, so
+ * carrying it in the first chunk charged every reader for a step some of them never take.
+ * The call sites were already `async`.
+ */
+const argon2id = async (...args: Parameters<typeof import('hash-wasm').argon2id>) =>
+  (await import('hash-wasm')).argon2id(...args);
 import {
   deriveMasterKey,
   generateUserKey,
@@ -19,12 +28,12 @@ import {
   bytesToHex,
 } from './vaultCrypto';
 import { generateKeypair } from './sealbox';
+import { kdfIsStrongEnough, WeakKdfError, type KdfParams } from './kdfFloor';
 
-export interface KdfParams {
-  mem: number; // memory in KiB
-  iter: number; // iterations
-  par: number; // parallelism
-}
+// The floor and its refusal live in their own module, which imports nothing, so a check
+// can load the policy without pulling in WebCrypto and libsodium (ADR 0029).
+export { MIN_KDF_PARAMS, kdfIsStrongEnough, WeakKdfError } from './kdfFloor';
+export type { KdfParams } from './kdfFloor';
 
 /** OWASP Argon2id baseline — must match the server's `KdfParams::recommended`. */
 export const DEFAULT_KDF_PARAMS: KdfParams = { mem: 19456, iter: 2, par: 1 };
@@ -42,6 +51,8 @@ export async function deriveAuthHash(
   saltHex: string,
   params: KdfParams,
 ): Promise<string> {
+  // Before the derivation, not after: the point is never to compute the cheap hash at all.
+  if (!kdfIsStrongEnough(params)) throw new WeakKdfError(params);
   return argon2id({
     password,
     salt: hexToBytes(saltHex),

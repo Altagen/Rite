@@ -13,6 +13,16 @@ This document outlines the security architecture, threat model, and best practic
 ## Cryptography Stack
 
 ### Key Derivation
+
+**The client decides the minimum cost** (ADR 0029). `prelogin` hands back the account's
+salt and Argon2 parameters, and those parameters are an instruction coming from the party
+this design distrusts: a compromised server answering `mem: 8, iter: 1` would receive an
+auth hash it could brute-force back to the password offline. So the client refuses anything
+below the OWASP baseline it registers with, says so instead of reporting a bad password,
+and sends nothing. A server asking for MORE is honoured. The server also refuses to store
+weak parameters, which protects a client that has no floor of its own rather than the
+attack above.
+
 - **Algorithm**: Argon2id (RFC 9106)
 - **Parameters**:
   - Memory: 64 MiB (default)
@@ -214,9 +224,32 @@ clear_clipboard_seconds = 0  # 0 = disabled, >0 = auto-clear
 ```
 
 ### SSH Key Management
-- **Storage**: Private keys encrypted in vault OR referenced from `~/.ssh/`
-- **Passphrases**: Encrypted with master key
-- **Agent**: SSH agent integration for external keys
+
+A key means one of two things, and the difference is about **who can open a machine**, not
+about where a file sits (ADR 0028):
+
+| | Carried in the record | Standing on the machine |
+| --- | --- | --- |
+| The record holds | the key's text, sealed | a path, and no secret |
+| Who can open it | any member of the collection | a member who has that file, there |
+| The host records | one identity for everyone | one identity per person |
+| Reachable from | a browser and a desktop client | a desktop client only |
+
+Carried is the default: it is the only support that works in every context. A team that
+wants per-person identity chooses the other, and a key carried is a key **shared** — every
+member who can decrypt the collection holds it, because they must in order to connect.
+
+A path is read by whichever process opens SSH. In a desktop window that is the member's own
+computer; in the web UI it would be the server's container, so the server **refuses** a key
+path in accounts mode rather than reading its own filesystem — a file an administrator put
+there would authenticate every account that can read the record.
+
+`allow_secret_storage = false` removes the carried support, which makes key authentication
+desktop-only on that instance. The form is where that is enforced: the record is sealed
+before it leaves, so the server cannot inspect it afterwards.
+
+- **Passphrases**: encrypted with the master key, or asked at each connection (ADR 0024 §4)
+- **Agent**: `SSH_AUTH_SOCK`, native shell only — no path, nothing stored, hardware keys
 
 ## Sync Security (Phase 2+)
 

@@ -42,7 +42,12 @@ test('parse an ssh config, then import its hosts into a collection', async ({ re
   // through the ordinary machine path now (ADR 0018) — an imported host is stored
   // exactly like a hand-made one, inside a collection the user picks.
   const collectionId = await createCollection(request, 'e2e-ssh-config');
-  for (const e of entries as { host: string; hostname: string | null; user: string | null; port: number | null }[]) {
+  for (const e of entries as {
+    host: string;
+    hostname: string | null;
+    user: string | null;
+    port: number | null;
+  }[]) {
     await createMachine(request, collectionId, {
       name: e.host,
       hostname: e.hostname ?? e.host,

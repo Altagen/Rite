@@ -66,6 +66,8 @@ try {
   // defaults: the operator said one thing, not three.
   assert.equal(mode.dashboardPolicy.webui, false, 'declared in the file');
   assert.equal(mode.dashboardPolicy.clients, true, 'undeclared field keeps its default');
+  assert.equal(mode.layoutsPolicy.webui, false, 'declared in the file');
+  assert.equal(mode.layoutsPolicy.clients, true, 'undeclared field keeps its default');
   ok('a partially declared policy is completed, not truncated');
 
   step = 'env-over-file';
@@ -91,13 +93,17 @@ try {
   // The console cannot render a locked field without being told which keys are locked.
   assert.deepEqual(
     Object.keys(mode.managed).sort(),
-    ['allow_quick_ssh', 'collection_policy', 'dashboard_policy', 'default_shell', 'instance_name',
+    // The fixture declares two more since the audit: a secrets policy (ADR 0024 §4) and
+    // the host-key policy, which had no console row and no validated route at all.
+    ['allow_quick_ssh', 'allow_secret_reveal', 'collection_policy', 'dashboard_policy',
+     'default_shell', 'host_key_verification_mode', 'instance_name', 'layouts_policy',
      'open_registration'],
     'server_mode lists exactly the keys the file and the environment declare',
   );
   assert.match(mode.managed.collection_policy, /rite\.toml$/, 'a file-declared key names the file');
   assert.equal(mode.managed.dashboard_policy, 'RITE__dashboard_policy__minInterval',
     'a policy the environment touched last names the variable, not the file');
+  assert.match(mode.managed.layouts_policy, /rite\.toml$/, 'and so does the layouts policy');
   ok('server_mode publishes the managed keys with their origin, and only those');
 
   step = 'refused-with-a-reason';
@@ -108,6 +114,11 @@ try {
   const why = await refused.text();
   assert.match(why, /open_registration/, 'the refusal names the key');
   assert.match(why, /rite\.toml|RITE__/, `the refusal names where it is set: ${why}`);
+  // Every validated route honours the lock, not only the one with a test: the layouts
+  // policy is declared here too, so its route must refuse as well.
+  const refusedLayouts = await patch('/api/admin/layouts-policy', { webui: true, clients: true }, admin);
+  assert.equal(refusedLayouts.status, 409, `a managed policy must be refused, got ${refusedLayouts.status}`);
+  assert.equal((await getJson('/api/server/mode')).layoutsPolicy.webui, false, 'still what the file says');
   ok('a managed key is refused with 409, naming the key and its origin');
 
   step = 'refusal-changed-nothing';

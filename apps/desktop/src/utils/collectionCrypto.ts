@@ -49,7 +49,10 @@ export function sealCollectionKey(recipientPublic: Uint8Array, key: Uint8Array):
 }
 
 /** Seal the collection key to a member whose public key is hex-encoded (directory). */
-export function sealCollectionKeyToHex(recipientPublicHex: string, key: Uint8Array): Promise<string> {
+export function sealCollectionKeyToHex(
+  recipientPublicHex: string,
+  key: Uint8Array,
+): Promise<string> {
   return seal(hexToBytes(recipientPublicHex), key);
 }
 

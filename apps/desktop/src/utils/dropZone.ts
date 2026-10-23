@@ -18,7 +18,7 @@ export function calculateDropZone(
   mouseX: number,
   mouseY: number,
   width: number,
-  height: number
+  height: number,
 ): DropZone {
   // Calculate distance to each edge
   const distToTop = mouseY;

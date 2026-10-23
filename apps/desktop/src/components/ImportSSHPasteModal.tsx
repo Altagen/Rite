@@ -9,6 +9,7 @@
  */
 
 import { useMemo, useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import { type CreateConnectionInput } from '../store/connectionsStore';
 
 interface ParsedHost {
@@ -60,8 +61,11 @@ export function ImportSSHPasteModal({
   onClose: () => void;
   onImported: (count: number) => void;
 }) {
+  const { t } = useTranslation();
   const [text, setText] = useState('');
-  const [collectionId, setCollectionId] = useState(defaultCollectionId ?? collectionTargets[0]?.id ?? '');
+  const [collectionId, setCollectionId] = useState(
+    defaultCollectionId ?? collectionTargets[0]?.id ?? '',
+  );
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [parsed, setParsed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -73,7 +77,7 @@ export function ImportSSHPasteModal({
     const found = parseSshConfig(text);
     setSelected(new Set(found.map((h) => h.name)));
     setParsed(true);
-    setError(found.length === 0 ? 'No hosts found in the pasted config.' : null);
+    setError(found.length === 0 ? t('paste.noHosts') : null);
   };
 
   const toggle = (name: string) =>
@@ -86,12 +90,12 @@ export function ImportSSHPasteModal({
 
   const doImport = async () => {
     if (!collectionId) {
-      setError('Choose a collection to import into.');
+      setError(t('import.pickCollection'));
       return;
     }
     const chosen = hosts.filter((h) => selected.has(h.name));
     if (chosen.length === 0) {
-      setError('Select at least one host.');
+      setError(t('import.pickHost'));
       return;
     }
     setBusy(true);
@@ -115,34 +119,45 @@ export function ImportSSHPasteModal({
       onImported(count);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed');
+      setError(err instanceof Error ? err.message : t('paste.errImport'));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
       <div
         className="flex max-h-[85vh] w-full max-w-lg flex-col rounded-lg border border-border bg-card p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Import from SSH config</h3>
-          <button onClick={onClose} className="rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Close">
+          <h3 className="text-lg font-semibold">{t('paste.title')}</h3>
+          <button
+            onClick={onClose}
+            className="rounded p-1 text-muted-foreground hover:bg-muted"
+            aria-label={t('paste.close')}
+          >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
 
-        <p className="mb-3 text-sm text-muted-foreground">
-          Paste your <span className="font-mono">~/.ssh/config</span>. It's parsed in your browser and never uploaded —
-          selected hosts become machines in the chosen collection (encrypted with its key).
-        </p>
+        <p className="mb-3 text-sm text-muted-foreground">{t('paste.lead')}</p>
 
         {error && (
-          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">{error}</div>
+          <div className="mb-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-sm text-red-600">
+            {error}
+          </div>
         )}
 
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -164,16 +179,22 @@ export function ImportSSHPasteModal({
               disabled={busy || !text.trim()}
               className="mt-2 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50"
             >
-              Parse hosts
+              {t('paste.parse')}
             </button>
           ) : (
             <>
-              <div className="mt-3 text-xs font-medium text-muted-foreground">{hosts.length} host(s) found</div>
+              <div className="mt-3 text-xs font-medium text-muted-foreground">
+                {hosts.length} host(s) found
+              </div>
               <ul className="mt-1 space-y-1">
                 {hosts.map((h) => (
                   <li key={h.name}>
                     <label className="flex cursor-pointer items-center gap-2 rounded border border-border px-3 py-1.5 text-sm hover:bg-muted">
-                      <input type="checkbox" checked={selected.has(h.name)} onChange={() => toggle(h.name)} />
+                      <input
+                        type="checkbox"
+                        checked={selected.has(h.name)}
+                        onChange={() => toggle(h.name)}
+                      />
                       <span className="font-medium">{h.name}</span>
                       <span className="text-xs text-muted-foreground">
                         {h.user ? `${h.user}@` : ''}
@@ -191,7 +212,7 @@ export function ImportSSHPasteModal({
         <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-3">
           <div className="flex-1 space-y-1">
             <label htmlFor="import-coll" className="text-xs font-medium text-muted-foreground">
-              Into collection
+              {t('paste.intoCollection')}
             </label>
             <select
               id="import-coll"
@@ -200,7 +221,7 @@ export function ImportSSHPasteModal({
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               disabled={busy}
             >
-              {collectionTargets.length === 0 && <option value="">No writable collection</option>}
+              {collectionTargets.length === 0 && <option value="">{t('paste.noWritable')}</option>}
               {collectionTargets.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -208,15 +229,20 @@ export function ImportSSHPasteModal({
               ))}
             </select>
           </div>
-          <button onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
-            Cancel
+          <button
+            onClick={onClose}
+            className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+          >
+            {t('dlg.cancel')}
           </button>
           <button
             onClick={doImport}
             disabled={busy || !parsed || selected.size === 0 || !collectionId}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {busy ? 'Importing…' : `Import ${selected.size || ''}`.trim()}
+            {busy
+              ? t('sshImport.importing', { count: selected.size })
+              : t('sshImport.importSelected', { count: selected.size })}
           </button>
         </div>
       </div>

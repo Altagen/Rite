@@ -4,8 +4,18 @@
  */
 
 import { useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
 
-const COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#94a3b8'];
+const COLORS = [
+  '#7c9cf5',
+  '#9ece6a',
+  '#e5b567',
+  '#f0a35e',
+  '#f7768e',
+  '#bb9af7',
+  '#56c7c0',
+  '#94a3b8',
+];
 
 export function LibraryFolderDialog({
   initialName,
@@ -19,6 +29,7 @@ export function LibraryFolderDialog({
   onSave: (name: string, color: string) => void | Promise<void>;
 }) {
   const editing = initialName !== undefined;
+  const { t } = useTranslation();
   const [name, setName] = useState(initialName ?? '');
   const [color, setColor] = useState(initialColor ?? COLORS[0]);
   const [busy, setBusy] = useState(false);
@@ -36,21 +47,28 @@ export function LibraryFolderDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <form onSubmit={submit} className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-3 text-lg font-semibold">{editing ? 'Rename folder' : 'New folder'}</h3>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <form
+        onSubmit={submit}
+        className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="mb-3 text-lg font-semibold">{editing ? t('fold.rename') : t('fold.new')}</h3>
 
-        <label className="mb-1 block text-sm font-medium">Name</label>
+        <label className="mb-1 block text-sm font-medium">{t('dlg.name')}</label>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoFocus
-          placeholder="e.g. Acme"
+          placeholder={t('fold.phLibrary')}
           className="mb-4 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           disabled={busy}
         />
 
-        <label className="mb-1 block text-sm font-medium">Colour</label>
+        <label className="mb-1 block text-sm font-medium">{t('dlg.colour')}</label>
         <div className="mb-5 flex flex-wrap gap-2">
           {COLORS.map((c) => (
             <button
@@ -59,21 +77,25 @@ export function LibraryFolderDialog({
               onClick={() => setColor(c)}
               className={`h-7 w-7 rounded-full ${color === c ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card' : ''}`}
               style={{ backgroundColor: c }}
-              aria-label={`colour ${c}`}
+              aria-label={t('dlg.colourAria', { hex: c })}
             />
           ))}
         </div>
 
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
-            Cancel
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+          >
+            {t('dlg.cancel')}
           </button>
           <button
             type="submit"
             disabled={busy || !name.trim()}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {editing ? 'Save' : 'Create'}
+            {editing ? t('dlg.save') : t('dlg.create')}
           </button>
         </div>
       </form>

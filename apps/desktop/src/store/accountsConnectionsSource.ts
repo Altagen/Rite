@@ -18,13 +18,19 @@ import { useCallback, useRef, useState } from 'react';
 import { Backend } from '../utils/backend';
 import { useServerSession } from './serverSessionStore';
 import {
+  type AuthMethodInput,
   type ConnectionInfo,
   type ConnectionsSource,
   type CreateConnectionInput,
+  type RevealedSecret,
   type UpdateConnectionInput,
 } from './connectionsStore';
 import { encryptString, decryptString } from '../utils/vaultCrypto';
 import { getLastUsed, recordLastUsed } from '../utils/lastUsed';
+import { keyIdentity } from '../utils/sshKeyFingerprint';
+import { isNativeShell } from '../utils/nativeShell';
+import { translate } from '../i18n/translate';
+import { askSecret, type SecretKind } from '../utils/secretPrompt';
 import {
   unwrapCollectionKeys,
   decryptCollectionField,
@@ -55,10 +61,10 @@ export interface StoredRecord {
   hostname: string;
   port: number;
   username: string;
-  authMethod:
-    | { type: 'password'; password: string }
-    | { type: 'publicKey'; keyPath: string; passphrase?: string }
-    | { type: 'agent'; identity?: string; forward?: boolean };
+  // The whole record is encrypted client-side before it leaves (ADR 0011), so a key
+  // carried here (ADR 0024 §1) is ciphertext to the server like everything else. The
+  // shared union, because this was one of four copies and they had drifted.
+  authMethod: AuthMethodInput;
   color: string | null;
   icon: string | null;
   folder: string | null;
@@ -71,6 +77,14 @@ export interface StoredRecord {
   jump?: string | null;
   // Saved port forwards. Sealed inside the blob (non-secret metadata).
   forwards?: import('./connectionsStore').PortForwardConfig[];
+  /**
+   * This key has a passphrase that Rite was told not to keep (ADR 0024 §4), so connecting
+   * asks for it. A fact about the key, not a secret: it records what the member said when
+   * they saved it, which beats guessing — a key with no passphrase must not prompt, and
+   * parsing the key to find out would mean implementing the OpenSSH format in the page.
+   */
+  needsPassphrase?: boolean;
+  needsPassword?: boolean;
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   // Sealed inside the blob, so the opt-out is zero-knowledge like everything else.
   hc?: boolean | null;
@@ -154,7 +168,10 @@ async function ensurePersonalCollection(
     for (const b of await Backend.Vault.connections()) {
       try {
         const record = await decryptRecord(userKey, b.blob);
-        await Backend.Collections.createItem(personalId, await encryptCollectionField(personalItemsKey, record));
+        await Backend.Collections.createItem(
+          personalId,
+          await encryptCollectionField(personalItemsKey, record),
+        );
         await Backend.Vault.deleteConnection(b.id);
       } catch {
         // leave undecryptable/failed items in the vault rather than lose them
@@ -166,13 +183,16 @@ async function ensurePersonalCollection(
   return personalId;
 }
 
-function toInfo(
+async function toInfo(
   id: string,
   r: StoredRecord,
   createdAt: number,
   updatedAt: number,
   folder: string | null,
-): ConnectionInfo {
+): Promise<ConnectionInfo> {
+  // Which key, for a record that carries one (ADR 0028 §6). Read here rather than in the
+  // form: the form never receives the key material, and a fingerprint is not secret.
+  const identity = r.authMethod.type === 'vaultKey' ? await keyIdentity(r.authMethod.key) : null;
   return {
     id,
     name: r.name,
@@ -181,6 +201,12 @@ function toInfo(
     port: r.port,
     username: r.username,
     authType: r.authMethod.type,
+    keyPath: r.authMethod.type === 'publicKey' ? r.authMethod.keyPath : null,
+    keyFingerprint: identity?.fingerprint ?? null,
+    keyAlgorithm: identity?.algorithm ?? null,
+    hasStoredPassphrase:
+      (r.authMethod.type === 'publicKey' || r.authMethod.type === 'vaultKey') &&
+      !!r.authMethod.passphrase,
     color: r.color,
     icon: r.icon,
     folder: folder ?? r.folder ?? null,
@@ -216,6 +242,8 @@ function recordFromCreate(input: CreateConnectionInput): StoredRecord {
     jump: input.jump ?? null,
     forwards: input.forwards ?? [],
     hc: input.hc ?? null,
+    needsPassphrase: input.needsPassphrase ?? false,
+    needsPassword: input.needsPassword ?? false,
   };
 }
 
@@ -232,22 +260,91 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   if (input.icon !== undefined) merged.icon = input.icon;
   if (input.folder !== undefined) merged.folder = input.folder;
   if (input.notes !== undefined) merged.notes = input.notes;
-  if (input.sshKeepAliveOverride !== undefined) merged.sshKeepAliveOverride = input.sshKeepAliveOverride;
-  if (input.sshKeepAliveInterval !== undefined) merged.sshKeepAliveInterval = input.sshKeepAliveInterval;
+  if (input.sshKeepAliveOverride !== undefined)
+    merged.sshKeepAliveOverride = input.sshKeepAliveOverride;
+  if (input.sshKeepAliveInterval !== undefined)
+    merged.sshKeepAliveInterval = input.sshKeepAliveInterval;
   if (input.preconnect !== undefined) merged.preconnect = input.preconnect;
   if (input.jump !== undefined) merged.jump = input.jump;
   if (input.forwards !== undefined) merged.forwards = input.forwards;
   if (input.hc !== undefined) merged.hc = input.hc;
+  if (input.needsPassphrase !== undefined) merged.needsPassphrase = input.needsPassphrase;
+  if (input.needsPassword !== undefined) merged.needsPassword = input.needsPassword;
+  // After `authMethod` above, so replacing the key and dropping its passphrase in one edit
+  // does both. Here the client holds the whole record, so it can do this itself — the
+  // local vault needs the core's help because there the key never leaves rite-core.
+  if (input.forgetPassphrase && 'passphrase' in merged.authMethod) {
+    const { passphrase: _dropped, ...rest } = merged.authMethod;
+    merged.authMethod = rest as typeof merged.authMethod;
+  }
   return merged;
 }
 
+/**
+ * Secrets typed this session, keyed by kind and connection id.
+ *
+ * Asking once per OPERATION is not the promise the dialog makes: a machine dashboard
+ * fires one request per card, so opening it asked four times. The dialog says "used for
+ * this connection only", and this is that sentence — in memory, for the life of the page,
+ * written nowhere. A reload asks again, which is the point.
+ *
+ * Keyed by kind as well as id because one machine can want both: a password now that
+ * instances may forbid storing one, and a key passphrase as before.
+ */
+const answered = new Map<string, string>();
+const answerKey = (kind: SecretKind, id: string) => `${kind}:${id}`;
+
+/**
+ * The record's auth method, with a passphrase if one is needed and not stored.
+ *
+ * Every client-execute path needs this, not just `connect`: the dashboard's cards run
+ * `exec-quick` and a port forward runs `quick-forward`, and both failed on a machine whose
+ * passphrase was not kept — the card said "The key is encrypted" and nothing asked. One
+ * resolver, so a path added later cannot forget.
+ *
+ * Returns null when the person cancels, which callers must treat as "they said no" rather
+ * than as a failure to report.
+ */
+async function authFor(
+  id: string,
+  record: StoredRecord,
+  label: string,
+): Promise<AuthMethodInput | null> {
+  const auth = record.authMethod;
+
+  // An SSH password the machine does not keep (ADR 0024 §4). Same shape as the passphrase
+  // below, and it reaches every path for the same reason: this resolver is the only place
+  // that builds the auth a request carries.
+  if (auth.type === 'password' && record.needsPassword && !auth.password) {
+    const key = answerKey('password', id);
+    const known = answered.get(key);
+    if (known) return { ...auth, password: known };
+    const typed = await askSecret('password', label);
+    if (typed === null) return null;
+    answered.set(key, typed);
+    return { ...auth, password: typed };
+  }
+
+  if (!record.needsPassphrase || !('key' in auth) || auth.passphrase) return auth;
+  const key = answerKey('passphrase', id);
+  const known = answered.get(key);
+  if (known) return { ...auth, passphrase: known };
+  const typed = await askSecret('passphrase', label);
+  if (typed === null) return null;
+  answered.set(key, typed);
+  return { ...auth, passphrase: typed };
+}
+
 /** The endpoint shape the server takes for an ad-hoc target or hop. */
-function endpointOf(record: StoredRecord): QuickEndpoint {
+function endpointOf(
+  record: StoredRecord,
+  authMethod: AuthMethodInput = record.authMethod,
+): QuickEndpoint {
   return {
     host: record.hostname,
     port: record.port,
     username: record.username,
-    authMethod: record.authMethod,
+    authMethod,
   };
 }
 
@@ -290,9 +387,21 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
   const { userKey, publicKey, privateKey } = useServerSession();
   const [connections, setConnections] = useState<ConnectionInfo[]>([]);
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
-  const [writableCollections, setWritableCollections] = useState<{ id: string; name: string }[]>([]);
+  const [writableCollections, setWritableCollections] = useState<{ id: string; name: string }[]>(
+    [],
+  );
   const [collectionList, setCollectionList] = useState<
-    { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean; hc: boolean | null; hasBoard: boolean }[]
+    {
+      id: string;
+      name: string;
+      color: string | null;
+      role: string;
+      folders: CollectionFolder[];
+      memberCount: number;
+      isPersonal: boolean;
+      hc: boolean | null;
+      hasBoard: boolean;
+    }[]
   >([]);
   const entries = useRef<Map<string, Entry>>(new Map());
   const collections = useRef<Map<string, CollectionCtx>>(new Map());
@@ -309,69 +418,87 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     // Collection-shared connections (ADR 0016): only collections I hold a sealed
     // key for are readable. The collection's name/colour and its items are all
     // browser-decrypted; the server only ever saw opaque blobs.
-    if (publicKey && privateKey) {
-      const cols = await Backend.Collections.mine()
-        .then((all) => all.filter((c) => c.protectedMetaKey))
-        .catch(() => []);
-      const ctx = new Map<string, CollectionCtx>();
-      const writable: { id: string; name: string; isPersonal: boolean }[] = [];
-      // Every readable collection (including empty ones), so the tree can show a
-      // node before it has any machine. Personal is one of them (marked).
-      const list: { id: string; name: string; color: string | null; role: string; folders: CollectionFolder[]; memberCount: number; isPersonal: boolean; hc: boolean | null; hasBoard: boolean }[] = [];
-      for (const col of cols) {
-        if (!col.protectedMetaKey) continue;
-        try {
-          const { metaKey, itemsKey } = await unwrapCollectionKeys(publicKey, privateKey, col);
-          const header = await decryptCollectionField<CollectionHeader>(metaKey, col.nameEnc).catch(
-            () => ({ name: 'Collection', color: null }) as CollectionHeader,
-          );
-          const isPersonal = col.id === personalId;
-          // The context holds the itemsKey for item reads/writes (ADR 0016 split). A
-          // roster-only member (admin meta-add) has no itemsKey → the collection shows
-          // its name in the tree but carries no machines until a member seals access.
-          if (itemsKey) ctx.set(col.id, { key: itemsKey, role: col.role, boardEnc: col.boardEnc ?? null });
-          const memberCount = (await Backend.Collections.members(col.id).catch(() => [])).length;
-          list.push({
+    // No key guard here: the function returns above unless all three are present, so a
+    // second check would read as if they could be missing.
+    const cols = await Backend.Collections.mine()
+      .then((all) => all.filter((c) => c.protectedMetaKey))
+      .catch(() => []);
+    const ctx = new Map<string, CollectionCtx>();
+    const writable: { id: string; name: string; isPersonal: boolean }[] = [];
+    // Every readable collection (including empty ones), so the tree can show a
+    // node before it has any machine. Personal is one of them (marked).
+    const list: {
+      id: string;
+      name: string;
+      color: string | null;
+      role: string;
+      folders: CollectionFolder[];
+      memberCount: number;
+      isPersonal: boolean;
+      hc: boolean | null;
+      hasBoard: boolean;
+    }[] = [];
+    for (const col of cols) {
+      if (!col.protectedMetaKey) continue;
+      try {
+        const { metaKey, itemsKey } = await unwrapCollectionKeys(publicKey, privateKey, col);
+        const header = await decryptCollectionField<CollectionHeader>(metaKey, col.nameEnc).catch(
+          () => ({ name: translate('coll.fallbackName'), color: null }) as CollectionHeader,
+        );
+        const isPersonal = col.id === personalId;
+        // The context holds the itemsKey for item reads/writes (ADR 0016 split). A
+        // roster-only member (admin meta-add) has no itemsKey → the collection shows
+        // its name in the tree but carries no machines until a member seals access.
+        if (itemsKey)
+          ctx.set(col.id, { key: itemsKey, role: col.role, boardEnc: col.boardEnc ?? null });
+        const memberCount = (await Backend.Collections.members(col.id).catch(() => [])).length;
+        list.push({
+          id: col.id,
+          name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name,
+          color: header.color,
+          role: col.role,
+          folders: header.folders ?? [],
+          memberCount,
+          isPersonal,
+          hc: header.hc ?? null,
+          hasBoard: !!col.boardEnc,
+        });
+        if (canWrite(col.role))
+          writable.push({
             id: col.id,
             name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name,
-            color: header.color,
-            role: col.role,
-            folders: header.folders ?? [],
-            memberCount,
             isPersonal,
-            hc: header.hc ?? null,
-            hasBoard: !!col.boardEnc,
           });
-          if (canWrite(col.role)) writable.push({ id: col.id, name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name, isPersonal });
-          if (itemsKey)
-            for (const it of await Backend.Collections.items(col.id)) {
-              try {
-                const record = await decryptCollectionField<StoredRecord>(itemsKey, it.blob);
-                map.set(it.id, { record, collectionId: col.id });
-                // folder stays the record's own (a shared folder inside the collection);
-                // the collection itself is carried as first-class metadata for the tree.
-                infos.push({
-                  ...toInfo(it.id, record, it.createdAt, it.updatedAt, record.folder),
-                  collectionId: col.id,
-                  collectionName: header.name,
-                  collectionColor: header.color,
-                  collectionRole: col.role,
-                });
-              } catch {
-                // Undecryptable item — skip.
-              }
+        if (itemsKey)
+          for (const it of await Backend.Collections.items(col.id)) {
+            try {
+              const record = await decryptCollectionField<StoredRecord>(itemsKey, it.blob);
+              map.set(it.id, { record, collectionId: col.id });
+              // folder stays the record's own (a shared folder inside the collection);
+              // the collection itself is carried as first-class metadata for the tree.
+              infos.push({
+                ...(await toInfo(it.id, record, it.createdAt, it.updatedAt, record.folder)),
+                collectionId: col.id,
+                collectionName: header.name,
+                collectionColor: header.color,
+                collectionRole: col.role,
+              });
+            } catch {
+              // Undecryptable item — skip.
             }
-        } catch {
-          // Collection key or items unavailable — skip this collection.
-        }
+          }
+      } catch {
+        // Collection key or items unavailable — skip this collection.
       }
-      collections.current = ctx;
-      // Personal sorts first, then by name.
-      const byPersonalThenName = <T extends { isPersonal: boolean; name: string }>(a: T, b: T) =>
-        a.isPersonal ? -1 : b.isPersonal ? 1 : a.name.localeCompare(b.name);
-      setCollectionList([...list].sort(byPersonalThenName));
-      setWritableCollections([...writable].sort(byPersonalThenName).map(({ id, name }) => ({ id, name })));
     }
+    collections.current = ctx;
+    // Personal sorts first, then by name.
+    const byPersonalThenName = <T extends { isPersonal: boolean; name: string }>(a: T, b: T) =>
+      a.isPersonal ? -1 : b.isPersonal ? 1 : a.name.localeCompare(b.name);
+    setCollectionList([...list].sort(byPersonalThenName));
+    setWritableCollections(
+      [...writable].sort(byPersonalThenName).map(({ id, name }) => ({ id, name })),
+    );
 
     entries.current = map;
     setConnections(infos);
@@ -383,19 +510,69 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     const entry = entries.current.get(conn.id);
     if (!entry) throw new Error('connection is not available');
     const { record } = entry;
+    // A key named on disk is read by whichever process opens SSH (ADR 0028 §4). In a
+    // desktop window that is this computer, which is the point of the support. In a
+    // browser it is the server's container, so the request is not made: the server refuses
+    // it too, and an error from there would arrive as an authentication failure with
+    // nothing naming the cause.
+    if (record.authMethod.type === 'publicKey' && !isNativeShell()) {
+      throw new Error(translate('connections.keyOnDiskNeedsDesktop'));
+    }
     // Server-execute: the decrypted target is handed to the server to run SSH; it
     // is never persisted server-side (ADR 0011 / 0012 client-execute). The jump
     // chain travels with it — the server can't resolve hops it can't decrypt.
+    // A key whose passphrase was not kept: ask now (or reuse this session's answer), use
+    // it for this call, write nothing. Cancelling is the person saying no, not a failure.
+    const authMethod = await authFor(conn.id, record, record.name || conn.name);
+    if (authMethod === null) throw new Error('cancelled');
     const sessionId = await Backend.Terminal.quickSshConnect(
       record.hostname,
       record.username,
       record.port,
-      record.authMethod,
+      authMethod,
       resolveJumpChain(entries.current, record),
+      // Which item this is. An instance that forbids ad-hoc Quick SSH must still open
+      // what its members saved, and this is the part of the request the server can check.
+      // No collection (a local-vault machine) means no claim to make: there the policy
+      // does not apply, because there is no server to set it.
+      entry.collectionId ? { collectionId: entry.collectionId, itemId: conn.id } : undefined,
     );
     // Record this user's own "last connected" locally (passive status, ADR 0017).
     recordLastUsed(conn.id);
     return sessionId;
+  }, []);
+
+  /**
+   * Hand back what this machine stores (ADR 0024 §5).
+   *
+   * No request is made: the browser decrypted this record to be able to connect at all,
+   * which is also why neither check below is a boundary the server could hold. They stop
+   * the accidents that actually happen — a secret on screen in a screen share, a casual
+   * copy — and the boundary that holds is membership, because sharing an item shares its
+   * secret by construction.
+   */
+  const reveal = useCallback(async (conn: ConnectionInfo): Promise<RevealedSecret> => {
+    if (useServerSession.getState().mode?.allowSecretReveal === false) {
+      throw new Error('this server keeps its stored secrets unreadable');
+    }
+    // A viewer may use a credential and not extract it — what the role means, so not a
+    // setting. An administrator may turn reveal off for everyone and cannot turn it on here.
+    if (conn.collectionRole === 'viewer') {
+      throw new Error('a viewer can connect with this machine but not read its secret');
+    }
+    const entry = entries.current.get(conn.id);
+    if (!entry) throw new Error('connection is not available');
+    const auth = entry.record.authMethod;
+    switch (auth.type) {
+      case 'password':
+        return { password: auth.password };
+      case 'publicKey':
+        return { keyPath: auth.keyPath, passphrase: auth.passphrase ?? null };
+      case 'vaultKey':
+        return { key: auth.key, passphrase: auth.passphrase ?? null };
+      default:
+        return {};
+    }
   }, []);
 
   const remove = useCallback(
@@ -404,7 +581,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       if (!entry) return;
       if (entry.collectionId) {
         const ctx = collections.current.get(entry.collectionId);
-        if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
+        if (!ctx || !canWrite(ctx.role))
+          throw new Error('you do not have write access to this collection');
         await Backend.Collections.deleteItem(entry.collectionId, id);
       } else {
         await Backend.Vault.deleteConnection(id);
@@ -421,7 +599,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       // Collection writes are gated on owner/editor.
       if (input.collectionId) {
         const ctx = collections.current.get(input.collectionId);
-        if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
+        if (!ctx || !canWrite(ctx.role))
+          throw new Error('you do not have write access to this collection');
         const blob = await encryptCollectionField(ctx.key, record);
         await Backend.Collections.createItem(input.collectionId, blob);
         await refresh();
@@ -443,7 +622,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       if (!entry) throw new Error('connection is not available');
       if (entry.collectionId) {
         const ctx = collections.current.get(entry.collectionId);
-        if (!ctx || !canWrite(ctx.role)) throw new Error('you do not have write access to this collection');
+        if (!ctx || !canWrite(ctx.role))
+          throw new Error('you do not have write access to this collection');
         const blob = await encryptCollectionField(ctx.key, applyUpdate(entry.record, input));
         await Backend.Collections.updateItem(entry.collectionId, input.id, blob);
         await refresh();
@@ -491,8 +671,10 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     const entry = entries.current.get(conn.id);
     if (!entry) throw new Error('connection is not available');
     const { record } = entry;
+    const auth = await authFor(conn.id, record, record.name || conn.name);
+    if (auth === null) throw new Error('cancelled');
     return Backend.Terminal.machineExecQuick(
-      { ...endpointOf(record), jumps: resolveJumpChain(entries.current, record) },
+      { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
       command,
     );
   }, []);
@@ -504,9 +686,11 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       const entry = entries.current.get(conn.id);
       if (!entry) throw new Error('connection is not available');
       const { record } = entry;
+      const auth = await authFor(conn.id, record, record.name || conn.name);
+      if (auth === null) throw new Error('cancelled');
       return Backend.Terminal.startQuickForward({
         connectionId: conn.id,
-        target: { ...endpointOf(record), jumps: resolveJumpChain(entries.current, record) },
+        target: { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
         bindHost: forward.bindHost ?? undefined,
         localPort: forward.localPort,
         remoteHost: forward.remoteHost,
@@ -525,6 +709,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     connect,
     create,
     update,
+    reveal,
     writableCollections,
     collections: collectionList,
     readBoard,

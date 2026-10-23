@@ -14,6 +14,7 @@ pub mod db;
 pub mod enrollment;
 pub mod events;
 pub mod known_hosts;
+pub mod layouts_store;
 pub mod library_store;
 pub mod local_collections;
 pub mod local_terminal;

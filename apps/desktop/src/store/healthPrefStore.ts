@@ -5,17 +5,23 @@
  * restrictive of the server policy and this preference.
  */
 
+import { deviceStore } from '../utils/deviceStore';
 import { create } from 'zustand';
 import type { HealthcheckPolicy } from '../utils/backend';
 
 // A single collapsed scale (least → most capable). `inherit` = follow the server.
 export type HealthPref = 'inherit' | 'off' | 'passive' | 'on-demand' | 'full';
-const RANK: Record<Exclude<HealthPref, 'inherit'>, number> = { off: 0, passive: 1, 'on-demand': 2, full: 3 };
+const RANK: Record<Exclude<HealthPref, 'inherit'>, number> = {
+  off: 0,
+  passive: 1,
+  'on-demand': 2,
+  full: 3,
+};
 const KEY = 'rite.healthPref';
 
 function load(): HealthPref {
   try {
-    const v = localStorage.getItem(KEY);
+    const v = deviceStore.getItem(KEY);
     if (v === 'off' || v === 'passive' || v === 'on-demand' || v === 'full') return v;
   } catch {
     /* private mode / unavailable */
@@ -32,8 +38,8 @@ export const useHealthPref = create<HealthPrefStore>((set) => ({
   pref: load(),
   setPref: (pref) => {
     try {
-      if (pref === 'inherit') localStorage.removeItem(KEY);
-      else localStorage.setItem(KEY, pref);
+      if (pref === 'inherit') deviceStore.removeItem(KEY);
+      else deviceStore.setItem(KEY, pref);
     } catch {
       /* ignore */
     }

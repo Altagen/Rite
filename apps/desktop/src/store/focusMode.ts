@@ -4,12 +4,13 @@
  * The preference is persisted in localStorage — it's a per-device UI choice, not synced to a
  * server or vault. Focus mode itself is gated on isNativeShell() by the callers.
  */
+import { deviceStore } from '../utils/deviceStore';
 import { create } from 'zustand';
 
 const KEY = 'rite-focus-auto-collapse';
 const readPref = (): boolean => {
   try {
-    return localStorage.getItem(KEY) === '1';
+    return deviceStore.getItem(KEY) === '1';
   } catch {
     return false;
   }
@@ -28,7 +29,7 @@ export const useFocusMode = create<FocusModeState>((set) => ({
   setActive: (active) => set({ active }),
   setAutoCollapse: (autoCollapse) => {
     try {
-      localStorage.setItem(KEY, autoCollapse ? '1' : '0');
+      deviceStore.setItem(KEY, autoCollapse ? '1' : '0');
     } catch {
       /* storage unavailable — keep it in memory only */
     }

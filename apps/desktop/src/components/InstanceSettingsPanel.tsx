@@ -5,7 +5,14 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Backend, type DashboardPolicy, type HealthcheckPolicy } from '../utils/backend';
+import { useTranslation } from '../i18n/i18n';
+import {
+  Backend,
+  type DashboardPolicy,
+  type HealthcheckPolicy,
+  type LayoutsPolicy,
+} from '../utils/backend';
+import { Switch } from './Switch';
 
 const DEFAULT_HC: HealthcheckPolicy = {
   passiveStatus: true,
@@ -17,6 +24,8 @@ const DEFAULT_HC: HealthcheckPolicy = {
 /** ADR 0019 defaults: both shells allowed. A server that has never been configured has
  *  not said no, and reading silence as a refusal would disable a shipped feature. */
 const DEFAULT_DASH: DashboardPolicy = { webui: true, clients: true, minInterval: 30 };
+/** ADR 0027: both true, so an instance that says nothing has the feature on. */
+const DEFAULT_LAYOUTS: LayoutsPolicy = { webui: true, clients: true };
 const HC_METHODS: { id: string; label: string }[] = [
   { id: 'tcp-connect', label: 'TCP-connect' },
   { id: 'icmp', label: 'ICMP' },
@@ -33,26 +42,35 @@ const HC_METHODS: { id: string; label: string }[] = [
  * explains why before they try.
  */
 function ManagedBy({ origin }: { origin: string }) {
-  return (
-    <p className="mt-1 text-xs text-amber-500">
-      Set by this instance&apos;s configuration (<code className="font-mono">{origin}</code>) — change it there, not here.
-    </p>
-  );
+  const { t } = useTranslation();
+  return <p className="mt-1 text-xs text-amber-500">{t('admin.inst.managedBy', { origin })}</p>;
 }
 
 export function InstanceSettingsPanel() {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
   const [persistence, setPersistence] = useState(true);
   const [hostKey, setHostKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [shell, setShell] = useState('bash');
+  // What this instance can run, from the server's own probe — not the four Rite knows
+  // about. Empty until loaded, and on an older server that never probed.
+  const [shells, setShells] = useState<string[]>([]);
+  const [shellChoice, setShellChoice] = useState(false);
+  // ADR 0024 §4: what may rest in a member's vault, and whether it can be read back.
+  const [secretStorage, setSecretStorage] = useState(true);
+  const [secretReveal, setSecretReveal] = useState(true);
+  // How this server verifies host keys, for every connection it opens. It was reported to
+  // clients and shown read-only there, with nowhere here to set it.
+  const [hostKeyMode, setHostKeyMode] = useState<'strict' | 'warn' | 'accept'>('strict');
   const [quickSsh, setQuickSsh] = useState(false);
   const [openReg, setOpenReg] = useState(false);
   const [allowInv, setAllowInv] = useState(true);
   const [confirmRole, setConfirmRole] = useState(false);
   const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
   const [dash, setDash] = useState<DashboardPolicy>(DEFAULT_DASH);
+  const [layouts, setLayouts] = useState<LayoutsPolicy>(DEFAULT_LAYOUTS);
   // ADR 0020: keys this instance holds as code, mapped to where each was declared.
   const [managed, setManaged] = useState<Record<string, string>>({});
   const [userInput, setUserInput] = useState('');
@@ -68,17 +86,25 @@ export function InstanceSettingsPanel() {
       setPersistence(mode.sessionPersistence !== false);
       setHostKey(mode.hostKey ?? null);
       setShell(mode.defaultShell ?? 'bash');
+      setShells(mode.shells ?? []);
+      setShellChoice(mode.allowShellChoice === true);
+      setSecretStorage(mode.allowSecretStorage !== false);
+      setSecretReveal(mode.allowSecretReveal !== false);
+      setHostKeyMode((mode.hostKeyVerification as 'strict' | 'warn' | 'accept') ?? 'strict');
       setQuickSsh(mode.allowQuickSsh === true);
       setOpenReg(mode.openRegistration === true);
       setAllowInv(mode.allowInvitations !== false);
       setConfirmRole(mode.confirmRoleChange === true);
       setHc(mode.healthcheck ?? DEFAULT_HC);
       setDash(mode.dashboardPolicy ?? DEFAULT_DASH);
+      setLayouts(mode.layoutsPolicy ?? DEFAULT_LAYOUTS);
       setManaged(mode.managed ?? {});
     } catch {
-      setError('Failed to load instance settings');
+      setError(t('admin.inst.errLoad'));
     }
-  }, []);
+    // `t` is a dependency now that the message comes from the locales: a language change
+    // must re-render with the new one rather than keep the string this closure captured.
+  }, [t]);
 
   // Optimistic save of the whole policy; revert on failure.
   const saveHc = async (next: HealthcheckPolicy) => {
@@ -88,7 +114,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setHealthcheck(next);
     } catch (err) {
       setHc(prev);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -100,7 +126,18 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setDashboardPolicy(next);
     } catch (err) {
       setDash(prev);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
+    }
+  };
+
+  const saveLayouts = async (next: LayoutsPolicy) => {
+    const prev = layouts;
+    setLayouts(next);
+    try {
+      await Backend.Admin.setLayoutsPolicy(next);
+    } catch (err) {
+      setLayouts(prev);
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -111,7 +148,51 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setDefaultShell(next);
     } catch (err) {
       setShell(prev);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
+    }
+  };
+
+  const toggleShellChoice = async () => {
+    const next = !shellChoice;
+    setShellChoice(next);
+    try {
+      await Backend.Admin.setShellChoice(next);
+    } catch (err) {
+      setShellChoice(!next);
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
+    }
+  };
+
+  const changeHostKeyMode = async (next: 'strict' | 'warn' | 'accept') => {
+    const prev = hostKeyMode;
+    setHostKeyMode(next);
+    try {
+      await Backend.Admin.setHostKeyMode(next);
+    } catch (err) {
+      setHostKeyMode(prev);
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
+    }
+  };
+
+  const toggleSecretStorage = async () => {
+    const next = !secretStorage;
+    setSecretStorage(next);
+    try {
+      await Backend.Admin.setSecretStorage(next);
+    } catch (err) {
+      setSecretStorage(!next);
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
+    }
+  };
+
+  const toggleSecretReveal = async () => {
+    const next = !secretReveal;
+    setSecretReveal(next);
+    try {
+      await Backend.Admin.setSecretReveal(next);
+    } catch (err) {
+      setSecretReveal(!next);
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -122,7 +203,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setQuickSsh(next);
     } catch (err) {
       setQuickSsh(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -133,7 +214,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setOpenRegistration(next);
     } catch (err) {
       setOpenReg(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -144,7 +225,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setAllowInvitations(next);
     } catch (err) {
       setAllowInv(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -155,7 +236,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setConfirmRoleChange(next);
     } catch (err) {
       setConfirmRole(!next);
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -166,7 +247,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setSessionPersistence(next);
     } catch (err) {
       setPersistence(!next); // revert on failure
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
 
@@ -183,7 +264,7 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setInstanceName(name.trim());
       setSaved(name.trim());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save');
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     } finally {
       setBusy(false);
     }
@@ -192,27 +273,29 @@ export function InstanceSettingsPanel() {
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5">
       <div>
-        <h2 className="text-xl font-semibold">Instance</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          A global name for this server (e.g. your company or team). Shown to everyone on the sign-in screen and in the
-          header, so users can tell instances apart.
-        </p>
+        <h2 className="text-xl font-semibold">{t('admin.inst.title')}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.lead')}</p>
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">{error}</div>
+        <div className="rounded-md border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-600">
+          {error}
+        </div>
       )}
 
-      <form onSubmit={save} className="flex items-end gap-3 rounded-lg border border-border bg-card p-4">
+      <form
+        onSubmit={save}
+        className="flex items-end gap-3 rounded-lg border border-border bg-card p-4"
+      >
         <div className="flex-1 space-y-1">
           <label htmlFor="instance-name" className="text-xs font-medium text-muted-foreground">
-            Instance name
+            {t('admin.inst.nameLabel')}
           </label>
           <input
             id="instance-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Acme Corp"
+            placeholder={t('admin.inst.namePlaceholder')}
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
             disabled={busy || !!managed.instance_name}
           />
@@ -223,23 +306,23 @@ export function InstanceSettingsPanel() {
           disabled={busy || !!managed.instance_name || name.trim() === (saved ?? '')}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          Save
+          {t('admin.inst.save')}
         </button>
       </form>
 
       {saved !== null && saved === name.trim() && (
-        <p className="text-xs text-muted-foreground">
-          Saved. It appears for everyone after their next page load.
-        </p>
+        <p className="text-xs text-muted-foreground">{t('admin.inst.saved')}</p>
       )}
 
       {/* Host key (ADR 0012 TOFU): publish it so users can pin this server out-of-band. */}
       {hostKey && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4">
           <div className="min-w-0">
-            <div className="font-medium">Host key</div>
-            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">SHA256:{hostKey}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Share this so users can pin this server on first connect.</p>
+            <div className="font-medium">{t('admin.inst.hostKey')}</div>
+            <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
+              SHA256:{hostKey}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{t('admin.inst.hostKeyShare')}</p>
           </div>
           <button
             onClick={() => {
@@ -249,7 +332,7 @@ export function InstanceSettingsPanel() {
             }}
             className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
           >
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? t('admin.inst.copied') : t('admin.inst.copy')}
           </button>
         </div>
       )}
@@ -257,148 +340,104 @@ export function InstanceSettingsPanel() {
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-medium">Keep users signed in across reloads</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Stores each user's vault key in their browser's session storage so a page reload doesn't force a
-              re-login. Still zero-knowledge — the key never leaves the browser and is cleared when the tab closes.
-              Turn this off to enforce a RAM-only key (re-login on every reload).
-            </p>
+            <div className="font-medium">{t('admin.inst.persistence')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.persistenceDesc')}</p>
             {managed.session_persistence && <ManagedBy origin={managed.session_persistence} />}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={persistence}
-            aria-label="Keep users signed in across reloads"
+          <Switch
+            checked={persistence}
+            label={t('admin.inst.persistence')}
             disabled={!!managed.session_persistence}
-            onClick={togglePersistence}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
-              persistence ? 'bg-primary' : 'bg-muted'
-            }`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                persistence ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+            onChange={togglePersistence}
+            testId="instance-session-persistence"
+          />
         </div>
       </div>
 
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-medium">Open registration</div>
+            <div className="font-medium">{t('admin.inst.openReg')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default.</b> When on, the sign-in screen offers <b>Create an account</b> — anyone who can reach
-              this server can self-register (role <b>user</b>, no team). They generate their own keys, so you never see
-              them. Leave off for an invite-only instance (admin-provisioned accounts or enrollment tokens).
+              <b>{t('admin.inst.offByDefault')}</b> {t('admin.inst.openRegDesc')}
             </p>
             {managed.open_registration && <ManagedBy origin={managed.open_registration} />}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={openReg}
-            aria-label="Open registration"
+          <Switch
+            checked={openReg}
+            label={t('admin.inst.openReg')}
             disabled={!!managed.open_registration}
-            onClick={toggleOpenReg}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
-              openReg ? 'bg-primary' : 'bg-muted'
-            }`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                openReg ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+            onChange={toggleOpenReg}
+            testId="instance-open-registration"
+          />
         </div>
       </div>
 
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-medium">Allow invitations</div>
+            <div className="font-medium">{t('admin.inst.allowInv')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>On by default.</b> The master switch for enrollment-token invitations (Invitations tab). Turn it off to
-              close the invite path instance-wide — no new tokens can be minted and existing ones stop working, enforced
-              on the server. Independent of open registration (invitations are the invite-only path).
+              <b>{t('admin.inst.onByDefault')}</b> {t('admin.inst.allowInvDesc')}
             </p>
             {managed.allow_invitations && <ManagedBy origin={managed.allow_invitations} />}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={allowInv}
-            aria-label="Allow invitations"
+          <Switch
+            checked={allowInv}
+            label={t('admin.inst.allowInv')}
             disabled={!!managed.allow_invitations}
-            onClick={toggleAllowInv}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
-              allowInv ? 'bg-primary' : 'bg-muted'
-            }`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                allowInv ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+            onChange={toggleAllowInv}
+            testId="instance-allow-invitations"
+          />
         </div>
       </div>
 
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-medium">Confirm role changes</div>
+            <div className="font-medium">{t('admin.inst.confirmRole')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off by default.</b> When on, changing an account&apos;s role in Users asks for a confirmation first — a
-              guard against an accidental promotion or demotion. A UX safety prompt, applied on every client.
+              <b>{t('admin.inst.offByDefault')}</b> {t('admin.inst.confirmRoleDesc')}
             </p>
             {managed.confirm_role_change && <ManagedBy origin={managed.confirm_role_change} />}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={confirmRole}
-            aria-label="Confirm role changes"
+          <Switch
+            checked={confirmRole}
+            label={t('admin.inst.confirmRole')}
             disabled={!!managed.confirm_role_change}
-            onClick={toggleConfirmRole}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${
-              confirmRole ? 'bg-primary' : 'bg-muted'
-            }`}
-          >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                confirmRole ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+            onChange={toggleConfirmRole}
+            testId="instance-confirm-role-change"
+          />
         </div>
       </div>
 
       {/* Client capabilities — what connected clients may do, governed here. */}
       <div className="rounded-lg border border-border bg-card">
         <div className="border-b border-border px-4 py-3">
-          <div className="text-base font-semibold">Client capabilities</div>
-          <p className="mt-0.5 text-xs text-muted-foreground">What connected clients may do on this server.</p>
+          <div className="text-base font-semibold">{t('admin.inst.caps')}</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t('admin.inst.capsDesc')}</p>
         </div>
 
         <div className="flex items-start justify-between gap-4 border-b border-border p-4">
           <div>
-            <div className="font-medium">Default shell</div>
+            <div className="font-medium">{t('admin.inst.defaultShell')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              The shell for terminals opened on this server. Web-UI users don&apos;t pick their own — this is it.
-              (Desktop users choose their own <b>local</b> shell.)
+              {t('admin.inst.shellPrefix')}{' '}
+              {shellChoice ? t('admin.inst.shellOpensChoice') : t('admin.inst.shellOpensFixed')}{' '}
+              {t('admin.inst.shellDesktop')}{' '}
+              <b data-testid="instance-shells">{shells.join(', ')}</b>.
             </p>
             {managed.default_shell && <ManagedBy origin={managed.default_shell} />}
           </div>
+          {/* Only what the probe found. Offering all four set the instance to a program the
+              container did not have, and every terminal on it then opened nothing. */}
           <select
             value={shell}
             onChange={(e) => changeShell(e.target.value)}
+            data-testid="instance-shell"
             className="flex-none rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            {['bash', 'sh', 'zsh', 'fish'].map((s) => (
+            {shells.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
@@ -406,66 +445,137 @@ export function InstanceSettingsPanel() {
           </select>
         </div>
 
+        <div className="flex items-start justify-between gap-4 border-b border-border p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.shellChoice')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <b>{t('admin.inst.offByDefault')}</b> {t('admin.inst.shellChoiceDesc')}
+            </p>
+            {managed.allow_shell_choice && <ManagedBy origin={managed.allow_shell_choice} />}
+          </div>
+          <Switch
+            checked={shellChoice}
+            label={t('admin.inst.shellChoice')}
+            onChange={toggleShellChoice}
+            disabled={!!managed.allow_shell_choice}
+            testId="instance-shell-choice"
+          />
+        </div>
+
         <div className="flex items-start justify-between gap-4 p-4">
           <div>
-            <div className="font-medium">Allow Quick SSH</div>
+            <div className="font-medium">{t('admin.inst.quickSsh')}</div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Ad-hoc one-off SSH from the toolbar. <b>Off by default</b> — connections on a server should live in{' '}
-              <b>collections</b> (saved, shared, auditable). Turn on for teams that need quick throwaway sessions.
+              <b>{t('admin.inst.offByDefault')}</b> {t('admin.inst.quickSshDesc')}
             </p>
             {managed.allow_quick_ssh && <ManagedBy origin={managed.allow_quick_ssh} />}
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={quickSsh}
-            aria-label="Allow Quick SSH"
+          <Switch
+            checked={quickSsh}
+            label={t('admin.inst.quickSsh')}
             disabled={!!managed.allow_quick_ssh}
-            onClick={toggleQuickSsh}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${quickSsh ? 'bg-primary' : 'bg-muted'}`}
+            onChange={toggleQuickSsh}
+            testId="instance-quick-ssh"
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.hostKeyMode')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.hostKeyModeDesc')}</p>
+            {managed.host_key_verification_mode && (
+              <ManagedBy origin={managed.host_key_verification_mode} />
+            )}
+          </div>
+          <select
+            value={hostKeyMode}
+            onChange={(e) => changeHostKeyMode(e.target.value as 'strict' | 'warn' | 'accept')}
+            disabled={!!managed.host_key_verification_mode}
+            data-testid="instance-host-key-mode"
+            className="flex-none rounded-md border border-input bg-background px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <span
-              className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${
-                quickSsh ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
+            {['strict', 'warn', 'accept'].map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Stored secrets (ADR 0024 §4). One switch over every secret a record can keep,
+            because forbidding one while allowing another hardens nothing. Permissive by
+            default, so an instance that upgrades and says nothing is unchanged. */}
+        <div className="border-t border-border p-4">
+          <div className="font-medium">{t('admin.inst.storedSecrets')}</div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {t('admin.inst.storedSecretsDesc')}
+          </p>
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-b border-border px-4 pb-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.secretStorage')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('admin.inst.secretStorageWhat')} <b>{t('admin.inst.onByDefault')}</b>{' '}
+              {t('admin.inst.secretStorageDefault')} <b>{t('admin.inst.bindsClient')}</b>{' '}
+              {t('admin.inst.secretStorageBinds')}
+            </p>
+            {managed.allow_secret_storage && <ManagedBy origin={managed.allow_secret_storage} />}
+          </div>
+          <Switch
+            checked={secretStorage}
+            label={t('admin.inst.secretStorage')}
+            disabled={!!managed.allow_secret_storage}
+            onChange={toggleSecretStorage}
+            testId="instance-secret-storage"
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.secretReveal')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <b>{t('admin.inst.onByDefault')}</b> {t('admin.inst.secretRevealWhen')}{' '}
+              <b>{t('admin.inst.bindsClient')}</b> {t('admin.inst.secretRevealBinds')}
+            </p>
+            {managed.allow_secret_reveal && <ManagedBy origin={managed.allow_secret_reveal} />}
+          </div>
+          <Switch
+            checked={secretReveal}
+            label={t('admin.inst.secretReveal')}
+            disabled={!!managed.allow_secret_reveal}
+            onChange={toggleSecretReveal}
+            testId="instance-secret-reveal"
+          />
         </div>
 
         {/* Machine health-check (ADR 0017): passive "last seen" is free; active is governed. */}
         <div className="border-t border-border p-4">
-          <div className="font-medium">Machine health-check</div>
+          <div className="font-medium">{t('admin.inst.hc')}</div>
           <p className="mt-1 text-sm text-muted-foreground">
-            <b>Passive “last seen”</b> (from users&apos; own connections) costs no traffic. <b>Active probing</b> makes
-            network requests from every client — a scan-like footprint at scale — so it&apos;s governed here.
+            <b>{t('admin.inst.hcPassive')}</b> {t('admin.inst.hcDesc')}{' '}
+            <b>{t('admin.inst.hcActive')}</b> {t('admin.inst.hcActiveDesc')}
           </p>
           {managed.healthcheck_policy && <ManagedBy origin={managed.healthcheck_policy} />}
         </div>
 
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
           <div>
-            <div className="font-medium">Show status</div>
-            <p className="mt-1 text-sm text-muted-foreground">The passive “last seen” pastille. No probing.</p>
+            <div className="font-medium">{t('admin.inst.showStatus')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.showStatusDesc')}</p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={hc.passiveStatus}
-            aria-label="Show machine status"
-            onClick={() => saveHc({ ...hc, passiveStatus: !hc.passiveStatus })}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${hc.passiveStatus ? 'bg-primary' : 'bg-muted'}`}
-          >
-            <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hc.passiveStatus ? 'translate-x-5' : 'translate-x-0'}`} />
-          </button>
+          <Switch
+            checked={hc.passiveStatus}
+            label={t('admin.inst.showStatusLabel')}
+            onChange={() => saveHc({ ...hc, passiveStatus: !hc.passiveStatus })}
+            testId="instance-hc-passive"
+          />
         </div>
 
         <div className="flex flex-wrap items-start justify-between gap-4 border-t border-border p-4">
           <div className="min-w-[220px] flex-1">
-            <div className="font-medium">Active probing</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              <b>Off</b> passive only · <b>On-demand</b> only when a user asks · <b>Full</b> background polling allowed ·
-              <b>Client&apos;s choice</b> each client picks its cadence.
-            </p>
+            <div className="font-medium">{t('admin.inst.hcActive')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.probeLegend')}</p>
           </div>
           <div className="inline-flex flex-wrap overflow-hidden rounded-md border border-input">
             {(['off', 'on-demand', 'full', 'client-choice'] as const).map((m) => (
@@ -473,7 +583,9 @@ export function InstanceSettingsPanel() {
                 key={m}
                 onClick={() => saveHc({ ...hc, active: m })}
                 className={`border-r border-input px-3 py-1.5 text-xs last:border-r-0 ${
-                  hc.active === m ? 'bg-primary/20 font-semibold text-primary' : 'bg-background text-muted-foreground hover:bg-muted'
+                  hc.active === m
+                    ? 'bg-primary/20 font-semibold text-primary'
+                    : 'bg-background text-muted-foreground hover:bg-muted'
                 }`}
               >
                 {m}
@@ -482,19 +594,24 @@ export function InstanceSettingsPanel() {
           </div>
         </div>
 
-        <div className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}>
+        <div
+          className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}
+        >
           <div>
-            <div className="font-medium">Allowed methods</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              ICMP is blocked on some networks and required on others. Clients may use only a method enabled here.
-            </p>
+            <div className="font-medium">{t('admin.inst.methods')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.methodsDesc')}</p>
           </div>
           <div className="flex flex-wrap gap-3">
             {HC_METHODS.map((m) => {
               const on = hc.methods.includes(m.id);
               return (
-                <label key={m.id} className="flex cursor-pointer select-none items-center gap-1.5 text-sm">
-                  <span className={`grid h-[17px] w-[17px] place-items-center rounded border text-[11px] font-bold ${on ? 'border-primary bg-primary text-primary-foreground' : 'border-input'}`}>
+                <label
+                  key={m.id}
+                  className="flex cursor-pointer select-none items-center gap-1.5 text-sm"
+                >
+                  <span
+                    className={`grid h-[17px] w-[17px] place-items-center rounded border text-[11px] font-bold ${on ? 'border-primary bg-primary text-primary-foreground' : 'border-input'}`}
+                  >
                     {on ? '✓' : ''}
                   </span>
                   <input
@@ -502,7 +619,10 @@ export function InstanceSettingsPanel() {
                     className="sr-only"
                     checked={on}
                     onChange={() =>
-                      saveHc({ ...hc, methods: on ? hc.methods.filter((x) => x !== m.id) : [...hc.methods, m.id] })
+                      saveHc({
+                        ...hc,
+                        methods: on ? hc.methods.filter((x) => x !== m.id) : [...hc.methods, m.id],
+                      })
                     }
                   />
                   {m.label}
@@ -512,24 +632,29 @@ export function InstanceSettingsPanel() {
           </div>
         </div>
 
-        <div className={`flex flex-col gap-2 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}>
+        <div
+          className={`flex flex-col gap-2 border-t border-border p-4 ${hc.active === 'off' ? 'pointer-events-none opacity-40' : ''}`}
+        >
           <div>
-            <div className="font-medium">Who can run active checks</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Empty means everyone. Add usernames to restrict active probing to specific people; passive “last seen” stays available to all.
-            </p>
+            <div className="font-medium">{t('admin.inst.whoProbes')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.whoProbesDesc')}</p>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {hc.restrictUsers.length === 0 && (
-              <span className="text-sm text-muted-foreground">Everyone allowed</span>
+              <span className="text-sm text-muted-foreground">{t('admin.inst.everyone')}</span>
             )}
             {hc.restrictUsers.map((u) => (
-              <span key={u} className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-sm">
+              <span
+                key={u}
+                className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-sm"
+              >
                 {u}
                 <button
-                  onClick={() => saveHc({ ...hc, restrictUsers: hc.restrictUsers.filter((x) => x !== u) })}
+                  onClick={() =>
+                    saveHc({ ...hc, restrictUsers: hc.restrictUsers.filter((x) => x !== u) })
+                  }
                   className="text-muted-foreground hover:text-foreground"
-                  aria-label={`Remove ${u}`}
+                  aria-label={t('admin.inst.removeUser', { name: u })}
                 >
                   ×
                 </button>
@@ -541,26 +666,32 @@ export function InstanceSettingsPanel() {
             onSubmit={(e) => {
               e.preventDefault();
               const u = userInput.trim();
-              if (u && !hc.restrictUsers.includes(u)) saveHc({ ...hc, restrictUsers: [...hc.restrictUsers, u] });
+              if (u && !hc.restrictUsers.includes(u))
+                saveHc({ ...hc, restrictUsers: [...hc.restrictUsers, u] });
               setUserInput('');
             }}
           >
             <input
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
-              placeholder="username"
+              placeholder={t('admin.inst.usernamePlaceholder')}
               className="w-40 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             />
-            <button type="submit" className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted">
-              Add
+            <button
+              type="submit"
+              className="rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+            >
+              {t('admin.inst.add')}
             </button>
           </form>
         </div>
 
-        <div className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' || hc.active === 'on-demand' ? 'pointer-events-none opacity-40' : ''}`}>
+        <div
+          className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${hc.active === 'off' || hc.active === 'on-demand' ? 'pointer-events-none opacity-40' : ''}`}
+        >
           <div>
-            <div className="font-medium">Minimum interval</div>
-            <p className="mt-1 text-sm text-muted-foreground">Floor for background polling, so status never saturates the network.</p>
+            <div className="font-medium">{t('admin.inst.minInterval')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.minIntervalDesc')}</p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -571,83 +702,53 @@ export function InstanceSettingsPanel() {
               onBlur={() => saveHc(hc)}
               className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             />
-            <span className="text-sm text-muted-foreground">seconds</span>
+            <span className="text-sm text-muted-foreground">{t('admin.inst.seconds')}</span>
           </div>
         </div>
 
         {/* Machine dashboard (ADR 0019): only the cards that execute on a host are governed.
             Overview, port forwarding and the Board touch no host and are never gated. */}
         <div className="border-t border-border p-4">
-          <div className="font-medium">Machine dashboard — container &amp; service cards</div>
-          <p className="mt-1 text-sm text-muted-foreground">
-            These two cards run a command on the host every time they refresh. Everything else on the
-            dashboard — address, port forwarding, the Board — reads what Rite already holds and is never
-            affected by the switches below.
-          </p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            The two halves are not equally strong, and it is worth knowing which is which.{' '}
-            <b>Web UI</b> is <b>enforcement</b>: the browser cannot open SSH, this server executes, so off
-            means nothing runs. <b>Clients</b> is <b>policy</b>: a desktop client probes from its own network
-            and this server never sees the request — the official client honours the switch by hiding the
-            cards, a modified one could ignore it. What it buys you is the traffic stopped in normal use, no
-            trigger left in the UI to fire by accident, and a recorded statement of intent.
-          </p>
+          <div className="font-medium">{t('admin.inst.dash')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.dashDesc')}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{t('admin.inst.dashStrength')}</p>
           {managed.dashboard_policy && <ManagedBy origin={managed.dashboard_policy} />}
         </div>
 
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
           <div>
-            <div className="font-medium">Allow in the web UI</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              This server runs the commands, so its own egress pays. Off means off for everyone in a browser —
-              not a matter of preference.
-            </p>
+            <div className="font-medium">{t('admin.inst.dashWebui')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.dashWebuiDesc')}</p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={dash.webui}
+          <Switch
+            checked={dash.webui}
+            label={t('admin.inst.dashWebuiLabel')}
             disabled={!!managed.dashboard_policy}
-            aria-label="Allow the dashboard probing cards in the web UI"
-            onClick={() => saveDash({ ...dash, webui: !dash.webui })}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${dash.webui ? 'bg-primary' : 'bg-muted'}`}
-          >
-            <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${dash.webui ? 'translate-x-5' : 'translate-x-0'}`} />
-          </button>
+            onChange={() => saveDash({ ...dash, webui: !dash.webui })}
+            testId="instance-dash-webui"
+          />
         </div>
 
         <div className="flex items-start justify-between gap-4 border-t border-border p-4">
           <div>
-            <div className="font-medium">Allow in attached clients</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Each client probes from its own network position, so your users&apos; endpoints pay. A user may
-              also turn the cards off for themselves; neither side can override the other upward.
-            </p>
+            <div className="font-medium">{t('admin.inst.dashClients')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.dashClientsDesc')}</p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={dash.clients}
+          <Switch
+            checked={dash.clients}
+            label={t('admin.inst.dashClientsLabel')}
             disabled={!!managed.dashboard_policy}
-            aria-label="Allow the dashboard probing cards in attached clients"
-            onClick={() => saveDash({ ...dash, clients: !dash.clients })}
-            className={`inline-flex h-6 w-11 flex-none items-center rounded-full p-0.5 transition-colors ${dash.clients ? 'bg-primary' : 'bg-muted'}`}
-          >
-            <span className={`h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${dash.clients ? 'translate-x-5' : 'translate-x-0'}`} />
-          </button>
+            onChange={() => saveDash({ ...dash, clients: !dash.clients })}
+            testId="instance-dash-clients"
+          />
         </div>
 
         <div
           className={`flex flex-wrap items-start justify-between gap-4 border-t border-border p-4 ${!dash.webui && !dash.clients ? 'pointer-events-none opacity-40' : ''}`}
         >
           <div>
-            <div className="font-medium">Minimum refresh interval</div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Floor between <b>automatic</b> refreshes: an open dashboard re-runs these two cards on
-              its own, and never faster than this. Clients apply a floor of their own as well, so a
-              very small number here does not buy a very fast refresh. It does not rate-limit a
-              person pressing Refresh, and a dashboard nobody is looking at does not poll.
-            </p>
+            <div className="font-medium">{t('admin.inst.dashInterval')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.dashIntervalDesc')}</p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -660,8 +761,47 @@ export function InstanceSettingsPanel() {
               onBlur={() => saveDash(dash)}
               className="w-20 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
             />
-            <span className="text-sm text-muted-foreground">seconds</span>
+            <span className="text-sm text-muted-foreground">{t('admin.inst.seconds')}</span>
           </div>
+        </div>
+
+        {/* Layouts (ADR 0027). Two booleans and no third `enabled` flag: both off is the
+            feature off, and there is no second switch to contradict them. */}
+        <div className="border-t border-border p-4">
+          <div className="font-medium">{t('admin.inst.layouts')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.layoutsDesc')}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{t('admin.inst.layoutsStrength')}</p>
+          {managed.layouts_policy && <ManagedBy origin={managed.layouts_policy} />}
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.layoutsWebui')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.layoutsWebuiDesc')}</p>
+          </div>
+          <Switch
+            checked={layouts.webui}
+            label={t('admin.inst.layoutsWebuiLabel')}
+            disabled={!!managed.layouts_policy}
+            onChange={() => saveLayouts({ ...layouts, webui: !layouts.webui })}
+            testId="instance-layouts-webui"
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.layoutsClients')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('admin.inst.layoutsClientsDesc')}
+            </p>
+          </div>
+          <Switch
+            checked={layouts.clients}
+            label={t('admin.inst.layoutsClientsLabel')}
+            disabled={!!managed.layouts_policy}
+            onChange={() => saveLayouts({ ...layouts, clients: !layouts.clients })}
+            testId="instance-layouts-clients"
+          />
         </div>
       </div>
     </div>

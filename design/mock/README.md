@@ -39,9 +39,12 @@ data lives in memory. It exists to *feel* placement, flows, and dialogs.
 
 **It is checked like the app.** `e2e/tests/mock.spec.ts` (the `mock` Playwright project,
 no server, the pages opened from disk) opens both entry pages, requires the same dashboard
-cards and a working Board in each, fails on any console error, and walks the ADR 0019
-precedence table row by row — including what the refusal says. Run it with
-`npx playwright test --project=mock`; `task e2e` covers it too, along with the three
+cards and a working Board in each, fails on any console error, walks the ADR 0019
+precedence table row by row — including what the refusal says — and holds the agent
+manager to each state it exists to make speakable. Run it with
+`npx playwright test --project=mock`; it also clicks **every control the agent surface
+added**, because a mock that throws on a click nobody exercised is the same silence in a
+smaller place. `task e2e` covers it too, along with the three
 places the same rule is checked against the real app: the local vault (`dashboard-probe-gate`),
 the web UI (`accounts`) and an attached client (`proxy`). The mock is the source of
 truth for UI/UX, and until now nothing told anyone when it broke: that silence is how the
@@ -57,8 +60,13 @@ web UI ended up with a dashboard nobody had decided on.
 | Admin console | **no** — server management lives in the web console | yes (if admin) |
 | Session persistence | — | admin setting |
 | SSH import | file path or paste | **paste only** |
+| Workspace (presets + layouts) | a **file**, or the account's copy when signed in | the account's **sealed copy** — no filesystem to hold a file (ADR 0027) |
+| Key authentication | a path in a vault; carried or a path on a server | **carried only** — a path is read on the computer that connects (ADR 0028) |
 | Machine dashboard + Board | yes | **yes** — same cards, same markup (ADR 0019) |
 | Probing cards (containers, services) | governed by `clients` when attached; the user's own call in a vault | governed by `webui`; off there means off for everyone |
+| Agents on a library machine | yes | **yes** — it is an SSH session, like its terminal |
+| Agents on your own machine | yes, natively | **no** — needs an attached desktop client |
+| Agents in the Rite-Server container | **never** | **never** |
 
 The **machine dashboard and the Board are not divergences** — they are *usage* features and
 live in both shells (ADR 0019). Only the two cards that execute something on a host are
@@ -70,6 +78,205 @@ commands); in an attached client it is *policy* (the client probes from its own 
 server never sees the request). The mock says so in the admin copy rather than leaving it to be
 discovered. Both shells load the shared `machine.js` / `machine.css`, so neither entry page can
 drift from the other — the drift is how the web UI ended up with an undocumented dashboard.
+
+## The agent manager
+
+**The manager is a view, the agent is a pane**, and that split is the design. The
+manager is a chooser — machine, then tool, then conversation — and a chooser has no
+context of its own, so it lives where the machine dashboard lives: opened from the
+toolbar, closable from the tab strip. An agent *session* does have a context of its
+own (a working directory, a transcript, a lifetime), which is exactly the rule that
+gives it a pane. Resuming therefore opens a pane **in a new tab** — the gesture
+connecting to a machine already uses — so the list you chose from is still where you
+left it, and no split appears that you did not ask for.
+
+**An agent pane is a leaf of the ordinary split tree.** It is a terminal, so it gets
+the terminal's chrome from the same code (`paneActs` in `rite.js`, the mock's stand-in
+for the pane-kind registry) and it splits *with plain terminals in the same tab* — a
+`watch docker ps` or a `top` beside the agent that is causing them. Calling it a
+terminal and then giving it a tab it could not share would be the same mistake as
+rebuilding a chat UI over a vendor's TUI: the word right, the thing wrong. It is
+*marked*, not redesigned — one purple edge and a purple header rule, enough to find in
+a four-pane tab.
+
+**A tab that holds a view does not look like a tab that holds panes.** The manager, a
+collection and a machine dashboard are outlined; tabs holding panes stay filled and
+keep the terminal icon. This was not a theory: "Agents" and a resumed agent both wore
+the robot, and nothing said which one you could type into.
+
+**Another CLI is two commands** — how to list its conversations, how to resume one.
+That is the entire adapter boundary, and it is configurable from the manager's
+**Tools** dialog, which shows both commands for every tool. Switching an adapter off
+stops Rite looking for it; adding one says honestly that the last probe predates it
+rather than claiming the machine does not have it. An adapter is yours, not a
+machine's: the binary may be missing on one host and present on the next, and that is
+what the probe reports.
+
+**Agents run on a machine, under the account you already have there.** A machine from
+your library works in *both* shells, because that is an SSH session and Rite already
+has the transport. Your own machine is native on the desktop and needs an attached
+client in a browser — listed in both, so the gap is stated instead of silent. And the
+Rite-Server container is a **non-goal**, on screen, with its reason: an agent runs
+arbitrary code, and in the server's own process it would sit beside every user's
+encrypted data. On a target machine Rite grants no access the user did not already
+have; inside the container it would grant all of it.
+
+Four things the mock insists on being able to say, because each is an hour lost when
+a UI stays quiet instead: a machine **nobody has probed** (not an empty list), a tool
+that is **not installed**, a tool that is installed and **cannot read its own
+transcripts**, and **when** the answer was read — discovery is one command per
+machine, so it is explicit and dated rather than ambient. The conversation **id is
+never typed and always reachable**: when an adapter breaks — and it will, `--resume`
+and a vendor's home-directory layout are not a stable API — `claude --resume <id>` in
+a terminal pane must still work. Rite is never the only way back to your own session.
+
+### Splits: a plain divider by default, configurable beyond that
+
+Splitting is a **terminal** feature, not an agent one, so it lives in `rite.js` and
+both shells get it. **The split button splits — plainly, with no menu in the way**,
+because that is what most people want from a divider and they should not pay for the
+minority who want `top` on the right. Everything else sits behind a narrow chevron
+beside it:
+
+- **presets** — a name and a command, both the user's. Nothing is built in but the
+  plain one;
+- **snippets** — the existing library, because "run my saved command in the new pane"
+  is the same intent as "open a preset";
+- **layouts** — several panes at once, the *five terminals arranged like this* case.
+  A layout arranges a whole **tab**, so its own button sits beside the tabs; the
+  chevron keeps offering them, because someone who learned the chevron should not have
+  to unlearn it.
+
+### One document for how a workspace is set up
+
+The presets and the layouts are **one document** — ADR 0023, amended by ADR 0027,
+`docs/LAYOUTS.md`. `[[preset]]` is what the chevron offers, `[[layout]]` is the
+morning: what opens, where on the screen (`split`, `size`, `of`, `tab`), and on which
+machine.
+
+It sits on one of **two supports**, and the surface decides which:
+
+| Support | Where | Confidentiality |
+|---|---|---|
+| `~/.config/rite/layouts.toml` | the machine's filesystem | none needed — the reader's own disk |
+| a sealed blob | the account, scoped by user | AES-256-GCM under the user's key |
+
+A browser has no filesystem, so there it is the account's copy or nothing. A local vault
+has no account to seal to, so there it is the file. Only a desktop window signed into a
+server holds both, and `layoutSupport()` in `rite.js` is where that is decided —
+`STATE.layoutSource` being this computer's own preference, which is why it is a device one
+and does not travel. `STATE.layoutsOn` is the reader's switch, the second of ADR 0027's
+three gates; the first is the instance's `layouts_policy`, which a mock has no server to
+ask. `WORKSPACE_FILE` still answers "is there a FILE here", which picks the support rather
+than deciding the feature exists.
+
+**Settings ▸ Layouts leads with a card per layout** — what it opens, grouped by tab,
+resolved against the library this computer actually has — with the two switches above it
+and the editor button underneath. It used to be a heading and that button, so
+the only answer to "what do I have" was behind a click and below a textarea. Each card
+carries an **at startup** checkbox (not a radio: the file lets several open at once),
+which splices `startup` into the file.
+
+Every edit made from the UI **splices**: the preset dialog rewrites only the
+`[[preset]]` blocks, the switch rewrites one key, and the comments, blank lines and
+order someone chose come back untouched. The file editor is the exception and says so —
+its textarea *is* the file, so Save stores the whole thing and ↻ Reload is there for
+when something else has written since.
+
+This is also where the mock converges on the app's architecture: `rite.js` carries a
+tiny **pane-kind registry** (`registerPaneKind`), and `paneTabHTML` renders a tab
+without ever branching on what a pane displays. A terminal tab and an agent tab are
+the same structure, so a split, a preset or a layout is **one** feature rather than
+two implementations of it — exactly what `apps/desktop/src/panes/registry.ts` buys in
+the real client.
+
+### A key means two things
+
+Not where a file sits — **who may open a machine** (ADR 0028). Carried in the record, the
+key's text is sealed inside it, so every member of the collection can open the machine and
+its host sees one identity for all of them. Standing on each computer, the record holds a
+path and no secret, so only a member who has that file *there* can open it and the host
+records who did.
+
+Carried is the default, being the only support that works everywhere. A path is read by
+whichever process opens SSH — the member's own computer in a desktop window, the server's
+container in a browser — so a path-record is **desktop-only**, and the mock's form says so
+under the choice. A local vault has one support and no choice to offer, so none is drawn.
+
+A key already stored **names itself**: its fingerprint, its algorithm, and *Replace…*. An
+empty file input there read as "nothing was saved", which is how the real form behaved
+until it was noticed.
+
+### One pastille in the corner, for a vault as for an account
+
+The right-hand end of the bar holds **one control** in both contexts: a round glyph, a
+label, a small-caps chip and a chevron, opening a menu. A server session shows who is
+signed in — avatar, name, role — with Settings and Sign out inside. A local vault shows
+the one thing not already on screen: **whether it is open**. It deliberately does *not*
+say the vault's name, because the context pill on the other side of the bar already does,
+and the same fact twice on one bar is the duplication the nav exists to remove.
+
+The local workspace used to carry a bare padlock and no way to reach Settings at all, so
+the two contexts were two different ideas about what lives in that corner. Locking is now
+a menu item, which costs a click a bare button did not — so `vault.lock` is a keyboard
+command (`Mod+Shift+L`), named beside the item. Stepping away from the machine is a
+keystroke rather than a click and an aim.
+
+### An overlay page carries the nav
+
+Teams, Collections and Notifications are **pages you travel between**, and their bar used
+to hold a ✕ and your avatar and nothing else: Collections → Teams meant Close, then
+finding the button you had just left. The bar is the emptiest one in the app, so the nav
+rides along — **Terminals** / Teams / Collections / Administration + the bell.
+
+The first entry *is* the way back, so **there is no Close any more**: a nav of four
+destinations says where you are going, where a ✕ only says "not here". Esc still closes.
+The workspace's own bar has no "Terminals" entry — it would name the page you are looking
+at — which is the same rule as the one below.
+
+The page you are on is **marked, not dropped**: hiding the current entry would shift the
+others under the cursor on every hop. Two deliberate exceptions: the **inbox** page has no
+bell (it *is* the inbox), and the **admin console** carries no nav at all — its own left
+rail already says Teams and Collections, the organisation's rather than yours, and the
+same two words twice on one screen is worse than a Close. Which is also why the console is
+the one overlay that keeps its ✕.
+
+### Skills, commands and hooks — read-only, on purpose
+
+The product is the answer to **"what is actually in effect?"**, which no tool gives
+you: the account layer (`~/.claude/…`) under the project layer (`.claude/…` in the
+working directory), resolved on *that* host under *that* account. People answer it
+today by sshing in and reading four files. Rite already knows the machine, the
+account and the directory, so it is the one place that can answer it — and answering
+it is worth more than owning the files.
+
+Read-only is the **defensive** choice, not the timid one:
+
+- a hook is not configuration, it is **a command that runs later, unattended**.
+  Installing one from a convenience panel is the wrong blast radius for a convenience.
+- on a **shared account** — a team's `deploy` on a dev VM — a hook one person installs
+  runs for everyone who signs in. A tool that makes that *easy* is a lateral-movement
+  vector; a tool that makes it *visible* is the opposite. The mock shows exactly that
+  case, with the foreign hook marked.
+- writing would make Rite a **second source of truth** for files that usually live in
+  git or someone's dotfiles. The moment either side is touched by hand, nobody knows
+  what runs.
+
+Every row carries its **layer and its path**, because the answer to "why did that
+happen?" is a file path — and a copy that loses to the project layer is shown *losing*
+rather than hidden, since "why is my skill not applying" is answered by seeing the one
+that was shadowed. Nothing read is stored: it is displayed and dropped, which keeps the
+feature out of the zero-knowledge path instead of asking it for an exception.
+
+**Editing happens where it already did.** *Open* puts the file in a terminal pane on
+that machine, running `$EDITOR` under the account you already use there — no new right,
+nothing to keep in sync. Rite navigates; the editor edits. That is the whole of "we
+don't want to be the replacement for".
+
+The manager also opens **already pointed at a machine**, from that machine's dashboard
+(`Agents`, beside `Edit` and `Connect`). A menu is a fine switcher and a poor finder:
+with a real fleet you look a machine up where you always do — the library — and come at
+its agents the way you come at its containers.
 
 ## Files
 - `web.html` — the web-UI prototype (markup + inline logic).
@@ -90,9 +297,22 @@ drift from the other — the drift is how the web UI ended up with an undocument
   containers, services) and the collection **Board**, shared by both entry pages (ADR 0019).
   Each page supplies `DASH_SHELL` (`'webui'` / `'clients'`) and `probeGoverned()`; the shared
   `probeVerdict()` holds the precedence table so it cannot be re-derived differently twice.
+- `rite.js` carries the **pane-kind registry** (`registerPaneKind` / `paneTabHTML`),
+  the **workspace file** (`parseLayoutFile`, the preset/startup splicers, the layout
+  cards shared by Settings and the editor), and `paneActs()` —
+  the split/detach/snippets/search/close chrome that belongs to a **pane**, not to what
+  is inside it. A terminal and an agent session both draw from it, so neither can drift
+  into a near-copy of the other.
+- `agents.js` / `agents.css` — the **agent manager** (the view) and the **agent pane**,
+  shared by both entry pages. Each page supplies `AGENT_SHELL` (`'desktop'` / `'web'`),
+  which decides only one thing: whether your own machine can answer, or needs an attached
+  client. Everything else — the machine → tool → conversation selector, the refusal on the
+  server's own host, what a broken adapter says — is identical in both, on purpose.
 - `rite.css` — shared design tokens + components (dark, terminal-forward).
 - `rite.js` — shared helpers (toast, modal, mini-terminal) + generic dialogs.
-- `full-data.js` — mock data (org directory, teams, collections) + extra icons.
+- `full-data.js` — mock data (org directory, teams, collections), extra icons, and
+  `overlayNavHTML()` — the **one** Teams / Collections / Administration list, so the
+  workspace bar and each overlay page's bar cannot disagree about what exists.
 
 ## Model it encodes (see the `rite-ux-target` project memory for the full rationale)
 - **Base-first**: local terminal + Quick SSH work with no auth.

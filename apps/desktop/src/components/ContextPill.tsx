@@ -26,11 +26,19 @@ import {
   type NativeVault,
 } from '../utils/nativeShell';
 import { Hub } from './Hub';
-import { ContextBadge, ContextDot, ContextTag, CurrentMark, type ContextTagState } from './ContextTag';
+import {
+  ContextBadge,
+  ContextDot,
+  ContextTag,
+  CurrentMark,
+  type ContextTagState,
+} from './ContextTag';
 import { useAuthStore } from '../store/authStore';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
+import { useTranslation } from '../i18n/i18n';
 
 export function ContextPill() {
+  const { t } = useTranslation();
   const [ctx, setCtx] = useState<ContextState | null>(null);
   const [open, setOpen] = useState(false);
   const [showManager, setShowManager] = useState(false);
@@ -80,14 +88,15 @@ export function ContextPill() {
   // No registered vault under this window yet (fresh install, register-after-password) ⇒ don't
   // pretend there's a "Local vault"; show it's not set up.
   const currentLabel = isLocalActive
-    ? (currentVault?.label ?? (vaults.length === 0 ? 'No vault' : 'Local vault'))
+    ? (currentVault?.label ?? (vaults.length === 0 ? t('hub.noVault') : t('hub.localVault')))
     : active.label || active.url;
 
   // Default action: switch THIS window in place (locks the current vault). "Open in new
   // window" (the split button) keeps the current context and opens the target beside it.
   const openVault = (path: string) => {
     setOpen(false);
-    if (!(isLocalActive && currentVaultPath === path)) requestSwitchContext({ kind: 'local', path });
+    if (!(isLocalActive && currentVaultPath === path))
+      requestSwitchContext({ kind: 'local', path });
   };
   const openServer = (s: RemoteServer) => {
     setOpen(false);
@@ -104,7 +113,12 @@ export function ContextPill() {
   };
 
   const chevron = (
-    <svg className="h-3 w-3 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="h-3 w-3 text-muted-foreground"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
     </svg>
   );
@@ -123,12 +137,20 @@ export function ContextPill() {
   );
   const folderIcon = (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+      />
     </svg>
   );
   const shieldIcon = (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3l7 3v5c0 4.5-3 8.5-7 10-4-1.5-7-5.5-7-10V6z"
+      />
     </svg>
   );
   const footerRow = (icon: React.ReactNode, label: string, onClick: () => void) => (
@@ -145,7 +167,11 @@ export function ContextPill() {
   );
   const splitIcon = (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4"
+      />
     </svg>
   );
   // A row = a wide "switch this window" button, then its actions. Like the mock's menu they
@@ -160,8 +186,8 @@ export function ContextPill() {
   const newWindowBtn = (label: string, onClick: () => void) => (
     <button
       onClick={onClick}
-      title="Open in a new window"
-      aria-label={`Open ${label} in a new window`}
+      title={t('ctxPill.newWindow')}
+      aria-label={t('ctxPill.newWindowOf', { name: label })}
       className="hidden flex-none rounded p-1.5 text-muted-foreground transition hover:bg-background hover:text-foreground group-hover:block"
     >
       {splitIcon}
@@ -175,19 +201,29 @@ export function ContextPill() {
     // behind DELETE ALL DATA, not one click from Open.
     if (isLocalActive && currentVaultPath === v.path) return null;
     return (
-    <button
-      onClick={() => {
-        setOpen(false);
-        setRemoveVault(v);
-      }}
-      title="Remove from list"
-      aria-label={`Remove ${v.label}`}
-      className="hidden flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500 group-hover:block"
-    >
-      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
-      </svg>
-    </button>
+      <button
+        onClick={() => {
+          setOpen(false);
+          setRemoveVault(v);
+        }}
+        title={t('ctxPill.removeFromList')}
+        aria-label={t('ctxPill.removeOf', { name: v.label })}
+        className="hidden flex-none rounded p-1.5 text-muted-foreground transition hover:bg-red-500/10 hover:text-red-500 group-hover:block"
+      >
+        <svg
+          className="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"
+          />
+        </svg>
+      </button>
     );
   };
 
@@ -196,7 +232,7 @@ export function ContextPill() {
       <button
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm font-medium hover:bg-muted"
-        title="Switch context"
+        title={t('ctxPill.switch')}
       >
         <ContextDot state={isLocalActive ? vaultState(currentVaultPath) : 'server'} />
         <span className="max-w-[180px] truncate">{currentLabel}</span>
@@ -205,7 +241,7 @@ export function ContextPill() {
 
       {open && (
         <div className="absolute left-0 top-full z-30 mt-2 w-80 rounded-[14px] border border-border bg-card p-2 shadow-lg">
-          <p className="m-eyebrow px-2.5 pb-1 pt-2">Local vaults</p>
+          <p className="m-eyebrow px-2.5 pb-1 pt-2">{t('ctxPill.localVaults')}</p>
           {vaults.length > 0 ? (
             vaults.map((v) => {
               const isCurrent = isLocalActive && currentVaultPath === v.path;
@@ -235,11 +271,17 @@ export function ContextPill() {
                         setOpen(false);
                         void lockCurrent();
                       }}
-                      title="Lock"
-                      aria-label={`Lock ${v.label}`}
+                      title={t('ctxPill.lock')}
+                      aria-label={t('ctxPill.lockOf', { name: v.label })}
                       className="flex-none rounded p-1.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
                     >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
                         <rect x="5" y="11" width="14" height="10" rx="2" />
                         <path strokeLinecap="round" d="M8 11V7a4 4 0 118 0v4" />
                       </svg>
@@ -251,14 +293,12 @@ export function ContextPill() {
               );
             })
           ) : (
-            <p className="px-2 py-1.5 text-sm text-muted-foreground">
-              No vault yet — create one below.
-            </p>
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">{t('ctxPill.noVault')}</p>
           )}
 
           {ctx && ctx.roster.length > 0 && (
             <>
-              <p className="m-eyebrow px-2.5 pb-1 pt-2.5">Servers</p>
+              <p className="m-eyebrow px-2.5 pb-1 pt-2.5">{t('ctxPill.servers')}</p>
               {ctx.roster.map((s) => {
                 const isCurrent = !isLocalActive && active.id === s.id;
                 return (
@@ -273,7 +313,9 @@ export function ContextPill() {
                           <span className="truncate text-sm font-semibold">{s.label || s.url}</span>
                           {isCurrent && <CurrentMark />}
                         </span>
-                        <span className="block truncate text-xs text-muted-foreground">{s.url}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {s.url}
+                        </span>
                       </span>
                       <ContextTag state="server" />
                     </button>
@@ -285,10 +327,12 @@ export function ContextPill() {
           )}
 
           <div className="my-2 h-px bg-border" />
-          {footerRow(gridIcon, 'Card view — manage all…', () => setShowManager(true))}
-          {footerRow(plusIcon, 'New local vault…', openCreateVault)}
-          {footerRow(folderIcon, 'Open a vault file…', () => sendVaultCommand({ type: 'vault-open-file' }))}
-          {footerRow(shieldIcon, 'Add a server…', () => {
+          {footerRow(gridIcon, t('ctxPill.manageAll'), () => setShowManager(true))}
+          {footerRow(plusIcon, t('ctxPill.newVault'), openCreateVault)}
+          {footerRow(folderIcon, t('ctxPill.openFile'), () =>
+            sendVaultCommand({ type: 'vault-open-file' }),
+          )}
+          {footerRow(shieldIcon, t('ctxPill.addServer'), () => {
             setShowManager(true);
             setAddServer(true);
           })}

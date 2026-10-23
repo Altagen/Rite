@@ -210,7 +210,9 @@ export function BoardModal({
               <div key={name}>
                 <div className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   {name}
-                  <span className="rounded-full border border-border px-1.5 text-[10px]">{items.length}</span>
+                  <span className="rounded-full border border-border px-1.5 text-[10px]">
+                    {items.length}
+                  </span>
                 </div>
                 {view === 'list' ? (
                   <div className="flex flex-col gap-1">
@@ -371,7 +373,10 @@ function CardDetail({
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-lg overflow-hidden rounded-lg border border-border bg-background shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -448,8 +453,12 @@ function CardDetail({
               ) : (
                 (card.rows ?? []).map((r, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <span className={`h-1.5 w-1.5 flex-none rounded-full ${r.up ? 'bg-green-500' : 'bg-red-500'}`} />
-                    <span className={`font-mono text-xs ${r.up ? 'text-muted-foreground' : 'text-red-500'}`}>
+                    <span
+                      className={`h-1.5 w-1.5 flex-none rounded-full ${r.up ? 'bg-green-500' : 'bg-red-500'}`}
+                    />
+                    <span
+                      className={`font-mono text-xs ${r.up ? 'text-muted-foreground' : 'text-red-500'}`}
+                    >
                       {r.text}
                     </span>
                   </div>
@@ -461,11 +470,17 @@ function CardDetail({
         </div>
         {canWrite && (
           <div className="flex items-center border-t border-border px-4 py-3">
-            <button onClick={onEdit} className="rounded border border-border px-2.5 py-1 text-xs hover:bg-muted">
+            <button
+              onClick={onEdit}
+              className="rounded border border-border px-2.5 py-1 text-xs hover:bg-muted"
+            >
               {t('board.edit')}
             </button>
             <div className="flex-1" />
-            <button onClick={onRemove} className="rounded px-2.5 py-1 text-xs text-red-500 hover:bg-muted">
+            <button
+              onClick={onRemove}
+              className="rounded px-2.5 py-1 text-xs text-red-500 hover:bg-muted"
+            >
               {t('board.remove')}
             </button>
           </div>
@@ -513,7 +528,14 @@ function CardForm({
     const c = cat.trim() || 'General';
     let card: BoardCard;
     if (type === 'link') {
-      card = { id, type, title: ttl, url: url.trim() || 'https://example.com', emoji: emoji.trim() || '🔗', cat: c };
+      card = {
+        id,
+        type,
+        title: ttl,
+        url: url.trim() || 'https://example.com',
+        emoji: emoji.trim() || '🔗',
+        cat: c,
+      };
     } else if (type === 'note') {
       card = { id, type, title: ttl, text: text.trim(), cat: c };
     } else if (type === 'action') {
@@ -534,7 +556,13 @@ function CardForm({
   const catField = (
     <label className={fieldCls}>
       <span className={labelCls}>{t('board.fieldCategory')}</span>
-      <input value={cat} onChange={(e) => setCat(e.target.value)} list="board-cats" className={input} placeholder="Ops" />
+      <input
+        value={cat}
+        onChange={(e) => setCat(e.target.value)}
+        list="board-cats"
+        className={input}
+        placeholder="Ops"
+      />
       <datalist id="board-cats">
         {knownCats.map((c) => (
           <option key={c} value={c} />
@@ -544,7 +572,10 @@ function CardForm({
   );
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4" onClick={onCancel}>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
+      onClick={onCancel}
+    >
       <div
         className="w-full max-w-md overflow-hidden rounded-lg border border-border bg-background shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -555,18 +586,33 @@ function CardForm({
         <div className="flex max-h-[60vh] flex-col gap-2.5 overflow-y-auto px-4 py-3">
           <label className={fieldCls}>
             <span className={labelCls}>{t('board.fieldTitle')}</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} className={input} autoFocus />
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className={input}
+              autoFocus
+            />
           </label>
           {type === 'link' && (
             <>
               <label className={fieldCls}>
                 <span className={labelCls}>{t('board.fieldUrl')}</span>
-                <input value={url} onChange={(e) => setUrl(e.target.value)} className={input} placeholder="https://grafana.acme.io" />
+                <input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  className={input}
+                  placeholder="https://grafana.acme.io"
+                />
               </label>
               <div className="flex gap-2.5">
                 <label className={`${fieldCls} w-24`}>
                   <span className={labelCls}>{t('board.fieldEmoji')}</span>
-                  <input value={emoji} onChange={(e) => setEmoji(e.target.value)} className={input} placeholder="📊" />
+                  <input
+                    value={emoji}
+                    onChange={(e) => setEmoji(e.target.value)}
+                    className={input}
+                    placeholder="📊"
+                  />
                 </label>
                 <div className="flex-1">{catField}</div>
               </div>
@@ -576,7 +622,8 @@ function CardForm({
             <>
               <label className={fieldCls}>
                 <span className={labelCls}>
-                  {t('board.fieldText')} <span className="font-normal">· {t('board.fieldTextHint')}</span>
+                  {t('board.fieldText')}{' '}
+                  <span className="font-normal">· {t('board.fieldTextHint')}</span>
                 </span>
                 <textarea
                   value={text}
@@ -594,15 +641,26 @@ function CardForm({
               <div className="flex gap-2.5">
                 <label className={`${fieldCls} w-36`}>
                   <span className={labelCls}>{t('board.fieldLabel')}</span>
-                  <input value={label} onChange={(e) => setLabel(e.target.value)} className={input} placeholder="Restart" />
+                  <input
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    className={input}
+                    placeholder={t('board.phActionLabel')}
+                  />
                 </label>
                 <div className="flex-1">{catField}</div>
               </div>
               <label className={fieldCls}>
                 <span className={labelCls}>
-                  {t('board.fieldDesc')} <span className="font-normal">· {t('board.fieldDescHint')}</span>
+                  {t('board.fieldDesc')}{' '}
+                  <span className="font-normal">· {t('board.fieldDescHint')}</span>
                 </span>
-                <input value={desc} onChange={(e) => setDesc(e.target.value)} className={`${input} font-mono`} placeholder="systemctl restart app" />
+                <input
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  className={`${input} font-mono`}
+                  placeholder="systemctl restart app"
+                />
               </label>
             </>
           )}
@@ -610,7 +668,11 @@ function CardForm({
             <>
               <label className={fieldCls}>
                 <span className={labelCls}>{t('board.fieldSource')}</span>
-                <select value={source} onChange={(e) => setSource(e.target.value as 'failed' | 'containers')} className={input}>
+                <select
+                  value={source}
+                  onChange={(e) => setSource(e.target.value as 'failed' | 'containers')}
+                  className={input}
+                >
                   <option value="failed">{t('board.sourceFailed')}</option>
                   <option value="containers">{t('board.sourceContainers')}</option>
                 </select>
@@ -620,10 +682,16 @@ function CardForm({
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
-          <button onClick={onCancel} className="rounded border border-border px-2.5 py-1 text-xs hover:bg-muted">
+          <button
+            onClick={onCancel}
+            className="rounded border border-border px-2.5 py-1 text-xs hover:bg-muted"
+          >
             {t('board.cancel')}
           </button>
-          <button onClick={submit} className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:opacity-90">
+          <button
+            onClick={submit}
+            className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:opacity-90"
+          >
             {existing ? t('board.saveEdit') : t('board.save')}
           </button>
         </div>

@@ -4,31 +4,52 @@
  * Recursive component that renders the pane tree structure
  */
 
+import type { SplitTarget } from '../types/pane';
+import { useTranslation } from '../i18n/i18n';
 import { useRef, useEffect } from 'react';
 import { AnyPaneNode } from '../types/pane';
 import { SplitPane } from './SplitPane';
-import { Terminal } from './Terminal';
 import { usePaneDrag } from '../contexts/PaneDragContext';
 import { calculateDropZone } from '../utils/dropZone';
+import { isLeaf } from '../utils/paneTree';
+import { paneKind, type PaneChrome } from '../panes/registry';
 
 export interface PaneContainerProps {
   node: AnyPaneNode;
   onSplitRatioChange: (splitId: string, newRatio: number) => void;
   onClosePane: (paneId: string) => void;
   onFocusPane: (paneId: string) => void;
-  onSplitPane: (paneId: string, direction: 'horizontal' | 'vertical') => void;
+  onSplitPane: (
+    paneId: string,
+    direction: 'horizontal' | 'vertical',
+    target?: SplitTarget,
+  ) => Promise<void>;
   onDetachPane?: (paneId: string) => void;
-  onReorganizePane?: (sourcePaneId: string, targetPaneId: string, position: 'top' | 'bottom' | 'left' | 'right') => void;
+  onReorganizePane?: (
+    sourcePaneId: string,
+    targetPaneId: string,
+    position: 'top' | 'bottom' | 'left' | 'right',
+  ) => void;
 }
 
-export function PaneContainer({ node, onSplitRatioChange, onClosePane, onFocusPane, onSplitPane, onDetachPane, onReorganizePane }: PaneContainerProps) {
-  const { draggedPaneId, setDraggedPane, dropTargetPaneId, dropPosition, setDropTarget } = usePaneDrag();
+export function PaneContainer({
+  node,
+  onSplitRatioChange,
+  onClosePane,
+  onFocusPane,
+  onSplitPane,
+  onDetachPane,
+  onReorganizePane,
+}: PaneContainerProps) {
+  const { t } = useTranslation();
+  const { draggedPaneId, setDraggedPane, dropTargetPaneId, dropPosition, setDropTarget } =
+    usePaneDrag();
   const paneRef = useRef<HTMLDivElement>(null);
 
   // Global dragover handler to detect which pane we're over
   useEffect(() => {
     // ONLY activate when a PANE is being dragged (not a tab)
-    if (!draggedPaneId || node.type !== 'terminal') return;
+    if (!draggedPaneId || !isLeaf(node)) return;
 
     const handleGlobalDragOver = (e: DragEvent) => {
       // Only handle if we're dragging a pane (not a tab)
@@ -63,10 +84,10 @@ export function PaneContainer({ node, onSplitRatioChange, onClosePane, onFocusPa
 
     document.addEventListener('dragover', handleGlobalDragOver);
     return () => document.removeEventListener('dragover', handleGlobalDragOver);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- setDropTarget is a stable Zustand setter
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setDropTarget is a stable Zustand setter
   }, [draggedPaneId, node]);
 
-  if (node.type === 'terminal') {
+  if (isLeaf(node)) {
     const isDragging = draggedPaneId === node.id;
     const isDropTarget = dropTargetPaneId === node.id;
 
@@ -150,7 +171,26 @@ export function PaneContainer({ node, onSplitRatioChange, onClosePane, onFocusPa
       setDropTarget(null, null);
     };
 
-    // Terminal leaf node - render the actual terminal with drag & drop
+    // Everything above is the pane's surroundings and is the same whatever it shows.
+    // What it shows comes from the registry, which is the only thing here that knows
+    // one kind from another.
+    const { Content, canSplit } = paneKind(node);
+    const chrome: PaneChrome = {
+      isDragging: !!draggedPaneId,
+      onClose: () => onClosePane(node.id),
+      onSplitHorizontal: canSplit ? () => onSplitPane(node.id, 'horizontal') : undefined,
+      onSplitVertical: canSplit ? () => onSplitPane(node.id, 'vertical') : undefined,
+      onSplitWith: canSplit
+        ? (direction, target) => onSplitPane(node.id, direction, target)
+        : undefined,
+      onDetach: onDetachPane ? () => onDetachPane(node.id) : undefined,
+      onDragStart: handleDragStart,
+      onDragEnd: handleDragEnd,
+      onDragOver: handleDragOver,
+      onDrop: handleDrop,
+    };
+
+    // Leaf node - render the pane's content with the drag & drop chrome around it
     return (
       <div
         ref={paneRef}
@@ -163,22 +203,7 @@ export function PaneContainer({ node, onSplitRatioChange, onClosePane, onFocusPa
           pointerEvents: draggedPaneId && draggedPaneId !== node.id ? 'auto' : undefined,
         }}
       >
-        <Terminal
-          key={node.session.id}
-          connectionId={node.session.connectionId}
-          connectionName={node.session.connectionName}
-          sessionId={node.session.id}
-          isFocused={node.isFocused}
-          onClose={() => onClosePane(node.id)}
-          onSplitHorizontal={() => onSplitPane(node.id, 'horizontal')}
-          onSplitVertical={() => onSplitPane(node.id, 'vertical')}
-          onDetach={onDetachPane ? () => onDetachPane(node.id) : undefined}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-          isDragging={!!draggedPaneId}
-        />
+        <Content node={node} chrome={chrome} />
 
         {/* Drop zone indicators */}
         {isDropTarget && dropPosition && (
@@ -186,20 +211,41 @@ export function PaneContainer({ node, onSplitRatioChange, onClosePane, onFocusPa
             {/* Visual highlight for the drop zone */}
             <div
               className={`absolute pointer-events-none bg-primary/20 border-2 border-primary transition-all ${
-                dropPosition === 'top' ? 'top-0 left-0 right-0 h-1/2' :
-                dropPosition === 'bottom' ? 'bottom-0 left-0 right-0 h-1/2' :
-                dropPosition === 'left' ? 'left-0 top-0 bottom-0 w-1/2' :
-                'right-0 top-0 bottom-0 w-1/2'
+                dropPosition === 'top'
+                  ? 'top-0 left-0 right-0 h-1/2'
+                  : dropPosition === 'bottom'
+                    ? 'bottom-0 left-0 right-0 h-1/2'
+                    : dropPosition === 'left'
+                      ? 'left-0 top-0 bottom-0 w-1/2'
+                      : 'right-0 top-0 bottom-0 w-1/2'
               }`}
             />
             {/* Label indicator */}
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
               <div className="bg-card border-2 border-primary rounded-lg px-4 py-2 shadow-2xl">
                 <div className="flex items-center gap-2">
-                  <svg className="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                  <svg
+                    className="h-5 w-5 text-primary"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+                    />
                   </svg>
-                  <span className="text-sm font-medium text-primary">Drop {dropPosition}</span>
+                  <span className="text-sm font-medium text-primary">
+                    {dropPosition === 'top'
+                      ? t('split.dropTop')
+                      : dropPosition === 'bottom'
+                        ? t('split.dropBottom')
+                        : dropPosition === 'left'
+                          ? t('split.dropLeft')
+                          : t('split.dropRight')}
+                  </span>
                 </div>
               </div>
             </div>
@@ -209,39 +255,34 @@ export function PaneContainer({ node, onSplitRatioChange, onClosePane, onFocusPa
     );
   }
 
-  if (node.type === 'split') {
-    // Split container node - recursively render children
-    return (
-      <SplitPane
-        direction={node.direction}
-        ratio={node.ratio}
-        onRatioChange={(newRatio) => onSplitRatioChange(node.id, newRatio)}
-        left={
-          <PaneContainer
-            node={node.children[0]}
-            onSplitRatioChange={onSplitRatioChange}
-            onClosePane={onClosePane}
-            onFocusPane={onFocusPane}
-            onSplitPane={onSplitPane}
-            onDetachPane={onDetachPane}
-            onReorganizePane={onReorganizePane}
-          />
-        }
-        right={
-          <PaneContainer
-            node={node.children[1]}
-            onSplitRatioChange={onSplitRatioChange}
-            onClosePane={onClosePane}
-            onFocusPane={onFocusPane}
-            onSplitPane={onSplitPane}
-            onDetachPane={onDetachPane}
-            onReorganizePane={onReorganizePane}
-          />
-        }
-      />
-    );
-  }
-
-  // Should never reach here
-  return null;
+  // Split container node - recursively render children
+  return (
+    <SplitPane
+      direction={node.direction}
+      ratio={node.ratio}
+      onRatioChange={(newRatio) => onSplitRatioChange(node.id, newRatio)}
+      left={
+        <PaneContainer
+          node={node.children[0]}
+          onSplitRatioChange={onSplitRatioChange}
+          onClosePane={onClosePane}
+          onFocusPane={onFocusPane}
+          onSplitPane={onSplitPane}
+          onDetachPane={onDetachPane}
+          onReorganizePane={onReorganizePane}
+        />
+      }
+      right={
+        <PaneContainer
+          node={node.children[1]}
+          onSplitRatioChange={onSplitRatioChange}
+          onClosePane={onClosePane}
+          onFocusPane={onFocusPane}
+          onSplitPane={onSplitPane}
+          onDetachPane={onDetachPane}
+          onReorganizePane={onReorganizePane}
+        />
+      }
+    />
+  );
 }

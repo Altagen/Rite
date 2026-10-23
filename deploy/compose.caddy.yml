@@ -12,6 +12,10 @@
 # Requirements, so this works on the first try: the domain's A/AAAA record points
 # here, and ports 80 and 443 are free and reachable (ACME uses 80).
 #
+# Nothing to prepare: the first visit offers **Create the server administrator**, and no
+# secret rests anywhere. For a headless start with the administrator already created, add
+# the override — `-f deploy/compose.bootstrap.yml` (see that file, and docs/SERVER.md).
+#
 # One consequence worth knowing: with TLS terminated here, `hostKey` in
 # server_mode is null — rite-server is not holding the certificate, so it cannot
 # publish its fingerprint. Desktop clients pin the proxy's certificate by TOFU
@@ -42,16 +46,8 @@ services:
       RITE_ACCOUNTS: "1"
       RITE_ADDR: "0.0.0.0:1421"
       RITE_ALLOW_INSECURE_HTTP: "1"
-      RITE_ADMIN_USER: admin
-      RITE_ADMIN_PASSWORD_FILE: /run/secrets/rite_admin_password
-    secrets:
-      - rite_admin_password
     volumes:
       - rite-data:/home/rite/.local/share/rite
-
-secrets:
-  rite_admin_password:
-    file: ./admin_password.txt
 
 volumes:
   rite-data:

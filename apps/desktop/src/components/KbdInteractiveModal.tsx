@@ -10,6 +10,8 @@
  */
 
 import { useState } from 'react';
+import { RevealToggle } from './RevealToggle';
+import { useTranslation } from '../i18n/i18n';
 
 export interface KbdPromptItem {
   prompt: string;
@@ -30,9 +32,17 @@ interface KbdInteractiveModalProps {
   busy?: boolean;
 }
 
-export function KbdInteractiveModal({ challenge, onSubmit, onCancel, busy }: KbdInteractiveModalProps) {
+export function KbdInteractiveModal({
+  challenge,
+  onSubmit,
+  onCancel,
+  busy,
+}: KbdInteractiveModalProps) {
+  const { t } = useTranslation();
   const [answers, setAnswers] = useState<string[]>(() => challenge.prompts.map(() => ''));
-  const title = challenge.name.trim() || 'Server verification';
+  // Per prompt, not per dialog: a round can ask for a password AND a one-time code.
+  const [revealed, setRevealed] = useState<Set<number>>(new Set());
+  const title = challenge.name.trim() || t('kbd.title');
   const setAnswer = (i: number, v: string) =>
     setAnswers((a) => a.map((x, idx) => (idx === i ? v : x)));
 
@@ -56,7 +66,7 @@ export function KbdInteractiveModal({ challenge, onSubmit, onCancel, busy }: Kbd
             {title}
           </h2>
         </div>
-        <p className="mb-4 text-sm text-muted-foreground">The server needs more to sign you in.</p>
+        <p className="mb-4 text-sm text-muted-foreground">{t('kbd.why')}</p>
 
         {challenge.instructions.trim() && <p className="mb-3 text-sm">{challenge.instructions}</p>}
 
@@ -64,21 +74,36 @@ export function KbdInteractiveModal({ challenge, onSubmit, onCancel, busy }: Kbd
           {challenge.prompts.map((p, i) => (
             <div key={i}>
               <label className="mb-1 block text-sm font-medium">{p.prompt}</label>
-              <input
-                type={p.echo ? 'text' : 'password'}
-                value={answers[i]}
-                onChange={(e) => setAnswer(i, e.target.value)}
-                autoFocus={i === 0}
-                autoComplete="off"
-                className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
-              />
+              <div className="relative">
+                <input
+                  type={p.echo || revealed.has(i) ? 'text' : 'password'}
+                  value={answers[i]}
+                  onChange={(e) => setAnswer(i, e.target.value)}
+                  autoFocus={i === 0}
+                  autoComplete="off"
+                  className="w-full rounded border border-border bg-input px-3 py-2 pr-10 text-foreground focus:border-primary focus:outline-none"
+                />
+                {/* Only where the server masks it: a prompt it marked `echo` is already legible. */}
+                {!p.echo && (
+                  <RevealToggle
+                    shown={revealed.has(i)}
+                    onToggle={() =>
+                      setRevealed((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(i)) next.delete(i);
+                        else next.add(i);
+                        return next;
+                      })
+                    }
+                  />
+                )}
+              </div>
             </div>
           ))}
         </div>
 
         <p className="mt-3 text-xs text-muted-foreground">
-          Requested by the server (keyboard-interactive). Your answer is sent to the server to sign
-          in — <span className="font-medium">nothing is stored by Rite</span>.
+          {t('kbd.notStored')} <span className="font-medium">{t('kbd.notStoredBold')}</span>.
         </p>
 
         <div className="mt-6 flex justify-end gap-3">
@@ -88,14 +113,14 @@ export function KbdInteractiveModal({ challenge, onSubmit, onCancel, busy }: Kbd
             disabled={busy}
             className="rounded bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground hover:bg-secondary/80 disabled:opacity-50"
           >
-            Cancel
+            {t('kbd.cancel')}
           </button>
           <button
             type="submit"
             disabled={busy}
             className="rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {busy ? 'Verifying…' : 'Verify'}
+            {busy ? t('kbd.verifying') : t('kbd.verify')}
           </button>
         </div>
       </form>

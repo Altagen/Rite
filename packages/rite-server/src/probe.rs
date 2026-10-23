@@ -168,14 +168,14 @@ mod tests {
 
     #[tokio::test]
     async fn tcp_connect_reports_down_for_a_dead_port() {
-        // Bind then drop, so the port is (almost certainly) closed.
-        let addr = {
-            let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
-            l.local_addr().unwrap()
-        };
+        // Port 1, rather than an ephemeral port bound and dropped: the kernel hands the
+        // released port straight back to whichever sibling test binds `:0` next, and this
+        // test then probed a live listener and failed — on roughly every other run of the
+        // same binary. Nothing listens on 1 (binding it needs root, and no service we run
+        // uses it), so the refusal is deterministic.
         let r = probe(
             "127.0.0.1",
-            addr.port(),
+            1,
             ProbeMethod::TcpConnect,
             Duration::from_millis(500),
         )

@@ -95,7 +95,11 @@ async function retagCollectionItems(
       const next = transform(current);
       if (next === undefined) continue;
       record.folder = next;
-      await Backend.Collections.updateItem(collectionId, it.id, await encryptCollectionField(key, record));
+      await Backend.Collections.updateItem(
+        collectionId,
+        it.id,
+        await encryptCollectionField(key, record),
+      );
     } catch {
       // undecryptable item — skip
     }
@@ -123,9 +127,17 @@ export async function renameCollectionFolder(
   if (!newPath.trim() || newPath === oldPath) {
     if (newColor === undefined) return;
   }
-  const { metaKey, itemsKey, header } = await readCollectionHeader(collectionId, publicKey, privateKey);
+  const { metaKey, itemsKey, header } = await readCollectionHeader(
+    collectionId,
+    publicKey,
+    privateKey,
+  );
   const rewrite = (name: string) =>
-    name === oldPath ? newPath : name.startsWith(oldPath + '/') ? newPath + name.slice(oldPath.length) : name;
+    name === oldPath
+      ? newPath
+      : name.startsWith(oldPath + '/')
+        ? newPath + name.slice(oldPath.length)
+        : name;
   const folders = (header.folders ?? []).map((f) => ({
     name: rewrite(f.name),
     color: f.name === oldPath && newColor !== undefined ? newColor : f.color,
@@ -147,7 +159,11 @@ export async function deleteCollectionFolder(
   privateKey: Uint8Array,
   path: string,
 ): Promise<void> {
-  const { metaKey, itemsKey, header } = await readCollectionHeader(collectionId, publicKey, privateKey);
+  const { metaKey, itemsKey, header } = await readCollectionHeader(
+    collectionId,
+    publicKey,
+    privateKey,
+  );
   const parent = parentPath(path);
   const folders = (header.folders ?? []).filter((f) => !underPath(f.name, path));
   await writeCollectionHeader(collectionId, metaKey, { ...header, folders });

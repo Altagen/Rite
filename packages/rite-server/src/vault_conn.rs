@@ -60,11 +60,7 @@ struct BlobRow {
 }
 
 fn auth_type(a: &AuthMethod) -> &'static str {
-    match a {
-        AuthMethod::Password { .. } => "password",
-        AuthMethod::PublicKey { .. } => "publicKey",
-        AuthMethod::Agent { .. } => "agent",
-    }
+    a.type_str()
 }
 
 fn now() -> i64 {
@@ -101,6 +97,18 @@ pub fn merge_update(
     }
     if let Some(v) = u.auth_method {
         c.auth_method = v;
+    }
+    // After the assignment above, so replacing the key and dropping its passphrase in one
+    // edit does both rather than one of the two.
+    if u.forget_passphrase {
+        c.auth_method =
+            std::mem::replace(&mut c.auth_method, AuthMethod::Password { password: None })
+                .without_passphrase();
+    }
+    if u.forget_password {
+        c.auth_method =
+            std::mem::replace(&mut c.auth_method, AuthMethod::Password { password: None })
+                .without_password();
     }
     if let Some(v) = u.color {
         c.color = Some(v);

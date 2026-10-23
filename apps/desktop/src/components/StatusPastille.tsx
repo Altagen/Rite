@@ -11,20 +11,13 @@
  */
 
 import { useServerSession } from '../store/serverSessionStore';
+import { useTranslation } from '../i18n/i18n';
+import { relTime } from '../utils/relTime';
 import type { HealthStatus } from '../store/healthStore';
 import { useHealthPref, effectiveHealth } from '../store/healthPrefStore';
 
 // Recent = within a day → a warmer dot; older → dim; never → hollow.
 const RECENT_SECS = 24 * 60 * 60;
-
-function relLabel(seconds: number | null | undefined): string {
-  if (!seconds) return 'Never connected';
-  const d = Math.floor(Date.now() / 1000) - seconds;
-  if (d < 60) return 'Last connected just now';
-  if (d < 3600) return `Last connected ${Math.floor(d / 60)}m ago`;
-  if (d < 86400) return `Last connected ${Math.floor(d / 3600)}h ago`;
-  return `Last connected ${Math.floor(d / 86400)}d ago`;
-}
 
 // Kept out of the component render (needs the current time; purity rule).
 function dotClass(lastUsedAt: number | null | undefined): string {
@@ -46,6 +39,7 @@ export function StatusPastille({
   className?: string;
 }) {
   const { mode } = useServerSession();
+  const { t } = useTranslation();
   const healthPref = useHealthPref((s) => s.pref);
 
   // Active verdict wins when present (an on-demand check has run / is running).
@@ -53,7 +47,7 @@ export function StatusPastille({
     return (
       <span
         className={`inline-block h-2 w-2 flex-none animate-pulse rounded-full bg-amber-500 ${className}`}
-        title="Checking status…"
+        title={t('status.checking')}
       />
     );
   }
@@ -61,7 +55,7 @@ export function StatusPastille({
     return (
       <span
         className={`inline-block h-2 w-2 flex-none rounded-full bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.7)] ${className}`}
-        title="Reachable · active check"
+        title={t('status.up')}
       />
     );
   }
@@ -69,7 +63,7 @@ export function StatusPastille({
     return (
       <span
         className={`inline-block h-2 w-2 flex-none rounded-full border border-muted-foreground/50 ${className}`}
-        title="No response · active check"
+        title={t('status.down')}
       />
     );
   }
@@ -83,7 +77,11 @@ export function StatusPastille({
   return (
     <span
       className={`inline-block h-2 w-2 flex-none rounded-full ${dotClass(lastUsedAt)} ${className}`}
-      title={`${relLabel(lastUsedAt)} · passive (no probe)`}
+      title={t('status.passive', {
+        when: t('status.lastConnected', {
+          when: relTime(lastUsedAt, t, { never: t('status.neverConnected') }),
+        }),
+      })}
     />
   );
 }

@@ -3,6 +3,7 @@
  * theme. These are pure UI toggles that work in every shell/context.
  */
 
+import { deviceStore } from '../utils/deviceStore';
 import { create } from 'zustand';
 
 const MEMBER_COUNT_KEY = 'rite.showMemberCount';
@@ -25,14 +26,14 @@ interface DisplayPrefs {
 }
 
 export const useDisplayPrefs = create<DisplayPrefs>((set) => ({
-  showMemberCount: localStorage.getItem(MEMBER_COUNT_KEY) !== 'false', // default on
+  showMemberCount: deviceStore.getItem(MEMBER_COUNT_KEY) !== 'false', // default on
   setShowMemberCount: (v) => {
-    localStorage.setItem(MEMBER_COUNT_KEY, String(v));
+    deviceStore.setItem(MEMBER_COUNT_KEY, String(v));
     set({ showMemberCount: v });
   },
-  machineProbes: localStorage.getItem(MACHINE_PROBES_KEY) !== 'false', // default on
+  machineProbes: deviceStore.getItem(MACHINE_PROBES_KEY) !== 'false', // default on
   setMachineProbes: (v) => {
-    localStorage.setItem(MACHINE_PROBES_KEY, String(v));
+    deviceStore.setItem(MACHINE_PROBES_KEY, String(v));
     set({ machineProbes: v });
   },
 }));

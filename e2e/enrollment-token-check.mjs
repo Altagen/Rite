@@ -132,7 +132,7 @@ try {
   ok('admin mints user/manager tokens but never admin');
 
   step = 'manager-limits';
-  const mgr = await (await post('/api/admin/users', { ...(await vaultBody('mgr', 'MgrPass1234!')), role: 'manager' }, admin)).json();
+  await (await post('/api/admin/users', { ...(await vaultBody('mgr', 'MgrPass1234!')), role: 'manager' }, admin)).json();
   const mgrTok = (await login('mgr', 'MgrPass1234!')).token;
   assert.equal((await post('/api/admin/enrollment-tokens', { role: 'user' }, mgrTok)).status, 201, 'manager mints a user token');
   assert.equal((await post('/api/admin/enrollment-tokens', { role: 'manager' }, mgrTok)).status, 403, 'manager cannot mint a manager token');

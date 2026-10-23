@@ -6,7 +6,9 @@
 
    Each page supplies: STATE, renderSide/renderMain, M (icons), ICON, pastille,
    machineByName, jumpChain, connectMachine, dlgNewConn, floatMenu, isLocal, and
-   DASH_SHELL — 'webui' in a browser, 'clients' in the desktop. */
+   DASH_SHELL — 'webui' in a browser, 'clients' in the desktop. The dashboard header
+   also calls `openAgentsOn` from agents.js, so that a machine's agents are reached
+   where its containers are: a menu is a fine switcher and a poor finder. */
 /* Port forwarding (Wave-1): saved per-machine tunnels, started/stopped live. MVP =
    LOCAL forward (127.0.0.1:localPort → remoteHost:remotePort over SSH, as seen from
    the host). Remote & dynamic (SOCKS) reserved in the UI, built later — all ride the
@@ -124,7 +126,7 @@ function pfToggleFor(name,i){const cn=machineByName(name);const f=(cn.forwards||
 function pfConfirmDel(cn,i,after){const f=(cn.forwards||[])[i];if(!f)return;
   const route=`127.0.0.1:${f.localPort} → ${f.remoteHost}:${f.remotePort}`;
   showModal({title:'Remove this forward?',subtitle:route,confirm:'Remove',
-    body:`<p style="font-size:13px;margin:0">This stops and removes the port forward <span class="mono">${route}</span>${f.active?' — it is <b>active</b> right now':''}. You can add it again anytime.</p>`,
+    body:`<p style="font-size:13px;margin:0">This stops and removes the port forward <span class="mono">${route}</span>${f.active?' — it is <b>active</b> right now':''}. It can be added again at any time.</p>`,
     onConfirm:()=>{(cn.forwards||[]).splice(i,1);after&&after();}});}
 function pfDelFor(name,i){const cn=machineByName(name);pfConfirmDel(cn,i,()=>{renderSide();renderMain();});}
 
@@ -143,7 +145,7 @@ function probeVerdict(){
     const serverAllows=(DASH_SHELL==='webui'?p.webui:p.clients)!==false;
     if(!serverAllows)return {allowed:false,by:'server'};
   }
-  return STATE.machineProbes===false?{allowed:false,by:'you'}:{allowed:true};
+  return STATE.machineProbes===false?{allowed:false,by:'local'}:{allowed:true};
 }
 /* Why the cards are not there, in words the reader can act on. A blank panel for no
    stated reason reads as a broken one, and that is how it gets reported. */
@@ -152,8 +154,8 @@ function probeBlockedNote(){
   const why=v.by==='server'
     ? (DASH_SHELL==='webui'
         ? 'This server turns container and service checks off for the web UI, so they run for nobody here.'
-        : 'Your server turns container and service checks off for this client.')
-    : 'Container and service checks are off in your settings — turn them back on under Machine status.';
+        : 'This server turns container and service checks off for this client.')
+    : 'Container and service checks are off in settings — turn them back on under Machine status.';
   return `<div class="dnote">${IC_INFO}<span><b>Containers and Services are not shown.</b> ${why} Everything else on this dashboard is unaffected: refusing to probe is not refusing the feature.</span></div>`;
 }
 
@@ -182,6 +184,7 @@ function machineDashboard(cn){
       ${pastille(cn)}
       <span style="flex:1"></span>
       <button class="btn btn-ghost btn-sm" onclick="dlgDashCustomize(machineByName('${cn.name}'))" title="Choose which cards appear"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h7M15 18h5"/><circle cx="15" cy="6" r="2" fill="var(--card)"/><circle cx="7" cy="12" r="2" fill="var(--card)"/><circle cx="12" cy="18" r="2" fill="var(--card)"/></svg> Customize</button>
+      <button class="btn btn-ghost btn-sm" onclick="openAgentsOn('${cn.name}')" title="AI agent sessions on this machine">${M.agent} Agents</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgNewConn('',machineByName('${cn.name}'))">${M.edit} Edit</button>
       <button class="btn btn-primary btn-sm" onclick="connectMachine('${cn.user||'user'}@${cn.host||cn.name}','${cn.name}')">${ICON.play} Connect</button>
     </div>
@@ -191,9 +194,9 @@ function machineDashboard(cn){
 /* Customize which cards appear on this machine's dashboard (per-machine, persisted on cn). */
 function dlgDashCustomize(cn){cn.dashHidden=cn.dashHidden||[];
   const v=probeVerdict();
-  const body=`<p class="muted" style="font-size:12px;margin:0 0 12px">Choose which cards appear on <b>${cn.name}</b>'s dashboard. Containers & Services are detected live over SSH; hide what you don't need.</p>
+  const body=`<p class="muted" style="font-size:12px;margin:0 0 12px">Choose which cards appear on <b>${cn.name}</b>'s dashboard. Containers & Services are detected live over SSH; hide what is not needed.</p>
     <div class="dcust">${DASH_CARDS.map(([id,label])=>{const off=!v.allowed&&PROBE_CARDS.includes(id);
-      return `<label class="dcust-row ${off?'off':''}"><span>${label}${off?`<span class="dcust-why">${v.by==='server'?'not allowed here':'off in your settings'}</span>`:''}</span><span class="toggle ${cn.dashHidden.includes(id)?'':'on'}" data-card="${id}"><i></i></span></label>`;}).join('')}</div>`;
+      return `<label class="dcust-row ${off?'off':''}"><span>${label}${off?`<span class="dcust-why">${v.by==='server'?'not allowed here':'off in settings'}</span>`:''}</span><span class="toggle ${cn.dashHidden.includes(id)?'':'on'}" data-card="${id}"><i></i></span></label>`;}).join('')}</div>`;
   const m=showModal({title:'Customize dashboard',subtitle:cn.name,confirm:'Done',body});
   m.querySelectorAll('[data-card]').forEach(t=>t.onclick=()=>{const id=t.dataset.card;t.classList.toggle('on');const i=cn.dashHidden.indexOf(id);
     if(t.classList.contains('on')){if(i>=0)cn.dashHidden.splice(i,1);}else if(i<0)cn.dashHidden.push(id);renderMain();});}
@@ -279,7 +282,7 @@ function boardBody(coll){coll.board=coll.board||[];
   // filter/view change, so the modal never resizes (feels like filtering, not a new view).
   return `<div class="bmodal">
     <p class="muted" style="font-size:12px;margin:0 0 12px">${isLocal()
-      ? `A space for <b>${coll.name}</b> — links, notes, one-click actions and live views. Encrypted in your vault. Click a card to open it.`
+      ? `A space for <b>${coll.name}</b> — links, notes, one-click actions and live views. Encrypted in the vault. Click a card to open it.`
       : `A shared space for <b>${coll.name}</b> — links, notes, one-click actions and live views. Encrypted, members-only; write access can edit. Click a card to open it.`}</p>
     <div class="bbar">
       <div class="bchips">${chips}</div><span style="flex:1"></span>

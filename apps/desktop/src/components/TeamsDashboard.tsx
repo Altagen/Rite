@@ -6,20 +6,25 @@
  * view. Mirrors design/mock/teams.html.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Backend,
-  type UserTeam,
-  type TeamMember,
-  type OfferedCollection,
-} from '../utils/backend';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from '../i18n/i18n';
+import { Backend, type UserTeam, type TeamMember, type OfferedCollection } from '../utils/backend';
 import { useServerSession } from '../store/serverSessionStore';
 import { navigate } from '../store/route';
 import { IconLock, IconUsers, IconCollection } from './icons';
 import { OverlayHeaderControls } from './OverlayHeaderControls';
 import riteLogo from '../assets/rite.png';
 
-const AVATAR_COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#e0af68'];
+const AVATAR_COLORS = [
+  '#7c9cf5',
+  '#9ece6a',
+  '#e5b567',
+  '#f0a35e',
+  '#f7768e',
+  '#bb9af7',
+  '#56c7c0',
+  '#e0af68',
+];
 function avatarColor(name: string) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
@@ -36,9 +41,11 @@ function Avatar({ name }: { name: string }) {
     </span>
   );
 }
-const roleLabel = (r: TeamMember['role']) => (r === 'admin' ? 'Manager' : 'Member');
+const roleKey = (r: TeamMember['role']) =>
+  r === 'admin' ? 'teams.roleManager' : 'teams.roleMember';
 
 export function TeamsDashboard() {
+  const { t } = useTranslation();
   const { user: me, mode } = useServerSession();
   const [teams, setTeams] = useState<UserTeam[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -56,11 +63,13 @@ export function TeamsDashboard() {
       ]);
       setTeams(mine);
       setOffered(offers);
-      setSelectedId((prev) => (prev && mine.some((t) => t.id === prev) ? prev : (mine[0]?.id ?? null)));
+      setSelectedId((prev) =>
+        prev && mine.some((team) => team.id === prev) ? prev : (mine[0]?.id ?? null),
+      );
     } catch {
-      setError('Failed to load teams');
+      setError(t('teams.errLoad'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async initial load
@@ -94,7 +103,7 @@ export function TeamsDashboard() {
       try {
         await fn();
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Action failed');
+        setError(err instanceof Error ? err.message : t('teams.errAction'));
       } finally {
         setBusy(false);
       }
@@ -119,48 +128,52 @@ export function TeamsDashboard() {
   // A member (not the last manager) can leave; the last manager is locked.
   const iAmLastManager = iManage && managerCount <= 1;
 
+  // The header, for OverflowNav's fit measurement (see OverlayHeaderControls).
+  const appbarRef = useRef<HTMLElement>(null);
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background text-foreground">
-      <header className="m-appbar">
+      <header ref={appbarRef} className="m-appbar m-appbar-fit">
         <div className="m-brand flex items-center gap-2.5">
           <img src={riteLogo} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
         {mode?.instanceName && (
-          <span className="m-chip" title="Server instance">
+          <span className="m-chip" title={t('teams.serverInstance')}>
             <span className="m-dot" />
             {mode.instanceName}
           </span>
         )}
         <span className="m-spacer" />
-        <OverlayHeaderControls />
+        <OverlayHeaderControls appbarRef={appbarRef} />
       </header>
 
       <div className="flex min-h-0 flex-1">
         {/* Rail: my teams */}
         <aside className="flex w-[280px] flex-none flex-col overflow-y-auto border-r border-border bg-input">
           <div className="px-3.5 pb-2 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            My teams
+            {t('teams.mine')}
           </div>
           <div className="flex-1 px-2 pb-3">
-            {teams.map((t) => (
+            {teams.map((team) => (
               <button
-                key={t.id}
-                onClick={() => setSelectedId(t.id)}
+                key={team.id}
+                onClick={() => setSelectedId(team.id)}
                 className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left text-sm transition ${
-                  selectedId === t.id ? 'border-primary/30 bg-primary/[0.13]' : 'border-transparent hover:bg-card'
+                  selectedId === team.id
+                    ? 'border-primary/30 bg-primary/[0.13]'
+                    : 'border-transparent hover:bg-card'
                 }`}
               >
                 <IconUsers className="h-4 w-4 flex-none text-primary" />
-                <span className="min-w-0 flex-1 truncate font-medium">{t.name}</span>
-                {t.role === 'admin' && (
+                <span className="min-w-0 flex-1 truncate font-medium">{team.name}</span>
+                {team.role === 'admin' && (
                   <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
-                    Manager
+                    {t('teams.roleManager')}
                   </span>
                 )}
               </button>
             ))}
             {teams.length === 0 && (
-              <p className="px-2 py-3 text-sm text-muted-foreground">You&apos;re not in any team yet.</p>
+              <p className="px-2 py-3 text-sm text-muted-foreground">{t('teams.none')}</p>
             )}
           </div>
         </aside>
@@ -174,13 +187,15 @@ export function TeamsDashboard() {
               </div>
             )}
             {!selected ? (
-              <p className="text-sm text-muted-foreground">Select a team.</p>
+              <p className="text-sm text-muted-foreground">{t('teams.pick')}</p>
             ) : (
               <>
                 <div className="mb-1 flex items-center gap-3">
                   <IconUsers className="h-6 w-6 text-primary" />
                   <h1 className="text-2xl font-bold">{selected.name}</h1>
-                  <span className="text-sm text-muted-foreground">· {members.length} members</span>
+                  <span className="text-sm text-muted-foreground">
+                    {t('teams.memberCountInline', { count: members.length })}
+                  </span>
                 </div>
                 <p className="mb-5 text-sm text-muted-foreground">
                   {iManage
@@ -191,21 +206,28 @@ export function TeamsDashboard() {
                 {/* Members */}
                 <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
                   <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-                    Members · {members.length}
+                    {t('teams.membersCount', { count: members.length })}
                   </div>
                   {members.map((m) => (
-                    <div key={m.userId} className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
+                    <div
+                      key={m.userId}
+                      className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+                    >
                       <Avatar name={m.username} />
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">
                         {m.username}
-                        {m.userId === me?.id && <span className="text-xs text-muted-foreground"> (you)</span>}
+                        {m.userId === me?.id && (
+                          <span className="text-xs text-muted-foreground"> (you)</span>
+                        )}
                       </span>
                       <span
                         className={`rounded-full px-2.5 py-1 text-xs font-semibold uppercase ${
-                          m.role === 'admin' ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
+                          m.role === 'admin'
+                            ? 'bg-primary/15 text-primary'
+                            : 'bg-secondary text-muted-foreground'
                         }`}
                       >
-                        {roleLabel(m.role)}
+                        {t(roleKey(m.role))}
                       </span>
                     </div>
                   ))}
@@ -214,30 +236,35 @@ export function TeamsDashboard() {
                 {/* Collections offered to this team (discovery) */}
                 <section className="mb-4 overflow-hidden rounded-2xl border border-border bg-card">
                   <div className="border-b border-border px-4 py-3 text-sm font-semibold">
-                    Collections offered to this team · {teamOffers.length}
+                    {t('teams.offersCount', { count: teamOffers.length })}
                   </div>
                   {teamOffers.length === 0 ? (
                     <div className="px-4 py-3 text-sm text-muted-foreground">
-                      No collections offered to this team yet.
+                      {t('teams.noOffers')}
                     </div>
                   ) : (
                     teamOffers.map((o) => {
                       const isMember = o.memberRole !== null;
                       const pending = requested.has(o.id);
                       return (
-                        <div key={o.id} className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0">
+                        <div
+                          key={o.id}
+                          className="flex items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+                        >
                           <IconCollection className="h-5 w-5 flex-none text-primary" />
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium">{o.discoveryLabel}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                            {o.discoveryLabel}
+                          </span>
                           {isMember ? (
                             <button
                               onClick={() => navigate('/collections')}
                               className="rounded-md border border-border px-3 py-1.5 text-sm hover:bg-secondary"
                             >
-                              Open
+                              {t('teams.open')}
                             </button>
                           ) : pending ? (
                             <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-semibold uppercase text-amber-600">
-                              Requested
+                              {t('teams.requested')}
                             </span>
                           ) : (
                             <button
@@ -245,7 +272,7 @@ export function TeamsDashboard() {
                               disabled={busy}
                               className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                             >
-                              Request access
+                              {t('teams.requestAccess')}
                             </button>
                           )}
                         </div>
@@ -257,20 +284,16 @@ export function TeamsDashboard() {
                 <div className="flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3 text-xs text-foreground/80">
                   <IconLock className="mt-0.5 h-4 w-4 flex-none text-primary" />
                   <div>
-                    <b>Names here are for discovery, not secrets.</b> The labels above are visible to this team (and the
-                    server) so you can find and request access. The machines — and every private collection — stay
-                    end-to-end encrypted; you only see them once a member grants you access.
+                    <b>{t('teams.discoveryNote')}</b> {t('teams.discoveryWhy')}
                   </div>
                 </div>
 
                 {/* Leave team */}
                 <section className="mt-4 flex items-center justify-between rounded-2xl border border-red-500/30 px-4 py-4">
                   <div>
-                    <div className="text-sm font-semibold text-red-600">Leave team</div>
+                    <div className="text-sm font-semibold text-red-600">{t('teams.leave')}</div>
                     <div className="text-xs text-muted-foreground">
-                      {iAmLastManager
-                        ? 'You are the last manager — promote someone before leaving.'
-                        : "You leave the roster and stop seeing the collections offered here. Collections you're already a member of are unaffected."}
+                      {iAmLastManager ? t('teams.lastManager') : t('teams.leaveWhy')}
                     </div>
                   </div>
                   <button
@@ -279,7 +302,7 @@ export function TeamsDashboard() {
                     title={iAmLastManager ? 'the team needs at least one manager' : undefined}
                     className="rounded-md border border-red-500/40 px-3 py-1.5 text-sm text-red-600 hover:bg-red-500/10 disabled:opacity-50"
                   >
-                    Leave
+                    {t('teams.leave')}
                   </button>
                 </section>
               </>

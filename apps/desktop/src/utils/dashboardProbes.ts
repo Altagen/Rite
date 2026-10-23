@@ -24,7 +24,7 @@ export type ProbeVerdict =
 
 export interface ProbeInputs {
   /** This server's mode, or null before it loads. A local vault has `accounts: false`. */
-  mode: Pick<ServerMode, 'accounts'> & { dashboardPolicy?: DashboardPolicy } | null;
+  mode: (Pick<ServerMode, 'accounts'> & { dashboardPolicy?: DashboardPolicy }) | null;
   /** The per-device preference (`displayPrefs.machineProbes`). */
   userWants: boolean;
   /** Override for tests; defaults to the real shell detection. */
@@ -42,7 +42,8 @@ export function probeVerdict({ mode, userWants, native }: ProbeInputs): ProbeVer
     // Absent policy ⇒ allowed. A server that has never been configured has not said no,
     // and reading silence as a refusal would disable the feature on every older server.
     const serverAllows = (inDesktop ? policy?.clients : policy?.webui) ?? true;
-    if (!serverAllows) return { allowed: false, by: 'server', shell: inDesktop ? 'clients' : 'webui' };
+    if (!serverAllows)
+      return { allowed: false, by: 'server', shell: inDesktop ? 'clients' : 'webui' };
   }
 
   return userWants ? { allowed: true } : { allowed: false, by: 'you' };

@@ -9,12 +9,24 @@
  */
 
 import { expect, type APIRequestContext } from '@playwright/test';
+import { resolve } from 'node:path';
 
 export const SSH = {
   hostname: '127.0.0.1',
   port: 2222,
   username: 'riteuser',
   password: 'ritepass123',
+  /**
+   * The key pairs `e2e/sshd-setup.sh` generates and puts in the harness user's
+   * `authorized_keys` — one with a passphrase and one without, because "ask at connect
+   * time" and "never prompt for a key that has none" are two different behaviours.
+   *
+   * Generated rather than committed: a private key in a public repository is a finding
+   * whatever it opens. Absent until `sh e2e/harness-up.sh` has run.
+   */
+  keyPlain: resolve(__dirname, '../../.keys/e2e_plain'),
+  keyLocked: resolve(__dirname, '../../.keys/e2e_locked'),
+  keyPassphrase: 'rite-e2e-passphrase',
 };
 
 /** Create a collection and return its id. */
@@ -38,6 +50,15 @@ export interface MachineOpts {
   port?: number;
   username?: string;
   password?: string;
+  /** Authenticate with a key file at this path instead of a password (ADR 0024). */
+  keyPath?: string;
+  /** The key's passphrase, when it is stored. */
+  passphrase?: string;
+  /**
+   * Save the machine keeping no secret, so opening it has to ask (ADR 0024 §4) — what the
+   * form does when "remember this password" is left unticked.
+   */
+  needsPassword?: boolean;
   preconnect?: string | null;
   jump?: string | null;
   folder?: string | null;
@@ -57,7 +78,15 @@ export async function createMachine(
       hostname: o.hostname ?? SSH.hostname,
       port: o.port ?? SSH.port,
       username: o.username ?? SSH.username,
-      authMethod: { type: 'password', password: o.password ?? SSH.password },
+      authMethod: o.keyPath
+        ? {
+            type: 'publicKey',
+            keyPath: o.keyPath,
+            ...(o.passphrase ? { passphrase: o.passphrase } : {}),
+          }
+        : o.needsPassword
+          ? { type: 'password' }
+          : { type: 'password', password: o.password ?? SSH.password },
       color: null,
       icon: null,
       folder: o.folder ?? null,
@@ -68,6 +97,8 @@ export async function createMachine(
       jump: o.jump ?? null,
       forwards: o.forwards ?? [],
       hc: null,
+      needsPassword: o.needsPassword ?? false,
+      needsPassphrase: false,
     },
   });
   expect(res.ok(), `creating machine ${o.name}: ${res.status()}`).toBeTruthy();

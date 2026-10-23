@@ -8,14 +8,22 @@
  */
 
 import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
+import { useShortcut } from '../shortcuts/useShortcut';
+import { askConfirm } from '../utils/confirmPrompt';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
+import { disposeAllPanes, paneKind } from '../panes/registry';
+import { planLayout, type Layout } from '../store/layoutsFormat';
+import { useLayouts, startupAlreadyRan, markStartupRan } from '../store/layouts';
+import { useToolbar } from '../store/toolbar';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
 import { useSettingsStore } from '../store/settingsStore';
 import { useFocusMode } from '../store/focusMode';
+import { SecretPrompt } from './SecretPrompt';
 import { useTranslation } from '../i18n/i18n';
 import { LibrarySidebar } from './LibrarySidebar';
 import { ProfilePastille } from './ProfilePastille';
+import { VaultPastille } from './VaultPastille';
 import { OverflowNav, type NavAction } from './OverflowNav';
 import { useSettingsModal } from '../store/settingsModal';
 import { ConnectionForm } from './ConnectionForm';
@@ -26,12 +34,17 @@ import { MemberPicker } from './MemberPicker';
 import { BoardModal } from './BoardModal';
 import { CollectionEditDialog } from './CollectionEditDialog';
 import { CollectionFolderDialog } from './CollectionFolderDialog';
-import { IconTerminal, IconBolt, IconGear, IconLock, IconChevronDown } from './icons';
+import { IconTerminal, IconBolt, IconLock, IconChevronDown } from './icons';
 import { LibraryFolderDialog } from './LibraryFolderDialog';
 import { MoveToFolderDialog } from './MoveToFolderDialog';
 import { MoveMachineDialog } from './MoveMachineDialog';
 import { useLibraryTree } from '../store/libraryTree';
-import { useServerSession } from '../store/serverSessionStore';
+import {
+  useServerSession,
+  quickSshAllowed,
+  serverShellChoices,
+  effectiveServerShell,
+} from '../store/serverSessionStore';
 import { deleteCollectionFolder } from '../utils/collectionHeader';
 import { Settings } from './Settings';
 import { QuickSSHModal, type QuickSSHConnectionInfo } from './QuickSSHModal';
@@ -56,12 +69,13 @@ import {
   onCreateVault,
   type NativeVault,
 } from '../utils/nativeShell';
+import { SHELL_CANDIDATES } from '../utils/shells';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 import { CreateVaultDialog } from './CreateVaultDialog';
 import { transport } from '../utils/transport';
 import { Toast } from './Toast';
 import { ErrorBoundary } from './ErrorBoundary';
-import { AnyPaneNode, SplitDirection, Tab } from '../types/pane';
+import { AnyPaneNode, SplitDirection, Tab, type SplitTarget } from '../types/pane';
 import {
   createTerminalPane,
   splitPane,
@@ -70,7 +84,6 @@ import {
   updateSplitRatio,
   getFocusedPane,
   getAllPanes,
-  getAllSessions,
   getSessionsInPane,
   extractPane,
   reorganizePane,
@@ -88,9 +101,6 @@ export interface WorkspaceAuth {
   isFirstRun?: boolean;
   lock: () => void;
   renderUnlockModal: (props: { onClose: () => void }) => ReactNode;
-  // Label for the lock/sign-out button. Local vault → "Lock"; an accounts session
-  // has no separate lock (the key lives in RAM), so it signs out → "Sign out".
-  lockLabel?: string;
 }
 
 export function Workspace({
@@ -121,7 +131,9 @@ export function Workspace({
   // First run = no master password on this window's vault yet ⇒ "unlock" is really "create".
   const isFirstRun = auth.isFirstRun ?? false;
   const { t } = useTranslation();
-  const lockLabel = auth.lockLabel ?? t('main.lock');
+  // Locking moved into the pastille's menu, so it gets a chord: a safety action should
+  // not cost a click and an aim (ADR-less, but see commands.ts for why Mod+Shift+L).
+  useShortcut('vault.lock', () => lock(), !isLocked && !identity);
   // Locked-state vault picker (ADR 0014 multi-vault): the vaults the shell knows about + which
   // one this window holds, so "no vault open" offers the list + new/open instead of one button.
   const lockedVaults = isNativeShell() ? nativeVaults() : [];
@@ -193,7 +205,12 @@ export function Workspace({
   const [boardCollectionId, setBoardCollectionId] = useState<string | null>(null);
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
   const [formDefaultFolder, setFormDefaultFolder] = useState<string | null>(null);
-  const [collectionEdit, setCollectionEdit] = useState<{ id?: string; name?: string; color?: string | null; hc?: boolean | null } | null>(null);
+  const [collectionEdit, setCollectionEdit] = useState<{
+    id?: string;
+    name?: string;
+    color?: string | null;
+    hc?: boolean | null;
+  } | null>(null);
   const [showNewCollection, setShowNewCollection] = useState(false);
   // When a new collection is created from a root folder's ＋, place it there.
   const [pendingCollectionFolder, setPendingCollectionFolder] = useState<string | null>(null);
@@ -205,31 +222,88 @@ export function Workspace({
     initialName?: string;
     initialColor?: string | null;
   } | null>(null);
-  const [deleteSubfolder, setDeleteSubfolder] = useState<{ collectionId: string; path: string } | null>(null);
+  const [deleteSubfolder, setDeleteSubfolder] = useState<{
+    collectionId: string;
+    path: string;
+  } | null>(null);
   // Server session keys (accounts context) for the folder-delete re-tag; null in local.
   const serverKeys = useServerSession();
   // Quick SSH is a server-governed capability: forbidden when a server says so (off by
   // default). In a local vault (not accounts) the user is their own authority → allowed.
-  const allowQuickSsh = !serverKeys.mode?.accounts || serverKeys.mode?.allowQuickSsh === true;
+  const allowQuickSsh = quickSshAllowed(serverKeys.mode);
   // In a server context terminals run on the server, so the shell is the server's default
   // (no local-shell picker); locally, the user picks their own shell.
   const isServerCtx = !!serverKeys.mode?.accounts;
-  const serverShell = serverKeys.mode?.defaultShell ?? 'bash';
-  const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{ id: string; name: string } | null>(null);
+  // …unless the instance delegates the choice, in which case these are the shells it
+  // offers and `serverShell` is this person's pick within them. Empty list ⇒ the
+  // instance keeps the decision, which is every server that says nothing.
+  const serverShellChoiceList = serverShellChoices(serverKeys.mode);
+  const serverShell = effectiveServerShell(serverKeys.mode, settings.defaultShell);
+  /**
+   * What the "+" beside the tabs offers for one terminal.
+   *
+   * A machine: the shells Rite looks for, greyed out where absent. A server: the ones it
+   * reported, by name — a name is what the request carries there, so the "path" is the
+   * name. Empty on a server that keeps the shell to itself, which is why the chevron is
+   * absent there without a second condition anywhere.
+   */
+  const newTerminalShells = isServerCtx
+    ? serverShellChoiceList.map((name) => ({
+        name,
+        path: name,
+        icon: SHELL_CANDIDATES.find((c) => c.name === name)?.icon ?? '🐚',
+      }))
+    : SHELL_CANDIDATES;
+  // The layouts file (docs/LAYOUTS.md). Read here for `startup = true`; the menu
+  // beside the tabs reads the same store for the rest.
+  // Which toolbar buttons this person keeps. Hiding one hides it and nothing else:
+  // the shortcut still fires, and a server's Quick SSH policy still decides.
+  const toolbarPrefs = useToolbar();
+  const layoutsFromFile = useLayouts((s) => s.layouts);
+  const layoutsLoaded = useLayouts((s) => s.loaded);
+  // No workspace to read, no Layouts button: the instance may refuse the feature, or the
+  // reader may have turned it off, and a button that can only say "none" is not an answer
+  // (ADR 0027).
+  const layoutsAvailable = useLayouts((s) => s.available);
+  const loadLayouts = useLayouts((s) => s.load);
+  // Re-read when the key arrives: on the account support the document is sealed under it,
+  // so a load before sign-in found nothing to unseal (ADR 0027).
+  useEffect(() => {
+    void loadLayouts();
+  }, [loadLayouts, serverKeys.userKey]);
+  const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   // Top-level library folders (ADR 0016 view hierarchy) — the encrypted per-user tree.
   const tree = useLibraryTree();
-  const [libraryFolderEdit, setLibraryFolderEdit] = useState<{ id?: string; name?: string; color?: string | null; parent?: string | null } | null>(null);
-  const [moveCollectionTarget, setMoveCollectionTarget] = useState<{ id: string; name: string } | null>(null);
+  const [libraryFolderEdit, setLibraryFolderEdit] = useState<{
+    id?: string;
+    name?: string;
+    color?: string | null;
+    parent?: string | null;
+  } | null>(null);
+  const [moveCollectionTarget, setMoveCollectionTarget] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [moveMachineTarget, setMoveMachineTarget] = useState<ConnectionInfo | null>(null);
-  const [deleteFolderTarget, setDeleteFolderTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteFolderTarget, setDeleteFolderTarget] = useState<{ id: string; name: string } | null>(
+    null,
+  );
 
   // Host-key confirmation (strict mode): the pending prompt + the connection that
   // triggered it, so accepting can retry that exact connection.
   const [hostKeyPrompt, setHostKeyPrompt] = useState<HostKeyPrompt | null>(null);
   const [hostKeyBusy, setHostKeyBusy] = useState(false);
   const lastConnectionRef = useRef<ConnectionInfo | null>(null);
-  // Pre-connect hook: the connection whose hook is running before we open SSH.
-  const [preconnectPrompt, setPreconnectPrompt] = useState<ConnectionInfo | null>(null);
+  // Pre-connect hook: the connection whose hook is running before we open SSH, and
+  // the caller waiting on it. A layout opens several panes in a row and has to know
+  // whether each hook passed, so the modal settles a promise instead of calling on.
+  const [preconnectPrompt, setPreconnectPrompt] = useState<{
+    conn: ConnectionInfo;
+    settle: (passed: boolean) => void;
+  } | null>(null);
   // Port forwarding: the connection whose forwards panel is open.
   const [forwardTarget, setForwardTarget] = useState<ConnectionInfo | null>(null);
 
@@ -305,38 +379,45 @@ export function Workspace({
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [toastType, setToastType] = useState<'success' | 'error'>('error');
-  const [toastAction, setToastAction] = useState<{ label: string; onClick: () => void } | undefined>(undefined);
+  const [toastAction, setToastAction] = useState<
+    { label: string; onClick: () => void } | undefined
+  >(undefined);
 
   // Default shell selector state
   const [showDefaultShellDropdown, setShowDefaultShellDropdown] = useState(false);
-  const [defaultShellDropdownPosition, setDefaultShellDropdownPosition] = useState({ top: 0, left: 0 });
+  const [defaultShellDropdownPosition, setDefaultShellDropdownPosition] = useState({
+    top: 0,
+    left: 0,
+  });
   const defaultShellButtonRef = useRef<HTMLButtonElement>(null);
   const appbarRef = useRef<HTMLElement>(null);
 
   // Installed shells state
   const [installedShells, setInstalledShells] = useState<string[]>([]);
 
-  // Define all possible shells for default shell selector
-  const shells = [
-    { name: 'Fish', path: '/usr/bin/fish', icon: '🐠' },
-    { name: 'Bash', path: '/usr/bin/bash', icon: '🐚' },
-    { name: 'Zsh', path: '/usr/bin/zsh', icon: '⚡' },
-    { name: 'Sh', path: '/usr/bin/sh', icon: '📜' },
-  ];
+  // The shells this picker offers. One list for the whole app (`utils/shells.ts`),
+  // which is also the mock's (design/mock/desktop.html SHELLS) — this is the second
+  // time these two have drifted, and last time it was the names and the icons.
+  const shells = SHELL_CANDIDATES;
 
   // Store Quick SSH connection info for later saving
-  const [quickSSHConnections, setQuickSSHConnections] = useState<Map<string, QuickSSHConnectionInfo>>(new Map());
+  const [quickSSHConnections, setQuickSSHConnections] = useState<
+    Map<string, QuickSSHConnectionInfo>
+  >(new Map());
 
   // Store pre-fill data for connection form (when saving Quick SSH)
-  const [connectionFormPrefill, setConnectionFormPrefill] = useState<QuickSSHConnectionInfo | null>(null);
+  const [connectionFormPrefill, setConnectionFormPrefill] = useState<QuickSSHConnectionInfo | null>(
+    null,
+  );
 
   // Store pending action after unlock
-  const [pendingActionAfterUnlock, setPendingActionAfterUnlock] = useState<(() => void) | null>(null);
+  const [pendingActionAfterUnlock, setPendingActionAfterUnlock] = useState<(() => void) | null>(
+    null,
+  );
 
   // Execute pending action after unlock
   useEffect(() => {
     if (!isLocked && pendingActionAfterUnlock) {
-      console.log('[MainScreen] Executing pending action after unlock');
       pendingActionAfterUnlock();
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the one-shot pending action after running it
       setPendingActionAfterUnlock(null);
@@ -358,14 +439,13 @@ export function Workspace({
   // Check which shells are installed
   const checkInstalledShells = async () => {
     try {
-      const allShellPaths = shells.map(s => s.path);
+      const allShellPaths = shells.map((s) => s.path);
       const installed = await Backend.Terminal.getInstalledShells(allShellPaths);
-      console.log('[MainScreen] Installed shells:', installed);
       setInstalledShells(installed);
     } catch (error) {
-      console.error('[MainScreen] Failed to check installed shells:', error);
+      console.error('[Workspace] Failed to check installed shells:', error);
       // If check fails, assume all shells are installed (backward compatibility)
-      setInstalledShells(shells.map(s => s.path));
+      setInstalledShells(shells.map((s) => s.path));
     }
   };
 
@@ -484,16 +564,16 @@ export function Workspace({
       return;
     }
 
-    console.log(`[Auto-lock] Enabled with timeout: ${settings.autoLockTimeout} minute(s)`);
-
     let timeoutId: ReturnType<typeof setTimeout>;
 
     const resetTimer = () => {
       clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        console.log('[Auto-lock] Locking due to inactivity');
-        lock();
-      }, settings.autoLockTimeout * 60 * 1000); // Convert minutes to milliseconds
+      timeoutId = setTimeout(
+        () => {
+          lock();
+        },
+        settings.autoLockTimeout * 60 * 1000,
+      ); // Convert minutes to milliseconds
     };
 
     // Start the timer
@@ -501,17 +581,16 @@ export function Workspace({
 
     // Listen for user activity events
     const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
-    events.forEach(event => {
+    events.forEach((event) => {
       document.addEventListener(event, resetTimer);
     });
 
     // Cleanup on unmount or when settings change
     return () => {
       clearTimeout(timeoutId);
-      events.forEach(event => {
+      events.forEach((event) => {
         document.removeEventListener(event, resetTimer);
       });
-      console.log('[Auto-lock] Cleanup - timer removed');
     };
   }, [settings.autoLockEnabled, settings.autoLockTimeout, lock]);
 
@@ -520,8 +599,6 @@ export function Workspace({
     if (!settings.clipboardClearEnabled) {
       return;
     }
-
-    console.log(`[Clipboard] Auto-clear enabled with timeout: ${settings.clipboardClearTimeout} second(s)`);
 
     let clipboardTimeoutId: ReturnType<typeof setTimeout>;
 
@@ -533,13 +610,10 @@ export function Workspace({
       clipboardTimeoutId = setTimeout(async () => {
         try {
           await navigator.clipboard.writeText('');
-          console.log('[Clipboard] Cleared clipboard after timeout');
         } catch (error) {
           console.error('[Clipboard] Failed to clear clipboard:', error);
         }
       }, settings.clipboardClearTimeout * 1000); // Convert seconds to milliseconds
-
-      console.log(`[Clipboard] Copy detected, will clear in ${settings.clipboardClearTimeout}s`);
     };
 
     // Listen for copy events
@@ -549,7 +623,6 @@ export function Workspace({
     return () => {
       clearTimeout(clipboardTimeoutId);
       document.removeEventListener('copy', handleCopy);
-      console.log('[Clipboard] Cleanup - auto-clear removed');
     };
   }, [settings.clipboardClearEnabled, settings.clipboardClearTimeout]);
 
@@ -589,7 +662,7 @@ export function Workspace({
       paneTree: newPane,
     };
 
-    setTabGroups(prev => [...prev, newTab]);
+    setTabGroups((prev) => [...prev, newTab]);
     setActiveTabId(newTab.id);
     // Always surface the terminal that was just opened. A machine dashboard or a
     // collection covers the workspace, and double-clicking a machine row fires the
@@ -598,19 +671,36 @@ export function Workspace({
     setMainView('terminal');
   };
 
+  /**
+   * Run a machine's pre-connect hook, and say whether the connection may proceed.
+   *
+   * A machine with no hook passes without a modal. `gate` remembers what a hook
+   * already answered during one layout, so four panes on one host ask once — and if
+   * the hook failed, all four fall back rather than each asking again.
+   */
+  const runPreconnect = async (
+    connection: ConnectionInfo,
+    gate?: Map<string, boolean>,
+  ): Promise<boolean> => {
+    if (!connection.preconnect?.trim()) return true;
+    const remembered = gate?.get(connection.id);
+    if (remembered !== undefined) return remembered;
+    const passed = await new Promise<boolean>((settle) =>
+      setPreconnectPrompt({ conn: connection, settle }),
+    );
+    gate?.set(connection.id, passed);
+    return passed;
+  };
+
   // Handle connect - open terminal (allows multiple tabs for same connection).
   // A pre-connect hook (a local command — VPN up, SSO refresh) runs first in a
   // modal; the connection only proceeds when it exits 0.
   const handleConnect = async (connection: ConnectionInfo) => {
-    if (connection.preconnect?.trim()) {
-      setPreconnectPrompt(connection);
-      return;
-    }
+    if (!(await runPreconnect(connection))) return;
     await doConnect(connection);
   };
 
   const doConnect = async (connection: ConnectionInfo) => {
-    console.log('[MainScreen] handleConnect called for connection:', connection.name, 'ID:', connection.id);
     // Remember the attempt so an accepted host-key prompt can retry it.
     lastConnectionRef.current = connection;
 
@@ -619,8 +709,6 @@ export function Workspace({
       // server-decrypts; accounts = browser-decrypts → server-execute).
       const sessionId = await conns.connect(connection);
 
-      console.log('[MainScreen] Backend returned session ID:', sessionId);
-
       // Create terminal session with backend session ID
       const session: TerminalSession = {
         id: sessionId,
@@ -628,11 +716,15 @@ export function Workspace({
         connectionName: connection.name,
       };
 
-      console.log('[MainScreen] Adding terminal session to tree:', session.id);
       addTerminalToTree(session);
     } catch (error) {
-      console.error('[MainScreen] Failed to connect to terminal:', error);
-      let errorMsg = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Failed to connect';
+      console.error('[Workspace] Failed to connect to terminal:', error);
+      let errorMsg =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : t('ws.errConnect');
 
       // Strict-mode host-key rejection ("Disconnected"): the backend also emits
       // ssh:host-key-unknown, which opens the confirmation modal — don't also toast.
@@ -646,7 +738,7 @@ export function Workspace({
 
         // Add action button to open edit form
         setToastAction({
-          label: 'Edit Configuration',
+          label: t('ws.editConfig'),
           onClick: () => handleEditConnection(connection),
         });
       } else {
@@ -664,14 +756,23 @@ export function Workspace({
   const handleRunInPane = async (connection: ConnectionInfo, command: string) => {
     try {
       const sessionId = await conns.connect(connection);
-      addTerminalToTree({ id: sessionId, connectionId: connection.id, connectionName: connection.name });
-      // Let the remote shell come up, then type the command (+ Enter).
-      setTimeout(() => {
-        const bytes = Array.from(new TextEncoder().encode(`${command}\n`));
-        void Backend.Terminal.sendTerminalInput(sessionId, bytes).catch(() => {});
-      }, 700);
+      // The pane runs it once its session is readable, rather than this guessing when
+      // that is: the backend buffers a session's first output until the pane claims
+      // it, and a shell discards queued input while it sets the tty up, so a timer
+      // here loses the command outright instead of merely running it late.
+      addTerminalToTree({
+        id: sessionId,
+        connectionId: connection.id,
+        connectionName: connection.name,
+        initialCommand: command,
+      });
     } catch (error) {
-      const msg = typeof error === 'string' ? error : error instanceof Error ? error.message : 'Failed to connect';
+      const msg =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : t('ws.errConnect');
       if (msg.includes('Disconnect')) return; // host-key modal handles it
       setToastType('error');
       setToastMessage(msg);
@@ -690,7 +791,7 @@ export function Workspace({
         await doConnect(lastConnectionRef.current);
       }
     } catch (error) {
-      console.error('[MainScreen] Failed to accept host key:', error);
+      console.error('[Workspace] Failed to accept host key:', error);
       setToastType('error');
       setToastMessage('Failed to trust host key');
     } finally {
@@ -707,7 +808,7 @@ export function Workspace({
         await Backend.Ssh.rejectHostKey(hostKeyPrompt.host, hostKeyPrompt.port);
       }
     } catch (error) {
-      console.error('[MainScreen] Failed to reject host key:', error);
+      console.error('[Workspace] Failed to reject host key:', error);
     } finally {
       setHostKeyPrompt(null);
       setHostKeyBusy(false);
@@ -717,12 +818,18 @@ export function Workspace({
   // Handle new local terminal
   const handleNewLocalTerminal = async (shell?: string) => {
     // Use provided shell or fall back to settings default
-    const shellToUse = shell || settings.defaultShell;
-    console.log('[MainScreen] Creating local terminal session with shell:', shellToUse);
+    const asked = isServerCtx && shell && serverShellChoiceList.includes(shell) ? shell : undefined;
+    const shellToUse = isServerCtx ? (asked ?? serverShell) : shell || settings.defaultShell;
 
     try {
-      // Call backend to create local terminal session with selected shell
-      const sessionId = await Backend.Terminal.connectLocalTerminal(shellToUse);
+      // On a server the client sends a NAME and only one the instance offers — the server
+      // resolves it to a path itself, so nothing here can name a program it did not offer.
+      // Nothing asked (or nothing offered) leaves the instance to apply its own rule.
+      const sessionId = await Backend.Terminal.connectLocalTerminal(
+        isServerCtx
+          ? (asked ?? (serverShellChoiceList.length > 0 ? serverShell : undefined))
+          : shellToUse,
+      );
 
       // Create terminal session
       const shellName = shellToUse.split('/').pop() || 'shell';
@@ -732,12 +839,11 @@ export function Workspace({
         connectionName: `Local Terminal (${shellName})`,
       };
 
-      console.log('[MainScreen] Local terminal session created:', sessionId);
       addTerminalToTree(session);
     } catch (error) {
-      console.error('[MainScreen] Failed to create local terminal:', error);
+      console.error('[Workspace] Failed to create local terminal:', error);
       // Show error message with toast
-      const errorMsg = typeof error === 'string' ? error : 'Failed to create local terminal';
+      const errorMsg = typeof error === 'string' ? error : t('ws.errLocalTerm');
       setToastType('error');
       setToastMessage(errorMsg);
     }
@@ -745,8 +851,6 @@ export function Workspace({
 
   // Handle Quick SSH connected
   const handleQuickSSHConnected = (sessionId: string, connectionInfo: QuickSSHConnectionInfo) => {
-    console.log('[MainScreen] Quick SSH connected, session:', sessionId);
-
     // Store connection info for potential saving later
     setQuickSSHConnections(new Map(quickSSHConnections).set(sessionId, connectionInfo));
 
@@ -761,47 +865,206 @@ export function Workspace({
   };
 
   // Handle split pane
-  const handleSplitPane = async (paneId: string, direction: SplitDirection) => {
-    console.log('[MainScreen] Splitting pane:', paneId, 'direction:', direction);
+  /**
+   * Split a pane, optionally running something in the new one.
+   *
+   * With no preset this is the plain divider the button has always been — and that
+   * stays the button, because a plain split is what most people want from a divider.
+   * With one, the new pane is still an ordinary terminal: the command rides on the
+   * session and the pane runs it once it is readable, so a preset adds a name and a
+   * first command and nothing else.
+   */
+  /**
+   * The session a split should open, from what was asked for.
+   *
+   * A layout may name a machine, and this computer may not be able to open it:
+   * renamed, a locked vault whose names cannot even be read, or a file written on
+   * another computer. None of those cancel the pane — it opens as a plain shell and
+   * carries a `note` saying what was asked for, because a layout that silently drops
+   * a pane costs you the workspace you asked for and tells you nothing.
+   *
+   * `localSession` is that fallback, and is also the plain split — one function, so a
+   * pane that fell back is built exactly like a pane that was asked for.
+   */
+  const localSession = async (target?: SplitTarget, note?: string): Promise<TerminalSession> => {
+    // In a server context the shell is the instance's (`defaultShell`), so ask for
+    // nothing and let the server use it: sending one made the administrator's choice
+    // advisory, and the server would spawn whatever path it was handed.
+    const shellToUse = isServerCtx ? serverShell : settings.defaultShell;
+    const sessionId = await Backend.Terminal.connectLocalTerminal(
+      isServerCtx ? (serverShellChoiceList.length > 0 ? serverShell : undefined) : shellToUse,
+    );
+    const shellName = shellToUse.split('/').pop() || 'shell';
+    return {
+      id: sessionId,
+      connectionId: 'local',
+      connectionName: target?.name || `Local Terminal (${shellName})`,
+      // Run by the pane once its session is readable — see TerminalSession.
+      initialCommand: target?.command || undefined,
+      note,
+    };
+  };
 
+  const sessionForTarget = async (
+    target?: SplitTarget,
+    gate?: Map<string, boolean>,
+  ): Promise<TerminalSession> => {
+    const machine = target?.machine?.trim();
+    if (!machine) return localSession(target);
+
+    // A locked vault is not a wrong name: the names are encrypted, so there is
+    // nothing to compare against, and saying so is the honest message.
+    if (isLocked) return localSession(target, t('layouts.fellBackLocked', { machine }));
+
+    const connection = (conns.connections ?? []).find((c) => c.name === machine);
+    if (!connection) return localSession(target, t('layouts.fellBackMissing', { machine }));
+
+    // The hook belongs to the machine, so every way of opening it owes it the same
+    // gate — a host behind a VPN used to open on a click and fail from a layout.
+    if (!(await runPreconnect(connection, gate)))
+      return localSession(target, t('layouts.fellBackPreconnect', { machine }));
+
+    const sessionId = await conns.connect(connection);
+    return {
+      id: sessionId,
+      connectionId: connection.id,
+      connectionName: target?.name?.trim() || connection.name,
+      initialCommand: target?.command || undefined,
+    };
+  };
+
+  const handleSplitPane = async (
+    paneId: string,
+    direction: SplitDirection,
+    target?: SplitTarget,
+  ) => {
     if (!activeTabId) return;
 
     try {
-      // Create a new local terminal session for the new pane
-      const shellToUse = settings.defaultShell;
-      const sessionId = await Backend.Terminal.connectLocalTerminal(shellToUse);
-
-      const shellName = shellToUse.split('/').pop() || 'shell';
-      const newSession: TerminalSession = {
-        id: sessionId,
-        connectionId: 'local',
-        connectionName: `Local Terminal (${shellName})`,
-      };
+      const newSession = await sessionForTarget(target);
 
       // Split the pane in the active tab's tree
-      setTabGroups(prev => prev.map(tab => {
-        if (tab.id === activeTabId) {
-          const newTree = splitPane(tab.paneTree, paneId, direction, newSession);
-          return { ...tab, paneTree: newTree };
-        }
-        return tab;
-      }));
+      setTabGroups((prev) =>
+        prev.map((tab) => {
+          if (tab.id === activeTabId) {
+            const newTree = splitPane(tab.paneTree, paneId, direction, newSession);
+            return { ...tab, paneTree: newTree };
+          }
+          return tab;
+        }),
+      );
     } catch (error) {
-      console.error('[MainScreen] Failed to split pane:', error);
-      const errorMsg = typeof error === 'string' ? error : 'Failed to create terminal for split';
+      console.error('[Workspace] Failed to split pane:', error);
+      const errorMsg = typeof error === 'string' ? error : t('ws.errSplitTerm');
       setToastType('error');
       setToastMessage(errorMsg);
     }
   };
 
-  // Handle close pane
-  const handleClosePane = (paneId: string) => {
-    console.log('[MainScreen] Closing pane:', paneId);
+  /**
+   * Open a layout: its own tabs, arranged as its file says (ADR 0023).
+   *
+   * A layout opens tabs rather than splitting whatever is on screen, so an eight-pane
+   * file produces exactly eight panes and `startup` can be honoured before anything
+   * else exists. `planLayout` turns the file into cuts; this applies them.
+   *
+   * Panes are tracked by the session they opened, because `splitPane` mints the new
+   * node's id internally — and the pane being cut keeps its id, which is what lets a
+   * later step anchor to a pane placed earlier.
+   */
+  const handleApplyLayout = async (layout: Layout) => {
+    // One hook per machine for the whole layout, however many panes it has.
+    const gate = new Map<string, boolean>();
+    const opened: Tab[] = [];
 
+    for (const plan of planLayout(layout)) {
+      const sessionFor = async (index: number): Promise<TerminalSession> => {
+        try {
+          return await sessionForTarget(plan.panes[index], gate);
+        } catch (error) {
+          // A machine that refuses costs this pane's content, never the arrangement:
+          // the pane opens as a plain shell carrying why (ADR 0023 §5).
+          const why =
+            typeof error === 'string' ? error : error instanceof Error ? error.message : '';
+          const machine = plan.panes[index].machine?.trim();
+          return localSession(
+            plan.panes[index],
+            machine ? t('layouts.fellBackFailed', { machine, why }) : why,
+          );
+        }
+      };
+
+      let tree = createTerminalPane(await sessionFor(0), true) as AnyPaneNode;
+      const paneIds = new Map<number, string>([[0, tree.id]]);
+
+      for (const step of plan.steps) {
+        const anchorId = paneIds.get(step.anchor);
+        if (!anchorId) continue;
+        const session = await sessionFor(step.pane);
+        const grown = splitPane(tree, anchorId, step.direction, session, {
+          before: step.before,
+          ratio: step.ratio,
+        });
+        if (!grown) continue;
+        tree = grown;
+        const added = getAllPanes(tree).find((pane) => pane.session.id === session.id);
+        if (added) paneIds.set(step.pane, added.id);
+      }
+
+      opened.push({ id: crypto.randomUUID(), name: plan.tab ?? layout.name, paneTree: tree });
+    }
+
+    if (opened.length === 0) return;
+    setTabGroups((prev) => [...prev, ...opened]);
+    setActiveTabId(opened[0].id);
+    // A layout is terminals; a dashboard or a collection covering the workspace would
+    // hide every one of them.
+    setMainView('terminal');
+  };
+
+  /**
+   * The layouts marked `startup = true` open themselves, once, as soon as the file
+   * has been read.
+   *
+   * They no longer wait for a tab to exist: a layout opens its own tabs, so waiting
+   * for one would mean never opening on a fresh start, which is the only moment a
+   * startup layout is for.
+   *
+   * Once per run, not once per render and not once per context: a guard ref rather
+   * than a dependency list, because the layouts arrive asynchronously. Switching vault
+   * re-mounts this workspace, which is the one case where opening them again is the
+   * right answer.
+   *
+   * In a browser the ref is not enough: F5 remounts everything, and "startup" means
+   * sitting down to work, not pressing reload. A session-scoped flag there, so a new tab
+   * or a relaunch honours it and a refresh does not (ADR 0027).
+   */
+  const startupOpened = useRef(false);
+  useEffect(() => {
+    if (startupOpened.current) return;
+    if (!layoutsLoaded) return;
+    if (startupAlreadyRan()) {
+      startupOpened.current = true;
+      return;
+    }
+    const atStartup = layoutsFromFile.filter((l) => l.startup);
+    startupOpened.current = true;
+    if (atStartup.length === 0) return;
+    markStartupRan();
+    void (async () => {
+      for (const layout of atStartup) await handleApplyLayout(layout);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutsLoaded, layoutsFromFile]);
+
+  // Handle close pane
+  // async since the multi-terminal confirmation is the app's dialog now, not the browser's
+  // blocking box. The caller does not await it: closing a pane has no result to report.
+  const handleClosePane = async (paneId: string) => {
     if (!activeTabId) return;
 
     // Check how many terminals will be closed
-    const activeTab = tabGroups.find(t => t.id === activeTabId);
+    const activeTab = tabGroups.find((t) => t.id === activeTabId);
     if (!activeTab) return;
 
     // Check how many terminals are in this specific pane subtree
@@ -811,44 +1074,53 @@ export function Workspace({
     // Ask confirmation ONLY if closing this pane will close multiple terminals
     // (don't ask for single terminal in a tab with multiple terminals - that's annoying)
     if (sessionCount > 1) {
-      const message = `This pane contains ${sessionCount} terminals. Close all of them?`;
-      const confirmed = window.confirm(message);
-      if (!confirmed) return;
+      const ok = await askConfirm({
+        title: t('ws.closePaneTitle', { count: sessionCount }),
+        body: t('ws.closePaneWhy', { count: sessionCount }),
+        action: t('tm.closeAll'),
+        danger: true,
+      });
+      if (!ok) return;
     }
 
-    setTabGroups(prev => {
+    setTabGroups((prev) => {
       // Remember current tab index BEFORE any modifications
-      const currentTabIndex = prev.findIndex(t => t.id === activeTabId);
+      const currentTabIndex = prev.findIndex((t) => t.id === activeTabId);
 
-      const newTabs = prev.map(tab => {
-        if (tab.id !== activeTabId) return tab;
+      const newTabs = prev
+        .map((tab) => {
+          if (tab.id !== activeTabId) return tab;
 
-        const newTree = closePane(tab.paneTree, paneId);
+          const newTree = closePane(tab.paneTree, paneId);
 
-        // If tree becomes empty, mark tab for removal
-        if (!newTree) {
-          return null;
-        }
-
-        // Auto-focus another pane if the closed pane was focused
-        const focusedPane = getFocusedPane(newTree);
-        if (!focusedPane) {
-          // No pane is focused, focus the first available one
-          const allPanes = getAllPanes(newTree);
-          if (allPanes.length > 0) {
-            return { ...tab, paneTree: setFocusedPane(newTree, allPanes[0].id) };
+          // If tree becomes empty, mark tab for removal
+          if (!newTree) {
+            return null;
           }
-        }
 
-        return { ...tab, paneTree: newTree };
-      }).filter((tab): tab is Tab => tab !== null);
+          // Auto-focus another pane if the closed pane was focused
+          const focusedPane = getFocusedPane(newTree);
+          if (!focusedPane) {
+            // No pane is focused, focus the first available one
+            const allPanes = getAllPanes(newTree);
+            if (allPanes.length > 0) {
+              return { ...tab, paneTree: setFocusedPane(newTree, allPanes[0].id) };
+            }
+          }
+
+          return { ...tab, paneTree: newTree };
+        })
+        .filter((tab): tab is Tab => tab !== null);
 
       // If we removed the active tab, switch to the previous or next tab
-      const stillExists = newTabs.find(t => t.id === activeTabId);
+      const stillExists = newTabs.find((t) => t.id === activeTabId);
       if (!stillExists && newTabs.length > 0) {
         // Try to go to the previous tab, or next tab if we were at index 0
         // Make sure the index is valid after removal
-        const newIndex = Math.min(currentTabIndex > 0 ? currentTabIndex - 1 : 0, newTabs.length - 1);
+        const newIndex = Math.min(
+          currentTabIndex > 0 ? currentTabIndex - 1 : 0,
+          newTabs.length - 1,
+        );
         if (newTabs[newIndex]) {
           setActiveTabId(newTabs[newIndex].id);
         }
@@ -862,28 +1134,30 @@ export function Workspace({
 
   // Handle focus pane
   const handleFocusPane = (paneId: string) => {
-    console.log('[MainScreen] Focusing pane:', paneId);
-
     if (!activeTabId) return;
 
-    setTabGroups(prev => prev.map(tab => {
-      if (tab.id === activeTabId) {
-        return { ...tab, paneTree: setFocusedPane(tab.paneTree, paneId) };
-      }
-      return tab;
-    }));
+    setTabGroups((prev) =>
+      prev.map((tab) => {
+        if (tab.id === activeTabId) {
+          return { ...tab, paneTree: setFocusedPane(tab.paneTree, paneId) };
+        }
+        return tab;
+      }),
+    );
   };
 
   // Handle split ratio change
   const handleSplitRatioChange = (splitId: string, newRatio: number) => {
     if (!activeTabId) return;
 
-    setTabGroups(prev => prev.map(tab => {
-      if (tab.id === activeTabId) {
-        return { ...tab, paneTree: updateSplitRatio(tab.paneTree, splitId, newRatio) };
-      }
-      return tab;
-    }));
+    setTabGroups((prev) =>
+      prev.map((tab) => {
+        if (tab.id === activeTabId) {
+          return { ...tab, paneTree: updateSplitRatio(tab.paneTree, splitId, newRatio) };
+        }
+        return tab;
+      }),
+    );
   };
 
   // Handle switch tab (now switches between tab groups)
@@ -897,40 +1171,30 @@ export function Workspace({
 
   // Handle reorder tabs
   const handleReorderTabs = (newTabOrder: Tab[]) => {
-    console.log('[MainScreen] Reordering tab groups:', newTabOrder.map(t => t.id));
     setTabGroups(newTabOrder);
   };
 
   // Handle close tab - gracefully close all terminals in a tab and remove it
   const handleCloseTab = async (tabId: string) => {
-    console.log('[MainScreen] Closing tab:', tabId);
-
-    const tabToClose = tabGroups.find(t => t.id === tabId);
+    const tabToClose = tabGroups.find((t) => t.id === tabId);
     if (!tabToClose) return;
 
-    // Get all sessions in this tab
-    const sessionsToClose = getAllSessions(tabToClose.paneTree);
-
-    // Gracefully disconnect all terminal sessions
-    console.log('[MainScreen] Disconnecting', sessionsToClose.length, 'terminal sessions');
-    await Promise.all(
-      sessionsToClose.map(async (session) => {
-        try {
-          await Backend.Terminal.disconnectTerminal(session.id);
-          console.log('[MainScreen] Disconnected session:', session.id);
-        } catch (err) {
-          console.error('[MainScreen] Failed to disconnect session:', session.id, err);
-        }
-      })
-    );
+    // Release what every pane in this tab held. Each kind knows what that means for
+    // itself, which is why this is a list of panes and no longer a list of session
+    // ids: a tab holding an SFTP or agent pane closes correctly with no change here.
+    const panesToClose = getAllPanes(tabToClose.paneTree);
+    const { failed } = await disposeAllPanes(panesToClose);
+    for (const { pane, error } of failed) {
+      console.error('[Workspace] Failed to dispose pane:', pane.id, error);
+    }
 
     // Remove the tab
-    setTabGroups(prev => {
-      const newTabs = prev.filter(t => t.id !== tabId);
+    setTabGroups((prev) => {
+      const newTabs = prev.filter((t) => t.id !== tabId);
 
       // If we're closing the active tab, switch to another tab
       if (activeTabId === tabId && newTabs.length > 0) {
-        const closedTabIndex = prev.findIndex(t => t.id === tabId);
+        const closedTabIndex = prev.findIndex((t) => t.id === tabId);
         // Switch to the tab before, or the first tab if we closed the first one
         const newActiveIndex = Math.max(0, closedTabIndex - 1);
         setActiveTabId(newTabs[newActiveIndex].id);
@@ -944,38 +1208,36 @@ export function Workspace({
 
   // Handle detach pane - extract a pane from current tab and create a new tab with it
   const handleDetachPane = (paneId: string) => {
-    console.log('[MainScreen] Detaching pane:', paneId);
-
     if (!activeTabId) return;
 
-    const activeTab = tabGroups.find(t => t.id === activeTabId);
+    const activeTab = tabGroups.find((t) => t.id === activeTabId);
     if (!activeTab) return;
 
     // Extract the pane from the current tab's tree
     const { extractedPane, remainingTree } = extractPane(activeTab.paneTree, paneId);
 
     if (!extractedPane) {
-      console.error('[MainScreen] Failed to extract pane:', paneId);
+      console.error('[Workspace] Failed to extract pane:', paneId);
       return;
     }
 
     // Create a new tab with the extracted pane
     const newTab: Tab = {
       id: crypto.randomUUID(),
-      name: extractedPane.session.connectionName,
+      name: paneKind(extractedPane).title(extractedPane),
       paneTree: { ...extractedPane, isFocused: true },
     };
 
     // Update tab groups
-    setTabGroups(prev => {
+    setTabGroups((prev) => {
       // If remaining tree is empty, remove the old tab
       if (!remainingTree) {
-        return [...prev.filter(t => t.id !== activeTabId), newTab];
+        return [...prev.filter((t) => t.id !== activeTabId), newTab];
       }
 
       // Otherwise, update the old tab and add the new one
       return [
-        ...prev.map(t => t.id === activeTabId ? { ...t, paneTree: remainingTree } : t),
+        ...prev.map((t) => (t.id === activeTabId ? { ...t, paneTree: remainingTree } : t)),
         newTab,
       ];
     });
@@ -986,20 +1248,15 @@ export function Workspace({
 
   // Handle rename tab
   const handleRenameTab = (tabId: string, newName: string) => {
-    console.log('[MainScreen] Renaming tab:', tabId, 'to:', newName);
-    setTabGroups(prev => prev.map(tab =>
-      tab.id === tabId ? { ...tab, name: newName } : tab
-    ));
+    setTabGroups((prev) => prev.map((tab) => (tab.id === tabId ? { ...tab, name: newName } : tab)));
   };
 
   // Handle merge tab - drag a tab and drop it into another tab's pane area
   const handleMergeTab = (sourceTabId: string, targetTabId: string) => {
-    console.log('[MainScreen] Merging tab:', sourceTabId, 'into:', targetTabId);
-
     if (sourceTabId === targetTabId) return;
 
-    const sourceTab = tabGroups.find(t => t.id === sourceTabId);
-    const targetTab = tabGroups.find(t => t.id === targetTabId);
+    const sourceTab = tabGroups.find((t) => t.id === sourceTabId);
+    const targetTab = tabGroups.find((t) => t.id === targetTabId);
 
     if (!sourceTab || !targetTab || !sourceTab.paneTree || !targetTab.paneTree) return;
 
@@ -1018,10 +1275,10 @@ export function Workspace({
     };
 
     // Update tabs: remove source, update target
-    setTabGroups(prev =>
+    setTabGroups((prev) =>
       prev
-        .filter(t => t.id !== sourceTabId)
-        .map(t => t.id === targetTabId ? { ...t, paneTree: mergedTree } : t)
+        .filter((t) => t.id !== sourceTabId)
+        .map((t) => (t.id === targetTabId ? { ...t, paneTree: mergedTree } : t)),
     );
 
     // Keep active tab on the merged one
@@ -1032,42 +1289,40 @@ export function Workspace({
   const handleReorganizePane = (
     sourcePaneId: string,
     targetPaneId: string,
-    position: 'top' | 'bottom' | 'left' | 'right'
+    position: 'top' | 'bottom' | 'left' | 'right',
   ) => {
-    console.log('[MainScreen] Reorganizing pane:', sourcePaneId, 'to', position, 'of', targetPaneId);
-
     if (!activeTabId) return;
 
-    const activeTab = tabGroups.find(t => t.id === activeTabId);
+    const activeTab = tabGroups.find((t) => t.id === activeTabId);
     if (!activeTab || !activeTab.paneTree) return;
 
     // Use the reorganizePane utility to restructure the tree
-    const reorganizedTree = reorganizePane(activeTab.paneTree, sourcePaneId, targetPaneId, position);
+    const reorganizedTree = reorganizePane(
+      activeTab.paneTree,
+      sourcePaneId,
+      targetPaneId,
+      position,
+    );
 
     // Update the active tab with the new tree
-    setTabGroups(prev => prev.map(tab =>
-      tab.id === activeTabId ? { ...tab, paneTree: reorganizedTree } : tab
-    ));
+    setTabGroups((prev) =>
+      prev.map((tab) => (tab.id === activeTabId ? { ...tab, paneTree: reorganizedTree } : tab)),
+    );
   };
 
   // Handle save Quick SSH connection
   const handleSaveQuickSSH = (sessionId: string) => {
-    console.log('[MainScreen] Save Quick SSH connection requested for session:', sessionId);
-
     // Get connection info for this session
     const connectionInfo = quickSSHConnections.get(sessionId);
     if (!connectionInfo) {
-      console.error('[MainScreen] No connection info found for session:', sessionId);
+      console.error('[Workspace] No connection info found for session:', sessionId);
       return;
     }
 
     // Check if app is locked
     if (isLocked) {
-      console.log('[MainScreen] App is locked, showing unlock modal and storing pending action');
-
       // Store the action to execute after unlock
       setPendingActionAfterUnlock(() => () => {
-        console.log('[MainScreen] Executing pending Quick SSH save after unlock');
         setConnectionFormPrefill(connectionInfo);
         setEditingConnection(null);
         setShowForm(true);
@@ -1142,8 +1397,11 @@ export function Workspace({
     : [];
   const openCollectionMeta = openCollectionMachines[0];
   const openCol = conns.collections?.find((c) => c.id === openCollectionId);
-  const openMachine = openMachineId ? conns.connections.find((c) => c.id === openMachineId) : undefined;
-  const openCollectionName = openCol?.name ?? openCollectionMeta?.collectionName ?? 'Collection';
+  const openMachine = openMachineId
+    ? conns.connections.find((c) => c.id === openMachineId)
+    : undefined;
+  const openCollectionName =
+    openCol?.name ?? openCollectionMeta?.collectionName ?? t('coll.fallbackName');
   const openCollectionColor = openCol?.color ?? openCollectionMeta?.collectionColor ?? null;
   const openCollectionRole = openCol?.role ?? openCollectionMeta?.collectionRole ?? null;
   const openCollectionWritable = openCollectionRole === 'owner' || openCollectionRole === 'editor';
@@ -1160,7 +1418,8 @@ export function Workspace({
     if (m.collectionId) {
       const declared = conns.collections?.find((c) => c.id === m.collectionId)?.folders ?? [];
       for (const f of declared) if (f.name) add(f.name);
-      for (const c of conns.connections) if (c.collectionId === m.collectionId && c.folder) add(c.folder);
+      for (const c of conns.connections)
+        if (c.collectionId === m.collectionId && c.folder) add(c.folder);
     } else {
       for (const c of conns.connections) if (!c.collectionId && c.folder) add(c.folder);
     }
@@ -1172,59 +1431,92 @@ export function Workspace({
   // their own strip above it, so opening a machine produced two bars — and the
   // terminal one, `relative z-10` like the dashboard overlay and later in the DOM,
   // painted over the dashboard it has nothing to say about.
-  const viewTabs = (openCollectionId || openMachine) ? (
-    <>
-      {openCollectionId && (
-        <div
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
-            mainView === 'collection' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          <button onClick={() => setMainView('collection')} className="flex items-center gap-1.5">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
-            </svg>
-            <span className="max-w-[160px] truncate">{openCollectionName}</span>
-          </button>
-          <button
-            onClick={handleCloseCollection}
-            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-            aria-label="Close collection"
+  const viewTabs =
+    openCollectionId || openMachine ? (
+      <>
+        {openCollectionId && (
+          <div
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+              mainView === 'collection'
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
           >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
-      {openMachine && (
-        <div
-          className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
-            mainView === 'machine' ? 'bg-background text-foreground' : 'text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          <button onClick={() => setMainView('machine')} className="flex items-center gap-1.5">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <rect x="3" y="5" width="18" height="6" rx="1.5" />
-              <rect x="3" y="13" width="18" height="6" rx="1.5" />
-              <path strokeLinecap="round" d="M6.5 8h.01M6.5 16h.01" />
-            </svg>
-            <span className="max-w-[160px] truncate">{openMachine.name}</span>
-          </button>
-          <button
-            onClick={handleCloseMachine}
-            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-            aria-label={t('dash.close')}
+            <button onClick={() => setMainView('collection')} className="flex items-center gap-1.5">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"
+                />
+              </svg>
+              <span className="max-w-[160px] truncate">{openCollectionName}</span>
+            </button>
+            <button
+              onClick={handleCloseCollection}
+              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+              aria-label={t('ws.closeCollection')}
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+        {openMachine && (
+          <div
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+              mainView === 'machine'
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
           >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
-    </>
-  ) : null;
+            <button onClick={() => setMainView('machine')} className="flex items-center gap-1.5">
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <rect x="3" y="5" width="18" height="6" rx="1.5" />
+                <rect x="3" y="13" width="18" height="6" rx="1.5" />
+                <path strokeLinecap="round" d="M6.5 8h.01M6.5 16h.01" />
+              </svg>
+              <span className="max-w-[160px] truncate">{openMachine.name}</span>
+            </button>
+            <button
+              onClick={handleCloseMachine}
+              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+              aria-label={t('dash.close')}
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </>
+    ) : null;
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -1245,7 +1537,7 @@ export function Workspace({
           <img src={riteLandscape} alt="Rite" className="h-[26px] rounded-[7px]" />
         </div>
         {instanceName && (
-          <span className="m-chip" title="Server instance">
+          <span className="m-chip" title={t('ws.serverInstance')}>
             <span className="m-dot" />
             {instanceName}
           </span>
@@ -1255,7 +1547,7 @@ export function Workspace({
 
         {/* New Terminal — server shell in a server context, the local pick otherwise */}
         <button
-          onClick={() => handleNewLocalTerminal(isServerCtx ? serverShell : undefined)}
+          onClick={() => handleNewLocalTerminal()}
           className="m-btn m-btn-primary m-btn-sm"
           title={
             isServerCtx
@@ -1264,45 +1556,65 @@ export function Workspace({
           }
         >
           <IconTerminal className="h-4 w-4" />
-          <span className="hidden md:inline">Terminal</span>
+          <span className="hidden md:inline">{t('ws.terminal')}</span>
         </button>
 
-        {/* Local-shell selector — hidden in a server context (the server sets the shell) */}
-        {!isServerCtx && (
-        <button
-          ref={defaultShellButtonRef}
-          onClick={async () => {
-            if (!showDefaultShellDropdown) await checkInstalledShells();
-            setShowDefaultShellDropdown(!showDefaultShellDropdown);
-          }}
-          className="m-btn m-btn-sm"
-          title="Select default shell"
-        >
-          <span>{shells.find((s) => s.path === settings.defaultShell)?.icon || '🐚'}</span>
-          <span className="hidden text-muted-foreground md:inline">{settings.defaultShell.split('/').pop()}</span>
-          <IconChevronDown className="h-3 w-3 text-muted-foreground" />
-        </button>
+        {/* Local-shell selector — hidden in a server context (the server sets the
+            shell), and hidden when this person took it out of their toolbar. */}
+        {!isServerCtx && toolbarPrefs.shellPicker && (
+          <button
+            ref={defaultShellButtonRef}
+            onClick={async () => {
+              if (!showDefaultShellDropdown) await checkInstalledShells();
+              setShowDefaultShellDropdown(!showDefaultShellDropdown);
+            }}
+            className="m-btn m-btn-sm"
+            title={t('ws.selectShell')}
+          >
+            <span>{shells.find((s) => s.path === settings.defaultShell)?.icon || '🐚'}</span>
+            <span className="hidden text-muted-foreground md:inline">
+              {settings.defaultShell.split('/').pop()}
+            </span>
+            <IconChevronDown className="h-3 w-3 text-muted-foreground" />
+          </button>
         )}
 
-        {/* Focus mode (client/native only): hide the toolbar, terminals fill the screen (F11). */}
-        {native && (
+        {/* Focus mode (client/native only): hide the toolbar, terminals fill the screen.
+            F11 keeps working with the button hidden — that is the point of hiding. */}
+        {native && toolbarPrefs.focusMode && (
           <button
             onClick={toggleFocus}
             className={`m-btn m-btn-sm${focusActive ? ' text-primary' : ''}`}
-            title="Focus mode (F11) — hide the toolbar, terminals fill the screen"
+            title={t('ws.focusMode')}
             aria-pressed={focusActive}
           >
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"
+              />
             </svg>
           </button>
         )}
 
-        {/* Quick SSH — hidden when the server forbids it (server-governed capability) */}
-        {allowQuickSsh && (
-          <button onClick={() => setShowQuickSSH(true)} className="m-btn m-btn-sm" title="Quick SSH Connect">
+        {/* Quick SSH — hidden when the server forbids it (server-governed capability),
+            and when this person hid it. The two are not the same thing: the first is
+            a rule, the second is a view, and only the rule decides what is allowed. */}
+        {allowQuickSsh && toolbarPrefs.quickSsh && (
+          <button
+            onClick={() => setShowQuickSSH(true)}
+            className="m-btn m-btn-sm"
+            title={t('ws.quickSshConnect')}
+          >
             <IconBolt className="h-4 w-4" />
-            <span className="hidden md:inline">Quick SSH</span>
+            <span className="hidden md:inline">{t('ws.quickSsh')}</span>
           </button>
         )}
 
@@ -1312,16 +1624,7 @@ export function Workspace({
         {/* Shell-provided always-visible actions (e.g. the notifications bell). */}
         {headerExtra}
 
-        {isLocked ? (
-          <button
-            onClick={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
-            className="m-btn m-btn-primary m-btn-sm"
-            title={isFirstRun ? 'Create your local vault' : 'Unlock vault'}
-          >
-            <IconLock className="h-4 w-4" />
-            <span className="hidden md:inline">{isFirstRun ? 'Create vault' : 'Unlock'}</span>
-          </button>
-        ) : identity ? (
+        {identity ? (
           // Accounts context: the pastille owns Settings + Sign out.
           <ProfilePastille
             username={identity.username}
@@ -1332,13 +1635,34 @@ export function Workspace({
           />
         ) : (
           <>
-            <button onClick={() => setShowSettings(true)} className="m-btn m-btn-ghost m-btn-sm" title={t('settings.title')}>
-              <IconGear className="h-4 w-4" />
-            </button>
-            <button onClick={() => lock()} className="m-btn m-btn-ghost m-btn-sm" title={lockLabel}>
-              <IconLock className="h-4 w-4" />
-              <span className="hidden md:inline">{lockLabel}</span>
-            </button>
+            {/* First run, or a locked vault: the call to action stays a primary BUTTON and
+                does not move into the menu. It is the one thing a new window is for, and
+                hiding "Create vault" behind a chevron costs a first-time reader the only
+                affordance that matters. The menu repeats it, for whoever opens the menu. */}
+            {isLocked && (
+              <button
+                onClick={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
+                className="m-btn m-btn-primary m-btn-sm"
+                title={isFirstRun ? t('ws.createVaultTitle') : t('ws.unlockVaultTitle')}
+                data-testid="vault-primary-action"
+              >
+                <IconLock className="h-4 w-4" />
+                <span className="hidden md:inline">
+                  {isFirstRun ? t('ws.createVault') : t('ws.unlockVault')}
+                </span>
+              </button>
+            )}
+            {/* Settings is reachable while locked, on purpose (base-first, ADR 0014): the
+                theme, the keyboard, the splits and the language are per-device and have
+                nothing to do with a vault. They used to vanish with it. */}
+            <VaultPastille
+              isLocked={isLocked}
+              isFirstRun={!!isFirstRun}
+              vaultLabel={nativeContext()?.label ?? undefined}
+              onLock={() => lock()}
+              onUnlock={() => (isFirstRun ? openCreateVault() : setShowUnlockModal(true))}
+              onSettings={() => setShowSettings(true)}
+            />
           </>
         )}
       </header>
@@ -1347,11 +1671,15 @@ export function Workspace({
           is never trapped. Fades to faint but doesn't disappear. */}
       {focusActive && (
         <div className="pointer-events-none fixed bottom-4 left-1/2 z-[56] flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs text-muted-foreground opacity-90 shadow-lg">
-          Focus mode ·{' '}
-          <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">Esc</kbd>{' '}
-          or{' '}
-          <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">F11</kbd>{' '}
-          to exit · hover the top edge to reveal the toolbar
+          {t('ws.focusMode')}{' '}
+          <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">
+            Esc
+          </kbd>{' '}
+          {t('ws.focusOr')}{' '}
+          <kbd className="rounded border border-border border-b-2 bg-background px-1.5 font-mono text-[11px] text-foreground">
+            F11
+          </kbd>{' '}
+          {t('ws.focusExit')}
         </div>
       )}
 
@@ -1359,9 +1687,11 @@ export function Workspace({
       <main className="flex flex-1 overflow-hidden relative">
         {/* Sidebar: saved connections when a vault is open; otherwise a prompt to
             open one (the local terminal + Quick SSH in the header work without it). */}
-        <aside className={`m-side border-r border-border flex flex-col transition-all duration-300 overflow-hidden ${
-          isSidebarOpen ? 'w-[290px]' : 'w-0'
-        }`}>
+        <aside
+          className={`m-side border-r border-border flex flex-col transition-all duration-300 overflow-hidden ${
+            isSidebarOpen ? 'w-[290px]' : 'w-0'
+          }`}
+        >
           {isLocked ? (
             <div className="flex flex-1 flex-col overflow-hidden">
               {/* Collapse toggle — available locked too, so you can reclaim the space without
@@ -1371,19 +1701,24 @@ export function Workspace({
                   onClick={() => setIsSidebarOpen(false)}
                   className="m-btn m-btn-ghost"
                   style={{ padding: '4px' }}
-                  title="Hide sidebar"
-                  aria-label="Hide sidebar"
+                  title={t('ws.hideSidebar')}
+                  aria-label={t('ws.hideSidebar')}
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                    />
                   </svg>
                 </button>
               </div>
               <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
                 <p className="text-sm text-muted-foreground">
                   {isFirstRun && lockedVaults.length === 0
-                    ? 'No vault yet. Create one to save connections — the local terminal and Quick SSH work without it.'
-                    : 'Open a vault to see your saved connections. The local terminal and Quick SSH work without one.'}
+                    ? t('ws.noVaultYet')
+                    : t('ws.openVaultHint')}
                 </p>
                 <button
                   onClick={() => {
@@ -1393,153 +1728,238 @@ export function Workspace({
                   }}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
                 >
-                  {isFirstRun && lockedVaults.length === 0 ? 'Create local vault' : 'Open local vault'}
+                  {isFirstRun && lockedVaults.length === 0
+                    ? t('ws.createLocalVault')
+                    : t('ws.openLocalVault')}
                 </button>
               </div>
             </div>
           ) : (
-          <>
-          {/* Search (design mock: at the top of the sidebar) */}
-          <div className="m-search">
-            <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z" />
-            </svg>
-            <input
-              value={sidebarQuery}
-              onChange={(e) => setSidebarQuery(e.target.value)}
-              placeholder="Search connections…"
-            />
-          </div>
-
-          {/* Library header row: eyebrow · + menu · collapse */}
-          <div className="m-side-hdr">
-            <span className="m-eyebrow">Library</span>
-            <div className="relative ml-auto flex items-center gap-1">
-              <button
-                onClick={() => setShowNewMenu((v) => !v)}
-                aria-label="Add to library"
-                title="Add to library"
-                className="m-btn m-btn-ghost"
-                style={{ padding: '4px' }}
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v14M5 12h14" />
+            <>
+              {/* Search (design mock: at the top of the sidebar) */}
+              <div className="m-search">
+                <svg
+                  className="h-4 w-4 flex-none"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"
+                  />
                 </svg>
-              </button>
-              {showNewMenu && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
-                  <div className="m-menu absolute right-0 top-full z-20 mt-1">
-                    {/* No loose machines (ADR 0016): machines & import are
+                <input
+                  value={sidebarQuery}
+                  onChange={(e) => setSidebarQuery(e.target.value)}
+                  placeholder={t('ws.searchConnections')}
+                />
+              </div>
+
+              {/* Library header row: eyebrow · + menu · collapse */}
+              <div className="m-side-hdr">
+                <span className="m-eyebrow">{t('ws.library')}</span>
+                <div className="relative ml-auto flex items-center gap-1">
+                  <button
+                    onClick={() => setShowNewMenu((v) => !v)}
+                    aria-label={t('ws.addToLibrary')}
+                    title={t('ws.addToLibrary')}
+                    className="m-btn m-btn-ghost"
+                    style={{ padding: '4px' }}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 5v14M5 12h14"
+                      />
+                    </svg>
+                  </button>
+                  {showNewMenu && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowNewMenu(false)} />
+                      <div className="m-menu absolute right-0 top-full z-20 mt-1">
+                        {/* No loose machines (ADR 0016): machines & import are
                         collection-scoped, so the library + creates folders and
                         collections in both contexts. Since ADR 0018 a local vault
                         has collections too, so there is no longer a second branch
                         offering a machine with nowhere to put it. */}
-                    <>
-                      <button onClick={() => { setShowNewMenu(false); setLibraryFolderEdit({}); }}>
-                          <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-                          </svg>
-                          New folder…
-                        </button>
-                        <button onClick={() => { setShowNewMenu(false); setShowNewCollection(true); }}>
-                          <svg className="h-4 w-4 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l9 5-9 5-9-5 9-5z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5" />
-                          </svg>
-                        New collection…
-                      </button>
+                        <>
+                          <button
+                            onClick={() => {
+                              setShowNewMenu(false);
+                              setLibraryFolderEdit({});
+                            }}
+                          >
+                            <svg
+                              className="h-4 w-4 flex-none"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"
+                              />
+                            </svg>
+                            {t('ws.newFolder')}
+                          </button>
+                          <button
+                            onClick={() => {
+                              setShowNewMenu(false);
+                              setShowNewCollection(true);
+                            }}
+                          >
+                            <svg
+                              className="h-4 w-4 flex-none"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M12 3l9 5-9 5-9-5 9-5z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M3.5 12L12 17l8.5-5M3.5 16L12 21l8.5-5"
+                              />
+                            </svg>
+                            {t('ws.newCollection')}
+                          </button>
+                        </>
+                      </div>
                     </>
-                  </div>
-                </>
-              )}
-              <button
-                onClick={() => setIsSidebarOpen(false)}
-                className="m-btn m-btn-ghost"
-                style={{ padding: '4px' }}
-                title="Hide sidebar"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
-                </svg>
-              </button>
-            </div>
-          </div>
+                  )}
+                  <button
+                    onClick={() => setIsSidebarOpen(false)}
+                    className="m-btn m-btn-ghost"
+                    style={{ padding: '4px' }}
+                    title={t('ws.hideSidebar')}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
 
-          {/* Library tree */}
-          <div className="flex-1 overflow-y-auto">
-            <LibrarySidebar
-              query={sidebarQuery}
-              connections={connections}
-              selectedId={selectedConnectionId}
-              onSelect={selectConnection}
-              onOpenMachine={handleOpenMachine}
-              onEdit={handleEditConnection}
-              onDelete={handleDeleteConnection}
-              onConnect={handleConnect}
-              onForward={setForwardTarget}
-              onMoveMachine={setMoveMachineTarget}
-              onOpenCollection={handleOpenCollection}
-              openCollectionId={mainView === 'collection' ? openCollectionId : null}
-              collections={conns.collections}
-              onNewMachineInCollection={hasCollections ? handleNewMachineInCollection : undefined}
-              onNewFolderInCollection={hasCollections ? (id) => setFolderDialog({ collectionId: id }) : undefined}
-              onNewSubfolder={
-                hasCollections
-                  ? (id, parentPath) => setFolderDialog({ collectionId: id, parentPath })
-                  : undefined
-              }
-              onNewMachineInFolder={
-                hasCollections ? (id, folderPath) => handleNewMachineInCollection(id, folderPath) : undefined
-              }
-              onRenameFolder={
-                hasCollections
-                  ? (id, path, color) =>
-                      setFolderDialog({
-                        collectionId: id,
-                        renamePath: path,
-                        initialName: path.split('/').pop() ?? path,
-                        initialColor: color,
-                      })
-                  : undefined
-              }
-              onDeleteFolder={hasCollections ? (id, path) => setDeleteSubfolder({ collectionId: id, path }) : undefined}
-              onImportToCollection={
-                hasCollections
-                  ? (id) => {
-                      setImportCollectionId(id);
-                      setShowImportSSH(true);
-                    }
-                  : undefined
-              }
-              onOpenMembers={isServerContext ? (id) => setMembersCollectionId(id) : undefined}
-              onOpenBoard={hasCollections && conns.readBoard ? (id) => setBoardCollectionId(id) : undefined}
-              onRenameCollection={
-                hasCollections
-                  ? (id, name, color) =>
-                      setCollectionEdit({ id, name, color, hc: conns.collections?.find((c) => c.id === id)?.hc })
-                  : undefined
-              }
-              onDeleteCollection={hasCollections ? (id, name) => setDeleteCollectionTarget({ id, name }) : undefined}
-              libraryFolders={hasCollections ? tree.folders : undefined}
-              collectionPlacement={hasCollections ? tree.placement : undefined}
-              onNewLibrarySubfolder={hasCollections ? (parent) => setLibraryFolderEdit({ parent }) : undefined}
-              onNewCollectionInFolder={
-                hasCollections
-                  ? (folderId) => {
-                      setPendingCollectionFolder(folderId);
-                      setShowNewCollection(true);
-                    }
-                  : undefined
-              }
-              onRenameLibraryFolder={
-                hasCollections ? (id, name, color) => setLibraryFolderEdit({ id, name, color }) : undefined
-              }
-              onDeleteLibraryFolder={hasCollections ? (id, name) => setDeleteFolderTarget({ id, name }) : undefined}
-              onMoveCollection={hasCollections ? (id, name) => setMoveCollectionTarget({ id, name }) : undefined}
-            />
-          </div>
-          </>
+              {/* Library tree */}
+              <div className="flex-1 overflow-y-auto">
+                <LibrarySidebar
+                  query={sidebarQuery}
+                  connections={connections}
+                  selectedId={selectedConnectionId}
+                  onSelect={selectConnection}
+                  onOpenMachine={handleOpenMachine}
+                  onEdit={handleEditConnection}
+                  onDelete={handleDeleteConnection}
+                  onConnect={handleConnect}
+                  onForward={setForwardTarget}
+                  onMoveMachine={setMoveMachineTarget}
+                  onOpenCollection={handleOpenCollection}
+                  openCollectionId={mainView === 'collection' ? openCollectionId : null}
+                  collections={conns.collections}
+                  onNewMachineInCollection={
+                    hasCollections ? handleNewMachineInCollection : undefined
+                  }
+                  onNewFolderInCollection={
+                    hasCollections ? (id) => setFolderDialog({ collectionId: id }) : undefined
+                  }
+                  onNewSubfolder={
+                    hasCollections
+                      ? (id, parentPath) => setFolderDialog({ collectionId: id, parentPath })
+                      : undefined
+                  }
+                  onNewMachineInFolder={
+                    hasCollections
+                      ? (id, folderPath) => handleNewMachineInCollection(id, folderPath)
+                      : undefined
+                  }
+                  onRenameFolder={
+                    hasCollections
+                      ? (id, path, color) =>
+                          setFolderDialog({
+                            collectionId: id,
+                            renamePath: path,
+                            initialName: path.split('/').pop() ?? path,
+                            initialColor: color,
+                          })
+                      : undefined
+                  }
+                  onDeleteFolder={
+                    hasCollections
+                      ? (id, path) => setDeleteSubfolder({ collectionId: id, path })
+                      : undefined
+                  }
+                  onImportToCollection={
+                    hasCollections
+                      ? (id) => {
+                          setImportCollectionId(id);
+                          setShowImportSSH(true);
+                        }
+                      : undefined
+                  }
+                  onOpenMembers={isServerContext ? (id) => setMembersCollectionId(id) : undefined}
+                  onOpenBoard={
+                    hasCollections && conns.readBoard ? (id) => setBoardCollectionId(id) : undefined
+                  }
+                  onRenameCollection={
+                    hasCollections
+                      ? (id, name, color) =>
+                          setCollectionEdit({
+                            id,
+                            name,
+                            color,
+                            hc: conns.collections?.find((c) => c.id === id)?.hc,
+                          })
+                      : undefined
+                  }
+                  onDeleteCollection={
+                    hasCollections
+                      ? (id, name) => setDeleteCollectionTarget({ id, name })
+                      : undefined
+                  }
+                  libraryFolders={hasCollections ? tree.folders : undefined}
+                  collectionPlacement={hasCollections ? tree.placement : undefined}
+                  onNewLibrarySubfolder={
+                    hasCollections ? (parent) => setLibraryFolderEdit({ parent }) : undefined
+                  }
+                  onNewCollectionInFolder={
+                    hasCollections
+                      ? (folderId) => {
+                          setPendingCollectionFolder(folderId);
+                          setShowNewCollection(true);
+                        }
+                      : undefined
+                  }
+                  onRenameLibraryFolder={
+                    hasCollections
+                      ? (id, name, color) => setLibraryFolderEdit({ id, name, color })
+                      : undefined
+                  }
+                  onDeleteLibraryFolder={
+                    hasCollections ? (id, name) => setDeleteFolderTarget({ id, name }) : undefined
+                  }
+                  onMoveCollection={
+                    hasCollections ? (id, name) => setMoveCollectionTarget({ id, name }) : undefined
+                  }
+                />
+              </div>
+            </>
           )}
         </aside>
 
@@ -1548,12 +1968,17 @@ export function Workspace({
         {!isSidebarOpen && (
           <button
             onClick={() => setIsSidebarOpen(true)}
-            title="Show sidebar"
-            aria-label="Show sidebar"
+            title={t('ws.showSidebar')}
+            aria-label={t('ws.showSidebar')}
             className="absolute left-0 top-1/2 z-30 -translate-y-1/2 rounded-r-md border border-l-0 border-border bg-card p-2 shadow-lg transition-colors hover:bg-muted"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 5l7 7-7 7M5 5l7 7-7 7"
+              />
             </svg>
           </button>
         )}
@@ -1586,7 +2011,8 @@ export function Workspace({
                     setShowForm(true);
                   }}
                   onNewFolder={(parentPath) =>
-                    openCollectionId && setFolderDialog({ collectionId: openCollectionId, parentPath })
+                    openCollectionId &&
+                    setFolderDialog({ collectionId: openCollectionId, parentPath })
                   }
                   onImport={() => {
                     setImportCollectionId(openCollectionId);
@@ -1601,7 +2027,7 @@ export function Workspace({
                       : undefined
                   }
                   onOpenBoard={
-                    hasCollections && conns.readBoard && openCollectionId
+                    hasCollections && conns.readBoard
                       ? () => setBoardCollectionId(openCollectionId)
                       : undefined
                   }
@@ -1630,28 +2056,35 @@ export function Workspace({
               </div>
             )}
 
-        {/* Main panel - Terminal Manager */}
-        <ErrorBoundary level="feature" name="TerminalManager">
-          <TerminalManager
-            viewTabs={viewTabs}
-            tabGroups={tabGroups}
-            activeTabId={activeTabId}
-            onSplitPane={handleSplitPane}
-            onClosePane={handleClosePane}
-            onFocusPane={handleFocusPane}
-            onSplitRatioChange={handleSplitRatioChange}
-            onSwitchTab={handleSwitchTab}
-            onReorderTabs={handleReorderTabs}
-            onDetachPane={handleDetachPane}
-            onRenameTab={handleRenameTab}
-            onMergeTab={handleMergeTab}
-            onCloseTab={handleCloseTab}
-            onReorganizePane={handleReorganizePane}
-            onNewLocalTerminal={handleNewLocalTerminal}
-            onSaveQuickSSH={handleSaveQuickSSH}
-            quickSSHSessions={Array.from(quickSSHConnections.keys())}
-          />
-        </ErrorBoundary>
+            {/* Main panel - Terminal Manager */}
+            <ErrorBoundary level="feature" name="TerminalManager">
+              <TerminalManager
+                viewTabs={viewTabs}
+                tabGroups={tabGroups}
+                activeTabId={activeTabId}
+                onSplitPane={handleSplitPane}
+                onClosePane={handleClosePane}
+                onFocusPane={handleFocusPane}
+                onSplitRatioChange={handleSplitRatioChange}
+                onSwitchTab={handleSwitchTab}
+                onApplyLayout={
+                  toolbarPrefs.layouts && layoutsAvailable ? handleApplyLayout : undefined
+                }
+                layoutConnections={conns.connections ?? []}
+                layoutLibraryReadable={!isLocked}
+                onReorderTabs={handleReorderTabs}
+                onDetachPane={handleDetachPane}
+                onRenameTab={handleRenameTab}
+                onMergeTab={handleMergeTab}
+                onCloseTab={handleCloseTab}
+                onReorganizePane={handleReorganizePane}
+                onNewLocalTerminal={handleNewLocalTerminal}
+                shellMenu={toolbarPrefs.newTerminalMenu ? newTerminalShells : undefined}
+                probeShells={!isServerCtx}
+                onSaveQuickSSH={handleSaveQuickSSH}
+                quickSSHSessions={Array.from(quickSSHConnections.keys())}
+              />
+            </ErrorBoundary>
           </div>
         </div>
       </main>
@@ -1663,6 +2096,7 @@ export function Workspace({
           prefillData={connectionFormPrefill}
           create={conns.create}
           update={conns.update}
+          reveal={conns.reveal}
           jumpCandidates={conns.connections}
           collectionTargets={conns.writableCollections}
           defaultCollectionId={formDefaultCollectionId}
@@ -1695,54 +2129,66 @@ export function Workspace({
           onSaved={fetchConnections}
         />
       )}
-      {boardCollectionId && conns.readBoard && conns.saveBoard && (() => {
-        const col = conns.collections?.find((c) => c.id === boardCollectionId);
-        return (
-          <BoardModal
-            collectionId={boardCollectionId}
-            collectionName={col?.name ?? ''}
-            memberCount={col?.memberCount ?? 1}
-            isPersonal={col?.isPersonal ?? false}
-            shared={isServerContext}
-            canWrite={col?.role === 'owner' || col?.role === 'editor'}
-            readBoard={conns.readBoard}
-            saveBoard={conns.saveBoard}
-            onClose={() => setBoardCollectionId(null)}
-          />
-        );
-      })()}
+      {boardCollectionId &&
+        conns.readBoard &&
+        conns.saveBoard &&
+        (() => {
+          const col = conns.collections?.find((c) => c.id === boardCollectionId);
+          return (
+            <BoardModal
+              collectionId={boardCollectionId}
+              collectionName={col?.name ?? ''}
+              memberCount={col?.memberCount ?? 1}
+              isPersonal={col?.isPersonal ?? false}
+              shared={isServerContext}
+              canWrite={col?.role === 'owner' || col?.role === 'editor'}
+              readBoard={conns.readBoard}
+              saveBoard={conns.saveBoard}
+              onClose={() => setBoardCollectionId(null)}
+            />
+          );
+        })()}
       {/* Creating a collection: on a server it starts with members (MemberPicker, which
           seals the keys to them); in a vault there is nobody to add, so it is the plain
           name/colour form and the core wraps the keys with the master key (ADR 0018). */}
-      {showNewCollection && (() => {
-        const close = () => {
-          setShowNewCollection(false);
-          setPendingCollectionFolder(null);
-        };
-        const placeInFolder = (id: string) => {
-          if (pendingCollectionFolder) tree.moveCollection(id, pendingCollectionFolder);
-        };
-        if (isServerContext) {
+      {showNewCollection &&
+        (() => {
+          const close = () => {
+            setShowNewCollection(false);
+            setPendingCollectionFolder(null);
+          };
+          const placeInFolder = (id: string) => {
+            if (pendingCollectionFolder) tree.moveCollection(id, pendingCollectionFolder);
+          };
+          if (isServerContext) {
+            return (
+              <MemberPicker
+                mode="create"
+                onClose={close}
+                onSaved={fetchConnections}
+                onCreated={placeInFolder}
+              />
+            );
+          }
+          const create = conns.createCollection;
+          if (!create) return null;
           return (
-            <MemberPicker mode="create" onClose={close} onSaved={fetchConnections} onCreated={placeInFolder} />
+            <CollectionEditDialog
+              onClose={close}
+              onSaved={fetchConnections}
+              onPersist={async (name, color, hc) => {
+                placeInFolder(await create(name, color, hc));
+              }}
+            />
           );
-        }
-        const create = conns.createCollection;
-        if (!create) return null;
-        return (
-          <CollectionEditDialog
-            onClose={close}
-            onSaved={fetchConnections}
-            onPersist={async (name, color, hc) => {
-              placeInFolder(await create(name, color, hc));
-            }}
-          />
-        );
-      })()}
+        })()}
       {folderDialog && (
         <CollectionFolderDialog
           collectionId={folderDialog.collectionId}
-          collectionName={conns.collections?.find((c) => c.id === folderDialog.collectionId)?.name ?? openCollectionName}
+          collectionName={
+            conns.collections?.find((c) => c.id === folderDialog.collectionId)?.name ??
+            openCollectionName
+          }
           parentPath={folderDialog.parentPath}
           renamePath={folderDialog.renamePath}
           initialName={folderDialog.initialName}
@@ -1753,16 +2199,26 @@ export function Workspace({
         />
       )}
       {deleteSubfolder && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteSubfolder(null)}>
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-2 text-lg font-semibold">Delete folder “{deleteSubfolder.path.split('/').pop()}”?</h3>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDeleteSubfolder(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-2 text-lg font-semibold">
+              {t('ws.deleteFolderTitle', { name: deleteSubfolder.path.split('/').pop() ?? '' })}
+            </h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              The folder and its sub-folders are removed{isServerContext ? ' for everyone in the collection' : ''}.
-              Machines inside move up to the parent folder — nothing is deleted.
+              {isServerContext ? t('ws.deleteSubfolderWhyShared') : t('ws.deleteSubfolderWhy')}
             </p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setDeleteSubfolder(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
-                Cancel
+              <button
+                onClick={() => setDeleteSubfolder(null)}
+                className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+              >
+                {t('dlg.cancel')}
               </button>
               <button
                 onClick={async () => {
@@ -1773,7 +2229,12 @@ export function Workspace({
                       await conns.deleteFolder(target.collectionId, target.path);
                     } else {
                       if (!serverKeys.publicKey || !serverKeys.privateKey) return;
-                      await deleteCollectionFolder(target.collectionId, serverKeys.publicKey, serverKeys.privateKey, target.path);
+                      await deleteCollectionFolder(
+                        target.collectionId,
+                        serverKeys.publicKey,
+                        serverKeys.privateKey,
+                        target.path,
+                      );
                     }
                     await fetchConnections();
                   } catch (err) {
@@ -1782,7 +2243,7 @@ export function Workspace({
                 }}
                 className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
-                Delete
+                {t('dlg.delete')}
               </button>
             </div>
           </div>
@@ -1816,7 +2277,7 @@ export function Workspace({
           machineName={moveMachineTarget.name}
           currentFolder={moveMachineTarget.folder ?? ''}
           folderPaths={folderPathsForMachine(moveMachineTarget)}
-          rootLabel={moveMachineTarget.collectionId ? 'Collection root' : 'No folder (root)'}
+          rootLabel={moveMachineTarget.collectionId ? t('ws.collectionRoot') : t('ws.noFolder')}
           onClose={() => setMoveMachineTarget(null)}
           onPick={async (folder) => {
             await conns.update({ id: moveMachineTarget.id, folder });
@@ -1825,16 +2286,24 @@ export function Workspace({
         />
       )}
       {deleteFolderTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteFolderTarget(null)}>
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-2 text-lg font-semibold">Delete folder “{deleteFolderTarget.name}”?</h3>
-            <p className="mb-4 text-sm text-muted-foreground">
-              This only removes the folder from your view — the collections in it move back to the root. Nothing is
-              deleted or unshared.
-            </p>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDeleteFolderTarget(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-2 text-lg font-semibold">
+              {t('ws.deleteFolderTitle', { name: deleteFolderTarget.name })}
+            </h3>
+            <p className="mb-4 text-sm text-muted-foreground">{t('ws.removeFolderWhy')}</p>
             <div className="flex justify-end gap-2">
-              <button onClick={() => setDeleteFolderTarget(null)} className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted">
-                Cancel
+              <button
+                onClick={() => setDeleteFolderTarget(null)}
+                className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
+              >
+                {t('dlg.cancel')}
               </button>
               <button
                 onClick={() => {
@@ -1843,7 +2312,7 @@ export function Workspace({
                 }}
                 className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
-                Delete
+                {t('dlg.delete')}
               </button>
             </div>
           </div>
@@ -1869,25 +2338,32 @@ export function Workspace({
 
       {/* Delete collection confirmation (ADR 0016) */}
       {deleteCollectionTarget && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setDeleteCollectionTarget(null)}>
-          <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-2 text-lg font-semibold">Delete “{deleteCollectionTarget.name}”?</h3>
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDeleteCollectionTarget(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-2 text-lg font-semibold">
+              {t('ws.deleteCollTitle', { name: deleteCollectionTarget.name })}
+            </h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              This permanently deletes the collection and its machines{isServerContext ? ' for everyone. Members lose access.' : '.'} This
-              cannot be undone.
+              {isServerContext ? t('ws.deleteCollWhyShared') : t('ws.deleteCollWhy')}
             </p>
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setDeleteCollectionTarget(null)}
                 className="rounded-md border border-border px-4 py-2 text-sm hover:bg-muted"
               >
-                Cancel
+                {t('dlg.cancel')}
               </button>
               <button
                 onClick={handleDeleteCollectionConfirmed}
                 className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
               >
-                Delete
+                {t('dlg.delete')}
               </button>
             </div>
           </div>
@@ -1899,9 +2375,7 @@ export function Workspace({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="mx-4 w-full max-w-md rounded-lg bg-background p-6 shadow-xl">
             <h2 className="mb-4 text-xl font-bold">{t('connections.delete')}</h2>
-            <p className="mb-6 text-sm text-muted-foreground">
-              {t('connections.deleteConfirm')}
-            </p>
+            <p className="mb-6 text-sm text-muted-foreground">{t('connections.deleteConfirm')}</p>
             <p className="mb-6 font-medium">{connectionToDelete.name}</p>
             <div className="flex justify-end gap-3">
               <button
@@ -1927,10 +2401,18 @@ export function Workspace({
       {/* Settings Modal — local mode only. In a server session AccountsShell renders it (once,
           above the overlay pages) since it drives the same global store. */}
       {showSettings && !identity && (
-        <Settings onClose={() => setShowSettings(false)} />
+        <Settings
+          onClose={() => setShowSettings(false)}
+          connections={conns.connections ?? []}
+          libraryReadable={!isLocked}
+        />
       )}
 
       {/* Quick SSH Modal */}
+      {/* Raised by `askSecret` from wherever a connection is opened (ADR 0024 §4).
+          Mounted once, like the create-vault dialog, for the same reason. */}
+      <SecretPrompt />
+
       {showQuickSSH && (
         <QuickSSHModal
           onClose={() => setShowQuickSSH(false)}
@@ -1968,24 +2450,26 @@ export function Workspace({
             setForwardTarget((prev) => (prev ? { ...prev, forwards } : prev));
             fetchConnections();
           }}
-          onStart={
-            conns.startForward && ((f) => conns.startForward!(forwardTarget, f))
-          }
+          onStart={conns.startForward && ((f) => conns.startForward!(forwardTarget, f))}
           onClose={() => setForwardTarget(null)}
         />
       )}
 
       {/* Pre-connect hook: runs a local command before opening SSH */}
-      {preconnectPrompt && preconnectPrompt.preconnect && (
+      {preconnectPrompt && preconnectPrompt.conn.preconnect && (
         <PreconnectModal
-          command={preconnectPrompt.preconnect}
-          connectionName={preconnectPrompt.name}
+          command={preconnectPrompt.conn.preconnect}
+          connectionName={preconnectPrompt.conn.name}
           onSuccess={() => {
-            const conn = preconnectPrompt;
+            const settle = preconnectPrompt.settle;
             setPreconnectPrompt(null);
-            void doConnect(conn);
+            settle(true);
           }}
-          onCancel={() => setPreconnectPrompt(null)}
+          onCancel={() => {
+            const settle = preconnectPrompt.settle;
+            setPreconnectPrompt(null);
+            settle(false);
+          }}
         />
       )}
 
@@ -2005,7 +2489,7 @@ export function Workspace({
             onImported={(count) => {
               fetchConnections();
               setToastType('success');
-              setToastMessage(`Imported ${count} machine${count !== 1 ? 's' : ''}`);
+              setToastMessage(t('ws.importedMachines', { count }));
             }}
           />
         ) : (
@@ -2017,7 +2501,7 @@ export function Workspace({
             onImported={(count) => {
               void conns.refresh();
               setToastType('success');
-              setToastMessage(`Successfully imported ${count} connection${count !== 1 ? 's' : ''}`);
+              setToastMessage(t('ws.importedConnections', { count }));
             }}
           />
         ))}
@@ -2039,12 +2523,18 @@ export function Workspace({
               title={t('common.close')}
               className="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
-            <h2 className="text-lg font-semibold">Open a vault</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Pick a local vault, or create/open one.</p>
+            <h2 className="text-lg font-semibold">{t('ws.openAVault')}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t('ws.openAVaultHint')}</p>
             <div className="mt-4 flex flex-col gap-2">
               {lockedVaults.map((v) => {
                 const isThisWindow = currentVaultPath != null && v.path === currentVaultPath;
@@ -2064,7 +2554,11 @@ export function Workspace({
                       className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm hover:bg-muted"
                     >
                       {v.icon?.startsWith('data:') ? (
-                        <img src={v.icon} alt="" className="h-6 w-6 flex-none rounded object-cover" />
+                        <img
+                          src={v.icon}
+                          alt=""
+                          className="h-6 w-6 flex-none rounded object-cover"
+                        />
                       ) : (
                         <span className="text-xl leading-none" aria-hidden>
                           {v.icon || '🔒'}
@@ -2072,10 +2566,12 @@ export function Workspace({
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium">{v.label}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{v.path}</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {v.path}
+                        </span>
                       </span>
                       <span className="flex-none text-xs text-muted-foreground">
-                        {isThisWindow ? 'Unlock' : 'Open'}
+                        {isThisWindow ? t('unlock.submit') : t('hub.open')}
                       </span>
                     </button>
                     {!isThisWindow && (
@@ -2084,23 +2580,43 @@ export function Workspace({
                           setShowVaultPicker(false);
                           requestOpenContext({ kind: 'local', path: v.path });
                         }}
-                        title="Open in new window"
-                        aria-label={`Open ${v.label} in a new window`}
+                        title={t('ws.openInNewWindow')}
+                        aria-label={t('ws.openInNewWindowOf', { name: v.label })}
                         className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-muted hover:text-foreground group-hover:opacity-100"
                       >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4" />
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M14 3h7v7m0-7l-9 9M10 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-4"
+                          />
                         </svg>
                       </button>
                     )}
                     <button
                       onClick={() => setRemoveVault(v)}
-                      title="Remove from list"
-                      aria-label={`Remove ${v.label}`}
+                      title={t('ws.removeFromList')}
+                      aria-label={t('ws.removeOf', { name: v.label })}
                       className="flex-none rounded p-1.5 text-muted-foreground opacity-0 transition hover:bg-red-500/10 hover:text-red-500 group-hover:opacity-100"
                     >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"
+                        />
                       </svg>
                     </button>
                   </div>
@@ -2113,7 +2629,7 @@ export function Workspace({
                 }}
                 className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm text-muted-foreground hover:border-primary hover:text-foreground"
               >
-                <span aria-hidden>＋</span> New local vault…
+                <span aria-hidden>＋</span> {t('ws.newLocalVault')}
               </button>
               <button
                 onClick={() => {
@@ -2122,7 +2638,7 @@ export function Workspace({
                 }}
                 className="flex items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2.5 text-left text-sm text-muted-foreground hover:border-primary hover:text-foreground"
               >
-                <span aria-hidden>📂</span> Open a vault file…
+                <span aria-hidden>📂</span> {t('ws.openVaultFile')}
               </button>
             </div>
           </div>
@@ -2163,12 +2679,11 @@ export function Workspace({
       {abandonNewVault && pendingNewVaultPath && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl">
-            <h3 className="font-semibold">Abandon this new vault?</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              You haven’t set a master password, so this vault isn’t saved. Its file was just created
-              at:
+            <h3 className="font-semibold">{t('ws.abandonTitle')}</h3>
+            <p className="mt-2 text-sm text-muted-foreground">{t('ws.abandonWhy')}</p>
+            <p className="mt-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs">
+              {pendingNewVaultPath}
             </p>
-            <p className="mt-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs">{pendingNewVaultPath}</p>
             <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/5 p-3">
               <input
                 type="checkbox"
@@ -2177,10 +2692,8 @@ export function Workspace({
                 className="mt-0.5 h-4 w-4 flex-none accent-red-500"
               />
               <span className="min-w-0 text-sm">
-                <span className="font-medium text-red-500">Delete the file</span>
-                <span className="block text-xs text-muted-foreground">
-                  Removes the empty vault file from your machine.
-                </span>
+                <span className="font-medium text-red-500">{t('ws.deleteFile')}</span>
+                <span className="block text-xs text-muted-foreground">{t('ws.deleteFileWhy')}</span>
               </span>
             </label>
             <div className="mt-4 flex justify-end gap-2">
@@ -2188,11 +2701,12 @@ export function Workspace({
                 onClick={() => setAbandonNewVault(false)}
                 className="rounded-md px-3 py-1.5 text-sm hover:bg-muted"
               >
-                Keep setting up
+                {t('ws.keepSettingUp')}
               </button>
               <button
                 onClick={() => {
-                  if (abandonDeleteFile) sendVaultCommand({ type: 'vault-delete', path: pendingNewVaultPath });
+                  if (abandonDeleteFile)
+                    sendVaultCommand({ type: 'vault-delete', path: pendingNewVaultPath });
                   setAbandonNewVault(false);
                   setShowUnlockModal(false);
                   // Leave the abandoned vault and return to the base workspace on the default vault
@@ -2201,7 +2715,7 @@ export function Workspace({
                 }}
                 className="rounded-md bg-red-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600"
               >
-                {abandonDeleteFile ? 'Abandon & delete file' : 'Abandon & keep file'}
+                {abandonDeleteFile ? t('ws.abandonDelete') : t('ws.abandonKeep')}
               </button>
             </div>
           </div>
@@ -2221,76 +2735,80 @@ export function Workspace({
         />
       )}
 
-      {/* Default Shell Dropdown (Portal) */}
-      {showDefaultShellDropdown && createPortal(
-        <>
-          <div
-            className="fixed inset-0 z-[100]"
-            onClick={() => setShowDefaultShellDropdown(false)}
-          />
+      {/* {t('ws.defaultShell')} Dropdown (Portal) */}
+      {showDefaultShellDropdown &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[100]"
+              onClick={() => setShowDefaultShellDropdown(false)}
+            />
 
-          <div
-            className="fixed z-[110] min-w-[300px] rounded-md border border-border bg-card shadow-xl"
-            style={{
-              top: `${defaultShellDropdownPosition.top}px`,
-              left: `${defaultShellDropdownPosition.left}px`,
-            }}
-          >
-            <div className="p-2 border-b border-border">
-              <p className="text-xs font-medium text-muted-foreground">Default Shell</p>
-              <p className="text-xs text-muted-foreground/70 mt-1">
-                Used when clicking "+ Local Terminal"
-              </p>
-            </div>
-            {shells.map((shell, index) => {
-              const isInstalled = installedShells.includes(shell.path);
-              return (
-                <button
-                  key={shell.path}
-                  onClick={async () => {
-                    if (!isInstalled) {
-                      setToastType('error');
-                      setToastMessage(`${shell.name} is not installed on this system`);
+            <div
+              className="fixed z-[110] min-w-[300px] rounded-md border border-border bg-card shadow-xl"
+              style={{
+                top: `${defaultShellDropdownPosition.top}px`,
+                left: `${defaultShellDropdownPosition.left}px`,
+              }}
+            >
+              <div className="p-2 border-b border-border">
+                <p className="text-xs font-medium text-muted-foreground">{t('ws.defaultShell')}</p>
+                <p className="text-xs text-muted-foreground/70 mt-1">{t('ws.defaultShellWhy')}</p>
+              </div>
+              {shells.map((shell, index) => {
+                const isInstalled = installedShells.includes(shell.path);
+                return (
+                  <button
+                    key={shell.path}
+                    onClick={async () => {
+                      if (!isInstalled) {
+                        setToastType('error');
+                        setToastMessage(`${shell.name} is not installed on this system`);
+                        setShowDefaultShellDropdown(false);
+                        return;
+                      }
+                      await updateSettings({ defaultShell: shell.path });
                       setShowDefaultShellDropdown(false);
-                      return;
-                    }
-                    await updateSettings({ defaultShell: shell.path });
-                    setShowDefaultShellDropdown(false);
-                    setToastType('success');
-                    setToastMessage(`${shell.name} set as default shell`);
-                  }}
-                  disabled={!isInstalled}
-                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-colors ${
-                    index === 0 ? 'rounded-t-md' : ''
-                  } ${index === shells.length - 1 ? 'rounded-b-md' : ''} ${
-                    settings.defaultShell === shell.path ? 'bg-primary/10' : ''
-                  } ${
-                    isInstalled ? 'hover:bg-muted cursor-pointer' : 'opacity-50 cursor-not-allowed'
-                  }`}
-                  title={!isInstalled ? `${shell.name} is not installed` : ''}
-                >
-                  <span className="text-lg">{shell.icon}</span>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{shell.name}</span>
-                      {!isInstalled && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 border border-red-500/30">
-                          Not installed
-                        </span>
-                      )}
+                      setToastType('success');
+                      setToastMessage(`${shell.name} set as default shell`);
+                    }}
+                    disabled={!isInstalled}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm text-left transition-colors ${
+                      index === 0 ? 'rounded-t-md' : ''
+                    } ${index === shells.length - 1 ? 'rounded-b-md' : ''} ${
+                      settings.defaultShell === shell.path ? 'bg-primary/10' : ''
+                    } ${
+                      isInstalled
+                        ? 'hover:bg-muted cursor-pointer'
+                        : 'opacity-50 cursor-not-allowed'
+                    }`}
+                    title={!isInstalled ? `${shell.name} is not installed` : ''}
+                  >
+                    <span className="text-lg">{shell.icon}</span>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{shell.name}</span>
+                        {!isInstalled && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 border border-red-500/30">
+                            {t('ws.notInstalled')}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">{shell.path}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground">{shell.path}</span>
-                  </div>
-                  <span className={`text-lg ${settings.defaultShell === shell.path ? 'text-yellow-500' : 'text-muted-foreground/30'}`}>
-                    {settings.defaultShell === shell.path ? '⭐' : '☆'}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </>,
-        document.body
-      )}
+                    {/* The default is marked, the others are not — and with the mock's ★,
+                      a text glyph, rather than ⭐, which is an emoji and therefore the
+                      platform's picture rather than this design's mark. */}
+                    <span className="text-lg text-yellow-500">
+                      {settings.defaultShell === shell.path ? '★' : ''}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }

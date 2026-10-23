@@ -6,12 +6,25 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n/i18n';
-import { type CreateConnectionInput, type UpdateConnectionInput, type ConnectionInfo, type Protocol } from '../store/connectionsStore';
+import {
+  type CreateConnectionInput,
+  type UpdateConnectionInput,
+  type ConnectionInfo,
+  type Protocol,
+  type RevealedSecret,
+} from '../store/connectionsStore';
 import type { QuickSSHConnectionInfo } from './QuickSSHModal';
 import { AuthSection } from './AuthSection';
-import { makeAuthState, toAuthMethodInput, type AuthState } from '../utils/authMethod';
+import {
+  makeAuthState,
+  storedAuthType,
+  toAuthMethodInput,
+  type AuthState,
+} from '../utils/authMethod';
 
 interface ConnectionFormProps {
+  /** Read a stored secret back into the fields (ADR 0024 §5). Absent ⇒ not offered. */
+  reveal?: (conn: ConnectionInfo) => Promise<RevealedSecret>;
   connection?: ConnectionInfo | null;
   prefillData?: QuickSSHConnectionInfo | null;
   onClose: () => void;
@@ -32,7 +45,16 @@ interface ConnectionFormProps {
   defaultFolder?: string | null;
 }
 
-const MACHINE_COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0', '#8b93a7'];
+const MACHINE_COLORS = [
+  '#7c9cf5',
+  '#9ece6a',
+  '#e5b567',
+  '#f0a35e',
+  '#f7768e',
+  '#bb9af7',
+  '#56c7c0',
+  '#8b93a7',
+];
 
 export function ConnectionForm({
   connection,
@@ -41,6 +63,7 @@ export function ConnectionForm({
   onSuccess,
   create,
   update,
+  reveal,
   jumpCandidates,
   collectionTargets,
   defaultCollectionId,
@@ -49,18 +72,35 @@ export function ConnectionForm({
   const { t } = useTranslation();
 
   // Form state - use prefillData if provided, otherwise use connection data
-  const [name, setName] = useState(connection?.name || (prefillData ? `${prefillData.username}@${prefillData.host}` : ''));
+  const [name, setName] = useState(
+    connection?.name || (prefillData ? `${prefillData.username}@${prefillData.host}` : ''),
+  );
   const [protocol, setProtocol] = useState<Protocol>((connection?.protocol as Protocol) || 'SSH');
   const [hostname, setHostname] = useState(connection?.hostname || prefillData?.host || '');
   const [port, setPort] = useState(connection?.port || prefillData?.port || 22);
   const [username, setUsername] = useState(connection?.username || prefillData?.username || '');
   // Authentication state — shared shape with Quick SSH via <AuthSection>.
+  // Seeded from the connection being edited, not only from a prefill (ADR 0024 §6). It
+  // used to take the prefill alone, so every saved machine reopened as "Password" with
+  // empty fields: you could not see which key it used, and typing a password in what
+  // looked like the password field converted a key-based machine to password auth without
+  // a word. Secrets stay absent — "leave empty to keep" — and a path is not a secret.
   const [auth, setAuth] = useState<AuthState>(
     makeAuthState({
-      authType: prefillData?.authType ?? 'password',
+      authType: (prefillData?.authType ?? storedAuthType(connection)) as AuthState['authType'],
       password: prefillData?.password ?? '',
-      keyPath: prefillData?.keyPath ?? '',
+      keyPath: prefillData?.keyPath ?? connection?.keyPath ?? '',
+      // The support the record already uses, so editing a machine does not convert it
+      // (ADR 0028 §1). A record with a path keeps its path; anything else is carried,
+      // which is the default for a machine being created.
+      keySupport: connection?.authType === 'publicKey' ? 'path' : 'carried',
       passphrase: prefillData?.passphrase ?? '',
+      // Ticked when one is in fact stored, so the box states the machine's condition
+      // rather than a default: it rendered unticked on a machine whose passphrase Rite
+      // was holding, which reads as "nothing is kept" and is the opposite of the truth.
+      rememberPassphrase: connection?.hasStoredPassphrase === true,
+      // Same reasoning for the password, now that a machine may keep none.
+      rememberPassword: connection?.hasStoredPassword === true,
     }),
   );
   const [folder, setFolder] = useState(connection?.folder || defaultFolder || '');
@@ -70,17 +110,20 @@ export function ConnectionForm({
     connection?.collectionId ?? defaultCollectionId ?? collectionTargets?.[0]?.id ?? '',
   );
   const [color, setColor] = useState(connection?.color || '');
-  const icon = connection?.icon || ''; // TODO: Implement icon picker UI
+  // Carried through unchanged: a machine keeps the icon it has, and there is no picker to
+  // choose one with yet ("Custom tab icons and colors", docs/ROADMAP.md). The backlog lives
+  // in the roadmap, which gets read, rather than in a marker on a line of source.
+  const icon = connection?.icon || '';
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   const [hcOptOut, setHcOptOut] = useState(connection?.hc === false);
   const [notes, setNotes] = useState(connection?.notes || '');
   const [preconnect, setPreconnect] = useState(connection?.preconnect || '');
   const [jump, setJump] = useState(connection?.jump || '');
   const [sshKeepAliveOverride, setSshKeepAliveOverride] = useState<string | null>(
-    connection?.sshKeepAliveOverride ?? null
+    connection?.sshKeepAliveOverride ?? null,
   );
   const [sshKeepAliveInterval, setSshKeepAliveInterval] = useState<number | null>(
-    connection?.sshKeepAliveInterval ?? null
+    connection?.sshKeepAliveInterval ?? null,
   );
 
   // Dropdown state for keep-alive
@@ -92,6 +135,18 @@ export function ConnectionForm({
   // UI state
   const [showProtocolDropdown, setShowProtocolDropdown] = useState(false);
   const protocolDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Esc is the keyboard way out, now that a click outside is not one (see the backdrop).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -122,10 +177,16 @@ export function ConnectionForm({
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (protocolDropdownRef.current && !protocolDropdownRef.current.contains(event.target as Node)) {
+      if (
+        protocolDropdownRef.current &&
+        !protocolDropdownRef.current.contains(event.target as Node)
+      ) {
         setShowProtocolDropdown(false);
       }
-      if (keepAliveDropdownRef.current && !keepAliveDropdownRef.current.contains(event.target as Node)) {
+      if (
+        keepAliveDropdownRef.current &&
+        !keepAliveDropdownRef.current.contains(event.target as Node)
+      ) {
         setShowKeepAliveDropdown(false);
       }
     };
@@ -158,8 +219,22 @@ export function ConnectionForm({
       newErrors.password = t('connections.validation.passwordRequired');
     }
 
-    if (auth.authType === 'publicKey' && !auth.keyPath.trim()) {
-      newErrors.keyPath = t('connections.validation.keyPathRequired');
+    // Each support needs its own thing, and an edit that already holds one needs neither:
+    // the update keeps what it does not mention (ADR 0028 §6).
+    const hasStoredKey =
+      !!connection && (connection.authType === 'publicKey' || connection.authType === 'vaultKey');
+    // Switching support is a change in its own right: picking "a file on this computer" and
+    // typing nothing must not quietly leave the machine carrying its key.
+    const switchedSupport =
+      !!connection &&
+      (connection.authType === 'publicKey' ? 'path' : 'carried') !== auth.keySupport;
+    if (auth.authType === 'publicKey' && (!hasStoredKey || switchedSupport)) {
+      if (auth.keySupport === 'path' && !auth.keyPath.trim()) {
+        newErrors.keyPath = t('connections.validation.keyPathRequired');
+      }
+      if (auth.keySupport === 'carried' && !auth.key) {
+        newErrors.keyPath = t('connections.validation.keyFileRequired');
+      }
     }
 
     setErrors(newErrors);
@@ -173,7 +248,9 @@ export function ConnectionForm({
     if (selectedKeepAlive === 30) return `30 ${t('sshKeepAlive.seconds')}`;
     if (selectedKeepAlive === 60) return `60 ${t('sshKeepAlive.seconds')}`;
     if (selectedKeepAlive === -1) {
-      return customKeepAlive ? `${customKeepAlive} ${t('sshKeepAlive.seconds')}` : t('sshKeepAlive.custom');
+      return customKeepAlive
+        ? `${customKeepAlive} ${t('sshKeepAlive.seconds')}`
+        : t('sshKeepAlive.custom');
     }
     return t('sshKeepAlive.disabled');
   };
@@ -232,11 +309,35 @@ export function ConnectionForm({
         // keep the existing one if left blank; key-file needs a path; agent has no
         // secret so it's always safe to (re)apply.
         if (auth.authType === 'password') {
-          if (auth.password) input.authMethod = { type: 'password', password: auth.password };
+          // A typed password goes in only if it is to be kept; either way the record says
+          // whether to ask next time, and unticking the box on a machine that stores one
+          // has to remove it — the same three moves the key branch below makes.
+          if (auth.password && auth.rememberPassword) {
+            input.authMethod = { type: 'password', password: auth.password };
+          }
+          input.needsPassword = !auth.rememberPassword;
+          if (connection?.hasStoredPassword && !auth.rememberPassword) {
+            input.forgetPassword = true;
+          }
         } else if (auth.authType === 'publicKey') {
-          if (auth.keyPath) input.authMethod = toAuthMethodInput(auth);
+          // Nothing new given ⇒ no `authMethod` in the update, so the core keeps the
+          // stored one. This is what lets you rename a key-based machine.
+          // Nothing given for this support ⇒ no `authMethod` in the update, so the core
+          // keeps the stored one. This is what lets you rename a key-based machine.
+          // Validation above already insists on it when the support changed.
+          const given = auth.keySupport === 'path' ? !!auth.keyPath.trim() : !!auth.key;
+          if (given) input.authMethod = toAuthMethodInput(auth, 'store');
+          // A passphrase typed and not kept: the record says to ask next time, so a key
+          // with no passphrase at all is never prompted for.
+          input.needsPassphrase = !!auth.passphrase && !auth.rememberPassphrase;
+          // Unticking the box on a machine that stores one has to remove it. The client
+          // does not hold the key, so it cannot send an `authMethod` without the
+          // passphrase — it says what it wants instead, and the core does it.
+          if (connection?.hasStoredPassphrase && !auth.rememberPassphrase && !auth.passphrase) {
+            input.forgetPassphrase = true;
+          }
         } else {
-          input.authMethod = toAuthMethodInput(auth);
+          input.authMethod = toAuthMethodInput(auth, 'store');
         }
 
         await update(input);
@@ -248,7 +349,12 @@ export function ConnectionForm({
           hostname,
           port,
           username,
-          authMethod: toAuthMethodInput(auth),
+          authMethod: toAuthMethodInput(auth, 'store'),
+          // See the update path: a passphrase typed and not kept means ask next time.
+          needsPassphrase:
+            auth.authType === 'publicKey' && !!auth.passphrase && !auth.rememberPassphrase,
+          // A password machine that keeps none is asked at connect time (ADR 0024 §4).
+          needsPassword: auth.authType === 'password' && !auth.rememberPassword,
           ...(folder && { folder }),
           ...(collectionTargetId && { collectionId: collectionTargetId }),
           ...(color && { color }),
@@ -274,19 +380,33 @@ export function ConnectionForm({
   };
 
   return (
-    <div className="m-backdrop" onClick={onClose}>
-      <div className="m-modal max-w-2xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+    // No `onClick={onClose}` on the backdrop: this form holds typed work, and a stray
+    // click outside it threw all of it away. Worse, it did so for clicks nobody aimed at
+    // the backdrop — a native `<select>` (the jump host, the protocol, keep-alive) opens an
+    // OS-level popup in the desktop shell, and the click that dismisses the popup lands on
+    // the page. So choosing a jump host closed the whole dialog. Esc and Cancel are the
+    // ways out, both deliberate.
+    <div className="m-backdrop">
+      <div className="m-modal max-w-2xl max-h-[90vh] overflow-y-auto p-6">
         {/* Header */}
         <div className="mb-5 flex items-start justify-between">
           <div>
             <h2 className="text-xl font-semibold">
               {connection ? t('connections.titleEdit') : t('connections.titleNew')}
             </h2>
-            {defaultCollectionId && collectionTargets?.find((c) => c.id === (connection?.collectionId ?? defaultCollectionId)) && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                in “{collectionTargets.find((c) => c.id === (connection?.collectionId ?? defaultCollectionId))?.name}”
-              </p>
-            )}
+            {defaultCollectionId &&
+              collectionTargets?.find(
+                (c) => c.id === (connection?.collectionId ?? defaultCollectionId),
+              ) && (
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {t('connections.inCollection', {
+                    name:
+                      collectionTargets.find(
+                        (c) => c.id === (connection?.collectionId ?? defaultCollectionId),
+                      )?.name ?? '',
+                  })}
+                </p>
+              )}
           </div>
           <button
             onClick={onClose}
@@ -294,7 +414,12 @@ export function ConnectionForm({
             aria-label={t('connections.cancel')}
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -327,7 +452,12 @@ export function ConnectionForm({
               >
                 <span>{protocol}</span>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 9l-7 7-7-7"
+                  />
                 </svg>
               </button>
 
@@ -412,6 +542,19 @@ export function ConnectionForm({
             onChange={setAuth}
             isEdit={!!connection}
             errors={{ password: errors.password, keyPath: errors.keyPath }}
+            // Only on an existing machine, and only where the source offers it: a machine
+            // being created has nothing stored, and a viewer's source refuses.
+            onReveal={connection && reveal ? () => reveal(connection) : undefined}
+            hasStoredPassphrase={connection?.hasStoredPassphrase === true}
+            storedKey={
+              connection?.authType === 'vaultKey'
+                ? {
+                    fingerprint: connection.keyFingerprint ?? null,
+                    algorithm: connection.keyAlgorithm ?? null,
+                  }
+                : null
+            }
+            hasStoredPassword={connection?.hasStoredPassword === true}
           />
 
           {/* Jump host (ProxyJump): reach this machine through another saved one (a
@@ -419,7 +562,8 @@ export function ConnectionForm({
               on the bastion. Chainable when the jump itself has a jump. */}
           <div>
             <label htmlFor="jump-host" className="mb-1 block text-sm font-medium">
-              {t('jump.label')} <span className="font-normal text-muted-foreground">({t('jump.optional')})</span>
+              {t('jump.label')}{' '}
+              <span className="font-normal text-muted-foreground">({t('jump.optional')})</span>
             </label>
             <select
               id="jump-host"
@@ -460,7 +604,7 @@ export function ConnectionForm({
                   onClick={() => setColor(c)}
                   className={`m-sw ${color === c ? 'sel' : ''}`}
                   style={{ backgroundColor: c }}
-                  aria-label={`colour ${c}`}
+                  aria-label={t('dlg.colourAria', { hex: c })}
                 />
               ))}
             </div>
@@ -468,24 +612,24 @@ export function ConnectionForm({
 
           {/* Health-check (ADR 0017): a machine can opt out of active probing. */}
           <div>
-            <label className="mb-1 block text-sm font-medium">Health-check</label>
+            <label className="mb-1 block text-sm font-medium">{t('connections.healthCheck')}</label>
             <select
               value={hcOptOut ? 'off' : 'inherit'}
               onChange={(e) => setHcOptOut(e.target.value === 'off')}
               className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
             >
-              <option value="inherit">Follow the collection / server policy</option>
-              <option value="off">Never probe this machine</option>
+              <option value="inherit">{t('connections.hcInherit')}</option>
+              <option value="off">{t('connections.hcOff')}</option>
             </select>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              A machine can opt out of active probing; it can&apos;t opt into more than the server allows.
-            </p>
+            <p className="mt-1.5 text-xs text-muted-foreground">{t('connections.hcWhy')}</p>
           </div>
 
           {/* Save-to-collection target (ADR 0016) — accounts context only */}
           {collectionTargets && collectionTargets.length > 0 && (
             <div>
-              <label className="mb-1 block text-sm font-medium">{t('connections.saveToCollection')}</label>
+              <label className="mb-1 block text-sm font-medium">
+                {t('connections.saveToCollection')}
+              </label>
               <select
                 value={collectionTargetId}
                 onChange={(e) => setCollectionTargetId(e.target.value)}
@@ -499,7 +643,9 @@ export function ConnectionForm({
                 ))}
               </select>
               {connection && (
-                <p className="mt-1 text-xs text-muted-foreground">{t('connections.collectionMoveUnsupported')}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t('connections.collectionMoveUnsupported')}
+                </p>
               )}
             </div>
           )}
@@ -565,7 +711,12 @@ export function ConnectionForm({
                   >
                     <span>{getKeepAliveLabel()}</span>
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
                     </svg>
                   </button>
 
@@ -618,7 +769,9 @@ export function ConnectionForm({
               {/* Custom Keep-Alive Input */}
               {selectedKeepAlive === -1 && (
                 <div>
-                  <label className="mb-1 block text-sm font-medium">{t('sshKeepAlive.customLabel')}</label>
+                  <label className="mb-1 block text-sm font-medium">
+                    {t('sshKeepAlive.customLabel')}
+                  </label>
                   <input
                     type="number"
                     value={customKeepAlive}

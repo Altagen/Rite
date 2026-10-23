@@ -408,9 +408,11 @@ fn build_context_view(
     // this window's id, so `switch-context` reloads the window that posted it). Also inject a
     // suggested path for the create-vault dialog so it can show where a new vault would be written.
     let suggested = serde_json::Value::from(suggested_vault_path().to_string_lossy().into_owned());
+    let device_prefs = read_device_prefs();
     let init = format!(
         "window.__RITE_TOKEN__ = '{token}'; window.__RITE_CONTEXT__ = {inject}; \
-         window.__RITE_VAULTS__ = {vaults_json}; window.__RITE_SUGGESTED_VAULT_PATH__ = {suggested};{test_hook}",
+         window.__RITE_VAULTS__ = {vaults_json}; window.__RITE_SUGGESTED_VAULT_PATH__ = {suggested}; \
+         window.__RITE_DEVICE__ = {device_prefs};{test_hook}",
         inject = req.inject,
         test_hook = test_ipc_hook(),
     );
@@ -541,6 +543,16 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, window: WindowId, body: String)
             }
         }
         Some("reload-context") => send(UserEvent::ReloadContext { window }),
+        // Written here rather than in the event loop: it is a small file and the write is
+        // the whole operation, so there is nothing for the loop to coordinate.
+        Some("device-set") => {
+            if let Some(key) = msg.get("key").and_then(|k| k.as_str()) {
+                write_device_pref(
+                    key,
+                    msg.get("value").cloned().unwrap_or(serde_json::Value::Null),
+                );
+            }
+        }
         Some("set-fullscreen") => {
             let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
             send(UserEvent::SetFullscreen { window, on });
@@ -1005,6 +1017,60 @@ fn data_dir() -> std::path::PathBuf {
 
 fn db_path() -> std::path::PathBuf {
     data_dir().join("vault.db")
+}
+
+/// Where this machine's UI preferences live.
+///
+/// They cannot live in `localStorage` in the desktop shell: the window loads
+/// `http://127.0.0.1:<port>` and the server binds `:0`, so the port — and with it the
+/// origin `localStorage` is keyed by — is different on every launch (ADR 0009 wants that
+/// randomness, and a predictable port would trade a security property for a convenience).
+/// Every preference stored that way was therefore lost on every relaunch: the toolbar, the
+/// theme, the language, the snippets, the pinned dashboard cards.
+///
+/// A file instead, beside the roster rather than inside a vault, because these describe
+/// THIS MACHINE: a vault carried to another computer must not rearrange its UI there.
+fn device_prefs_path() -> std::path::PathBuf {
+    data_dir().join("device.json")
+}
+
+/// This machine's preferences, as a JSON object to inject. An unreadable or corrupt file
+/// reads as "none set" rather than failing the launch — they are preferences.
+fn read_device_prefs() -> serde_json::Value {
+    std::fs::read_to_string(device_prefs_path())
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .filter(serde_json::Value::is_object)
+        .unwrap_or_else(|| serde_json::json!({}))
+}
+
+/// Merge one preference into the file. `value` of `null` removes the key.
+///
+/// Read-modify-write on every change: these are a handful of small values written when
+/// somebody flips a switch, and two windows writing at once must not leave the file
+/// holding only what the slower one knew.
+fn write_device_pref(key: &str, value: serde_json::Value) {
+    let mut prefs = read_device_prefs();
+    let Some(map) = prefs.as_object_mut() else {
+        return;
+    };
+    if value.is_null() {
+        map.remove(key);
+    } else {
+        map.insert(key.to_string(), value);
+    }
+    let path = device_prefs_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match serde_json::to_string_pretty(&prefs) {
+        Ok(text) => {
+            if let Err(e) = std::fs::write(&path, text) {
+                tracing::warn!("[rite-desktop] could not save device preferences: {e}");
+            }
+        }
+        Err(e) => tracing::warn!("[rite-desktop] could not serialise device preferences: {e}"),
+    }
 }
 
 /// Where the multi-vault roster is persisted (ADR 0014). Next to the vaults, not inside one.

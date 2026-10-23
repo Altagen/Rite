@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useTranslation } from '../i18n/i18n';
 import { Backend, type SshConfigEntry } from '../utils/backend';
 import type { CreateConnectionInput } from '../store/connectionsStore';
 
@@ -33,6 +34,7 @@ export function ImportSSHConfigModal({
   defaultCollectionId,
   create,
 }: ImportSSHConfigModalProps) {
+  const { t } = useTranslation();
   const [collectionId, setCollectionId] = useState(
     defaultCollectionId ?? collectionTargets[0]?.id ?? '',
   );
@@ -60,10 +62,9 @@ export function ImportSSHConfigModal({
     loadDefaultPath();
   }, []);
 
-
   const handleParse = async () => {
     if (!configPath.trim()) {
-      setError('Please enter a config file path');
+      setError(t('sshImport.errPath'));
       return;
     }
 
@@ -72,10 +73,7 @@ export function ImportSSHConfigModal({
     setEntries([]);
 
     try {
-      console.log('[ImportSSH] Parsing config at:', configPath);
       const parsedEntries = await Backend.Connections.parseSshConfig(configPath);
-
-      console.log('[ImportSSH] Found entries:', parsedEntries.length);
 
       // Add preview and selection state
       const selectableEntries: SelectableSshConfigEntry[] = parsedEntries.map((entry) => {
@@ -94,11 +92,11 @@ export function ImportSSHConfigModal({
       setEntries(selectableEntries);
 
       if (selectableEntries.length === 0) {
-        setError('No valid hosts found in config file');
+        setError(t('sshImport.errNoHosts'));
       }
     } catch (err) {
       console.error('[ImportSSH] Parse failed:', err);
-      setError(typeof err === 'string' ? err : 'Failed to parse SSH config file');
+      setError(typeof err === 'string' ? err : t('sshImport.errParse'));
     } finally {
       setLoading(false);
     }
@@ -106,7 +104,7 @@ export function ImportSSHConfigModal({
 
   const handleToggle = (index: number) => {
     setEntries((prev) =>
-      prev.map((entry, i) => (i === index ? { ...entry, selected: !entry.selected } : entry))
+      prev.map((entry, i) => (i === index ? { ...entry, selected: !entry.selected } : entry)),
     );
   };
 
@@ -119,7 +117,7 @@ export function ImportSSHConfigModal({
     const selectedEntries = entries.filter((e) => e.selected);
 
     if (selectedEntries.length === 0) {
-      setError('Please select at least one host to import');
+      setError(t('sshImport.errNoneChosen'));
       return;
     }
 
@@ -149,7 +147,7 @@ export function ImportSSHConfigModal({
       onClose();
     } catch (err) {
       console.error('[ImportSSH] Import failed:', err);
-      setError(typeof err === 'string' ? err : 'Failed to import connections');
+      setError(typeof err === 'string' ? err : t('sshImport.errImport'));
     } finally {
       setImporting(false);
     }
@@ -161,31 +159,32 @@ export function ImportSSHConfigModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="mx-4 w-full max-w-2xl rounded-lg bg-background p-6 shadow-xl border border-border">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-bold">Import SSH Config</h2>
+          <h2 className="text-xl font-bold">{t('sshImport.title')}</h2>
           <button
             onClick={onClose}
             className="rounded p-1 text-muted-foreground hover:bg-muted"
             disabled={loading || importing}
           >
             <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
 
-        <p className="mb-4 text-sm text-muted-foreground">
-          Import connections from your OpenSSH config file
-        </p>
+        <p className="mb-4 text-sm text-muted-foreground">{t('sshImport.subtitle')}</p>
 
         {/* File Path Input */}
         <div className="mb-4">
-          <label className="mb-1 block text-sm font-medium">
-            Config File Path
-          </label>
+          <label className="mb-1 block text-sm font-medium">{t('sshImport.configPath')}</label>
           <div className="flex gap-2">
             <input
               type="text"
-              value={loadingDefault ? 'Loading...' : configPath}
+              value={loadingDefault ? t('sshImport.loading') : configPath}
               onChange={(e) => setConfigPath(e.target.value)}
               placeholder="~/.ssh/config"
               className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
@@ -196,7 +195,7 @@ export function ImportSSHConfigModal({
               className="rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               disabled={loading || importing || loadingDefault}
             >
-              {loading ? 'Parsing...' : 'Parse'}
+              {loading ? t('sshImport.parsing') : t('sshImport.parse')}
             </button>
           </div>
         </div>
@@ -213,14 +212,16 @@ export function ImportSSHConfigModal({
           <>
             <div className="mb-2 flex items-center justify-between">
               <p className="text-sm font-medium">
-                Found {entries.length} host{entries.length !== 1 ? 's' : ''}:
+                {t('sshImport.found', { count: entries.length })}
               </p>
               <button
                 onClick={handleSelectAll}
                 className="text-sm text-primary hover:underline"
                 disabled={importing}
               >
-                {entries.every((e) => e.selected) ? 'Deselect All' : 'Select All'}
+                {entries.every((e) => e.selected)
+                  ? t('sshImport.deselectAll')
+                  : t('sshImport.selectAll')}
               </button>
             </div>
 
@@ -243,7 +244,7 @@ export function ImportSSHConfigModal({
                   </div>
                   {entry.identityFile && (
                     <span className="rounded bg-primary/20 px-2 py-0.5 text-xs font-medium text-primary">
-                      SSH Key
+                      {t('sshImport.sshKey')}
                     </span>
                   )}
                 </label>
@@ -251,11 +252,19 @@ export function ImportSSHConfigModal({
             </div>
 
             <div className="mb-4 rounded bg-muted/50 p-3 text-sm">
-              <p className="font-medium">Important - Workflow:</p>
+              <p className="font-medium">{t('sshImport.workflow')}</p>
               <ul className="mt-1 ml-4 list-disc text-muted-foreground">
-                <li>SSH config files never contain passwords (security)</li>
-                <li>Imported connections will have <span className="font-semibold text-foreground">empty passwords</span></li>
-                <li><span className="font-semibold text-foreground">To use them:</span> Click the 3 dots (⋮) on the connection card → Edit → Add password, OR use Quick SSH for temporary connections</li>
+                <li>{t('sshImport.noPasswords')}</li>
+                <li>
+                  {t('sshImport.willHave')}{' '}
+                  <span className="font-semibold text-foreground">
+                    {t('sshImport.emptyPasswords')}
+                  </span>
+                </li>
+                <li>
+                  <span className="font-semibold text-foreground">{t('sshImport.toUseThem')}</span>{' '}
+                  {t('sshImport.toUseThemHow')}
+                </li>
               </ul>
             </div>
           </>
@@ -266,7 +275,7 @@ export function ImportSSHConfigModal({
           {/* No loose machines (ADR 0016): imported hosts land in a collection. */}
           <div className="mr-auto">
             <label htmlFor="import-file-coll" className="mb-1 block text-xs text-muted-foreground">
-              Import into
+              {t('sshImport.importInto')}
             </label>
             <select
               id="import-file-coll"
@@ -275,7 +284,9 @@ export function ImportSSHConfigModal({
               className="rounded-md border border-input bg-background px-3 py-2 text-sm"
               disabled={loading || importing}
             >
-              {collectionTargets.length === 0 && <option value="">No collection yet</option>}
+              {collectionTargets.length === 0 && (
+                <option value="">{t('sshImport.noCollection')}</option>
+              )}
               {collectionTargets.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -288,7 +299,7 @@ export function ImportSSHConfigModal({
             className="rounded bg-secondary px-4 py-2 font-medium text-secondary-foreground hover:bg-secondary/80"
             disabled={loading || importing}
           >
-            Cancel
+            {t('dlg.cancel')}
           </button>
           <button
             onClick={handleImport}
@@ -299,8 +310,8 @@ export function ImportSSHConfigModal({
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent" />
             )}
             {importing
-              ? `Importing ${selectedCount}...`
-              : `Import Selected (${selectedCount})`}
+              ? t('sshImport.importing', { count: selectedCount })
+              : t('sshImport.importSelected', { count: selectedCount })}
           </button>
         </div>
       </div>

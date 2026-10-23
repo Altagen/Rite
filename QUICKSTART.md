@@ -1,291 +1,110 @@
-# RITE Quick Start Guide
+# Quick start (developers)
 
-## Prerequisites Check
+Getting a working checkout, and the handful of commands that matter. Installing a
+release is [INSTALL.md](./INSTALL.md); the architecture is
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+## Prerequisites
+
+Three toolchains, each pinned in the repository. Install the manager and let it read
+the pin — a hand-installed version is how a local build stops being CI's build:
+
+| Tool | Manager | Pin |
+|------|---------|-----|
+| Rust | [rustup](https://rustup.rs/) | `rust-toolchain.toml` |
+| Node.js | [fnm](https://github.com/Schniz/fnm), nvm or asdf | `.node-version` |
+| pnpm | `corepack enable` | `packageManager` in `package.json` |
+| Task | [go-task](https://taskfile.dev/installation/) | — |
+
+pnpm is the one that bites: an older pnpm rewrites `pnpm-lock.yaml` on install and
+drops the security overrides declared in `pnpm-workspace.yaml` without saying so.
+
+A Linux build also needs WebKitGTK and GTK headers — `libwebkit2gtk-4.1-dev` and
+`libgtk-3-dev` on Debian or Ubuntu, `webkit2gtk4.1-devel` and `gtk3-devel` on Fedora,
+`webkit2gtk-4.1` and `gtk3` on Arch.
+
+## Setup
 
 ```bash
-# Check Rust (need 1.70+)
-rustc --version
-
-# Check Node.js (need 20+)
-node --version
-
-# Check pnpm (need 8+)
-pnpm --version
-
-# Check go-task (need 3+)
-task --version
-```
-
-If any are missing:
-- **Rust**: https://rustup.rs/
-- **Node.js**: https://nodejs.org/
-- **pnpm**: `npm install -g pnpm`
-- **go-task**: https://taskfile.dev/installation/
-
-## First Time Setup
-
-```bash
-# 1. Install all dependencies (Rust + Node.js)
+git clone https://github.com/Altagen/Rite.git
+cd Rite
 pnpm install
-
-# This will:
-# - Install npm dependencies for all packages
-# - Take 2-5 minutes depending on your connection
-```
-
-## Running in Development
-
-```bash
-# Native desktop client (rite-server in-process + wry webview)
-task dev
-
-# Or run the pieces separately:
-task dev:server     # rite-server standalone (API + embedded frontend)
-task dev:frontend   # Vite dev server on http://localhost:5173 (mock backend)
-```
-
-**First launch might take a few minutes** to compile all Rust dependencies.
-
-## Available Commands
-
-```bash
-# Development
-task dev              # Run dev server with hot reload
-task dev:frontend     # Run frontend only
-
-# Testing
-task test             # Run all tests (Rust + TypeScript)
-task test-rust        # Run Rust tests only
-task test-ts          # Run TypeScript type check
-
-# Linting
-task lint             # Run all linters
-task lint-rust        # Rust linters (clippy + fmt)
-task lint-ts          # TypeScript linter
-
-# Formatting
-task fmt              # Format all code
-task fmt-rust         # Format Rust code
-task fmt-ts           # Format TypeScript code
-
-# Building
-task build            # Build for current platform
-task prepare-release  # Build with all release artifacts
-
-# Utilities
-task clean            # Clean all build artifacts
-task audit            # Run security audit
-task version          # Show current version
-
-# See all commands
-task --list
-```
-
-## Testing the Setup
-
-Once the app launches:
-
-1. You should see the RITE interface
-2. Try connecting to a server (if configured)
-3. Check terminal functionality
-
-## Building for Production
-
-```bash
-# Build optimized binary
-task build
-
-# Or prepare complete release
-task prepare-release
-
-# Find the binary
-ls -lh dist/
-```
-
-## Troubleshooting
-
-### Error: "Failed to resolve dependencies"
-```bash
-# Clear cache and reinstall
-rm -rf node_modules apps/*/node_modules
-pnpm install
-```
-
-### Error: "cargo build failed"
-```bash
-# Update Rust
-rustup update stable
-
-# Clean and rebuild
-task clean
 task dev
 ```
 
-### Error: "Port 5173 already in use"
-```bash
-# Kill the process using the port
-lsof -ti:5173 | xargs kill -9
+`task dev` builds the frontend, embeds it, and runs the native client — rite-server
+in-process behind a wry webview. The first run compiles the Rust workspace and takes a
+few minutes; later runs do not.
 
-# Or change the port in apps/desktop/vite.config.ts
-```
+Two narrower loops:
 
-### Desktop client (wry) dependencies missing (Linux)
+- `task dev:server` — rite-server alone, serving the built frontend over HTTP/WS
+- `task dev:frontend` — Vite on <http://localhost:5173> against the mock backend, no
+  Rust in the picture
 
-#### Debian/Ubuntu
-```bash
-sudo apt install \
-  libwebkit2gtk-4.1-dev \
-  build-essential \
-  curl wget file \
-  libssl-dev \
-  libgtk-3-dev \
-  libayatana-appindicator3-dev \
-  librsvg2-dev
-```
-
-#### Fedora/RHEL
-```bash
-sudo dnf install \
-  webkit2gtk4.1-devel \
-  openssl-devel \
-  curl wget file \
-  gtk3-devel \
-  libappindicator-gtk3-devel \
-  librsvg2-devel
-```
-
-#### Arch Linux
-```bash
-sudo pacman -S \
-  webkit2gtk \
-  base-devel \
-  curl wget file \
-  openssl \
-  gtk3 \
-  libappindicator-gtk3 \
-  librsvg \
-  go-task
-```
-
-## Development Workflow
-
-### Making Changes
-
-**Frontend (React/TypeScript)**:
-- Edit files in `apps/desktop/src/`
-- Changes auto-reload (hot module replacement)
-
-**Backend (Rust)**:
-- Edit `packages/rite-core/` (core logic), `packages/rite-server/` (HTTP/WS),
-  or `apps/desktop/shell/` (the wry client)
-- Rebuilds on the next `task dev` / `cargo run`
-
-**Shared packages**:
-- Edit `packages/crypto/` or `packages/protocols/`
-- Both backend and tests will rebuild
-
-### Running Tests
+## Before pushing
 
 ```bash
-# All tests
-task test
-
-# Rust only
-task test-rust
-
-# TypeScript only
-task test-ts
-
-# Security audit
-task audit
+task check
 ```
 
-### Code Formatting
+`cargo fmt --check`, clippy, `cargo test`, `cargo audit`, `pnpm audit`, `tsc` and
+eslint — the same checks CI runs, in the same order.
+
+Anything touching the UI, the server's policies or the SSH path wants the end-to-end
+gate as well. It builds what it tests, starts an SSH harness in a container, and runs
+the Playwright suite plus the standalone checks:
 
 ```bash
-# Format all code
-task fmt
-
-# Format Rust only
-task fmt-rust
-
-# Format TypeScript only
-task fmt-ts
-
-# Check types
-task test-ts
+sh e2e/gate.sh
 ```
 
-### Linting
+Its last step tears down a local deployment and removes `deploy/admin_password.txt`,
+so do not run it against an instance you are using. `task e2e` and `task e2e:play` are
+the subsets.
 
-```bash
-# Lint all code
-task lint
+## Where things live
 
-# Rust only
-task lint-rust
-
-# TypeScript only
-task lint-ts
+```
+apps/desktop/src/        React frontend — App.tsx is the entry
+apps/desktop/shell/      the wry client (binary `rite`), embeds rite-server
+packages/rite-core/      UI-agnostic core: auth, connections, terminals, SSH
+packages/rite-server/    Axum HTTP/WS API + the embedded frontend
+packages/crypto/         Argon2id, sealed boxes, the vault format
+e2e/                     Playwright suite and the standalone checks
+docs/                    architecture, server, layouts, security, release, roadmap
 ```
 
-## Commit Messages
+No component calls the server. They call `Backend.*`
+(`apps/desktop/src/utils/backend.ts`), which dispatches to one HTTP module
+(`utils/httpRoutes.ts`), one WebSocket module (`utils/transport.ts`), or the mock the
+Vite loop runs against — those three files hold every `fetch` and every socket in the
+app. A feature that needs a new route adds it there, in `packages/rite-server/src/lib.rs`,
+and in the mock.
 
-RITE uses [Conventional Commits](https://www.conventionalcommits.org/) for automatic changelog generation:
+## Commits
 
-```bash
-# Examples
-git commit -m "feat(ssh): add SSH config import"
-git commit -m "fix(terminal): resolve focus bug"
-git commit -m "docs: update quickstart guide"
-git commit -m "chore(deps): update axum to 0.8.1"
+[Conventional Commits](https://www.conventionalcommits.org/), enforced by commitlint in
+CI — the changelog is generated from them:
+
+```
+feat(ssh): import a host list from an ssh config
+fix(terminal): keep focus on the pane that was clicked
+docs(server): say which settings an instance may declare
 ```
 
-See [RELEASE.md](./RELEASE.md) for complete commit format documentation.
+[docs/RELEASE.md](docs/RELEASE.md) has the full format and the release process.
 
-## Next Steps
+## When it will not build
 
-1. **Read the docs**:
-   - [README.md](./README.md) - Overview
-   - [RELEASE.md](./RELEASE.md) - Release & commit format
-   - [ROADMAP.md](./docs/ROADMAP.md) - Features
-   - [ARCHITECTURE.md](./docs/ARCHITECTURE.md) - Technical details
-   - [SECURITY.md](./docs/SECURITY.md) - Security model
+**`ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`** — `node_modules` was built by a
+different Node than the one in your shell. `fnm use` (or your manager's equivalent),
+then `pnpm install`.
 
-2. **Explore the code**:
-   - Start with `apps/desktop/src/App.tsx` (frontend entry)
-   - Then `packages/rite-server/src/lib.rs` (HTTP/WS API) and
-     `apps/desktop/shell/src/main.rs` (the wry client entry)
-   - Check `packages/crypto/src/lib.rs` for crypto implementation
+**`cargo build` fails after a toolchain change** — `rustup update`, then `task clean`.
 
-3. **Join the community** (coming soon):
-   - GitHub Discussions
-   - Discord server
-   - Contribute!
+**Port 5173 in use** — another Vite is running: `lsof -ti:5173 | xargs kill`.
 
-## Current Status
-
-**Working**:
-- ✅ SSH connections
-- ✅ Terminal emulation (xterm.js)
-- ✅ Host management with tags
-- ✅ Theme system
-- ✅ Password encryption
-- ✅ Tab and split pane support
-
-**In Progress**:
-- 🚧 SFTP/FTP support
-- 🚧 SSH config import
-- 🚧 Jump host / bastion
-
-**Planned**:
-- See [ROADMAP.md](./docs/ROADMAP.md)
-
-## Getting Help
-
-- **Documentation**: Check `docs/` folder
-- **Issues**: Open a GitHub issue
-- **Questions**: GitHub Discussions (coming soon)
-- **Commands**: Run `task --list` to see all available tasks
-
-Happy coding! 🚀
+**`libwebkit2gtk-4.1.so.0: cannot open shared object file`** — the system libraries
+above are missing, or only the `-dev` package is installed on a machine that also needs
+the runtime one.

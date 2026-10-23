@@ -183,11 +183,19 @@ export function PortForwardModal({ connection, onPersist, onStart, onClose }: Pr
           )}
 
           <div className="mb-2 flex gap-1.5 text-xs">
-            <span className="rounded border border-primary px-2 py-1 text-primary">{t('pf.local')}</span>
-            <span className="rounded border border-border px-2 py-1 text-muted-foreground" title={t('pf.soon')}>
+            <span className="rounded border border-primary px-2 py-1 text-primary">
+              {t('pf.local')}
+            </span>
+            <span
+              className="rounded border border-border px-2 py-1 text-muted-foreground"
+              title={t('pf.soon')}
+            >
               {t('pf.remote')}
             </span>
-            <span className="rounded border border-border px-2 py-1 text-muted-foreground" title={t('pf.soon')}>
+            <span
+              className="rounded border border-border px-2 py-1 text-muted-foreground"
+              title={t('pf.soon')}
+            >
               {t('pf.dynamic')}
             </span>
           </div>
@@ -232,7 +240,9 @@ export function PortForwardModal({ connection, onPersist, onStart, onClose }: Pr
             </button>
           </div>
 
-          <p className="mt-2 text-xs text-muted-foreground">{t('pf.hint', { name: connection.name })}</p>
+          <p className="mt-2 text-xs text-muted-foreground">
+            {t('pf.hint', { name: connection.name })}
+          </p>
           {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
         </div>
 
