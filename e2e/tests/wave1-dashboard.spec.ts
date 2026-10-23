@@ -16,7 +16,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
 // Connection names are deliberately card-name-free ("e2e-dash-a", not
 // "e2e-dash-containers"): the suite shares one vault, so a row named after a card
 // would make a locator for that card's title ambiguous.
-import { createCollection, createMachine, SSH } from './support/localVault';
+import { createCollection, createMachine } from './support/localVault';
 
 let dashCollection: string | null = null;
 async function createConnection(api: APIRequestContext, name: string): Promise<string> {

@@ -418,87 +418,87 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     // Collection-shared connections (ADR 0016): only collections I hold a sealed
     // key for are readable. The collection's name/colour and its items are all
     // browser-decrypted; the server only ever saw opaque blobs.
-    if (publicKey && privateKey) {
-      const cols = await Backend.Collections.mine()
-        .then((all) => all.filter((c) => c.protectedMetaKey))
-        .catch(() => []);
-      const ctx = new Map<string, CollectionCtx>();
-      const writable: { id: string; name: string; isPersonal: boolean }[] = [];
-      // Every readable collection (including empty ones), so the tree can show a
-      // node before it has any machine. Personal is one of them (marked).
-      const list: {
-        id: string;
-        name: string;
-        color: string | null;
-        role: string;
-        folders: CollectionFolder[];
-        memberCount: number;
-        isPersonal: boolean;
-        hc: boolean | null;
-        hasBoard: boolean;
-      }[] = [];
-      for (const col of cols) {
-        if (!col.protectedMetaKey) continue;
-        try {
-          const { metaKey, itemsKey } = await unwrapCollectionKeys(publicKey, privateKey, col);
-          const header = await decryptCollectionField<CollectionHeader>(metaKey, col.nameEnc).catch(
-            () => ({ name: translate('coll.fallbackName'), color: null }) as CollectionHeader,
-          );
-          const isPersonal = col.id === personalId;
-          // The context holds the itemsKey for item reads/writes (ADR 0016 split). A
-          // roster-only member (admin meta-add) has no itemsKey → the collection shows
-          // its name in the tree but carries no machines until a member seals access.
-          if (itemsKey)
-            ctx.set(col.id, { key: itemsKey, role: col.role, boardEnc: col.boardEnc ?? null });
-          const memberCount = (await Backend.Collections.members(col.id).catch(() => [])).length;
-          list.push({
+    // No key guard here: the function returns above unless all three are present, so a
+    // second check would read as if they could be missing.
+    const cols = await Backend.Collections.mine()
+      .then((all) => all.filter((c) => c.protectedMetaKey))
+      .catch(() => []);
+    const ctx = new Map<string, CollectionCtx>();
+    const writable: { id: string; name: string; isPersonal: boolean }[] = [];
+    // Every readable collection (including empty ones), so the tree can show a
+    // node before it has any machine. Personal is one of them (marked).
+    const list: {
+      id: string;
+      name: string;
+      color: string | null;
+      role: string;
+      folders: CollectionFolder[];
+      memberCount: number;
+      isPersonal: boolean;
+      hc: boolean | null;
+      hasBoard: boolean;
+    }[] = [];
+    for (const col of cols) {
+      if (!col.protectedMetaKey) continue;
+      try {
+        const { metaKey, itemsKey } = await unwrapCollectionKeys(publicKey, privateKey, col);
+        const header = await decryptCollectionField<CollectionHeader>(metaKey, col.nameEnc).catch(
+          () => ({ name: translate('coll.fallbackName'), color: null }) as CollectionHeader,
+        );
+        const isPersonal = col.id === personalId;
+        // The context holds the itemsKey for item reads/writes (ADR 0016 split). A
+        // roster-only member (admin meta-add) has no itemsKey → the collection shows
+        // its name in the tree but carries no machines until a member seals access.
+        if (itemsKey)
+          ctx.set(col.id, { key: itemsKey, role: col.role, boardEnc: col.boardEnc ?? null });
+        const memberCount = (await Backend.Collections.members(col.id).catch(() => [])).length;
+        list.push({
+          id: col.id,
+          name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name,
+          color: header.color,
+          role: col.role,
+          folders: header.folders ?? [],
+          memberCount,
+          isPersonal,
+          hc: header.hc ?? null,
+          hasBoard: !!col.boardEnc,
+        });
+        if (canWrite(col.role))
+          writable.push({
             id: col.id,
             name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name,
-            color: header.color,
-            role: col.role,
-            folders: header.folders ?? [],
-            memberCount,
             isPersonal,
-            hc: header.hc ?? null,
-            hasBoard: !!col.boardEnc,
           });
-          if (canWrite(col.role))
-            writable.push({
-              id: col.id,
-              name: isPersonal ? PERSONAL_COLLECTION_NAME : header.name,
-              isPersonal,
-            });
-          if (itemsKey)
-            for (const it of await Backend.Collections.items(col.id)) {
-              try {
-                const record = await decryptCollectionField<StoredRecord>(itemsKey, it.blob);
-                map.set(it.id, { record, collectionId: col.id });
-                // folder stays the record's own (a shared folder inside the collection);
-                // the collection itself is carried as first-class metadata for the tree.
-                infos.push({
-                  ...(await toInfo(it.id, record, it.createdAt, it.updatedAt, record.folder)),
-                  collectionId: col.id,
-                  collectionName: header.name,
-                  collectionColor: header.color,
-                  collectionRole: col.role,
-                });
-              } catch {
-                // Undecryptable item — skip.
-              }
+        if (itemsKey)
+          for (const it of await Backend.Collections.items(col.id)) {
+            try {
+              const record = await decryptCollectionField<StoredRecord>(itemsKey, it.blob);
+              map.set(it.id, { record, collectionId: col.id });
+              // folder stays the record's own (a shared folder inside the collection);
+              // the collection itself is carried as first-class metadata for the tree.
+              infos.push({
+                ...(await toInfo(it.id, record, it.createdAt, it.updatedAt, record.folder)),
+                collectionId: col.id,
+                collectionName: header.name,
+                collectionColor: header.color,
+                collectionRole: col.role,
+              });
+            } catch {
+              // Undecryptable item — skip.
             }
-        } catch {
-          // Collection key or items unavailable — skip this collection.
-        }
+          }
+      } catch {
+        // Collection key or items unavailable — skip this collection.
       }
-      collections.current = ctx;
-      // Personal sorts first, then by name.
-      const byPersonalThenName = <T extends { isPersonal: boolean; name: string }>(a: T, b: T) =>
-        a.isPersonal ? -1 : b.isPersonal ? 1 : a.name.localeCompare(b.name);
-      setCollectionList([...list].sort(byPersonalThenName));
-      setWritableCollections(
-        [...writable].sort(byPersonalThenName).map(({ id, name }) => ({ id, name })),
-      );
     }
+    collections.current = ctx;
+    // Personal sorts first, then by name.
+    const byPersonalThenName = <T extends { isPersonal: boolean; name: string }>(a: T, b: T) =>
+      a.isPersonal ? -1 : b.isPersonal ? 1 : a.name.localeCompare(b.name);
+    setCollectionList([...list].sort(byPersonalThenName));
+    setWritableCollections(
+      [...writable].sort(byPersonalThenName).map(({ id, name }) => ({ id, name })),
+    );
 
     entries.current = map;
     setConnections(infos);

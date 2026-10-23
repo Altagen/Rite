@@ -19,13 +19,26 @@ import { readFileSync, readdirSync } from 'node:fs';
 
 const DIR = new URL('../design/mock/', import.meta.url);
 
+/**
+ * One pass at a multi-character delimiter can leave another behind: strip `/* a /* b *\/`
+ * once and a `/*` is still there. So each pattern runs until the text stops changing,
+ * which is also what makes the result independent of the order they are written in.
+ */
+const untilStable = (src, rx) => {
+  let out = src;
+  for (let prev = null; prev !== out; ) {
+    prev = out;
+    out = out.replace(rx, '');
+  }
+  return out;
+};
+
 /** Comments out, so prose may address its reader while the interface does not. */
 function visible(src) {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
-    .replace(/^\s*\*.*$/gm, '');
+  return [/\/\*[\s\S]*?\*\//g, /<!--[\s\S]*?-->/g, /^\s*\/\/.*$/gm, /^\s*\*.*$/gm].reduce(
+    untilStable,
+    src,
+  );
 }
 
 let passed = 0;

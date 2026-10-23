@@ -1122,7 +1122,7 @@ function ServicesCard({
         <p className="text-xs text-red-500">{t('dash.probeError', { err })}</p>
       ) : !loaded ? (
         <p className="text-xs text-muted-foreground">{t('dash.detecting')}</p>
-      ) : loaded && rows.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t('dash.noSystemd')}</p>
       ) : visible.length === 0 ? (
         <p className="text-xs text-muted-foreground">{t('dash.noServices')}</p>

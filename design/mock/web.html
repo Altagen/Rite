@@ -291,7 +291,7 @@ function fitBar(){
   for(let i=items.length-1;i>=0 && bar.scrollWidth>bar.clientWidth;i--){
     const it=items[i]; it.style.display='none';
     const ic=it.querySelector('svg,img'); const mi=document.createElement('div'); mi.className='pi';
-    mi.innerHTML=(ic?ic.outerHTML:'')+' '+it.getAttribute('data-label');
+    mi.innerHTML=(ic?ic.outerHTML:''); mi.append(' '+(it.getAttribute('data-label')||''));
     mi.onclick=()=>{ovMenu.classList.remove('show');it.click();};
     ovMenu.prepend(mi);
   }
