@@ -154,11 +154,11 @@ pcheck "while still being configured from the file" "d['instanceName'] == 'Rite'
 pcheck "with its settings published as managed"     "len(d['managed']) >= 4"
 
 # And the administrator can then be created, which is the whole point of the path: this is
-# the API call the sign-in screen makes.
+# the API call the first-run screen makes, under the name it fixes (utils/adminUsername.ts).
 created=$(curl -sf -o /dev/null -w '%{http_code}' -X POST \
   http://127.0.0.1:1421/api/server/bootstrap \
   -H 'content-type: application/json' \
-  -d '{"username":"phase1","salt":"00112233445566778899aabbccddeeff","params":{"mem":19456,"iter":2,"par":1},"authHash":"3c9a1f5e7d2b48c6a0e5f1d3b7c92a4e6f8d0b2c4a6e8f1d3b5c7a9e1f3d5b7c","masterSalt":"ffeeddccbbaa99887766554433221100","protectedUserKey":"v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","publicKey":"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff","protectedPrivateKey":"v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}' || true)
+  -d '{"username":"admin","salt":"00112233445566778899aabbccddeeff","params":{"mem":19456,"iter":2,"par":1},"authHash":"3c9a1f5e7d2b48c6a0e5f1d3b7c92a4e6f8d0b2c4a6e8f1d3b5c7a9e1f3d5b7c","masterSalt":"ffeeddccbbaa99887766554433221100","protectedUserKey":"v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","publicKey":"00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff","protectedPrivateKey":"v1.AAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}' || true)
 if [ "$created" = "200" ] || [ "$created" = "201" ]; then
   echo "  ✓ and the browser's own bootstrap call is accepted"
 else

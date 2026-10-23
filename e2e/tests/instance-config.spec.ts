@@ -130,7 +130,9 @@ test('the Quick SSH switch is offered on an instance that allows Quick SSH', asy
   const mode = await (await page.request.get('/api/server/mode')).json();
   expect(mode.allowQuickSsh).toBe(true);
 
-  await page.getByRole('button', { name: /^CF / }).click();
+  // By its test id, not by the initials of a username: those were `cfgadmin`'s, and the
+  // administrator is named by convention now (utils/adminUsername.ts).
+  await page.getByTestId('profile-pastille').click();
   await page.getByRole('button', { name: /^settings$/i }).click();
   await page.getByTestId('settings-nav-toolbar').click();
   const quick = page.getByTestId('toolbar-quickSsh');
