@@ -117,12 +117,22 @@ rm -f deploy/admin_password.txt
 # compose refusing to start, and `set -e` would end the script with a bare exit 125 and no
 # line saying why. So it says why.
 if ! plain up -d >/dev/null 2>&1; then
+  why=$(plain up -d 2>&1)
   echo "  ✘ deploy/compose.yml did not start with nothing prepared:"
-  plain up -d 2>&1 | sed 's/^/      /' | tail -4
+  printf '%s\n' "$why" | sed 's/^/      /' | tail -4
   echo
-  echo "    A \`statfs … admin_password.txt\` here means the bootstrap secret has been wired"
-  echo "    back into the deployment file. It belongs in deploy/compose.bootstrap.yml, so"
-  echo "    that starting Rite needs nothing prepared."
+  # Two causes, and naming the wrong one costs a whole run. The first time this fired it
+  # was the port, and the hint spoke about a secret.
+  case "$why" in
+    *"address already in use"*)
+      echo "    Something else is already serving 127.0.0.1:1421 — a review instance, or a"
+      echo "    container from an earlier run. Stop it and run this again; the phase needs the"
+      echo "    port to prove what a fresh deployment does." ;;
+    *statfs*)
+      echo "    A \`statfs … admin_password.txt\` means the bootstrap secret has been wired"
+      echo "    back into the deployment file. It belongs in deploy/compose.bootstrap.yml, so"
+      echo "    that starting Rite needs nothing prepared." ;;
+  esac
   exit 1
 fi
 await_health
