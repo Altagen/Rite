@@ -14,6 +14,7 @@ import '@xterm/xterm/css/xterm.css';
 import { terminalPool } from '../utils/terminalPool';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
+import { attachImeGuard } from '../utils/imeGuard';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { useTranslation } from '../i18n/i18n';
 import { useShortcut, useBindingText } from '../shortcuts/useShortcut';
@@ -90,6 +91,8 @@ export function Terminal({
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
+  /** Detaches the accented-input guard; replaced on every (re)attach, called on unmount. */
+  const imeGuardRef = useRef<(() => void) | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>(
     'connecting',
@@ -290,6 +293,15 @@ export function Terminal({
         instance.ioDisposables = [];
       }
 
+      // Accented input in the desktop webview (utils/imeGuard.ts). Attached to the
+      // CONTAINER, not the textarea: xterm registers its own `input` listener with
+      // capture on the textarea, and capture runs an ancestor before the target — a
+      // listener added later on the same element would run second, after the damage.
+      imeGuardRef.current?.();
+      imeGuardRef.current = terminalRef.current
+        ? attachImeGuard(terminalRef.current, { send: (data) => sendTerminalInput(data) })
+        : null;
+
       // Handle terminal input (both text and binary data)
       const onDataDisposable = term.onData((data) => sendTerminalInput(data));
       const onBinaryDisposable = term.onBinary((data) => sendTerminalInput(data));
@@ -481,6 +493,9 @@ export function Terminal({
         if (resizeTimeout) {
           clearTimeout(resizeTimeout);
         }
+        // The guard is bound to this container, which is going away with it.
+        imeGuardRef.current?.();
+        imeGuardRef.current = null;
         // Note: I/O disposables are managed by the terminal pool and will be
         // disposed when we re-register handlers on the next mount
       };
