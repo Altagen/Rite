@@ -1400,7 +1400,8 @@ export function Workspace({
   const openMachine = openMachineId
     ? conns.connections.find((c) => c.id === openMachineId)
     : undefined;
-  const openCollectionName = openCol?.name ?? openCollectionMeta?.collectionName ?? 'Collection';
+  const openCollectionName =
+    openCol?.name ?? openCollectionMeta?.collectionName ?? t('coll.fallbackName');
   const openCollectionColor = openCol?.color ?? openCollectionMeta?.collectionColor ?? null;
   const openCollectionRole = openCol?.role ?? openCollectionMeta?.collectionRole ?? null;
   const openCollectionWritable = openCollectionRole === 'owner' || openCollectionRole === 'editor';
@@ -2570,7 +2571,7 @@ export function Workspace({
                         </span>
                       </span>
                       <span className="flex-none text-xs text-muted-foreground">
-                        {isThisWindow ? 'Unlock' : 'Open'}
+                        {isThisWindow ? t('unlock.submit') : t('hub.open')}
                       </span>
                     </button>
                     {!isThisWindow && (

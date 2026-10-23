@@ -41,7 +41,8 @@ function Avatar({ name }: { name: string }) {
     </span>
   );
 }
-const roleLabel = (r: TeamMember['role']) => (r === 'admin' ? 'Manager' : 'Member');
+const roleKey = (r: TeamMember['role']) =>
+  r === 'admin' ? 'teams.roleManager' : 'teams.roleMember';
 
 export function TeamsDashboard() {
   const { t } = useTranslation();
@@ -226,7 +227,7 @@ export function TeamsDashboard() {
                             : 'bg-secondary text-muted-foreground'
                         }`}
                       >
-                        {roleLabel(m.role)}
+                        {t(roleKey(m.role))}
                       </span>
                     </div>
                   ))}

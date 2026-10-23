@@ -433,7 +433,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     testId="terminal-theme"
                     options={[
                       { value: 'dark', label: t('settings.themeDark') },
-                      { value: 'grey', label: 'Grey' },
+                      { value: 'grey', label: t('settings.themeGrey') },
                       { value: 'translucent', label: t('settings.themeTranslucent') },
                     ]}
                     onChange={(name) => {
@@ -1004,7 +1004,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     disabled={pwBusy || !pwCurrent || !pwNew || !pwConfirm}
                     className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                   >
-                    {pwBusy ? 'Changing…' : t('settings.changePassword')}
+                    {pwBusy ? t('settings.changingPassword') : t('settings.changePassword')}
                   </button>
                 </div>
               </section>

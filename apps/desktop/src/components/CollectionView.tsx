@@ -466,7 +466,7 @@ export function CollectionView({
                 d="M20 9a8 8 0 00-14.3-3.3L4 9m0 6a8 8 0 0014.3 3.3L20 15"
               />
             </svg>
-            {checkingHere ? 'Checking…' : 'Check'}
+            {checkingHere ? t('cview.checking') : t('cview.check')}
           </button>
         )}
         {onOpenBoard && (
@@ -624,7 +624,11 @@ export function CollectionView({
           <button
             onClick={() => onNewFolder(cur || undefined)}
             className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
-            title={cur ? `New sub-folder in “${cur.split('/').pop()}”` : 'New folder'}
+            title={
+              cur
+                ? t('cview.folderTitleIn', { name: cur.split('/').pop() ?? '' })
+                : t('lib.newFolder')
+            }
           >
             <svg
               className="h-4 w-4"
@@ -646,7 +650,11 @@ export function CollectionView({
           <button
             onClick={() => onNewMachine(cur || undefined)}
             className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            title={cur ? `New machine in “${cur.split('/').pop()}”` : 'New machine'}
+            title={
+              cur
+                ? t('cview.machineTitleIn', { name: cur.split('/').pop() ?? '' })
+                : t('cview.newMachine')
+            }
           >
             <svg
               className="h-4 w-4"

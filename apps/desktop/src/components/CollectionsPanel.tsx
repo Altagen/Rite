@@ -20,6 +20,13 @@ import {
 import { MemberPicker } from './MemberPicker';
 import { IconCollection } from './icons';
 
+/** The badge beside a shared collection's name reads the role, translated. */
+const ROLE_KEY: Record<'owner' | 'editor' | 'viewer', string> = {
+  owner: 'members.roleOwner',
+  editor: 'members.roleEditor',
+  viewer: 'members.roleViewer',
+};
+
 const COLLECTION_COLORS = [
   '#6366f1',
   '#0ea5e9',
@@ -61,14 +68,14 @@ export function CollectionsPanel() {
       const hdrs: Record<string, CollectionHeader> = {};
       for (const c of cols) {
         if (!c.protectedMetaKey || !publicKey || !privateKey) {
-          hdrs[c.id] = { name: 'Collection', color: null };
+          hdrs[c.id] = { name: t('coll.fallbackName'), color: null };
           continue;
         }
         try {
           const { metaKey } = await unwrapCollectionKeys(publicKey, privateKey, c);
           hdrs[c.id] = await decryptCollectionField<CollectionHeader>(metaKey, c.nameEnc);
         } catch {
-          hdrs[c.id] = { name: 'Collection', color: null };
+          hdrs[c.id] = { name: t('coll.fallbackName'), color: null };
         }
       }
       // Personal first, then by name.
@@ -254,7 +261,7 @@ export function CollectionsPanel() {
                 />
                 <h1 className="text-[22px] font-bold">{header.name}</h1>
                 <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
-                  {isPersonal ? 'Personal' : selected.role}
+                  {isPersonal ? t('coll.personal') : t(ROLE_KEY[selected.role])}
                 </span>
                 {machineCount !== null && (
                   <span className="text-[13px] text-muted-foreground">

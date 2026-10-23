@@ -554,8 +554,8 @@ export function TerminalManager({
                   className="rounded p-0.5 opacity-0 transition-opacity hover:bg-red-500/20 hover:text-red-500 group-hover:opacity-100"
                   title={
                     tabSessions.length > 1
-                      ? `Close tab (${tabSessions.length} terminals)`
-                      : 'Close tab'
+                      ? t('tm.closeTabCount', { count: tabSessions.length })
+                      : t('tm.closeTab')
                   }
                 >
                   <svg

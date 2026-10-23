@@ -442,7 +442,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
         try {
           const { metaKey, itemsKey } = await unwrapCollectionKeys(publicKey, privateKey, col);
           const header = await decryptCollectionField<CollectionHeader>(metaKey, col.nameEnc).catch(
-            () => ({ name: 'Collection', color: null }) as CollectionHeader,
+            () => ({ name: translate('coll.fallbackName'), color: null }) as CollectionHeader,
           );
           const isPersonal = col.id === personalId;
           // The context holds the itemsKey for item reads/writes (ADR 0016 split). A

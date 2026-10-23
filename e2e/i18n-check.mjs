@@ -247,6 +247,33 @@ const ALLOWED = new Map([
   ['components/TerminalManager.tsx: [jsx-tail] rect.right || clientY', 'source code, not text'],
   // A CSS font-family stack. Font names are not translated.
   ['utils/terminalPool.ts: [ternary-else] JetBrains Mono, Fira Code, monospace', 'CSS font stack'],
+  // A key name is not a word: `Cmd` on a Mac, `Ctrl` elsewhere, and the chords the
+  // keyboard table ships as defaults. Translating one would name a key nobody has.
+  ['components/ShortcutsSettings.tsx: [ternary-else] Ctrl', 'a key name'],
+  ['shortcuts/binding.ts: [ternary-else] Ctrl', 'a key name'],
+  ['shortcuts/commands.ts: [ternary-else] Mod+W', 'a default chord'],
+  ['shortcuts/commands.ts: [ternary-else] Mod+Shift+H', 'a default chord'],
+  ['shortcuts/commands.ts: [ternary-else] Mod+Shift+D', 'a default chord'],
+  ['shortcuts/commands.ts: [ternary-else] Mod+F', 'a default chord'],
+  ['shortcuts/commands.ts: [ternary-else] Mod+Shift+L', 'a default chord'],
+  // A language is named in its own language, or the list is useless to the only person
+  // who needs it: someone looking for a language they cannot find under its English name.
+  ['components/Settings.tsx: [ternary-else] English', 'a language, named in itself'],
+  ['components/Settings.tsx: [ternary-else] Français', 'a language, named in itself'],
+  // Telemetry, not text: `context: { component: 'Terminal' }` rides on an error report.
+  // One entry covers all six occurrences — the list is keyed by what a hit reads as.
+  ['components/Terminal.tsx: [ternary-else] Terminal', 'error-report context'],
+  // Seeded data a user then owns: a preset's name and a board's default category are
+  // stored as written, so translating them would rename what is already saved.
+  ['store/layouts.ts: [ternary-else] Load', 'a seeded preset name'],
+  ['store/layouts.ts: [ternary-else] Disk', 'a seeded preset name'],
+  ['store/splits.ts: [ternary-else] Terminal', 'a seeded preset name'],
+  ['components/BoardModal.tsx: [ternary-else] General', 'a default category, stored as data'],
+  // The browser demo's fixtures, like the entries already listed above.
+  ['utils/mockBackend.ts: [ternary-else] Production', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] Design', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] YubiKey 5C', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-then] Acme Corp', 'mock fixture data'],
 ]);
 
 const HARDCODED = [
@@ -268,8 +295,14 @@ const HARDCODED = [
   // Both halves of a ternary, and an object property a reader sees. Counting only the
   // `:` side missed the other one — `isFirstRun ? 'Create your vault' : 'Unlock vault'`
   // came out as a single string.
-  ['ternary-else', /:\s*['"]([A-Z][a-z][^'"]{10,})['"]/g],
-  ['ternary-then', /\?\s*['"]([A-Z][a-z][^'"]{10,})['"]\s*:/g],
+  //
+  // Four characters, not twelve. The old threshold was long enough to hide every short
+  // label, and short labels are what buttons are made of: `'Sign in'`, `'Check'`,
+  // `'Expand'`, `'Close tab'`, `'Current'`, `'Error:'` — fifteen of them, on screens
+  // this check had already reported clean. The cost is a wider allow-list below, where
+  // a font name or a key chord is written down once with the reason it is not text.
+  ['ternary-else', /:\s*['"]([A-Z][a-z][^'"]{2,})['"]/g],
+  ['ternary-then', /\?\s*['"]([A-Z][a-z][^'"]{2,})['"]\s*:/g],
   ['prop', /\b(?:label|message|hint|text|note)=?:\s*['"]([A-Z][a-z][^'"]{8,})['"]/g],
   // A fragment that starts lower-case, because it continues a sentence a <b> interrupted:
   // "…<b>Owner</b> manages sharing & settings". Six of those were left when every pattern

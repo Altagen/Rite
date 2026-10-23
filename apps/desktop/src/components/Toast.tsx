@@ -30,7 +30,8 @@ export function Toast({ message, type = 'error', onClose, duration = 4000, actio
 
   const bgColor =
     type === 'error' ? 'bg-red-500/90' : type === 'success' ? 'bg-green-500/90' : 'bg-blue-500/90';
-  const label = type === 'error' ? 'Error:' : type === 'success' ? 'Success:' : 'Info:';
+  const label =
+    type === 'error' ? t('toast.error') : type === 'success' ? t('toast.success') : t('toast.info');
 
   return (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-1/2 animate-in slide-in-from-top-5 fade-in duration-300">

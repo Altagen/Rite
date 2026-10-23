@@ -240,7 +240,9 @@ export function ImportSSHPasteModal({
             disabled={busy || !parsed || selected.size === 0 || !collectionId}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
-            {busy ? 'Importing…' : `Import ${selected.size || ''}`.trim()}
+            {busy
+              ? t('sshImport.importing', { count: selected.size })
+              : t('sshImport.importSelected', { count: selected.size })}
           </button>
         </div>
       </div>

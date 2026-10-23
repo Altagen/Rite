@@ -103,7 +103,11 @@ function LibraryFolderNode({
   return (
     <div>
       <div className="m-tnode" style={{ paddingLeft: '6px' }}>
-        <button onClick={onToggle} className="m-ca" aria-label={open ? 'Collapse' : 'Expand'}>
+        <button
+          onClick={onToggle}
+          className="m-ca"
+          aria-label={open ? t('lib.collapse') : t('lib.expand')}
+        >
           <Chevron open={open} />
         </button>
         <FolderIcon color={color} />
@@ -293,7 +297,7 @@ function CollectionNode({
             onToggle();
           }}
           className="m-ca"
-          aria-label={open ? 'Collapse' : 'Expand'}
+          aria-label={open ? t('lib.collapse') : t('lib.expand')}
         >
           <Chevron open={open} />
         </button>
@@ -1041,7 +1045,7 @@ export function LibrarySidebar({
       const m = byCollection.get(id)![0];
       return {
         id,
-        name: m.collectionName ?? 'Collection',
+        name: m.collectionName ?? t('coll.fallbackName'),
         color: m.collectionColor ?? null,
         role: m.collectionRole ?? 'owner',
         folders: [] as { name: string; color: string | null }[],

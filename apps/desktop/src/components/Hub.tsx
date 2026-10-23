@@ -541,7 +541,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
               </span>
               <ContextTag state={isCurrentLocal && !isLocked ? 'open' : 'locked'} />
               <span className="text-xs font-medium text-muted-foreground group-hover:text-primary">
-                {isCurrentLocal ? 'Current' : 'Open'}
+                {isCurrentLocal ? t('hub.current') : t('hub.open')}
               </span>
             </button>
           )}
@@ -749,7 +749,7 @@ export function Hub({ current, onOpenLocalInPlace, onClose, startAdding }: HubPr
                 disabled={busy || !url.trim()}
                 className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
               >
-                {editingId ? 'Save' : 'Add server'}
+                {editingId ? t('dlg.save') : t('hub.addServer')}
               </button>
             </div>
           </form>

@@ -88,7 +88,7 @@ export function ContextPill() {
   // No registered vault under this window yet (fresh install, register-after-password) ⇒ don't
   // pretend there's a "Local vault"; show it's not set up.
   const currentLabel = isLocalActive
-    ? (currentVault?.label ?? (vaults.length === 0 ? 'No vault' : 'Local vault'))
+    ? (currentVault?.label ?? (vaults.length === 0 ? t('hub.noVault') : t('hub.localVault')))
     : active.label || active.url;
 
   // Default action: switch THIS window in place (locks the current vault). "Open in new
