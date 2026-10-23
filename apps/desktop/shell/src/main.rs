@@ -25,11 +25,149 @@ use std::path::{Path, PathBuf};
 use tokio::sync::oneshot;
 
 mod context_registry;
+mod install;
 mod vault_roster;
 use context_registry::{ContextKey, ContextRegistry, OpenOutcome};
 
 const DEFAULT_SIZE: (f64, f64) = (1200.0, 800.0);
 const MIN_SIZE: (f64, f64) = (800.0, 600.0);
+
+const HELP: &str = "\
+Rite — terminal and SSH client.
+
+  rite                        open the window
+  rite --install              install the binary, the launcher entry and the icons
+  rite --uninstall            remove them; the vault is left alone
+  rite --version              print the version
+  rite --help                 this text
+
+  --prefix DIR                install under DIR/bin and DIR/share instead of
+                              ~/.local. A launcher only reads XDG_DATA_HOME and
+                              XDG_DATA_DIRS, so a prefix outside them is written
+                              correctly and shown nowhere.
+
+For an installer that decides the paths itself, the binary emits what it owns and
+writes nothing:
+
+  rite --print-app-id                the Wayland app-id; also the entry and icon filename
+  rite --print-desktop-entry PATH    the launcher entry, with PATH as its Exec
+  rite --print-icon SIZE             one icon, as PNG bytes on stdout
+  rite --print-icon-sizes            the sizes to place, one per line
+";
+
+/// What the command line asked for. A handful of flags and a default need a `match`, not a
+/// dependency.
+enum Cli {
+    Run,
+    /// `None` is the user-level layout; `Some(dir)` is `--prefix`.
+    Install(Option<PathBuf>),
+    Uninstall(Option<PathBuf>),
+    Version,
+    Help,
+    Unknown(String),
+    /// `--prefix` with nothing after it: a path we would have to invent.
+    PrefixWithoutPath,
+    /// The content the binary owns, for an installer that places it (ADR 0030 §1).
+    PrintAppId,
+    PrintEntry(PathBuf),
+    PrintIcon(u32),
+    PrintIconSizes,
+    /// A `--print-…` flag that needs an argument and did not get a usable one.
+    PrintNeeds(&'static str),
+}
+
+fn cli() -> Cli {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let Some(first) = args.first() else {
+        return Cli::Run;
+    };
+
+    // `--prefix` is the only flag that takes a value, and it only means anything to the two
+    // commands that write paths.
+    let prefix = |rest: &[String]| -> Result<Option<PathBuf>, Cli> {
+        match rest {
+            [] => Ok(None),
+            [flag, dir] if flag == "--prefix" => Ok(Some(PathBuf::from(dir))),
+            [flag] if flag == "--prefix" => Err(Cli::PrefixWithoutPath),
+            [other, ..] => Err(Cli::Unknown(other.clone())),
+        }
+    };
+
+    match first.as_str() {
+        "--install" => match prefix(&args[1..]) {
+            Ok(p) => Cli::Install(p),
+            Err(e) => e,
+        },
+        "--uninstall" => match prefix(&args[1..]) {
+            Ok(p) => Cli::Uninstall(p),
+            Err(e) => e,
+        },
+        "--print-app-id" => Cli::PrintAppId,
+        "--print-icon-sizes" => Cli::PrintIconSizes,
+        "--print-desktop-entry" => match args.get(1) {
+            Some(path) => Cli::PrintEntry(PathBuf::from(path)),
+            None => Cli::PrintNeeds("--print-desktop-entry needs the path Exec should run"),
+        },
+        "--print-icon" => match args.get(1).and_then(|s| s.parse::<u32>().ok()) {
+            Some(size) if size > 0 && size <= 1024 => Cli::PrintIcon(size),
+            _ => Cli::PrintNeeds("--print-icon needs a size between 1 and 1024"),
+        },
+        "--version" | "-V" => Cli::Version,
+        "--help" | "-h" => Cli::Help,
+        other => Cli::Unknown(other.to_string()),
+    }
+}
+
+/// The layout a command writes to: `--prefix` when given, the user's XDG paths otherwise.
+#[cfg(target_os = "linux")]
+fn layout_for(prefix: Option<PathBuf>) -> Result<install::Layout> {
+    match prefix {
+        Some(dir) => Ok(install::Layout::prefixed(&dir)),
+        None => install::Layout::user(),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn run_install(prefix: Option<PathBuf>) -> Result<()> {
+    let layout = layout_for(prefix)?;
+    let source = std::env::current_exe().context("could not resolve the running binary")?;
+    let report = install::install(&layout, &source)?;
+    for line in &report.lines {
+        println!("{line}");
+    }
+    if let Some(hint) = report.path_hint {
+        println!();
+        println!("{} is not on PATH. Add:", layout.bin_dir.display());
+        println!("  {hint}");
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn run_uninstall(prefix: Option<PathBuf>) -> Result<()> {
+    let layout = layout_for(prefix)?;
+    let report = install::uninstall(&layout)?;
+    for line in &report.lines {
+        println!("{line}");
+    }
+    println!();
+    println!("The vault is untouched: {}", install::state_note());
+    Ok(())
+}
+
+/// `--install` writes a freedesktop launcher entry and a hicolor icon theme. macOS wants a
+/// `.app` bundle instead, which this does not produce (ADR 0030).
+#[cfg(not(target_os = "linux"))]
+fn run_install(_prefix: Option<PathBuf>) -> Result<()> {
+    eprintln!("--install writes a freedesktop launcher entry, which is Linux only.");
+    std::process::exit(2)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn run_uninstall(_prefix: Option<PathBuf>) -> Result<()> {
+    eprintln!("--uninstall removes a freedesktop launcher entry, which is Linux only.");
+    std::process::exit(2)
+}
 
 /// A request from a webview (or the launch) to open a context in a window.
 struct OpenRequest {
@@ -123,6 +261,61 @@ struct WindowState {
 fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
 
+    // Read before the instance lock: `rite --install` has to work while a window is open,
+    // and none of these commands opens the vault.
+    match cli() {
+        Cli::Run => {}
+        Cli::Install(prefix) => return run_install(prefix),
+        Cli::Uninstall(prefix) => return run_uninstall(prefix),
+        Cli::Version => {
+            println!("{} {}", install::BIN_NAME, env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        Cli::Help => {
+            print!("{HELP}");
+            return Ok(());
+        }
+        Cli::Unknown(arg) => {
+            eprintln!("unknown option: {arg}");
+            eprint!("{HELP}");
+            std::process::exit(2);
+        }
+        Cli::PrefixWithoutPath => {
+            eprintln!("--prefix needs a directory");
+            eprint!("{HELP}");
+            std::process::exit(2);
+        }
+        // The emitters write to stdout and touch nothing. An installer asks for the app-id
+        // rather than carrying a copy of it, which is what keeps the entry's filename and
+        // the compiled app-id one string (ADR 0030 §3).
+        Cli::PrintAppId => {
+            println!("{}", install::APP_ID);
+            return Ok(());
+        }
+        Cli::PrintIconSizes => {
+            for size in install::icon_sizes() {
+                println!("{size}");
+            }
+            return Ok(());
+        }
+        Cli::PrintEntry(exec) => {
+            print!("{}", install::entry_text(&exec));
+            return Ok(());
+        }
+        Cli::PrintIcon(size) => {
+            use std::io::Write;
+            let png = install::icon_png(size)?;
+            std::io::stdout()
+                .write_all(&png)
+                .context("could not write the icon to stdout")?;
+            return Ok(());
+        }
+        Cli::PrintNeeds(message) => {
+            eprintln!("{message}");
+            std::process::exit(2);
+        }
+    }
+
     // Single instance: two *processes* would fight over the one SQLite vault. Hold
     // the lock for the whole process lifetime (multi-window lives inside it).
     let _lock = match acquire_instance_lock() {
@@ -151,10 +344,14 @@ fn main() -> Result<()> {
             // Must be a valid GApplication id (reverse-DNS, at least one dot). Overridable via
             // RITE_APP_ID so a second instance on the same machine (multi-client testing) can use a
             // distinct id — two GTK apps sharing one GApplication id collide (crash in the webview).
+            //
+            // The default is `install::APP_ID`, not a literal: it is also the `.desktop`
+            // basename and the icon filename, and a Wayland compositor matches the three to
+            // find the icon (ADR 0030 §3).
             let app_id = std::env::var("RITE_APP_ID")
                 .ok()
                 .filter(|v| v.contains('.') && !v.trim().is_empty())
-                .unwrap_or_else(|| "io.github.altagen.rite".to_string());
+                .unwrap_or_else(|| install::APP_ID.to_string());
             builder.with_app_id(app_id);
         }
         builder.build()

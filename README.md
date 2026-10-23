@@ -165,6 +165,8 @@ rite/
 │   ├── rite-server/      # Axum HTTP/WS server + embedded frontend (Rust)
 │   └── crypto/           # Cryptography module (Rust)
 ├── e2e/                  # Playwright end-to-end suite + standalone checks
+├── scripts/
+│   └── install.sh        # Installs the client; the binary emits, this places
 ├── Containerfile.server  # Production rite-server image
 ├── docs/
 │   ├── ARCHITECTURE.md

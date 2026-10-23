@@ -24,6 +24,35 @@ client is a single binary; an update is a new binary in place of the old one.
 
 ## Desktop client
 
+### With the script
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Altagen/Rite/main/scripts/install.sh
+less install.sh          # it is short, and it runs on your machine
+sh install.sh            # latest release, into ~/.local
+```
+
+It resolves the latest release, verifies the checksum, places the binary, and writes the
+launcher entry and the icons — so Rite appears in the application menu and no longer
+depends on the terminal it was started from.
+
+| Option | Effect |
+|--------|--------|
+| `--prefix DIR` | install under `DIR/bin` and `DIR/share` instead of `~/.local` |
+| `--version TAG` | a release you name rather than the latest |
+| `--bin PATH` | a binary you already have, instead of downloading one |
+| `--uninstall` | remove what it wrote; the vault is untouched |
+
+A launcher reads `XDG_DATA_HOME` and `XDG_DATA_DIRS` only, so `--prefix` outside them
+writes a correct entry that no menu will show. `--prefix /usr/local` is in them, and is
+the system-wide install.
+
+The script can be piped — `curl -fsSL <url> | sh -s -- --prefix /opt/rite` — and the two
+steps above are still the documented form: Rite's premise is that a server is not trusted
+with a secret, so it will not ask anyone to run a script they have not seen.
+
+### By hand
+
 ```bash
 VERSION=0.2.4
 BASE=https://github.com/Altagen/Rite/releases/download/$VERSION
@@ -34,7 +63,17 @@ sha256sum -c --ignore-missing rite-$VERSION-checksums.txt
 
 tar -xzf rite-$VERSION-linux-x86_64.tar.gz
 install -Dm755 rite ~/.local/bin/rite
+~/.local/bin/rite --install
 ```
+
+The last line is what the script does for you: it writes the launcher entry and the icons.
+Without it the binary runs, and nothing on the desktop knows Rite exists. It takes
+`--prefix DIR` too, and `rite --uninstall` takes it all back.
+
+**The binary emits, an installer places.** `rite --print-app-id`,
+`--print-desktop-entry PATH`, `--print-icon SIZE` and `--print-icon-sizes` write to stdout
+and touch nothing, which is how a packager builds a `.deb` or a PKGBUILD without this
+repository's script and without guessing the app-id.
 
 `--ignore-missing` is what makes the checksum file usable: it lists every platform's
 tarball, and you downloaded one. Without it, `sha256sum` reports the three you do not
@@ -104,7 +143,7 @@ The vault is encrypted with a key derived from your passphrase (Argon2id), so a 
 ## Uninstalling
 
 ```bash
-rm ~/.local/bin/rite                  # the binary
+rite --uninstall                      # the binary, the entry and the icons
 rm -rf ~/.local/share/rite ~/.config/rite   # every trace, vault included
 ```
 
