@@ -71,6 +71,13 @@ const FLOORS = [
       'login throttle',
   ],
   [
+    'ctutils',
+    '0.4.4',
+    'RUSTSEC-2026-0385 — mask generation and `u128` comparisons that were not ' +
+      'constant-time. It sits under `subtle`, so it is reached by every comparison Rite ' +
+      'makes on a secret: the auth hash, the session token, the enrolment token',
+  ],
+  [
     'russh',
     '0.64.1',
     'GHSA-4wc5-f2rc-q74m (unbounded allocation in the agent-protocol server) and ' +
