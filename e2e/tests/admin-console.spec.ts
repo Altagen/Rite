@@ -29,7 +29,7 @@ async function signIn(page: Page) {
     .isVisible()
     .catch(() => false);
   if (bootstrap) {
-    await page.locator('#username').fill(ADMIN.username);
+    // The name is not a field on this screen (utils/adminUsername.ts): `admin`, locked.
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
   } else {

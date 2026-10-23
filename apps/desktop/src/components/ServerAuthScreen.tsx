@@ -3,12 +3,14 @@
  *
  * Shown when the endpoint is a shared server and no session is active. The password is turned into
  * an auth hash client-side (see serverSessionStore) and never sent. When the server has no admin yet
- * it switches to bootstrap mode; otherwise a "Create an account" entry appears when open registration
+ * it switches to bootstrap mode, where the name is fixed to `admin` and only the password is
+ * chosen (utils/adminUsername.ts); otherwise a "Create an account" entry appears when open registration
  * is on, and a "Redeem an invitation token" entry is always available (a token works even when open
  * registration is off — it carries a role/team recipe, never a key).
  */
 
 import { useState } from 'react';
+import { ADMIN_USERNAME } from '../utils/adminUsername';
 import { isNativeShell, requestSwitchContext } from '../utils/nativeShell';
 import { RevealToggle } from './RevealToggle';
 import { useTranslation } from '../i18n/i18n';
@@ -31,12 +33,16 @@ export function ServerAuthScreen() {
   const [reveal, setReveal] = useState(false);
   const [token, setToken] = useState('');
 
+  // On the bootstrap screen the name is not a field: it is `admin`, shown and locked
+  // (see utils/adminUsername.ts). Only the password is chosen here.
+  const effectiveUsername = isBootstrap ? ADMIN_USERNAME : username.trim();
+
   const isNewAccount = isBootstrap || isRegister; // generates fresh keys from this password
   const mismatch = isRegister && confirm.length > 0 && confirm !== password;
   // With open registration off, an account can only be created here by redeeming a token.
   const tokenRequired = isRegister && !openReg;
   const canSubmit =
-    username.trim().length > 0 &&
+    effectiveUsername.length > 0 &&
     password.length > 0 &&
     !loading &&
     (!isRegister || confirm === password) &&
@@ -55,11 +61,11 @@ export function ServerAuthScreen() {
     clearError();
     try {
       if (isBootstrap) {
-        await bootstrap(username.trim(), password);
+        await bootstrap(effectiveUsername, password);
       } else if (isRegister) {
-        await register(username.trim(), password, token.trim() || undefined);
+        await register(effectiveUsername, password, token.trim() || undefined);
       } else {
-        await login(username.trim(), password);
+        await login(effectiveUsername, password);
       }
     } catch {
       // error is surfaced via the store
@@ -134,12 +140,19 @@ export function ServerAuthScreen() {
               id="username"
               type="text"
               autoComplete="username"
-              value={username}
+              value={isBootstrap ? ADMIN_USERNAME : username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              readOnly={isBootstrap}
+              aria-readonly={isBootstrap || undefined}
+              className={`w-full rounded-md border border-input px-3 py-2 text-sm ${
+                isBootstrap ? 'bg-muted text-muted-foreground' : 'bg-background'
+              }`}
               disabled={loading}
-              autoFocus
+              autoFocus={!isBootstrap}
             />
+            {isBootstrap && (
+              <p className="text-xs text-muted-foreground">{t('auth.adminNameFixed')}</p>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -155,6 +168,7 @@ export function ServerAuthScreen() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 pr-10 text-sm"
                 disabled={loading}
+                autoFocus={isBootstrap}
               />
               <RevealToggle
                 shown={reveal}
@@ -224,15 +238,15 @@ export function ServerAuthScreen() {
           >
             {loading
               ? isBootstrap
-                ? 'Creating…'
+                ? t('auth.creatingAdmin')
                 : isRegister
                   ? t('auth.creating')
-                  : 'Signing in…'
+                  : t('auth.signingIn')
               : isBootstrap
                 ? t('auth.createAdmin')
                 : isRegister
                   ? t('auth.create')
-                  : 'Sign in'}
+                  : t('auth.signIn')}
           </button>
 
           {!isBootstrap && (

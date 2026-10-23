@@ -153,7 +153,16 @@ test('first run bootstraps the admin and lands authenticated', async ({ page }) 
   await page.goto('/');
 
   await expect(page.getByText('Create the server administrator')).toBeVisible({ timeout: 15_000 });
-  await page.locator('#username').fill(ADMIN.username);
+
+  // The administrator is named by convention, not by whoever opens the instance first
+  // (utils/adminUsername.ts): the field shows `admin` so a newcomer knows which account
+  // this is, and refuses to be edited so the one account an instance cannot be opened
+  // without cannot be created under a name nobody meant to type.
+  const name = page.locator('#username');
+  await expect(name).toHaveValue(ADMIN.username);
+  await expect(name).toHaveAttribute('readonly', '');
+  await expect(page.getByText('Fixed name for the administrator account.')).toBeVisible();
+
   await page.locator('#password').fill(ADMIN.password);
   await page.getByRole('button', { name: /create administrator/i }).click();
 
@@ -604,7 +613,7 @@ async function signInAdmin(page: Page): Promise<void> {
       .isVisible()
       .catch(() => false)
   ) {
-    await page.locator('#username').fill(ADMIN.username);
+    // The name is not a field on this screen (utils/adminUsername.ts): `admin`, locked.
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
   } else {
@@ -935,7 +944,7 @@ test('an overlay page carries the nav, which is also the way back', async ({ pag
       .isVisible()
       .catch(() => false)
   ) {
-    await page.locator('#username').fill(ADMIN.username);
+    // The name is not a field on this screen (utils/adminUsername.ts): `admin`, locked.
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
   } else {
@@ -1013,7 +1022,7 @@ test('the web UI is told which shell the server sets, and is not offered the loc
       .isVisible()
       .catch(() => false)
   ) {
-    await page.locator('#username').fill(ADMIN.username);
+    // The name is not a field on this screen (utils/adminUsername.ts): `admin`, locked.
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
   } else {
@@ -1105,7 +1114,7 @@ test('an instance can hand the shell choice to its members, and take it back', a
       .isVisible()
       .catch(() => false)
   ) {
-    await page.locator('#username').fill(ADMIN.username);
+    // The name is not a field on this screen (utils/adminUsername.ts): `admin`, locked.
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
   } else {
@@ -1215,7 +1224,7 @@ test('a key chosen in the browser opens a real session on the server', async ({ 
       .isVisible()
       .catch(() => false)
   ) {
-    await page.locator('#username').fill(ADMIN.username);
+    // The name is not a field on this screen (utils/adminUsername.ts): `admin`, locked.
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
   } else {
@@ -1317,7 +1326,7 @@ test('a passphrase that was not kept is asked for at connect time', async ({ pag
       .isVisible()
       .catch(() => false)
   ) {
-    await page.locator('#username').fill(ADMIN.username);
+    // The name is not a field on this screen (utils/adminUsername.ts): `admin`, locked.
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
   } else {
@@ -1418,7 +1427,7 @@ test('a password that was not kept is asked for at connect time', async ({ page 
       .isVisible()
       .catch(() => false)
   ) {
-    await page.locator('#username').fill(ADMIN.username);
+    // The name is not a field on this screen (utils/adminUsername.ts): `admin`, locked.
     await page.locator('#password').fill(ADMIN.password);
     await page.getByRole('button', { name: /create administrator/i }).click();
   } else {

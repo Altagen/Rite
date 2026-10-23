@@ -289,7 +289,9 @@
     "terminalThemeHint": "Applies live; translucency shows on terminals opened afterwards.",
     "showMemberCountHint": "The number next to shared collections. The icon stays either way.",
     "masterPasswordHint": "It encrypts every connection in this vault, so changing it re-keys them all.",
-    "autoCollapseHint": "In focus mode (F11), also hide the library sidebar — terminals only."
+    "autoCollapseHint": "In focus mode (F11), also hide the library sidebar — terminals only.",
+    "themeGrey": "Grey",
+    "changingPassword": "Changing…"
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -632,7 +634,10 @@
     "newHere": "New here?",
     "haveToken": "Have an invitation token?",
     "backToLocal": "Back to the local vault",
-    "backToLocalWhy": "Switches this window to the local vault, where the context pill offers the others."
+    "backToLocalWhy": "Switches this window to the local vault, where the context pill offers the others.",
+    "adminNameFixed": "Fixed name for the administrator account.",
+    "signingIn": "Signing in…",
+    "creatingAdmin": "Creating the administrator…"
   },
   "admin": {
     "cancel": "Cancel",
@@ -1003,7 +1008,9 @@
     "renameMenu": "Rename…",
     "boardMenu": "Board…",
     "memberCount": "{count} members",
-    "forwardCount": "{count} saved port forward(s)"
+    "forwardCount": "{count} saved port forward(s)",
+    "collapse": "Collapse",
+    "expand": "Expand"
   },
   "hub": {
     "lead": "Local vaults and saved servers. Each opens in its own window. Removing a server only forgets it here — the remote account stays.",
@@ -1037,7 +1044,10 @@
     "openInNewWindowOf": "Open {name} in a new window",
     "removeFromListOf": "Remove {name} from the list",
     "editOf": "Edit {name}",
-    "removeOf": "Remove {name}"
+    "removeOf": "Remove {name}",
+    "current": "Current",
+    "addServer": "Add server",
+    "noVault": "No vault"
   },
   "coll": {
     "mine": "My collections",
@@ -1067,7 +1077,8 @@
     "memberCount": "{count} member(s)",
     "canManageRoster": "add or remove people and set roles",
     "viewRoster": "roster is read-only here",
-    "deleteTitle": "Delete “{name}”?"
+    "deleteTitle": "Delete “{name}”?",
+    "fallbackName": "Collection"
   },
   "cview": {
     "viaJumpLong": "Reached through a jump host (ProxyJump)",
@@ -1093,7 +1104,12 @@
     "openNamed": "Open “{name}”",
     "noMatch": "No machines match the filter.",
     "folders": "Folders",
-    "machines": "Machines"
+    "machines": "Machines",
+    "check": "Check",
+    "checking": "Checking…",
+    "newMachine": "New machine",
+    "folderTitleIn": "New sub-folder in “{name}”",
+    "machineTitleIn": "New machine in “{name}”"
   },
   "term": {
     "dragPane": "Drag to reorganize pane",
@@ -1177,7 +1193,8 @@
     "memberCountInline": "· {count} member(s)",
     "membersCount": "Members · {count}",
     "offersCount": "Collections offered to this team · {count}",
-    "errLoad": "Teams could not be loaded"
+    "errLoad": "Teams could not be loaded",
+    "roleMember": "Member"
   },
   "tm": {
     "noSessions": "No active terminal sessions",
@@ -1190,7 +1207,9 @@
     "renameTab": "Rename tab (double-click also works)",
     "saveConnection": "Save connection",
     "newTerminal": "New terminal",
-    "closeManyWhy": "Closing {count} terminals. Every active connection is terminated."
+    "closeManyWhy": "Closing {count} terminals. Every active connection is terminated.",
+    "closeTab": "Close tab",
+    "closeTabCount": "Close tab ({count} terminals)"
   },
   "members": {
     "addFromTeam": "Add from team:",
@@ -1483,7 +1502,10 @@
     "neverConnected": "Never connected"
   },
   "toast": {
-    "close": "Close"
+    "close": "Close",
+    "error": "Error:",
+    "success": "Success:",
+    "info": "Info:"
   },
   "time": {
     "never": "Never",
@@ -1500,5 +1522,11 @@
   "import": {
     "pickCollection": "Choose a collection to import into.",
     "pickHost": "Select at least one host."
+  },
+  "ctx": {
+    "locked": "Locked",
+    "open": "Open",
+    "server": "Server",
+    "current": "current"
   }
 }

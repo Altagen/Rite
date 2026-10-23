@@ -43,7 +43,9 @@ to run.
 
 **None of them asks you to prepare anything.** Start one, open it, and the first visit
 offers **Create the server administrator** — the same first run as a desktop vault, and no
-secret rests anywhere.
+secret rests anywhere. That screen asks for a password and nothing else: the account is
+`admin`, shown but not editable. One account an instance cannot be opened without, named
+by convention rather than by whoever gets there first.
 
 ### The administrator, without a browser
 
@@ -55,6 +57,10 @@ install -m 600 /dev/null deploy/admin_password.txt
 printf '%s' 'a-strong-password' > deploy/admin_password.txt
 docker compose -f deploy/compose.yml -f deploy/compose.bootstrap.yml up
 ```
+
+The account is `admin` here too: the override reads `RITE_ADMIN_USER` and falls back to
+`admin`. Setting that variable is the one way to choose another name — the browser path
+does not offer it.
 
 That is ADR 0020's point: configured, not merely administrable. What it costs is a live
 admin password at rest on this host, so three things are worth knowing.

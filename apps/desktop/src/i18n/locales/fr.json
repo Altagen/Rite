@@ -289,7 +289,9 @@
     "terminalThemeHint": "Appliqué immédiatement ; la translucidité apparaît sur les terminaux ouverts ensuite.",
     "showMemberCountHint": "Le nombre à côté des collections partagées. L’icône reste dans les deux cas.",
     "masterPasswordHint": "Il chiffre toutes les connexions de ce coffre : le changer les re-chiffre toutes.",
-    "autoCollapseHint": "En mode focus (F11), masquer aussi la bibliothèque — terminaux seuls."
+    "autoCollapseHint": "En mode focus (F11), masquer aussi la bibliothèque — terminaux seuls.",
+    "themeGrey": "Gris",
+    "changingPassword": "Changement…"
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -632,7 +634,10 @@
     "newHere": "Première visite ?",
     "haveToken": "Jeton d’invitation en main ?",
     "backToLocal": "Retour au coffre local",
-    "backToLocalWhy": "Bascule cette fenêtre sur le coffre local, d’où la pastille de contexte propose les autres."
+    "backToLocalWhy": "Bascule cette fenêtre sur le coffre local, d’où la pastille de contexte propose les autres.",
+    "adminNameFixed": "Nom fixe du compte administrateur.",
+    "signingIn": "Connexion…",
+    "creatingAdmin": "Création de l’administrateur…"
   },
   "admin": {
     "cancel": "Annuler",
@@ -1003,7 +1008,9 @@
     "renameMenu": "Renommer…",
     "boardMenu": "Tableau…",
     "memberCount": "{count} membres",
-    "forwardCount": "{count} redirection(s) enregistrée(s)"
+    "forwardCount": "{count} redirection(s) enregistrée(s)",
+    "collapse": "Replier",
+    "expand": "Déplier"
   },
   "hub": {
     "lead": "Coffres locaux et serveurs enregistrés. Chacun s’ouvre dans sa propre fenêtre. Retirer un serveur ne fait que l’oublier ici — le compte distant reste.",
@@ -1037,7 +1044,10 @@
     "openInNewWindowOf": "Ouvrir {name} dans une nouvelle fenêtre",
     "removeFromListOf": "Retirer {name} de la liste",
     "editOf": "Modifier {name}",
-    "removeOf": "Retirer {name}"
+    "removeOf": "Retirer {name}",
+    "current": "Actuel",
+    "addServer": "Ajouter un serveur",
+    "noVault": "Aucun coffre"
   },
   "coll": {
     "mine": "Mes collections",
@@ -1067,7 +1077,8 @@
     "memberCount": "{count} membre(s)",
     "canManageRoster": "ajouter ou retirer des personnes et définir les rôles",
     "viewRoster": "liste en lecture seule ici",
-    "deleteTitle": "Supprimer « {name} » ?"
+    "deleteTitle": "Supprimer « {name} » ?",
+    "fallbackName": "Collection"
   },
   "cview": {
     "viaJumpLong": "Atteinte via un hôte de rebond (ProxyJump)",
@@ -1093,7 +1104,12 @@
     "openNamed": "Ouvrir « {name} »",
     "noMatch": "Aucune machine ne correspond au filtre.",
     "folders": "Dossiers",
-    "machines": "Machines"
+    "machines": "Machines",
+    "check": "Vérifier",
+    "checking": "Vérification…",
+    "newMachine": "Nouvelle machine",
+    "folderTitleIn": "Nouveau sous-dossier dans « {name} »",
+    "machineTitleIn": "Nouvelle machine dans « {name} »"
   },
   "term": {
     "dragPane": "Glisser pour réorganiser le panneau",
@@ -1177,7 +1193,8 @@
     "memberCountInline": "· {count} membre(s)",
     "membersCount": "Membres · {count}",
     "offersCount": "Collections proposées à cette équipe · {count}",
-    "errLoad": "Les équipes n’ont pas pu être chargées"
+    "errLoad": "Les équipes n’ont pas pu être chargées",
+    "roleMember": "Membre"
   },
   "tm": {
     "noSessions": "Aucune session de terminal active",
@@ -1190,7 +1207,9 @@
     "renameTab": "Renommer l’onglet (le double-clic marche aussi)",
     "saveConnection": "Enregistrer la connexion",
     "newTerminal": "Nouveau terminal",
-    "closeManyWhy": "Fermeture de {count} terminaux. Toutes les connexions actives sont coupées."
+    "closeManyWhy": "Fermeture de {count} terminaux. Toutes les connexions actives sont coupées.",
+    "closeTab": "Fermer l’onglet",
+    "closeTabCount": "Fermer l’onglet ({count} terminaux)"
   },
   "members": {
     "addFromTeam": "Ajouter depuis une équipe :",
@@ -1483,7 +1502,10 @@
     "neverConnected": "Jamais connectée"
   },
   "toast": {
-    "close": "Fermer"
+    "close": "Fermer",
+    "error": "Erreur :",
+    "success": "Succès :",
+    "info": "Info :"
   },
   "time": {
     "never": "Jamais",
@@ -1500,5 +1522,11 @@
   "import": {
     "pickCollection": "Choisir une collection de destination.",
     "pickHost": "Sélectionner au moins un hôte."
+  },
+  "ctx": {
+    "locked": "Verrouillé",
+    "open": "Ouvert",
+    "server": "Serveur",
+    "current": "actuel"
   }
 }

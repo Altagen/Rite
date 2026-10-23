@@ -154,7 +154,7 @@ test('administration: the policies an instance governs', async ({ page }) => {
   await page.goto(`${ACCOUNTS}/`);
   const bootstrap = page.getByText('Create the server administrator');
   if (await bootstrap.isVisible().catch(() => false)) {
-    await page.locator('#username').fill('admin');
+    // The name is not a field on this screen (utils/adminUsername.ts): `admin`, locked.
     await page.locator('#password').fill('Rite-E2E-Str0ng!pass');
     await page.getByRole('button', { name: /create administrator/i }).click();
   } else {

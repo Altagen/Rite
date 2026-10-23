@@ -15,7 +15,8 @@ import { test, expect, type Page } from '@playwright/test';
  * be visible *and* bounded.
  */
 
-const ADMIN = { username: 'cfgadmin', password: 'ConfigAdmin1!' };
+// Bootstrapped through the UI, so the name is the conventional one (utils/adminUsername.ts).
+const ADMIN = { username: 'admin', password: 'ConfigAdmin1!' };
 
 // The instance is shared by both tests, so the first creates the administrator and the
 // second signs in as them. Serial, for the same reason.
@@ -31,10 +32,12 @@ async function openInstancePanel(page: Page) {
   const signIn = page.getByText(/Sign in to the server/i);
   await expect(bootstrap.or(signIn)).toBeVisible({ timeout: 30_000 });
 
-  await page.locator('#username').fill(ADMIN.username);
+  // On the bootstrap screen the name is fixed and locked (utils/adminUsername.ts); on the
+  // sign-in screen it has to be typed. Either way it is the same account.
+  if (!(await bootstrap.isVisible().catch(() => false))) {
+    await page.locator('#username').fill(ADMIN.username);
+  }
   await page.locator('#password').fill(ADMIN.password);
-  const confirm = page.locator('#confirmPassword');
-  if (await confirm.count()) await confirm.fill(ADMIN.password);
   await page.locator('button[type="submit"]').click();
   await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
     timeout: 30_000,
