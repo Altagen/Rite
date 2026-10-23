@@ -1106,3 +1106,48 @@ test('mock: a username from the URL is text, not markup', async ({ page }) => {
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
+
+/**
+ * The collapsed library's arrow appears near the left edge, and nothing invisible
+ * catches a click meant for the terminal.
+ *
+ * Both halves matter and the two shipped shapes each had one of them. The mock revealed
+ * the arrow with `:hover` on a 48px rail, which takes pointer events down the whole left
+ * edge — so the rail swallowed clicks on the terminal under it. The app answered by
+ * making the arrow permanent, which puts a button on top of the output instead. The fix
+ * is neither: proximity from mousemove, and pointer events only on the button.
+ */
+for (const shell of ['web', 'desktop'] as const) {
+  test(`${shell} mock: the reveal arrow follows the pointer, and the rail is click-through`, async ({
+    page,
+  }) => {
+    await page.goto(mock(shell));
+    // Through the interface, not by poking STATE: it is a `let`, so it is not on
+    // `window` — and clicking the real control is the path a reader takes anyway.
+    await page.getByTitle('Hide panel').first().click();
+
+    const arrow = page.locator('#sideRail button');
+    await expect(arrow).toHaveCount(1);
+
+    // Away from the edge: present in the DOM, invisible on screen.
+    await page.mouse.move(600, 400);
+    await expect(arrow).toHaveCSS('opacity', '0');
+
+    // Near it: shown.
+    await page.mouse.move(8, 400);
+    await expect(arrow).toHaveCSS('opacity', '1');
+
+    // And away again — a reveal that does not go back is the permanent button by
+    // another route.
+    await page.mouse.move(600, 400);
+    await expect(arrow).toHaveCSS('opacity', '0');
+
+    // The rail covers 48px of the left edge. Whatever is under it must still receive the
+    // click: an element at opacity 0 is still hit-testable, which is the trap here.
+    const hit = await page.evaluate(() => {
+      const el = document.elementFromPoint(20, 400);
+      return el?.closest('.side-rail') ? 'the rail' : 'what is underneath';
+    });
+    expect(hit).toBe('what is underneath');
+  });
+}

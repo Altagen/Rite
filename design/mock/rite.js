@@ -1037,3 +1037,31 @@ function termHTML(host, opts){
     </div>
   </div>`;
 }
+
+/* The collapsed library's reveal arrow, shown only while the pointer is near the left
+   edge (see `.side-rail` in rite.css).
+ *
+ * Proximity from mousemove rather than `:hover` on the rail: the rail is 48px wide down
+ * the whole height, so taking pointer events there would swallow every click on the left
+ * of the terminal under it. `:hover` on the button cannot work either — an element at
+ * opacity 0 is still hit-testable, so the arrow would sit invisible over the output and
+ * catch clicks meant for it.
+ *
+ * Same mechanism focus mode uses to reveal the toolbar from the top edge. The class goes
+ * on <body> so the CSS owns the appearance and this owns only the question "is the
+ * pointer near the edge".
+ */
+(function () {
+  var NEAR = 48; // the rail's own width: the arrow appears where it will be
+  document.addEventListener('mousemove', function (e) {
+    var near = e.clientX <= NEAR;
+    // Only touch the DOM on a change — mousemove fires on every pixel.
+    if (near !== document.body.classList.contains('near-left')) {
+      document.body.classList.toggle('near-left', near);
+    }
+  });
+  // A pointer that leaves the window leaves the class behind otherwise.
+  document.addEventListener('mouseleave', function () {
+    document.body.classList.remove('near-left');
+  });
+})();

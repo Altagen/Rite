@@ -160,9 +160,15 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .side{width:300px;border-right:1px solid var(--border);background:var(--bg2);display:flex;flex-direction:column;min-height:0;transition:width .3s}
 /* Collapsed sidebar (matches the Rite web UI): the panel hides fully and a floating
    button appears when you hover the left edge. */
-.side-rail{position:fixed;left:0;top:0;height:100%;width:48px;z-index:30}
-.side-rail button{position:absolute;left:0;top:50%;transform:translateY(-50%);opacity:0;transition:.15s;background:var(--card);border:1px solid var(--border);border-left:none;border-radius:0 8px 8px 0;padding:8px;color:var(--fg);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35)}
-.side-rail:hover button{opacity:1}
+/* The reveal arrow for a collapsed library. The rail takes NO pointer events: at 48px
+   wide down the full height it would otherwise swallow every click on the left edge of
+   the terminal underneath — which is how the arrow came to be permanent instead, and a
+   permanent arrow sits on top of the terminal output. So proximity is read from
+   mousemove (`body.near-left`, see rite.js), the same way focus mode reveals the
+   toolbar from the top edge, and only the button itself is clickable. */
+.side-rail{position:fixed;left:0;top:0;height:100%;width:48px;z-index:30;pointer-events:none}
+.side-rail button{position:absolute;left:0;top:50%;transform:translateY(-50%);opacity:0;transition:.15s;pointer-events:auto;background:var(--card);border:1px solid var(--border);border-left:none;border-radius:0 8px 8px 0;padding:8px;color:var(--fg);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+body.near-left .side-rail button,.side-rail button:focus{opacity:1}
 .search{display:flex;align-items:center;gap:8px;margin:12px;padding:8px 11px;background:var(--bg);border:1px solid var(--border2);border-radius:9px;color:var(--muted)}
 .search input{background:none;border:none;outline:none;padding:0;color:var(--fg);width:100%;font-size:13px;font-family:inherit;line-height:18px}
 .search input::placeholder{color:color-mix(in oklab,var(--fg) 50%,transparent);opacity:1}
