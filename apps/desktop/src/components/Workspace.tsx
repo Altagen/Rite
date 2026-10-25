@@ -941,13 +941,26 @@ export function Workspace({
    * `localSession` is that fallback, and is also the plain split — one function, so a
    * pane that fell back is built exactly like a pane that was asked for.
    */
-  const localSession = async (target?: SplitTarget, note?: string): Promise<TerminalSession> => {
+  const localSession = async (
+    target?: SplitTarget,
+    note?: string,
+    /**
+     * Open in the same directory as this session's shell.
+     *
+     * Only a split passes one. A new tab and a duplicate start where a shell would
+     * normally start: "leave me where I was" is unambiguous for a split and a guess
+     * anywhere else. The server reads the directory itself and refuses a session the
+     * caller does not own.
+     */
+    inheritCwdFrom?: string,
+  ): Promise<TerminalSession> => {
     // In a server context the shell is the instance's (`defaultShell`), so ask for
     // nothing and let the server use it: sending one made the administrator's choice
     // advisory, and the server would spawn whatever path it was handed.
     const shellToUse = isServerCtx ? serverShell : settings.defaultShell;
     const sessionId = await Backend.Terminal.connectLocalTerminal(
       isServerCtx ? (serverShellChoiceList.length > 0 ? serverShell : undefined) : shellToUse,
+      inheritCwdFrom,
     );
     const shellName = shellToUse.split('/').pop() || 'shell';
     return {
@@ -963,9 +976,14 @@ export function Workspace({
   const sessionForTarget = async (
     target?: SplitTarget,
     gate?: Map<string, boolean>,
+    inheritCwdFrom?: string,
   ): Promise<TerminalSession> => {
     const machine = target?.machine?.trim();
-    if (!machine) return localSession(target);
+    // Only the local path can inherit a directory. A machine's working directory is on
+    // another computer, and the fallbacks below are a plain shell standing in for a
+    // machine that could not be opened — starting that somewhere else because of where an
+    // unrelated pane happened to be would be noise, not a convenience.
+    if (!machine) return localSession(target, undefined, inheritCwdFrom);
 
     // A locked vault is not a wrong name: the names are encrypted, so there is
     // nothing to compare against, and saying so is the honest message.
@@ -996,7 +1014,17 @@ export function Workspace({
     if (!activeTabId) return;
 
     try {
-      const newSession = await sessionForTarget(target);
+      // The pane being cut, so its shell's directory is where the new one opens. A
+      // terminal multiplexer does this and it is the whole of the "working directory per
+      // tab" item: splitting leaves you where you were.
+      const cutPane = getAllPanes(tabGroups.find((t) => t.id === activeTabId)?.paneTree ?? null)
+        .find((pane) => pane.id === paneId);
+      // The session is named whatever it is, local or SSH, and the SERVER decides whether
+      // it can answer: `local_cwd` matches on a local session and returns nothing for
+      // anything else. A matching check here would be the same rule in two places — and
+      // the one that cannot be skipped is the server's, because it is the side that can
+      // read a directory at all.
+      const newSession = await sessionForTarget(target, undefined, cutPane?.session.id);
 
       // Split the pane in the active tab's tree
       setTabGroups((prev) =>
