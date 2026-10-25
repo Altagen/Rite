@@ -96,12 +96,24 @@ check('Terminal is false, which is the whole point of the entry', () => {
 });
 
 check('main.rs takes its app-id from install.rs and not from a literal', () => {
+  // Two shapes now, because the id is also a bus name and two processes cannot share one
+  // (ADR 0030 addendum): the installed location claims the canonical id, anywhere else
+  // derives one under it. Both have to be built from install::APP_ID, which is where the
+  // entry filename and the icon filename come from — a literal here is how those drift.
   assert.match(
     MAIN,
-    /unwrap_or_else\(\|\| install::APP_ID\.to_string\(\)\)/,
-    'the app-id fallback must be install::APP_ID',
+    /return install::APP_ID\.to_string\(\);/,
+    'the installed location must claim install::APP_ID itself',
   );
-  const literals = MAIN.match(/"[a-z][a-z0-9]*(?:\.[a-z][a-z0-9-]*){2,}"/g) ?? [];
+  assert.match(
+    MAIN,
+    /format!\("\{\}\.d\{:x\}", install::APP_ID/,
+    'a derived id must be built from install::APP_ID, not from a second spelling',
+  );
+  // Tests are allowed to name a FOREIGN id — proving that `RITE_APP_ID` wins needs one to
+  // pass in — so the rule is read on the code that ships, where no id may be spelled.
+  const shipped = MAIN.split('#[cfg(test)]')[0];
+  const literals = shipped.match(/"[a-z][a-z0-9]*(?:\.[a-z][a-z0-9-]*){2,}"/g) ?? [];
   assert.deepEqual(
     literals,
     [],

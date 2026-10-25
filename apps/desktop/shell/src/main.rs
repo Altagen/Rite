@@ -348,11 +348,11 @@ fn main() -> Result<()> {
             // The default is `install::APP_ID`, not a literal: it is also the `.desktop`
             // basename and the icon filename, and a Wayland compositor matches the three to
             // find the icon (ADR 0030 §3).
-            let app_id = std::env::var("RITE_APP_ID")
-                .ok()
-                .filter(|v| v.contains('.') && !v.trim().is_empty())
-                .unwrap_or_else(|| install::APP_ID.to_string());
-            builder.with_app_id(app_id);
+            builder.with_app_id(app_id(
+                std::env::var("RITE_APP_ID").ok().as_deref(),
+                &data_dir(),
+                &default_data_dir(),
+            ));
         }
         builder.build()
     };
@@ -1206,6 +1206,50 @@ fn load_icon() -> Option<tao::window::Icon> {
     tao::window::Icon::from_rgba(img.into_raw(), w, h).ok()
 }
 
+/// Where a normally-installed Rite keeps its data: `$HOME/.local/share/rite`, the XDG
+/// default, whatever `XDG_DATA_HOME` says right now.
+fn default_data_dir() -> std::path::PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".local/share/rite")
+}
+
+/// The GApplication id this process claims.
+///
+/// Two processes cannot share one. The second to start cannot own the bus name, and GTK then
+/// crashes inside `gtk_window_set_application` with no message at all — four coredumps and
+/// nothing on stderr. So an instance running on a data directory that is not the installed
+/// one takes a derived id instead of colliding: a dev build beside an installed Rite, or a
+/// test instance with its own `XDG_DATA_HOME`, both get a window.
+///
+/// The canonical id is kept for the installed location, because it is also the `.desktop`
+/// basename a Wayland compositor matches to find the icon (ADR 0030 §3) — a derived id there
+/// would trade a crash for a missing icon.
+///
+/// `RITE_APP_ID` still wins outright: a caller that names an id has a reason.
+fn app_id(
+    env_override: Option<&str>,
+    data_dir: &std::path::Path,
+    default_data_dir: &std::path::Path,
+) -> String {
+    if let Some(named) = env_override
+        .map(str::trim)
+        .filter(|v| v.contains('.') && !v.is_empty())
+    {
+        return named.to_string();
+    }
+    if data_dir == default_data_dir {
+        return install::APP_ID.to_string();
+    }
+    // A suffix derived from the path, so the same instance keeps the same id across runs
+    // (a compositor groups by it). Prefixed with a letter: every segment of a GApplication
+    // id has to start with one, and a hex digit would make the whole id invalid.
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    data_dir.hash(&mut hasher);
+    format!("{}.d{:x}", install::APP_ID, hasher.finish())
+}
+
 fn data_dir() -> std::path::PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -1512,5 +1556,47 @@ mod tests {
     fn non_vault_messages_are_not_commands() {
         assert!(plan_vault_command(&json!({ "type": "open-context", "kind": "local" })).is_none());
         assert!(plan_vault_command(&json!({ "type": "whatever" })).is_none());
+    }
+
+    #[test]
+    fn the_installed_location_keeps_the_canonical_app_id() {
+        let home = PathBuf::from("/home/someone/.local/share/rite");
+        // The id a compositor matches against the `.desktop` basename for the icon.
+        assert_eq!(app_id(None, &home, &home), install::APP_ID);
+        // An id that was asked for wins, even on the installed location.
+        assert_eq!(
+            app_id(Some("com.example.rite"), &home, &home),
+            "com.example.rite"
+        );
+        // Not an id (no dot, or blank): ignored rather than claimed.
+        assert_eq!(app_id(Some("rite"), &home, &home), install::APP_ID);
+        assert_eq!(app_id(Some("   "), &home, &home), install::APP_ID);
+    }
+
+    #[test]
+    fn another_data_directory_takes_a_derived_app_id() {
+        let home = PathBuf::from("/home/someone/.local/share/rite");
+        let test = PathBuf::from("/home/someone/.rite-test/.local/share/rite");
+        let other = PathBuf::from("/tmp/rite-bench/.local/share/rite");
+
+        let derived = app_id(None, &test, &home);
+        // Not the canonical one — sharing it is what crashes the second instance — and not
+        // a free-for-all either: still under the canonical id, so it reads as Rite's.
+        assert_ne!(derived, install::APP_ID);
+        assert!(
+            derived.starts_with(&format!("{}.", install::APP_ID)),
+            "{derived}"
+        );
+        // Every segment of a GApplication id starts with a letter.
+        assert!(
+            derived
+                .split('.')
+                .all(|seg| seg.chars().next().is_some_and(|c| c.is_ascii_alphabetic())),
+            "{derived}"
+        );
+        // Same directory, same id: a compositor groups windows by it across runs.
+        assert_eq!(derived, app_id(None, &test, &home));
+        // Two instances elsewhere do not collide with each other either.
+        assert_ne!(derived, app_id(None, &other, &home));
     }
 }
