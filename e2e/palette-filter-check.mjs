@@ -151,13 +151,12 @@ check('the label beats the description', () => {
 });
 
 /**
- * One mutation survives this file, and it is pure defence: removing `|| a.at - b.at` from
- * the sort changes nothing, because `Array.prototype.sort` has been stable in V8 since
- * 2018 and keeps the input order on its own. The comparator says the intent out loud and
- * would hold on an engine that did not — it cannot be killed by a test, and claiming
- * otherwise would be worse than saying so here.
+ * This is what the sort's stability buys, and the reason there is no explicit tiebreaker
+ * to go with it: an `|| a.at - b.at` in the comparator said the same thing twice and no
+ * mutation could remove it, because `Array.prototype.sort` has been required to be stable
+ * since ES2019. The assertion below is what holds the behaviour now.
  */
-check('a tie is broken by the table, never by the sort', () => {
+check('a tie keeps the order the table gave', () => {
   // The two splits rank identically on "split". Their order here is the order they were
   // given, and a sort that was not stable would be free to swap them between renders.
   assert.deepEqual(ids('split'), ['pane.splitHorizontal', 'pane.splitVertical']);

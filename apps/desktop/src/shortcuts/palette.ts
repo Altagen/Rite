@@ -12,7 +12,8 @@
  * sees the same ones; someone who types "zzz" sees nothing and knows why.
  *
  * Order within a rank is the table's own, which is a design call made in `commands.ts` —
- * so the sort is stable and never invents a preference the table did not express.
+ * carried by the sort's required stability, so nothing here invents a preference the table
+ * did not express.
  */
 
 /** One runnable command, as the palette shows it. */
@@ -68,8 +69,8 @@ export function filterPalette(entries: PaletteEntry[], query: string): PaletteEn
   const tokens = norm(query).split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return [...entries];
 
-  const scored: Array<{ entry: PaletteEntry; rank: number; at: number }> = [];
-  entries.forEach((entry, at) => {
+  const scored: Array<{ entry: PaletteEntry; rank: number }> = [];
+  entries.forEach((entry) => {
     const label = norm(entry.label);
     const haystack = `${label} ${norm(entry.description ?? '')}`;
     // Every token has to appear somewhere. A query is a conjunction, which is what makes
@@ -78,10 +79,15 @@ export function filterPalette(entries: PaletteEntry[], query: string): PaletteEn
     // The rank is decided by the FIRST token only: it is the one being typed, and letting
     // a later token improve the rank would make the list jump around mid-word.
     const rank = rankInLabel(label, tokens[0]) ?? PaletteRank.DescriptionOnly;
-    scored.push({ entry, rank, at });
+    scored.push({ entry, rank });
   });
 
-  // Stable by construction: `at` breaks every tie with the table's own order.
-  scored.sort((a, b) => a.rank - b.rank || a.at - b.at);
+  // No explicit tiebreaker, on purpose. `Array.prototype.sort` has been required to be
+  // STABLE since ES2019, so equal ranks keep the order they came in — which is the
+  // table's own, and the only order allowed to break a tie here. An `|| a.at - b.at`
+  // beside this said the same thing twice: it could not be removed by a mutation without
+  // the suite staying green, because the platform already guarantees it. A line no test
+  // can hold is a line that will drift.
+  scored.sort((a, b) => a.rank - b.rank);
   return scored.map((s) => s.entry);
 }
