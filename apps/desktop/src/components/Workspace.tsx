@@ -13,7 +13,10 @@ import { askConfirm } from '../utils/confirmPrompt';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { disposeAllPanes, paneKind } from '../panes/registry';
-import { planLayout, type Layout } from '../store/layoutsFormat';
+import { planLayout, type Layout, type TabPlan } from '../store/layoutsFormat';
+// Reading a live pane tree back into a plan, so a duplicate goes through the same
+// opener a layout does rather than a second tree-walker.
+import { planFromTree } from '../store/tabPlan';
 import { useLayouts, startupAlreadyRan, markStartupRan } from '../store/layouts';
 import { useToolbar } from '../store/toolbar';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
@@ -1025,11 +1028,24 @@ export function Workspace({
    * later step anchor to a pane placed earlier.
    */
   const handleApplyLayout = async (layout: Layout) => {
-    // One hook per machine for the whole layout, however many panes it has.
+    await openPlans(planLayout(layout), layout.name);
+  };
+
+  /**
+   * Open a set of tab plans: the panes they name, arranged by the cuts they list.
+   *
+   * Lifted out of `handleApplyLayout` so duplicating a tab goes through the same code.
+   * A duplicate IS a plan — `planFromTree` reads a live tree into one — so the only
+   * alternative was a second tree-walker that would drift from this one. Rebuilding an
+   * arrangement is subtle enough that having one implementation of it matters more than
+   * the two callers looking different.
+   */
+  const openPlans = async (plans: TabPlan[], fallbackName: string) => {
+    // One hook per machine for the whole run, however many panes name it.
     const gate = new Map<string, boolean>();
     const opened: Tab[] = [];
 
-    for (const plan of planLayout(layout)) {
+    for (const plan of plans) {
       const sessionFor = async (index: number): Promise<TerminalSession> => {
         try {
           return await sessionForTarget(plan.panes[index], gate);
@@ -1063,15 +1079,45 @@ export function Workspace({
         if (added) paneIds.set(step.pane, added.id);
       }
 
-      opened.push({ id: crypto.randomUUID(), name: plan.tab ?? layout.name, paneTree: tree });
+      opened.push({ id: crypto.randomUUID(), name: plan.tab ?? fallbackName, paneTree: tree });
     }
 
     if (opened.length === 0) return;
     setTabGroups((prev) => [...prev, ...opened]);
     setActiveTabId(opened[0].id);
-    // A layout is terminals; a dashboard or a collection covering the workspace would
+    // These are terminals; a dashboard or a collection covering the workspace would
     // hide every one of them.
     setMainView('terminal');
+  };
+
+  /**
+   * Duplicate a tab: the same arrangement, against the same targets, with fresh sessions.
+   *
+   * Not a copy, and the menu label says so. A pane holds a live session — an SSH
+   * connection, a PTY with a shell's history and whatever is running in it — and none of
+   * that is a value that can be cloned. What can be rebuilt is the shape and the targets,
+   * which is exactly what a layout is, so this reads the live tree into a plan and hands
+   * it to the opener layouts use.
+   *
+   * A machine that cannot be reached gets the same treatment it gets from a layout: the
+   * pane opens as a plain shell carrying why (ADR 0023 §5). The arrangement survives even
+   * when a target does not.
+   */
+  const handleDuplicateTab = async (tabId: string) => {
+    const tab = tabGroups.find((t) => t.id === tabId);
+    if (!tab || !tab.paneTree) return;
+    await openPlans([planFromTree(tab.paneTree, tab.name)], tab.name);
+  };
+
+  /** Close every tab but this one. The strip asks first; this does the closing. */
+  const handleCloseOtherTabs = async (keepId: string) => {
+    // Snapshotted before the first close: `handleCloseTab` edits `tabGroups`, and
+    // iterating the live list while it shrinks skips tabs.
+    const doomed = tabGroups.filter((t) => t.id !== keepId).map((t) => t.id);
+    // One at a time, because each close disposes its own panes and a failure on one tab
+    // must not take the rest of the loop with it.
+    for (const id of doomed) await handleCloseTab(id);
+    setActiveTabId(keepId);
   };
 
   /**
@@ -2134,6 +2180,8 @@ export function Workspace({
                 onRenameTab={handleRenameTab}
                 onMergeTab={handleMergeTab}
                 onCloseTab={handleCloseTab}
+                onDuplicateTab={(id) => void handleDuplicateTab(id)}
+                onCloseOtherTabs={(id) => void handleCloseOtherTabs(id)}
                 onReorganizePane={handleReorganizePane}
                 onNewLocalTerminal={handleNewLocalTerminal}
                 shellMenu={toolbarPrefs.newTerminalMenu ? newTerminalShells : undefined}
