@@ -27,6 +27,7 @@ import { VaultPastille } from './VaultPastille';
 import { OverflowNav, type NavAction } from './OverflowNav';
 import { useSettingsModal } from '../store/settingsModal';
 import { CommandPalette } from './CommandPalette';
+import { ShortcutsCheatsheet } from './ShortcutsCheatsheet';
 import { ConnectionForm } from './ConnectionForm';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
@@ -199,8 +200,10 @@ export function Workspace({
   // `shortcuts/registry.ts`). Both are off while the vault is locked — nothing behind the
   // lock screen is worth running, and listing it would say otherwise.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [cheatsheetOpen, setCheatsheetOpen] = useState(false);
   useShortcut('palette.open', () => setPaletteOpen(true), !isLocked);
   useShortcut('settings.open', () => setShowSettings(true), !isLocked);
+  useShortcut('shortcuts.cheatsheet', () => setCheatsheetOpen(true), !isLocked);
 
   // Quick SSH and Unlock modals
   const [showQuickSSH, setShowQuickSSH] = useState(false);
@@ -2455,6 +2458,7 @@ export function Workspace({
       {/* Settings Modal — local mode only. In a server session AccountsShell renders it (once,
           above the overlay pages) since it drives the same global store. */}
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
+      {cheatsheetOpen && <ShortcutsCheatsheet onClose={() => setCheatsheetOpen(false)} />}
 
       {showSettings && !identity && (
         <Settings

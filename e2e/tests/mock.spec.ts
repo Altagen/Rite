@@ -1267,3 +1267,49 @@ test('desktop mock: the palette opens on its chord, filters, and runs what is pi
 
   expect(errs, 'no console errors').toEqual([]);
 });
+
+/**
+ * The cheatsheet reads the table the keyboard reads.
+ *
+ * The app once promised `Split vertical (Ctrl+Shift+V)` in a tooltip long after the
+ * default had moved off that chord, because the text and the dispatcher were two separate
+ * opinions about the keyboard. So what this asserts is not that a list exists but that it
+ * says the SAME chords — and that it lists every command, including one with no chord,
+ * which is where the palette and the cheatsheet deliberately disagree.
+ */
+test('desktop mock: the cheatsheet lists every command with the chord that fires it', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.keyboard.press('Control+Shift+?');
+  const sheet = page.locator('.cheat-list');
+  await expect(sheet).toBeVisible();
+
+  // Every command, not only the runnable ones: `Ctrl+W` closes a pane, and that is worth
+  // knowing while no pane is open. The palette filters by availability; this must not.
+  const rows = sheet.locator('.cheat-row');
+  await expect(rows).toHaveCount(5);
+
+  // The chord beside the command, and the same one the palette shows — one table, one
+  // answer. Asserted on an exact chord rather than on "a kbd exists", because a wrong
+  // chord in a cheatsheet is worse than no cheatsheet.
+  await expect(rows.filter({ hasText: 'Close pane' }).locator('kbd')).toHaveText('Ctrl+W');
+  await expect(
+    rows.filter({ hasText: 'Split pane horizontally' }).locator('kbd'),
+  ).toHaveText('Ctrl+Shift+H');
+
+  // And it says where to change them, so the reader is also the way to the editor.
+  await expect(page.locator('.modal')).toContainText(/Settings/i);
+
+  // Nothing in it runs anything: it is a reader, and a row that acted on a click would
+  // make the cheatsheet a second palette with different rules.
+  await rows.first().click();
+  await expect(page.locator('.toast')).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cheat-list')).toHaveCount(0);
+
+  expect(errs, 'no console errors').toEqual([]);
+});

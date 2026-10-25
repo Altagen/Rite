@@ -1196,3 +1196,34 @@ function openPalette() {
   draw();
   input.focus();
 }
+
+/**
+ * The shortcuts cheatsheet: what the keyboard does, read from the table that does it.
+ *
+ * A READER, never a second list. The app once told users `Split vertical (Ctrl+Shift+V)`
+ * in a tooltip long after the default had moved off that chord, because the text and the
+ * dispatcher were two separate opinions about the keyboard. This reads the same table the
+ * palette and the dispatcher read, so a remap moves it and a changed default cannot leave
+ * a stale chord behind.
+ *
+ * IT LISTS EVERYTHING, which is the opposite of the palette's rule and deliberate. The
+ * palette lists what can run right now, because running something that cannot run is a
+ * dead end. A cheatsheet teaches the keyboard: `Ctrl+W` closes a pane, and that is worth
+ * knowing while no pane is open. Filtering it by availability would hide the answer at
+ * exactly the moment someone went looking for it.
+ */
+function openCheatsheet() {
+  const rows = MOCK_COMMANDS.map(
+    (c) => `<div class="cheat-row">
+      <div><b>${esc(c.label)}</b><div class="muted" style="font-size:12px">${esc(c.desc || '')}</div></div>
+      ${c.chord ? `<kbd>${esc(c.chord)}</kbd>` : '<span class="muted" style="font-size:12px">Unassigned</span>'}
+    </div>`,
+  ).join('');
+  showModal({
+    title: 'Keyboard shortcuts',
+    subtitle: 'Settings → Keyboard changes any of them.',
+    body: `<div class="cheat-list">${rows}</div>`,
+    confirm: null,
+    width: '520px',
+  });
+}

@@ -574,6 +574,12 @@
           "label": "Ouvrir les réglages",
           "description": "La fenêtre de réglages, à la section affichée en dernier."
         }
+      },
+      "shortcuts": {
+        "cheatsheet": {
+          "label": "Raccourcis clavier",
+          "description": "Liste chaque commande et le raccourci qui la déclenche."
+        }
       }
     },
     "fixed": {
@@ -1557,5 +1563,9 @@
   "palette": {
     "placeholder": "Exécuter une commande",
     "empty": "Aucune commande ne correspond."
+  },
+  "cheatsheet": {
+    "title": "Raccourcis clavier",
+    "where": "Réglages → Clavier permet de les changer."
   }
 }

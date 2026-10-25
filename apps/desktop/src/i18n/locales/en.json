@@ -574,6 +574,12 @@
           "label": "Open settings",
           "description": "The settings window, at the section last shown."
         }
+      },
+      "shortcuts": {
+        "cheatsheet": {
+          "label": "Keyboard shortcuts",
+          "description": "Lists every command and the chord that fires it."
+        }
       }
     },
     "fixed": {
@@ -1557,5 +1563,9 @@
   "palette": {
     "placeholder": "Run a command",
     "empty": "No command matches."
+  },
+  "cheatsheet": {
+    "title": "Keyboard shortcuts",
+    "where": "Settings → Keyboard changes any of them."
   }
 }

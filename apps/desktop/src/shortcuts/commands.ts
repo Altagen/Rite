@@ -64,6 +64,11 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
   // not worth one of the few good chords. A person who disagrees can assign one in
   // Settings, where it appears beside the rest.
   { id: 'settings.open' },
+  // The cheatsheet. Spelled `?` and not `/`, because the matcher compares `event.key`
+  // with the modifiers held and `?` is what both AZERTY (Shift+comma) and US (Shift+/)
+  // report — so one default works on both, and naming the cap instead of the key would
+  // have shipped a chord that fires on neither.
+  { id: 'shortcuts.cheatsheet', defaultBinding: 'Mod+Shift+?' },
 ];
 
 /** Every command id, whether or not it ships with a chord. */

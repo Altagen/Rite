@@ -1249,6 +1249,10 @@ document.addEventListener('keydown',e=>{
      focus is — including inside a terminal, which claims most of the keyboard. */
   if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='k'){
     e.preventDefault();openPalette();return;}
+  /* `?` is reached with Shift on both AZERTY and US layouts, so the chord names the key
+     as the event reports it — modifiers held — rather than the one printed on the cap. */
+  if((e.ctrlKey||e.metaKey)&&e.shiftKey&&!e.altKey&&e.key==='?'){
+    e.preventDefault();openCheatsheet();return;}
   if(e.key==='Escape'&&STATE.focus&&!document.querySelector('.backdrop')){e.preventDefault();toggleFocus();}
 });
 function renderAll(){renderPill();renderActs();renderSide();renderMain();}
