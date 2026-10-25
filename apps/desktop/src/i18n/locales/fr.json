@@ -90,6 +90,8 @@
     "passwordPlaceholder": "Mot de passe",
     "keyPath": "Chemin de la clé privée",
     "keyPathPlaceholder": "/home/utilisateur/.ssh/id_rsa",
+    "keyPathBrowse": "Parcourir…",
+    "keyPathDialog": "Choisir une clé privée",
     "keyPassphrase": "Phrase secrète de la clé (optionnel)",
     "keyPassphrasePlaceholder": "Phrase secrète, si la clé est chiffrée",
     "folder": "Dossier (optionnel)",

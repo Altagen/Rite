@@ -5500,6 +5500,27 @@ struct InputReq {
     data: Vec<u8>,
 }
 
+/// Whether to trace terminal input, read once.
+///
+/// **This logs what someone types, which includes passwords.** So it is opt-in through
+/// the environment, never a setting, never on by default, and it says so when it starts.
+/// It exists because a dead-key bug in the desktop webview cannot be reproduced in the
+/// browser Playwright drives: the engines deliver composition differently, and the only
+/// ground truth is the bytes that actually arrive.
+fn trace_input() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| {
+        let on = std::env::var("RITE_TRACE_INPUT").is_ok_and(|v| v == "1");
+        if on {
+            tracing::warn!(
+                "[rite-server] RITE_TRACE_INPUT=1 — terminal input is being logged, \
+                 passwords included. Unset it when the trace is captured."
+            );
+        }
+        on
+    })
+}
+
 async fn send_input(
     State(state): State<ServerState>,
     user: Option<Extension<Arc<User>>>,
@@ -5508,6 +5529,19 @@ async fn send_input(
 ) -> Result<Response, AppError> {
     if !state.owns_session(&id, as_user(&user)) {
         return Ok(not_your_session());
+    }
+    if trace_input() {
+        // Hex, because the question is about bytes: a valid two-byte `é` (c3 a9) that
+        // reads wrong on screen is an ordering or PTY problem, while a lone c3, a bare
+        // `5e` (^) or a three-byte sequence nobody typed is the input method.
+        let hex: Vec<String> = req.data.iter().map(|b| format!("{b:02x}")).collect();
+        tracing::info!(
+            "[trace-input] session={} len={} hex=[{}] utf8={:?}",
+            &id[..id.len().min(8)],
+            req.data.len(),
+            hex.join(" "),
+            String::from_utf8_lossy(&req.data)
+        );
     }
     state.sessions.send_input(&id, req.data).await?;
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -5931,7 +5965,7 @@ mod tests {
             .unwrap();
         let payload: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(
-            payload["version"], "0.2.4",
+            payload["version"], "0.2.5",
             "the release this server reports (Cargo.toml's workspace version)"
         );
         assert_eq!(

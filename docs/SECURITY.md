@@ -287,6 +287,23 @@ All backends support E2E encryption:
 - **Use case**: Development and troubleshooting only
 - **Not for production**
 
+### `RITE_TRACE_INPUT=1` — terminal input, in hexadecimal
+
+Logs every byte the browser sends to a terminal session, as hex and as text. **That
+includes passwords**, because a password typed at a prompt is terminal input like any
+other.
+
+It exists because the desktop webview's input method cannot be reproduced anywhere else:
+Playwright drives Chromium and WebKit, and **neither engine exposes an input method**, so
+no browser test can see what WebKitGTK does with a dead key. When accented input
+misbehaves, the bytes that actually arrive are the only ground truth.
+
+- Off unless the variable is exactly `1`, read once at startup
+- The server logs a warning naming the exposure when it starts with it on
+- Never a setting, never a configuration key — an environment variable is deliberate,
+  and leaves no state behind to forget about
+- Unset it as soon as the trace is captured
+
 ## Security Checklist (Pre-Release)
 
 - [ ] All dependencies audited (`cargo audit`)

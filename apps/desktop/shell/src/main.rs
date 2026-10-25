@@ -25,11 +25,149 @@ use std::path::{Path, PathBuf};
 use tokio::sync::oneshot;
 
 mod context_registry;
+mod install;
 mod vault_roster;
 use context_registry::{ContextKey, ContextRegistry, OpenOutcome};
 
 const DEFAULT_SIZE: (f64, f64) = (1200.0, 800.0);
 const MIN_SIZE: (f64, f64) = (800.0, 600.0);
+
+const HELP: &str = "\
+Rite — terminal and SSH client.
+
+  rite                        open the window
+  rite --install              install the binary, the launcher entry and the icons
+  rite --uninstall            remove them; the vault is left alone
+  rite --version              print the version
+  rite --help                 this text
+
+  --prefix DIR                install under DIR/bin and DIR/share instead of
+                              ~/.local. A launcher only reads XDG_DATA_HOME and
+                              XDG_DATA_DIRS, so a prefix outside them is written
+                              correctly and shown nowhere.
+
+For an installer that decides the paths itself, the binary emits what it owns and
+writes nothing:
+
+  rite --print-app-id                the Wayland app-id; also the entry and icon filename
+  rite --print-desktop-entry PATH    the launcher entry, with PATH as its Exec
+  rite --print-icon SIZE             one icon, as PNG bytes on stdout
+  rite --print-icon-sizes            the sizes to place, one per line
+";
+
+/// What the command line asked for. A handful of flags and a default need a `match`, not a
+/// dependency.
+enum Cli {
+    Run,
+    /// `None` is the user-level layout; `Some(dir)` is `--prefix`.
+    Install(Option<PathBuf>),
+    Uninstall(Option<PathBuf>),
+    Version,
+    Help,
+    Unknown(String),
+    /// `--prefix` with nothing after it: a path we would have to invent.
+    PrefixWithoutPath,
+    /// The content the binary owns, for an installer that places it (ADR 0030 §1).
+    PrintAppId,
+    PrintEntry(PathBuf),
+    PrintIcon(u32),
+    PrintIconSizes,
+    /// A `--print-…` flag that needs an argument and did not get a usable one.
+    PrintNeeds(&'static str),
+}
+
+fn cli() -> Cli {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let Some(first) = args.first() else {
+        return Cli::Run;
+    };
+
+    // `--prefix` is the only flag that takes a value, and it only means anything to the two
+    // commands that write paths.
+    let prefix = |rest: &[String]| -> Result<Option<PathBuf>, Cli> {
+        match rest {
+            [] => Ok(None),
+            [flag, dir] if flag == "--prefix" => Ok(Some(PathBuf::from(dir))),
+            [flag] if flag == "--prefix" => Err(Cli::PrefixWithoutPath),
+            [other, ..] => Err(Cli::Unknown(other.clone())),
+        }
+    };
+
+    match first.as_str() {
+        "--install" => match prefix(&args[1..]) {
+            Ok(p) => Cli::Install(p),
+            Err(e) => e,
+        },
+        "--uninstall" => match prefix(&args[1..]) {
+            Ok(p) => Cli::Uninstall(p),
+            Err(e) => e,
+        },
+        "--print-app-id" => Cli::PrintAppId,
+        "--print-icon-sizes" => Cli::PrintIconSizes,
+        "--print-desktop-entry" => match args.get(1) {
+            Some(path) => Cli::PrintEntry(PathBuf::from(path)),
+            None => Cli::PrintNeeds("--print-desktop-entry needs the path Exec should run"),
+        },
+        "--print-icon" => match args.get(1).and_then(|s| s.parse::<u32>().ok()) {
+            Some(size) if size > 0 && size <= 1024 => Cli::PrintIcon(size),
+            _ => Cli::PrintNeeds("--print-icon needs a size between 1 and 1024"),
+        },
+        "--version" | "-V" => Cli::Version,
+        "--help" | "-h" => Cli::Help,
+        other => Cli::Unknown(other.to_string()),
+    }
+}
+
+/// The layout a command writes to: `--prefix` when given, the user's XDG paths otherwise.
+#[cfg(target_os = "linux")]
+fn layout_for(prefix: Option<PathBuf>) -> Result<install::Layout> {
+    match prefix {
+        Some(dir) => Ok(install::Layout::prefixed(&dir)),
+        None => install::Layout::user(),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn run_install(prefix: Option<PathBuf>) -> Result<()> {
+    let layout = layout_for(prefix)?;
+    let source = std::env::current_exe().context("could not resolve the running binary")?;
+    let report = install::install(&layout, &source)?;
+    for line in &report.lines {
+        println!("{line}");
+    }
+    if let Some(hint) = report.path_hint {
+        println!();
+        println!("{} is not on PATH. Add:", layout.bin_dir.display());
+        println!("  {hint}");
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn run_uninstall(prefix: Option<PathBuf>) -> Result<()> {
+    let layout = layout_for(prefix)?;
+    let report = install::uninstall(&layout)?;
+    for line in &report.lines {
+        println!("{line}");
+    }
+    println!();
+    println!("The vault is untouched: {}", install::state_note());
+    Ok(())
+}
+
+/// `--install` writes a freedesktop launcher entry and a hicolor icon theme. macOS wants a
+/// `.app` bundle instead, which this does not produce (ADR 0030).
+#[cfg(not(target_os = "linux"))]
+fn run_install(_prefix: Option<PathBuf>) -> Result<()> {
+    eprintln!("--install writes a freedesktop launcher entry, which is Linux only.");
+    std::process::exit(2)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn run_uninstall(_prefix: Option<PathBuf>) -> Result<()> {
+    eprintln!("--uninstall removes a freedesktop launcher entry, which is Linux only.");
+    std::process::exit(2)
+}
 
 /// A request from a webview (or the launch) to open a context in a window.
 struct OpenRequest {
@@ -66,6 +204,21 @@ enum UserEvent {
     SetFullscreen { window: WindowId, on: bool },
     /// A native file dialog resolved on its own thread (see [`spawn_file_dialog`]).
     VaultPicked(VaultPick),
+    /// The page asked for a file chooser (a key path: the only way to name a file on disk,
+    /// since a browser file input hands over the contents and never the path). `path` set
+    /// means the picker is bypassed — the hook that keeps this automatable, as New/Open have.
+    PickFile {
+        window: WindowId,
+        token: String,
+        path: Option<PathBuf>,
+    },
+    /// A chooser raised for the page has closed. `path` is `None` when it was cancelled: the
+    /// page is waiting on a promise, so it is told either way.
+    FilePicked {
+        window: WindowId,
+        token: String,
+        path: Option<PathBuf>,
+    },
 }
 
 /// Which native file chooser to raise on the dialog thread. New/Open carry the window that
@@ -81,6 +234,13 @@ enum DialogKind {
     Open(WindowId),
     /// Pick an image to use as `vault`'s icon.
     Image(PathBuf),
+    /// Pick any file for the page, which waits on `token`. No filter: an SSH key has no
+    /// extension, and guessing one hides the file people came for.
+    ForPage {
+        window: WindowId,
+        token: String,
+        title: Option<String>,
+    },
 }
 
 /// The outcome of a resolved [`DialogKind`], handed back to the event loop so the roster
@@ -123,6 +283,61 @@ struct WindowState {
 fn main() -> Result<()> {
     tracing_subscriber::fmt().init();
 
+    // Read before the instance lock: `rite --install` has to work while a window is open,
+    // and none of these commands opens the vault.
+    match cli() {
+        Cli::Run => {}
+        Cli::Install(prefix) => return run_install(prefix),
+        Cli::Uninstall(prefix) => return run_uninstall(prefix),
+        Cli::Version => {
+            println!("{} {}", install::BIN_NAME, env!("CARGO_PKG_VERSION"));
+            return Ok(());
+        }
+        Cli::Help => {
+            print!("{HELP}");
+            return Ok(());
+        }
+        Cli::Unknown(arg) => {
+            eprintln!("unknown option: {arg}");
+            eprint!("{HELP}");
+            std::process::exit(2);
+        }
+        Cli::PrefixWithoutPath => {
+            eprintln!("--prefix needs a directory");
+            eprint!("{HELP}");
+            std::process::exit(2);
+        }
+        // The emitters write to stdout and touch nothing. An installer asks for the app-id
+        // rather than carrying a copy of it, which is what keeps the entry's filename and
+        // the compiled app-id one string (ADR 0030 §3).
+        Cli::PrintAppId => {
+            println!("{}", install::APP_ID);
+            return Ok(());
+        }
+        Cli::PrintIconSizes => {
+            for size in install::icon_sizes() {
+                println!("{size}");
+            }
+            return Ok(());
+        }
+        Cli::PrintEntry(exec) => {
+            print!("{}", install::entry_text(&exec));
+            return Ok(());
+        }
+        Cli::PrintIcon(size) => {
+            use std::io::Write;
+            let png = install::icon_png(size)?;
+            std::io::stdout()
+                .write_all(&png)
+                .context("could not write the icon to stdout")?;
+            return Ok(());
+        }
+        Cli::PrintNeeds(message) => {
+            eprintln!("{message}");
+            std::process::exit(2);
+        }
+    }
+
     // Single instance: two *processes* would fight over the one SQLite vault. Hold
     // the lock for the whole process lifetime (multi-window lives inside it).
     let _lock = match acquire_instance_lock() {
@@ -151,11 +366,15 @@ fn main() -> Result<()> {
             // Must be a valid GApplication id (reverse-DNS, at least one dot). Overridable via
             // RITE_APP_ID so a second instance on the same machine (multi-client testing) can use a
             // distinct id — two GTK apps sharing one GApplication id collide (crash in the webview).
-            let app_id = std::env::var("RITE_APP_ID")
-                .ok()
-                .filter(|v| v.contains('.') && !v.trim().is_empty())
-                .unwrap_or_else(|| "io.github.altagen.rite".to_string());
-            builder.with_app_id(app_id);
+            //
+            // The default is `install::APP_ID`, not a literal: it is also the `.desktop`
+            // basename and the icon filename, and a Wayland compositor matches the three to
+            // find the icon (ADR 0030 §3).
+            builder.with_app_id(app_id(
+                std::env::var("RITE_APP_ID").ok().as_deref(),
+                &data_dir(),
+                &default_data_dir(),
+            ));
         }
         builder.build()
     };
@@ -279,6 +498,50 @@ fn main() -> Result<()> {
                 // frontend already hid the header; this makes the OS window match.
                 if let Some(w) = windows.get(&window) {
                     w.window.set_fullscreen(on.then(|| Fullscreen::Borderless(None)));
+                }
+            }
+            // A chooser for the page: raised here, off the event loop, exactly as the vault
+            // ones are. A path in the message answers without a dialog, which is how a test
+            // drives the flow (the native chooser is not scriptable).
+            Event::UserEvent(UserEvent::PickFile {
+                window,
+                token,
+                path,
+            }) => match path {
+                Some(path) => {
+                    let _ = proxy.send_event(UserEvent::FilePicked {
+                        window,
+                        token,
+                        path: Some(path),
+                    });
+                }
+                None => spawn_file_dialog(
+                    proxy.clone(),
+                    DialogKind::ForPage {
+                        window,
+                        token,
+                        title: None,
+                    },
+                ),
+            },
+            // Hand the answer to the window that asked, and only that one. A cancelled
+            // chooser sends `null`, because the page is awaiting this token.
+            Event::UserEvent(UserEvent::FilePicked {
+                window,
+                token,
+                path,
+            }) => {
+                if let Some(w) = windows.get(&window) {
+                    let detail = serde_json::json!({
+                        "token": token,
+                        "path": path.as_ref().map(|p| p.to_string_lossy()),
+                    });
+                    let js = format!(
+                        "window.dispatchEvent(new CustomEvent('rite-file-picked', {{ detail: {detail} }}));"
+                    );
+                    if let Err(e) = w.webview.evaluate_script(&js) {
+                        tracing::warn!("[rite-desktop] couldn't hand back the chosen file: {e}");
+                    }
                 }
             }
             Event::UserEvent(UserEvent::VaultPicked(pick)) => match pick {
@@ -553,6 +816,15 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, window: WindowId, body: String)
                 );
             }
         }
+        Some("pick-file") => {
+            if let Some(req) = plan_pick_file(&msg) {
+                send(UserEvent::PickFile {
+                    window,
+                    token: req.token,
+                    path: req.path,
+                });
+            }
+        }
         Some("set-fullscreen") => {
             let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
             send(UserEvent::SetFullscreen { window, on });
@@ -563,6 +835,42 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, window: WindowId, body: String)
             }
         }
     }
+}
+
+/// What the page asked for when it wants a file chooser.
+#[derive(Debug, PartialEq)]
+struct PickFileRequest {
+    /// Echoed back with the answer: the page may have more than one request in flight.
+    token: String,
+    /// Set by a test to skip the native chooser and answer with this path.
+    path: Option<PathBuf>,
+    /// The chooser's title, so the page says what it is asking for.
+    title: Option<String>,
+}
+
+/// Decode a `pick-file` message. Pure, like [`plan_vault_command`]: a message with no token
+/// is not answerable — the page would wait forever — so it is dropped rather than guessed.
+fn plan_pick_file(msg: &serde_json::Value) -> Option<PickFileRequest> {
+    if msg.get("type").and_then(|t| t.as_str()) != Some("pick-file") {
+        return None;
+    }
+    let token = msg.get("token")?.as_str()?.trim();
+    if token.is_empty() {
+        return None;
+    }
+    Some(PickFileRequest {
+        token: token.to_string(),
+        path: msg
+            .get("path")
+            .and_then(|p| p.as_str())
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from),
+        title: msg
+            .get("title")
+            .and_then(|t| t.as_str())
+            .filter(|t| !t.trim().is_empty())
+            .map(|t| t.to_string()),
+    })
 }
 
 /// A multi-vault management command (ADR 0014), decoded from an IPC message. Pure decision layer,
@@ -804,6 +1112,24 @@ fn spawn_file_dialog(proxy: EventLoopProxy<UserEvent>, kind: DialogKind) {
                         window,
                         path: f.path().to_path_buf(),
                     }),
+                // Answers whether or not a file was chosen: the page is awaiting this token.
+                DialogKind::ForPage {
+                    window,
+                    token,
+                    title,
+                } => {
+                    let picked = rfd::AsyncFileDialog::new()
+                        .set_title(title.as_deref().unwrap_or("Choose a file"))
+                        .pick_file()
+                        .await;
+                    let _ = proxy.send_event(UserEvent::FilePicked {
+                        window,
+                        token,
+                        path: picked.map(|f| f.path().to_path_buf()),
+                    });
+                    // Its own event, already sent: there is no vault pick to hand back.
+                    None
+                }
                 DialogKind::Image(vault) => rfd::AsyncFileDialog::new()
                     .set_title("Choose a vault icon")
                     .add_filter("Image", &["png", "jpg", "jpeg", "gif", "webp"])
@@ -1007,6 +1333,50 @@ fn load_icon() -> Option<tao::window::Icon> {
     let img = image::load_from_memory(bytes).ok()?.into_rgba8();
     let (w, h) = img.dimensions();
     tao::window::Icon::from_rgba(img.into_raw(), w, h).ok()
+}
+
+/// Where a normally-installed Rite keeps its data: `$HOME/.local/share/rite`, the XDG
+/// default, whatever `XDG_DATA_HOME` says right now.
+fn default_data_dir() -> std::path::PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".local/share/rite")
+}
+
+/// The GApplication id this process claims.
+///
+/// Two processes cannot share one. The second to start cannot own the bus name, and GTK then
+/// crashes inside `gtk_window_set_application` with no message at all — four coredumps and
+/// nothing on stderr. So an instance running on a data directory that is not the installed
+/// one takes a derived id instead of colliding: a dev build beside an installed Rite, or a
+/// test instance with its own `XDG_DATA_HOME`, both get a window.
+///
+/// The canonical id is kept for the installed location, because it is also the `.desktop`
+/// basename a Wayland compositor matches to find the icon (ADR 0030 §3) — a derived id there
+/// would trade a crash for a missing icon.
+///
+/// `RITE_APP_ID` still wins outright: a caller that names an id has a reason.
+fn app_id(
+    env_override: Option<&str>,
+    data_dir: &std::path::Path,
+    default_data_dir: &std::path::Path,
+) -> String {
+    if let Some(named) = env_override
+        .map(str::trim)
+        .filter(|v| v.contains('.') && !v.is_empty())
+    {
+        return named.to_string();
+    }
+    if data_dir == default_data_dir {
+        return install::APP_ID.to_string();
+    }
+    // A suffix derived from the path, so the same instance keeps the same id across runs
+    // (a compositor groups by it). Prefixed with a letter: every segment of a GApplication
+    // id has to start with one, and a hex digit would make the whole id invalid.
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    data_dir.hash(&mut hasher);
+    format!("{}.d{:x}", install::APP_ID, hasher.finish())
 }
 
 fn data_dir() -> std::path::PathBuf {
@@ -1315,5 +1685,87 @@ mod tests {
     fn non_vault_messages_are_not_commands() {
         assert!(plan_vault_command(&json!({ "type": "open-context", "kind": "local" })).is_none());
         assert!(plan_vault_command(&json!({ "type": "whatever" })).is_none());
+    }
+
+    #[test]
+    fn the_installed_location_keeps_the_canonical_app_id() {
+        let home = PathBuf::from("/home/someone/.local/share/rite");
+        // The id a compositor matches against the `.desktop` basename for the icon.
+        assert_eq!(app_id(None, &home, &home), install::APP_ID);
+        // An id that was asked for wins, even on the installed location.
+        assert_eq!(
+            app_id(Some("com.example.rite"), &home, &home),
+            "com.example.rite"
+        );
+        // Not an id (no dot, or blank): ignored rather than claimed.
+        assert_eq!(app_id(Some("rite"), &home, &home), install::APP_ID);
+        assert_eq!(app_id(Some("   "), &home, &home), install::APP_ID);
+    }
+
+    #[test]
+    fn another_data_directory_takes_a_derived_app_id() {
+        let home = PathBuf::from("/home/someone/.local/share/rite");
+        let test = PathBuf::from("/home/someone/.rite-test/.local/share/rite");
+        let other = PathBuf::from("/tmp/rite-bench/.local/share/rite");
+
+        let derived = app_id(None, &test, &home);
+        // Not the canonical one — sharing it is what crashes the second instance — and not
+        // a free-for-all either: still under the canonical id, so it reads as Rite's.
+        assert_ne!(derived, install::APP_ID);
+        assert!(
+            derived.starts_with(&format!("{}.", install::APP_ID)),
+            "{derived}"
+        );
+        // Every segment of a GApplication id starts with a letter.
+        assert!(
+            derived
+                .split('.')
+                .all(|seg| seg.chars().next().is_some_and(|c| c.is_ascii_alphabetic())),
+            "{derived}"
+        );
+        // Same directory, same id: a compositor groups windows by it across runs.
+        assert_eq!(derived, app_id(None, &test, &home));
+        // Two instances elsewhere do not collide with each other either.
+        assert_ne!(derived, app_id(None, &other, &home));
+    }
+
+    #[test]
+    fn a_file_chooser_is_asked_for_with_a_token() {
+        assert_eq!(
+            plan_pick_file(&json!({ "type": "pick-file", "token": "k1" })),
+            Some(PickFileRequest {
+                token: "k1".to_string(),
+                path: None,
+                title: None,
+            })
+        );
+        // The title the page names, and the path a test uses to skip the native chooser.
+        assert_eq!(
+            plan_pick_file(&json!({
+                "type": "pick-file",
+                "token": "k2",
+                "path": "/home/someone/.ssh/id_ed25519",
+                "title": "Choose a private key",
+            })),
+            Some(PickFileRequest {
+                token: "k2".to_string(),
+                path: Some(PathBuf::from("/home/someone/.ssh/id_ed25519")),
+                title: Some("Choose a private key".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn an_unanswerable_chooser_request_is_dropped() {
+        // No token means no way to answer, and the page would wait on a promise for good.
+        assert!(plan_pick_file(&json!({ "type": "pick-file" })).is_none());
+        assert!(plan_pick_file(&json!({ "type": "pick-file", "token": "  " })).is_none());
+        assert!(plan_pick_file(&json!({ "type": "vault-open-file" })).is_none());
+        // An empty path is not a path: it would answer with nothing chosen and no dialog.
+        assert_eq!(
+            plan_pick_file(&json!({ "type": "pick-file", "token": "k", "path": "" }))
+                .map(|r| r.path),
+            Some(None)
+        );
     }
 }

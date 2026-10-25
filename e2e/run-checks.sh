@@ -50,6 +50,7 @@ run "settings-rail-check" node "e2e/settings-rail-check.mjs"
 run "key-identity-check" node "e2e/key-identity-check.mjs"
 run "key-support-check" node "e2e/key-support-check.mjs"
 run "embedded-ui-check" node "e2e/embedded-ui-check.mjs"
+run "install-entry-check" node "e2e/install-entry-check.mjs"
 run "docs-check" node "e2e/docs-check.mjs"
 
 echo

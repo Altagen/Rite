@@ -819,9 +819,9 @@ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
 
 [[package]]
 name = "crypto-bigint"
-version = "0.7.5"
+version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a52aa3fcda4e6302a9f48734f234d35d4721b96f8fe07d073f07ce9df4f0271"
+checksum = "6bb08299a6046833a879ace115697f12fd2bd6c8d3e93c909ffc9e0738e7cae0"
 dependencies = [
  "cpubits",
  "ctutils",
@@ -900,9 +900,9 @@ dependencies = [
 
 [[package]]
 name = "ctutils"
-version = "0.4.4"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12218662ccac37d9714f2191252553d67585b97df8c839cbe49e0bde278dc865"
+checksum = "38d28fb6aa7dd680b3ffd1a3e64e115c177bdba63c0ae7f9cd48129ff05c4fa0"
 dependencies = [
  "cmov",
  "subtle",
@@ -4013,7 +4013,7 @@ dependencies = [
 
 [[package]]
 name = "rite-core"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "argon2 0.5.3",
@@ -4037,7 +4037,7 @@ dependencies = [
 
 [[package]]
 name = "rite-crypto"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "aes-gcm",
  "age",
@@ -4055,7 +4055,7 @@ dependencies = [
 
 [[package]]
 name = "rite-desktop"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -4076,7 +4076,7 @@ dependencies = [
 
 [[package]]
 name = "rite-server"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "anyhow",
  "async-trait",

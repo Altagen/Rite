@@ -10,7 +10,7 @@
 import { useState, useEffect, type Dispatch, type SetStateAction } from 'react';
 import { RevealToggle } from './RevealToggle';
 import { useTranslation } from '../i18n/i18n';
-import { isNativeShell } from '../utils/nativeShell';
+import { isNativeShell, pickNativeFile } from '../utils/nativeShell';
 import { useServerSession } from '../store/serverSessionStore';
 import { Backend, type AgentIdentity } from '../utils/backend';
 import type { AuthState } from '../utils/authMethod';
@@ -151,6 +151,15 @@ export function AuthSection({
    * callback cannot undo what was typed after it.
    */
   const set = (patch: Partial<AuthState>) => onChange((prev) => ({ ...prev, ...patch }));
+
+  // The context can take the choice away, and the state has to carry that: `support` above
+  // is the decision, while the forms validate and submit `value.keySupport`. Left to
+  // diverge, a local vault rendered the path field over a state that still said "carried",
+  // so a typed path was answered with "choose the private key file" — a file input that was
+  // never on screen — and the path was dropped on submit.
+  useEffect(() => {
+    if (value.keySupport !== support) onChange((prev) => ({ ...prev, keySupport: support }));
+  }, [support, value.keySupport, onChange]);
 
   // Live SSH-agent identities (native only). `null` = still querying; an empty
   // list = no agent / no keys (a normal, graceful state — not an error).
@@ -316,14 +325,32 @@ export function AuthSection({
               <label className="mb-1 block text-sm font-medium">
                 {t('connections.keyPath')} <span className="text-red-500">*</span>
               </label>
-              <input
-                type="text"
-                value={value.keyPath}
-                onChange={(e) => set({ keyPath: e.target.value })}
-                placeholder={t('connections.keyPathPlaceholder')}
-                className={INPUT_CLS}
-                data-testid="auth-key-path"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={value.keyPath}
+                  onChange={(e) => set({ keyPath: e.target.value })}
+                  placeholder={t('connections.keyPathPlaceholder')}
+                  className={INPUT_CLS}
+                  data-testid="auth-key-path"
+                />
+                {/* Only where a chooser can answer with a PATH. A browser file input hands
+                    over the contents and never the path, so in the web build the field is
+                    typed — and a button that could not fill it would be a lie. */}
+                {native && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const picked = await pickNativeFile(t('connections.keyPathDialog'));
+                      if (picked) set({ keyPath: picked });
+                    }}
+                    className="flex-none rounded border border-border px-3 py-2 text-sm hover:bg-muted"
+                    data-testid="auth-key-browse"
+                  >
+                    {t('connections.keyPathBrowse')}
+                  </button>
+                )}
+              </div>
               {errors?.keyPath && <p className="mt-1 text-sm text-red-500">{errors.keyPath}</p>}
             </div>
           ) : (

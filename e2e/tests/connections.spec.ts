@@ -380,3 +380,111 @@ test('a local machine that keeps no password is asked for one', async ({ page, r
 
   await request.delete(`/api/local/collections/${collectionId}`);
 });
+
+/**
+ * A key path typed into the form has to be the key the machine saves.
+ *
+ * The support a key uses is decided by the context (ADR 0028 §1): a local vault has no
+ * collection key to seal a carried key to, so the only support there is a path and the
+ * form shows no choice. That coercion was for rendering only — the state underneath still
+ * said "carried", which is what the form validated and submitted. So every new key-based
+ * machine on the desktop answered a typed path with "no key file chosen", and there was no
+ * file input on screen to satisfy it.
+ */
+test('a new machine saves the key path that was typed into it', async ({ page, request }) => {
+  const collectionId = await createCollection(request, 'e2e-typed-key');
+
+  await page.goto('/');
+  const node = page.locator('.m-tnode', { hasText: 'e2e-typed-key' }).first();
+  await expect(node).toBeVisible({ timeout: 15_000 });
+  await node.getByRole('button', { name: 'Add to collection' }).click();
+  await page.getByRole('button', { name: 'New machine here' }).click();
+
+  await page.getByPlaceholder('My Server').fill('e2e-typed-key-machine');
+  await page.getByPlaceholder('example.com or 192.168.1.1').fill('example.com');
+  await page.getByPlaceholder('user').fill('someone');
+  await page.getByRole('radio', { name: /public key/i }).click();
+
+  // No choice offered here, and therefore no file input: the path field is the whole UI.
+  await expect(page.getByTestId('key-support')).toHaveCount(0);
+  await expect(page.getByTestId('auth-key-file')).toHaveCount(0);
+  await page.getByTestId('auth-key-path').fill('/home/someone/.ssh/id_typed');
+
+  await page.getByRole('button', { name: /save connection/i }).click();
+  await expect(
+    page.getByText('Choose the private key file'),
+    'the form must not ask for a file it never offered',
+  ).toHaveCount(0);
+  await expect(page.getByText('e2e-typed-key-machine').first()).toBeVisible({ timeout: 15_000 });
+
+  const machines = await listMachines(request, collectionId);
+  const saved = machines.find((m) => m.name === 'e2e-typed-key-machine');
+  expect(saved, 'the machine was created').toBeTruthy();
+  expect(saved!.authType, 'saved as a key on disk, not as a carried key').toBe('publicKey');
+  expect(saved!.keyPath, 'the path typed is the path kept').toBe('/home/someone/.ssh/id_typed');
+});
+
+/**
+ * The key path is a path, so the control that fills it has to be able to name one.
+ *
+ * In a browser that is impossible: a file input hands over the file's CONTENTS and never its
+ * location, which is why the picker was dropped when a local vault moved to naming keys on
+ * disk (ADR 0028 §1) — leaving a bare text field on a desktop that has a native chooser
+ * sitting unused. The button is therefore offered only where the shell can answer with a
+ * path, and the shell's half is covered by its own unit tests and `e2e/desktop-bench`.
+ */
+test('the key path offers no picker in a browser, and takes one from the shell', async ({
+  page,
+  request,
+}) => {
+  const collectionId = await createCollection(request, 'e2e-key-picker');
+  await page.goto('/');
+
+  const openKeyForm = async () => {
+    const node = page.locator('.m-tnode', { hasText: 'e2e-key-picker' }).first();
+    await expect(node).toBeVisible({ timeout: 15_000 });
+    await node.getByRole('button', { name: 'Add to collection' }).click();
+    await page.getByRole('button', { name: 'New machine here' }).click();
+    await page.getByRole('radio', { name: /public key/i }).click();
+    await expect(page.getByTestId('auth-key-path')).toBeVisible();
+  };
+
+  await openKeyForm();
+  // No shell, no button: one that could not fill the field would be a lie.
+  await expect(page.getByTestId('auth-key-browse')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // A shell that answers, standing in for wry: the page's half of the contract is the
+  // message it posts and the path it takes back from the event.
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      __RITE_TOKEN__?: string;
+      ipc?: { postMessage: (m: string) => void };
+      __PICK_ASKED__?: unknown;
+    };
+    w.__RITE_TOKEN__ = 'bench';
+    w.ipc = {
+      postMessage: (raw: string) => {
+        const msg = JSON.parse(raw);
+        if (msg.type !== 'pick-file') return;
+        w.__PICK_ASKED__ = msg;
+        window.dispatchEvent(
+          new CustomEvent('rite-file-picked', {
+            detail: { token: msg.token, path: '/home/someone/.ssh/id_picked' },
+          }),
+        );
+      },
+    };
+  });
+
+  await openKeyForm();
+  await page.getByTestId('auth-key-browse').click();
+  await expect(page.getByTestId('auth-key-path')).toHaveValue('/home/someone/.ssh/id_picked');
+
+  const asked = await page.evaluate(
+    () => (window as unknown as { __PICK_ASKED__?: { type: string; token?: string } }).__PICK_ASKED__,
+  );
+  expect(asked?.type, 'the shell is asked for a chooser').toBe('pick-file');
+  expect(asked?.token, 'with a token, so the answer can be matched to the asking').toBeTruthy();
+  await page.keyboard.press('Escape');
+});

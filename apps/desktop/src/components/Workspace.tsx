@@ -103,6 +103,10 @@ export interface WorkspaceAuth {
   renderUnlockModal: (props: { onClose: () => void }) => ReactNode;
 }
 
+/** How close to the left edge reveals the arrow for a closed sidebar, in CSS pixels.
+    48 is the mock's rail width, so the arrow appears where it will be drawn. */
+const REVEAL_EDGE = 48;
+
 export function Workspace({
   auth,
   conns,
@@ -172,6 +176,10 @@ export function Workspace({
 
   // Sidebar state
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // Whether the pointer is near the left edge, which is the only thing that shows the
+  // reveal arrow for a collapsed library (see the arrow below, and `.side-rail` in
+  // design/mock/rite.css — the mock has read this way all along).
+  const [nearLeftEdge, setNearLeftEdge] = useState(false);
   // Focus mode (client/native only): hide the header so terminals fill the screen. `active` + the
   // auto-collapse-sidebar preference live in a small store; `reveal` is local (hover-to-peek).
   const focusActive = useFocusMode((s) => s.active);
@@ -271,6 +279,38 @@ export function Workspace({
   useEffect(() => {
     void loadLayouts();
   }, [loadLayouts, serverKeys.userKey]);
+
+  /*
+   * The reveal arrow's visibility, read from the pointer rather than from `:hover`.
+   *
+   * Neither shipped shape worked. A `:hover` reveal cannot be hovered: an element at
+   * opacity 0 is still hit-testable, so the arrow sat invisible over the terminal and
+   * caught clicks meant for it — which is why it was made permanent, and a permanent
+   * arrow covers the output it was meant to stay out of. Reading the pointer needs no
+   * element over the terminal at all, and the mock has done it this way for the focus
+   * toolbar at the top edge since it existed.
+   *
+   * Only mounted while the sidebar is closed: there is nothing to reveal otherwise, and a
+   * mousemove listener is not free.
+   */
+  useEffect(() => {
+    if (isSidebarOpen) return;
+    const onMove = (e: MouseEvent) => {
+      // State only on a change: mousemove fires on every pixel, and a setState per pixel
+      // re-renders the whole workspace.
+      setNearLeftEdge((was) => {
+        const near = e.clientX <= REVEAL_EDGE;
+        return near === was ? was : near;
+      });
+    };
+    const onLeave = () => setNearLeftEdge(false);
+    window.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseleave', onLeave);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseleave', onLeave);
+    };
+  }, [isSidebarOpen]);
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{
     id: string;
     name: string;
@@ -1963,14 +2003,19 @@ export function Workspace({
           )}
         </aside>
 
-        {/* Persistent reveal tab when the sidebar is closed — always visible + above the content
-            (a hover-only button got swallowed by the terminal, leaving no way back). */}
+        {/* The reveal arrow for a closed sidebar: shown while the pointer is near the left
+            edge, and while it has keyboard focus. `pointer-events-none` when hidden is the
+            half that matters — an invisible button still catches clicks, and this one sits
+            over the terminal. */}
         {!isSidebarOpen && (
           <button
             onClick={() => setIsSidebarOpen(true)}
             title={t('ws.showSidebar')}
             aria-label={t('ws.showSidebar')}
-            className="absolute left-0 top-1/2 z-30 -translate-y-1/2 rounded-r-md border border-l-0 border-border bg-card p-2 shadow-lg transition-colors hover:bg-muted"
+            data-testid="sidebar-reveal"
+            className={`absolute left-0 top-1/2 z-30 -translate-y-1/2 rounded-r-md border border-l-0 border-border bg-card p-2 shadow-lg transition-opacity hover:bg-muted focus:pointer-events-auto focus:opacity-100 ${
+              nearLeftEdge ? 'opacity-100' : 'pointer-events-none opacity-0'
+            }`}
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path

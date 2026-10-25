@@ -81,9 +81,10 @@ inside the server container. What is left is the code.
             trade-off, not an oversight
       - [ ] Address and name keep separate counters and separate verdicts
       - [ ] Registration and token redemption carry the same gap and move with it
-      - Not in 0.2.4: a misconfigured address throttle is less safe than none, and it adds
-        a security setting an administrator has to understand. Shipping that in the days
-        before a release is how the regression reaches a real instance
+      - Deferred on purpose, not forgotten: a misconfigured address throttle is less safe
+        than none, and it adds a security setting an administrator has to understand.
+        Shipping that in the days before a release is how the regression reaches a real
+        instance — so it waits for a release it opens, not one it closes
 - [ ] Known-hosts management — nothing lists what is trusted or forgets a key
   (the API has only the strict-mode `accept` and `reject` for a pending key, and
   there is no UI at all). So a host whose key legitimately rotated has no clean
@@ -129,7 +130,7 @@ components — pane geometry, collection colours, computed widths. That directiv
 symptom; the cause is that styling has no single home, so a value that belongs to the
 design lands in a component instead.
 
-Not a security fix, which is why it is not in 0.2.4: what `'unsafe-inline'` permits is
+Not a security fix, which is why it waits: what `'unsafe-inline'` permits is
 CSS injection, and `script-src 'self'` with `object-src 'none'` hold the sharp edges.
 It is a refactor, and the dependency runs the other way — tighten the CSP once the
 styles have somewhere to live.
@@ -384,8 +385,8 @@ profile exists, and it would teach the wrong shape in the meantime.
 ## CLI Features
 
 ### Phase 1-2
-- [ ] `rite --version` - Show version
-- [ ] `rite config` - Open config directory
+- [ ] `rite config` - Print the data directory. Printing, not opening: `xdg-open` is not
+      guaranteed to be installed, and a default that assumes a tool is not a default
 
 ### Phase 3+
 - [ ] `rite launch <profile>` - Launch a profile
