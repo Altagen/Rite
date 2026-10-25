@@ -178,6 +178,34 @@ export function Terminal({
     }
   };
 
+  // Tell the PTY how big the pane actually is.
+  //
+  // A session is created with a placeholder size (24x80) and learns the real one from
+  // `onResize`. But xterm only emits that when ITS size changes, and the first `fit()`
+  // runs before the handler is registered and before the session exists — so the PTY kept
+  // the placeholder until someone resized the window by hand. A shell that believes it has
+  // 80 columns inside a wider pane wraps a long line where the display does not, and its
+  // redraw lands on the wrong row.
+  const syncPtySize = async () => {
+    const term = xtermRef.current;
+    if (!term || !sessionIdRef.current) return;
+    try {
+      await Backend.Terminal.resizeTerminal(sessionIdRef.current, term.cols, term.rows);
+    } catch (err) {
+      errorHandler.handle('Failed to sync terminal size', {
+        severity: ErrorSeverity.WARNING,
+        category: ErrorCategory.TERMINAL,
+        originalError: err,
+        context: {
+          component: 'Terminal',
+          sessionId: sessionIdRef.current,
+          cols: term.cols,
+          rows: term.rows,
+        },
+      });
+    }
+  };
+
   // Helper to make terminal read-only
   const makeTerminalReadOnly = (term: XTerm) => {
     term.options.cursorBlink = false;
@@ -333,6 +361,7 @@ export function Terminal({
       // if the backend emits terminal-data between listen() and the later assignment,
       // the null-check would silently drop the event (including the initial SSH prompt).
       sessionIdRef.current = existingSessionId;
+      await syncPtySize();
 
       // Set up event listeners for terminal data
       // This must be done on EVERY mount to receive backend output
@@ -476,6 +505,7 @@ export function Terminal({
       } else {
         // Terminal already exists - reattaching to existing instance
         sessionIdRef.current = existingSessionId;
+        await syncPtySize();
         setStatus('connected');
 
         // Focus the terminal when reattaching
@@ -572,6 +602,7 @@ export function Terminal({
       const sessionId = await Backend.Terminal.connectTerminal(connectionId);
 
       sessionIdRef.current = sessionId;
+      await syncPtySize();
       setStatus('connected');
 
       // Claim the fresh session's buffered output so the new shell shows up
