@@ -1240,7 +1240,12 @@
     "newTerminal": "New terminal",
     "closeManyWhy": "Closing {count} terminals. Every active connection is terminated.",
     "closeTab": "Close tab",
-    "closeTabCount": "Close tab ({count} terminals)"
+    "closeTabCount": "Close tab ({count} terminals)",
+    "duplicateTab": "Duplicate tab",
+    "duplicateTabWhy": "Same panes, new sessions",
+    "closeOthers": "Close other tabs",
+    "closeOthersTitle": "Close the other tabs?",
+    "closeOthersWhy": "{count} terminals in {tabs} other tabs will be closed."
   },
   "members": {
     "addFromTeam": "Add from team:",

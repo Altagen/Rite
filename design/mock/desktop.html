@@ -577,7 +577,7 @@ function renderMain(){
   const coll=STATE.selColl?find(STATE.selColl):null;
   const tabActs=`<button class="mtab-act" title="Rename tab" onclick="event.stopPropagation();toast('Rename tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg></button><button class="mtab-act mtab-close" title="Close tab" onclick="event.stopPropagation();toast('Close tab')"><svg class="icon" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12"/></svg></button>`;
   const mach=STATE.machineView?machineByName(STATE.machineView):null;
-  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()">${ICON.term}<span>Local Terminal (${STATE.defaultShell})</span>${tabActs}</div>
+  mt.innerHTML=`<div class="mtab ${STATE.mainTab==='term'?'on':''}" onclick="STATE.mainTab='term';renderMain()" oncontextmenu="tabMenu(event)" data-tab-menu>${ICON.term}<span>Local Terminal (${STATE.defaultShell})</span>${tabActs}</div>
     ${coll?`<div class="mtab view ${STATE.mainTab==='coll'?'on':''}" onclick="STATE.mainTab='coll';renderMain()">${M.coll} ${coll.name} <span class="x" onclick="event.stopPropagation();STATE.selColl=null;STATE.mainTab='term';renderMain()">✕</span></div>`:''}
     ${mach?`<div class="mtab view ${STATE.mainTab==='machine'?'on':''}" onclick="STATE.mainTab='machine';renderMain()">${M.machine} ${mach.name} <span class="x" onclick="event.stopPropagation();STATE.machineView=null;STATE.mainTab='${coll?'coll':'term'}';renderMain()">✕</span></div>`:''}
     ${agentTabsHTML()}
@@ -1184,6 +1184,33 @@ function shellMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<spa
 /* The tab strip's "+" opens ONE terminal with a shell and leaves the default alone;
    `shellMenu` above sets the default. Two questions, which is why they are two
    preferences: hiding the picker used to leave this one still asking. */
+/**
+ * A tab's own menu, on right click.
+ *
+ * Rename is here as well as on the pencil, because a menu that omits the thing people
+ * already know how to do reads as a different menu for different tabs. The two it ADDS
+ * are the ones with nowhere else to live.
+ *
+ * DUPLICATE CANNOT COPY A TAB. Each pane holds a live session and an SSH connection is
+ * not a value you can clone, so it means "the same arrangement, against the same targets,
+ * with fresh sessions" — which is what opening a layout already does. The label says
+ * "Duplicate" because that is what a person wants; the wording below says what they get.
+ *
+ * CLOSE OTHERS asks first when the others hold live sessions. Closing one tab is a
+ * decision; closing eight at once is a decision about work in progress.
+ */
+function tabMenu(e){
+  e.preventDefault();
+  e.stopPropagation();
+  // No icons: `ICON` has no pencil and no cross, and inventing two would put glyphs in
+  // the mock that the app cannot match. Three labels read fine on their own.
+  floatMenu(e, [
+    { label: 'Rename tab', onclick: () => toast('Rename tab') },
+    { label: 'Duplicate tab — same panes, new sessions',
+      onclick: () => toast('Duplicated · same arrangement, fresh sessions') },
+    { label: 'Close other tabs', onclick: () => toast('Closed the other tabs') },
+  ]);
+}
 function newTermMenu(e){e.stopPropagation();floatMenu(e,SHELLS.map(s=>({icon:`<span style="width:16px;display:inline-block">${s.icon}</span>`,label:`${s.name}${s.name===STATE.defaultShell?' ★':''}${s.installed?'':' — not installed'}`,onclick:()=>{if(!s.installed){toast(`${s.name} is not installed on this system`);return;}toast(`New terminal · ${s.name}`);}})));}
 function renderActs(){const sh=SHELLS.find(s=>s.name===STATE.defaultShell)||SHELLS[0];
   document.getElementById('acts').innerHTML=`<button class="btn btn-primary btn-sm" title="New local terminal (${sh.name})" onclick="toast('New local terminal · ${sh.name}')">${ICON.plus} <span class="lbl">Terminal</span></button>

@@ -1313,3 +1313,40 @@ test('desktop mock: the cheatsheet lists every command with the chord that fires
 
   expect(errs, 'no console errors').toEqual([]);
 });
+
+/**
+ * A tab's own menu, on right click.
+ *
+ * Rename already has two affordances — a double-click and a pencil — and it is in the menu
+ * anyway, because a menu that omits what people already know how to do reads as a
+ * different menu for different tabs. The two it ADDS are the ones with nowhere else to
+ * live, and the wording of one of them is the point: a tab cannot be copied, because each
+ * pane holds a live session. "Same panes, new sessions" is what a duplicate actually is,
+ * and the label has to say so rather than let someone expect their scrollback back.
+ */
+test('desktop mock: a right click on a tab offers rename, duplicate and close others', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.locator('[data-tab-menu]').first().click({ button: 'right' });
+  const menu = page.locator('.menu');
+  await expect(menu).toBeVisible();
+  const rows = menu.locator('.row');
+  await expect(rows).toHaveCount(3);
+
+  await expect(rows.nth(0)).toContainText('Rename tab');
+  // The wording carries the semantics, so it is asserted rather than the mere presence of
+  // a row: a plain "Duplicate tab" would promise a copy nobody can deliver.
+  await expect(rows.nth(1)).toContainText(/same panes, new sessions/i);
+  await expect(rows.nth(2)).toContainText('Close other tabs');
+
+  await rows.nth(1).click();
+  await expect(page.locator('.toast')).toContainText(/fresh sessions/i);
+  // The menu closes when it has acted: one left open over the tab strip would swallow the
+  // next click on a tab.
+  await expect(page.locator('.menu')).toHaveCount(0);
+
+  expect(errs, 'no console errors').toEqual([]);
+});

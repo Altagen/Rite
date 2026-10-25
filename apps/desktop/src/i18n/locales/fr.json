@@ -1240,7 +1240,12 @@
     "newTerminal": "Nouveau terminal",
     "closeManyWhy": "Fermeture de {count} terminaux. Toutes les connexions actives sont coupées.",
     "closeTab": "Fermer l’onglet",
-    "closeTabCount": "Fermer l’onglet ({count} terminaux)"
+    "closeTabCount": "Fermer l’onglet ({count} terminaux)",
+    "duplicateTab": "Dupliquer l'onglet",
+    "duplicateTabWhy": "Mêmes panes, nouvelles sessions",
+    "closeOthers": "Fermer les autres onglets",
+    "closeOthersTitle": "Fermer les autres onglets ?",
+    "closeOthersWhy": "{count} terminaux dans {tabs} autres onglets seront fermés."
   },
   "members": {
     "addFromTeam": "Ajouter depuis une équipe :",

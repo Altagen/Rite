@@ -6,6 +6,7 @@
 
 import type { SplitTarget } from '../types/pane';
 import { useTranslation } from '../i18n/i18n';
+import { TabMenu } from './TabMenu';
 import type { Layout } from '../store/layoutsFormat';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -40,6 +41,13 @@ interface TerminalManagerProps {
   onRenameTab?: (tabId: string, newName: string) => void;
   onMergeTab?: (sourceTabId: string, targetTabId: string) => void;
   onCloseTab?: (tabId: string) => void;
+  /**
+   * Open the same arrangement again, against the same targets, with fresh sessions.
+   * Not a copy: a pane holds a live session and an SSH connection cannot be cloned.
+   */
+  onDuplicateTab?: (tabId: string) => void;
+  /** Close every tab but this one. */
+  onCloseOtherTabs?: (tabId: string) => void;
   onReorganizePane?: (
     sourcePaneId: string,
     targetPaneId: string,
@@ -97,6 +105,8 @@ export function TerminalManager({
   onRenameTab,
   onMergeTab,
   onCloseTab,
+  onDuplicateTab,
+  onCloseOtherTabs,
   onReorganizePane,
   onNewLocalTerminal,
   shellMenu,
@@ -115,7 +125,22 @@ export function TerminalManager({
   const [editingTabName, setEditingTabName] = useState('');
   const [isDroppingOnPane, setIsDroppingOnPane] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
-  const [tabToClose, setTabToClose] = useState<{ id: string; terminalCount: number } | null>(null);
+  /**
+   * What the confirmation is asking about.
+   *
+   * `one` closes the tab named by `id`; `others` closes every tab EXCEPT it. One state
+   * rather than two dialogs, because the question and the buttons are the same and only
+   * the wording differs — two dialogs would drift apart on the next change to either.
+   */
+  const [tabToClose, setTabToClose] = useState<{
+    id: string;
+    terminalCount: number;
+    kind: 'one' | 'others';
+    /** How many tabs will go, for the `others` wording. */
+    tabCount?: number;
+  } | null>(null);
+  /** Which tab was right-clicked, and where, so the menu opens at the pointer. */
+  const [tabMenu, setTabMenu] = useState<{ tab: Tab; x: number; y: number } | null>(null);
   const dropdownButtonRef = useRef<HTMLButtonElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -344,7 +369,7 @@ export function TerminalManager({
 
     if (terminalCount > 1) {
       // Multiple terminals - show confirmation dialog
-      setTabToClose({ id: tab.id, terminalCount });
+      setTabToClose({ id: tab.id, terminalCount, kind: 'one' });
       setShowCloseConfirm(true);
     } else {
       // Single terminal - close directly
@@ -354,10 +379,26 @@ export function TerminalManager({
     }
   };
 
+  /**
+   * Closing every other tab.
+   *
+   * Always confirms when anything is open, whatever the terminal count: closing one tab
+   * is a decision about one tab, and closing eight at once is a decision about work in
+   * progress. The single-terminal shortcut above does not apply here.
+   */
+  const handleCloseOthersClick = (tab: Tab) => {
+    const others = tabGroups.filter((t) => t.id !== tab.id);
+    if (others.length === 0) return;
+    const terminalCount = others.reduce((n, t) => n + getAllSessions(t.paneTree).length, 0);
+    setTabToClose({ id: tab.id, terminalCount, kind: 'others', tabCount: others.length });
+    setShowCloseConfirm(true);
+  };
+
   // Confirm close tab
   const handleConfirmCloseTab = () => {
-    if (tabToClose && onCloseTab) {
-      onCloseTab(tabToClose.id);
+    if (tabToClose) {
+      if (tabToClose.kind === 'others') onCloseOtherTabs?.(tabToClose.id);
+      else onCloseTab?.(tabToClose.id);
     }
     setShowCloseConfirm(false);
     setTabToClose(null);
@@ -437,6 +478,14 @@ export function TerminalManager({
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   handleStartRename(tab);
+                }}
+                onContextMenu={(e) => {
+                  // The engine's own menu would cover ours, and it offers nothing about a
+                  // tab. Prevented here and nowhere else: the terminal keeps its native
+                  // menu, which is where copy and paste live.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setTabMenu({ tab, x: e.clientX, y: e.clientY });
                 }}
                 /* A tab is a selector first: one click switches to it, and the mock
                    says `cursor:pointer`. `cursor-move` promised a drag on hover and
@@ -746,6 +795,20 @@ export function TerminalManager({
       </div>
 
       {/* Close tab confirmation modal */}
+      {tabMenu && (
+        <TabMenu
+          at={{ x: tabMenu.x, y: tabMenu.y }}
+          onRename={() => handleStartRename(tabMenu.tab)}
+          onDuplicate={() => onDuplicateTab?.(tabMenu.tab.id)}
+          // Absent when this is the only tab: an entry that would close nothing is worse
+          // than no entry, because it reads as "nothing happened".
+          onCloseOthers={
+            tabGroups.length > 1 ? () => handleCloseOthersClick(tabMenu.tab) : undefined
+          }
+          onClose={() => setTabMenu(null)}
+        />
+      )}
+
       {showCloseConfirm &&
         tabToClose &&
         createPortal(
@@ -778,10 +841,17 @@ export function TerminalManager({
                   </div>
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-foreground mb-2">
-                      {t('tm.closeMany')}
+                      {tabToClose.kind === 'others'
+                        ? t('tm.closeOthersTitle')
+                        : t('tm.closeMany')}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      {t('tm.closeManyWhy', { count: tabToClose.terminalCount })}
+                      {tabToClose.kind === 'others'
+                        ? t('tm.closeOthersWhy', {
+                            count: tabToClose.terminalCount,
+                            tabs: tabToClose.tabCount ?? 0,
+                          })
+                        : t('tm.closeManyWhy', { count: tabToClose.terminalCount })}
                     </p>
                   </div>
                 </div>
