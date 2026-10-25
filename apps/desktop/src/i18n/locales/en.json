@@ -293,7 +293,16 @@
     "masterPasswordHint": "It encrypts every connection in this vault, so changing it re-keys them all.",
     "autoCollapseHint": "In focus mode (F11), also hide the library sidebar — terminals only.",
     "themeGrey": "Grey",
-    "changingPassword": "Changing…"
+    "changingPassword": "Changing…",
+    "knownHosts": "Trusted hosts",
+    "knownHostsDesc": "Per member. Another member of this instance keeps a separate list. Forgetting a host asks again on the next connection — the way back when a server was legitimately reinstalled.",
+    "knownHostsEmpty": "No host trusted yet.",
+    "knownHostsLoading": "Loading…",
+    "knownHostsErr": "Could not load the trusted hosts",
+    "knownHostsForget": "Forget",
+    "knownHostsForgetErr": "Could not forget this host",
+    "knownHostsSeen": "seen {when}",
+    "knownHostsNever": "not seen since it was trusted"
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -553,12 +562,26 @@
           "label": "Lock the vault",
           "description": "Closes the vault and drops its key from memory. Saved connections stop being readable until it is unlocked again; terminals already open keep running."
         }
+      },
+      "palette": {
+        "open": {
+          "label": "Run a command",
+          "description": "Opens the palette over whatever is on screen."
+        }
+      },
+      "settings": {
+        "open": {
+          "label": "Open settings",
+          "description": "The settings window, at the section last shown."
+        }
       }
     },
     "fixed": {
       "focusMode": "Focus mode — hide the toolbar so terminals fill the screen. Esc or F11 to leave.",
       "dismiss": "Dismiss the find bar, or an open dialog."
-    }
+    },
+    "unassigned": "Unassigned",
+    "backToNone": "Back to no chord"
   },
   "layouts": {
     "title": "Layouts",
@@ -1530,5 +1553,9 @@
     "open": "Open",
     "server": "Server",
     "current": "current"
+  },
+  "palette": {
+    "placeholder": "Run a command",
+    "empty": "No command matches."
   }
 }

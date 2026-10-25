@@ -1151,3 +1151,119 @@ for (const shell of ['web', 'desktop'] as const) {
     expect(hit).toBe('what is underneath');
   });
 }
+
+/**
+ * Trusted hosts, and the way back from a rotated key.
+ *
+ * The list is the mock's answer to a gap `docs/ROADMAP.md` carried since 0.2.4: nothing
+ * showed what was trusted and nothing forgot a key, so a server legitimately reinstalled
+ * had no path through. A changed host key is refused in every mode and the dialog that
+ * reports it deliberately offers no accept (ADR 0021 §3); the only way round was Quick
+ * SSH, which force-accepts BEFORE verification runs (§5) and overwrites the stored key
+ * without showing that it changed.
+ *
+ * Whose list it is matters as much as what is in it. Trust is per member (ADR 0021,
+ * addendum), and a list that read as instance-wide would teach exactly the wrong model —
+ * so the wording is asserted here, not just the rows.
+ */
+test('desktop mock: Settings lists the hosts this member trusts, and offers to forget one', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.evaluate(() => openSettings('ssh'));
+  const rows = page.locator('.prefs-pane .kh-row');
+  await expect(rows).toHaveCount(3);
+
+  // A host on a non-default port is a different host, so the port shows; on 22 it does
+  // not, because every row carrying ":22" is noise on every row.
+  await expect(rows.nth(0)).toContainText('web-01.example');
+  await expect(rows.nth(0)).not.toContainText(':22');
+  await expect(rows.nth(1)).toContainText('db-01.example:2222');
+
+  // The fingerprint is the point of the row: it is what a person checks out-of-band,
+  // against something held somewhere else. A row without one would be decoration.
+  await expect(rows.nth(0)).toContainText('SHA256:');
+  await expect(rows.nth(0)).toContainText('ssh-ed25519');
+
+  // Whose list it is, in the text and not only in the code — and said impersonally, which
+  // `e2e/mock-register-check.mjs` holds every mock screen to.
+  const pane = page.locator('.prefs-pane');
+  await expect(pane).toContainText('Per member');
+  await expect(pane).toContainText(/reinstalled/i);
+
+  // And the action that makes the list worth having, next to the host it acts on.
+  await expect(rows.nth(0).locator('button', { hasText: 'Forget' })).toBeVisible();
+  await rows.nth(0).locator('button', { hasText: 'Forget' }).click();
+  await expect(page.locator('.toast')).toContainText(/asks again/i);
+
+  expect(errs, 'no console errors').toEqual([]);
+});
+
+/**
+ * The command palette: everything runnable, found by typing.
+ *
+ * The rail already proved the point for Settings — scrolling stopped working at fourteen
+ * sections. Commands have the same shape: a handful earn a chord, the rest earn being
+ * findable. What a menu cannot do, and this can, is list what runs RIGHT NOW.
+ *
+ * The matching rules are asserted rather than eyeballed, because ranking IS the behaviour
+ * of a palette: every word typed has to appear, and the rank says where the first one
+ * landed — label start, then word start, then anywhere, then the description alone.
+ */
+test('desktop mock: the palette opens on its chord, filters, and runs what is picked', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  // The chord has to work wherever the focus is, so it is taken on the document.
+  await page.keyboard.press('Control+k');
+  const palette = page.locator('[data-palette]');
+  await expect(palette).toBeVisible();
+  // Opens showing everything: a palette that opens empty is a menu, and a menu has an
+  // order. The first row is pre-selected, because the chord exists to run something.
+  const rows = palette.locator('.pal-row');
+  await expect(rows).toHaveCount(5);
+  await expect(rows.first()).toHaveClass(/on/);
+
+  // The chord shows beside the command: the palette is where someone learns the key for
+  // the thing they just ran by typing.
+  await expect(rows.first().locator('kbd')).toHaveText('Ctrl+Shift+H');
+
+  // Every word has to appear — two words narrow, they do not widen.
+  await palette.locator('[data-pal-input]').fill('split');
+  await expect(rows).toHaveCount(2);
+  await palette.locator('[data-pal-input]').fill('split vertical');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Split pane vertically');
+
+  // A word that only the description carries still finds the command, and ranks last.
+  await palette.locator('[data-pal-input]').fill('scrollback');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Search in pane');
+
+  // Nothing matching says so, rather than showing an empty box.
+  await palette.locator('[data-pal-input]').fill('zzzz');
+  await expect(rows).toHaveCount(0);
+  await expect(palette).toContainText('No command matches');
+
+  // The arrows move the selection, and Enter runs what is selected.
+  await palette.locator('[data-pal-input]').fill('pane');
+  await expect(rows).toHaveCount(4);
+  await page.keyboard.press('ArrowDown');
+  await expect(rows.nth(1)).toHaveClass(/on/);
+  const picked = await rows.nth(1).locator('b').innerText();
+  await page.keyboard.press('Enter');
+  await expect(palette).toHaveCount(0);
+  await expect(page.locator('.toast')).toContainText(picked);
+
+  // Escape closes it without running anything.
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('[data-palette]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-palette]')).toHaveCount(0);
+
+  expect(errs, 'no console errors').toEqual([]);
+});

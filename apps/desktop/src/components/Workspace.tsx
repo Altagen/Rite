@@ -26,6 +26,7 @@ import { ProfilePastille } from './ProfilePastille';
 import { VaultPastille } from './VaultPastille';
 import { OverflowNav, type NavAction } from './OverflowNav';
 import { useSettingsModal } from '../store/settingsModal';
+import { CommandPalette } from './CommandPalette';
 import { ConnectionForm } from './ConnectionForm';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
@@ -192,6 +193,14 @@ export function Workspace({
   // in a server session (so it stays reachable above the Teams/Collections/… overlays).
   const showSettings = useSettingsModal((s) => s.open);
   const setShowSettings = useSettingsModal((s) => s.setOpen);
+  // The palette, and one action reachable only through it. Registering `settings.open`
+  // here is what makes it runnable at all: the registry holds a command while a mounted
+  // component implements it, and this is the component that always is (see
+  // `shortcuts/registry.ts`). Both are off while the vault is locked — nothing behind the
+  // lock screen is worth running, and listing it would say otherwise.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useShortcut('palette.open', () => setPaletteOpen(true), !isLocked);
+  useShortcut('settings.open', () => setShowSettings(true), !isLocked);
 
   // Quick SSH and Unlock modals
   const [showQuickSSH, setShowQuickSSH] = useState(false);
@@ -2445,6 +2454,8 @@ export function Workspace({
 
       {/* Settings Modal — local mode only. In a server session AccountsShell renders it (once,
           above the overlay pages) since it drives the same global store. */}
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
+
       {showSettings && !identity && (
         <Settings
           onClose={() => setShowSettings(false)}

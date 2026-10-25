@@ -51,6 +51,8 @@ run "key-identity-check" node "e2e/key-identity-check.mjs"
 run "key-support-check" node "e2e/key-support-check.mjs"
 run "embedded-ui-check" node "e2e/embedded-ui-check.mjs"
 run "install-entry-check" node "e2e/install-entry-check.mjs"
+run "clipboard-decision-check" node "e2e/clipboard-decision-check.mjs"
+run "palette-filter-check" node "e2e/palette-filter-check.mjs"
 run "docs-check" node "e2e/docs-check.mjs"
 
 echo

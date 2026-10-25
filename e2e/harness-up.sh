@@ -25,11 +25,38 @@ if ! podman image exists "$IMAGE"; then
   exit 1
 fi
 
-# A container that is already up keeps its sshd (and the sessions through it) alive;
-# we only top up what may be missing. Recreating it would drop connections mid-suite.
-if [ "$(podman inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = "true" ]; then
+# A container that is already up keeps its sshd (and the sessions through it) alive; we
+# only top up what may be missing, because recreating it would drop connections mid-suite.
+#
+# UNLESS it has rotted. Every suite leaves sshd processes behind, they accumulate across
+# runs, and `MaxStartups 10:30:100` then makes the daemon refuse new connections AT RANDOM.
+# It presents as eight SSH tests failing with "Connection reset by peer" while host-key
+# verification logs success just above — which reads exactly like a regression in whatever
+# was touched that day, and is not. Found on a container six days old holding 552 sshd
+# processes. The threshold is generous: a suite in flight is a few dozen, so only a
+# genuinely stale container trips it.
+STALE_SSHD=${RITE_HARNESS_MAX_SSHD:-120}
+
+running() { [ "$(podman inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = "true" ]; }
+
+# How many sshd processes the container holds, as a bare number and never empty.
+# `grep -c` exits 1 when it counts zero, so the `|| true` is what keeps `set -e` from
+# ending the script on an idle container; `tr -dc` drops the stray newline and anything
+# podman writes when the container is gone. An earlier version put `|| echo 0` on the
+# OUTSIDE, which appended a second zero to grep's own and handed `"0 0"` to `[ -lt ]`.
+sshd_count() {
+  count=$(podman exec "$NAME" sh -c 'ps -e -o comm= | grep -c "^sshd$" || true' 2>/dev/null |
+    tr -dc '0-9')
+  [ -n "$count" ] || count=0
+  echo "$count"
+}
+
+if running && [ "$(sshd_count)" -lt "$STALE_SSHD" ]; then
   echo "[harness] $NAME is already running — topping up"
 else
+  if running; then
+    echo "[harness] $NAME has $(sshd_count) stale sshd processes — recreating it"
+  fi
   podman rm -f "$NAME" >/dev/null 2>&1 || true
   # --network=host so 127.0.0.1:2222 is the same loopback rite-server dials; the repo
   # is mounted so the scripts (and any edit to them) come from the working tree.

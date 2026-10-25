@@ -62,9 +62,23 @@ inside the server container. What is left is the code.
       it dies with it — no secret at rest, and the operator chooses the password. It
       changes the bootstrap contract (what a fresh instance accepts, and from whom), so it
       needs an ADR before any code
-- [ ] Zeroize sensitive memory — **keys done**, passwords not: `MasterKey` is
-      `ZeroizeOnDrop` and the server's vault key is `Zeroizing<[u8; 32]>`, but an SSH
-      password travels as a `String` and is dropped without being wiped
+- [ ] **Wipe an SSH password and passphrase from memory after use.** Two different
+      protections get confused here, so both are written down.
+      - **Never logged — DONE, for both.** `AuthMethod` has a hand-written `Debug`
+        (`connection.rs`), written because the derived one printed the password and the
+        passphrase. Nothing about that is pending.
+      - **Zeroized in memory — done for KEYS only.** `MasterKey` is `ZeroizeOnDrop` and
+        the server's held vault key is `Zeroizing<[u8; 32]>`, wiped on lock, logout and
+        idle, with tests. An SSH password and a key passphrase are `Option<String>` and
+        are dropped without being wiped.
+      - **The browser half cannot be done at all**, and that bounds the item: a JavaScript
+        string is immutable and the garbage collector copies it where it likes, so a
+        password typed in the web UI cannot be wiped by anyone. Whatever is built here
+        covers the Rust side, and saying otherwise would promise more than the platform
+        allows.
+      - Cost, measured rather than guessed: `password` appears 28 times in
+        `connection.rs` alone and the value crosses serde, the vault, the HTTP API and the
+        TypeScript boundary — so a zeroizing wrapper means custom serde, not a type swap.
 - [ ] **Throttle logins by address, not only by username** — decided and deferred, see
       ADR 0026. The counter keys on the username, so five failures against one account
       lock it; a single common password tried against a thousand *different* usernames

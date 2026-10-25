@@ -321,6 +321,20 @@ export const BackendConnections = {
     invokeWithValidation('parse_ssh_config', SshConfigEntryArraySchema, { configPath }),
 } as const;
 
+/** One trusted host, as the listing returns it. */
+export const KnownHostSchema = z.object({
+  id: z.string(),
+  host: z.string(),
+  port: z.number(),
+  keyType: z.string(),
+  /** What a person verifies out-of-band; the raw key is deliberately not served. */
+  fingerprint: z.string(),
+  addedAt: z.number(),
+  lastSeenAt: z.number(),
+});
+const KnownHostsSchema = z.array(KnownHostSchema);
+export type KnownHost = z.infer<typeof KnownHostSchema>;
+
 // SSH host-key confirmation
 export const BackendSsh = {
   /** Trust a pending unknown host key so the next connection succeeds. */
@@ -330,6 +344,23 @@ export const BackendSsh = {
   /** Drop a pending unknown host key (user declined). */
   rejectHostKey: (host: string, port: number) =>
     invokeWithValidation('reject_host_key', z.null(), { host, port }),
+
+  /**
+   * Every host this member trusts (ADR 0021, addendum).
+   *
+   * Scoped to the caller server-side, so there is no owner to pass — and nothing a
+   * client could pass to read another member's trust, which is where a host they
+   * connect to would otherwise leak.
+   */
+  listHostKeys: () => invokeWithValidation('list_host_keys', KnownHostsSchema, {}),
+
+  /**
+   * Forget one trusted host, which turns a legitimately rotated key back into a first
+   * contact. A changed key is refused in every mode (ADR 0021 §3), so before this the
+   * only way through was Quick SSH, which force-accepts before verification runs.
+   */
+  forgetHostKey: (host: string, port: number) =>
+    invokeWithValidation('forget_host_key', z.null(), { host, port }),
 
   /**
    * Answer an in-flight keyboard-interactive challenge (2FA/PAM): one string per

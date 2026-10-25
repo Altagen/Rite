@@ -11,6 +11,7 @@ import { useSettingsStore } from '../store/settingsStore';
 import { useAuthStore } from '../store/authStore';
 import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
+import { KnownHostsList } from './KnownHostsList';
 import { SplitsModal } from './SplitsModal';
 import { LayoutsModal } from './LayoutsModal';
 import { LayoutCards } from './LayoutCards';
@@ -876,6 +877,15 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     </code>
                   </SettingsRow>
                 )}
+
+                {/* Beside the policy that produced them: the dropdown above decides what
+                    happens to an unknown key, and this is the result of those decisions.
+                    The mock keeps both in its SSH section; this app has had the policy
+                    under Security since before either existed, and moving a settings row
+                    between sections is a design call, not a side effect of adding a list.
+                    Mounted only while the section is open, so the request is not made on
+                    every visit to Settings. */}
+                {shown === 'security' && <KnownHostsList />}
               </div>
             </section>
 
