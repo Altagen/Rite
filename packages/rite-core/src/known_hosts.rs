@@ -172,19 +172,20 @@ pub async fn add_host_key(
     let public_key_data = server_public_key.to_bytes()?;
     let now = current_timestamp();
 
-    // Delete this owner's existing entry if any (REPLACE doesn't work with UNIQUE
-    // constraint), and only this owner's — another member's row is not ours to touch.
-    sqlx::query("DELETE FROM known_hosts WHERE user_id = ? AND host = ? AND port = ?")
-        .bind(owner)
-        .bind(host)
-        .bind(port as i64)
-        .execute(db)
-        .await?;
-
-    // Insert new entry
+    // An upsert on this owner's row, and only this owner's — another member's row for the
+    // same host is not ours to touch. One statement rather than DELETE-then-INSERT, which
+    // two concurrent connections to one host raced each other through (see
+    // `store_pending_host_key`). `added_at` is deliberately left alone on conflict: it is
+    // when this owner first trusted the host, and re-seeing the same key is not a new
+    // decision.
     sqlx::query(
         "INSERT INTO known_hosts (id, user_id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, host, port) DO UPDATE SET
+           key_type = excluded.key_type,
+           fingerprint = excluded.fingerprint,
+           public_key_data = excluded.public_key_data,
+           last_seen_at = excluded.last_seen_at"
     )
     .bind(Uuid::new_v4().to_string())
     .bind(owner)
@@ -216,16 +217,21 @@ pub async fn store_pending_host_key(
     let public_key_data = server_public_key.to_bytes()?;
     let now = current_timestamp();
 
-    sqlx::query("DELETE FROM pending_host_keys WHERE user_id = ? AND host = ? AND port = ?")
-        .bind(owner)
-        .bind(host)
-        .bind(port as i64)
-        .execute(db)
-        .await?;
-
+    // One statement, not a DELETE followed by an INSERT. Two connection attempts to the
+    // same unknown host run concurrently — a double-click does it, and so does
+    // auto-reconnect — and on a pool they take different connections: both deleted
+    // nothing, both inserted, and the second lost the race with
+    // `UNIQUE constraint failed: pending_host_keys`. The visible cost was the one that
+    // matters: the offered key was not stored, so strict mode refused the connection AND
+    // had nothing for the accept dialog to show. An upsert cannot race itself.
     sqlx::query(
         "INSERT INTO pending_host_keys (user_id, host, port, key_type, fingerprint, public_key_data, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, host, port) DO UPDATE SET
+           key_type = excluded.key_type,
+           fingerprint = excluded.fingerprint,
+           public_key_data = excluded.public_key_data,
+           created_at = excluded.created_at",
     )
     .bind(owner)
     .bind(host)
@@ -268,16 +274,14 @@ pub async fn accept_pending_host_key(
     };
     let now = current_timestamp();
 
-    sqlx::query("DELETE FROM known_hosts WHERE user_id = ? AND host = ? AND port = ?")
-        .bind(owner)
-        .bind(host)
-        .bind(port as i64)
-        .execute(db)
-        .await?;
-
     sqlx::query(
         "INSERT INTO known_hosts (id, user_id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, host, port) DO UPDATE SET
+           key_type = excluded.key_type,
+           fingerprint = excluded.fingerprint,
+           public_key_data = excluded.public_key_data,
+           last_seen_at = excluded.last_seen_at",
     )
     .bind(Uuid::new_v4().to_string())
     .bind(owner)
@@ -708,6 +712,106 @@ mod tests {
                 "{owner} lost their row"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn concurrent_attempts_on_one_unknown_host_do_not_collide() {
+        let (db, _dir) = db().await;
+        let key = a_key();
+        let pool = db.pool().clone();
+
+        // Two connections to the same unknown host, at once. A double-click does this, and
+        // so does auto-reconnect. The old DELETE-then-INSERT took two pool connections:
+        // both deleted nothing, both inserted, and the loser came back with
+        // `UNIQUE constraint failed: pending_host_keys`. The cost was not the log line —
+        // it was that the offered key went unstored, so strict mode refused the connection
+        // and left the accept dialog with nothing to show.
+        let mut tasks = Vec::new();
+        for _ in 0..8 {
+            let pool = pool.clone();
+            let key = key.clone();
+            tasks.push(tokio::spawn(async move {
+                store_pending_host_key(&pool, ALICE, "web-01", 22, &key).await
+            }));
+        }
+        for t in tasks {
+            t.await
+                .unwrap()
+                .expect("a concurrent attempt must not fail");
+        }
+
+        // And exactly one pending key survives, which is what the dialog accepts.
+        assert!(
+            accept_pending_host_key(db.pool(), ALICE, "web-01", 22)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !accept_pending_host_key(db.pool(), ALICE, "web-01", 22)
+                .await
+                .unwrap(),
+            "only one row was ever stored"
+        );
+    }
+
+    #[tokio::test]
+    async fn concurrent_adds_of_one_host_do_not_collide() {
+        let (db, _dir) = db().await;
+        let key = a_key();
+        let pool = db.pool().clone();
+
+        // The same race on the accepted side: `warn` and `accept` modes call this one.
+        let mut tasks = Vec::new();
+        for _ in 0..8 {
+            let pool = pool.clone();
+            let key = key.clone();
+            tasks.push(tokio::spawn(async move {
+                add_host_key(&pool, ALICE, "web-01", 22, &key).await
+            }));
+        }
+        for t in tasks {
+            t.await.unwrap().expect("a concurrent add must not fail");
+        }
+        assert_eq!(list_host_keys(db.pool(), ALICE).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn seeing_a_known_host_again_keeps_when_it_was_first_trusted() {
+        let (db, _dir) = db().await;
+        let key = a_key();
+        add_host_key(db.pool(), ALICE, "web-01", 22, &key)
+            .await
+            .unwrap();
+
+        // Backdated on purpose. Reading the timestamp the first call wrote and comparing
+        // it to the second's proves nothing: both land in the same second, so the
+        // assertion held whether or not the upsert overwrote the column — found by
+        // mutation, which stayed green with `added_at = excluded.added_at` in the SQL.
+        const LONG_AGO: i64 = 1_000_000;
+        sqlx::query("UPDATE known_hosts SET added_at = ? WHERE user_id = ? AND host = ?")
+            .bind(LONG_AGO)
+            .bind(ALICE)
+            .bind("web-01")
+            .execute(db.pool())
+            .await
+            .unwrap();
+        let first = list_host_keys(db.pool(), ALICE).await.unwrap()[0].clone();
+        assert_eq!(first.added_at, LONG_AGO);
+
+        // Re-seeing the SAME key is not a new decision, so `added_at` is left alone: it
+        // answers "since when have I trusted this", which a listing shows and which an
+        // upsert that overwrote it would quietly reset on every connection.
+        add_host_key(db.pool(), ALICE, "web-01", 22, &key)
+            .await
+            .unwrap();
+        let again = list_host_keys(db.pool(), ALICE).await.unwrap()[0].clone();
+        assert_eq!(again.added_at, LONG_AGO, "first trusted stays put");
+        assert_eq!(
+            again.id, first.id,
+            "and it is the same row, not a replacement"
+        );
+        // While last_seen_at does move: that is the column that answers "and recently?".
+        assert!(again.last_seen_at > LONG_AGO, "last seen moves forward");
     }
 
     #[tokio::test]
