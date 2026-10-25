@@ -819,7 +819,9 @@ function authPanels(p,e){e=e||{};const a=e.authType||'password';
 function keyPanel(p,e){
   e=e||{};
   if(STATE.ctx.type!=='server')
-    return `<label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519"></label>`;
+    return `<label class="field"><span>Private key path</span>
+      <div style="display:flex;gap:8px"><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519">
+      <button type="button" class="btn btn-sm" onclick="toast('Native file picker…')">Browse…</button></div></label>`;
   const onPath=e.keySupport==='path';
   return `<div class="field"><span>Key</span>
       <label class="kchoice"><input type="radio" name="${p}-keysup" value="carried" ${onPath?'':'checked'} onchange="keySupToggle('${p}',this.value)">
@@ -836,7 +838,9 @@ function keyPanel(p,e){
         : `<label class="field"><span>Private key file</span><input class="inp" type="file">
             <span class="muted" style="font-size:12px;display:block;margin-top:6px">Read in this page and sealed in the record — never uploaded as a file.</span></label>`}
     </div>
-    <div id="${p}-key-path" style="${onPath?'':'display:none'}"><label class="field"><span>Private key path</span><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519">
+    <div id="${p}-key-path" style="${onPath?'':'display:none'}"><label class="field"><span>Private key path</span>
+      <div style="display:flex;gap:8px"><input class="inp" value="${e.keyPath||''}" placeholder="~/.ssh/id_ed25519">
+      <button type="button" class="btn btn-sm" onclick="toast('Native file picker…')">Browse…</button></div>
       <span class="muted" style="font-size:12px;display:block;margin-top:6px">Read on the computer that connects, so this machine needs a desktop client.</span></label></div>`;
 }
 function keySupToggle(p,v){const c=document.getElementById(p+'-key-carried'),k=document.getElementById(p+'-key-path');

@@ -86,6 +86,31 @@ export function setNativeFullscreen(on: boolean): void {
   window.ipc.postMessage(JSON.stringify({ type: 'set-fullscreen', on }));
 }
 
+/**
+ * Ask the shell for a native file chooser and resolve with the path chosen, or `null` when
+ * it was cancelled — the shell answers either way, so this never hangs.
+ *
+ * This is the only way a page can name a file on disk: a browser file input hands over the
+ * contents and never the path, which is what a key named on disk needs (ADR 0028 §1). In the
+ * web build there is no shell to ask, so it resolves `null` and the caller keeps its field.
+ */
+export function pickNativeFile(title?: string): Promise<string | null> {
+  if (typeof window === 'undefined' || !window.ipc) return Promise.resolve(null);
+  const ipc = window.ipc;
+  const token = `pick-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return new Promise((resolve) => {
+    const onPicked = (e: Event) => {
+      const detail = (e as CustomEvent<{ token?: string; path?: string | null }>).detail;
+      // More than one chooser can be in flight (two forms open): answer only this one.
+      if (!detail || detail.token !== token) return;
+      window.removeEventListener('rite-file-picked', onPicked);
+      resolve(detail.path ?? null);
+    };
+    window.addEventListener('rite-file-picked', onPicked);
+    ipc.postMessage(JSON.stringify({ type: 'pick-file', token, ...(title ? { title } : {}) }));
+  });
+}
+
 /** The default path a new vault would be written to (shell-injected), for the create dialog. */
 export function suggestedVaultPath(): string | undefined {
   return typeof window !== 'undefined' ? window.__RITE_SUGGESTED_VAULT_PATH__ : undefined;

@@ -204,6 +204,21 @@ enum UserEvent {
     SetFullscreen { window: WindowId, on: bool },
     /// A native file dialog resolved on its own thread (see [`spawn_file_dialog`]).
     VaultPicked(VaultPick),
+    /// The page asked for a file chooser (a key path: the only way to name a file on disk,
+    /// since a browser file input hands over the contents and never the path). `path` set
+    /// means the picker is bypassed — the hook that keeps this automatable, as New/Open have.
+    PickFile {
+        window: WindowId,
+        token: String,
+        path: Option<PathBuf>,
+    },
+    /// A chooser raised for the page has closed. `path` is `None` when it was cancelled: the
+    /// page is waiting on a promise, so it is told either way.
+    FilePicked {
+        window: WindowId,
+        token: String,
+        path: Option<PathBuf>,
+    },
 }
 
 /// Which native file chooser to raise on the dialog thread. New/Open carry the window that
@@ -219,6 +234,13 @@ enum DialogKind {
     Open(WindowId),
     /// Pick an image to use as `vault`'s icon.
     Image(PathBuf),
+    /// Pick any file for the page, which waits on `token`. No filter: an SSH key has no
+    /// extension, and guessing one hides the file people came for.
+    ForPage {
+        window: WindowId,
+        token: String,
+        title: Option<String>,
+    },
 }
 
 /// The outcome of a resolved [`DialogKind`], handed back to the event loop so the roster
@@ -476,6 +498,50 @@ fn main() -> Result<()> {
                 // frontend already hid the header; this makes the OS window match.
                 if let Some(w) = windows.get(&window) {
                     w.window.set_fullscreen(on.then(|| Fullscreen::Borderless(None)));
+                }
+            }
+            // A chooser for the page: raised here, off the event loop, exactly as the vault
+            // ones are. A path in the message answers without a dialog, which is how a test
+            // drives the flow (the native chooser is not scriptable).
+            Event::UserEvent(UserEvent::PickFile {
+                window,
+                token,
+                path,
+            }) => match path {
+                Some(path) => {
+                    let _ = proxy.send_event(UserEvent::FilePicked {
+                        window,
+                        token,
+                        path: Some(path),
+                    });
+                }
+                None => spawn_file_dialog(
+                    proxy.clone(),
+                    DialogKind::ForPage {
+                        window,
+                        token,
+                        title: None,
+                    },
+                ),
+            },
+            // Hand the answer to the window that asked, and only that one. A cancelled
+            // chooser sends `null`, because the page is awaiting this token.
+            Event::UserEvent(UserEvent::FilePicked {
+                window,
+                token,
+                path,
+            }) => {
+                if let Some(w) = windows.get(&window) {
+                    let detail = serde_json::json!({
+                        "token": token,
+                        "path": path.as_ref().map(|p| p.to_string_lossy()),
+                    });
+                    let js = format!(
+                        "window.dispatchEvent(new CustomEvent('rite-file-picked', {{ detail: {detail} }}));"
+                    );
+                    if let Err(e) = w.webview.evaluate_script(&js) {
+                        tracing::warn!("[rite-desktop] couldn't hand back the chosen file: {e}");
+                    }
                 }
             }
             Event::UserEvent(UserEvent::VaultPicked(pick)) => match pick {
@@ -750,6 +816,15 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, window: WindowId, body: String)
                 );
             }
         }
+        Some("pick-file") => {
+            if let Some(req) = plan_pick_file(&msg) {
+                send(UserEvent::PickFile {
+                    window,
+                    token: req.token,
+                    path: req.path,
+                });
+            }
+        }
         Some("set-fullscreen") => {
             let on = msg.get("on").and_then(|v| v.as_bool()).unwrap_or(false);
             send(UserEvent::SetFullscreen { window, on });
@@ -760,6 +835,42 @@ fn handle_ipc(proxy: &EventLoopProxy<UserEvent>, window: WindowId, body: String)
             }
         }
     }
+}
+
+/// What the page asked for when it wants a file chooser.
+#[derive(Debug, PartialEq)]
+struct PickFileRequest {
+    /// Echoed back with the answer: the page may have more than one request in flight.
+    token: String,
+    /// Set by a test to skip the native chooser and answer with this path.
+    path: Option<PathBuf>,
+    /// The chooser's title, so the page says what it is asking for.
+    title: Option<String>,
+}
+
+/// Decode a `pick-file` message. Pure, like [`plan_vault_command`]: a message with no token
+/// is not answerable — the page would wait forever — so it is dropped rather than guessed.
+fn plan_pick_file(msg: &serde_json::Value) -> Option<PickFileRequest> {
+    if msg.get("type").and_then(|t| t.as_str()) != Some("pick-file") {
+        return None;
+    }
+    let token = msg.get("token")?.as_str()?.trim();
+    if token.is_empty() {
+        return None;
+    }
+    Some(PickFileRequest {
+        token: token.to_string(),
+        path: msg
+            .get("path")
+            .and_then(|p| p.as_str())
+            .filter(|p| !p.is_empty())
+            .map(PathBuf::from),
+        title: msg
+            .get("title")
+            .and_then(|t| t.as_str())
+            .filter(|t| !t.trim().is_empty())
+            .map(|t| t.to_string()),
+    })
 }
 
 /// A multi-vault management command (ADR 0014), decoded from an IPC message. Pure decision layer,
@@ -1001,6 +1112,24 @@ fn spawn_file_dialog(proxy: EventLoopProxy<UserEvent>, kind: DialogKind) {
                         window,
                         path: f.path().to_path_buf(),
                     }),
+                // Answers whether or not a file was chosen: the page is awaiting this token.
+                DialogKind::ForPage {
+                    window,
+                    token,
+                    title,
+                } => {
+                    let picked = rfd::AsyncFileDialog::new()
+                        .set_title(title.as_deref().unwrap_or("Choose a file"))
+                        .pick_file()
+                        .await;
+                    let _ = proxy.send_event(UserEvent::FilePicked {
+                        window,
+                        token,
+                        path: picked.map(|f| f.path().to_path_buf()),
+                    });
+                    // Its own event, already sent: there is no vault pick to hand back.
+                    None
+                }
                 DialogKind::Image(vault) => rfd::AsyncFileDialog::new()
                     .set_title("Choose a vault icon")
                     .add_filter("Image", &["png", "jpg", "jpeg", "gif", "webp"])
@@ -1598,5 +1727,45 @@ mod tests {
         assert_eq!(derived, app_id(None, &test, &home));
         // Two instances elsewhere do not collide with each other either.
         assert_ne!(derived, app_id(None, &other, &home));
+    }
+
+    #[test]
+    fn a_file_chooser_is_asked_for_with_a_token() {
+        assert_eq!(
+            plan_pick_file(&json!({ "type": "pick-file", "token": "k1" })),
+            Some(PickFileRequest {
+                token: "k1".to_string(),
+                path: None,
+                title: None,
+            })
+        );
+        // The title the page names, and the path a test uses to skip the native chooser.
+        assert_eq!(
+            plan_pick_file(&json!({
+                "type": "pick-file",
+                "token": "k2",
+                "path": "/home/someone/.ssh/id_ed25519",
+                "title": "Choose a private key",
+            })),
+            Some(PickFileRequest {
+                token: "k2".to_string(),
+                path: Some(PathBuf::from("/home/someone/.ssh/id_ed25519")),
+                title: Some("Choose a private key".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn an_unanswerable_chooser_request_is_dropped() {
+        // No token means no way to answer, and the page would wait on a promise for good.
+        assert!(plan_pick_file(&json!({ "type": "pick-file" })).is_none());
+        assert!(plan_pick_file(&json!({ "type": "pick-file", "token": "  " })).is_none());
+        assert!(plan_pick_file(&json!({ "type": "vault-open-file" })).is_none());
+        // An empty path is not a path: it would answer with nothing chosen and no dialog.
+        assert_eq!(
+            plan_pick_file(&json!({ "type": "pick-file", "token": "k", "path": "" }))
+                .map(|r| r.path),
+            Some(None)
+        );
     }
 }

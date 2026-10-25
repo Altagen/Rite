@@ -423,3 +423,68 @@ test('a new machine saves the key path that was typed into it', async ({ page, r
   expect(saved!.authType, 'saved as a key on disk, not as a carried key').toBe('publicKey');
   expect(saved!.keyPath, 'the path typed is the path kept').toBe('/home/someone/.ssh/id_typed');
 });
+
+/**
+ * The key path is a path, so the control that fills it has to be able to name one.
+ *
+ * In a browser that is impossible: a file input hands over the file's CONTENTS and never its
+ * location, which is why the picker was dropped when a local vault moved to naming keys on
+ * disk (ADR 0028 §1) — leaving a bare text field on a desktop that has a native chooser
+ * sitting unused. The button is therefore offered only where the shell can answer with a
+ * path, and the shell's half is covered by its own unit tests and `e2e/desktop-bench`.
+ */
+test('the key path offers no picker in a browser, and takes one from the shell', async ({
+  page,
+  request,
+}) => {
+  const collectionId = await createCollection(request, 'e2e-key-picker');
+  await page.goto('/');
+
+  const openKeyForm = async () => {
+    const node = page.locator('.m-tnode', { hasText: 'e2e-key-picker' }).first();
+    await expect(node).toBeVisible({ timeout: 15_000 });
+    await node.getByRole('button', { name: 'Add to collection' }).click();
+    await page.getByRole('button', { name: 'New machine here' }).click();
+    await page.getByRole('radio', { name: /public key/i }).click();
+    await expect(page.getByTestId('auth-key-path')).toBeVisible();
+  };
+
+  await openKeyForm();
+  // No shell, no button: one that could not fill the field would be a lie.
+  await expect(page.getByTestId('auth-key-browse')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // A shell that answers, standing in for wry: the page's half of the contract is the
+  // message it posts and the path it takes back from the event.
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      __RITE_TOKEN__?: string;
+      ipc?: { postMessage: (m: string) => void };
+      __PICK_ASKED__?: unknown;
+    };
+    w.__RITE_TOKEN__ = 'bench';
+    w.ipc = {
+      postMessage: (raw: string) => {
+        const msg = JSON.parse(raw);
+        if (msg.type !== 'pick-file') return;
+        w.__PICK_ASKED__ = msg;
+        window.dispatchEvent(
+          new CustomEvent('rite-file-picked', {
+            detail: { token: msg.token, path: '/home/someone/.ssh/id_picked' },
+          }),
+        );
+      },
+    };
+  });
+
+  await openKeyForm();
+  await page.getByTestId('auth-key-browse').click();
+  await expect(page.getByTestId('auth-key-path')).toHaveValue('/home/someone/.ssh/id_picked');
+
+  const asked = await page.evaluate(
+    () => (window as unknown as { __PICK_ASKED__?: { type: string; token?: string } }).__PICK_ASKED__,
+  );
+  expect(asked?.type, 'the shell is asked for a chooser').toBe('pick-file');
+  expect(asked?.token, 'with a token, so the answer can be matched to the asking').toBeTruthy();
+  await page.keyboard.press('Escape');
+});
