@@ -293,7 +293,16 @@
     "masterPasswordHint": "Il chiffre toutes les connexions de ce coffre : le changer les re-chiffre toutes.",
     "autoCollapseHint": "En mode focus (F11), masquer aussi la bibliothèque — terminaux seuls.",
     "themeGrey": "Gris",
-    "changingPassword": "Changement…"
+    "changingPassword": "Changement…",
+    "knownHosts": "Hôtes de confiance",
+    "knownHostsDesc": "Par membre. Un autre membre de cette instance tient une liste distincte. Oublier un hôte le fait redemander à la prochaine connexion — la voie de retour quand un serveur a été légitimement réinstallé.",
+    "knownHostsEmpty": "Aucun hôte de confiance pour l'instant.",
+    "knownHostsLoading": "Chargement…",
+    "knownHostsErr": "Impossible de charger les hôtes de confiance",
+    "knownHostsForget": "Oublier",
+    "knownHostsForgetErr": "Impossible d'oublier cet hôte",
+    "knownHostsSeen": "vu {when}",
+    "knownHostsNever": "pas revu depuis l'approbation"
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",

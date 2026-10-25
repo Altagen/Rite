@@ -87,13 +87,55 @@ pub async fn list_agent_identities() -> Result<Vec<AgentIdentityInfo>> {
         .collect())
 }
 
+/// Who is trusting a host key, and how much.
+///
+/// One value rather than two parameters, because they always travel together and the pair
+/// is the whole host-key policy for a connection attempt. It replaces a bare
+/// `trust: bool` that was threaded through five signatures of eight to
+/// eleven arguments; adding the owner beside it would have made six.
+#[derive(Debug, Clone)]
+pub struct HostKeyTrust {
+    /// Whose `known_hosts` this connection is checked against (ADR 0021, addendum).
+    /// [`known_hosts::LOCAL_OWNER`] for a local vault, the member's id on a shared server.
+    pub owner: String,
+    /// Quick SSH: record whatever is offered without verifying it first (ADR 0021 §5).
+    pub force_accept: bool,
+}
+
+impl HostKeyTrust {
+    /// The trust a named owner has, verifying normally. `force_accept` is deliberately
+    /// not a parameter: only Quick SSH and the ad-hoc paths set it, and they do so by
+    /// calling [`Self::forcing`] themselves (ADR 0021 §5). A caller cannot ask for a
+    /// saved connection to skip verification.
+    pub fn of(owner: &str) -> Self {
+        Self {
+            owner: owner.to_string(),
+            force_accept: false,
+        }
+    }
+
+    /// The trust a local vault has: its one person, verifying normally.
+    pub fn local() -> Self {
+        Self {
+            owner: known_hosts::LOCAL_OWNER.to_string(),
+            force_accept: false,
+        }
+    }
+
+    /// The same owner, but force-accepting — Quick SSH's explicit opt-out.
+    pub fn forcing(mut self) -> Self {
+        self.force_accept = true;
+        self
+    }
+}
+
 /// SSH Client Handler with host key verification
 struct SshClientHandler {
     db: Arc<SqlitePool>,
     host: String,
     port: u16,
     events: SharedEvents,
-    force_accept_host_key: bool, // For Quick SSH: bypass host key verification
+    trust: HostKeyTrust,
 }
 
 impl client::Handler for SshClientHandler {
@@ -136,12 +178,18 @@ impl client::Handler for SshClientHandler {
         );
 
         // Quick SSH: force accept all host keys (similar to ssh -o StrictHostKeyChecking=no)
-        if self.force_accept_host_key {
+        if self.trust.force_accept {
             tracing::info!("[terminal.rs] Quick SSH mode: auto-accepting host key (TOFU)");
 
             // Save the host key to known_hosts for future use
-            if let Err(e) =
-                known_hosts::add_host_key(&self.db, &self.host, self.port, server_public_key).await
+            if let Err(e) = known_hosts::add_host_key(
+                &self.db,
+                &self.trust.owner,
+                &self.host,
+                self.port,
+                server_public_key,
+            )
+            .await
             {
                 tracing::warn!("[terminal.rs] Failed to save host key for Quick SSH: {}", e);
                 // Don't fail the connection if we can't save the key
@@ -179,7 +227,14 @@ impl client::Handler for SshClientHandler {
         );
 
         // Verify the host key using our known_hosts system
-        match known_hosts::verify_host_key(&self.db, &self.host, self.port, server_public_key).await
+        match known_hosts::verify_host_key(
+            &self.db,
+            &self.trust.owner,
+            &self.host,
+            self.port,
+            server_public_key,
+        )
+        .await
         {
             Ok(HostKeyVerificationResult::Accepted) => {
                 tracing::info!("[terminal.rs] Host key accepted (known host)");
@@ -209,6 +264,7 @@ impl client::Handler for SshClientHandler {
 
                         if let Err(e) = known_hosts::store_pending_host_key(
                             &self.db,
+                            &self.trust.owner,
                             &host,
                             port,
                             server_public_key,
@@ -230,9 +286,14 @@ impl client::Handler for SshClientHandler {
                         // Warn mode: Accept the key but notify the user
                         tracing::info!("[terminal.rs] Warn mode: Accepting key and notifying user");
 
-                        if let Err(e) =
-                            known_hosts::add_host_key(&self.db, &host, port, server_public_key)
-                                .await
+                        if let Err(e) = known_hosts::add_host_key(
+                            &self.db,
+                            &self.trust.owner,
+                            &host,
+                            port,
+                            server_public_key,
+                        )
+                        .await
                         {
                             tracing::error!("[terminal.rs] Failed to save host key: {}", e);
                         }
@@ -248,9 +309,14 @@ impl client::Handler for SshClientHandler {
                             "[terminal.rs] Accept mode: Silently accepting and saving key (TOFU)"
                         );
 
-                        if let Err(e) =
-                            known_hosts::add_host_key(&self.db, &host, port, server_public_key)
-                                .await
+                        if let Err(e) = known_hosts::add_host_key(
+                            &self.db,
+                            &self.trust.owner,
+                            &host,
+                            port,
+                            server_public_key,
+                        )
+                        .await
                         {
                             tracing::error!("[terminal.rs] Failed to save host key: {}", e);
                         }
@@ -551,7 +617,7 @@ async fn open_jump_tunnel(
     target_port: u16,
     db_pool: Arc<SqlitePool>,
     events: SharedEvents,
-    force_accept_host_key: bool,
+    trust: HostKeyTrust,
 ) -> Result<(
     russh::ChannelStream<client::Msg>,
     Vec<client::Handle<SshClientHandler>>,
@@ -566,7 +632,7 @@ async fn open_jump_tunnel(
             host: conn.hostname.clone(),
             port: conn.port,
             events: events.clone(),
-            force_accept_host_key,
+            trust: trust.clone(),
         };
         let mut handle = if i == 0 {
             let addr = format!("{}:{}", conn.hostname, conn.port);
@@ -629,7 +695,7 @@ async fn establish_authenticated_handle(
     events: SharedEvents,
     db_pool: Arc<SqlitePool>,
     keep_alive_interval: Option<u64>,
-    force_accept_host_key: bool,
+    trust: HostKeyTrust,
     interactive: Option<&SharedInteractive>,
     jumps: &[(Connection, AuthMethod)],
 ) -> Result<(
@@ -649,7 +715,7 @@ async fn establish_authenticated_handle(
         host: connection.hostname.clone(),
         port: connection.port,
         events: events.clone(),
-        force_accept_host_key,
+        trust: trust.clone(),
     };
     let mut jump_handles: Vec<client::Handle<SshClientHandler>> = Vec::new();
     let mut session = if jumps.is_empty() {
@@ -678,7 +744,7 @@ async fn establish_authenticated_handle(
             connection.port,
             db_pool.clone(),
             events.clone(),
-            force_accept_host_key,
+            trust.clone(),
         )
         .await?;
         jump_handles = handles;
@@ -732,7 +798,7 @@ impl SshSession {
         events: SharedEvents,
         db_pool: Arc<SqlitePool>,
         keep_alive_interval: Option<u64>, // Keep-alive interval in seconds (None = disabled)
-        force_accept_host_key: bool,      // For Quick SSH: bypass host key verification
+        trust: HostKeyTrust,              // Whose known_hosts, and whether to force-accept
         interactive: Option<SharedInteractive>, // Collects keyboard-interactive answers (2FA/PAM)
         jumps: Vec<(Connection, AuthMethod)>, // Jump-host chain (outermost/TCP first); empty = direct
     ) -> Result<Self> {
@@ -756,7 +822,7 @@ impl SshSession {
             events.clone(),
             db_pool,
             keep_alive_interval,
-            force_accept_host_key,
+            trust.clone(),
             interactive.as_ref(),
             &jumps,
         )
@@ -1026,7 +1092,7 @@ async fn exec_remote_command(
     events: SharedEvents,
     db_pool: Arc<SqlitePool>,
     jumps: &[(Connection, AuthMethod)],
-    force_accept_host_key: bool,
+    trust: HostKeyTrust,
     command: &str,
 ) -> Result<RemoteCommandOutput> {
     let (session, _jump_handles) = establish_authenticated_handle(
@@ -1035,7 +1101,7 @@ async fn exec_remote_command(
         events,
         db_pool,
         None, // no keepalive for a one-shot exec
-        force_accept_host_key,
+        trust.clone(),
         None, // no keyboard-interactive on the exec path
         jumps,
     )
@@ -1146,6 +1212,7 @@ impl SessionManager {
         events: SharedEvents,
         interactive: Option<SharedInteractive>,
         session_secret: Option<String>,
+        owner: &str,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_session called for connection_id: {}",
@@ -1207,7 +1274,7 @@ impl SessionManager {
             events,
             Arc::new(self.db.pool().clone()),
             keep_alive_interval,
-            false,
+            HostKeyTrust::of(owner),
             interactive,
             jumps,
         )
@@ -1336,6 +1403,7 @@ impl SessionManager {
         events: SharedEvents,
         // See `create_session`.
         session_secret: Option<String>,
+        owner: &str,
     ) -> Result<PortForwardInfo> {
         // Resolve + decrypt the machine and its jump chain, as for a terminal, from
         // whichever local store holds it.
@@ -1358,7 +1426,7 @@ impl SessionManager {
             &auth_method,
             &jumps,
             keep_alive,
-            false,
+            HostKeyTrust::of(owner),
             bind_host,
             local_port,
             remote_host,
@@ -1383,6 +1451,7 @@ impl SessionManager {
         remote_host: &str,
         remote_port: u16,
         events: SharedEvents,
+        owner: &str,
     ) -> Result<PortForwardInfo> {
         let connection_id = connection.id.clone();
         let keep_alive = match connection.ssh_keep_alive_override.as_deref() {
@@ -1395,7 +1464,7 @@ impl SessionManager {
             &auth_method,
             &jumps,
             keep_alive,
-            true, // ad-hoc target → accept the host key like quick SSH
+            HostKeyTrust::of(owner).forcing(), // ad-hoc → accept like Quick SSH
             bind_host,
             local_port,
             remote_host,
@@ -1416,7 +1485,7 @@ impl SessionManager {
         auth_method: &AuthMethod,
         jumps: &[(Connection, AuthMethod)],
         keep_alive: Option<u64>,
-        force_accept_host_key: bool,
+        trust: HostKeyTrust,
         bind_host: &str,
         local_port: u16,
         remote_host: &str,
@@ -1431,7 +1500,7 @@ impl SessionManager {
             events.clone(),
             Arc::new(self.db.pool().clone()),
             keep_alive,
-            force_accept_host_key,
+            trust.clone(),
             None,
             jumps,
         )
@@ -1568,6 +1637,7 @@ impl SessionManager {
         events: SharedEvents,
         command: &str,
         session_secret: Option<String>,
+        owner: &str,
     ) -> Result<RemoteCommandOutput> {
         let (connection, auth_method) = self.resolve_saved(connection_id).await?;
         let auth_method = match session_secret {
@@ -1581,7 +1651,7 @@ impl SessionManager {
             events,
             Arc::new(self.db.pool().clone()),
             &jumps,
-            false, // saved connection → verify the host key
+            HostKeyTrust::of(owner), // saved connection → verify the host key
             command,
         )
         .await
@@ -1597,6 +1667,7 @@ impl SessionManager {
         events: SharedEvents,
         command: &str,
         jumps: &[(Connection, AuthMethod)],
+        owner: &str,
     ) -> Result<RemoteCommandOutput> {
         exec_remote_command(
             &connection,
@@ -1604,7 +1675,7 @@ impl SessionManager {
             events,
             Arc::new(self.db.pool().clone()),
             jumps,
-            true, // ad-hoc → accept the host key like quick SSH
+            HostKeyTrust::of(owner).forcing(), // ad-hoc → accept like Quick SSH
             command,
         )
         .await
@@ -1620,6 +1691,7 @@ impl SessionManager {
         events: SharedEvents,
         interactive: Option<SharedInteractive>,
         jumps: Vec<(Connection, AuthMethod)>,
+        owner: &str,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_quick_ssh_session called for {}",
@@ -1643,7 +1715,7 @@ impl SessionManager {
         };
 
         // Create SSH session (no database save, no master key needed)
-        // force_accept_host_key = true: bypass host key verification for Quick SSH
+        // trust = true: bypass host key verification for Quick SSH
         tracing::info!(
             "[terminal.rs] Creating quick SSH session for {}...",
             connection.name
@@ -1654,7 +1726,7 @@ impl SessionManager {
             events,
             Arc::new(self.db.pool().clone()),
             keep_alive_interval,
-            true,
+            HostKeyTrust::of(owner).forcing(),
             interactive,
             // Quick SSH proper passes an empty chain; the accounts path passes the
             // hops it decrypted client-side, since the server holds no record of them.
@@ -1774,7 +1846,11 @@ mod host_key_tests {
             host: "testhost.example".to_string(),
             port: 22,
             events: Arc::new(SilentEvents),
-            force_accept_host_key: force_accept,
+            trust: if force_accept {
+                HostKeyTrust::local().forcing()
+            } else {
+                HostKeyTrust::local()
+            },
         };
         (handler, db, dir)
     }
@@ -1842,9 +1918,15 @@ mod host_key_tests {
              host, and not as a pending one awaiting confirmation"
         );
         assert!(
-            known_hosts::verify_host_key(handler.db.as_ref(), "testhost.example", 22, &inside)
-                .await
-                .is_ok_and(|r| !matches!(r, HostKeyVerificationResult::Accepted)),
+            known_hosts::verify_host_key(
+                handler.db.as_ref(),
+                known_hosts::LOCAL_OWNER,
+                "testhost.example",
+                22,
+                &inside,
+            )
+            .await
+            .is_ok_and(|r| !matches!(r, HostKeyVerificationResult::Accepted)),
             "the key inside the certificate must not have become a known host"
         );
     }

@@ -1077,6 +1077,10 @@ const PREFS=[
   { id:'ssh', label:'SSH connections', body:()=>
       `<h4>SSH</h4>`
     + prefRow('Host-key verification','How unknown server keys are handled',`<select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select>`)
+    /* Trust is per member, not per instance (ADR 0021, addendum). The list says so, and
+       it is the only way back from a legitimately rotated key: a changed key is refused
+       in every mode, and forgetting the old one turns the rotation into a first contact. */
+    + knownHostsHTML()
     + prefRow('Auto-reconnect lost connections','Off by default. On → a dropped session reconnects automatically (a <b>new shell</b>: history, on-screen output and any running job are lost). Off → a <b>Reconnect</b> button instead. Either way the disconnection is reported.',prefToggle('autoReconnect','renderMain()')) },
 
   /* Its own rail entry, as in the app: one row, and the rail is how a setting is found at

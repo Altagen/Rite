@@ -313,3 +313,10 @@ body.near-left .side-rail button,.side-rail button:focus{opacity:1}
    instead — the banner is the only thing that says so, so it stays in the pane. */
 .pane-warn{display:flex;gap:9px;align-items:flex-start;background:color-mix(in oklab,var(--amber) 11%,transparent);
   border:1px solid color-mix(in oklab,var(--amber) 36%,transparent);border-radius:8px;padding:8px 11px;margin:0 0 8px;font-size:12.5px;line-height:1.5}
+
+/* The trusted-hosts list in Settings → SSH. A row per host, the fingerprint under it,
+   and one action. Not a table: there is nothing to sort and nothing to compare across
+   columns — the fingerprint is read on its own, against something held elsewhere. */
+.kh-list{display:flex;flex-direction:column;gap:2px}
+.kh-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--card2)}

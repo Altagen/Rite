@@ -22,7 +22,7 @@ use rite_core::connections_manager::ConnectionsManager;
 use rite_core::db::Database;
 use rite_core::events::{SessionEvents, SharedEvents};
 use rite_core::known_hosts;
-use rite_core::terminal::{SessionManager, SshSession};
+use rite_core::terminal::{HostKeyTrust, SessionManager, SshSession};
 
 use russh::server::{
     Auth, ChannelOpenHandle, Config as ServerConfig, Handler, Msg, Server, Session,
@@ -408,7 +408,7 @@ async fn ssh_session_connects_authenticates_and_round_trips() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None,
         Vec::new(),
     )
@@ -454,7 +454,7 @@ async fn ssh_session_rejects_changed_host_key() {
         .unwrap()
         .public_key()
         .clone();
-    known_hosts::add_host_key(&pool, "127.0.0.1", port, &bogus)
+    known_hosts::add_host_key(&pool, known_hosts::LOCAL_OWNER, "127.0.0.1", port, &bogus)
         .await
         .unwrap();
 
@@ -471,7 +471,7 @@ async fn ssh_session_rejects_changed_host_key() {
         events,
         pool,
         None,
-        false,
+        HostKeyTrust::local(),
         None,
         Vec::new(),
     )
@@ -526,7 +526,7 @@ async fn ssh_session_authenticates_with_rsa_key() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None,
         Vec::new(),
     )
@@ -565,7 +565,7 @@ async fn ssh_session_fails_cleanly_on_refused_connection() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None,
         Vec::new(),
     )
@@ -734,7 +734,7 @@ async fn ssh_session_completes_keyboard_interactive_via_provider() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         Some(provider),
         Vec::new(),
     )
@@ -769,7 +769,7 @@ async fn ssh_session_autoanswers_keyboard_interactive_password() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None, // no UI provider — the password prompt must be auto-answered
         Vec::new(),
     )
@@ -944,7 +944,7 @@ async fn ssh_session_publickey_then_second_factor() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         Some(provider),
         Vec::new(),
     )
@@ -982,7 +982,7 @@ async fn ssh_session_connects_through_a_jump_host() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None,
         vec![(
             jump_connection(bastion_port),
@@ -1037,7 +1037,7 @@ async fn ssh_session_connects_through_two_jump_hosts() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None,
         vec![
             (
@@ -1149,6 +1149,7 @@ async fn local_port_forward_tunnels_tcp() {
             echo_port,
             events,
             None,
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("forward should start");
@@ -1204,6 +1205,7 @@ async fn quick_remote_command_captures_output_and_exit_status() {
             events.clone(),
             "docker ps",
             &[],
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("exec should succeed");
@@ -1223,6 +1225,7 @@ async fn quick_remote_command_captures_output_and_exit_status() {
             events,
             "fail",
             &[],
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("a failing command is still a successful exec");
@@ -1249,6 +1252,7 @@ async fn quick_remote_command_runs_through_a_jump_host() {
             events,
             "systemctl list-units",
             &[hop(bastion_port)],
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("exec should reach the target through the bastion");
@@ -1287,6 +1291,7 @@ async fn quick_session_connects_through_a_jump_host() {
             events,
             None,
             vec![hop(bastion_port)],
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("quick session should connect through the jump host");
@@ -1360,6 +1365,7 @@ async fn quick_local_forward_tunnels_tcp_through_a_jump_host() {
             "127.0.0.1",
             echo_port,
             events,
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("quick forward should start through the jump host");

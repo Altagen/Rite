@@ -1,7 +1,17 @@
 /**
  * Known Hosts Module
  *
- * Manages SSH server host key verification for MITM protection
+ * Manages SSH server host key verification for MITM protection.
+ *
+ * Trust belongs to a MEMBER, not to an instance (ADR 0021, addendum). Every function here
+ * is scoped to an owner, and the tables are keyed `UNIQUE(user_id, host, port)`. Before
+ * that, a shared server had one set of known hosts for everyone and `host-key/accept` was
+ * not an admin route — so any member could promote a pending key and every other member
+ * then connected to that host without ever being asked. A member who accepted a
+ * man-in-the-middle key silenced the changed-key refusal for the whole instance.
+ *
+ * The owner is [`LOCAL_OWNER`] for a local vault, which has exactly one person, and the
+ * member's id on a shared server. Member ids are uuids, so none can collide with it.
  */
 use anyhow::Result;
 use russh::keys::{HashAlg, PublicKey};
@@ -9,6 +19,15 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+/// The owner a local vault records its host keys under.
+///
+/// A local vault is one person (ADR 0018), so it needs no account to name them — but the
+/// column cannot be empty, because SQLite treats NULLs as distinct inside a UNIQUE index
+/// and an absent owner would let the same host be recorded twice over. This literal is
+/// also the migration's default, which is what keeps a desktop's existing hosts trusted
+/// across the upgrade.
+pub const LOCAL_OWNER: &str = "local";
 
 /// Result of host key verification
 #[derive(Debug, Clone, Serialize)]
@@ -36,6 +55,24 @@ pub enum HostKeyVerificationResult {
     },
 }
 
+/// One trusted host, as a listing shows it.
+///
+/// The raw key bytes are deliberately absent: what a person verifies out-of-band is the
+/// fingerprint, and nothing in a UI has any use for the key itself.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct KnownHost {
+    pub id: String,
+    pub host: String,
+    pub port: u16,
+    pub key_type: String,
+    pub fingerprint: String,
+    /// Unix seconds, when this key was first trusted.
+    pub added_at: i64,
+    /// Unix seconds, when a connection last matched it.
+    pub last_seen_at: i64,
+}
+
 /// Get current Unix timestamp in seconds
 fn current_timestamp() -> i64 {
     SystemTime::now()
@@ -54,9 +91,13 @@ fn get_key_type(public_key: &PublicKey) -> String {
     public_key.algorithm().to_string()
 }
 
-/// Verify a server's host key
+/// Verify a server's host key, as `owner` knows it.
+///
+/// A host trusted by someone else is `Unknown` here, which is the whole point: a
+/// fingerprint read out-of-band by one person is not evidence for anyone else.
 pub async fn verify_host_key(
     db: &SqlitePool,
+    owner: &str,
     host: &str,
     port: u16,
     server_public_key: &PublicKey,
@@ -66,10 +107,12 @@ pub async fn verify_host_key(
     let fingerprint = calculate_fingerprint(server_public_key);
     let key_type = get_key_type(server_public_key);
 
-    // Check if host is already known
+    // Check if this owner already knows the host
     let existing = sqlx::query_as::<_, (String, String, Vec<u8>)>(
-        "SELECT id, fingerprint, public_key_data FROM known_hosts WHERE host = ? AND port = ?",
+        "SELECT id, fingerprint, public_key_data FROM known_hosts
+         WHERE user_id = ? AND host = ? AND port = ?",
     )
+    .bind(owner)
     .bind(host)
     .bind(port as i64)
     .fetch_optional(db)
@@ -98,7 +141,7 @@ pub async fn verify_host_key(
             }
         }
         None => {
-            // Host is unknown (first connection)
+            // Host is unknown to this owner (first connection)
             tracing::info!("[known_hosts] Unknown host {}:{}", host, port);
             Ok(HostKeyVerificationResult::Unknown {
                 host: host.to_string(),
@@ -110,9 +153,10 @@ pub async fn verify_host_key(
     }
 }
 
-/// Add or update a host key (after user confirmation)
+/// Add or update a host key for `owner` (after that owner confirmed it).
 pub async fn add_host_key(
     db: &SqlitePool,
+    owner: &str,
     host: &str,
     port: u16,
     server_public_key: &PublicKey,
@@ -128,8 +172,10 @@ pub async fn add_host_key(
     let public_key_data = server_public_key.to_bytes()?;
     let now = current_timestamp();
 
-    // Delete existing entry if any (REPLACE doesn't work with UNIQUE constraint)
-    sqlx::query("DELETE FROM known_hosts WHERE host = ? AND port = ?")
+    // Delete this owner's existing entry if any (REPLACE doesn't work with UNIQUE
+    // constraint), and only this owner's — another member's row is not ours to touch.
+    sqlx::query("DELETE FROM known_hosts WHERE user_id = ? AND host = ? AND port = ?")
+        .bind(owner)
         .bind(host)
         .bind(port as i64)
         .execute(db)
@@ -137,10 +183,11 @@ pub async fn add_host_key(
 
     // Insert new entry
     sqlx::query(
-        "INSERT INTO known_hosts (id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO known_hosts (id, user_id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(Uuid::new_v4().to_string())
+    .bind(owner)
     .bind(host)
     .bind(port as i64)
     .bind(key_type)
@@ -155,10 +202,11 @@ pub async fn add_host_key(
     Ok(())
 }
 
-/// Store a host key offered by an unknown host, pending user confirmation
-/// (strict mode). Overwrites any previous pending key for the same host:port.
+/// Store a host key offered by an unknown host, pending `owner`'s confirmation
+/// (strict mode). Overwrites any previous pending key of theirs for the same host:port.
 pub async fn store_pending_host_key(
     db: &SqlitePool,
+    owner: &str,
     host: &str,
     port: u16,
     server_public_key: &PublicKey,
@@ -168,16 +216,18 @@ pub async fn store_pending_host_key(
     let public_key_data = server_public_key.to_bytes()?;
     let now = current_timestamp();
 
-    sqlx::query("DELETE FROM pending_host_keys WHERE host = ? AND port = ?")
+    sqlx::query("DELETE FROM pending_host_keys WHERE user_id = ? AND host = ? AND port = ?")
+        .bind(owner)
         .bind(host)
         .bind(port as i64)
         .execute(db)
         .await?;
 
     sqlx::query(
-        "INSERT INTO pending_host_keys (host, port, key_type, fingerprint, public_key_data, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO pending_host_keys (user_id, host, port, key_type, fingerprint, public_key_data, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
+    .bind(owner)
     .bind(host)
     .bind(port as i64)
     .bind(key_type)
@@ -195,12 +245,19 @@ pub async fn store_pending_host_key(
     Ok(())
 }
 
-/// Promote a pending host key to a trusted known host (user accepted it).
-/// Returns `true` if a pending key existed for this host:port.
-pub async fn accept_pending_host_key(db: &SqlitePool, host: &str, port: u16) -> Result<bool> {
+/// Promote `owner`'s pending host key to a trusted known host (they accepted it).
+/// Returns `true` if a pending key of theirs existed for this host:port.
+pub async fn accept_pending_host_key(
+    db: &SqlitePool,
+    owner: &str,
+    host: &str,
+    port: u16,
+) -> Result<bool> {
     let pending = sqlx::query_as::<_, (String, String, Vec<u8>)>(
-        "SELECT key_type, fingerprint, public_key_data FROM pending_host_keys WHERE host = ? AND port = ?",
+        "SELECT key_type, fingerprint, public_key_data FROM pending_host_keys
+         WHERE user_id = ? AND host = ? AND port = ?",
     )
+    .bind(owner)
     .bind(host)
     .bind(port as i64)
     .fetch_optional(db)
@@ -211,17 +268,19 @@ pub async fn accept_pending_host_key(db: &SqlitePool, host: &str, port: u16) -> 
     };
     let now = current_timestamp();
 
-    sqlx::query("DELETE FROM known_hosts WHERE host = ? AND port = ?")
+    sqlx::query("DELETE FROM known_hosts WHERE user_id = ? AND host = ? AND port = ?")
+        .bind(owner)
         .bind(host)
         .bind(port as i64)
         .execute(db)
         .await?;
 
     sqlx::query(
-        "INSERT INTO known_hosts (id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO known_hosts (id, user_id, host, port, key_type, fingerprint, public_key_data, added_at, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(Uuid::new_v4().to_string())
+    .bind(owner)
     .bind(host)
     .bind(port as i64)
     .bind(key_type)
@@ -232,7 +291,8 @@ pub async fn accept_pending_host_key(db: &SqlitePool, host: &str, port: u16) -> 
     .execute(db)
     .await?;
 
-    sqlx::query("DELETE FROM pending_host_keys WHERE host = ? AND port = ?")
+    sqlx::query("DELETE FROM pending_host_keys WHERE user_id = ? AND host = ? AND port = ?")
+        .bind(owner)
         .bind(host)
         .bind(port as i64)
         .execute(db)
@@ -242,9 +302,15 @@ pub async fn accept_pending_host_key(db: &SqlitePool, host: &str, port: u16) -> 
     Ok(true)
 }
 
-/// Drop a pending host key (user rejected it).
-pub async fn reject_pending_host_key(db: &SqlitePool, host: &str, port: u16) -> Result<()> {
-    sqlx::query("DELETE FROM pending_host_keys WHERE host = ? AND port = ?")
+/// Drop `owner`'s pending host key (they rejected it).
+pub async fn reject_pending_host_key(
+    db: &SqlitePool,
+    owner: &str,
+    host: &str,
+    port: u16,
+) -> Result<()> {
+    sqlx::query("DELETE FROM pending_host_keys WHERE user_id = ? AND host = ? AND port = ?")
+        .bind(owner)
         .bind(host)
         .bind(port as i64)
         .execute(db)
@@ -257,6 +323,64 @@ pub async fn reject_pending_host_key(db: &SqlitePool, host: &str, port: u16) -> 
     Ok(())
 }
 
+/// Every host `owner` trusts, most recently used first.
+///
+/// Nothing listed what was trusted before this, which is what made a legitimately rotated
+/// host key a dead end: the changed-key refusal offers no accept (ADR 0021 §3), and the
+/// only way through was Quick SSH, which force-accepts before verification runs (§5).
+/// Forgetting the old key turns a rotation back into a first contact.
+pub async fn list_host_keys(db: &SqlitePool, owner: &str) -> Result<Vec<KnownHost>> {
+    let rows = sqlx::query_as::<_, (String, String, i64, String, String, i64, i64)>(
+        "SELECT id, host, port, key_type, fingerprint, added_at, last_seen_at
+         FROM known_hosts WHERE user_id = ?
+         ORDER BY last_seen_at DESC, host ASC",
+    )
+    .bind(owner)
+    .fetch_all(db)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(
+            |(id, host, port, key_type, fingerprint, added_at, last_seen_at)| KnownHost {
+                id,
+                host,
+                port: port as u16,
+                key_type,
+                fingerprint,
+                added_at,
+                last_seen_at,
+            },
+        )
+        .collect())
+}
+
+/// Forget one of `owner`'s trusted hosts. Returns `true` if they had one to forget.
+///
+/// Scoped to the owner, so forgetting is as private as trusting: a member cannot make
+/// another member's host unknown.
+pub async fn forget_host_key(db: &SqlitePool, owner: &str, host: &str, port: u16) -> Result<bool> {
+    let done = sqlx::query("DELETE FROM known_hosts WHERE user_id = ? AND host = ? AND port = ?")
+        .bind(owner)
+        .bind(host)
+        .bind(port as i64)
+        .execute(db)
+        .await?;
+    // A pending key for the same host is dropped with it: leaving one behind would make
+    // the next connection answer with a key the person just decided to stop trusting.
+    sqlx::query("DELETE FROM pending_host_keys WHERE user_id = ? AND host = ? AND port = ?")
+        .bind(owner)
+        .bind(host)
+        .bind(port as i64)
+        .execute(db)
+        .await?;
+    let forgotten = done.rows_affected() > 0;
+    if forgotten {
+        tracing::info!("[known_hosts] Forgot host key for {}:{}", host, port);
+    }
+    Ok(forgotten)
+}
+
 /// Update last_seen_at timestamp for a known host
 async fn update_last_seen(db: &SqlitePool, id: &str) -> Result<()> {
     let now = current_timestamp();
@@ -266,4 +390,351 @@ async fn update_last_seen(db: &SqlitePool, id: &str) -> Result<()> {
         .execute(db)
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::Database;
+    use tempfile::TempDir;
+
+    /// Two members of one instance, and the literal a local vault uses.
+    const ALICE: &str = "11111111-1111-4111-8111-111111111111";
+    const BOB: &str = "22222222-2222-4222-8222-222222222222";
+
+    async fn db() -> (Database, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let db = Database::new(&dir.path().join("test.db")).await.unwrap();
+        (db, dir)
+    }
+
+    fn a_key() -> PublicKey {
+        russh::keys::PrivateKey::random(&mut rand::rng(), russh::keys::Algorithm::Ed25519)
+            .unwrap()
+            .public_key()
+            .clone()
+    }
+
+    #[tokio::test]
+    async fn a_member_id_can_never_be_the_local_owner() {
+        // The whole separation rests on this: a shared server passes member ids and a
+        // local vault passes the literal, into the same column. Member ids are uuids, so
+        // the two namespaces cannot meet — and if that ever changed, one member would
+        // inherit every local row.
+        assert_eq!(LOCAL_OWNER, "local");
+        assert!(uuid::Uuid::parse_str(LOCAL_OWNER).is_err());
+        for id in [ALICE, BOB] {
+            assert!(uuid::Uuid::parse_str(id).is_ok(), "{id} is not a uuid");
+            assert_ne!(id, LOCAL_OWNER);
+        }
+    }
+
+    #[tokio::test]
+    async fn one_member_trusting_a_host_does_not_trust_it_for_another() {
+        let (db, _dir) = db().await;
+        let key = a_key();
+
+        add_host_key(db.pool(), ALICE, "web-01", 22, &key)
+            .await
+            .unwrap();
+
+        // The defect this whole change exists for: before the owner column, Bob's first
+        // connection to web-01 was Accepted on the strength of Alice's decision alone,
+        // and he was never asked.
+        assert!(matches!(
+            verify_host_key(db.pool(), ALICE, "web-01", 22, &key)
+                .await
+                .unwrap(),
+            HostKeyVerificationResult::Accepted
+        ));
+        assert!(matches!(
+            verify_host_key(db.pool(), BOB, "web-01", 22, &key)
+                .await
+                .unwrap(),
+            HostKeyVerificationResult::Unknown { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn accepting_a_pending_key_promotes_only_the_accepter() {
+        let (db, _dir) = db().await;
+        let key = a_key();
+
+        // Both meet the unknown host and both have it held as pending.
+        store_pending_host_key(db.pool(), ALICE, "web-01", 22, &key)
+            .await
+            .unwrap();
+        store_pending_host_key(db.pool(), BOB, "web-01", 22, &key)
+            .await
+            .unwrap();
+
+        assert!(
+            accept_pending_host_key(db.pool(), ALICE, "web-01", 22)
+                .await
+                .unwrap()
+        );
+
+        assert!(matches!(
+            verify_host_key(db.pool(), ALICE, "web-01", 22, &key)
+                .await
+                .unwrap(),
+            HostKeyVerificationResult::Accepted
+        ));
+        // Bob's pending key is still pending: `host-key/accept` is not an admin route, so
+        // before this one member's click answered for everyone.
+        assert!(matches!(
+            verify_host_key(db.pool(), BOB, "web-01", 22, &key)
+                .await
+                .unwrap(),
+            HostKeyVerificationResult::Unknown { .. }
+        ));
+        assert!(
+            accept_pending_host_key(db.pool(), BOB, "web-01", 22)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn rejecting_drops_only_your_own_pending_key() {
+        let (db, _dir) = db().await;
+        let key = a_key();
+        store_pending_host_key(db.pool(), ALICE, "web-01", 22, &key)
+            .await
+            .unwrap();
+        store_pending_host_key(db.pool(), BOB, "web-01", 22, &key)
+            .await
+            .unwrap();
+
+        reject_pending_host_key(db.pool(), ALICE, "web-01", 22)
+            .await
+            .unwrap();
+
+        // Alice has nothing left to accept; Bob still does.
+        assert!(
+            !accept_pending_host_key(db.pool(), ALICE, "web-01", 22)
+                .await
+                .unwrap()
+        );
+        assert!(
+            accept_pending_host_key(db.pool(), BOB, "web-01", 22)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_listing_shows_your_hosts_and_nobody_elses() {
+        let (db, _dir) = db().await;
+        add_host_key(db.pool(), ALICE, "web-01", 22, &a_key())
+            .await
+            .unwrap();
+        add_host_key(db.pool(), ALICE, "db-01", 2222, &a_key())
+            .await
+            .unwrap();
+        add_host_key(db.pool(), BOB, "secret-01", 22, &a_key())
+            .await
+            .unwrap();
+
+        let mine = list_host_keys(db.pool(), ALICE).await.unwrap();
+        let mut names: Vec<_> = mine.iter().map(|h| h.host.as_str()).collect();
+        names.sort();
+        assert_eq!(names, ["db-01", "web-01"]);
+        // The port is carried, not assumed: a host on 2222 is a different host.
+        assert_eq!(
+            mine.iter().find(|h| h.host == "db-01").map(|h| h.port),
+            Some(2222)
+        );
+        // And a listing never leaks another member's hosts, which is a privacy matter as
+        // much as a trust one: it says where somebody connects.
+        assert!(!names.contains(&"secret-01"));
+        assert_eq!(
+            list_host_keys(db.pool(), LOCAL_OWNER).await.unwrap().len(),
+            0
+        );
+    }
+
+    #[tokio::test]
+    async fn a_listing_carries_the_fingerprint_a_person_verifies() {
+        let (db, _dir) = db().await;
+        let key = a_key();
+        add_host_key(db.pool(), ALICE, "web-01", 22, &key)
+            .await
+            .unwrap();
+
+        let listed = list_host_keys(db.pool(), ALICE).await.unwrap();
+        assert_eq!(listed.len(), 1);
+        // Pinned to the key's own fingerprint rather than to "not empty": a listing that
+        // showed the wrong one would be worse than showing none, because out-of-band
+        // verification is the only thing a fingerprint is for.
+        assert_eq!(listed[0].fingerprint, calculate_fingerprint(&key));
+        assert_eq!(listed[0].key_type, get_key_type(&key));
+        assert!(listed[0].added_at > 0 && listed[0].last_seen_at > 0);
+    }
+
+    #[tokio::test]
+    async fn forgetting_a_host_makes_it_unknown_again_to_you_alone() {
+        let (db, _dir) = db().await;
+        let key = a_key();
+        add_host_key(db.pool(), ALICE, "web-01", 22, &key)
+            .await
+            .unwrap();
+        add_host_key(db.pool(), BOB, "web-01", 22, &key)
+            .await
+            .unwrap();
+
+        assert!(
+            forget_host_key(db.pool(), ALICE, "web-01", 22)
+                .await
+                .unwrap()
+        );
+
+        // What this buys: a rotated host key had no clean path, because a changed key is
+        // refused in every mode (ADR 0021 §3). Forgetting turns it back into a first
+        // contact — for the person who forgot, and nobody else.
+        assert!(matches!(
+            verify_host_key(db.pool(), ALICE, "web-01", 22, &key)
+                .await
+                .unwrap(),
+            HostKeyVerificationResult::Unknown { .. }
+        ));
+        assert!(matches!(
+            verify_host_key(db.pool(), BOB, "web-01", 22, &key)
+                .await
+                .unwrap(),
+            HostKeyVerificationResult::Accepted
+        ));
+    }
+
+    #[tokio::test]
+    async fn forgetting_a_host_you_never_trusted_says_so() {
+        let (db, _dir) = db().await;
+        add_host_key(db.pool(), BOB, "web-01", 22, &a_key())
+            .await
+            .unwrap();
+        // Not an error, but not a deletion either — which is what lets a UI tell "gone"
+        // from "was never yours".
+        assert!(
+            !forget_host_key(db.pool(), ALICE, "web-01", 22)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn forgetting_also_drops_the_pending_key_for_that_host() {
+        let (db, _dir) = db().await;
+        let old = a_key();
+        let rotated = a_key();
+        add_host_key(db.pool(), ALICE, "web-01", 22, &old)
+            .await
+            .unwrap();
+        store_pending_host_key(db.pool(), ALICE, "web-01", 22, &rotated)
+            .await
+            .unwrap();
+
+        assert!(
+            forget_host_key(db.pool(), ALICE, "web-01", 22)
+                .await
+                .unwrap()
+        );
+        // Leaving the pending row behind would let the next accept restore a key the
+        // person had just decided to stop trusting.
+        assert!(
+            !accept_pending_host_key(db.pool(), ALICE, "web-01", 22)
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_changed_key_is_still_changed_for_the_owner_who_trusted_it() {
+        let (db, _dir) = db().await;
+        let first = a_key();
+        let rotated = a_key();
+        add_host_key(db.pool(), ALICE, "web-01", 22, &first)
+            .await
+            .unwrap();
+
+        // ADR 0021 §3 survives the scoping: for Alice this is a changed key, and the
+        // fingerprints it reports are the two real ones.
+        match verify_host_key(db.pool(), ALICE, "web-01", 22, &rotated)
+            .await
+            .unwrap()
+        {
+            HostKeyVerificationResult::Changed {
+                old_fingerprint,
+                new_fingerprint,
+                ..
+            } => {
+                assert_eq!(old_fingerprint, calculate_fingerprint(&first));
+                assert_eq!(new_fingerprint, calculate_fingerprint(&rotated));
+            }
+            other => panic!("expected Changed, got {other:?}"),
+        }
+        // To Bob, who trusted nothing, the same host is simply unknown.
+        assert!(matches!(
+            verify_host_key(db.pool(), BOB, "web-01", 22, &rotated)
+                .await
+                .unwrap(),
+            HostKeyVerificationResult::Unknown { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn two_members_can_trust_the_same_host_at_once() {
+        let (db, _dir) = db().await;
+        let key = a_key();
+        // The unique index moved from (host, port) to (user_id, host, port). Without that
+        // the second insert would collide and one member would lose their row.
+        add_host_key(db.pool(), ALICE, "web-01", 22, &key)
+            .await
+            .unwrap();
+        add_host_key(db.pool(), BOB, "web-01", 22, &key)
+            .await
+            .unwrap();
+        add_host_key(db.pool(), LOCAL_OWNER, "web-01", 22, &key)
+            .await
+            .unwrap();
+
+        for owner in [ALICE, BOB, LOCAL_OWNER] {
+            assert!(
+                matches!(
+                    verify_host_key(db.pool(), owner, "web-01", 22, &key)
+                        .await
+                        .unwrap(),
+                    HostKeyVerificationResult::Accepted
+                ),
+                "{owner} lost their row"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn re_adding_a_host_replaces_only_your_own_row() {
+        let (db, _dir) = db().await;
+        let first = a_key();
+        let second = a_key();
+        add_host_key(db.pool(), ALICE, "web-01", 22, &first)
+            .await
+            .unwrap();
+        add_host_key(db.pool(), BOB, "web-01", 22, &first)
+            .await
+            .unwrap();
+
+        add_host_key(db.pool(), ALICE, "web-01", 22, &second)
+            .await
+            .unwrap();
+
+        assert_eq!(list_host_keys(db.pool(), ALICE).await.unwrap().len(), 1);
+        assert_eq!(
+            list_host_keys(db.pool(), ALICE).await.unwrap()[0].fingerprint,
+            calculate_fingerprint(&second)
+        );
+        // Bob's row still holds the key he accepted, not the one Alice replaced it with.
+        assert_eq!(
+            list_host_keys(db.pool(), BOB).await.unwrap()[0].fingerprint,
+            calculate_fingerprint(&first)
+        );
+    }
 }

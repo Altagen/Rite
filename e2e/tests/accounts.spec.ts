@@ -1641,3 +1641,122 @@ test('a server asking for a weak key derivation gets nothing', async ({ page }) 
 
   await page.unroute('**/api/server/**');
 });
+
+/**
+ * Host-key trust belongs to a member, not to an instance (ADR 0021, addendum).
+ *
+ * THE DEFECT THIS PINS. `known_hosts` was keyed `UNIQUE(host, port)` with no owner, and
+ * `POST /api/ssh/host-key/accept` is not an admin route — so any member could promote a
+ * pending key and every other member then connected to that host without ever being asked.
+ * A member who accepted a man-in-the-middle key silenced the changed-key refusal (§3) for
+ * the whole instance, on every host they touched.
+ *
+ * Driven over the API with two real sessions, because that is the only way to see one
+ * member's trust from another member's seat. Quick SSH is used to record a key: it
+ * force-accepts by design (§5), so a host key lands without needing the strict-mode
+ * dialog, which is a different test.
+ */
+test('host-key trust is per member: listing, and forgetting, are private', async ({ request }) => {
+  const admin = await login(request, 'admin', ADMIN.password);
+  // CAROL_NEW, not CAROL_TEMP: her first sign-in forces a self-chosen password, and this
+  // test runs after it. The older multi-user test above still uses the temporary one
+  // because it runs before.
+  const carol = await login(request, 'carol', CAROL_NEW);
+  const as = (token: string) => ({ authorization: `Bearer ${token}` });
+
+  const listFor = async (token: string) => {
+    const res = await request.get(`${BASE}/api/ssh/host-keys`, { headers: as(token) });
+    expect(res.ok(), `the listing answers (got ${res.status()})`).toBeTruthy();
+    return (await res.json()) as Array<{ host: string; port: number; fingerprint: string }>;
+  };
+  /** The harness row in someone's list, or undefined. */
+  const harness = (hosts: Awaited<ReturnType<typeof listFor>>) =>
+    hosts.find((h) => h.host === SSH.hostname && h.port === SSH.port);
+
+  const forget = (token: string) =>
+    request.delete(`${BASE}/api/ssh/host-keys`, {
+      headers: as(token),
+      data: { host: SSH.hostname, port: SSH.port },
+    });
+
+  // Asserted by PRESENCE, never by count: earlier tests in this file reach the same
+  // harness as both of these people, so either may already trust it — and re-trusting
+  // replaces a row rather than adding one. A count passed or failed on test order.
+  //
+  // And the starting point is ESTABLISHED, not hoped for: carol has very likely trusted
+  // the harness already, through the dashboard probes. So she forgets it first, and that
+  // is asserted — a precondition nobody checks is how a test comes to prove nothing.
+  await forget(carol);
+  expect(
+    harness(await listFor(carol)),
+    'carol starts this test trusting no harness',
+  ).toBeUndefined();
+
+  // This instance refuses ad-hoc Quick SSH, which is the cheapest way to make a host key
+  // exist. Turned on for the length of this test and turned back off at the end, with the
+  // restore asserted: a test that leaves an instance switch flipped has changed the
+  // subject for every test after it.
+  const quickSsh = async (enabled: boolean) => {
+    const res = await request.patch(`${BASE}/api/admin/quick-ssh`, {
+      headers: as(admin),
+      data: { enabled },
+    });
+    expect(res.ok(), `quick-ssh set to ${enabled}`).toBeTruthy();
+  };
+  const connect = async (token: string) =>
+    request.post(`${BASE}/api/terminal/quick-ssh`, {
+      headers: as(token),
+      data: {
+        host: SSH.hostname,
+        port: SSH.port,
+        username: SSH.username,
+        authMethod: { type: 'password', password: SSH.password },
+      },
+    });
+
+  await quickSsh(true);
+
+  // Admin reaches the harness. Quick SSH records the host key under WHOEVER asked.
+  const connected = await connect(admin);
+  expect(
+    connected.ok(),
+    `admin connects to the harness (got ${connected.status()}: ${await connected.text()})`,
+  ).toBeTruthy();
+
+  const mine = harness(await listFor(admin));
+  expect(mine, 'admin trusts the harness').toBeTruthy();
+  // The fingerprint is the row's reason to exist: it is what a person checks out-of-band.
+  expect(mine!.fingerprint, 'and the row carries a fingerprint').toMatch(/^SHA256:/);
+
+  // Carol saw none of it. This single assertion is the whole point of the change: before
+  // it, admin's connection answered for her too and she was never asked.
+  expect(
+    harness(await listFor(carol)),
+    'carol does not inherit a host admin trusted',
+  ).toBeUndefined();
+
+  // Carol reaching the same host records her own row rather than colliding with his —
+  // the unique index moved from (host, port) to (user_id, host, port).
+  const carolConnected = await connect(carol);
+  expect(carolConnected.ok(), 'carol connects too').toBeTruthy();
+  expect(harness(await listFor(carol)), 'and now trusts it herself').toBeTruthy();
+  expect(harness(await listFor(admin)), 'while admin keeps his own row').toBeTruthy();
+
+  // Forgetting is as private as trusting. Carol's delete must not reach admin's row.
+  expect((await forget(carol)).status(), 'carol forgets her own').toBe(204);
+  expect(harness(await listFor(carol)), "carol's row is gone").toBeUndefined();
+  expect(
+    harness(await listFor(admin)),
+    'admin still trusts the host carol forgot',
+  ).toBeTruthy();
+
+  // And forgetting what was never yours is not a deletion — which is what lets a UI tell
+  // "gone" from "was never yours" instead of reporting a success that did nothing.
+  expect((await forget(carol)).status(), 'nothing of hers left to forget').toBe(404);
+
+  // Admin's row is left standing: it was there before this test in all likelihood, and
+  // deleting it would disturb the instance more than borrowing the switch did. The switch
+  // itself goes back off, and the refusal is asserted rather than assumed.
+  await quickSsh(false);
+  expect((await connect(admin)).status(), 'the instance refuses Quick SSH again').toBe(403);
+});

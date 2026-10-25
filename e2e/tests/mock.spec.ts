@@ -1151,3 +1151,52 @@ for (const shell of ['web', 'desktop'] as const) {
     expect(hit).toBe('what is underneath');
   });
 }
+
+/**
+ * Trusted hosts, and the way back from a rotated key.
+ *
+ * The list is the mock's answer to a gap `docs/ROADMAP.md` carried since 0.2.4: nothing
+ * showed what was trusted and nothing forgot a key, so a server legitimately reinstalled
+ * had no path through. A changed host key is refused in every mode and the dialog that
+ * reports it deliberately offers no accept (ADR 0021 §3); the only way round was Quick
+ * SSH, which force-accepts BEFORE verification runs (§5) and overwrites the stored key
+ * without showing that it changed.
+ *
+ * Whose list it is matters as much as what is in it. Trust is per member (ADR 0021,
+ * addendum), and a list that read as instance-wide would teach exactly the wrong model —
+ * so the wording is asserted here, not just the rows.
+ */
+test('desktop mock: Settings lists the hosts this member trusts, and offers to forget one', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.evaluate(() => openSettings('ssh'));
+  const rows = page.locator('.prefs-pane .kh-row');
+  await expect(rows).toHaveCount(3);
+
+  // A host on a non-default port is a different host, so the port shows; on 22 it does
+  // not, because every row carrying ":22" is noise on every row.
+  await expect(rows.nth(0)).toContainText('web-01.example');
+  await expect(rows.nth(0)).not.toContainText(':22');
+  await expect(rows.nth(1)).toContainText('db-01.example:2222');
+
+  // The fingerprint is the point of the row: it is what a person checks out-of-band,
+  // against something held somewhere else. A row without one would be decoration.
+  await expect(rows.nth(0)).toContainText('SHA256:');
+  await expect(rows.nth(0)).toContainText('ssh-ed25519');
+
+  // Whose list it is, in the text and not only in the code — and said impersonally, which
+  // `e2e/mock-register-check.mjs` holds every mock screen to.
+  const pane = page.locator('.prefs-pane');
+  await expect(pane).toContainText('Per member');
+  await expect(pane).toContainText(/reinstalled/i);
+
+  // And the action that makes the list worth having, next to the host it acts on.
+  await expect(rows.nth(0).locator('button', { hasText: 'Forget' })).toBeVisible();
+  await rows.nth(0).locator('button', { hasText: 'Forget' }).click();
+  await expect(page.locator('.toast')).toContainText(/asks again/i);
+
+  expect(errs, 'no console errors').toEqual([]);
+});

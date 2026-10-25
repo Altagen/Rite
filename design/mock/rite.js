@@ -1065,3 +1065,44 @@ function termHTML(host, opts){
     document.body.classList.remove('near-left');
   });
 })();
+
+/**
+ * The hosts this member trusts, and the only clean way back from a rotated key.
+ *
+ * Trust is per MEMBER, not per instance (ADR 0021, addendum): before that, one person
+ * accepting a key answered for everyone on a shared server, and nobody was asked twice.
+ * The text says so, because a list that looked instance-wide would invite exactly the
+ * wrong mental model — stated impersonally, like every other label here.
+ *
+ * Forgetting matters more than listing. A changed host key is refused in every mode, and
+ * the dialog that reports it deliberately offers no accept — so a server legitimately
+ * reinstalled had no path through except Quick SSH, which force-accepts before verifying.
+ * Forgetting the old key turns the rotation back into a first contact.
+ */
+const MOCK_KNOWN_HOSTS = [
+  { host: 'web-01.example', port: 22, type: 'ssh-ed25519', fp: 'SHA256:9kx1…7Qa', seen: 'today' },
+  { host: 'db-01.example', port: 2222, type: 'ssh-rsa', fp: 'SHA256:Lm4p…2Vd', seen: '3 days ago' },
+  { host: '10.0.0.14', port: 22, type: 'ecdsa-sha2-nistp256', fp: 'SHA256:Tt8s…9Hu', seen: 'last month' },
+];
+
+function knownHostsHTML() {
+  const rows = MOCK_KNOWN_HOSTS.map(
+    (h) => `<div class="kh-row" data-kh="${h.host}">
+      <div>
+        <b>${h.host}${h.port === 22 ? '' : ':' + h.port}</b>
+        <div class="muted" style="font-size:12px">${h.type} · ${h.fp} · seen ${h.seen}</div>
+      </div>
+      <button class="btn" data-kh-forget="${h.host}"
+        onclick="toast('Forgotten — the next connection asks again')">Forget</button>
+    </div>`,
+  ).join('');
+  return `<div class="settings-row" style="display:block">
+      <b>Trusted hosts</b>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">
+        Per member. Another member of this instance keeps a separate list. Forgetting a
+        host asks again on the next connection — the way back when a server was
+        legitimately reinstalled.
+      </div>
+      <div class="kh-list">${rows}</div>
+    </div>`;
+}
