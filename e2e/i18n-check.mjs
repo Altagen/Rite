@@ -256,6 +256,7 @@ const ALLOWED = new Map([
   ['shortcuts/commands.ts: [ternary-else] Mod+Shift+D', 'a default chord'],
   ['shortcuts/commands.ts: [ternary-else] Mod+F', 'a default chord'],
   ['shortcuts/commands.ts: [ternary-else] Mod+Shift+L', 'a default chord'],
+  ['shortcuts/commands.ts: [ternary-else] Mod+K', 'a default chord'],
   // A language is named in its own language, or the list is useless to the only person
   // who needs it: someone looking for a language they cannot find under its English name.
   ['components/Settings.tsx: [ternary-else] English', 'a language, named in itself'],

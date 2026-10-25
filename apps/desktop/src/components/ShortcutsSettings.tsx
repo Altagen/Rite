@@ -85,10 +85,13 @@ export function ShortcutsSettings() {
 
       <ul className="flex flex-col gap-1.5">
         {SHORTCUT_COMMANDS.map((command) => {
+          // A command may have no chord at all — some ship without one, because only a
+          // handful of chords can be good and the palette finds the rest. Its row is
+          // still here: this screen is where a chord gets assigned, and skipping the row
+          // was quietly refusing to assign one.
           const binding = bindings[command.id];
-          if (!binding) return null;
-          const text = formatBinding(binding);
-          const clashes = conflicts.includes(text);
+          const text = binding ? formatBinding(binding) : '';
+          const clashes = !!binding && conflicts.includes(text);
           const isRecording = recording === command.id;
           const overridden = command.id in overrides;
 
@@ -128,7 +131,11 @@ export function ShortcutsSettings() {
                 }`}
                 data-testid={`shortcut-binding-${command.id}`}
               >
-                {isRecording ? t('shortcuts.recording') : displayBinding(binding, IS_MAC)}
+                {isRecording
+                  ? t('shortcuts.recording')
+                  : binding
+                    ? displayBinding(binding, IS_MAC)
+                    : t('shortcuts.unassigned')}
               </button>
 
               {overridden && (
@@ -136,9 +143,13 @@ export function ShortcutsSettings() {
                   type="button"
                   onClick={() => reset(command.id)}
                   className="flex-none rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-                  title={t('shortcuts.backTo', {
-                    chord: displayBinding(parseBinding(command.defaultBinding)!, IS_MAC),
-                  })}
+                  title={
+                    command.defaultBinding === undefined
+                      ? t('shortcuts.backToNone')
+                      : t('shortcuts.backTo', {
+                          chord: displayBinding(parseBinding(command.defaultBinding)!, IS_MAC),
+                        })
+                  }
                   data-testid={`shortcut-reset-${command.id}`}
                 >
                   ↺

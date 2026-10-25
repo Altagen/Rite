@@ -562,12 +562,26 @@
           "label": "Verrouiller le coffre",
           "description": "Ferme le coffre et retire sa clé de la mémoire. Les connexions enregistrées cessent d’être lisibles jusqu’au déverrouillage ; les terminaux déjà ouverts continuent."
         }
+      },
+      "palette": {
+        "open": {
+          "label": "Exécuter une commande",
+          "description": "Ouvre la palette par-dessus ce qui est à l'écran."
+        }
+      },
+      "settings": {
+        "open": {
+          "label": "Ouvrir les réglages",
+          "description": "La fenêtre de réglages, à la section affichée en dernier."
+        }
       }
     },
     "fixed": {
       "focusMode": "Mode focus — masque la barre d’outils pour que les terminaux remplissent l’écran. Échap ou F11 pour sortir.",
       "dismiss": "Ferme la barre de recherche, ou une boîte de dialogue ouverte."
-    }
+    },
+    "unassigned": "Non assigné",
+    "backToNone": "Revenir à aucun raccourci"
   },
   "layouts": {
     "title": "Dispositions",
@@ -1539,5 +1553,9 @@
     "open": "Ouvert",
     "server": "Serveur",
     "current": "actuel"
+  },
+  "palette": {
+    "placeholder": "Exécuter une commande",
+    "empty": "Aucune commande ne correspond."
   }
 }

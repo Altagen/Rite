@@ -562,12 +562,26 @@
           "label": "Lock the vault",
           "description": "Closes the vault and drops its key from memory. Saved connections stop being readable until it is unlocked again; terminals already open keep running."
         }
+      },
+      "palette": {
+        "open": {
+          "label": "Run a command",
+          "description": "Opens the palette over whatever is on screen."
+        }
+      },
+      "settings": {
+        "open": {
+          "label": "Open settings",
+          "description": "The settings window, at the section last shown."
+        }
       }
     },
     "fixed": {
       "focusMode": "Focus mode — hide the toolbar so terminals fill the screen. Esc or F11 to leave.",
       "dismiss": "Dismiss the find bar, or an open dialog."
-    }
+    },
+    "unassigned": "Unassigned",
+    "backToNone": "Back to no chord"
   },
   "layouts": {
     "title": "Layouts",
@@ -1539,5 +1553,9 @@
     "open": "Open",
     "server": "Server",
     "current": "current"
+  },
+  "palette": {
+    "placeholder": "Run a command",
+    "empty": "No command matches."
   }
 }

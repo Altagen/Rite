@@ -1106,3 +1106,93 @@ function knownHostsHTML() {
       <div class="kh-list">${rows}</div>
     </div>`;
 }
+
+/**
+ * The command palette: everything runnable, found by typing.
+ *
+ * WHY A PALETTE AND NOT A MENU. The rail already proved the point for Settings — scrolling
+ * stopped working at fourteen sections. Commands have the same shape: a handful are worth a
+ * chord, the rest are worth finding. So the palette lists what can run RIGHT NOW, which is
+ * the part a menu cannot do: a pane command with no pane open is not greyed out, it is
+ * absent, because a disabled row teaches nothing.
+ *
+ * WHY THE CHORD SHOWS. The palette is also where someone learns the chord for the thing
+ * they just ran by typing. It reads from the same table the keyboard does, so a remap moves
+ * it and a changed default cannot leave a stale chord behind in a second list.
+ *
+ * MATCHING, stated so it can be argued with: every word typed has to appear, and the rank
+ * says where the first one landed — label start, then word start, then anywhere, then the
+ * description alone. No fuzzy subsequence matching: it looks clever and it cannot be
+ * explained when two rows tie.
+ */
+const MOCK_COMMANDS = [
+  { id: 'pane.splitHorizontal', label: 'Split pane horizontally', chord: 'Ctrl+Shift+H',
+    desc: 'Side by side, in the focused tab' },
+  { id: 'pane.splitVertical', label: 'Split pane vertically', chord: 'Ctrl+Shift+D',
+    desc: 'One above the other' },
+  { id: 'pane.close', label: 'Close pane', chord: 'Ctrl+W', desc: 'The focused pane only' },
+  { id: 'pane.search', label: 'Search in pane', chord: 'Ctrl+F', desc: 'Find text in the scrollback' },
+  { id: 'vault.lock', label: 'Lock the vault', chord: 'Ctrl+Shift+L',
+    desc: 'Forget the master key until it is typed again' },
+];
+
+function paletteMatches(query) {
+  const tokens = String(query || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return MOCK_COMMANDS.slice();
+  const scored = [];
+  MOCK_COMMANDS.forEach((c, at) => {
+    const label = c.label.toLowerCase();
+    const hay = label + ' ' + (c.desc || '').toLowerCase();
+    if (!tokens.every((t) => hay.includes(t))) return;
+    const first = tokens[0];
+    const rank = label.startsWith(first) ? 0
+      : new RegExp('\\b' + first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(label) ? 1
+      : label.includes(first) ? 2 : 3;
+    scored.push({ c, rank, at });
+  });
+  scored.sort((a, b) => a.rank - b.rank || a.at - b.at);
+  return scored.map((s) => s.c);
+}
+
+function openPalette() {
+  if (document.querySelector('[data-palette]')) return;
+  const bd = document.createElement('div');
+  bd.className = 'backdrop show';
+  bd.setAttribute('data-palette', '');
+  bd.innerHTML = `<div class="modal palette" style="max-width:520px">
+      <input class="inp pal-input" data-pal-input placeholder="Run a command" autofocus>
+      <div class="pal-list" data-pal-list></div>
+    </div>`;
+  document.body.appendChild(bd);
+  const input = bd.querySelector('[data-pal-input]');
+  const list = bd.querySelector('[data-pal-list]');
+  let picked = 0;
+
+  const draw = () => {
+    const hits = paletteMatches(input.value);
+    picked = Math.max(0, Math.min(picked, hits.length - 1));
+    list.innerHTML = hits.length
+      ? hits.map((c, i) => `<div class="pal-row${i === picked ? ' on' : ''}" data-pal-row="${c.id}">
+            <div><b>${esc(c.label)}</b><div class="muted" style="font-size:12px">${esc(c.desc || '')}</div></div>
+            <kbd>${esc(c.chord || '')}</kbd>
+          </div>`).join('')
+      : `<div class="muted" style="padding:10px 12px">No command matches.</div>`;
+    list.querySelectorAll('[data-pal-row]').forEach((row, i) => {
+      row.onclick = () => run(hits[i]);
+    });
+  };
+  const close = () => bd.remove();
+  const run = (c) => { close(); toast('Ran: ' + c.label); };
+
+  input.addEventListener('input', () => { picked = 0; draw(); });
+  input.addEventListener('keydown', (e) => {
+    const hits = paletteMatches(input.value);
+    if (e.key === 'ArrowDown') { e.preventDefault(); picked = Math.min(picked + 1, hits.length - 1); draw(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); picked = Math.max(picked - 1, 0); draw(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (hits[picked]) run(hits[picked]); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+  });
+  bd.addEventListener('click', (e) => { if (e.target === bd) close(); });
+  draw();
+  input.focus();
+}

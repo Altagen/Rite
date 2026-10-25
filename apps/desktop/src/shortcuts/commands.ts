@@ -20,8 +20,15 @@ export interface ShortcutCommand {
    * `e2e/i18n-check.mjs` holds every id below to having both, in both locales.
    */
   id: string;
-  /** `Mod` is Cmd on macOS, Ctrl elsewhere — see binding.ts. */
-  defaultBinding: string;
+  /**
+   * `Mod` is Cmd on macOS, Ctrl elsewhere — see binding.ts.
+   *
+   * Optional, because a command worth running is not always a command worth a chord. An
+   * action with no default is still listed by the palette and still assignable a chord in
+   * Settings; it simply ships without one. Only a handful of chords can be good, and a
+   * table that required one would either invent bad ones or hide the actions.
+   */
+  defaultBinding?: string;
 }
 
 /**
@@ -48,7 +55,19 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
   // better than a click plus an aim. Mod+Shift+L is free in gnome-terminal, konsole and
   // xfce4-terminal, and is not one of the two RESERVED_BINDINGS below.
   { id: 'vault.lock', defaultBinding: 'Mod+Shift+L' },
+  // The palette's own chord. `Mod+K` is what every editor uses for this, it is free in
+  // gnome-terminal, konsole and xfce4-terminal, and it is not one of RESERVED_BINDINGS.
+  // Taken on the window in the capture phase like the rest, because it has to open from
+  // inside a terminal — which claims most of the keyboard.
+  { id: 'palette.open', defaultBinding: 'Mod+K' },
+  // Ships WITHOUT a chord, which is the point of the palette: this is worth finding and
+  // not worth one of the few good chords. A person who disagrees can assign one in
+  // Settings, where it appears beside the rest.
+  { id: 'settings.open' },
 ];
+
+/** Every command id, whether or not it ships with a chord. */
+export const COMMAND_IDS: string[] = SHORTCUT_COMMANDS.map((c) => c.id);
 
 /**
  * Chords the app must not take, whatever the user asks.

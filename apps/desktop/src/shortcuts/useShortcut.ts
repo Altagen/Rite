@@ -10,13 +10,28 @@
 import { useEffect } from 'react';
 import { matchesBinding, displayBinding } from './binding';
 import { useShortcuts, IS_MAC } from './store';
+import { useCommandRegistry } from './registry';
 
 export function useShortcut(
   commandId: string,
-  handler: (event: KeyboardEvent) => void,
+  /** The event is optional because a palette or a button runs this with none. */
+  handler: (event?: KeyboardEvent) => void,
   enabled = true,
 ) {
   const binding = useShortcuts((s) => s.bindings[commandId]);
+
+  // The same declaration also says "this command can run now, and here is how" — so a
+  // palette, a menu or a button can reach it without a second dispatch table. Registered
+  // on `enabled` alone and NOT on `binding`, because a command worth running is not
+  // always a command worth a chord: a palette-only action has no default binding and
+  // must still be runnable. See `registry.ts`.
+  const register = useCommandRegistry((s) => s.register);
+  const unregister = useCommandRegistry((s) => s.unregister);
+  useEffect(() => {
+    if (!enabled) return;
+    register(commandId, handler);
+    return () => unregister(commandId);
+  }, [commandId, handler, enabled, register, unregister]);
 
   useEffect(() => {
     if (!enabled || !binding) return;

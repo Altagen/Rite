@@ -1200,3 +1200,70 @@ test('desktop mock: Settings lists the hosts this member trusts, and offers to f
 
   expect(errs, 'no console errors').toEqual([]);
 });
+
+/**
+ * The command palette: everything runnable, found by typing.
+ *
+ * The rail already proved the point for Settings — scrolling stopped working at fourteen
+ * sections. Commands have the same shape: a handful earn a chord, the rest earn being
+ * findable. What a menu cannot do, and this can, is list what runs RIGHT NOW.
+ *
+ * The matching rules are asserted rather than eyeballed, because ranking IS the behaviour
+ * of a palette: every word typed has to appear, and the rank says where the first one
+ * landed — label start, then word start, then anywhere, then the description alone.
+ */
+test('desktop mock: the palette opens on its chord, filters, and runs what is picked', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  // The chord has to work wherever the focus is, so it is taken on the document.
+  await page.keyboard.press('Control+k');
+  const palette = page.locator('[data-palette]');
+  await expect(palette).toBeVisible();
+  // Opens showing everything: a palette that opens empty is a menu, and a menu has an
+  // order. The first row is pre-selected, because the chord exists to run something.
+  const rows = palette.locator('.pal-row');
+  await expect(rows).toHaveCount(5);
+  await expect(rows.first()).toHaveClass(/on/);
+
+  // The chord shows beside the command: the palette is where someone learns the key for
+  // the thing they just ran by typing.
+  await expect(rows.first().locator('kbd')).toHaveText('Ctrl+Shift+H');
+
+  // Every word has to appear — two words narrow, they do not widen.
+  await palette.locator('[data-pal-input]').fill('split');
+  await expect(rows).toHaveCount(2);
+  await palette.locator('[data-pal-input]').fill('split vertical');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Split pane vertically');
+
+  // A word that only the description carries still finds the command, and ranks last.
+  await palette.locator('[data-pal-input]').fill('scrollback');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Search in pane');
+
+  // Nothing matching says so, rather than showing an empty box.
+  await palette.locator('[data-pal-input]').fill('zzzz');
+  await expect(rows).toHaveCount(0);
+  await expect(palette).toContainText('No command matches');
+
+  // The arrows move the selection, and Enter runs what is selected.
+  await palette.locator('[data-pal-input]').fill('pane');
+  await expect(rows).toHaveCount(4);
+  await page.keyboard.press('ArrowDown');
+  await expect(rows.nth(1)).toHaveClass(/on/);
+  const picked = await rows.nth(1).locator('b').innerText();
+  await page.keyboard.press('Enter');
+  await expect(palette).toHaveCount(0);
+  await expect(page.locator('.toast')).toContainText(picked);
+
+  // Escape closes it without running anything.
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('[data-palette]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-palette]')).toHaveCount(0);
+
+  expect(errs, 'no console errors').toEqual([]);
+});
