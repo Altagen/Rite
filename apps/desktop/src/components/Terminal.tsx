@@ -15,6 +15,7 @@ import { terminalPool } from '../utils/terminalPool';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 import { attachImeGuard } from '../utils/imeGuard';
+import { attachTerminalClipboard } from '../utils/terminalClipboard';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { useTranslation } from '../i18n/i18n';
 import { useShortcut, useBindingText } from '../shortcuts/useShortcut';
@@ -93,6 +94,7 @@ export function Terminal({
   const searchAddonRef = useRef<SearchAddon | null>(null);
   /** Detaches the accented-input guard; replaced on every (re)attach, called on unmount. */
   const imeGuardRef = useRef<(() => void) | null>(null);
+  const clipboardRef = useRef<(() => void) | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>(
     'connecting',
@@ -330,6 +332,16 @@ export function Terminal({
         ? attachImeGuard(terminalRef.current, { send: (data) => sendTerminalInput(data) })
         : null;
 
+      // Copying out, and not pasting nothing in (utils/terminalClipboard.ts). On the
+      // container for the same reason, and the selection is read from xterm rather than
+      // from the DOM: a terminal's selection is its own.
+      clipboardRef.current?.();
+      clipboardRef.current = terminalRef.current
+        ? attachTerminalClipboard(terminalRef.current, {
+            selection: () => xtermRef.current?.getSelection() ?? '',
+          })
+        : null;
+
       // Handle terminal input (both text and binary data)
       const onDataDisposable = term.onData((data) => sendTerminalInput(data));
       const onBinaryDisposable = term.onBinary((data) => sendTerminalInput(data));
@@ -523,9 +535,11 @@ export function Terminal({
         if (resizeTimeout) {
           clearTimeout(resizeTimeout);
         }
-        // The guard is bound to this container, which is going away with it.
+        // The guards are bound to this container, which is going away with them.
         imeGuardRef.current?.();
         imeGuardRef.current = null;
+        clipboardRef.current?.();
+        clipboardRef.current = null;
         // Note: I/O disposables are managed by the terminal pool and will be
         // disposed when we re-register handlers on the next mount
       };
