@@ -4652,8 +4652,19 @@ async fn installed_shells(Json(req): Json<ShellsReq>) -> Json<Vec<String>> {
 // --- terminal ---------------------------------------------------------------
 
 #[derive(Deserialize)]
+// camelCase, like every other request shape here: without it `inheritCwdFrom` reached
+// nothing and serde dropped it in silence, which is a split that quietly stopped
+// inheriting rather than a split that failed.
+#[serde(rename_all = "camelCase")]
 struct LocalReq {
     shell: Option<String>,
+    /// Open in the same directory as this session's shell, when it can be read.
+    ///
+    /// A session id and not a path, deliberately. The directory is read from `/proc` on
+    /// the machine the shell runs on, which is the server's side of the wire — a client
+    /// that named a path would be naming one it cannot see, and a client that could name
+    /// any path would be choosing where a shared server spawns a shell.
+    inherit_cwd_from: Option<String>,
 }
 
 /// The instance's shell, as something a PTY can spawn.
@@ -4761,9 +4772,16 @@ async fn create_local(
     } else {
         req.shell
     };
+    // Only a session the caller owns may be inherited from. Without this check, any
+    // member of a shared instance could open a shell in another member's directory —
+    // which is both where they are working and, often enough, their username and the name
+    // of whatever they are working on.
+    let inherit = req
+        .inherit_cwd_from
+        .filter(|from| state.owns_session(from, as_user(&user)));
     let id = state
         .sessions
-        .create_local_session(state.events_sink(), shell.clone())
+        .create_local_session(state.events_sink(), shell.clone(), inherit.as_ref())
         .await?;
     state.record_session_owner(&id, as_user(&user));
     // The shell the session was given, so a client (and a test) can see that on a server

@@ -691,7 +691,12 @@ const routes: Record<string, Route> = {
     ).sessionId,
 
   connect_local_terminal: async (a) =>
-    (await json<{ sessionId: string }>('/api/terminal/local', post({ shell: a.shell }))).sessionId,
+    (
+      await json<{ sessionId: string }>(
+        '/api/terminal/local',
+        post({ shell: a.shell, inheritCwdFrom: a.inheritCwdFrom }),
+      )
+    ).sessionId,
 
   run_preconnect: async (a) =>
     (await json<{ sessionId: string }>('/api/terminal/preconnect', post({ command: a.command })))

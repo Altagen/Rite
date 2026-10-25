@@ -1394,3 +1394,38 @@ async fn quick_local_forward_tunnels_tcp_through_a_jump_host() {
     mgr.stop_forward(&fwd.id).await.unwrap();
     assert!(mgr.list_forwards().await.is_empty());
 }
+
+/// Inheriting a working directory is a LOCAL question, and the server is what says so.
+///
+/// The client names whichever session a pane holds — local or SSH — because a check on its
+/// side would be the same rule in two places, and the side that can read a directory at
+/// all is this one. So the refusal lives here.
+///
+/// NO SHELL IS SPAWNED. An earlier version opened a real local session as a control and
+/// the test never returned, with or without `close_session` — cargo reported it as
+/// "running for over 60 seconds", which is a hang and not a failure. That is worth looking
+/// at on its own and is NOT this feature's: the end-to-end path, with a real shell and a
+/// real directory, is proven by `e2e/tests/cwd-inherit.spec.ts`, and `shell_cwd` has its
+/// own three tests in `local_terminal.rs`. What is left for this one is the answer the
+/// manager gives when it holds nothing for an id, which is the answer the client relies on
+/// when it names a session without checking what kind it is.
+#[tokio::test]
+async fn a_working_directory_is_never_inherited_from_what_the_manager_does_not_hold() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::new(&dir.path().join("cwd.db")).await.unwrap();
+    let auth = AuthManager::new(db.clone());
+    let mgr = SessionManager::new(db.clone(), auth);
+
+    // Gone, never existed, or another member's: one answer for all three, which is what
+    // lets the client name a session id without first deciding whether it may.
+    assert!(
+        mgr.local_cwd(&"no-such-session".to_string())
+            .await
+            .is_none(),
+        "a session that is not there has no directory"
+    );
+    assert!(
+        mgr.local_cwd(&String::new()).await.is_none(),
+        "nor has an empty id"
+    );
+}

@@ -1323,6 +1323,22 @@ impl SessionManager {
         Ok(session_id)
     }
 
+    /// Where a local session's shell currently is, or `None`.
+    ///
+    /// `None` for an SSH session — its directory is on another machine and nothing local
+    /// can answer for it — for a session that has gone, and on any platform that will not
+    /// say (see `LocalSession::shell_cwd`). Every one of those is the same answer to the
+    /// caller: open where you would have.
+    pub async fn local_cwd(&self, session_id: &SessionId) -> Option<std::path::PathBuf> {
+        let sessions = self.sessions.lock().await;
+        match sessions.get(session_id) {
+            Some(Session::Local(local)) => {
+                crate::local_terminal::LocalSession::shell_cwd(local.pid?)
+            }
+            _ => None,
+        }
+    }
+
     /// Create a new local terminal session
     ///
     /// Spawns a local shell (bash/zsh/fish) based on $SHELL env variable
@@ -1330,11 +1346,20 @@ impl SessionManager {
         &self,
         events: SharedEvents,
         shell: Option<String>,
+        // Start in the same directory as this session's shell, when it can be read.
+        // Splitting a pane should leave you where you were, which is what a terminal
+        // multiplexer does and what this answers.
+        inherit_cwd_from: Option<&SessionId>,
     ) -> Result<SessionId> {
         tracing::info!("[terminal.rs] create_local_session called");
 
+        let cwd = match inherit_cwd_from {
+            Some(from) => self.local_cwd(from).await,
+            None => None,
+        };
+
         // Create local session
-        let local_session = crate::local_terminal::LocalSession::spawn(events, shell).await?;
+        let local_session = crate::local_terminal::LocalSession::spawn(events, shell, cwd).await?;
         let session_id = local_session.id.clone();
         tracing::info!(
             "[terminal.rs] Local session created with ID: {}",

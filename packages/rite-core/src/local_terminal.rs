@@ -6,6 +6,7 @@
 use anyhow::{Result, anyhow};
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -18,6 +19,12 @@ pub type SessionId = String;
 /// Represents an active local terminal session
 pub struct LocalSession {
     pub id: SessionId,
+    /// The shell's own process id, kept so its working directory can be read later.
+    ///
+    /// `None` when the platform would not say — see [`shell_cwd`]. It is the SHELL's pid
+    /// and not a child it spawned, so the directory read from it is the one the prompt
+    /// shows, not wherever a running `vim` happened to chdir.
+    pub pid: Option<u32>,
     command_tx: mpsc::Sender<SessionCommand>,
     /// Buffer for initial shell output (prompt, fastfetch, etc.).
     /// `Some(bytes)` = buffering; `None` = streaming mode (frontend has claimed).
@@ -29,8 +36,12 @@ impl LocalSession {
     /// Create a new local terminal session
     ///
     /// Spawns a local shell (bash/zsh/fish) using portable-pty
-    pub async fn spawn(events: SharedEvents, shell: Option<String>) -> Result<Self> {
-        Self::spawn_inner(events, shell, None).await
+    pub async fn spawn(
+        events: SharedEvents,
+        shell: Option<String>,
+        cwd: Option<PathBuf>,
+    ) -> Result<Self> {
+        Self::spawn_inner(events, shell, None, cwd).await
     }
 
     /// Run a one-shot local command (the pre-connect hook) in a PTY.
@@ -41,13 +52,33 @@ impl LocalSession {
     /// finishes, a `terminal-exit` event carries its exit code — 0 means the
     /// caller may proceed to open the ssh session.
     pub async fn run_command(events: SharedEvents, command: String) -> Result<Self> {
-        Self::spawn_inner(events, None, Some(command)).await
+        // A pre-connect hook runs wherever the shell starts: it is the connection's
+        // business, not a pane's, so it inherits nothing.
+        Self::spawn_inner(events, None, Some(command), None).await
+    }
+
+    /// Where the shell of `pid` currently is, or `None` when it cannot be known.
+    ///
+    /// Reads `/proc/<pid>/cwd`, which is how tmux answers the same question. That path is
+    /// LINUX ONLY, so this returns `None` everywhere else and a new pane opens where it
+    /// would have — the feature degrades rather than guessing. macOS would need `libproc`;
+    /// shelling out to `lsof` would make a default depend on a tool being installed, which
+    /// is not something a shipped default may assume.
+    pub fn shell_cwd(pid: u32) -> Option<PathBuf> {
+        if !cfg!(target_os = "linux") {
+            return None;
+        }
+        let link = std::fs::read_link(format!("/proc/{pid}/cwd")).ok()?;
+        // A deleted directory reads back as `/some/path (deleted)`, and handing that to
+        // `cwd()` fails the spawn outright — so an unusable answer is no answer.
+        link.is_dir().then_some(link)
     }
 
     async fn spawn_inner(
         events: SharedEvents,
         shell: Option<String>,
         run: Option<String>,
+        cwd: Option<PathBuf>,
     ) -> Result<Self> {
         let session_id = Uuid::new_v4().to_string();
         tracing::info!("Creating local session: {}", session_id);
@@ -125,6 +156,14 @@ impl LocalSession {
             }
         }
 
+        // Start where the caller asked, when it is still a directory. Checked rather than
+        // trusted: a pane may be duplicated long after its shell's directory was removed,
+        // and `cwd()` on a path that is gone fails the whole spawn — losing the pane
+        // instead of its starting point.
+        if let Some(dir) = cwd.as_ref().filter(|d| d.is_dir()) {
+            cmd.cwd(dir);
+        }
+
         // Configure shell-specific environment variables
         if shell_name == "fish" {
             cmd.env("fish_features", "no-query-term");
@@ -146,6 +185,9 @@ impl LocalSession {
             .slave
             .spawn_command(cmd)
             .map_err(|e| anyhow!("Failed to spawn shell: {}", e))?;
+        // Read before the child is moved into the reader thread: after that there is
+        // nothing left to ask, and this is the only handle on where the shell is.
+        let pid = child.process_id();
 
         tracing::debug!("Shell spawned successfully");
 
@@ -278,6 +320,7 @@ impl LocalSession {
 
         Ok(Self {
             id: session_id,
+            pid,
             command_tx,
             initial_buffer,
         })
@@ -316,5 +359,56 @@ impl LocalSession {
             .await
             .map_err(|_| anyhow!("Session already closed"))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_shell_reports_the_directory_it_is_in() {
+        // Asked about THIS process, which is a real pid with a real cwd — the same
+        // mechanism a pane uses to ask about the shell it is splitting.
+        let me = std::process::id();
+        let answer = LocalSession::shell_cwd(me);
+
+        if cfg!(target_os = "linux") {
+            let dir = answer.expect("/proc should answer for our own pid on Linux");
+            assert_eq!(
+                dir.canonicalize().unwrap(),
+                std::env::current_dir().unwrap().canonicalize().unwrap(),
+                "the directory read back is the one we are in"
+            );
+        } else {
+            // Not a gap to fill later by guessing: `/proc` is Linux, and the alternative
+            // on macOS is `libproc` or shelling out to `lsof` — which would make a
+            // shipped default depend on a tool being installed. A pane opens where it
+            // would have, which is the honest outcome.
+            assert!(answer.is_none(), "only Linux is expected to answer");
+        }
+    }
+
+    #[test]
+    fn a_pid_that_is_not_running_reports_nothing() {
+        // The pane being split may have exited between the click and the spawn. Nothing
+        // is the right answer: the new pane opens where a shell normally would, rather
+        // than failing because its starting point went away.
+        //
+        // Chosen above the system's maximum so it cannot be a live process. Reading the
+        // limit rather than picking a big number, because a number that happens to be in
+        // use would make this test fail for a reason that is not the code's.
+        let max = std::fs::read_to_string("/proc/sys/kernel/pid_max")
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok())
+            .unwrap_or(4_194_304);
+        assert!(LocalSession::shell_cwd(max.saturating_add(1)).is_none());
+    }
+
+    #[test]
+    fn pid_zero_reports_nothing() {
+        // `process_id()` returning 0 would otherwise be read as "the kernel", and
+        // `/proc/0` does not exist — so this is the shape of a missing pid, not a lookup.
+        assert!(LocalSession::shell_cwd(0).is_none());
     }
 }
