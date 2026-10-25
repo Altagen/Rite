@@ -487,4 +487,8 @@ test('the key path offers no picker in a browser, and takes one from the shell',
   expect(asked?.type, 'the shell is asked for a chooser').toBe('pick-file');
   expect(asked?.token, 'with a token, so the answer can be matched to the asking').toBeTruthy();
   await page.keyboard.press('Escape');
+
+  // Left behind, this collection makes the suite order-dependent: the tree locator above
+  // matches on the name, so a leftover from an earlier run answers instead of this one's.
+  await request.delete(`/api/local/collections/${collectionId}`);
 });
