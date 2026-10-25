@@ -152,6 +152,15 @@ export function AuthSection({
    */
   const set = (patch: Partial<AuthState>) => onChange((prev) => ({ ...prev, ...patch }));
 
+  // The context can take the choice away, and the state has to carry that: `support` above
+  // is the decision, while the forms validate and submit `value.keySupport`. Left to
+  // diverge, a local vault rendered the path field over a state that still said "carried",
+  // so a typed path was answered with "choose the private key file" — a file input that was
+  // never on screen — and the path was dropped on submit.
+  useEffect(() => {
+    if (value.keySupport !== support) onChange((prev) => ({ ...prev, keySupport: support }));
+  }, [support, value.keySupport, onChange]);
+
   // Live SSH-agent identities (native only). `null` = still querying; an empty
   // list = no agent / no keys (a normal, graceful state — not an error).
   const [identities, setIdentities] = useState<AgentIdentity[] | null>(null);

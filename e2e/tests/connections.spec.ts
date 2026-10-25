@@ -380,3 +380,46 @@ test('a local machine that keeps no password is asked for one', async ({ page, r
 
   await request.delete(`/api/local/collections/${collectionId}`);
 });
+
+/**
+ * A key path typed into the form has to be the key the machine saves.
+ *
+ * The support a key uses is decided by the context (ADR 0028 §1): a local vault has no
+ * collection key to seal a carried key to, so the only support there is a path and the
+ * form shows no choice. That coercion was for rendering only — the state underneath still
+ * said "carried", which is what the form validated and submitted. So every new key-based
+ * machine on the desktop answered a typed path with "no key file chosen", and there was no
+ * file input on screen to satisfy it.
+ */
+test('a new machine saves the key path that was typed into it', async ({ page, request }) => {
+  const collectionId = await createCollection(request, 'e2e-typed-key');
+
+  await page.goto('/');
+  const node = page.locator('.m-tnode', { hasText: 'e2e-typed-key' }).first();
+  await expect(node).toBeVisible({ timeout: 15_000 });
+  await node.getByRole('button', { name: 'Add to collection' }).click();
+  await page.getByRole('button', { name: 'New machine here' }).click();
+
+  await page.getByPlaceholder('My Server').fill('e2e-typed-key-machine');
+  await page.getByPlaceholder('example.com or 192.168.1.1').fill('example.com');
+  await page.getByPlaceholder('user').fill('someone');
+  await page.getByRole('radio', { name: /public key/i }).click();
+
+  // No choice offered here, and therefore no file input: the path field is the whole UI.
+  await expect(page.getByTestId('key-support')).toHaveCount(0);
+  await expect(page.getByTestId('auth-key-file')).toHaveCount(0);
+  await page.getByTestId('auth-key-path').fill('/home/someone/.ssh/id_typed');
+
+  await page.getByRole('button', { name: /save connection/i }).click();
+  await expect(
+    page.getByText('Choose the private key file'),
+    'the form must not ask for a file it never offered',
+  ).toHaveCount(0);
+  await expect(page.getByText('e2e-typed-key-machine').first()).toBeVisible({ timeout: 15_000 });
+
+  const machines = await listMachines(request, collectionId);
+  const saved = machines.find((m) => m.name === 'e2e-typed-key-machine');
+  expect(saved, 'the machine was created').toBeTruthy();
+  expect(saved!.authType, 'saved as a key on disk, not as a carried key').toBe('publicKey');
+  expect(saved!.keyPath, 'the path typed is the path kept').toBe('/home/someone/.ssh/id_typed');
+});

@@ -141,3 +141,40 @@ test('the same key with the wrong passphrase does not open', async ({ page, requ
   // Leave the suite's policy as the other specs expect to find it.
   await request.put('/api/settings/host_key_verification_mode', { data: { value: 'strict' } });
 });
+
+/**
+ * Quick SSH with a key path typed into the form, which is the other half of the same
+ * defect: the form insisted on a path, then sent the connection as a carried key with no
+ * key in it, so a path typed by hand was simply not used (ADR 0028 §1, the support the
+ * context forces). The assertion is the remote prompt — a path that never reached russh
+ * fails here instead.
+ */
+test('Quick SSH connects with a key path typed by hand', async ({ page, request }) => {
+  await request.put('/api/settings/host_key_verification_mode', { data: { value: 'accept' } });
+
+  await page.goto('/');
+  // The suite shares one vault and the panes other tests opened are still here; one of
+  // them already shows this prompt, which would satisfy the assertion below on its own.
+  const closers = page.getByRole('button', { name: 'Close terminal' });
+  for (let open = await closers.count(); open > 0; open = await closers.count()) {
+    await closers.first().click();
+    await page.waitForTimeout(200);
+  }
+
+  await page.getByRole('button', { name: 'Quick SSH' }).click();
+  // Scoped to the dialog: every machine in the library has a Connect button of its own,
+  // and the specs before this one left eighteen of them in the sidebar.
+  const dialog = page.getByRole('dialog', { name: 'Quick SSH Connect' });
+  await dialog.getByPlaceholder('example.com').fill(SSH.hostname);
+  await dialog.locator('input[type="number"]').first().fill(String(SSH.port));
+  await dialog.getByPlaceholder('user').fill(SSH.username);
+  await dialog.getByRole('radio', { name: /public key/i }).click();
+
+  // A local vault names a key on disk and offers no other support, so this field is the
+  // whole of it — there is no file input to choose instead.
+  await expect(dialog.getByTestId('auth-key-file')).toHaveCount(0);
+  await dialog.getByTestId('auth-key-path').fill(SSH.keyPlain);
+
+  await dialog.getByRole('button', { name: /^connect$/i }).click();
+  await expect(page.locator('.xterm-rows')).toContainText(`${SSH.username}@`, { timeout: 25_000 });
+});
