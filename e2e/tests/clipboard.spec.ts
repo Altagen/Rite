@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openSettings } from './support/headerBar';
 
 /**
  * Copying out of a terminal, and not pasting nothing into one.
@@ -173,4 +174,119 @@ test('paste is left to the engine, so it happens once', async ({ page, context }
   // recognising `v` and acting unconditionally fails this test.
   const occurrences = asText.split('once-only').length - 1;
   expect(occurrences, 'pasted exactly once').toBe(1);
+});
+
+/**
+ * The convention comes from the workspace document, and changing it changes the terminal.
+ *
+ * The decision table is `e2e/clipboard-mode-file-check.mjs` and the parser's half is held
+ * there. What only a real window can show is the end of the wire: a mode written into the
+ * document reaching the gesture, which is the whole claim of ADR 0023's addendum — the
+ * file carries behaviour, not only arrangement.
+ *
+ * `select` is the mode worth proving because it is the one with a cost: a webview cannot
+ * reach the X11 primary selection, so selecting writes the real clipboard. That is also
+ * what makes it observable here.
+ */
+test('a mode written into the workspace document reaches the gesture', async ({
+  page,
+  context,
+  request,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+
+  // The document asks for select-to-copy. Written before the page loads, because the
+  // store reads it once on load — which is also how a person would meet it.
+  await request.put('/api/layouts', {
+    data: { value: '[terminal]\ncopyMode = "select"\n' },
+  });
+
+  const sent = await terminalWithRecorder(page);
+  await withNothingSelected(page);
+  await page.evaluate(() => navigator.clipboard.writeText('BEFORE-ANY-DRAG'));
+  await selectTypedLine(page, 'echo from-the-document');
+
+  // No chord pressed. Under the shipped `chord` mode this leaves the clipboard alone;
+  // under `select` the drag itself copies.
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText().catch(() => '')), {
+      timeout: 5_000,
+    })
+    .toContain('from-the-document');
+
+  // And it is still a terminal: the drag sends nothing to the shell.
+  expect(sent.flat(), 'selecting is not typing').not.toContain(0x03);
+
+  // Put the document back, so no later spec inherits a convention it did not ask for.
+  await request.put('/api/layouts', { data: { value: '' } });
+});
+
+test('a document that does not parse leaves the convention alone', async ({
+  page,
+  context,
+  request,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  // Half a file is worse than no file — the same rule the menus follow. A typo must not
+  // hand someone a copy gesture they never chose.
+  await request.put('/api/layouts', {
+    data: { value: '[terminal]\ncopyMode = "sideways"\n' },
+  });
+
+  await terminalWithRecorder(page);
+  await withNothingSelected(page);
+  await page.evaluate(() => navigator.clipboard.writeText('UNTOUCHED'));
+  await selectTypedLine(page, 'echo rejected-document');
+
+  // Dragging copies nothing: the default is `chord`, and the rejected document changed
+  // nothing at all.
+  await page.waitForTimeout(600);
+  expect(
+    await page.evaluate(() => navigator.clipboard.readText().catch(() => '')),
+    'a rejected document leaves the shipped convention in force',
+  ).toBe('UNTOUCHED');
+
+  await request.put('/api/layouts', { data: { value: '' } });
+});
+
+/**
+ * A typo typed into the editor does not take the convention away.
+ *
+ * The same rule as the menus — a document that does not parse changes nothing — but on the
+ * path a person actually takes to break it. The spec above covers LOADING a bad document;
+ * this covers SAVING one, which is where a typo is born. Both exist because mutation said
+ * so: the guard is the same line in three places and only one of them was reached.
+ */
+test('saving a typo in the editor leaves the convention in force', async ({
+  page,
+  context,
+  request,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  // A document that works, so there is something to lose.
+  await request.put('/api/layouts', { data: { value: '[terminal]\ncopyMode = "select"\n' } });
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+
+  await openSettings(page);
+  await page.getByTestId('settings-nav-clipboard').click();
+  await expect(page.getByTestId('copy-mode')).toHaveText('select');
+
+  // Now break it through the editor, as someone editing by hand would.
+  await page.getByTestId('settings-nav-layouts').click();
+  await page.getByTestId('open-layouts-settings').click();
+  const editor = page.getByRole('dialog', { name: 'Layouts' });
+  await expect(editor).toBeVisible();
+  await editor.getByTestId('layouts-file').fill('[terminal]\ncopyMode = "sideways"\n');
+  await editor.getByTestId('layouts-save').click();
+  await expect(editor.getByTestId('layouts-error')).toContainText('2');
+
+  // The refusal names the line AND the convention is untouched: half a document is worse
+  // than none, and a copy gesture quietly taken from a rejected one would be the one
+  // surviving half.
+  await editor.getByRole('button', { name: /close/i }).last().click();
+  await page.getByTestId('settings-nav-clipboard').click();
+  await expect(page.getByTestId('copy-mode'), 'the typo changed nothing').toHaveText('select');
+
+  await request.put('/api/layouts', { data: { value: '' } });
 });

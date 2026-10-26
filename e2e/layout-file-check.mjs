@@ -98,8 +98,12 @@ check('a file of nothing but comments is a fresh install, not an error', () => {
 });
 
 check('an empty file is not an error either', () => {
-  assert.deepEqual(parseLayoutFile(''), { presets: [], layouts: [], error: null });
-  assert.deepEqual(parseLayoutFile('   \n\n'), { presets: [], layouts: [], error: null });
+  // `terminal: {}` and not an absent field: the section is always present and its keys are
+  // what is absent, so a reader never has to ask whether the document had the table
+  // before asking what it said (ADR 0023, addendum).
+  const fresh = { presets: [], layouts: [], terminal: {}, error: null };
+  assert.deepEqual(parseLayoutFile(''), fresh);
+  assert.deepEqual(parseLayoutFile('   \n\n'), fresh);
 });
 
 check('a # inside a quoted command is part of the command', () => {

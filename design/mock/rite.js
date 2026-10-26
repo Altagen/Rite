@@ -1227,3 +1227,24 @@ function openCheatsheet() {
     width: '520px',
   });
 }
+
+/**
+ * What each copy convention costs, said rather than hidden.
+ *
+ * The one that matters is `select`: a webview cannot reach the X11 primary selection, so
+ * "selecting copies" writes the real clipboard and every drag replaces what was there.
+ * Someone choosing it from xterm habit would otherwise discover that the hard way.
+ */
+const COPY_MODE_WHY = {
+  chord: 'Ctrl+Shift+C copies. Ctrl+Shift+V and the middle button paste.',
+  select:
+    'Selecting copies, as xterm does — except that it writes the clipboard, because a ' +
+    'webview cannot reach the X11 primary selection. Every drag replaces what was copied. ' +
+    'The chord keeps working.',
+  selectRightPaste:
+    'Selecting copies and a right click pastes, as PuTTY does. The engine’s own context ' +
+    'menu is given up to free the gesture.',
+  ctrlC:
+    'Ctrl+C copies while something is selected, as Windows Terminal does — so it cannot ' +
+    'interrupt a running command until the selection is cleared.',
+};

@@ -54,6 +54,7 @@ run "install-entry-check" node "e2e/install-entry-check.mjs"
 run "clipboard-decision-check" node "e2e/clipboard-decision-check.mjs"
 run "palette-filter-check" node "e2e/palette-filter-check.mjs"
 run "tab-plan-check" node "e2e/tab-plan-check.mjs"
+run "clipboard-mode-file-check" node "e2e/clipboard-mode-file-check.mjs"
 run "docs-check" node "e2e/docs-check.mjs"
 
 echo

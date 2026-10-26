@@ -302,7 +302,14 @@
     "knownHostsForget": "Oublier",
     "knownHostsForgetErr": "Impossible d'oublier cet hôte",
     "knownHostsSeen": "vu {when}",
-    "knownHostsNever": "pas revu depuis l'approbation"
+    "knownHostsNever": "pas revu depuis l'approbation",
+    "copyMode": "Copier et coller",
+    "copyModeFile": "Défini par le document de travail, sous [terminal] copyMode.",
+    "copyModeDefault": "Le document ne dit rien, la convention livrée s’applique donc.",
+    "copyModeChord": "Ctrl+Maj+C copie. Ctrl+Maj+V et le bouton du milieu collent.",
+    "copyModeSelect": "La sélection copie, comme xterm — sauf qu’elle écrit le presse-papier, un webview n’atteignant pas la sélection primaire X11. Chaque glissement remplace ce qui était copié. Le raccourci continue de fonctionner.",
+    "copyModeSelectRightPaste": "La sélection copie et le clic droit colle, comme PuTTY. Le menu contextuel du moteur est abandonné pour libérer le geste.",
+    "copyModeCtrlC": "Ctrl+C copie quand quelque chose est sélectionné, comme Windows Terminal — il ne peut donc plus interrompre une commande tant que la sélection n’est pas levée."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
