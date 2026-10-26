@@ -1350,3 +1350,40 @@ test('desktop mock: a right click on a tab offers rename, duplicate and close ot
 
   expect(errs, 'no console errors').toEqual([]);
 });
+
+/**
+ * The copy convention is SHOWN, not offered.
+ *
+ * It lives in the workspace document so it travels between machines (ADR 0023, addendum).
+ * A dropdown here would be a second place to set one value, and the file would win or lose
+ * depending on which was touched last — the same trap the layouts cards avoid by reading
+ * the file rather than duplicating it.
+ *
+ * What the row has to carry is the COST, because the mode people will reach for out of
+ * xterm habit has one: a webview cannot touch the X11 primary selection, so "selecting
+ * copies" writes the real clipboard and every drag replaces what was there. Discovering
+ * that by losing something is the outcome this wording exists to prevent.
+ */
+test('desktop mock: Settings shows the copy convention and what it costs', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.evaluate(() => openSettings('clipboard'));
+  const pane = page.locator('.prefs-pane');
+  await expect(pane.locator('[data-copy-mode]')).toHaveText('select');
+
+  // Where it came from, so nobody looks for a control that is not here.
+  await expect(pane).toContainText(/workspace document/i);
+  await expect(pane).toContainText(/\[terminal\] copyMode/);
+
+  // And the cost, named.
+  await expect(pane).toContainText(/primary selection/i);
+  await expect(pane).toContainText(/every drag replaces/i);
+
+  // Nothing to set it with: no select, no toggle on that row.
+  const row = pane.locator('.settings-row', { hasText: 'Copy and paste' });
+  await expect(row.locator('select')).toHaveCount(0);
+  await expect(row.locator('.toggle')).toHaveCount(0);
+
+  expect(errs, 'no console errors').toEqual([]);
+});

@@ -14,8 +14,12 @@ import '@xterm/xterm/css/xterm.css';
 import { terminalPool } from '../utils/terminalPool';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
+import { useLayouts } from '../store/layouts';
 import { attachImeGuard } from '../utils/imeGuard';
-import { attachTerminalClipboard } from '../utils/terminalClipboard';
+import {
+  attachTerminalClipboard,
+  DEFAULT_CLIPBOARD_MODE,
+} from '../utils/terminalClipboard';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { useTranslation } from '../i18n/i18n';
 import { useShortcut, useBindingText } from '../shortcuts/useShortcut';
@@ -339,6 +343,14 @@ export function Terminal({
       clipboardRef.current = terminalRef.current
         ? attachTerminalClipboard(terminalRef.current, {
             selection: () => xtermRef.current?.getSelection() ?? '',
+            // Read per event rather than captured, so editing the document takes effect
+            // on the next gesture instead of on the next pane. `null` means the document
+            // said nothing, and the default is the terminal's to apply — not the file's
+            // to repeat (ADR 0023, addendum).
+            mode: () => useLayouts.getState().copyMode ?? DEFAULT_CLIPBOARD_MODE,
+            // xterm's own paste, so the bracketing and the `bracketedPasteMode` it
+            // depends on stay the library's business.
+            paste: (text) => xtermRef.current?.paste(text),
           })
         : null;
 

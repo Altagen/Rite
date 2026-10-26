@@ -329,6 +329,10 @@ const AGENT_SHELL='desktop';
 // vault — or the base workspace — has no authority to consult: it is the user's own network.
 function probeGoverned(){return STATE.ctx.type==='server';}
 let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,defaultShell:'fish',lang:'en',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},focus:false,focusCollapseSidebar:false,autoReconnect:false,demoDisconnected:false,_sidePrev:false,
+  // The copy convention the workspace document asks for. Empty ⇒ the document says
+  // nothing and the shipped one applies — which is NOT the same state, so the row can
+  // say which it is (ADR 0023, addendum).
+  copyMode:'select',
   // Which toolbar buttons this person wants. Hiding one never grants or revokes
   // anything: the server policies and the keyboard shortcuts are unchanged.
   toolbar:{shell:true,newTermMenu:true,focus:true,quick:true,agents:true,layouts:true},
@@ -1085,8 +1089,19 @@ const PREFS=[
 
   /* Its own rail entry, as in the app: one row, and the rail is how a setting is found at
      all now. It used to be a line inside Security, which is where nobody looked for it. */
+  /* The copy convention is SHOWN, not offered. It lives in the workspace document so it
+     travels between machines (ADR 0023, addendum), and a dropdown here would be a second
+     place to set one value — the file winning or losing depending on which was touched
+     last. The row says what is in force, where it came from, and what it costs. */
   { id:'clipboard', label:'Clipboard', body:()=>
       `<h4>Clipboard</h4>`
+    + prefRow('Copy and paste', STATE.copyMode
+        ? 'Set by the workspace document, under [terminal] copyMode.'
+        : 'The document says nothing, so the shipped convention applies.',
+        `<div style="max-width:22rem;text-align:right">
+          <code data-copy-mode>${STATE.copyMode||'chord'}</code>
+          <div class="muted" style="font-size:12px;margin-top:2px">${COPY_MODE_WHY[STATE.copyMode||'chord']}</div>
+        </div>`)
     + prefRow('Auto-clear clipboard','Clear the clipboard 30 seconds after a copy',`<div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div>`) },
 
   { id:'focus', label:'Focus mode', body:()=>

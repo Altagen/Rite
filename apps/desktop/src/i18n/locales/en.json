@@ -302,7 +302,14 @@
     "knownHostsForget": "Forget",
     "knownHostsForgetErr": "Could not forget this host",
     "knownHostsSeen": "seen {when}",
-    "knownHostsNever": "not seen since it was trusted"
+    "knownHostsNever": "not seen since it was trusted",
+    "copyMode": "Copy and paste",
+    "copyModeFile": "Set by the workspace document, under [terminal] copyMode.",
+    "copyModeDefault": "The document says nothing, so the shipped convention applies.",
+    "copyModeChord": "Ctrl+Shift+C copies. Ctrl+Shift+V and the middle button paste.",
+    "copyModeSelect": "Selecting copies, as xterm does — except that it writes the clipboard, because a webview cannot reach the X11 primary selection. Every drag replaces what was copied. The chord keeps working.",
+    "copyModeSelectRightPaste": "Selecting copies and a right click pastes, as PuTTY does. The engine’s own context menu is given up to free the gesture.",
+    "copyModeCtrlC": "Ctrl+C copies while something is selected, as Windows Terminal does — so it cannot interrupt a running command until the selection is cleared."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",

@@ -12,6 +12,7 @@ import { useAuthStore } from '../store/authStore';
 import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
 import { KnownHostsList } from './KnownHostsList';
+import { DEFAULT_CLIPBOARD_MODE } from '../utils/terminalClipboard';
 import { SplitsModal } from './SplitsModal';
 import { LayoutsModal } from './LayoutsModal';
 import { LayoutCards } from './LayoutCards';
@@ -199,6 +200,8 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   // there is nothing to read (ADR 0027).
   const layoutsSupported = useLayouts((st) => st.supported);
   const layoutsSupport = useLayouts((st) => st.support);
+  /** The copy convention the workspace document asks for; null ⇒ the shipped default. */
+  const copyMode = useLayouts((st) => st.copyMode);
   const layoutsVerdictNow = useLayouts((st) => st.verdict);
   const layoutsEnabled = useLayouts((st) => st.enabled);
   const layoutsPrefer = useLayouts((st) => st.prefer);
@@ -892,6 +895,36 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
             {/* Clipboard settings */}
             <section hidden={shown !== 'clipboard'} className="pb-2">
               <SettingsHead title={t('settings.clipboard')} />
+              {/* Shown, not offered. The convention lives in the workspace document so it
+                  travels between machines (ADR 0023, addendum) — a dropdown here would be
+                  a second place to set one value, and the file would win or lose
+                  depending on which was touched last. The row says what is in force, why,
+                  and what it means. */}
+              <SettingsRow
+                title={t('settings.copyMode')}
+                hint={
+                  copyMode
+                    ? t('settings.copyModeFile')
+                    : t('settings.copyModeDefault')
+                }
+              >
+                <div className="max-w-[22rem] text-right">
+                  <code
+                    className="font-mono text-sm text-foreground"
+                    data-testid="copy-mode"
+                  >
+                    {copyMode ?? DEFAULT_CLIPBOARD_MODE}
+                  </code>
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                    {t(
+                      `settings.copyMode${
+                        (copyMode ?? DEFAULT_CLIPBOARD_MODE).charAt(0).toUpperCase() +
+                        (copyMode ?? DEFAULT_CLIPBOARD_MODE).slice(1)
+                      }`,
+                    )}
+                  </p>
+                </div>
+              </SettingsRow>
               <SettingsToggle
                 title={t('settings.clipboardClearEnabled')}
                 hint={t('settings.clipboardClearEnabledDesc')}

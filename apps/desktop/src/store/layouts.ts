@@ -33,6 +33,7 @@ import {
   type Layout,
   type LayoutError,
   type Preset,
+  type FileCopyMode,
 } from './layoutsFormat';
 import { parseStored, isPreset } from './splitsFormat';
 
@@ -212,6 +213,15 @@ interface LayoutsState {
    *  nothing at all. */
   presets: Preset[];
   layouts: Layout[];
+  /**
+   * The copy/paste convention the document asks for, or `null` when it says nothing.
+   *
+   * `null` and not the default, deliberately: a document that is silent must not look
+   * like one that chose the shipped default, or changing that default would stop reaching
+   * anyone whose file had ever been read. The terminal applies its own default when this
+   * is null (ADR 0023, addendum).
+   */
+  copyMode: FileCopyMode | null;
   error: LayoutError | null;
   loaded: boolean;
   /** Re-read the file. */
@@ -248,6 +258,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
   prefer: readSource(),
   presets: [],
   layouts: [],
+  copyMode: null,
   error: null,
   loaded: false,
 
@@ -300,6 +311,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
           updatedAt: row.updatedAt,
           presets: parse.error ? get().presets : resolvePresets(parse),
           layouts: parse.error ? get().layouts : parse.layouts,
+          copyMode: parse.error ? get().copyMode : (parse.terminal.copyMode ?? null),
           error: parse.error,
           loaded: true,
           enabled,
@@ -339,6 +351,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
         // Same rule as save(): a file that does not parse does not empty the menu.
         presets: parse.error ? get().presets : resolvePresets(parse),
         layouts: parse.error ? get().layouts : parse.layouts,
+        copyMode: parse.error ? get().copyMode : (parse.terminal.copyMode ?? null),
         error: parse.error,
         loaded: true,
         enabled,
@@ -391,6 +404,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
       text,
       presets: parse.error ? get().presets : resolvePresets(parse),
       layouts: parse.error ? get().layouts : parse.layouts,
+      copyMode: parse.error ? get().copyMode : (parse.terminal.copyMode ?? null),
       error: parse.error,
     });
     return parse.error;
