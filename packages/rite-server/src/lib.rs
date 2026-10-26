@@ -383,7 +383,11 @@ impl ServerState {
             events_tx,
             token: None,
             accounts: false,
-            config: Arc::new(config::InstanceConfig::load()?),
+            config: {
+                let loaded = config::InstanceConfig::load()?;
+                Self::apply_core_settings(&loaded);
+                Arc::new(loaded)
+            },
             serve_admin: env_flag("RITE_SERVE_ADMIN", true),
             serve_webui: env_flag("RITE_SERVE_WEBUI", true),
             host_key: None,
@@ -404,8 +408,29 @@ impl ServerState {
 
     /// Replace the loaded configuration. For tests and for callers that build their own.
     pub fn with_config(mut self, config: config::InstanceConfig) -> Self {
+        Self::apply_core_settings(&config);
         self.config = Arc::new(config);
         self
+    }
+
+    /// Settings `rite-core` reads without a request to hang them off.
+    ///
+    /// A connection's timeout is not asked for by anyone: it bounds a connect that is
+    /// already under way, inside the crate that opens it. So the configured value is
+    /// pushed down once, at start-up, rather than resolved per request like the settings
+    /// below. There is no database fallback — this key is file and environment only, since
+    /// no console field writes it.
+    fn apply_core_settings(config: &config::InstanceConfig) {
+        // Absent means the shipped bound, not "leave whatever was pushed last". The server
+        // pushes once at start-up, so the two readings agree there — but a value that
+        // outlived the configuration that set it is a stale setting, which is the whole
+        // failure mode this ADR is about.
+        rite_core::terminal::set_connect_timeout_secs(
+            config
+                .get("ssh_connect_timeout")
+                .and_then(Value::as_u64)
+                .unwrap_or(rite_core::terminal::DEFAULT_CONNECT_TIMEOUT_SECS),
+        );
     }
 
     /// Read a boolean setting through ADR 0020's precedence: the configuration, then the

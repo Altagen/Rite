@@ -97,13 +97,17 @@ try {
     // the host-key policy, which had no console row and no validated route at all.
     ['allow_quick_ssh', 'allow_secret_reveal', 'collection_policy', 'dashboard_policy',
      'default_shell', 'host_key_verification_mode', 'instance_name', 'layouts_policy',
-     'open_registration'],
+     'open_registration', 'ssh_connect_timeout'],
     'server_mode lists exactly the keys the file and the environment declare',
   );
   assert.match(mode.managed.collection_policy, /rite\.toml$/, 'a file-declared key names the file');
   assert.equal(mode.managed.dashboard_policy, 'RITE__dashboard_policy__minInterval',
     'a policy the environment touched last names the variable, not the file');
   assert.match(mode.managed.layouts_policy, /rite\.toml$/, 'and so does the layouts policy');
+  // A number, declared in the file: nothing else here exercises `Shape::Seconds` against a
+  // running server, and a value stored as the string "7" would still be reported as managed
+  // while `rite-core` kept the shipped 20.
+  assert.match(mode.managed.ssh_connect_timeout, /rite\.toml$/, 'the timeout names the file');
   ok('server_mode publishes the managed keys with their origin, and only those');
 
   step = 'refused-with-a-reason';

@@ -29,7 +29,40 @@ const MAX_INITIAL_BUFFER: usize = 1024 * 1024; // 1 MiB
 
 /// Bound the connect + handshake (per hop) so an unreachable/filtered host fails
 /// with a clear error instead of hanging on the OS TCP timeout (~2 min).
-const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+///
+/// Twenty seconds suits a host on a network that answers. It does not suit every one: a
+/// hop reached through a satellite link, or a jump host that authenticates against a slow
+/// directory, needs longer, and a bastion fronting a dense subnet is better served by a
+/// shorter one. So an instance may declare `ssh_connect_timeout` (ADR 0020) and the server
+/// applies it here at start-up.
+///
+/// A process-wide value rather than a parameter: it is the same for every connection a
+/// process opens, and threading it through would add a twelfth argument to functions that
+/// already carry eleven — which is what [`HostKeyTrust`] exists to undo.
+pub const DEFAULT_CONNECT_TIMEOUT_SECS: u64 = 20;
+static CONNECT_TIMEOUT_SECS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(DEFAULT_CONNECT_TIMEOUT_SECS);
+
+/// Bound the connect + handshake, as configured.
+pub fn connect_timeout() -> std::time::Duration {
+    std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// The bound to apply, or `None` for a value that must not be applied.
+///
+/// Zero would time every connection out instantly, and the configuration loader already
+/// refuses it — checked again here because this is the function that writes the value, and
+/// the one place where "the loader validated it" stops being visible.
+fn usable_timeout(secs: u64) -> Option<u64> {
+    (1..=300).contains(&secs).then_some(secs)
+}
+
+/// Apply a configured bound. A value outside the range leaves the previous one in place.
+pub fn set_connect_timeout_secs(secs: u64) {
+    if let Some(secs) = usable_timeout(secs) {
+        CONNECT_TIMEOUT_SECS.store(secs, std::sync::atomic::Ordering::Relaxed);
+    }
+}
 
 /// Commands that can be sent to a terminal session
 pub enum SessionCommand {
@@ -636,7 +669,7 @@ async fn open_jump_tunnel(
         };
         let mut handle = if i == 0 {
             let addr = format!("{}:{}", conn.hostname, conn.port);
-            match tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, &addr, handler))
+            match tokio::time::timeout(connect_timeout(), client::connect(config, &addr, handler))
                 .await
             {
                 Ok(result) => result?,
@@ -644,7 +677,7 @@ async fn open_jump_tunnel(
                     return Err(anyhow!(
                         "Connection to jump host {} timed out after {}s",
                         addr,
-                        CONNECT_TIMEOUT.as_secs()
+                        connect_timeout().as_secs()
                     ));
                 }
             }
@@ -721,13 +754,14 @@ async fn establish_authenticated_handle(
     let mut session = if jumps.is_empty() {
         let addr = format!("{}:{}", connection.hostname, connection.port);
         tracing::info!("[terminal.rs] Attempting TCP connection to {}...", addr);
-        match tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, &addr, handler)).await {
+        match tokio::time::timeout(connect_timeout(), client::connect(config, &addr, handler)).await
+        {
             Ok(result) => result?,
             Err(_) => {
                 return Err(anyhow!(
                     "Connection to {} timed out after {}s",
                     addr,
-                    CONNECT_TIMEOUT.as_secs()
+                    connect_timeout().as_secs()
                 ));
             }
         }
@@ -1829,6 +1863,47 @@ impl SessionManager {
     /// control request to the local client-execute session vs. proxying it).
     pub async fn has_session(&self, session_id: &str) -> bool {
         self.sessions.lock().await.contains_key(session_id)
+    }
+}
+
+#[cfg(test)]
+mod connect_timeout_tests {
+    use super::*;
+
+    #[test]
+    fn the_shipped_bound_is_twenty_seconds() {
+        // Pinned as a literal, not read back from the constant: the number is in
+        // `docs/SERVER.md` and in the message an operator reads when a host times out.
+        assert_eq!(DEFAULT_CONNECT_TIMEOUT_SECS, 20);
+    }
+
+    #[test]
+    fn only_a_value_inside_the_range_is_usable() {
+        assert_eq!(usable_timeout(20), Some(20));
+        assert_eq!(usable_timeout(1), Some(1));
+        assert_eq!(usable_timeout(300), Some(300));
+        // Zero would fail every connection before it started; above five minutes gives
+        // back the OS hang the bound exists to replace.
+        assert_eq!(usable_timeout(0), None);
+        assert_eq!(usable_timeout(301), None);
+        assert_eq!(usable_timeout(u64::MAX), None);
+    }
+
+    #[test]
+    fn a_configured_bound_is_what_a_connection_then_uses() {
+        // The global is restored before returning: these tests share a process with the
+        // ones that open connections, and a 1-second bound left behind would read as a
+        // flaky network.
+        set_connect_timeout_secs(45);
+        assert_eq!(connect_timeout(), std::time::Duration::from_secs(45));
+        set_connect_timeout_secs(0);
+        assert_eq!(
+            connect_timeout(),
+            std::time::Duration::from_secs(45),
+            "a refused value must leave the previous one in place"
+        );
+        set_connect_timeout_secs(DEFAULT_CONNECT_TIMEOUT_SECS);
+        assert_eq!(connect_timeout(), std::time::Duration::from_secs(20));
     }
 }
 
