@@ -71,7 +71,8 @@ Without it the binary runs, and nothing on the desktop knows Rite exists. It tak
 `--prefix DIR` too, and `rite --uninstall` takes it all back.
 
 **The binary emits, an installer places.** `rite --print-app-id`,
-`--print-desktop-entry PATH`, `--print-icon SIZE` and `--print-icon-sizes` write to stdout
+`--print-desktop-entry PATH`, `--print-icon SIZE`, `--print-icon-sizes` and
+`--print-data-dir` write to stdout
 and touch nothing, which is how a packager builds a `.deb` or a PKGBUILD without this
 repository's script and without guessing the app-id.
 
@@ -136,6 +137,10 @@ The client writes under one directory, and nothing outside it:
 | `~/.config/rite/layouts.toml` | the workspace file: presets and layouts ([docs/LAYOUTS.md](docs/LAYOUTS.md)) |
 
 On macOS both directories are `~/Library/Application Support/rite/`.
+
+`rite --print-data-dir` prints the first one as the running binary resolves it, honouring
+`XDG_DATA_HOME`. A backup script reads it from there rather than hardcoding the table
+above.
 
 The vault is encrypted with a key derived from your passphrase (Argon2id), so a copy of
 `vault.db` is worth nothing without it — and unrecoverable if you forget it.
