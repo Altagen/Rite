@@ -431,6 +431,15 @@ impl ServerState {
                 .and_then(Value::as_u64)
                 .unwrap_or(rite_core::terminal::DEFAULT_CONNECT_TIMEOUT_SECS),
         );
+        // The host-key mode was declarable before this and did nothing: `rite-core` reads
+        // that row from the table itself, and the configuration shadows the table instead
+        // of writing to it. Reported as managed, shown locked in the console, and not
+        // applied — on the one setting where that gap accepts an unknown host.
+        rite_core::terminal::set_declared_host_key_mode(
+            config
+                .get("host_key_verification_mode")
+                .and_then(Value::as_str),
+        );
     }
 
     /// Read a boolean setting through ADR 0020's precedence: the configuration, then the
