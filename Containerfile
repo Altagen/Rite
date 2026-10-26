@@ -8,7 +8,10 @@
 #            bash -lc "pnpm install && task check"
 #
 # Pinned to reproduce the CI toolchain:
-#   - Ubuntu 24.04            (ubuntu-latest)
+#   - Ubuntu 24.04            (what ubuntu-latest resolves to — checked in a run log,
+#                              not assumed: bump this when GitHub moves the label, since
+#                              a newer base here would stop mirroring CI, which is the
+#                              one property this image has (ADR 0001))
 #   - Rust                   from rust-toolchain.toml, as CI does
 #   - Node.js                from .node-version, as CI does
 #   - pnpm                   from package.json `packageManager`, as CI does
