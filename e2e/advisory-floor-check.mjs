@@ -78,6 +78,15 @@ const FLOORS = [
       'makes on a secret: the auth hash, the session token, the enrolment token',
   ],
   [
+    'crypto-bigint',
+    '0.7.9',
+    'RUSTSEC-2026-0387 — subtraction, zero counting, division and Montgomery ' +
+      'multiplication could branch on secret values, and `UintRef` equality could stop ' +
+      'at the first unequal limb. It sits under russh\'s key handling, so it is reached ' +
+      'by every SSH key operation. The advisory is answered from 0.7.6, and this floor ' +
+      'is higher: 0.7.6 through 0.7.8 were all yanked within days',
+  ],
+  [
     'russh',
     '0.64.1',
     'GHSA-4wc5-f2rc-q74m (unbounded allocation in the agent-protocol server) and ' +
