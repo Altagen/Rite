@@ -22,7 +22,7 @@ use rite_core::connections_manager::ConnectionsManager;
 use rite_core::db::Database;
 use rite_core::events::{SessionEvents, SharedEvents};
 use rite_core::known_hosts;
-use rite_core::terminal::{SessionManager, SshSession};
+use rite_core::terminal::{HostKeyTrust, SessionManager, SshSession};
 
 use russh::server::{
     Auth, ChannelOpenHandle, Config as ServerConfig, Handler, Msg, Server, Session,
@@ -408,7 +408,7 @@ async fn ssh_session_connects_authenticates_and_round_trips() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None,
         Vec::new(),
     )
@@ -454,7 +454,7 @@ async fn ssh_session_rejects_changed_host_key() {
         .unwrap()
         .public_key()
         .clone();
-    known_hosts::add_host_key(&pool, "127.0.0.1", port, &bogus)
+    known_hosts::add_host_key(&pool, known_hosts::LOCAL_OWNER, "127.0.0.1", port, &bogus)
         .await
         .unwrap();
 
@@ -471,7 +471,7 @@ async fn ssh_session_rejects_changed_host_key() {
         events,
         pool,
         None,
-        false,
+        HostKeyTrust::local(),
         None,
         Vec::new(),
     )
@@ -526,7 +526,7 @@ async fn ssh_session_authenticates_with_rsa_key() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None,
         Vec::new(),
     )
@@ -565,7 +565,7 @@ async fn ssh_session_fails_cleanly_on_refused_connection() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None,
         Vec::new(),
     )
@@ -734,7 +734,7 @@ async fn ssh_session_completes_keyboard_interactive_via_provider() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         Some(provider),
         Vec::new(),
     )
@@ -769,7 +769,7 @@ async fn ssh_session_autoanswers_keyboard_interactive_password() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None, // no UI provider — the password prompt must be auto-answered
         Vec::new(),
     )
@@ -944,7 +944,7 @@ async fn ssh_session_publickey_then_second_factor() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         Some(provider),
         Vec::new(),
     )
@@ -982,7 +982,7 @@ async fn ssh_session_connects_through_a_jump_host() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None,
         vec![(
             jump_connection(bastion_port),
@@ -1037,7 +1037,7 @@ async fn ssh_session_connects_through_two_jump_hosts() {
         events,
         pool,
         None,
-        true,
+        HostKeyTrust::local().forcing(),
         None,
         vec![
             (
@@ -1149,6 +1149,7 @@ async fn local_port_forward_tunnels_tcp() {
             echo_port,
             events,
             None,
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("forward should start");
@@ -1204,6 +1205,7 @@ async fn quick_remote_command_captures_output_and_exit_status() {
             events.clone(),
             "docker ps",
             &[],
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("exec should succeed");
@@ -1223,6 +1225,7 @@ async fn quick_remote_command_captures_output_and_exit_status() {
             events,
             "fail",
             &[],
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("a failing command is still a successful exec");
@@ -1249,6 +1252,7 @@ async fn quick_remote_command_runs_through_a_jump_host() {
             events,
             "systemctl list-units",
             &[hop(bastion_port)],
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("exec should reach the target through the bastion");
@@ -1287,6 +1291,7 @@ async fn quick_session_connects_through_a_jump_host() {
             events,
             None,
             vec![hop(bastion_port)],
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("quick session should connect through the jump host");
@@ -1360,6 +1365,7 @@ async fn quick_local_forward_tunnels_tcp_through_a_jump_host() {
             "127.0.0.1",
             echo_port,
             events,
+            known_hosts::LOCAL_OWNER,
         )
         .await
         .expect("quick forward should start through the jump host");
@@ -1387,4 +1393,39 @@ async fn quick_local_forward_tunnels_tcp_through_a_jump_host() {
 
     mgr.stop_forward(&fwd.id).await.unwrap();
     assert!(mgr.list_forwards().await.is_empty());
+}
+
+/// Inheriting a working directory is a LOCAL question, and the server is what says so.
+///
+/// The client names whichever session a pane holds — local or SSH — because a check on its
+/// side would be the same rule in two places, and the side that can read a directory at
+/// all is this one. So the refusal lives here.
+///
+/// NO SHELL IS SPAWNED. An earlier version opened a real local session as a control and
+/// the test never returned, with or without `close_session` — cargo reported it as
+/// "running for over 60 seconds", which is a hang and not a failure. That is worth looking
+/// at on its own and is NOT this feature's: the end-to-end path, with a real shell and a
+/// real directory, is proven by `e2e/tests/cwd-inherit.spec.ts`, and `shell_cwd` has its
+/// own three tests in `local_terminal.rs`. What is left for this one is the answer the
+/// manager gives when it holds nothing for an id, which is the answer the client relies on
+/// when it names a session without checking what kind it is.
+#[tokio::test]
+async fn a_working_directory_is_never_inherited_from_what_the_manager_does_not_hold() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::new(&dir.path().join("cwd.db")).await.unwrap();
+    let auth = AuthManager::new(db.clone());
+    let mgr = SessionManager::new(db.clone(), auth);
+
+    // Gone, never existed, or another member's: one answer for all three, which is what
+    // lets the client name a session id without first deciding whether it may.
+    assert!(
+        mgr.local_cwd(&"no-such-session".to_string())
+            .await
+            .is_none(),
+        "a session that is not there has no directory"
+    );
+    assert!(
+        mgr.local_cwd(&String::new()).await.is_none(),
+        "nor has an empty id"
+    );
 }

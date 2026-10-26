@@ -293,7 +293,23 @@
     "masterPasswordHint": "It encrypts every connection in this vault, so changing it re-keys them all.",
     "autoCollapseHint": "In focus mode (F11), also hide the library sidebar — terminals only.",
     "themeGrey": "Grey",
-    "changingPassword": "Changing…"
+    "changingPassword": "Changing…",
+    "knownHosts": "Trusted hosts",
+    "knownHostsDesc": "Per member. Another member of this instance keeps a separate list. Forgetting a host asks again on the next connection — the way back when a server was legitimately reinstalled.",
+    "knownHostsEmpty": "No host trusted yet.",
+    "knownHostsLoading": "Loading…",
+    "knownHostsErr": "Could not load the trusted hosts",
+    "knownHostsForget": "Forget",
+    "knownHostsForgetErr": "Could not forget this host",
+    "knownHostsSeen": "seen {when}",
+    "knownHostsNever": "not seen since it was trusted",
+    "copyMode": "Copy and paste",
+    "copyModeFile": "Set by the workspace document, under [terminal] copyMode.",
+    "copyModeDefault": "The document says nothing, so the shipped convention applies.",
+    "copyModeChord": "Ctrl+Shift+C copies. Ctrl+Shift+V and the middle button paste.",
+    "copyModeSelect": "Selecting copies, as xterm does — except that it writes the clipboard, because a webview cannot reach the X11 primary selection. Every drag replaces what was copied. The chord keeps working.",
+    "copyModeSelectRightPaste": "Selecting copies and a right click pastes, as PuTTY does. The engine’s own context menu is given up to free the gesture.",
+    "copyModeCtrlC": "Ctrl+C copies while something is selected, as Windows Terminal does — so it cannot interrupt a running command until the selection is cleared."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -553,12 +569,38 @@
           "label": "Lock the vault",
           "description": "Closes the vault and drops its key from memory. Saved connections stop being readable until it is unlocked again; terminals already open keep running."
         }
+      },
+      "palette": {
+        "open": {
+          "label": "Run a command",
+          "description": "Opens the palette over whatever is on screen."
+        }
+      },
+      "settings": {
+        "open": {
+          "label": "Open settings",
+          "description": "The settings window, at the section last shown."
+        }
+      },
+      "shortcuts": {
+        "cheatsheet": {
+          "label": "Keyboard shortcuts",
+          "description": "Lists every command and the chord that fires it."
+        }
+      },
+      "terminal": {
+        "broadcast": {
+          "label": "Broadcast typing to a tab",
+          "description": "Every keystroke in the active tab also reaches its other panes."
+        }
       }
     },
     "fixed": {
       "focusMode": "Focus mode — hide the toolbar so terminals fill the screen. Esc or F11 to leave.",
       "dismiss": "Dismiss the find bar, or an open dialog."
-    }
+    },
+    "unassigned": "Unassigned",
+    "backToNone": "Back to no chord"
   },
   "layouts": {
     "title": "Layouts",
@@ -1211,7 +1253,16 @@
     "newTerminal": "New terminal",
     "closeManyWhy": "Closing {count} terminals. Every active connection is terminated.",
     "closeTab": "Close tab",
-    "closeTabCount": "Close tab ({count} terminals)"
+    "closeTabCount": "Close tab ({count} terminals)",
+    "duplicateTab": "Duplicate tab",
+    "duplicateTabWhy": "Same panes, new sessions",
+    "closeOthers": "Close other tabs",
+    "closeOthersTitle": "Close the other tabs?",
+    "closeOthersWhy": "{count} terminals in {tabs} other tabs will be closed.",
+    "broadcast": "Broadcast typing to this tab's panes",
+    "broadcastStop": "Stop broadcasting",
+    "broadcasting": "Broadcasting",
+    "broadcastingWhy": "Every keystroke reaches this tab's panes — click to stop"
   },
   "members": {
     "addFromTeam": "Add from team:",
@@ -1530,5 +1581,13 @@
     "open": "Open",
     "server": "Server",
     "current": "current"
+  },
+  "palette": {
+    "placeholder": "Run a command",
+    "empty": "No command matches."
+  },
+  "cheatsheet": {
+    "title": "Keyboard shortcuts",
+    "where": "Settings → Keyboard changes any of them."
   }
 }

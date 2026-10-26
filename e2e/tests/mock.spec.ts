@@ -1151,3 +1151,281 @@ for (const shell of ['web', 'desktop'] as const) {
     expect(hit).toBe('what is underneath');
   });
 }
+
+/**
+ * Trusted hosts, and the way back from a rotated key.
+ *
+ * The list is the mock's answer to a gap `docs/ROADMAP.md` carried since 0.2.4: nothing
+ * showed what was trusted and nothing forgot a key, so a server legitimately reinstalled
+ * had no path through. A changed host key is refused in every mode and the dialog that
+ * reports it deliberately offers no accept (ADR 0021 §3); the only way round was Quick
+ * SSH, which force-accepts BEFORE verification runs (§5) and overwrites the stored key
+ * without showing that it changed.
+ *
+ * Whose list it is matters as much as what is in it. Trust is per member (ADR 0021,
+ * addendum), and a list that read as instance-wide would teach exactly the wrong model —
+ * so the wording is asserted here, not just the rows.
+ */
+test('desktop mock: Settings lists the hosts this member trusts, and offers to forget one', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.evaluate(() => openSettings('ssh'));
+  const rows = page.locator('.prefs-pane .kh-row');
+  await expect(rows).toHaveCount(3);
+
+  // A host on a non-default port is a different host, so the port shows; on 22 it does
+  // not, because every row carrying ":22" is noise on every row.
+  await expect(rows.nth(0)).toContainText('web-01.example');
+  await expect(rows.nth(0)).not.toContainText(':22');
+  await expect(rows.nth(1)).toContainText('db-01.example:2222');
+
+  // The fingerprint is the point of the row: it is what a person checks out-of-band,
+  // against something held somewhere else. A row without one would be decoration.
+  await expect(rows.nth(0)).toContainText('SHA256:');
+  await expect(rows.nth(0)).toContainText('ssh-ed25519');
+
+  // Whose list it is, in the text and not only in the code — and said impersonally, which
+  // `e2e/mock-register-check.mjs` holds every mock screen to.
+  const pane = page.locator('.prefs-pane');
+  await expect(pane).toContainText('Per member');
+  await expect(pane).toContainText(/reinstalled/i);
+
+  // And the action that makes the list worth having, next to the host it acts on.
+  await expect(rows.nth(0).locator('button', { hasText: 'Forget' })).toBeVisible();
+  await rows.nth(0).locator('button', { hasText: 'Forget' }).click();
+  await expect(page.locator('.toast')).toContainText(/asks again/i);
+
+  expect(errs, 'no console errors').toEqual([]);
+});
+
+/**
+ * The command palette: everything runnable, found by typing.
+ *
+ * The rail already proved the point for Settings — scrolling stopped working at fourteen
+ * sections. Commands have the same shape: a handful earn a chord, the rest earn being
+ * findable. What a menu cannot do, and this can, is list what runs RIGHT NOW.
+ *
+ * The matching rules are asserted rather than eyeballed, because ranking IS the behaviour
+ * of a palette: every word typed has to appear, and the rank says where the first one
+ * landed — label start, then word start, then anywhere, then the description alone.
+ */
+test('desktop mock: the palette opens on its chord, filters, and runs what is picked', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  // The chord has to work wherever the focus is, so it is taken on the document.
+  await page.keyboard.press('Control+k');
+  const palette = page.locator('[data-palette]');
+  await expect(palette).toBeVisible();
+  // Opens showing everything: a palette that opens empty is a menu, and a menu has an
+  // order. The first row is pre-selected, because the chord exists to run something.
+  const rows = palette.locator('.pal-row');
+  await expect(rows).toHaveCount(5);
+  await expect(rows.first()).toHaveClass(/on/);
+
+  // The chord shows beside the command: the palette is where someone learns the key for
+  // the thing they just ran by typing.
+  await expect(rows.first().locator('kbd')).toHaveText('Ctrl+Shift+H');
+
+  // Every word has to appear — two words narrow, they do not widen.
+  await palette.locator('[data-pal-input]').fill('split');
+  await expect(rows).toHaveCount(2);
+  await palette.locator('[data-pal-input]').fill('split vertical');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Split pane vertically');
+
+  // A word that only the description carries still finds the command, and ranks last.
+  await palette.locator('[data-pal-input]').fill('scrollback');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Search in pane');
+
+  // Nothing matching says so, rather than showing an empty box.
+  await palette.locator('[data-pal-input]').fill('zzzz');
+  await expect(rows).toHaveCount(0);
+  await expect(palette).toContainText('No command matches');
+
+  // The arrows move the selection, and Enter runs what is selected.
+  await palette.locator('[data-pal-input]').fill('pane');
+  await expect(rows).toHaveCount(4);
+  await page.keyboard.press('ArrowDown');
+  await expect(rows.nth(1)).toHaveClass(/on/);
+  const picked = await rows.nth(1).locator('b').innerText();
+  await page.keyboard.press('Enter');
+  await expect(palette).toHaveCount(0);
+  await expect(page.locator('.toast')).toContainText(picked);
+
+  // Escape closes it without running anything.
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('[data-palette]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-palette]')).toHaveCount(0);
+
+  expect(errs, 'no console errors').toEqual([]);
+});
+
+/**
+ * The cheatsheet reads the table the keyboard reads.
+ *
+ * The app once promised `Split vertical (Ctrl+Shift+V)` in a tooltip long after the
+ * default had moved off that chord, because the text and the dispatcher were two separate
+ * opinions about the keyboard. So what this asserts is not that a list exists but that it
+ * says the SAME chords — and that it lists every command, including one with no chord,
+ * which is where the palette and the cheatsheet deliberately disagree.
+ */
+test('desktop mock: the cheatsheet lists every command with the chord that fires it', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.keyboard.press('Control+Shift+?');
+  const sheet = page.locator('.cheat-list');
+  await expect(sheet).toBeVisible();
+
+  // Every command, not only the runnable ones: `Ctrl+W` closes a pane, and that is worth
+  // knowing while no pane is open. The palette filters by availability; this must not.
+  const rows = sheet.locator('.cheat-row');
+  await expect(rows).toHaveCount(5);
+
+  // The chord beside the command, and the same one the palette shows — one table, one
+  // answer. Asserted on an exact chord rather than on "a kbd exists", because a wrong
+  // chord in a cheatsheet is worse than no cheatsheet.
+  await expect(rows.filter({ hasText: 'Close pane' }).locator('kbd')).toHaveText('Ctrl+W');
+  await expect(
+    rows.filter({ hasText: 'Split pane horizontally' }).locator('kbd'),
+  ).toHaveText('Ctrl+Shift+H');
+
+  // And it says where to change them, so the reader is also the way to the editor.
+  await expect(page.locator('.modal')).toContainText(/Settings/i);
+
+  // Nothing in it runs anything: it is a reader, and a row that acted on a click would
+  // make the cheatsheet a second palette with different rules.
+  await rows.first().click();
+  await expect(page.locator('.toast')).toHaveCount(0);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cheat-list')).toHaveCount(0);
+
+  expect(errs, 'no console errors').toEqual([]);
+});
+
+/**
+ * A tab's own menu, on right click.
+ *
+ * Rename already has two affordances — a double-click and a pencil — and it is in the menu
+ * anyway, because a menu that omits what people already know how to do reads as a
+ * different menu for different tabs. The two it ADDS are the ones with nowhere else to
+ * live, and the wording of one of them is the point: a tab cannot be copied, because each
+ * pane holds a live session. "Same panes, new sessions" is what a duplicate actually is,
+ * and the label has to say so rather than let someone expect their scrollback back.
+ */
+test('desktop mock: a right click on a tab offers rename, duplicate and close others', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.locator('[data-tab-menu]').first().click({ button: 'right' });
+  const menu = page.locator('.menu');
+  await expect(menu).toBeVisible();
+  const rows = menu.locator('.row');
+  // Four now: broadcast joined, because a tab is what it applies to.
+  await expect(rows).toHaveCount(4);
+
+  await expect(rows.nth(0)).toContainText('Rename tab');
+  // The wording carries the semantics, so it is asserted rather than the mere presence of
+  // a row: a plain "Duplicate tab" would promise a copy nobody can deliver.
+  await expect(rows.nth(1)).toContainText(/same panes, new sessions/i);
+  await expect(rows.nth(2)).toContainText('Close other tabs');
+
+  await rows.nth(1).click();
+  await expect(page.locator('.toast')).toContainText(/fresh sessions/i);
+  // The menu closes when it has acted: one left open over the tab strip would swallow the
+  // next click on a tab.
+  await expect(page.locator('.menu')).toHaveCount(0);
+
+  expect(errs, 'no console errors').toEqual([]);
+});
+
+/**
+ * The copy convention is SHOWN, not offered.
+ *
+ * It lives in the workspace document so it travels between machines (ADR 0023, addendum).
+ * A dropdown here would be a second place to set one value, and the file would win or lose
+ * depending on which was touched last — the same trap the layouts cards avoid by reading
+ * the file rather than duplicating it.
+ *
+ * What the row has to carry is the COST, because the mode people will reach for out of
+ * xterm habit has one: a webview cannot touch the X11 primary selection, so "selecting
+ * copies" writes the real clipboard and every drag replaces what was there. Discovering
+ * that by losing something is the outcome this wording exists to prevent.
+ */
+test('desktop mock: Settings shows the copy convention and what it costs', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  await page.evaluate(() => openSettings('clipboard'));
+  const pane = page.locator('.prefs-pane');
+  await expect(pane.locator('[data-copy-mode]')).toHaveText('select');
+
+  // Where it came from, so nobody looks for a control that is not here.
+  await expect(pane).toContainText(/workspace document/i);
+  await expect(pane).toContainText(/\[terminal\] copyMode/);
+
+  // And the cost, named.
+  await expect(pane).toContainText(/primary selection/i);
+  await expect(pane).toContainText(/every drag replaces/i);
+
+  // Nothing to set it with: no select, no toggle on that row.
+  const row = pane.locator('.settings-row', { hasText: 'Copy and paste' });
+  await expect(row.locator('select')).toHaveCount(0);
+  await expect(row.locator('.toggle')).toHaveCount(0);
+
+  expect(errs, 'no console errors').toEqual([]);
+});
+
+/**
+ * Broadcast is a MODE, so the badge is the whole safety story.
+ *
+ * One deliberate snippet reaching every open pane is a decision someone made once. Every
+ * keystroke reaching several shells is a decision that keeps being made, by someone who
+ * may have forgotten — and the cost of not noticing is a command running on machines
+ * nobody meant to touch. So it is impossible to miss and one click to stop, which is worth
+ * more than a chord nobody remembers under pressure.
+ *
+ * Scoped to the tab, as tmux's `synchronize-panes` is: broadcasting into panes in another
+ * tab would be typing where nobody is looking.
+ */
+test('desktop mock: broadcasting is announced in the tab strip and stops on a click', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  // Nothing while it is off: a permanent badge would stop being read.
+  await expect(page.locator('[data-bcast]')).toHaveCount(0);
+
+  await page.locator('[data-tab-menu]').first().click({ button: 'right' });
+  const entry = page.locator('.menu .row', { hasText: /Broadcast typing/ });
+  await expect(entry).toHaveCount(1);
+  // The wording names the scope, because "broadcast" alone does not say how far.
+  await expect(entry).toContainText(/this tab/i);
+  await entry.click();
+
+  const badge = page.locator('[data-bcast]');
+  await expect(badge).toBeVisible();
+  await expect(badge).toContainText(/Broadcasting/i);
+  // And it says what it does, where someone would look for a way out.
+  await expect(badge).toHaveAttribute('title', /click to stop/i);
+
+  await badge.click();
+  await expect(page.locator('[data-bcast]')).toHaveCount(0);
+  await expect(page.locator('.toast')).toContainText(/off/i);
+
+  expect(errs, 'no console errors').toEqual([]);
+});

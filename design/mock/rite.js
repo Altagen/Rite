@@ -1065,3 +1065,186 @@ function termHTML(host, opts){
     document.body.classList.remove('near-left');
   });
 })();
+
+/**
+ * The hosts this member trusts, and the only clean way back from a rotated key.
+ *
+ * Trust is per MEMBER, not per instance (ADR 0021, addendum): before that, one person
+ * accepting a key answered for everyone on a shared server, and nobody was asked twice.
+ * The text says so, because a list that looked instance-wide would invite exactly the
+ * wrong mental model — stated impersonally, like every other label here.
+ *
+ * Forgetting matters more than listing. A changed host key is refused in every mode, and
+ * the dialog that reports it deliberately offers no accept — so a server legitimately
+ * reinstalled had no path through except Quick SSH, which force-accepts before verifying.
+ * Forgetting the old key turns the rotation back into a first contact.
+ */
+const MOCK_KNOWN_HOSTS = [
+  { host: 'web-01.example', port: 22, type: 'ssh-ed25519', fp: 'SHA256:9kx1…7Qa', seen: 'today' },
+  { host: 'db-01.example', port: 2222, type: 'ssh-rsa', fp: 'SHA256:Lm4p…2Vd', seen: '3 days ago' },
+  { host: '10.0.0.14', port: 22, type: 'ecdsa-sha2-nistp256', fp: 'SHA256:Tt8s…9Hu', seen: 'last month' },
+];
+
+function knownHostsHTML() {
+  const rows = MOCK_KNOWN_HOSTS.map(
+    (h) => `<div class="kh-row" data-kh="${h.host}">
+      <div>
+        <b>${h.host}${h.port === 22 ? '' : ':' + h.port}</b>
+        <div class="muted" style="font-size:12px">${h.type} · ${h.fp} · seen ${h.seen}</div>
+      </div>
+      <button class="btn" data-kh-forget="${h.host}"
+        onclick="toast('Forgotten — the next connection asks again')">Forget</button>
+    </div>`,
+  ).join('');
+  return `<div class="settings-row" style="display:block">
+      <b>Trusted hosts</b>
+      <div class="muted" style="font-size:12px;margin-bottom:8px">
+        Per member. Another member of this instance keeps a separate list. Forgetting a
+        host asks again on the next connection — the way back when a server was
+        legitimately reinstalled.
+      </div>
+      <div class="kh-list">${rows}</div>
+    </div>`;
+}
+
+/**
+ * The command palette: everything runnable, found by typing.
+ *
+ * WHY A PALETTE AND NOT A MENU. The rail already proved the point for Settings — scrolling
+ * stopped working at fourteen sections. Commands have the same shape: a handful are worth a
+ * chord, the rest are worth finding. So the palette lists what can run RIGHT NOW, which is
+ * the part a menu cannot do: a pane command with no pane open is not greyed out, it is
+ * absent, because a disabled row teaches nothing.
+ *
+ * WHY THE CHORD SHOWS. The palette is also where someone learns the chord for the thing
+ * they just ran by typing. It reads from the same table the keyboard does, so a remap moves
+ * it and a changed default cannot leave a stale chord behind in a second list.
+ *
+ * MATCHING, stated so it can be argued with: every word typed has to appear, and the rank
+ * says where the first one landed — label start, then word start, then anywhere, then the
+ * description alone. No fuzzy subsequence matching: it looks clever and it cannot be
+ * explained when two rows tie.
+ */
+const MOCK_COMMANDS = [
+  { id: 'pane.splitHorizontal', label: 'Split pane horizontally', chord: 'Ctrl+Shift+H',
+    desc: 'Side by side, in the focused tab' },
+  { id: 'pane.splitVertical', label: 'Split pane vertically', chord: 'Ctrl+Shift+D',
+    desc: 'One above the other' },
+  { id: 'pane.close', label: 'Close pane', chord: 'Ctrl+W', desc: 'The focused pane only' },
+  { id: 'pane.search', label: 'Search in pane', chord: 'Ctrl+F', desc: 'Find text in the scrollback' },
+  { id: 'vault.lock', label: 'Lock the vault', chord: 'Ctrl+Shift+L',
+    desc: 'Forget the master key until it is typed again' },
+];
+
+function paletteMatches(query) {
+  const tokens = String(query || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return MOCK_COMMANDS.slice();
+  const scored = [];
+  MOCK_COMMANDS.forEach((c, at) => {
+    const label = c.label.toLowerCase();
+    const hay = label + ' ' + (c.desc || '').toLowerCase();
+    if (!tokens.every((t) => hay.includes(t))) return;
+    const first = tokens[0];
+    const rank = label.startsWith(first) ? 0
+      : new RegExp('\\b' + first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(label) ? 1
+      : label.includes(first) ? 2 : 3;
+    scored.push({ c, rank, at });
+  });
+  scored.sort((a, b) => a.rank - b.rank || a.at - b.at);
+  return scored.map((s) => s.c);
+}
+
+function openPalette() {
+  if (document.querySelector('[data-palette]')) return;
+  const bd = document.createElement('div');
+  bd.className = 'backdrop show';
+  bd.setAttribute('data-palette', '');
+  bd.innerHTML = `<div class="modal palette" style="max-width:520px">
+      <input class="inp pal-input" data-pal-input placeholder="Run a command" autofocus>
+      <div class="pal-list" data-pal-list></div>
+    </div>`;
+  document.body.appendChild(bd);
+  const input = bd.querySelector('[data-pal-input]');
+  const list = bd.querySelector('[data-pal-list]');
+  let picked = 0;
+
+  const draw = () => {
+    const hits = paletteMatches(input.value);
+    picked = Math.max(0, Math.min(picked, hits.length - 1));
+    list.innerHTML = hits.length
+      ? hits.map((c, i) => `<div class="pal-row${i === picked ? ' on' : ''}" data-pal-row="${c.id}">
+            <div><b>${esc(c.label)}</b><div class="muted" style="font-size:12px">${esc(c.desc || '')}</div></div>
+            <kbd>${esc(c.chord || '')}</kbd>
+          </div>`).join('')
+      : `<div class="muted" style="padding:10px 12px">No command matches.</div>`;
+    list.querySelectorAll('[data-pal-row]').forEach((row, i) => {
+      row.onclick = () => run(hits[i]);
+    });
+  };
+  const close = () => bd.remove();
+  const run = (c) => { close(); toast('Ran: ' + c.label); };
+
+  input.addEventListener('input', () => { picked = 0; draw(); });
+  input.addEventListener('keydown', (e) => {
+    const hits = paletteMatches(input.value);
+    if (e.key === 'ArrowDown') { e.preventDefault(); picked = Math.min(picked + 1, hits.length - 1); draw(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); picked = Math.max(picked - 1, 0); draw(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (hits[picked]) run(hits[picked]); }
+    else if (e.key === 'Escape') { e.preventDefault(); close(); }
+  });
+  bd.addEventListener('click', (e) => { if (e.target === bd) close(); });
+  draw();
+  input.focus();
+}
+
+/**
+ * The shortcuts cheatsheet: what the keyboard does, read from the table that does it.
+ *
+ * A READER, never a second list. The app once told users `Split vertical (Ctrl+Shift+V)`
+ * in a tooltip long after the default had moved off that chord, because the text and the
+ * dispatcher were two separate opinions about the keyboard. This reads the same table the
+ * palette and the dispatcher read, so a remap moves it and a changed default cannot leave
+ * a stale chord behind.
+ *
+ * IT LISTS EVERYTHING, which is the opposite of the palette's rule and deliberate. The
+ * palette lists what can run right now, because running something that cannot run is a
+ * dead end. A cheatsheet teaches the keyboard: `Ctrl+W` closes a pane, and that is worth
+ * knowing while no pane is open. Filtering it by availability would hide the answer at
+ * exactly the moment someone went looking for it.
+ */
+function openCheatsheet() {
+  const rows = MOCK_COMMANDS.map(
+    (c) => `<div class="cheat-row">
+      <div><b>${esc(c.label)}</b><div class="muted" style="font-size:12px">${esc(c.desc || '')}</div></div>
+      ${c.chord ? `<kbd>${esc(c.chord)}</kbd>` : '<span class="muted" style="font-size:12px">Unassigned</span>'}
+    </div>`,
+  ).join('');
+  showModal({
+    title: 'Keyboard shortcuts',
+    subtitle: 'Settings → Keyboard changes any of them.',
+    body: `<div class="cheat-list">${rows}</div>`,
+    confirm: null,
+    width: '520px',
+  });
+}
+
+/**
+ * What each copy convention costs, said rather than hidden.
+ *
+ * The one that matters is `select`: a webview cannot reach the X11 primary selection, so
+ * "selecting copies" writes the real clipboard and every drag replaces what was there.
+ * Someone choosing it from xterm habit would otherwise discover that the hard way.
+ */
+const COPY_MODE_WHY = {
+  chord: 'Ctrl+Shift+C copies. Ctrl+Shift+V and the middle button paste.',
+  select:
+    'Selecting copies, as xterm does — except that it writes the clipboard, because a ' +
+    'webview cannot reach the X11 primary selection. Every drag replaces what was copied. ' +
+    'The chord keeps working.',
+  selectRightPaste:
+    'Selecting copies and a right click pastes, as PuTTY does. The engine’s own context ' +
+    'menu is given up to free the gesture.',
+  ctrlC:
+    'Ctrl+C copies while something is selected, as Windows Terminal does — so it cannot ' +
+    'interrupt a running command until the selection is cleared.',
+};

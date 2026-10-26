@@ -13,7 +13,10 @@ import { askConfirm } from '../utils/confirmPrompt';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { disposeAllPanes, paneKind } from '../panes/registry';
-import { planLayout, type Layout } from '../store/layoutsFormat';
+import { planLayout, type Layout, type TabPlan } from '../store/layoutsFormat';
+// Reading a live pane tree back into a plan, so a duplicate goes through the same
+// opener a layout does rather than a second tree-walker.
+import { planFromTree } from '../store/tabPlan';
 import { useLayouts, startupAlreadyRan, markStartupRan } from '../store/layouts';
 import { useToolbar } from '../store/toolbar';
 import { type ConnectionInfo, type ConnectionsSource } from '../store/connectionsStore';
@@ -26,6 +29,9 @@ import { ProfilePastille } from './ProfilePastille';
 import { VaultPastille } from './VaultPastille';
 import { OverflowNav, type NavAction } from './OverflowNav';
 import { useSettingsModal } from '../store/settingsModal';
+import { CommandPalette } from './CommandPalette';
+import { ShortcutsCheatsheet } from './ShortcutsCheatsheet';
+import { useBroadcast } from '../store/broadcast';
 import { ConnectionForm } from './ConnectionForm';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
@@ -192,6 +198,48 @@ export function Workspace({
   // in a server session (so it stays reachable above the Teams/Collections/… overlays).
   const showSettings = useSettingsModal((s) => s.open);
   const setShowSettings = useSettingsModal((s) => s.setOpen);
+  // The palette, and one action reachable only through it. Registering `settings.open`
+  // here is what makes it runnable at all: the registry holds a command while a mounted
+  // component implements it, and this is the component that always is (see
+  // `shortcuts/registry.ts`). Both are off while the vault is locked — nothing behind the
+  // lock screen is worth running, and listing it would say otherwise.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [cheatsheetOpen, setCheatsheetOpen] = useState(false);
+  useShortcut('palette.open', () => setPaletteOpen(true), !isLocked);
+  useShortcut('settings.open', () => setShowSettings(true), !isLocked);
+  useShortcut('shortcuts.cheatsheet', () => setCheatsheetOpen(true), !isLocked);
+
+  /**
+   * Broadcasting: every keystroke in the active tab also reaches its other panes.
+   *
+   * The session ids are published to the store by this component, because it is the one
+   * that holds the trees. They are REPUBLISHED while the mode is on, so a pane opened
+   * mid-broadcast joins and a closed one drops out — `synchronize-panes` includes new
+   * panes too, and a stale list would silently stop reaching one of them.
+   */
+  const broadcastTab = useBroadcast((s) => s.tabId);
+  const toggleBroadcast = useBroadcast((s) => s.toggle);
+  const retargetBroadcast = useBroadcast((s) => s.retarget);
+  const activeSessions = (tabId: string | null) =>
+    getAllPanes(tabGroups.find((t) => t.id === tabId)?.paneTree ?? null).map(
+      (pane) => pane.session.id,
+    );
+  useShortcut(
+    'terminal.broadcast',
+    () => activeTabId && toggleBroadcast(activeTabId, activeSessions(activeTabId)),
+    !isLocked && !!activeTabId,
+  );
+  useEffect(() => {
+    if (!broadcastTab) return;
+    // Computed inline rather than through the helper above: the helper is rebuilt on every
+    // render, so listing it as a dependency would run this on every render — and leaving
+    // it out would be a lie the linter is right to refuse. `tabGroups` is what changes
+    // when a pane opens or closes, which is the only thing that can make the list wrong.
+    const sessions = getAllPanes(
+      tabGroups.find((t) => t.id === broadcastTab)?.paneTree ?? null,
+    ).map((pane) => pane.session.id);
+    retargetBroadcast(broadcastTab, sessions);
+  }, [broadcastTab, tabGroups, retargetBroadcast]);
 
   // Quick SSH and Unlock modals
   const [showQuickSSH, setShowQuickSSH] = useState(false);
@@ -926,13 +974,26 @@ export function Workspace({
    * `localSession` is that fallback, and is also the plain split — one function, so a
    * pane that fell back is built exactly like a pane that was asked for.
    */
-  const localSession = async (target?: SplitTarget, note?: string): Promise<TerminalSession> => {
+  const localSession = async (
+    target?: SplitTarget,
+    note?: string,
+    /**
+     * Open in the same directory as this session's shell.
+     *
+     * Only a split passes one. A new tab and a duplicate start where a shell would
+     * normally start: "leave me where I was" is unambiguous for a split and a guess
+     * anywhere else. The server reads the directory itself and refuses a session the
+     * caller does not own.
+     */
+    inheritCwdFrom?: string,
+  ): Promise<TerminalSession> => {
     // In a server context the shell is the instance's (`defaultShell`), so ask for
     // nothing and let the server use it: sending one made the administrator's choice
     // advisory, and the server would spawn whatever path it was handed.
     const shellToUse = isServerCtx ? serverShell : settings.defaultShell;
     const sessionId = await Backend.Terminal.connectLocalTerminal(
       isServerCtx ? (serverShellChoiceList.length > 0 ? serverShell : undefined) : shellToUse,
+      inheritCwdFrom,
     );
     const shellName = shellToUse.split('/').pop() || 'shell';
     return {
@@ -948,9 +1009,14 @@ export function Workspace({
   const sessionForTarget = async (
     target?: SplitTarget,
     gate?: Map<string, boolean>,
+    inheritCwdFrom?: string,
   ): Promise<TerminalSession> => {
     const machine = target?.machine?.trim();
-    if (!machine) return localSession(target);
+    // Only the local path can inherit a directory. A machine's working directory is on
+    // another computer, and the fallbacks below are a plain shell standing in for a
+    // machine that could not be opened — starting that somewhere else because of where an
+    // unrelated pane happened to be would be noise, not a convenience.
+    if (!machine) return localSession(target, undefined, inheritCwdFrom);
 
     // A locked vault is not a wrong name: the names are encrypted, so there is
     // nothing to compare against, and saying so is the honest message.
@@ -981,7 +1047,17 @@ export function Workspace({
     if (!activeTabId) return;
 
     try {
-      const newSession = await sessionForTarget(target);
+      // The pane being cut, so its shell's directory is where the new one opens. A
+      // terminal multiplexer does this and it is the whole of the "working directory per
+      // tab" item: splitting leaves you where you were.
+      const cutPane = getAllPanes(tabGroups.find((t) => t.id === activeTabId)?.paneTree ?? null)
+        .find((pane) => pane.id === paneId);
+      // The session is named whatever it is, local or SSH, and the SERVER decides whether
+      // it can answer: `local_cwd` matches on a local session and returns nothing for
+      // anything else. A matching check here would be the same rule in two places — and
+      // the one that cannot be skipped is the server's, because it is the side that can
+      // read a directory at all.
+      const newSession = await sessionForTarget(target, undefined, cutPane?.session.id);
 
       // Split the pane in the active tab's tree
       setTabGroups((prev) =>
@@ -1013,11 +1089,24 @@ export function Workspace({
    * later step anchor to a pane placed earlier.
    */
   const handleApplyLayout = async (layout: Layout) => {
-    // One hook per machine for the whole layout, however many panes it has.
+    await openPlans(planLayout(layout), layout.name);
+  };
+
+  /**
+   * Open a set of tab plans: the panes they name, arranged by the cuts they list.
+   *
+   * Lifted out of `handleApplyLayout` so duplicating a tab goes through the same code.
+   * A duplicate IS a plan — `planFromTree` reads a live tree into one — so the only
+   * alternative was a second tree-walker that would drift from this one. Rebuilding an
+   * arrangement is subtle enough that having one implementation of it matters more than
+   * the two callers looking different.
+   */
+  const openPlans = async (plans: TabPlan[], fallbackName: string) => {
+    // One hook per machine for the whole run, however many panes name it.
     const gate = new Map<string, boolean>();
     const opened: Tab[] = [];
 
-    for (const plan of planLayout(layout)) {
+    for (const plan of plans) {
       const sessionFor = async (index: number): Promise<TerminalSession> => {
         try {
           return await sessionForTarget(plan.panes[index], gate);
@@ -1051,15 +1140,45 @@ export function Workspace({
         if (added) paneIds.set(step.pane, added.id);
       }
 
-      opened.push({ id: crypto.randomUUID(), name: plan.tab ?? layout.name, paneTree: tree });
+      opened.push({ id: crypto.randomUUID(), name: plan.tab ?? fallbackName, paneTree: tree });
     }
 
     if (opened.length === 0) return;
     setTabGroups((prev) => [...prev, ...opened]);
     setActiveTabId(opened[0].id);
-    // A layout is terminals; a dashboard or a collection covering the workspace would
+    // These are terminals; a dashboard or a collection covering the workspace would
     // hide every one of them.
     setMainView('terminal');
+  };
+
+  /**
+   * Duplicate a tab: the same arrangement, against the same targets, with fresh sessions.
+   *
+   * Not a copy, and the menu label says so. A pane holds a live session — an SSH
+   * connection, a PTY with a shell's history and whatever is running in it — and none of
+   * that is a value that can be cloned. What can be rebuilt is the shape and the targets,
+   * which is exactly what a layout is, so this reads the live tree into a plan and hands
+   * it to the opener layouts use.
+   *
+   * A machine that cannot be reached gets the same treatment it gets from a layout: the
+   * pane opens as a plain shell carrying why (ADR 0023 §5). The arrangement survives even
+   * when a target does not.
+   */
+  const handleDuplicateTab = async (tabId: string) => {
+    const tab = tabGroups.find((t) => t.id === tabId);
+    if (!tab || !tab.paneTree) return;
+    await openPlans([planFromTree(tab.paneTree, tab.name)], tab.name);
+  };
+
+  /** Close every tab but this one. The strip asks first; this does the closing. */
+  const handleCloseOtherTabs = async (keepId: string) => {
+    // Snapshotted before the first close: `handleCloseTab` edits `tabGroups`, and
+    // iterating the live list while it shrinks skips tabs.
+    const doomed = tabGroups.filter((t) => t.id !== keepId).map((t) => t.id);
+    // One at a time, because each close disposes its own panes and a failure on one tab
+    // must not take the rest of the loop with it.
+    for (const id of doomed) await handleCloseTab(id);
+    setActiveTabId(keepId);
   };
 
   /**
@@ -2122,6 +2241,9 @@ export function Workspace({
                 onRenameTab={handleRenameTab}
                 onMergeTab={handleMergeTab}
                 onCloseTab={handleCloseTab}
+                onDuplicateTab={(id) => void handleDuplicateTab(id)}
+                onCloseOtherTabs={(id) => void handleCloseOtherTabs(id)}
+                onToggleBroadcast={(id) => toggleBroadcast(id, activeSessions(id))}
                 onReorganizePane={handleReorganizePane}
                 onNewLocalTerminal={handleNewLocalTerminal}
                 shellMenu={toolbarPrefs.newTerminalMenu ? newTerminalShells : undefined}
@@ -2445,6 +2567,9 @@ export function Workspace({
 
       {/* Settings Modal — local mode only. In a server session AccountsShell renders it (once,
           above the overlay pages) since it drives the same global store. */}
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
+      {cheatsheetOpen && <ShortcutsCheatsheet onClose={() => setCheatsheetOpen(false)} />}
+
       {showSettings && !identity && (
         <Settings
           onClose={() => setShowSettings(false)}

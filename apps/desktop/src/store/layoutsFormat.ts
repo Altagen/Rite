@@ -64,9 +64,34 @@ export interface LayoutError {
   message: string;
 }
 
+/**
+ * The copy/paste conventions `[terminal] copyMode` may name.
+ *
+ * DUPLICATED ON PURPOSE, and held by a check. `CLIPBOARD_MODES` in
+ * `utils/terminalClipboard.ts` is the one the terminal acts on; this is the one the parser
+ * validates against, and `e2e/clipboard-mode-file-check.mjs` asserts the two are identical
+ * so neither can grow a mode the other refuses.
+ *
+ * The alternative was importing it, and this module imports NOTHING: two standalone checks
+ * load it through Node's type stripping, which needs an explicit `.ts` on every specifier.
+ * One list in two places that a check compares is the same arrangement the Settings rail
+ * already uses between the mock and the app — and it beats a parser that accepts any
+ * string and leaves a typo to be ignored in silence, with no line number.
+ */
+export const FILE_COPY_MODES = ['chord', 'select', 'selectRightPaste', 'ctrlC'] as const;
+export type FileCopyMode = (typeof FILE_COPY_MODES)[number];
+
+/** What `[terminal]` carries: this machine's behaviour, not its arrangement (ADR 0023). */
+export interface TerminalSection {
+  /** Absent ⇒ the shipped default, which is what Rite has always done. */
+  copyMode?: FileCopyMode;
+}
+
 export interface LayoutParse {
   presets: Preset[];
   layouts: Layout[];
+  /** Always present; its fields are absent when the file does not set them. */
+  terminal: TerminalSection;
   error: LayoutError | null;
 }
 
@@ -83,6 +108,9 @@ const MAX_SHARE = 0.9;
  */
 export function parseLayoutFile(text: string): LayoutParse {
   const presets: Preset[] = [];
+  /** `[terminal]` is a single table, not an array of them: a machine has one behaviour. */
+  const terminal: TerminalSection = {};
+  let inTerminal = false;
   const layouts: Layout[] = [];
   let preset: Preset | null = null;
   let current: Layout | null = null;
@@ -99,6 +127,10 @@ export function parseLayoutFile(text: string): LayoutParse {
   const fail = (line: number, message: string): LayoutParse => ({
     presets: [],
     layouts: [],
+    // Nothing from a file that does not parse, the mode included: half a file is worse
+    // than no file, and a copy gesture quietly taken from a rejected file would be the
+    // one surviving half.
+    terminal: {},
     error: { line, message },
   });
 
@@ -109,6 +141,7 @@ export function parseLayoutFile(text: string): LayoutParse {
 
     if (line === '[[preset]]') {
       preset = { id: `p${presets.length + 1}`, name: '', command: '' };
+      inTerminal = false;
       presets.push(preset);
       current = null;
       pane = null;
@@ -116,8 +149,18 @@ export function parseLayoutFile(text: string): LayoutParse {
     }
     if (line === '[[layout]]') {
       current = { id: `l${layouts.length + 1}`, name: '', startup: false, panes: [] };
+      inTerminal = false;
       layouts.push(current);
       preset = null;
+      pane = null;
+      continue;
+    }
+    if (line === '[terminal]') {
+      // Not `[[terminal]]`: repeating it would ask which one wins, and there is no
+      // answer worth having. A second `[terminal]` is caught below as a duplicate key.
+      inTerminal = true;
+      preset = null;
+      current = null;
       pane = null;
       continue;
     }
@@ -125,12 +168,14 @@ export function parseLayoutFile(text: string): LayoutParse {
       if (!current) return fail(i + 1, '[[layout.pane]] before any [[layout]]');
       pane = { command: '' };
       current.panes.push(pane);
+      inTerminal = false;
       continue;
     }
     if (line.startsWith('[')) {
       return fail(
         i + 1,
-        `unknown table ${line} — only [[preset]], [[layout]] and [[layout.pane]] exist`,
+        `unknown table ${line} — only [terminal], [[preset]], [[layout]] and ` +
+          `[[layout.pane]] exist`,
       );
     }
 
@@ -151,6 +196,24 @@ export function parseLayoutFile(text: string): LayoutParse {
         `a value is quoted — write ${key} = "${value.endsWith('%') ? value : `${value}%`}"`,
       );
     else return fail(i + 1, `a value is a quoted string or true/false, not ${value || 'nothing'}`);
+
+    if (inTerminal) {
+      if (key !== 'copyMode') {
+        return fail(i + 1, `[terminal] takes copyMode, not ${key}`);
+      }
+      if (terminal.copyMode !== undefined) {
+        return fail(i + 1, 'copyMode is set twice');
+      }
+      const mode = String(parsed);
+      if (!(FILE_COPY_MODES as readonly string[]).includes(mode)) {
+        // Named, not just refused: a typo here would otherwise leave the terminal on its
+        // default with nothing to say why, which is the silent failure this subset of
+        // TOML exists to avoid.
+        return fail(i + 1, `copyMode is one of ${FILE_COPY_MODES.join(', ')} — not ${mode}`);
+      }
+      terminal.copyMode = mode as FileCopyMode;
+      continue;
+    }
 
     if (pane) {
       remember(pane, key, i + 1);
@@ -225,10 +288,10 @@ export function parseLayoutFile(text: string): LayoutParse {
     // The planner needs the tabs and the anchors to hold; it is the same walk, so it
     // reports here rather than throwing later with no line to name.
     const planned = planTabs(layout, at);
-    if ('error' in planned) return { presets: [], layouts: [], error: planned.error };
+    if ('error' in planned) return { presets: [], layouts: [], terminal: {}, error: planned.error };
   }
 
-  return { presets, layouts, error: null };
+  return { presets, layouts, terminal, error: null };
 }
 
 /** One cut of the screen: which pane is added, out of which pane's area, and how. */

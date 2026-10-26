@@ -293,7 +293,23 @@
     "masterPasswordHint": "Il chiffre toutes les connexions de ce coffre : le changer les re-chiffre toutes.",
     "autoCollapseHint": "En mode focus (F11), masquer aussi la bibliothèque — terminaux seuls.",
     "themeGrey": "Gris",
-    "changingPassword": "Changement…"
+    "changingPassword": "Changement…",
+    "knownHosts": "Hôtes de confiance",
+    "knownHostsDesc": "Par membre. Un autre membre de cette instance tient une liste distincte. Oublier un hôte le fait redemander à la prochaine connexion — la voie de retour quand un serveur a été légitimement réinstallé.",
+    "knownHostsEmpty": "Aucun hôte de confiance pour l'instant.",
+    "knownHostsLoading": "Chargement…",
+    "knownHostsErr": "Impossible de charger les hôtes de confiance",
+    "knownHostsForget": "Oublier",
+    "knownHostsForgetErr": "Impossible d'oublier cet hôte",
+    "knownHostsSeen": "vu {when}",
+    "knownHostsNever": "pas revu depuis l'approbation",
+    "copyMode": "Copier et coller",
+    "copyModeFile": "Défini par le document de travail, sous [terminal] copyMode.",
+    "copyModeDefault": "Le document ne dit rien, la convention livrée s’applique donc.",
+    "copyModeChord": "Ctrl+Maj+C copie. Ctrl+Maj+V et le bouton du milieu collent.",
+    "copyModeSelect": "La sélection copie, comme xterm — sauf qu’elle écrit le presse-papier, un webview n’atteignant pas la sélection primaire X11. Chaque glissement remplace ce qui était copié. Le raccourci continue de fonctionner.",
+    "copyModeSelectRightPaste": "La sélection copie et le clic droit colle, comme PuTTY. Le menu contextuel du moteur est abandonné pour libérer le geste.",
+    "copyModeCtrlC": "Ctrl+C copie quand quelque chose est sélectionné, comme Windows Terminal — il ne peut donc plus interrompre une commande tant que la sélection n’est pas levée."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",
@@ -553,12 +569,38 @@
           "label": "Verrouiller le coffre",
           "description": "Ferme le coffre et retire sa clé de la mémoire. Les connexions enregistrées cessent d’être lisibles jusqu’au déverrouillage ; les terminaux déjà ouverts continuent."
         }
+      },
+      "palette": {
+        "open": {
+          "label": "Exécuter une commande",
+          "description": "Ouvre la palette par-dessus ce qui est à l'écran."
+        }
+      },
+      "settings": {
+        "open": {
+          "label": "Ouvrir les réglages",
+          "description": "La fenêtre de réglages, à la section affichée en dernier."
+        }
+      },
+      "shortcuts": {
+        "cheatsheet": {
+          "label": "Raccourcis clavier",
+          "description": "Liste chaque commande et le raccourci qui la déclenche."
+        }
+      },
+      "terminal": {
+        "broadcast": {
+          "label": "Diffuser la frappe à un onglet",
+          "description": "Chaque frappe dans l'onglet actif atteint aussi ses autres panes."
+        }
       }
     },
     "fixed": {
       "focusMode": "Mode focus — masque la barre d’outils pour que les terminaux remplissent l’écran. Échap ou F11 pour sortir.",
       "dismiss": "Ferme la barre de recherche, ou une boîte de dialogue ouverte."
-    }
+    },
+    "unassigned": "Non assigné",
+    "backToNone": "Revenir à aucun raccourci"
   },
   "layouts": {
     "title": "Dispositions",
@@ -1211,7 +1253,16 @@
     "newTerminal": "Nouveau terminal",
     "closeManyWhy": "Fermeture de {count} terminaux. Toutes les connexions actives sont coupées.",
     "closeTab": "Fermer l’onglet",
-    "closeTabCount": "Fermer l’onglet ({count} terminaux)"
+    "closeTabCount": "Fermer l’onglet ({count} terminaux)",
+    "duplicateTab": "Dupliquer l'onglet",
+    "duplicateTabWhy": "Mêmes panes, nouvelles sessions",
+    "closeOthers": "Fermer les autres onglets",
+    "closeOthersTitle": "Fermer les autres onglets ?",
+    "closeOthersWhy": "{count} terminaux dans {tabs} autres onglets seront fermés.",
+    "broadcast": "Diffuser la frappe aux panes de cet onglet",
+    "broadcastStop": "Arrêter la diffusion",
+    "broadcasting": "Diffusion",
+    "broadcastingWhy": "Chaque frappe atteint les panes de cet onglet — cliquer pour arrêter"
   },
   "members": {
     "addFromTeam": "Ajouter depuis une équipe :",
@@ -1530,5 +1581,13 @@
     "open": "Ouvert",
     "server": "Serveur",
     "current": "actuel"
+  },
+  "palette": {
+    "placeholder": "Exécuter une commande",
+    "empty": "Aucune commande ne correspond."
+  },
+  "cheatsheet": {
+    "title": "Raccourcis clavier",
+    "where": "Réglages → Clavier permet de les changer."
   }
 }

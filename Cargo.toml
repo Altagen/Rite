@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.5"
+version = "0.2.6"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Ange Cesari"]
@@ -28,7 +28,6 @@ toml = "1.1"
 # Crypto
 argon2 = "0.5"
 chacha20poly1305 = "0.10"
-age = "0.11"
 zeroize = { version = "1.8", features = ["derive"] }
 
 # SSH
@@ -38,7 +37,7 @@ russh = "0.64"
 suppaftp = "10.0"
 
 # Database
-sqlx = { version = "0.8", default-features = false, features = [
+sqlx = { version = "0.9", default-features = false, features = [
     "runtime-tokio",
     "sqlite",
     # `FromRow` is a derive, so it lives behind this feature even though we

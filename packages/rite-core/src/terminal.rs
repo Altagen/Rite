@@ -29,7 +29,95 @@ const MAX_INITIAL_BUFFER: usize = 1024 * 1024; // 1 MiB
 
 /// Bound the connect + handshake (per hop) so an unreachable/filtered host fails
 /// with a clear error instead of hanging on the OS TCP timeout (~2 min).
-const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+///
+/// Twenty seconds suits a host on a network that answers. It does not suit every one: a
+/// hop reached through a satellite link, or a jump host that authenticates against a slow
+/// directory, needs longer, and a bastion fronting a dense subnet is better served by a
+/// shorter one. So an instance may declare `ssh_connect_timeout` (ADR 0020) and the server
+/// applies it here at start-up.
+///
+/// A process-wide value rather than a parameter: it is the same for every connection a
+/// process opens, and threading it through would add a twelfth argument to functions that
+/// already carry eleven — which is what [`HostKeyTrust`] exists to undo.
+pub const DEFAULT_CONNECT_TIMEOUT_SECS: u64 = 20;
+static CONNECT_TIMEOUT_SECS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(DEFAULT_CONNECT_TIMEOUT_SECS);
+
+/// Bound the connect + handshake, as configured.
+pub fn connect_timeout() -> std::time::Duration {
+    std::time::Duration::from_secs(CONNECT_TIMEOUT_SECS.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// The bound to apply, or `None` for a value that must not be applied.
+///
+/// Zero would time every connection out instantly, and the configuration loader already
+/// refuses it — checked again here because this is the function that writes the value, and
+/// the one place where "the loader validated it" stops being visible.
+fn usable_timeout(secs: u64) -> Option<u64> {
+    (1..=300).contains(&secs).then_some(secs)
+}
+
+/// Apply a configured bound. A value outside the range leaves the previous one in place.
+pub fn set_connect_timeout_secs(secs: u64) {
+    if let Some(secs) = usable_timeout(secs) {
+        CONNECT_TIMEOUT_SECS.store(secs, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// The host-key policy an instance declared, when it declared one (ADR 0020 addendum).
+///
+/// This crate reads `host_key_verification_mode` from the `settings` table for every
+/// connection it opens, and the instance configuration deliberately does not write to that
+/// table — removing a key from the file has to restore what the administrator had. So a
+/// declared mode reached `/api/server/mode`, greyed the console field out, and never
+/// reached this code: an instance whose table still held `accept` from an earlier click
+/// kept accepting unknown hosts while every surface said `strict`.
+///
+/// The server pushes the resolved value here at start-up instead, and the verification
+/// below prefers it over the table.
+static DECLARED_HOST_KEY_MODE: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// Push a declared mode, or `None` for "nothing declared — the table answers".
+///
+/// A value this crate does not know is treated as nothing declared: the loader refuses a
+/// typo at start-up, and falling back to the table is the behaviour that existed before
+/// this function, where silently inventing a mode is not.
+pub fn set_declared_host_key_mode(mode: Option<&str>) {
+    if let Ok(mut slot) = DECLARED_HOST_KEY_MODE.write() {
+        *slot = known_mode(mode);
+    }
+}
+
+/// A mode this crate acts on, or `None`. Trimmed, because a value read from a mounted file
+/// arrives with a newline, and compared by value rather than by type: a typo reaching here
+/// has to read as nothing declared, not as a policy nobody can name.
+fn known_mode(mode: Option<&str>) -> Option<String> {
+    mode.map(str::trim)
+        .filter(|m| matches!(*m, "strict" | "warn" | "accept"))
+        .map(str::to_string)
+}
+
+fn declared_host_key_mode() -> Option<String> {
+    DECLARED_HOST_KEY_MODE
+        .read()
+        .ok()
+        .and_then(|slot| slot.clone())
+}
+
+/// What a connection verifies against, given what the `settings` table holds: the declared
+/// mode when there is one, else the table, else strict.
+///
+/// Strict last on purpose. An unreadable table and an empty one both mean nobody said, and
+/// the mode that refuses an unknown key is the only safe answer to that.
+pub fn host_key_mode(stored: Option<String>) -> String {
+    resolve_host_key_mode(declared_host_key_mode(), stored)
+}
+
+/// The resolution itself, with both inputs in the open so it can be asserted without
+/// touching the process-wide value — which the host-key tests in this crate read.
+fn resolve_host_key_mode(declared: Option<String>, stored: Option<String>) -> String {
+    declared.or(stored).unwrap_or_else(|| "strict".to_string())
+}
 
 /// Commands that can be sent to a terminal session
 pub enum SessionCommand {
@@ -87,13 +175,55 @@ pub async fn list_agent_identities() -> Result<Vec<AgentIdentityInfo>> {
         .collect())
 }
 
+/// Who is trusting a host key, and how much.
+///
+/// One value rather than two parameters, because they always travel together and the pair
+/// is the whole host-key policy for a connection attempt. It replaces a bare
+/// `trust: bool` that was threaded through five signatures of eight to
+/// eleven arguments; adding the owner beside it would have made six.
+#[derive(Debug, Clone)]
+pub struct HostKeyTrust {
+    /// Whose `known_hosts` this connection is checked against (ADR 0021, addendum).
+    /// [`known_hosts::LOCAL_OWNER`] for a local vault, the member's id on a shared server.
+    pub owner: String,
+    /// Quick SSH: record whatever is offered without verifying it first (ADR 0021 §5).
+    pub force_accept: bool,
+}
+
+impl HostKeyTrust {
+    /// The trust a named owner has, verifying normally. `force_accept` is deliberately
+    /// not a parameter: only Quick SSH and the ad-hoc paths set it, and they do so by
+    /// calling [`Self::forcing`] themselves (ADR 0021 §5). A caller cannot ask for a
+    /// saved connection to skip verification.
+    pub fn of(owner: &str) -> Self {
+        Self {
+            owner: owner.to_string(),
+            force_accept: false,
+        }
+    }
+
+    /// The trust a local vault has: its one person, verifying normally.
+    pub fn local() -> Self {
+        Self {
+            owner: known_hosts::LOCAL_OWNER.to_string(),
+            force_accept: false,
+        }
+    }
+
+    /// The same owner, but force-accepting — Quick SSH's explicit opt-out.
+    pub fn forcing(mut self) -> Self {
+        self.force_accept = true;
+        self
+    }
+}
+
 /// SSH Client Handler with host key verification
 struct SshClientHandler {
     db: Arc<SqlitePool>,
     host: String,
     port: u16,
     events: SharedEvents,
-    force_accept_host_key: bool, // For Quick SSH: bypass host key verification
+    trust: HostKeyTrust,
 }
 
 impl client::Handler for SshClientHandler {
@@ -136,12 +266,18 @@ impl client::Handler for SshClientHandler {
         );
 
         // Quick SSH: force accept all host keys (similar to ssh -o StrictHostKeyChecking=no)
-        if self.force_accept_host_key {
+        if self.trust.force_accept {
             tracing::info!("[terminal.rs] Quick SSH mode: auto-accepting host key (TOFU)");
 
             // Save the host key to known_hosts for future use
-            if let Err(e) =
-                known_hosts::add_host_key(&self.db, &self.host, self.port, server_public_key).await
+            if let Err(e) = known_hosts::add_host_key(
+                &self.db,
+                &self.trust.owner,
+                &self.host,
+                self.port,
+                server_public_key,
+            )
+            .await
             {
                 tracing::warn!("[terminal.rs] Failed to save host key for Quick SSH: {}", e);
                 // Don't fail the connection if we can't save the key
@@ -150,28 +286,23 @@ impl client::Handler for SshClientHandler {
             return Ok(true);
         }
 
-        // Get the host key verification mode from settings
-        let verification_mode = match sqlx::query_scalar::<_, String>(
+        // What the table holds, which the declared mode outranks (ADR 0020 addendum).
+        let stored = match sqlx::query_scalar::<_, String>(
             "SELECT value FROM settings WHERE key = 'host_key_verification_mode'",
         )
         .fetch_optional(&*self.db)
         .await
         {
-            Ok(Some(mode)) => mode,
-            Ok(None) => {
-                tracing::warn!(
-                    "[terminal.rs] No host_key_verification_mode setting found, defaulting to 'strict'"
-                );
-                "strict".to_string()
-            }
+            Ok(mode) => mode,
             Err(e) => {
                 tracing::error!(
                     "[terminal.rs] Failed to read host_key_verification_mode: {}",
                     e
                 );
-                "strict".to_string() // Default to strict on error for security
+                None
             }
         };
+        let verification_mode = host_key_mode(stored);
 
         tracing::info!(
             "[terminal.rs] Host key verification mode: {}",
@@ -179,7 +310,14 @@ impl client::Handler for SshClientHandler {
         );
 
         // Verify the host key using our known_hosts system
-        match known_hosts::verify_host_key(&self.db, &self.host, self.port, server_public_key).await
+        match known_hosts::verify_host_key(
+            &self.db,
+            &self.trust.owner,
+            &self.host,
+            self.port,
+            server_public_key,
+        )
+        .await
         {
             Ok(HostKeyVerificationResult::Accepted) => {
                 tracing::info!("[terminal.rs] Host key accepted (known host)");
@@ -209,6 +347,7 @@ impl client::Handler for SshClientHandler {
 
                         if let Err(e) = known_hosts::store_pending_host_key(
                             &self.db,
+                            &self.trust.owner,
                             &host,
                             port,
                             server_public_key,
@@ -230,9 +369,14 @@ impl client::Handler for SshClientHandler {
                         // Warn mode: Accept the key but notify the user
                         tracing::info!("[terminal.rs] Warn mode: Accepting key and notifying user");
 
-                        if let Err(e) =
-                            known_hosts::add_host_key(&self.db, &host, port, server_public_key)
-                                .await
+                        if let Err(e) = known_hosts::add_host_key(
+                            &self.db,
+                            &self.trust.owner,
+                            &host,
+                            port,
+                            server_public_key,
+                        )
+                        .await
                         {
                             tracing::error!("[terminal.rs] Failed to save host key: {}", e);
                         }
@@ -248,9 +392,14 @@ impl client::Handler for SshClientHandler {
                             "[terminal.rs] Accept mode: Silently accepting and saving key (TOFU)"
                         );
 
-                        if let Err(e) =
-                            known_hosts::add_host_key(&self.db, &host, port, server_public_key)
-                                .await
+                        if let Err(e) = known_hosts::add_host_key(
+                            &self.db,
+                            &self.trust.owner,
+                            &host,
+                            port,
+                            server_public_key,
+                        )
+                        .await
                         {
                             tracing::error!("[terminal.rs] Failed to save host key: {}", e);
                         }
@@ -551,7 +700,7 @@ async fn open_jump_tunnel(
     target_port: u16,
     db_pool: Arc<SqlitePool>,
     events: SharedEvents,
-    force_accept_host_key: bool,
+    trust: HostKeyTrust,
 ) -> Result<(
     russh::ChannelStream<client::Msg>,
     Vec<client::Handle<SshClientHandler>>,
@@ -566,11 +715,11 @@ async fn open_jump_tunnel(
             host: conn.hostname.clone(),
             port: conn.port,
             events: events.clone(),
-            force_accept_host_key,
+            trust: trust.clone(),
         };
         let mut handle = if i == 0 {
             let addr = format!("{}:{}", conn.hostname, conn.port);
-            match tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, &addr, handler))
+            match tokio::time::timeout(connect_timeout(), client::connect(config, &addr, handler))
                 .await
             {
                 Ok(result) => result?,
@@ -578,7 +727,7 @@ async fn open_jump_tunnel(
                     return Err(anyhow!(
                         "Connection to jump host {} timed out after {}s",
                         addr,
-                        CONNECT_TIMEOUT.as_secs()
+                        connect_timeout().as_secs()
                     ));
                 }
             }
@@ -629,7 +778,7 @@ async fn establish_authenticated_handle(
     events: SharedEvents,
     db_pool: Arc<SqlitePool>,
     keep_alive_interval: Option<u64>,
-    force_accept_host_key: bool,
+    trust: HostKeyTrust,
     interactive: Option<&SharedInteractive>,
     jumps: &[(Connection, AuthMethod)],
 ) -> Result<(
@@ -649,19 +798,20 @@ async fn establish_authenticated_handle(
         host: connection.hostname.clone(),
         port: connection.port,
         events: events.clone(),
-        force_accept_host_key,
+        trust: trust.clone(),
     };
     let mut jump_handles: Vec<client::Handle<SshClientHandler>> = Vec::new();
     let mut session = if jumps.is_empty() {
         let addr = format!("{}:{}", connection.hostname, connection.port);
         tracing::info!("[terminal.rs] Attempting TCP connection to {}...", addr);
-        match tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, &addr, handler)).await {
+        match tokio::time::timeout(connect_timeout(), client::connect(config, &addr, handler)).await
+        {
             Ok(result) => result?,
             Err(_) => {
                 return Err(anyhow!(
                     "Connection to {} timed out after {}s",
                     addr,
-                    CONNECT_TIMEOUT.as_secs()
+                    connect_timeout().as_secs()
                 ));
             }
         }
@@ -678,7 +828,7 @@ async fn establish_authenticated_handle(
             connection.port,
             db_pool.clone(),
             events.clone(),
-            force_accept_host_key,
+            trust.clone(),
         )
         .await?;
         jump_handles = handles;
@@ -732,7 +882,7 @@ impl SshSession {
         events: SharedEvents,
         db_pool: Arc<SqlitePool>,
         keep_alive_interval: Option<u64>, // Keep-alive interval in seconds (None = disabled)
-        force_accept_host_key: bool,      // For Quick SSH: bypass host key verification
+        trust: HostKeyTrust,              // Whose known_hosts, and whether to force-accept
         interactive: Option<SharedInteractive>, // Collects keyboard-interactive answers (2FA/PAM)
         jumps: Vec<(Connection, AuthMethod)>, // Jump-host chain (outermost/TCP first); empty = direct
     ) -> Result<Self> {
@@ -756,7 +906,7 @@ impl SshSession {
             events.clone(),
             db_pool,
             keep_alive_interval,
-            force_accept_host_key,
+            trust.clone(),
             interactive.as_ref(),
             &jumps,
         )
@@ -1026,7 +1176,7 @@ async fn exec_remote_command(
     events: SharedEvents,
     db_pool: Arc<SqlitePool>,
     jumps: &[(Connection, AuthMethod)],
-    force_accept_host_key: bool,
+    trust: HostKeyTrust,
     command: &str,
 ) -> Result<RemoteCommandOutput> {
     let (session, _jump_handles) = establish_authenticated_handle(
@@ -1035,7 +1185,7 @@ async fn exec_remote_command(
         events,
         db_pool,
         None, // no keepalive for a one-shot exec
-        force_accept_host_key,
+        trust.clone(),
         None, // no keyboard-interactive on the exec path
         jumps,
     )
@@ -1146,6 +1296,7 @@ impl SessionManager {
         events: SharedEvents,
         interactive: Option<SharedInteractive>,
         session_secret: Option<String>,
+        owner: &str,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_session called for connection_id: {}",
@@ -1207,7 +1358,7 @@ impl SessionManager {
             events,
             Arc::new(self.db.pool().clone()),
             keep_alive_interval,
-            false,
+            HostKeyTrust::of(owner),
             interactive,
             jumps,
         )
@@ -1256,6 +1407,22 @@ impl SessionManager {
         Ok(session_id)
     }
 
+    /// Where a local session's shell currently is, or `None`.
+    ///
+    /// `None` for an SSH session — its directory is on another machine and nothing local
+    /// can answer for it — for a session that has gone, and on any platform that will not
+    /// say (see `LocalSession::shell_cwd`). Every one of those is the same answer to the
+    /// caller: open where you would have.
+    pub async fn local_cwd(&self, session_id: &SessionId) -> Option<std::path::PathBuf> {
+        let sessions = self.sessions.lock().await;
+        match sessions.get(session_id) {
+            Some(Session::Local(local)) => {
+                crate::local_terminal::LocalSession::shell_cwd(local.pid?)
+            }
+            _ => None,
+        }
+    }
+
     /// Create a new local terminal session
     ///
     /// Spawns a local shell (bash/zsh/fish) based on $SHELL env variable
@@ -1263,11 +1430,20 @@ impl SessionManager {
         &self,
         events: SharedEvents,
         shell: Option<String>,
+        // Start in the same directory as this session's shell, when it can be read.
+        // Splitting a pane should leave you where you were, which is what a terminal
+        // multiplexer does and what this answers.
+        inherit_cwd_from: Option<&SessionId>,
     ) -> Result<SessionId> {
         tracing::info!("[terminal.rs] create_local_session called");
 
+        let cwd = match inherit_cwd_from {
+            Some(from) => self.local_cwd(from).await,
+            None => None,
+        };
+
         // Create local session
-        let local_session = crate::local_terminal::LocalSession::spawn(events, shell).await?;
+        let local_session = crate::local_terminal::LocalSession::spawn(events, shell, cwd).await?;
         let session_id = local_session.id.clone();
         tracing::info!(
             "[terminal.rs] Local session created with ID: {}",
@@ -1336,6 +1512,7 @@ impl SessionManager {
         events: SharedEvents,
         // See `create_session`.
         session_secret: Option<String>,
+        owner: &str,
     ) -> Result<PortForwardInfo> {
         // Resolve + decrypt the machine and its jump chain, as for a terminal, from
         // whichever local store holds it.
@@ -1358,7 +1535,7 @@ impl SessionManager {
             &auth_method,
             &jumps,
             keep_alive,
-            false,
+            HostKeyTrust::of(owner),
             bind_host,
             local_port,
             remote_host,
@@ -1383,6 +1560,7 @@ impl SessionManager {
         remote_host: &str,
         remote_port: u16,
         events: SharedEvents,
+        owner: &str,
     ) -> Result<PortForwardInfo> {
         let connection_id = connection.id.clone();
         let keep_alive = match connection.ssh_keep_alive_override.as_deref() {
@@ -1395,7 +1573,7 @@ impl SessionManager {
             &auth_method,
             &jumps,
             keep_alive,
-            true, // ad-hoc target → accept the host key like quick SSH
+            HostKeyTrust::of(owner).forcing(), // ad-hoc → accept like Quick SSH
             bind_host,
             local_port,
             remote_host,
@@ -1416,7 +1594,7 @@ impl SessionManager {
         auth_method: &AuthMethod,
         jumps: &[(Connection, AuthMethod)],
         keep_alive: Option<u64>,
-        force_accept_host_key: bool,
+        trust: HostKeyTrust,
         bind_host: &str,
         local_port: u16,
         remote_host: &str,
@@ -1431,7 +1609,7 @@ impl SessionManager {
             events.clone(),
             Arc::new(self.db.pool().clone()),
             keep_alive,
-            force_accept_host_key,
+            trust.clone(),
             None,
             jumps,
         )
@@ -1568,6 +1746,7 @@ impl SessionManager {
         events: SharedEvents,
         command: &str,
         session_secret: Option<String>,
+        owner: &str,
     ) -> Result<RemoteCommandOutput> {
         let (connection, auth_method) = self.resolve_saved(connection_id).await?;
         let auth_method = match session_secret {
@@ -1581,7 +1760,7 @@ impl SessionManager {
             events,
             Arc::new(self.db.pool().clone()),
             &jumps,
-            false, // saved connection → verify the host key
+            HostKeyTrust::of(owner), // saved connection → verify the host key
             command,
         )
         .await
@@ -1597,6 +1776,7 @@ impl SessionManager {
         events: SharedEvents,
         command: &str,
         jumps: &[(Connection, AuthMethod)],
+        owner: &str,
     ) -> Result<RemoteCommandOutput> {
         exec_remote_command(
             &connection,
@@ -1604,7 +1784,7 @@ impl SessionManager {
             events,
             Arc::new(self.db.pool().clone()),
             jumps,
-            true, // ad-hoc → accept the host key like quick SSH
+            HostKeyTrust::of(owner).forcing(), // ad-hoc → accept like Quick SSH
             command,
         )
         .await
@@ -1620,6 +1800,7 @@ impl SessionManager {
         events: SharedEvents,
         interactive: Option<SharedInteractive>,
         jumps: Vec<(Connection, AuthMethod)>,
+        owner: &str,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_quick_ssh_session called for {}",
@@ -1643,7 +1824,7 @@ impl SessionManager {
         };
 
         // Create SSH session (no database save, no master key needed)
-        // force_accept_host_key = true: bypass host key verification for Quick SSH
+        // trust = true: bypass host key verification for Quick SSH
         tracing::info!(
             "[terminal.rs] Creating quick SSH session for {}...",
             connection.name
@@ -1654,7 +1835,7 @@ impl SessionManager {
             events,
             Arc::new(self.db.pool().clone()),
             keep_alive_interval,
-            true,
+            HostKeyTrust::of(owner).forcing(),
             interactive,
             // Quick SSH proper passes an empty chain; the accounts path passes the
             // hops it decrypted client-side, since the server holds no record of them.
@@ -1736,6 +1917,73 @@ impl SessionManager {
 }
 
 #[cfg(test)]
+mod pushed_settings_tests {
+    use super::*;
+
+    #[test]
+    fn the_shipped_bound_is_twenty_seconds() {
+        // Pinned as a literal, not read back from the constant: the number is in
+        // `docs/SERVER.md` and in the message an operator reads when a host times out.
+        assert_eq!(DEFAULT_CONNECT_TIMEOUT_SECS, 20);
+    }
+
+    #[test]
+    fn only_a_value_inside_the_range_is_usable() {
+        assert_eq!(usable_timeout(20), Some(20));
+        assert_eq!(usable_timeout(1), Some(1));
+        assert_eq!(usable_timeout(300), Some(300));
+        // Zero would fail every connection before it started; above five minutes gives
+        // back the OS hang the bound exists to replace.
+        assert_eq!(usable_timeout(0), None);
+        assert_eq!(usable_timeout(301), None);
+        assert_eq!(usable_timeout(u64::MAX), None);
+    }
+
+    #[test]
+    fn a_declared_mode_outranks_the_table_and_an_unknown_one_does_not() {
+        let d = |m: &str| Some(m.to_string());
+
+        // Nothing declared: the table answers, and an empty table is strict.
+        assert_eq!(resolve_host_key_mode(None, d("accept")), "accept");
+        assert_eq!(resolve_host_key_mode(None, None), "strict");
+
+        // Declared: it wins over the row, which is the whole point — a row left behind by
+        // a console click must not keep accepting unknown hosts.
+        assert_eq!(resolve_host_key_mode(d("strict"), d("accept")), "strict");
+        assert_eq!(resolve_host_key_mode(d("accept"), d("strict")), "accept");
+
+        // Asserted through the pure pair rather than the process-wide value: the host-key
+        // tests below run in this same process and read it for every key they verify.
+        assert_eq!(known_mode(Some("trust-me")), None, "a typo is not a mode");
+        assert_eq!(known_mode(Some("")), None);
+        assert_eq!(known_mode(None), None);
+        assert_eq!(
+            known_mode(Some(" accept\n")),
+            d("accept"),
+            "a mounted file's newline"
+        );
+        assert_eq!(known_mode(Some("warn")), d("warn"));
+    }
+
+    #[test]
+    fn a_configured_bound_is_what_a_connection_then_uses() {
+        // The global is restored before returning: these tests share a process with the
+        // ones that open connections, and a 1-second bound left behind would read as a
+        // flaky network.
+        set_connect_timeout_secs(45);
+        assert_eq!(connect_timeout(), std::time::Duration::from_secs(45));
+        set_connect_timeout_secs(0);
+        assert_eq!(
+            connect_timeout(),
+            std::time::Duration::from_secs(45),
+            "a refused value must leave the previous one in place"
+        );
+        set_connect_timeout_secs(DEFAULT_CONNECT_TIMEOUT_SECS);
+        assert_eq!(connect_timeout(), std::time::Duration::from_secs(20));
+    }
+}
+
+#[cfg(test)]
 mod host_key_tests {
     use super::*;
     use crate::db::Database;
@@ -1774,7 +2022,11 @@ mod host_key_tests {
             host: "testhost.example".to_string(),
             port: 22,
             events: Arc::new(SilentEvents),
-            force_accept_host_key: force_accept,
+            trust: if force_accept {
+                HostKeyTrust::local().forcing()
+            } else {
+                HostKeyTrust::local()
+            },
         };
         (handler, db, dir)
     }
@@ -1842,9 +2094,15 @@ mod host_key_tests {
              host, and not as a pending one awaiting confirmation"
         );
         assert!(
-            known_hosts::verify_host_key(handler.db.as_ref(), "testhost.example", 22, &inside)
-                .await
-                .is_ok_and(|r| !matches!(r, HostKeyVerificationResult::Accepted)),
+            known_hosts::verify_host_key(
+                handler.db.as_ref(),
+                known_hosts::LOCAL_OWNER,
+                "testhost.example",
+                22,
+                &inside,
+            )
+            .await
+            .is_ok_and(|r| !matches!(r, HostKeyVerificationResult::Accepted)),
             "the key inside the certificate must not have become a known host"
         );
     }

@@ -643,6 +643,19 @@ const routes: Record<string, Route> = {
     await json('/api/ssh/host-key/reject', post({ host: a.host, port: a.port }));
     return null;
   },
+
+  // The hosts this member trusts, and forgetting one (ADR 0021, addendum). Both are
+  // scoped to the caller's session server-side; nothing here names an owner, because
+  // naming one would be a client asking to read somebody else's trust.
+  list_host_keys: () => json('/api/ssh/host-keys'),
+  forget_host_key: async (a) => {
+    await json('/api/ssh/host-keys', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ host: a.host, port: a.port }),
+    });
+    return null;
+  },
   kbd_interactive_respond: (a) =>
     json(
       '/api/ssh/kbd-interactive/respond',
@@ -678,7 +691,12 @@ const routes: Record<string, Route> = {
     ).sessionId,
 
   connect_local_terminal: async (a) =>
-    (await json<{ sessionId: string }>('/api/terminal/local', post({ shell: a.shell }))).sessionId,
+    (
+      await json<{ sessionId: string }>(
+        '/api/terminal/local',
+        post({ shell: a.shell, inheritCwdFrom: a.inheritCwdFrom }),
+      )
+    ).sessionId,
 
   run_preconnect: async (a) =>
     (await json<{ sessionId: string }>('/api/terminal/preconnect', post({ command: a.command })))

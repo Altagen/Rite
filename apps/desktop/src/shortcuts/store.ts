@@ -9,7 +9,7 @@
 import { deviceStore } from '../utils/deviceStore';
 import { create } from 'zustand';
 import { parseBinding, formatBinding, type Binding } from './binding';
-import { SHORTCUT_COMMANDS, isReservedText } from './commands';
+import { SHORTCUT_COMMANDS, COMMAND_IDS, isReservedText } from './commands';
 
 /**
  * The defaults as parsed bindings.
@@ -21,6 +21,11 @@ import { SHORTCUT_COMMANDS, isReservedText } from './commands';
 export function defaultBindings(): Record<string, Binding> {
   const out: Record<string, Binding> = {};
   for (const command of SHORTCUT_COMMANDS) {
+    // No default is a deliberate state, not a malformed one: the command is runnable from
+    // the palette and a chord can be assigned to it. Absent here, so nothing reports a
+    // binding that does not exist — a tooltip spelling an empty chord is how the app used
+    // to promise `Ctrl+Shift+V` for a split long after the default had moved.
+    if (command.defaultBinding === undefined) continue;
     const binding = parseBinding(command.defaultBinding);
     if (!binding)
       throw new Error(`malformed default binding for ${command.id}: ${command.defaultBinding}`);
@@ -78,10 +83,13 @@ function writeOverrides(overrides: Record<string, string>) {
  * to fall behind — and no branch that only one of them exercises.
  */
 function accepted(overrides: Record<string, string>): Map<string, Binding> {
-  const known = defaultBindings();
+  // Gated on the command EXISTING, not on it having shipped a default: a command with no
+  // default is exactly the one someone is most likely to want a chord for, and gating on
+  // the defaults would have dropped that override without a word.
+  const known = new Set(COMMAND_IDS);
   const out = new Map<string, Binding>();
   for (const [id, text] of Object.entries(overrides)) {
-    if (!(id in known)) continue;
+    if (!known.has(id)) continue;
     const binding = parseBinding(text);
     if (!binding) continue;
     if (isReservedText(formatBinding(binding))) continue;

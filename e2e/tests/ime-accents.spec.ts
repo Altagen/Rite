@@ -341,3 +341,41 @@ test('the guard keeps the composition keys and nothing else', async ({ page }) =
     e: false,
   });
 });
+
+test('no composition event reaches xterm, so its timers never start', async ({ page }) => {
+  /*
+   * The guard stops `compositionstart`, `compositionupdate` and `compositionend` as well
+   * as the keydowns. That is not belt-and-braces: xterm's `CompositionHelper` arms its
+   * own timers from those events — `_finalizeComposition` slices the hidden textarea from
+   * an index captured earlier, after a `setTimeout(0)` — and a composition it believes it
+   * is handling is a second sender racing ours.
+   *
+   * Measured the same way as the key decision table: a listener on the textarea itself
+   * runs after the guard's, which is on the container, so it fires only for an event the
+   * guard let through. Written because mutation said it had to be: removing the
+   * `stopPropagation` from `compositionupdate` left every other test in this file green.
+   */
+  await terminalWithRecorder(page);
+  await page.waitForTimeout(500);
+
+  const reached = await page.evaluate(`(() => {
+    const ta = document.querySelector('.xterm-helper-textarea');
+    const seen = { compositionstart: false, compositionupdate: false, compositionend: false };
+    const mark = (ev) => { seen[ev.type] = true; };
+    for (const type of Object.keys(seen)) ta.addEventListener(type, mark);
+    // A whole composition, as WebKitGTK delivers one.
+    ta.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, cancelable: true }));
+    ta.dispatchEvent(new CompositionEvent('compositionupdate',
+      { data: '^', bubbles: true, cancelable: true }));
+    ta.dispatchEvent(new CompositionEvent('compositionend',
+      { data: 'ô', bubbles: true, cancelable: true }));
+    for (const type of Object.keys(seen)) ta.removeEventListener(type, mark);
+    return seen;
+  })()`);
+
+  expect(reached, 'the guard owns the whole composition, not part of it').toEqual({
+    compositionstart: false,
+    compositionupdate: false,
+    compositionend: false,
+  });
+});

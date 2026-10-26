@@ -383,7 +383,11 @@ impl ServerState {
             events_tx,
             token: None,
             accounts: false,
-            config: Arc::new(config::InstanceConfig::load()?),
+            config: {
+                let loaded = config::InstanceConfig::load()?;
+                Self::apply_core_settings(&loaded);
+                Arc::new(loaded)
+            },
             serve_admin: env_flag("RITE_SERVE_ADMIN", true),
             serve_webui: env_flag("RITE_SERVE_WEBUI", true),
             host_key: None,
@@ -404,8 +408,38 @@ impl ServerState {
 
     /// Replace the loaded configuration. For tests and for callers that build their own.
     pub fn with_config(mut self, config: config::InstanceConfig) -> Self {
+        Self::apply_core_settings(&config);
         self.config = Arc::new(config);
         self
+    }
+
+    /// Settings `rite-core` reads without a request to hang them off.
+    ///
+    /// A connection's timeout is not asked for by anyone: it bounds a connect that is
+    /// already under way, inside the crate that opens it. So the configured value is
+    /// pushed down once, at start-up, rather than resolved per request like the settings
+    /// below. There is no database fallback — this key is file and environment only, since
+    /// no console field writes it.
+    fn apply_core_settings(config: &config::InstanceConfig) {
+        // Absent means the shipped bound, not "leave whatever was pushed last". The server
+        // pushes once at start-up, so the two readings agree there — but a value that
+        // outlived the configuration that set it is a stale setting, which is the whole
+        // failure mode this ADR is about.
+        rite_core::terminal::set_connect_timeout_secs(
+            config
+                .get("ssh_connect_timeout")
+                .and_then(Value::as_u64)
+                .unwrap_or(rite_core::terminal::DEFAULT_CONNECT_TIMEOUT_SECS),
+        );
+        // The host-key mode was declarable before this and did nothing: `rite-core` reads
+        // that row from the table itself, and the configuration shadows the table instead
+        // of writing to it. Reported as managed, shown locked in the console, and not
+        // applied — on the one setting where that gap accepts an unknown host.
+        rite_core::terminal::set_declared_host_key_mode(
+            config
+                .get("host_key_verification_mode")
+                .and_then(Value::as_str),
+        );
     }
 
     /// Read a boolean setting through ADR 0020's precedence: the configuration, then the
@@ -552,6 +586,20 @@ impl ServerState {
 /// The authenticated user behind an optional `Extension` (present in accounts mode).
 fn as_user(ext: &Option<Extension<Arc<User>>>) -> Option<&User> {
     ext.as_ref().map(|e| e.0.as_ref())
+}
+
+/// Whose `known_hosts` a request is checked against (ADR 0021, addendum).
+///
+/// A local vault is one person and has no account to name them, so it uses the literal
+/// `LOCAL_OWNER`; a shared server uses the member's id. Before this, both used the same
+/// rows: `host-key/accept` is not an admin route, so any member could promote a pending
+/// key and every other member then reached that host without being asked once.
+///
+/// Member ids are uuids, so none of them can collide with the literal — held by a test,
+/// because the whole separation rests on it.
+fn host_key_owner(user: Option<&User>) -> String {
+    user.map(|u| u.id.clone())
+        .unwrap_or_else(|| rite_core::known_hosts::LOCAL_OWNER.to_string())
 }
 
 /// `/api/connections` now serves only a remote context (the ADR 0012 multiplexer).
@@ -831,6 +879,10 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/ssh-config/parse", post(parse_ssh_config))
         .route("/api/ssh/host-key/accept", post(accept_host_key))
         .route("/api/ssh/host-key/reject", post(reject_host_key))
+        .route(
+            "/api/ssh/host-keys",
+            get(list_host_keys).delete(forget_host_key),
+        )
         .route("/api/ssh/agent-identities", get(agent_identities))
         .route(
             "/api/ssh/kbd-interactive/respond",
@@ -3793,7 +3845,17 @@ async fn set_setting(
 /// before `$HOME/.config`, which is what a test harness has to pin to stay out of
 /// the real one.
 fn layouts_path() -> Option<std::path::PathBuf> {
-    if let Some(custom) = std::env::var_os("RITE_LAYOUTS_FILE") {
+    layouts_path_from(std::env::var_os("RITE_LAYOUTS_FILE"))
+}
+
+/// The resolution, with the variable's value passed in.
+///
+/// Split out so a test never has to set it. `RITE_LAYOUTS_FILE` is process-global, and the
+/// test that exercised it set and restored it around one call while the test beside it
+/// called `layouts_path()` twice — so roughly one run in three, the two calls straddled the
+/// mutation and the suite failed on a path that was correct both times.
+fn layouts_path_from(custom: Option<std::ffi::OsString>) -> Option<std::path::PathBuf> {
+    if let Some(custom) = custom {
         if !custom.is_empty() {
             return Some(std::path::PathBuf::from(custom));
         }
@@ -3899,23 +3961,29 @@ mod layouts_tests {
         assert_eq!(layouts_file(false), layouts_path());
     }
 
-    /// `RITE_LAYOUTS_FILE` wins, so the file can live in a dotfiles repository or
-    /// beside a project. The variable is process-global, so this puts it back; nothing
-    /// else in the suite reads it.
+    /// `RITE_LAYOUTS_FILE` wins, so the file can live in a dotfiles repository or beside
+    /// a project.
+    ///
+    /// Asserted through the value, not through the process environment. The earlier
+    /// version set the variable and put it back, and `a_server_has_no_file_to_offer` reads
+    /// the same variable twice: one run in three, its two reads landed either side of the
+    /// mutation and the suite failed on a resolution that was right both times.
     #[test]
     fn an_explicit_path_wins() {
-        let before = std::env::var_os("RITE_LAYOUTS_FILE");
-        unsafe { std::env::set_var("RITE_LAYOUTS_FILE", "/tmp/rite-workspace-elsewhere.toml") };
-        let found = layouts_path();
-        match before {
-            Some(v) => unsafe { std::env::set_var("RITE_LAYOUTS_FILE", v) },
-            None => unsafe { std::env::remove_var("RITE_LAYOUTS_FILE") },
-        }
+        let named = |p: &str| layouts_path_from(Some(std::ffi::OsString::from(p)));
         assert_eq!(
-            found,
+            named("/tmp/rite-workspace-elsewhere.toml"),
             Some(std::path::PathBuf::from(
                 "/tmp/rite-workspace-elsewhere.toml"
             ))
+        );
+        // Set-but-empty is how a shell exports a variable it means to leave alone, and it
+        // must not resolve to the current directory or to an empty path.
+        assert_eq!(named(""), layouts_path_from(None));
+        assert_eq!(
+            layouts_path_from(None),
+            dirs::config_dir().map(|d| d.join("rite").join("layouts.toml")),
+            "and with nothing named, the documented XDG path"
         );
     }
 
@@ -4524,18 +4592,61 @@ struct HostKeyReq {
 
 async fn accept_host_key(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Json(req): Json<HostKeyReq>,
 ) -> Result<StatusCode, AppError> {
-    rite_core::known_hosts::accept_pending_host_key(state.db.pool(), &req.host, req.port).await?;
+    // The caller's own pending key, never anyone else's. This route was reachable by any
+    // member and wrote the one shared row, which is how one person's acceptance became
+    // everybody's (ADR 0021, addendum).
+    let owner = host_key_owner(as_user(&user));
+    rite_core::known_hosts::accept_pending_host_key(state.db.pool(), &owner, &req.host, req.port)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 async fn reject_host_key(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Json(req): Json<HostKeyReq>,
 ) -> Result<StatusCode, AppError> {
-    rite_core::known_hosts::reject_pending_host_key(state.db.pool(), &req.host, req.port).await?;
+    let owner = host_key_owner(as_user(&user));
+    rite_core::known_hosts::reject_pending_host_key(state.db.pool(), &owner, &req.host, req.port)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Every host the caller trusts (ADR 0021, addendum).
+///
+/// Nothing listed this before, which is what made a legitimately rotated host key a dead
+/// end: the changed-key refusal offers no accept (§3), and the only way through was Quick
+/// SSH, which force-accepts before verification runs (§5).
+async fn list_host_keys(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+) -> Result<Json<Vec<rite_core::known_hosts::KnownHost>>, AppError> {
+    let owner = host_key_owner(as_user(&user));
+    Ok(Json(
+        rite_core::known_hosts::list_host_keys(state.db.pool(), &owner).await?,
+    ))
+}
+
+/// Forget one of the caller's trusted hosts, turning a rotation back into a first contact.
+async fn forget_host_key(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<HostKeyReq>,
+) -> Result<StatusCode, AppError> {
+    let owner = host_key_owner(as_user(&user));
+    let forgotten =
+        rite_core::known_hosts::forget_host_key(state.db.pool(), &owner, &req.host, req.port)
+            .await?;
+    // A host the caller never trusted is not an error to them, but it is not a deletion
+    // either — saying which is what lets a UI tell "gone" from "was never yours".
+    Ok(if forgotten {
+        StatusCode::NO_CONTENT
+    } else {
+        StatusCode::NOT_FOUND
+    })
 }
 
 // --- shells -----------------------------------------------------------------
@@ -4591,8 +4702,19 @@ async fn installed_shells(Json(req): Json<ShellsReq>) -> Json<Vec<String>> {
 // --- terminal ---------------------------------------------------------------
 
 #[derive(Deserialize)]
+// camelCase, like every other request shape here: without it `inheritCwdFrom` reached
+// nothing and serde dropped it in silence, which is a split that quietly stopped
+// inheriting rather than a split that failed.
+#[serde(rename_all = "camelCase")]
 struct LocalReq {
     shell: Option<String>,
+    /// Open in the same directory as this session's shell, when it can be read.
+    ///
+    /// A session id and not a path, deliberately. The directory is read from `/proc` on
+    /// the machine the shell runs on, which is the server's side of the wire — a client
+    /// that named a path would be naming one it cannot see, and a client that could name
+    /// any path would be choosing where a shared server spawns a shell.
+    inherit_cwd_from: Option<String>,
 }
 
 /// The instance's shell, as something a PTY can spawn.
@@ -4700,9 +4822,16 @@ async fn create_local(
     } else {
         req.shell
     };
+    // Only a session the caller owns may be inherited from. Without this check, any
+    // member of a shared instance could open a shell in another member's directory —
+    // which is both where they are working and, often enough, their username and the name
+    // of whatever they are working on.
+    let inherit = req
+        .inherit_cwd_from
+        .filter(|from| state.owns_session(from, as_user(&user)));
     let id = state
         .sessions
-        .create_local_session(state.events_sink(), shell.clone())
+        .create_local_session(state.events_sink(), shell.clone(), inherit.as_ref())
         .await?;
     state.record_session_owner(&id, as_user(&user));
     // The shell the session was given, so a client (and a test) can see that on a server
@@ -4739,6 +4868,7 @@ fn forward_bind_host(accounts: bool, asked: Option<&str>) -> &str {
 
 async fn start_forward(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Json(req): Json<StartForwardReq>,
 ) -> Result<Json<rite_core::terminal::PortForwardInfo>, AppError> {
     let bind_host = forward_bind_host(state.accounts, req.bind_host.as_deref());
@@ -4752,6 +4882,7 @@ async fn start_forward(
             req.remote_port,
             state.events_sink(),
             req.session_secret.clone(),
+            &host_key_owner(as_user(&user)),
         )
         .await?;
     Ok(Json(info))
@@ -4782,6 +4913,7 @@ struct StartQuickForwardReq {
 
 async fn start_quick_forward(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Json(req): Json<StartQuickForwardReq>,
 ) -> Result<Response, AppError> {
     let bind_host = forward_bind_host(state.accounts, req.bind_host.as_deref());
@@ -4806,6 +4938,7 @@ async fn start_quick_forward(
             &req.remote_host,
             req.remote_port,
             state.events_sink(),
+            &host_key_owner(as_user(&user)),
         )
         .await?;
     Ok(Json(info).into_response())
@@ -5159,6 +5292,7 @@ async fn connect_ssh(
                 state.events_sink(),
                 state.interactive_provider(as_user(&user)),
                 jumps,
+                &host_key_owner(as_user(&user)),
             )
             .await?;
         state.record_session_owner(&id, as_user(&user));
@@ -5171,6 +5305,7 @@ async fn connect_ssh(
             state.events_sink(),
             state.interactive_provider(as_user(&user)),
             req.session_secret.clone(),
+            &host_key_owner(as_user(&user)),
         )
         .await?;
     // Record "last used" in the local vault (ADR 0017 passive status). This is the local
@@ -5410,6 +5545,7 @@ async fn quick_ssh(
             state.events_sink(),
             state.interactive_provider(as_user(&user)),
             hops,
+            &host_key_owner(as_user(&user)),
         )
         .await?;
     state.record_session_owner(&id, as_user(&user));
@@ -5430,6 +5566,7 @@ struct MachineExecReq {
 
 async fn machine_exec(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Json(req): Json<MachineExecReq>,
 ) -> Result<Response, AppError> {
     if !dashboard_probes_allowed(&state).await? {
@@ -5442,6 +5579,7 @@ async fn machine_exec(
             state.events_sink(),
             &req.command,
             req.session_secret.clone(),
+            &host_key_owner(as_user(&user)),
         )
         .await?;
     Ok(Json(out).into_response())
@@ -5474,6 +5612,7 @@ struct MachineExecQuickReq {
 
 async fn machine_exec_quick(
     State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
     Json(req): Json<MachineExecQuickReq>,
 ) -> Result<Response, AppError> {
     if !dashboard_probes_allowed(&state).await? {
@@ -5490,7 +5629,14 @@ async fn machine_exec_quick(
     let connection = quick_connection("exec", &req.host, req.port, &req.username, auth.clone());
     let out = state
         .sessions
-        .run_quick_remote_command(connection, auth, state.events_sink(), &req.command, &hops)
+        .run_quick_remote_command(
+            connection,
+            auth,
+            state.events_sink(),
+            &req.command,
+            &hops,
+            &host_key_owner(as_user(&user)),
+        )
         .await?;
     Ok(Json(out).into_response())
 }
@@ -5872,6 +6018,36 @@ mod tests {
         }
     }
 
+    #[test]
+    fn host_key_trust_is_owned_by_the_member_or_by_the_local_vault() {
+        // A local vault has no account to name its one person, so it uses the literal; a
+        // shared server uses the member's id. Both land in the same column, which is why
+        // the two namespaces must not be able to meet (ADR 0021, addendum).
+        assert_eq!(
+            host_key_owner(None),
+            rite_core::known_hosts::LOCAL_OWNER,
+            "with no account, the owner is the local vault's one person"
+        );
+        let alice = test_user("11111111-1111-4111-8111-111111111111");
+        let bob = test_user("22222222-2222-4222-8222-222222222222");
+        assert_eq!(host_key_owner(Some(&alice)), alice.id);
+        assert_ne!(
+            host_key_owner(Some(&alice)),
+            host_key_owner(Some(&bob)),
+            "two members never share an owner"
+        );
+        // The collision that would hand one member every local row. Member ids are uuids
+        // and the literal is not parseable as one, so it cannot be claimed by an account —
+        // asserted rather than assumed, because the whole separation rests on it.
+        assert!(
+            uuid::Uuid::parse_str(rite_core::known_hosts::LOCAL_OWNER).is_err(),
+            "the local owner must not be spellable as a member id"
+        );
+        for u in [&alice, &bob] {
+            assert_ne!(host_key_owner(Some(u)), rite_core::known_hosts::LOCAL_OWNER);
+        }
+    }
+
     #[tokio::test]
     async fn sessions_are_sealed_to_their_owner() {
         // Local/desktop mode (no accounts): everything is allowed (single user).
@@ -5965,7 +6141,7 @@ mod tests {
             .unwrap();
         let payload: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(
-            payload["version"], "0.2.5",
+            payload["version"], "0.2.6",
             "the release this server reports (Cargo.toml's workspace version)"
         );
         assert_eq!(

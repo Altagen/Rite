@@ -14,7 +14,13 @@ import '@xterm/xterm/css/xterm.css';
 import { terminalPool } from '../utils/terminalPool';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
+import { useLayouts } from '../store/layouts';
+import { broadcastTargets } from '../store/broadcast';
 import { attachImeGuard } from '../utils/imeGuard';
+import {
+  attachTerminalClipboard,
+  DEFAULT_CLIPBOARD_MODE,
+} from '../utils/terminalClipboard';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { useTranslation } from '../i18n/i18n';
 import { useShortcut, useBindingText } from '../shortcuts/useShortcut';
@@ -93,6 +99,7 @@ export function Terminal({
   const searchAddonRef = useRef<SearchAddon | null>(null);
   /** Detaches the accented-input guard; replaced on every (re)attach, called on unmount. */
   const imeGuardRef = useRef<(() => void) | null>(null);
+  const clipboardRef = useRef<(() => void) | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>(
     'connecting',
@@ -167,7 +174,12 @@ export function Terminal({
     try {
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
-      await Backend.Terminal.sendTerminalInput(sessionIdRef.current, bytes);
+      // Whoever this keystroke is for: this pane alone, or every pane of a broadcasting
+      // tab. The store answers with this session when the mode is off, so there is no
+      // branch here and no second code path that could diverge from the normal one.
+      for (const target of broadcastTargets(sessionIdRef.current)) {
+        await Backend.Terminal.sendTerminalInput(target, bytes);
+      }
     } catch (err) {
       errorHandler.handle('Failed to send terminal input', {
         severity: ErrorSeverity.ERROR,
@@ -328,6 +340,24 @@ export function Terminal({
       imeGuardRef.current?.();
       imeGuardRef.current = terminalRef.current
         ? attachImeGuard(terminalRef.current, { send: (data) => sendTerminalInput(data) })
+        : null;
+
+      // Copying out, and not pasting nothing in (utils/terminalClipboard.ts). On the
+      // container for the same reason, and the selection is read from xterm rather than
+      // from the DOM: a terminal's selection is its own.
+      clipboardRef.current?.();
+      clipboardRef.current = terminalRef.current
+        ? attachTerminalClipboard(terminalRef.current, {
+            selection: () => xtermRef.current?.getSelection() ?? '',
+            // Read per event rather than captured, so editing the document takes effect
+            // on the next gesture instead of on the next pane. `null` means the document
+            // said nothing, and the default is the terminal's to apply — not the file's
+            // to repeat (ADR 0023, addendum).
+            mode: () => useLayouts.getState().copyMode ?? DEFAULT_CLIPBOARD_MODE,
+            // xterm's own paste, so the bracketing and the `bracketedPasteMode` it
+            // depends on stay the library's business.
+            paste: (text) => xtermRef.current?.paste(text),
+          })
         : null;
 
       // Handle terminal input (both text and binary data)
@@ -523,9 +553,11 @@ export function Terminal({
         if (resizeTimeout) {
           clearTimeout(resizeTimeout);
         }
-        // The guard is bound to this container, which is going away with it.
+        // The guards are bound to this container, which is going away with them.
         imeGuardRef.current?.();
         imeGuardRef.current = null;
+        clipboardRef.current?.();
+        clipboardRef.current = null;
         // Note: I/O disposables are managed by the terminal pool and will be
         // disposed when we re-register handlers on the next mount
       };

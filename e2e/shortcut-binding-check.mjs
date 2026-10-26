@@ -27,6 +27,7 @@ import {
 } from '../apps/desktop/src/shortcuts/binding.ts';
 import {
   SHORTCUT_COMMANDS,
+  COMMAND_IDS,
   RESERVED_BINDINGS,
   isReservedText,
 } from '../apps/desktop/src/shortcuts/commands.ts';
@@ -34,8 +35,14 @@ import {
 /** The defaults, parsed. The app builds these in `store.ts`, which imports zustand
  *  and so cannot be loaded here; what matters is that the table and the parser agree,
  *  and both of those are the shipped files. */
+/** Only the commands that ship with a chord: the others have nothing to parse. */
 const defaultBindings = () =>
-  Object.fromEntries(SHORTCUT_COMMANDS.map((c) => [c.id, parseBinding(c.defaultBinding)]));
+  Object.fromEntries(
+    SHORTCUT_COMMANDS.filter((c) => c.defaultBinding !== undefined).map((c) => [
+      c.id,
+      parseBinding(c.defaultBinding),
+    ]),
+  );
 
 let passed = 0;
 const check = (name, fn) => {
@@ -184,6 +191,7 @@ console.log('\nthe shipped defaults:');
 
 check('every default parses', () => {
   for (const command of SHORTCUT_COMMANDS) {
+    if (command.defaultBinding === undefined) continue;
     assert.notEqual(parseBinding(command.defaultBinding), null, `${command.id}: ${command.defaultBinding}`);
   }
 });
@@ -212,3 +220,28 @@ check('copy and paste are the reserved chords', () => {
 });
 
 console.log(`\n${passed} checks passed`);
+
+console.log('\na command that ships without a chord:');
+
+check('the table carries one, so the optional field is exercised', () => {
+  // Machinery nothing uses is machinery nobody maintains. `settings.open` is the first
+  // command worth finding and not worth one of the few good chords, and it is what keeps
+  // the chord-less path honest.
+  const chordless = SHORTCUT_COMMANDS.filter((c) => c.defaultBinding === undefined);
+  assert.ok(chordless.length >= 1, 'no command ships without a chord');
+  // Named rather than counted, so adding one is a decision somebody writes down here:
+  // a chord-less command is reachable only from the palette, and shipping one by accident
+  // means shipping something nobody can find.
+  assert.deepEqual(chordless.map((c) => c.id), ['settings.open', 'terminal.broadcast']);
+});
+
+check('it is still a command, so a chord can be assigned to it later', () => {
+  // `COMMAND_IDS` is what the override gate reads. It used to read the DEFAULTS table,
+  // which would have dropped an override for a chord-less command silently — and that is
+  // precisely the command someone is most likely to want a chord for. The gate itself
+  // lives in `store.ts`, which imports zustand and cannot be loaded here; what this holds
+  // is that the list it reads contains every command and not only the bound ones.
+  assert.ok(COMMAND_IDS.includes('settings.open'));
+  assert.deepEqual(COMMAND_IDS, SHORTCUT_COMMANDS.map((c) => c.id));
+  assert.ok(COMMAND_IDS.length > Object.keys(defaultBindings()).length);
+});

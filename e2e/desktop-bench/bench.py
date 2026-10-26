@@ -601,6 +601,153 @@ def scenario_second(wid):
     check("the first instance is untouched", js("1+1") == 2)
 
 
+def drag_over(wid, needle):
+    """Drag the real mouse across the row carrying `needle`, and say if it selected.
+
+    A real pointer, not a synthetic MouseEvent: dispatching mousedown/mousemove/mouseup
+    with clientX/clientY reaches xterm's selection service in Chromium and reaches nothing
+    in WebKitGTK — measured, 0 selection rects — which is exactly the kind of gap this
+    bench exists for. The window carries no decorations under this X server, so a client
+    coordinate is a screen coordinate plus the window's own origin.
+    """
+    rect = js(
+        "(() => { const rows = document.querySelectorAll('.xterm-rows > div');"
+        f" const row = Array.from(rows).find(r => /{needle}/.test(r.textContent||''));"
+        " if (!row) return null; const b = row.getBoundingClientRect();"
+        " return {left: Math.round(b.left), right: Math.round(b.right),"
+        "         mid: Math.round(b.top + b.height/2)}; })()"
+    )
+    if not rect:
+        return None
+    geo = x("xdotool", "getwindowgeometry", "--shell", wid)
+    org = dict(l.split("=", 1) for l in geo.splitlines() if "=" in l)
+    ox, oy = int(org["X"]), int(org["Y"])
+    y = oy + rect["mid"]
+    subprocess.run(["xdotool", "mousemove", str(ox + rect["left"] + 2), str(y)], check=False)
+    subprocess.run(["xdotool", "mousedown", "1"], check=False)
+    time.sleep(0.2)
+    subprocess.run(
+        ["xdotool", "mousemove", str(ox + (rect["left"] + rect["right"]) // 2), str(y)],
+        check=False,
+    )
+    time.sleep(0.2)
+    subprocess.run(["xdotool", "mousemove", str(ox + rect["right"] - 4), str(y)], check=False)
+    time.sleep(0.2)
+    subprocess.run(["xdotool", "mouseup", "1"], check=False)
+    time.sleep(0.5)
+    return js("document.querySelectorAll('.xterm-selection div').length")
+
+
+def clipboard_through_a_gesture(write=None):
+    """Read, or write then read, the clipboard from inside a real keydown.
+
+    The Clipboard API is gated on transient activation on this engine: the same call is
+    `NotAllowedError` from an eval and fine from a keydown. So the bench installs a
+    handler, presses a key, and reads the answer back — which is also exactly how the
+    client's own guard has to do it.
+    """
+    js(
+        "window.__CB = 'not fired';"
+        " window.__probe = (e) => { if (e.key !== 'F8') return;"
+        "   const w = " + ("navigator.clipboard.writeText(%r)" % write if write is not None
+                           else "Promise.resolve()") + ";"
+        "   w.then(() => navigator.clipboard.readText())"
+        "    .then(v => window.__CB = 'ok:' + v)"
+        "    .catch(err => window.__CB = 'ERR ' + err.name); };"
+        " window.addEventListener('keydown', window.__probe, true); 1"
+    )
+    press("F8")
+    time.sleep(1.2)
+    out = js("window.__CB")
+    js("window.removeEventListener('keydown', window.__probe, true); 1")
+    return out
+
+
+def scenario_clipboard(wid):
+    """Copy and paste, on the engine Rite actually ships in.
+
+    Both halves were measured here before they were written. What the measurements said,
+    and what this scenario now holds:
+
+      - `Ctrl+Shift+C` sent nothing and copied nothing: no chord fired xterm's own copy.
+      - `Ctrl+Shift+V` already pastes, so paste is deliberately not bound — it must still
+        happen exactly once.
+      - a middle click with an empty clipboard sent `ESC[200~ ESC[201~`, two escape
+        sequences around no text. The browser suite cannot assert that one: a synthetic
+        empty paste delivers nothing either way, and a page cannot clear what X11 holds.
+    """
+    print("\nclipboard")
+    if not js("!!document.querySelector('.xterm-rows')"):
+        check("a local terminal opens", open_terminal())
+    focus(wid)
+    js("document.querySelector('.xterm-helper-textarea')?.focus()")
+    time.sleep(0.3)
+
+    # The API is there, and it answers from a gesture. Both are preconditions of the
+    # design, so a change in the engine shows up here rather than as a silent no-copy.
+    check("the engine is a secure context", js("window.isSecureContext") is True)
+    check("the clipboard API exists", js("!!(navigator.clipboard && navigator.clipboard.readText)"))
+    probe = clipboard_through_a_gesture("BENCH-GESTURE")
+    check(
+        "the clipboard answers from inside a keydown",
+        probe == "ok:BENCH-GESTURE",
+        f"got {probe}",
+    )
+
+    press("ctrl+c")
+    time.sleep(0.3)
+    type_text("echo BENCH-SELECT")
+    time.sleep(0.6)
+
+    rects = drag_over(wid, "BENCH-SELECT")
+    check("dragging the mouse selects something", bool(rects), f"{rects} selection rects")
+
+    before = len(sent_bytes())
+    press("ctrl+shift+c")
+    time.sleep(0.6)
+    after = sent_bytes(before)
+    # A terminal that copies AND sends is worse than one that only sends: the shell acts
+    # on something nobody typed.
+    check("the copy chord sends nothing to the shell", after == [], f"sent={after}")
+    got = clipboard_through_a_gesture()
+    check(
+        "the copy chord put the selection on the clipboard",
+        isinstance(got, str) and "BENCH-SELECT" in got,
+        f"got {got}",
+    )
+
+    # Nothing to paste, established rather than hoped for: the clipboard is emptied from
+    # inside a gesture, which is the only way to touch it here.
+    clipboard_through_a_gesture("")
+    before = len(sent_bytes())
+    subprocess.run(["xdotool", "click", "2"], check=False)
+    time.sleep(0.8)
+    after = sent_bytes(before)
+    check("a middle click with nothing to paste sends nothing", after == [], f"sent={after}")
+
+    # And a paste that carries text still arrives, once, bracketed.
+    clipboard_through_a_gesture("BENCH-PASTE")
+    before = len(sent_bytes())
+    press("ctrl+shift+v")
+    time.sleep(0.8)
+    after = " ".join(sent_bytes(before))
+    hexed = "".join(f"{ord(c):02x} " for c in "BENCH-PASTE").strip()
+    check("a paste carrying text arrives", hexed in after, f"sent={after}")
+    check(
+        "and it arrives once",
+        after.count(hexed) == 1,
+        f"{after.count(hexed)} occurrences",
+    )
+
+    press("ctrl+c")
+    before = len(sent_bytes())
+    press("ctrl+c")
+    time.sleep(0.5)
+    # The whole reason copy needs its own chord: this one belongs to the shell.
+    check("Ctrl+C still interrupts", "03" in sent_bytes(before), f"sent={sent_bytes(before)}")
+    shot("clipboard")
+
+
 SCENARIOS = {
     "probe": scenario_probe,
     "size": scenario_size,
@@ -609,6 +756,7 @@ SCENARIOS = {
     "tab": scenario_tab,
     "picker": scenario_picker,
     "second": scenario_second,
+    "clipboard": scenario_clipboard,
 }
 
 
