@@ -22,6 +22,11 @@ allow_secret_reveal = false
 # the reported value are both discriminating.
 host_key_verification_mode = "warn"
 
+# A number, which no other key here is: the loader has to keep it a number through TOML
+# and through validation, and 7 is not the shipped 20 — a check can only discriminate on
+# a flip.
+ssh_connect_timeout = 7
+
 [dashboard_policy]
 webui = false
 

@@ -222,7 +222,7 @@ by TOFU instead.
 
 ## Configuring the instance as code
 
-Fifteen settings govern how an instance behaves. Declare any of them in a TOML file,
+Sixteen settings govern how an instance behaves. Declare any of them in a TOML file,
 point `RITE_CONFIG` at it, and they stop being something an administrator has to click:
 
 ```toml
@@ -239,6 +239,12 @@ allow_shell_choice = false
 # How an unknown SSH host key is treated — one policy for everyone, since every
 # connection runs here. `strict` refuses it; `warn` and `accept` do not.
 host_key_verification_mode = "strict"
+
+# How long a connect and its handshake may take, per hop, before the attempt fails with
+# a message. The default is 20 seconds, which suits a network that answers; raise it for
+# a hop behind a satellite link or a jump host that authenticates against a slow
+# directory, lower it on a bastion that should fail fast. 1 to 300.
+ssh_connect_timeout = 20
 
 # What may rest in a member's own vault (ADR 0024). One switch over every secret a
 # record can keep — an SSH password, a key passphrase, a carried key — because
@@ -266,7 +272,7 @@ The full list: `instance_name`, `session_persistence`, `default_shell`,
 `allow_shell_choice`, `host_key_verification_mode`, `allow_quick_ssh`,
 `allow_secret_storage`, `allow_secret_reveal`, `open_registration`,
 `allow_invitations`, `confirm_role_change`, `healthcheck_policy`, `collection_policy`,
-`dashboard_policy`, `layouts_policy`. A key outside that list stops the server, named — a typo should be
+`dashboard_policy`, `layouts_policy`, `ssh_connect_timeout`. A key outside that list stops the server, named — a typo should be
 heard at start-up, not discovered months later as a setting that never applied. So does a
 value outside what a key accepts: `host_key_verification_mode = "trust-me"` is refused at
 start-up rather than falling back to strict while the console shows the typo.

@@ -44,6 +44,8 @@ const ENV_FILE_SUFFIX: &str = "__FILE";
 pub enum Shape {
     Bool,
     Text,
+    /// A whole number of seconds. Its bounds live in [`validate`], with every other rule.
+    Seconds,
     /// A JSON object whose unspecified leaves fall back to the shipped defaults.
     Policy,
 }
@@ -69,6 +71,7 @@ pub const SETTINGS: &[(&str, Shape)] = &[
     ("collection_policy", Shape::Policy),
     ("dashboard_policy", Shape::Policy),
     ("layouts_policy", Shape::Policy),
+    ("ssh_connect_timeout", Shape::Seconds),
 ];
 
 fn shape_of(key: &str) -> Option<Shape> {
@@ -325,6 +328,10 @@ fn typed_from_text(shape: Shape, text: &str, name: &str) -> Result<Value> {
             other => bail!("{name}: `{other}` is not a boolean (use true or false)"),
         },
         Shape::Text => Ok(Value::String(text.trim().to_string())),
+        Shape::Seconds => match text.trim().parse::<u64>() {
+            Ok(n) => Ok(json!(n)),
+            Err(_) => bail!("{name}: `{}` is not a whole number of seconds", text.trim()),
+        },
         Shape::Policy => unreachable!("policies are handled leaf by leaf"),
     }
 }
@@ -349,6 +356,16 @@ pub fn validate(key: &str, value: &Value) -> Result<()> {
                 Some("strict") | Some("warn") | Some("accept") => {}
                 Some(other) => bail!("expected strict, warn or accept, not `{other}`"),
                 None => bail!("expected a string"),
+            }
+        }
+        "ssh_connect_timeout" => {
+            // One second is already long enough to fail a filtered host, and five minutes
+            // is past any reachable one: the point of the cap is that an unreachable host
+            // fails with a message instead of hanging on the OS TCP timeout, and a value
+            // above it gives that behaviour back.
+            match value.as_u64() {
+                Some(n) if (1..=300).contains(&n) => {}
+                _ => bail!("expected a whole number of seconds, 1 to 300"),
             }
         }
         "session_persistence"
@@ -441,6 +458,52 @@ mod tests {
         assert!(cfg.is_empty());
         assert!(!cfg.is_managed("dashboard_policy"));
         assert_eq!(cfg.managed_keys(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_timeout_arrives_as_a_number_from_the_file_and_from_the_environment() {
+        let path = write("timeout", "ssh_connect_timeout = 45\n");
+        let cfg = InstanceConfig::load_from(path.to_str(), &[]).unwrap();
+        assert_eq!(cfg.get("ssh_connect_timeout").unwrap(), &json!(45));
+
+        // From the environment it arrives as text and must still be a number: stored as a
+        // string it would read back as `None` from `as_u64`, and the declared value would
+        // be reported as managed while the default kept applying.
+        let cfg =
+            InstanceConfig::load_from(None, &env(&[("RITE__ssh_connect_timeout", "90")])).unwrap();
+        assert_eq!(cfg.get("ssh_connect_timeout").unwrap(), &json!(90));
+        assert_eq!(
+            cfg.origin("ssh_connect_timeout").unwrap().0,
+            "RITE__ssh_connect_timeout"
+        );
+    }
+
+    #[test]
+    fn a_timeout_outside_the_bounds_or_not_a_number_stops_the_server() {
+        for value in ["0", "301", "twenty", "20s", "-5", "2.5"] {
+            let path = write("timeout-bad", &format!("ssh_connect_timeout = {value}\n"));
+            let declared = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                InstanceConfig::load_from(path.to_str(), &[]).is_err(),
+                "accepted {declared:?}"
+            );
+        }
+        // And the same values through the environment, which parses before it validates.
+        for value in ["0", "301", "twenty", "20s", "-5", "2.5"] {
+            assert!(
+                InstanceConfig::load_from(None, &env(&[("RITE__ssh_connect_timeout", value)]))
+                    .is_err(),
+                "accepted {value:?} from the environment"
+            );
+        }
+        // The bounds themselves hold: one second and five minutes are declarable.
+        for value in ["1", "300"] {
+            assert!(
+                InstanceConfig::load_from(None, &env(&[("RITE__ssh_connect_timeout", value)]))
+                    .is_ok(),
+                "refused {value:?}"
+            );
+        }
     }
 
     #[test]
