@@ -26,10 +26,21 @@ interface Props {
   onDuplicate: () => void;
   /** Absent when this is the only tab: there would be no others to close. */
   onCloseOthers?: () => void;
+  /** Whether this tab is the one sharing keystrokes, so the entry says stop. */
+  broadcasting?: boolean;
+  onToggleBroadcast?: () => void;
   onClose: () => void;
 }
 
-export function TabMenu({ at, onRename, onDuplicate, onCloseOthers, onClose }: Props) {
+export function TabMenu({
+  at,
+  onRename,
+  onDuplicate,
+  onCloseOthers,
+  broadcasting,
+  onToggleBroadcast,
+  onClose,
+}: Props) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -78,6 +89,13 @@ export function TabMenu({ at, onRename, onDuplicate, onCloseOthers, onClose }: P
       {row('rename', t('tm.renameTab'), null, run(onRename))}
       {row('duplicate', t('tm.duplicateTab'), t('tm.duplicateTabWhy'), run(onDuplicate))}
       {onCloseOthers && row('close-others', t('tm.closeOthers'), null, run(onCloseOthers))}
+      {onToggleBroadcast &&
+        row(
+          'broadcast',
+          broadcasting ? t('tm.broadcastStop') : t('tm.broadcast'),
+          null,
+          run(onToggleBroadcast),
+        )}
     </div>
   );
 }

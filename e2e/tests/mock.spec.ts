@@ -1334,7 +1334,8 @@ test('desktop mock: a right click on a tab offers rename, duplicate and close ot
   const menu = page.locator('.menu');
   await expect(menu).toBeVisible();
   const rows = menu.locator('.row');
-  await expect(rows).toHaveCount(3);
+  // Four now: broadcast joined, because a tab is what it applies to.
+  await expect(rows).toHaveCount(4);
 
   await expect(rows.nth(0)).toContainText('Rename tab');
   // The wording carries the semantics, so it is asserted rather than the mere presence of
@@ -1384,6 +1385,47 @@ test('desktop mock: Settings shows the copy convention and what it costs', async
   const row = pane.locator('.settings-row', { hasText: 'Copy and paste' });
   await expect(row.locator('select')).toHaveCount(0);
   await expect(row.locator('.toggle')).toHaveCount(0);
+
+  expect(errs, 'no console errors').toEqual([]);
+});
+
+/**
+ * Broadcast is a MODE, so the badge is the whole safety story.
+ *
+ * One deliberate snippet reaching every open pane is a decision someone made once. Every
+ * keystroke reaching several shells is a decision that keeps being made, by someone who
+ * may have forgotten — and the cost of not noticing is a command running on machines
+ * nobody meant to touch. So it is impossible to miss and one click to stop, which is worth
+ * more than a chord nobody remembers under pressure.
+ *
+ * Scoped to the tab, as tmux's `synchronize-panes` is: broadcasting into panes in another
+ * tab would be typing where nobody is looking.
+ */
+test('desktop mock: broadcasting is announced in the tab strip and stops on a click', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+
+  // Nothing while it is off: a permanent badge would stop being read.
+  await expect(page.locator('[data-bcast]')).toHaveCount(0);
+
+  await page.locator('[data-tab-menu]').first().click({ button: 'right' });
+  const entry = page.locator('.menu .row', { hasText: /Broadcast typing/ });
+  await expect(entry).toHaveCount(1);
+  // The wording names the scope, because "broadcast" alone does not say how far.
+  await expect(entry).toContainText(/this tab/i);
+  await entry.click();
+
+  const badge = page.locator('[data-bcast]');
+  await expect(badge).toBeVisible();
+  await expect(badge).toContainText(/Broadcasting/i);
+  // And it says what it does, where someone would look for a way out.
+  await expect(badge).toHaveAttribute('title', /click to stop/i);
+
+  await badge.click();
+  await expect(page.locator('[data-bcast]')).toHaveCount(0);
+  await expect(page.locator('.toast')).toContainText(/off/i);
 
   expect(errs, 'no console errors').toEqual([]);
 });

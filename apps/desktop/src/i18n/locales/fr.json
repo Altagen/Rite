@@ -587,6 +587,12 @@
           "label": "Raccourcis clavier",
           "description": "Liste chaque commande et le raccourci qui la déclenche."
         }
+      },
+      "terminal": {
+        "broadcast": {
+          "label": "Diffuser la frappe à un onglet",
+          "description": "Chaque frappe dans l'onglet actif atteint aussi ses autres panes."
+        }
       }
     },
     "fixed": {
@@ -1252,7 +1258,11 @@
     "duplicateTabWhy": "Mêmes panes, nouvelles sessions",
     "closeOthers": "Fermer les autres onglets",
     "closeOthersTitle": "Fermer les autres onglets ?",
-    "closeOthersWhy": "{count} terminaux dans {tabs} autres onglets seront fermés."
+    "closeOthersWhy": "{count} terminaux dans {tabs} autres onglets seront fermés.",
+    "broadcast": "Diffuser la frappe aux panes de cet onglet",
+    "broadcastStop": "Arrêter la diffusion",
+    "broadcasting": "Diffusion",
+    "broadcastingWhy": "Chaque frappe atteint les panes de cet onglet — cliquer pour arrêter"
   },
   "members": {
     "addFromTeam": "Ajouter depuis une équipe :",
