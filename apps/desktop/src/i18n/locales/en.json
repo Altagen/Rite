@@ -587,6 +587,12 @@
           "label": "Keyboard shortcuts",
           "description": "Lists every command and the chord that fires it."
         }
+      },
+      "terminal": {
+        "broadcast": {
+          "label": "Broadcast typing to a tab",
+          "description": "Every keystroke in the active tab also reaches its other panes."
+        }
       }
     },
     "fixed": {
@@ -1252,7 +1258,11 @@
     "duplicateTabWhy": "Same panes, new sessions",
     "closeOthers": "Close other tabs",
     "closeOthersTitle": "Close the other tabs?",
-    "closeOthersWhy": "{count} terminals in {tabs} other tabs will be closed."
+    "closeOthersWhy": "{count} terminals in {tabs} other tabs will be closed.",
+    "broadcast": "Broadcast typing to this tab's panes",
+    "broadcastStop": "Stop broadcasting",
+    "broadcasting": "Broadcasting",
+    "broadcastingWhy": "Every keystroke reaches this tab's panes — click to stop"
   },
   "members": {
     "addFromTeam": "Add from team:",

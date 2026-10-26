@@ -339,3 +339,12 @@ body.near-left .side-rail button,.side-rail button:focus{opacity:1}
 .cheat-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
   padding:9px 2px;border-bottom:1px solid var(--border)}
 .cheat-row:last-child{border-bottom:none}
+
+/* The broadcast badge. Amber and in the tab strip, because the cost of not noticing it is
+   a command running on machines nobody meant to touch — and a cross on it, because
+   stopping has to be the easiest thing to do while it is on. */
+.bcast-badge{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;
+  padding:5px 10px;border-radius:6px;border:1px solid var(--amber);
+  background:rgba(229,181,103,.14);color:var(--amber);font-size:12px;font-weight:600;
+  cursor:pointer}
+.bcast-badge:hover{background:rgba(229,181,103,.24)}

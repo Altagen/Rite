@@ -7,6 +7,7 @@
 import type { SplitTarget } from '../types/pane';
 import { useTranslation } from '../i18n/i18n';
 import { TabMenu } from './TabMenu';
+import { useBroadcast } from '../store/broadcast';
 import type { Layout } from '../store/layoutsFormat';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -48,6 +49,8 @@ interface TerminalManagerProps {
   onDuplicateTab?: (tabId: string) => void;
   /** Close every tab but this one. */
   onCloseOtherTabs?: (tabId: string) => void;
+  /** Start or stop sharing every keystroke among this tab's panes. */
+  onToggleBroadcast?: (tabId: string) => void;
   onReorganizePane?: (
     sourcePaneId: string,
     targetPaneId: string,
@@ -107,6 +110,7 @@ export function TerminalManager({
   onCloseTab,
   onDuplicateTab,
   onCloseOtherTabs,
+  onToggleBroadcast,
   onReorganizePane,
   onNewLocalTerminal,
   shellMenu,
@@ -141,6 +145,8 @@ export function TerminalManager({
   } | null>(null);
   /** Which tab was right-clicked, and where, so the menu opens at the pointer. */
   const [tabMenu, setTabMenu] = useState<{ tab: Tab; x: number; y: number } | null>(null);
+  const broadcastTab = useBroadcast((s) => s.tabId);
+  const stopBroadcast = useBroadcast((s) => s.off);
   const dropdownButtonRef = useRef<HTMLButtonElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -795,6 +801,23 @@ export function TerminalManager({
       </div>
 
       {/* Close tab confirmation modal */}
+      {/* Broadcasting is announced where the tabs are, in amber, with a cross. A mode that
+          sends every keystroke to several shells has to be impossible to miss and one
+          click to stop: the cost of forgetting it is a command running on machines nobody
+          meant to touch. Absent while off — a permanent badge stops being read. */}
+      {broadcastTab && (
+        <button
+          type="button"
+          onClick={() => stopBroadcast()}
+          title={t('tm.broadcastingWhy')}
+          className="ml-2 flex flex-none items-center gap-1.5 rounded-md border border-amber-500 bg-amber-500/15 px-2.5 py-1 text-xs font-semibold text-amber-500 hover:bg-amber-500/25"
+          data-testid="broadcast-badge"
+        >
+          {t('tm.broadcasting')}
+          <span aria-hidden="true">✕</span>
+        </button>
+      )}
+
       {tabMenu && (
         <TabMenu
           at={{ x: tabMenu.x, y: tabMenu.y }}
@@ -805,6 +828,10 @@ export function TerminalManager({
           onCloseOthers={
             tabGroups.length > 1 ? () => handleCloseOthersClick(tabMenu.tab) : undefined
           }
+          // Offered per tab because that is its scope, and labelled with the scope:
+          // "broadcast" alone does not say how far it reaches.
+          broadcasting={broadcastTab === tabMenu.tab.id}
+          onToggleBroadcast={() => onToggleBroadcast?.(tabMenu.tab.id)}
           onClose={() => setTabMenu(null)}
         />
       )}

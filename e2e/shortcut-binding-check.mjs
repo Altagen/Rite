@@ -229,7 +229,10 @@ check('the table carries one, so the optional field is exercised', () => {
   // the chord-less path honest.
   const chordless = SHORTCUT_COMMANDS.filter((c) => c.defaultBinding === undefined);
   assert.ok(chordless.length >= 1, 'no command ships without a chord');
-  assert.deepEqual(chordless.map((c) => c.id), ['settings.open']);
+  // Named rather than counted, so adding one is a decision somebody writes down here:
+  // a chord-less command is reachable only from the palette, and shipping one by accident
+  // means shipping something nobody can find.
+  assert.deepEqual(chordless.map((c) => c.id), ['settings.open', 'terminal.broadcast']);
 });
 
 check('it is still a command, so a chord can be assigned to it later', () => {

@@ -69,6 +69,11 @@ export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
   // report — so one default works on both, and naming the cap instead of the key would
   // have shipped a chord that fires on neither.
   { id: 'shortcuts.cheatsheet', defaultBinding: 'Mod+Shift+?' },
+  // No default chord, deliberately. The good ones are scarce, and for a mode whose cost of
+  // being forgotten is a command running on machines nobody meant to touch, a badge that
+  // is impossible to miss and one click to stop is worth more than a chord nobody
+  // remembers under pressure. The palette finds it; a chord can be assigned in Settings.
+  { id: 'terminal.broadcast' },
 ];
 
 /** Every command id, whether or not it ships with a chord. */

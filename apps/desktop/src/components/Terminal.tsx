@@ -15,6 +15,7 @@ import { terminalPool } from '../utils/terminalPool';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 import { useLayouts } from '../store/layouts';
+import { broadcastTargets } from '../store/broadcast';
 import { attachImeGuard } from '../utils/imeGuard';
 import {
   attachTerminalClipboard,
@@ -173,7 +174,12 @@ export function Terminal({
     try {
       const encoder = new TextEncoder();
       const bytes = Array.from(encoder.encode(data));
-      await Backend.Terminal.sendTerminalInput(sessionIdRef.current, bytes);
+      // Whoever this keystroke is for: this pane alone, or every pane of a broadcasting
+      // tab. The store answers with this session when the mode is off, so there is no
+      // branch here and no second code path that could diverge from the normal one.
+      for (const target of broadcastTargets(sessionIdRef.current)) {
+        await Backend.Terminal.sendTerminalInput(target, bytes);
+      }
     } catch (err) {
       errorHandler.handle('Failed to send terminal input', {
         severity: ErrorSeverity.ERROR,

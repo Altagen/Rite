@@ -31,6 +31,7 @@ import { OverflowNav, type NavAction } from './OverflowNav';
 import { useSettingsModal } from '../store/settingsModal';
 import { CommandPalette } from './CommandPalette';
 import { ShortcutsCheatsheet } from './ShortcutsCheatsheet';
+import { useBroadcast } from '../store/broadcast';
 import { ConnectionForm } from './ConnectionForm';
 import { TerminalManager, type TerminalSession } from './TerminalManager';
 import { CollectionView } from './CollectionView';
@@ -207,6 +208,38 @@ export function Workspace({
   useShortcut('palette.open', () => setPaletteOpen(true), !isLocked);
   useShortcut('settings.open', () => setShowSettings(true), !isLocked);
   useShortcut('shortcuts.cheatsheet', () => setCheatsheetOpen(true), !isLocked);
+
+  /**
+   * Broadcasting: every keystroke in the active tab also reaches its other panes.
+   *
+   * The session ids are published to the store by this component, because it is the one
+   * that holds the trees. They are REPUBLISHED while the mode is on, so a pane opened
+   * mid-broadcast joins and a closed one drops out — `synchronize-panes` includes new
+   * panes too, and a stale list would silently stop reaching one of them.
+   */
+  const broadcastTab = useBroadcast((s) => s.tabId);
+  const toggleBroadcast = useBroadcast((s) => s.toggle);
+  const retargetBroadcast = useBroadcast((s) => s.retarget);
+  const activeSessions = (tabId: string | null) =>
+    getAllPanes(tabGroups.find((t) => t.id === tabId)?.paneTree ?? null).map(
+      (pane) => pane.session.id,
+    );
+  useShortcut(
+    'terminal.broadcast',
+    () => activeTabId && toggleBroadcast(activeTabId, activeSessions(activeTabId)),
+    !isLocked && !!activeTabId,
+  );
+  useEffect(() => {
+    if (!broadcastTab) return;
+    // Computed inline rather than through the helper above: the helper is rebuilt on every
+    // render, so listing it as a dependency would run this on every render — and leaving
+    // it out would be a lie the linter is right to refuse. `tabGroups` is what changes
+    // when a pane opens or closes, which is the only thing that can make the list wrong.
+    const sessions = getAllPanes(
+      tabGroups.find((t) => t.id === broadcastTab)?.paneTree ?? null,
+    ).map((pane) => pane.session.id);
+    retargetBroadcast(broadcastTab, sessions);
+  }, [broadcastTab, tabGroups, retargetBroadcast]);
 
   // Quick SSH and Unlock modals
   const [showQuickSSH, setShowQuickSSH] = useState(false);
@@ -2210,6 +2243,7 @@ export function Workspace({
                 onCloseTab={handleCloseTab}
                 onDuplicateTab={(id) => void handleDuplicateTab(id)}
                 onCloseOtherTabs={(id) => void handleCloseOtherTabs(id)}
+                onToggleBroadcast={(id) => toggleBroadcast(id, activeSessions(id))}
                 onReorganizePane={handleReorganizePane}
                 onNewLocalTerminal={handleNewLocalTerminal}
                 shellMenu={toolbarPrefs.newTerminalMenu ? newTerminalShells : undefined}
