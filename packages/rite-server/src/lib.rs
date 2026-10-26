@@ -3811,7 +3811,17 @@ async fn set_setting(
 /// before `$HOME/.config`, which is what a test harness has to pin to stay out of
 /// the real one.
 fn layouts_path() -> Option<std::path::PathBuf> {
-    if let Some(custom) = std::env::var_os("RITE_LAYOUTS_FILE") {
+    layouts_path_from(std::env::var_os("RITE_LAYOUTS_FILE"))
+}
+
+/// The resolution, with the variable's value passed in.
+///
+/// Split out so a test never has to set it. `RITE_LAYOUTS_FILE` is process-global, and the
+/// test that exercised it set and restored it around one call while the test beside it
+/// called `layouts_path()` twice — so roughly one run in three, the two calls straddled the
+/// mutation and the suite failed on a path that was correct both times.
+fn layouts_path_from(custom: Option<std::ffi::OsString>) -> Option<std::path::PathBuf> {
+    if let Some(custom) = custom {
         if !custom.is_empty() {
             return Some(std::path::PathBuf::from(custom));
         }
@@ -3917,23 +3927,29 @@ mod layouts_tests {
         assert_eq!(layouts_file(false), layouts_path());
     }
 
-    /// `RITE_LAYOUTS_FILE` wins, so the file can live in a dotfiles repository or
-    /// beside a project. The variable is process-global, so this puts it back; nothing
-    /// else in the suite reads it.
+    /// `RITE_LAYOUTS_FILE` wins, so the file can live in a dotfiles repository or beside
+    /// a project.
+    ///
+    /// Asserted through the value, not through the process environment. The earlier
+    /// version set the variable and put it back, and `a_server_has_no_file_to_offer` reads
+    /// the same variable twice: one run in three, its two reads landed either side of the
+    /// mutation and the suite failed on a resolution that was right both times.
     #[test]
     fn an_explicit_path_wins() {
-        let before = std::env::var_os("RITE_LAYOUTS_FILE");
-        unsafe { std::env::set_var("RITE_LAYOUTS_FILE", "/tmp/rite-workspace-elsewhere.toml") };
-        let found = layouts_path();
-        match before {
-            Some(v) => unsafe { std::env::set_var("RITE_LAYOUTS_FILE", v) },
-            None => unsafe { std::env::remove_var("RITE_LAYOUTS_FILE") },
-        }
+        let named = |p: &str| layouts_path_from(Some(std::ffi::OsString::from(p)));
         assert_eq!(
-            found,
+            named("/tmp/rite-workspace-elsewhere.toml"),
             Some(std::path::PathBuf::from(
                 "/tmp/rite-workspace-elsewhere.toml"
             ))
+        );
+        // Set-but-empty is how a shell exports a variable it means to leave alone, and it
+        // must not resolve to the current directory or to an empty path.
+        assert_eq!(named(""), layouts_path_from(None));
+        assert_eq!(
+            layouts_path_from(None),
+            dirs::config_dir().map(|d| d.join("rite").join("layouts.toml")),
+            "and with nothing named, the documented XDG path"
         );
     }
 
