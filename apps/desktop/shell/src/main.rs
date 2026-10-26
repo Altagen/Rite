@@ -53,6 +53,7 @@ writes nothing:
   rite --print-desktop-entry PATH    the launcher entry, with PATH as its Exec
   rite --print-icon SIZE             one icon, as PNG bytes on stdout
   rite --print-icon-sizes            the sizes to place, one per line
+  rite --print-data-dir              where the vault and this machine's state live
 ";
 
 /// What the command line asked for. A handful of flags and a default need a `match`, not a
@@ -72,6 +73,9 @@ enum Cli {
     PrintEntry(PathBuf),
     PrintIcon(u32),
     PrintIconSizes,
+    /// Where the state lives, so a backup, a packager or a test reads the path from the
+    /// binary instead of reimplementing the XDG rules beside it.
+    PrintDataDir,
     /// A `--print-…` flag that needs an argument and did not get a usable one.
     PrintNeeds(&'static str),
 }
@@ -104,6 +108,7 @@ fn cli() -> Cli {
         },
         "--print-app-id" => Cli::PrintAppId,
         "--print-icon-sizes" => Cli::PrintIconSizes,
+        "--print-data-dir" => Cli::PrintDataDir,
         "--print-desktop-entry" => match args.get(1) {
             Some(path) => Cli::PrintEntry(PathBuf::from(path)),
             None => Cli::PrintNeeds("--print-desktop-entry needs the path Exec should run"),
@@ -318,6 +323,13 @@ fn main() -> Result<()> {
             for size in install::icon_sizes() {
                 println!("{size}");
             }
+            return Ok(());
+        }
+        // The path the running binary would open, not the one the docs claim. A backup
+        // script, a packager and the test that pins this across a `dirs` upgrade all read
+        // it from here, which is the only copy that cannot drift.
+        Cli::PrintDataDir => {
+            println!("{}", data_dir().display());
             return Ok(());
         }
         Cli::PrintEntry(exec) => {
