@@ -31,7 +31,8 @@ inside the server container. What is left is the code.
 **Goal:** Production-ready terminal with local shell + SSH, core modern features, and solid UX.
 
 ### 🎯 Terminal Core (Priority: CRITICAL - New Focus)
-  - [ ] Working directory per tab
+  - [ ] A new tab starting in the active pane's directory — a split already does
+        (`/proc/<pid>/cwd` on Linux, the shell's own answer elsewhere); a new tab does not
 
   Adding a kind is now three steps: extend `LeafPaneNode` in
   `apps/desktop/src/types/pane.ts`, write the kind under
@@ -40,8 +41,9 @@ inside the server container. What is left is the code.
   compile error rather than a pane that renders as nothing — and with a second kind
   added and nothing else touched, that missing line is the *only* thing the compiler
   asks for.
-- [ ] **Command palette** (Ctrl+K / Cmd+K)
-  - [ ] Quick actions (new tab, split, settings)
+- [ ] Command palette: searching more than commands. The palette itself ships (Mod+K,
+      every command that has a handler, availability answering itself), and these are the
+      two sources it does not reach yet
   - [ ] Connection search
   - [ ] Command history search
 - [ ] **Terminal customization**
@@ -108,11 +110,8 @@ inside the server container. What is left is the code.
 - [ ] Secure credential storage review
 
 ### 🖥️ Terminal Improvements (Priority: HIGH)
-- [ ] Connection timeout configuration — the timeout exists (20s, `CONNECT_TIMEOUT`)
-      and is not configurable, which is the whole of this item
-- [ ] Copy/paste improvements (context menu, smart paste)
-- [ ] Broadcast mode — **half done**: a snippet can be broadcast to every open pane,
-      but there is no mode where what you type keeps going to all of them
+- [ ] Smart paste — a multi-line paste asking before it runs. The gesture itself is
+      settled (four modes, the workspace document chooses; ADR 0023 addendum)
 
 ### 📦 Connection Management (Priority: MEDIUM)
 - [ ] A per-member override for a key PATH, in `deviceStore` (ADR 0028 §3 defers it). The
@@ -130,10 +129,7 @@ inside the server container. What is left is the code.
 - [ ] Setup wizard — the shell choice and the master password are already in the main
       UI; what is missing is a first-run path offering preferences and an import
   - [ ] Basic preferences (theme, font)
-- [ ] Shortcuts cheatsheet (`Mod+?`) — the binding table and its editor exist; this is
-      a reader for that table, not a second list to keep in step
 - [ ] Error handling improvements
-- [ ] Tab context menu (rename, duplicate, close others)
 - [ ] Quick switcher (Ctrl+Tab for recent tabs)
 
 ### 🎨 Styling: one place for it (Priority: HIGH)
@@ -423,7 +419,8 @@ profile exists, and it would teach the wrong shape in the meantime.
 - [ ] GPU-accelerated rendering
 - [ ] Detach panes to floating windows (multi-window support)
 - [ ] Terminal zoom mode (focus one pane fullscreen temporarily)
-- [ ] Pane synchronization (broadcast to selected panes only)
+- [ ] Pane synchronization by selection — the mode ships scoped to a tab's panes, as
+      tmux's `synchronize-panes` is; choosing arbitrary panes across tabs is the rest
 - [ ] Smart pane focus navigation (vim-like hjkl or arrow keys)
 - [ ] Pane history/undo (restore closed panes)
 - [ ] Tab groups/workspaces (organize tabs into projects)
@@ -461,7 +458,6 @@ profile exists, and it would teach the wrong shape in the meantime.
 **Critical path for usable terminal**, with what is done taken out of it — the local
 terminal, split panes and the ssh_config import have all shipped:
 
-1. **Command palette** (UX quick wins)
-2. **Font/theme customization** — as profile values, not as pickers; see Layouts
-3. **Export/backup** (security)
-4. **Polish & stability** (error handling, notifications)
+1. **Font/theme customization** — as profile values, not as pickers; see Layouts
+2. **Export/backup** (security)
+3. **Polish & stability** (error handling, notifications)
