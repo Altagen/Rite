@@ -64,6 +64,61 @@ pub fn set_connect_timeout_secs(secs: u64) {
     }
 }
 
+/// The host-key policy an instance declared, when it declared one (ADR 0020 addendum).
+///
+/// This crate reads `host_key_verification_mode` from the `settings` table for every
+/// connection it opens, and the instance configuration deliberately does not write to that
+/// table — removing a key from the file has to restore what the administrator had. So a
+/// declared mode reached `/api/server/mode`, greyed the console field out, and never
+/// reached this code: an instance whose table still held `accept` from an earlier click
+/// kept accepting unknown hosts while every surface said `strict`.
+///
+/// The server pushes the resolved value here at start-up instead, and the verification
+/// below prefers it over the table.
+static DECLARED_HOST_KEY_MODE: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// Push a declared mode, or `None` for "nothing declared — the table answers".
+///
+/// A value this crate does not know is treated as nothing declared: the loader refuses a
+/// typo at start-up, and falling back to the table is the behaviour that existed before
+/// this function, where silently inventing a mode is not.
+pub fn set_declared_host_key_mode(mode: Option<&str>) {
+    if let Ok(mut slot) = DECLARED_HOST_KEY_MODE.write() {
+        *slot = known_mode(mode);
+    }
+}
+
+/// A mode this crate acts on, or `None`. Trimmed, because a value read from a mounted file
+/// arrives with a newline, and compared by value rather than by type: a typo reaching here
+/// has to read as nothing declared, not as a policy nobody can name.
+fn known_mode(mode: Option<&str>) -> Option<String> {
+    mode.map(str::trim)
+        .filter(|m| matches!(*m, "strict" | "warn" | "accept"))
+        .map(str::to_string)
+}
+
+fn declared_host_key_mode() -> Option<String> {
+    DECLARED_HOST_KEY_MODE
+        .read()
+        .ok()
+        .and_then(|slot| slot.clone())
+}
+
+/// What a connection verifies against, given what the `settings` table holds: the declared
+/// mode when there is one, else the table, else strict.
+///
+/// Strict last on purpose. An unreadable table and an empty one both mean nobody said, and
+/// the mode that refuses an unknown key is the only safe answer to that.
+pub fn host_key_mode(stored: Option<String>) -> String {
+    resolve_host_key_mode(declared_host_key_mode(), stored)
+}
+
+/// The resolution itself, with both inputs in the open so it can be asserted without
+/// touching the process-wide value — which the host-key tests in this crate read.
+fn resolve_host_key_mode(declared: Option<String>, stored: Option<String>) -> String {
+    declared.or(stored).unwrap_or_else(|| "strict".to_string())
+}
+
 /// Commands that can be sent to a terminal session
 pub enum SessionCommand {
     SendInput(Vec<u8>),
@@ -231,28 +286,23 @@ impl client::Handler for SshClientHandler {
             return Ok(true);
         }
 
-        // Get the host key verification mode from settings
-        let verification_mode = match sqlx::query_scalar::<_, String>(
+        // What the table holds, which the declared mode outranks (ADR 0020 addendum).
+        let stored = match sqlx::query_scalar::<_, String>(
             "SELECT value FROM settings WHERE key = 'host_key_verification_mode'",
         )
         .fetch_optional(&*self.db)
         .await
         {
-            Ok(Some(mode)) => mode,
-            Ok(None) => {
-                tracing::warn!(
-                    "[terminal.rs] No host_key_verification_mode setting found, defaulting to 'strict'"
-                );
-                "strict".to_string()
-            }
+            Ok(mode) => mode,
             Err(e) => {
                 tracing::error!(
                     "[terminal.rs] Failed to read host_key_verification_mode: {}",
                     e
                 );
-                "strict".to_string() // Default to strict on error for security
+                None
             }
         };
+        let verification_mode = host_key_mode(stored);
 
         tracing::info!(
             "[terminal.rs] Host key verification mode: {}",
@@ -1867,7 +1917,7 @@ impl SessionManager {
 }
 
 #[cfg(test)]
-mod connect_timeout_tests {
+mod pushed_settings_tests {
     use super::*;
 
     #[test]
@@ -1887,6 +1937,32 @@ mod connect_timeout_tests {
         assert_eq!(usable_timeout(0), None);
         assert_eq!(usable_timeout(301), None);
         assert_eq!(usable_timeout(u64::MAX), None);
+    }
+
+    #[test]
+    fn a_declared_mode_outranks_the_table_and_an_unknown_one_does_not() {
+        let d = |m: &str| Some(m.to_string());
+
+        // Nothing declared: the table answers, and an empty table is strict.
+        assert_eq!(resolve_host_key_mode(None, d("accept")), "accept");
+        assert_eq!(resolve_host_key_mode(None, None), "strict");
+
+        // Declared: it wins over the row, which is the whole point — a row left behind by
+        // a console click must not keep accepting unknown hosts.
+        assert_eq!(resolve_host_key_mode(d("strict"), d("accept")), "strict");
+        assert_eq!(resolve_host_key_mode(d("accept"), d("strict")), "accept");
+
+        // Asserted through the pure pair rather than the process-wide value: the host-key
+        // tests below run in this same process and read it for every key they verify.
+        assert_eq!(known_mode(Some("trust-me")), None, "a typo is not a mode");
+        assert_eq!(known_mode(Some("")), None);
+        assert_eq!(known_mode(None), None);
+        assert_eq!(
+            known_mode(Some(" accept\n")),
+            d("accept"),
+            "a mounted file's newline"
+        );
+        assert_eq!(known_mode(Some("warn")), d("warn"));
     }
 
     #[test]
