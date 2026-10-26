@@ -6141,7 +6141,7 @@ mod tests {
             .unwrap();
         let payload: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(
-            payload["version"], "0.2.5",
+            payload["version"], "0.2.6",
             "the release this server reports (Cargo.toml's workspace version)"
         );
         assert_eq!(
