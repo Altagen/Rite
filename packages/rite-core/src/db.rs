@@ -432,8 +432,10 @@ impl Database {
             if Self::RESET_KEEPS.contains(&table.as_str()) {
                 continue;
             }
-            // The name comes from sqlite_master, not from a caller.
-            sqlx::query(&format!("DELETE FROM \"{table}\""))
+            // The name comes from sqlite_master, not from a caller — which is what
+            // `AssertSqlSafe` claims. sqlx 0.9 requires the claim to be written down for
+            // any SQL that is not a literal, and the comment above it is the evidence.
+            sqlx::query(sqlx::AssertSqlSafe(format!("DELETE FROM \"{table}\"")))
                 .execute(&mut *tx)
                 .await
                 .with_context(|| format!("Failed to clear {table} during reset"))?;
@@ -456,12 +458,15 @@ impl Database {
                 .context("Failed to create backup directory")?;
         }
 
-        // Execute SQLite VACUUM INTO to create a clean, compacted backup
-        // This is the recommended way to backup SQLite databases
-        let backup_path_str = backup_path.to_string_lossy();
-        let query = format!("VACUUM INTO '{}'", backup_path_str);
+        // `VACUUM INTO` is the recommended way to copy a live SQLite database, and it
+        // takes its destination as a SQL string literal rather than a bind parameter — so
+        // the path has to be quoted by hand. An apostrophe in it would otherwise end the
+        // literal early and the backup would fail with a syntax error: doubling it is what
+        // SQLite's own grammar asks for, and `/home/o'brien` is a real home directory.
+        let backup_path_str = backup_path.to_string_lossy().replace('\'', "''");
+        let query = format!("VACUUM INTO '{backup_path_str}'");
 
-        sqlx::query(&query)
+        sqlx::query(sqlx::AssertSqlSafe(query))
             .execute(&self.pool)
             .await
             .context("Failed to create database backup")?;
@@ -858,7 +863,14 @@ fn is_benign_ddl_conflict(e: &sqlx::Error) -> bool {
 /// such a conflict, so a drifted vault converges. Non-benign errors abort.
 async fn apply_migration_tolerant(conn: &mut sqlx::SqliteConnection, sql: &str) -> Result<()> {
     for stmt in split_sql_statements(sql) {
-        if let Err(e) = sqlx::raw_sql(&stmt).execute(&mut *conn).await {
+        // The statement is a slice of a migration file compiled into the binary by
+        // `include_str!`, cut on semicolons — it is this repository's own SQL and reaches
+        // no caller, which is what `AssertSqlSafe` asserts. sqlx 0.9 asks for that
+        // assertion in writing wherever the SQL is not a literal.
+        if let Err(e) = sqlx::raw_sql(sqlx::AssertSqlSafe(stmt.clone()))
+            .execute(&mut *conn)
+            .await
+        {
             if is_benign_ddl_conflict(&e) {
                 continue; // already applied on this vault — skip
             }
@@ -900,6 +912,34 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let db = Database::new(&db_path).await.unwrap();
         (db, temp_dir)
+    }
+
+    /// A backup destination with an apostrophe in it.
+    ///
+    /// `VACUUM INTO` takes its destination as a SQL string literal — there is no bind
+    /// parameter for it — so the path is pasted into the statement and an apostrophe ended
+    /// the literal early. The backup then failed with a syntax error, and the only path
+    /// that reaches this is the vault's own parent directory: `/home/o'brien` is a real
+    /// home directory, and the person who has one would have lost the pre-migration
+    /// backup, which is the copy that exists for the migration that goes wrong.
+    #[tokio::test]
+    async fn a_backup_path_with_an_apostrophe_is_written_not_refused() {
+        let (db, temp_dir) = create_test_db().await;
+        let awkward = temp_dir.path().join("o'brien's backups");
+        tokio::fs::create_dir_all(&awkward).await.unwrap();
+        let target = awkward.join("vault's copy.db");
+
+        db.create_backup(&target)
+            .await
+            .expect("an apostrophe in the path is not a syntax error");
+
+        // Written, and a real database rather than an empty file: a VACUUM INTO that
+        // silently produced nothing would pass an existence check.
+        let written = tokio::fs::metadata(&target).await.unwrap().len();
+        assert!(written > 0, "the backup file is empty");
+        Database::new(&target)
+            .await
+            .expect("the backup opens as a database");
     }
 
     // Two single-context servers briefly hold the same vault file during a reset+reload / switch
@@ -1103,10 +1143,12 @@ mod tests {
         );
 
         for table in tables {
-            let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM \"{table}\""))
-                .fetch_one(db.pool())
-                .await
-                .unwrap();
+            let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+                "SELECT COUNT(*) FROM \"{table}\""
+            )))
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
             if Database::RESET_KEEPS.contains(&table.as_str()) {
                 continue; // the migration ledger and the preferences survive, by design
             }
