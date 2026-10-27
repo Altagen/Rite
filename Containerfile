@@ -1,6 +1,6 @@
 # RITE — ISO-CI validation image
 #
-# Mirrors the environment of .github/workflows/ci.yml (runs-on: ubuntu-latest)
+# Mirrors the environment of .github/workflows/ci.yml (runs-on: ubuntu-24.04)
 # so that a local `task check` / build passes iff CI passes.
 #
 # Build:   podman build -t rite-ci:local -f Containerfile .
@@ -8,10 +8,14 @@
 #            bash -lc "pnpm install && task check"
 #
 # Pinned to reproduce the CI toolchain:
-#   - Ubuntu 24.04            (what ubuntu-latest resolves to — checked in a run log,
-#                              not assumed: bump this when GitHub moves the label, since
-#                              a newer base here would stop mirroring CI, which is the
-#                              one property this image has (ADR 0001))
+#   - Ubuntu 24.04            (the version every workflow pins. They used to ride
+#                              ubuntu-latest, which GitHub moved to 26.04 between
+#                              2026-10-19 and 2026-11-19 — two runs of one commit could
+#                              land on different distributions. Moving this is a commit
+#                              that moves the workflows with it; e2e/ci-image-check.mjs
+#                              fails if the two disagree (ADR 0001). The release client
+#                              is built on an OLDER ubuntu on purpose: the build host's
+#                              glibc is the floor of the shipped binary.)
 #   - Rust                   from rust-toolchain.toml, as CI does
 #   - Node.js                from .node-version, as CI does
 #   - pnpm                   from package.json `packageManager`, as CI does
