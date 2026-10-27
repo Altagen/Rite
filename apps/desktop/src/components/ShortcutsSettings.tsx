@@ -49,7 +49,7 @@ export function ShortcutsSettings() {
       if (!binding) return; // a modifier on its own, or a bare letter — keep listening
 
       const text = formatBinding(binding);
-      if (isReservedText(text)) {
+      if (isReservedText(text, IS_MAC)) {
         // Refused rather than accepted-and-broken: this is the terminal's own chord.
         setRefused(t('shortcuts.reserved', { chord: displayBinding(binding, IS_MAC) }));
         return;

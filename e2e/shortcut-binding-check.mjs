@@ -215,8 +215,41 @@ check('no default takes a chord the terminal needs', () => {
   }
 });
 
-check('copy and paste are the reserved chords', () => {
+check('copy and paste are reserved on every platform', () => {
   assert.deepEqual(RESERVED_BINDINGS, ['Mod+Shift+C', 'Mod+Shift+V']);
+  for (const chord of RESERVED_BINDINGS) {
+    assert.equal(isReservedText(chord, false), true, `${chord} on Ctrl`);
+    assert.equal(isReservedText(chord, true), true, `${chord} on a Mac`);
+  }
+});
+
+/* The space rule, and the reason it is a space. `bind -P` in bash reports a readline
+   binding for Ctrl+ a b d e f g h i j k l m n o p q r s t u v w x y — every letter but c
+   and z, which are the tty driver's own (SIGINT, SIGTSTP). So where Mod is Ctrl there is
+   no bare Mod+letter left to take, and three shipped defaults had taken three of them:
+   `Mod+W` over unix-word-rubout, `Mod+F` over forward-char, `Mod+K` over kill-line. */
+check('where Mod is Ctrl, no bare Mod+letter is the app\'s to take', () => {
+  for (const letter of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+    assert.equal(
+      isReservedText(`Mod+${letter}`, false),
+      true,
+      `Mod+${letter} is the shell's where Mod is Ctrl`,
+    );
+  }
+});
+
+check('on a Mac the same chords are free, because Cmd is not Ctrl', () => {
+  // readline never sees Cmd, so Cmd+K is a good chord there and forbidding it would cost
+  // the platform its conventions for nothing.
+  for (const letter of 'KWF') {
+    assert.equal(isReservedText(`Mod+${letter}`, true), false, `Mod+${letter} on a Mac`);
+  }
+});
+
+check('the Mod+Shift space stays available, which is where the defaults live', () => {
+  for (const chord of ['Mod+Shift+W', 'Mod+Shift+F', 'Mod+Shift+K', 'Mod+Shift+D']) {
+    assert.equal(isReservedText(chord, false), false, `${chord} must remain assignable`);
+  }
 });
 
 console.log(`\n${passed} checks passed`);

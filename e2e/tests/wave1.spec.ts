@@ -1074,7 +1074,7 @@ test('settings are reachable with the vault locked', async ({ page, request }) =
     await expect(page.getByTestId(`settings-nav-${id}`)).toBeVisible();
   }
   await page.getByTestId('settings-nav-keyboard').click();
-  await expect(page.getByTestId('shortcut-binding-pane.close')).toHaveText('Ctrl+W');
+  await expect(page.getByTestId('shortcut-binding-pane.close')).toHaveText('Ctrl+Shift+W');
 
   // And a server-backed one reads its value rather than failing: this is the half
   // that a locked vault could plausibly have broken.

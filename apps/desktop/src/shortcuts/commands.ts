@@ -45,21 +45,28 @@ export interface ShortcutCommand {
  *     engine — but it cannot be what we ship.
  */
 export const SHORTCUT_COMMANDS: ShortcutCommand[] = [
-  { id: 'pane.close', defaultBinding: 'Mod+W' },
+  // `Mod+Shift+…` throughout, and not `Mod+…`: where Mod is Ctrl, the bare chord is the
+  // shell's — see `isReservedText` below for the measurement. Ctrl+Shift+W is also what
+  // closes a tab in gnome-terminal, so the chord reads the way a terminal user expects.
+  { id: 'pane.close', defaultBinding: 'Mod+Shift+W' },
   { id: 'pane.splitHorizontal', defaultBinding: 'Mod+Shift+H' },
   { id: 'pane.splitVertical', defaultBinding: 'Mod+Shift+D' },
-  { id: 'pane.search', defaultBinding: 'Mod+F' },
+  // Ctrl+Shift+F is find in gnome-terminal; Ctrl+F alone is readline's `forward-char`.
+  { id: 'pane.search', defaultBinding: 'Mod+Shift+F' },
   // Locking is a safety reflex — the thing you do when you stand up — and it had no chord
   // at all while four pane commands did. It needs one now that the button moved into the
   // pastille's menu: a keystroke is better than the single click it replaced, and much
   // better than a click plus an aim. Mod+Shift+L is free in gnome-terminal, konsole and
   // xfce4-terminal, and is not one of the two RESERVED_BINDINGS below.
   { id: 'vault.lock', defaultBinding: 'Mod+Shift+L' },
-  // The palette's own chord. `Mod+K` is what every editor uses for this, it is free in
-  // gnome-terminal, konsole and xfce4-terminal, and it is not one of RESERVED_BINDINGS.
-  // Taken on the window in the capture phase like the rest, because it has to open from
-  // inside a terminal — which claims most of the keyboard.
-  { id: 'palette.open', defaultBinding: 'Mod+K' },
+  // The palette's own chord. It shipped as `Mod+K`, the editors' chord, on the grounds
+  // that it is free in gnome-terminal, konsole and xfce4-terminal — and that is exactly
+  // why it was not free: the emulator passing it through is how `Ctrl+K` reaches readline,
+  // where it is `kill-line`. A terminal client that eats kill-line to open a menu is
+  // broken, whatever the muscle memory says. Taken on the window in the capture phase like
+  // the rest, because it has to open from inside a terminal — which claims most of the
+  // keyboard, and that is the point.
+  { id: 'palette.open', defaultBinding: 'Mod+Shift+K' },
   // Ships WITHOUT a chord, which is the point of the palette: this is worth finding and
   // not worth one of the few good chords. A person who disagrees can assign one in
   // Settings, where it appears beside the rest.
@@ -88,8 +95,31 @@ export const COMMAND_IDS: string[] = SHORTCUT_COMMANDS.map((c) => c.id);
  */
 export const RESERVED_BINDINGS = ['Mod+Shift+C', 'Mod+Shift+V'];
 
-/** Is this chord one the terminal needs for itself? Takes the canonical text, so
- *  this file needs nothing from the matcher to answer. */
-export function isReservedText(text: string): boolean {
-  return RESERVED_BINDINGS.includes(text);
+/**
+ * Is this chord one the terminal needs for itself?
+ *
+ * Two rules, and the second is a SPACE rather than a list.
+ *
+ * Where `Mod` is Ctrl, a bare `Mod+<letter>` is the shell's. Measured, not assumed:
+ * `bind -P` in bash reports a readline binding for Ctrl+ a b d e f g h i j k l m n o p q
+ * r s t u v w x y — every letter but c and z, and those two are the tty driver's own
+ * (SIGINT, SIGTSTP), which is stronger still. fish binds the same family. So there is no
+ * bare Ctrl+letter left to take, and enumerating twenty-six entries would only hide that.
+ *
+ * This is where three shipped defaults went wrong. `Mod+W` took `unix-word-rubout`,
+ * `Mod+F` took `forward-char`, and `Mod+K` took `kill-line` — the palette's chord, eating
+ * the most-used editing key in the shell. The reasoning recorded above them was that those
+ * chords are "free in gnome-terminal, konsole and xfce4-terminal", which is true and is
+ * precisely the problem: free in the EMULATOR means the emulator passes the key through to
+ * the shell. Nothing here guards on focus either — the handler is on `window` in the
+ * capture phase and calls `preventDefault`, so the key never reaches the PTY at all.
+ *
+ * `isMac` is passed in rather than read, the same way `matchesBinding` takes it, so this
+ * file still imports nothing and the standalone check can hold both arms. The default is
+ * the Ctrl reading: assuming the stricter platform errs toward leaving the shell alone.
+ */
+export function isReservedText(text: string, isMac = false): boolean {
+  if (RESERVED_BINDINGS.includes(text)) return true;
+  // On a Mac `Mod` is Cmd, which readline never sees, so Cmd+K stays a good chord there.
+  return !isMac && /^Mod\+[A-Z]$/.test(text);
 }

@@ -92,7 +92,7 @@ function accepted(overrides: Record<string, string>): Map<string, Binding> {
     if (!known.has(id)) continue;
     const binding = parseBinding(text);
     if (!binding) continue;
-    if (isReservedText(formatBinding(binding))) continue;
+    if (isReservedText(formatBinding(binding), IS_MAC)) continue;
     out.set(id, binding);
   }
   return out;
