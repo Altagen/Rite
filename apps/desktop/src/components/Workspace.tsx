@@ -75,7 +75,7 @@ import {
   onCreateVault,
   type NativeVault,
 } from '../utils/nativeShell';
-import { shellToStart } from '../utils/localShellSource';
+import { instanceChoosesShell, shellToStart } from '../utils/localShellSource';
 import { SHELL_CANDIDATES } from '../utils/shells';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 import { CreateVaultDialog } from './CreateVaultDialog';
@@ -291,6 +291,15 @@ export function Workspace({
   // In a server context terminals run on the server, so the shell is the server's default
   // (no local-shell picker); locally, the user picks their own shell.
   const isServerCtx = !!serverKeys.mode?.accounts;
+  // Whether the INSTANCE narrows which shell starts (ADR 0031). A local terminal runs on
+  // the client that asked, so on the desktop the shell is this machine's even against an
+  // instance; a browser has no machine of its own, so there the instance decides. One
+  // function rather than four `isServerCtx` tests — the first pass at ADR 0031 converted
+  // two of them and left the toolbar behind.
+  const theirShell = instanceChoosesShell({
+    runsHere: isNativeShell(),
+    serverContext: isServerCtx,
+  });
   // …unless the instance delegates the choice, in which case these are the shells it
   // offers and `serverShell` is this person's pick within them. Empty list ⇒ the
   // instance keeps the decision, which is every server that says nothing.
@@ -304,7 +313,7 @@ export function Workspace({
    * name. Empty on a server that keeps the shell to itself, which is why the chevron is
    * absent there without a second condition anywhere.
    */
-  const newTerminalShells = isServerCtx
+  const newTerminalShells = theirShell
     ? serverShellChoiceList.map((name) => ({
         name,
         path: name,
@@ -1732,7 +1741,7 @@ export function Workspace({
           onClick={() => handleNewLocalTerminal()}
           className="m-btn m-btn-primary m-btn-sm"
           title={
-            isServerCtx
+            theirShell
               ? `New server terminal (${serverShell})`
               : `New Local Terminal (${settings.defaultShell.split('/').pop()})`
           }
@@ -1743,7 +1752,7 @@ export function Workspace({
 
         {/* Local-shell selector — hidden in a server context (the server sets the
             shell), and hidden when this person took it out of their toolbar. */}
-        {!isServerCtx && toolbarPrefs.shellPicker && (
+        {!theirShell && toolbarPrefs.shellPicker && (
           <button
             ref={defaultShellButtonRef}
             onClick={async () => {
@@ -2270,7 +2279,7 @@ export function Workspace({
                 onReorganizePane={handleReorganizePane}
                 onNewLocalTerminal={handleNewLocalTerminal}
                 shellMenu={toolbarPrefs.newTerminalMenu ? newTerminalShells : undefined}
-                probeShells={!isServerCtx}
+                probeShells={!theirShell}
                 onSaveQuickSSH={handleSaveQuickSSH}
                 quickSSHSessions={Array.from(quickSSHConnections.keys())}
               />

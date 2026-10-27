@@ -35,6 +35,7 @@ import { useServerSession, quickSshAllowed, serverShellChoices } from '../store/
 import { useFocusMode } from '../store/focusMode';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { isNativeShell } from '../utils/nativeShell';
+import { instanceChoosesShell } from '../utils/localShellSource';
 import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
@@ -162,12 +163,15 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const serverMode = useServerSession((s) => s.mode);
   const isLocalContext = !serverMode?.accounts;
   const serverShells = serverShellChoices(serverMode);
-  // Whose shell the Shell section is about follows WHO RUNS IT (ADR 0031): a local
-  // terminal runs on the client that asked, so on the desktop it is this machine's even
-  // against an instance. Presenting the instance's shell read-only there would describe a
-  // process that is not the one about to start. A browser has no machine of its own, so
-  // for it the two remain the same question.
-  const shellIsMine = isLocalContext || native;
+  // Whose shell the Shell section is about follows WHO RUNS IT (ADR 0031), decided by the
+  // same function every other caller uses. Presenting the instance's shell read-only to a
+  // desktop client would describe a process that is not the one about to start. Four more
+  // sites in the toolbar were left on a bare `isServerCtx` when this first landed, which is
+  // why the rule has one home now.
+  const shellIsMine = !instanceChoosesShell({
+    runsHere: native,
+    serverContext: !isLocalContext,
+  });
   // Asked for once when Settings opens. It cannot change while the page is up: a new
   // build means a new page.
   const [build, setBuild] = useState<Capabilities | null>(null);

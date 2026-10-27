@@ -21,6 +21,22 @@
  * Imports nothing, so that check can load it through Node's type stripping.
  */
 
+/**
+ * Does the instance get to narrow which shell starts?
+ *
+ * One function for every place that asks, because asking it in several places is how the
+ * first pass at ADR 0031 shipped half-converted: `handleNewLocalTerminal` and the Settings
+ * section were moved, while the toolbar kept hiding its shell picker on a server, kept
+ * listing the INSTANCE's shells in the chevron, kept saying "New server terminal", and kept
+ * probing nothing. The owner found it in two minutes of use.
+ *
+ * So the rule has one home and four callers, and `e2e/local-shell-source-check.mjs` holds
+ * it — rather than four `isServerCtx` tests that have to be remembered together.
+ */
+export function instanceChoosesShell(i: Pick<ShellSourceInputs, 'runsHere' | 'serverContext'>) {
+  return !i.runsHere && i.serverContext;
+}
+
 export interface ShellSourceInputs {
   /** This client runs the shell: the native desktop, whatever the active context. */
   runsHere: boolean;
@@ -41,12 +57,10 @@ export interface ShellSourceInputs {
  * apply its own rule.
  */
 export function shellToStart(i: ShellSourceInputs): string | undefined {
-  // The shell runs here, so it is named here. A path the instance resolved belongs to the
-  // instance's filesystem and would, at best, fall back to something else on this one.
-  if (i.runsHere) return i.asked || i.localDefault;
-
   // A browser against an instance: the instance's machine, so the instance's rules.
-  if (i.serverContext) {
+  // Anywhere else the shell runs here, so it is named here — a path the instance resolved
+  // belongs to the instance's filesystem and would, at best, fall back to something else.
+  if (instanceChoosesShell(i)) {
     const offered = i.asked && i.instanceOffers.includes(i.asked) ? i.asked : undefined;
     if (offered) return offered;
     // Nothing offered at all means the instance keeps the decision — say nothing rather
