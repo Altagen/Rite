@@ -75,6 +75,7 @@ import {
   onCreateVault,
   type NativeVault,
 } from '../utils/nativeShell';
+import { shellToStart } from '../utils/localShellSource';
 import { SHELL_CANDIDATES } from '../utils/shells';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 import { CreateVaultDialog } from './CreateVaultDialog';
@@ -905,19 +906,25 @@ export function Workspace({
 
   // Handle new local terminal
   const handleNewLocalTerminal = async (shell?: string) => {
-    // Use provided shell or fall back to settings default
-    const asked = isServerCtx && shell && serverShellChoiceList.includes(shell) ? shell : undefined;
-    const shellToUse = isServerCtx ? (asked ?? serverShell) : shell || settings.defaultShell;
+    // Whose shell this is follows WHO RUNS IT, not which context is active (ADR 0031).
+    // The rule itself is in `utils/localShellSource.ts`, pure and covered by
+    // `e2e/local-shell-source-check.mjs` — its discriminator is a global the wry shell
+    // injects, which no browser suite can see, so a rule written inline here would ship
+    // its desktop arm untested.
+    const sent = shellToStart({
+      runsHere: isNativeShell(),
+      serverContext: isServerCtx,
+      asked: shell,
+      localDefault: settings.defaultShell,
+      instanceDefault: serverShell,
+      instanceOffers: serverShellChoiceList,
+    });
+    // What the pane is labelled with: whatever will actually start, falling back to the
+    // name the receiving end would apply.
+    const shellToUse = sent ?? serverShell ?? settings.defaultShell;
 
     try {
-      // On a server the client sends a NAME and only one the instance offers — the server
-      // resolves it to a path itself, so nothing here can name a program it did not offer.
-      // Nothing asked (or nothing offered) leaves the instance to apply its own rule.
-      const sessionId = await Backend.Terminal.connectLocalTerminal(
-        isServerCtx
-          ? (asked ?? (serverShellChoiceList.length > 0 ? serverShell : undefined))
-          : shellToUse,
-      );
+      const sessionId = await Backend.Terminal.connectLocalTerminal(sent);
 
       // Create terminal session
       const shellName = shellToUse.split('/').pop() || 'shell';
