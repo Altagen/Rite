@@ -238,6 +238,27 @@ export function Terminal({
     let unlistenClosed: Unlisten | null = null;
     let unlistenDead: Unlisten | null = null;
 
+    // What this mount has to give back, collected here rather than inside
+    // `initializeTerminal`.
+    //
+    // It used to return its own cleanup, which React never saw: the value of an async
+    // function is a promise, and the call below discards it. So every remount — and only
+    // the active tab's panes are mounted, so every tab switch is one — added a window
+    // `resize` listener, a `ResizeObserver` and two input guards, and removed none. Each
+    // surviving listener runs `fit()` and pushes a size to the PTY, so one window resize
+    // fired N fits and N racing `resizeTerminal` calls and the shell redrew onto rows that
+    // had moved. `terminal-remount.spec.ts` counts them.
+    //
+    // `cancelled` is the other half: the effect can be torn down while the async body is
+    // still running, and whatever it registers after that has no later chance to be
+    // undone, so it is undone on the spot.
+    const teardown: Array<() => void> = [];
+    let cancelled = false;
+    const own = (undo: () => void) => {
+      if (cancelled) undo();
+      else teardown.push(undo);
+    };
+
     async function initializeTerminal() {
       if (!terminalRef.current || !existingSessionId) return;
 
@@ -285,9 +306,13 @@ export function Terminal({
         fitAddon.fit();
       };
       window.addEventListener('resize', handleResize);
+      own(() => window.removeEventListener('resize', handleResize));
 
       // Listen to container resize (for responsive layout)
       let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+      own(() => {
+        if (resizeTimeout) clearTimeout(resizeTimeout);
+      });
       const resizeObserver = new ResizeObserver(() => {
         // Clear existing timeout
         if (resizeTimeout) {
@@ -315,13 +340,15 @@ export function Terminal({
       if (terminalRef.current) {
         resizeObserver.observe(terminalRef.current);
       }
+      own(() => resizeObserver.disconnect());
 
       // Force initial fit after a short delay
-      setTimeout(() => {
+      const initialFit = setTimeout(() => {
         if (fitAddonRef.current) {
           fitAddonRef.current.fit();
         }
       }, 100);
+      own(() => clearTimeout(initialFit));
 
       // IMPORTANT: Always register input/output handlers on every mount
       // These handlers are needed for terminal interaction and must be re-registered
@@ -547,26 +574,26 @@ export function Terminal({
         }
       }
 
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        resizeObserver.disconnect();
-        if (resizeTimeout) {
-          clearTimeout(resizeTimeout);
-        }
-        // The guards are bound to this container, which is going away with them.
+      // The guards are bound to this container, which goes away with the mount. They
+      // already release the previous one above, so they never accumulated — this is so the
+      // release happens at unmount rather than waiting for a mount that may not come.
+      own(() => {
         imeGuardRef.current?.();
         imeGuardRef.current = null;
         clipboardRef.current?.();
         clipboardRef.current = null;
-        // Note: I/O disposables are managed by the terminal pool and will be
-        // disposed when we re-register handlers on the next mount
-      };
+      });
+      // I/O disposables stay with the terminal pool, disposed when the next mount
+      // re-registers them.
     }
 
     initializeTerminal();
 
     return () => {
       // Cleanup
+      cancelled = true;
+      teardown.forEach((undo) => undo());
+      teardown.length = 0;
       if (promptDetectionTimerRef.current) {
         clearTimeout(promptDetectionTimerRef.current);
         promptDetectionTimerRef.current = null;
