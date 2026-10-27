@@ -70,3 +70,30 @@ export function shellToStart(i: ShellSourceInputs): string | undefined {
 
   return i.asked || i.localDefault;
 }
+
+/**
+ * Which shell controls can exist at all — the buttons, and therefore their switches.
+ *
+ * A switch for a button that cannot appear is worse than a missing switch: it says you
+ * have a choice. That reasoning was right, and it was applied with `isLocalContext`, which
+ * stopped being the question once ADR 0031 made a desktop's shell its own. The switches
+ * then vanished in a server context while the buttons they govern rendered — the opposite
+ * of the rule they were written for.
+ *
+ * So the condition is answered once, here, and read by `Workspace.tsx` for the buttons and
+ * `Settings.tsx` for the rows. Two files asking the same question in their own words is how
+ * they came to disagree.
+ */
+export function shellControls(i: ShellSourceInputs | Pick<ShellSourceInputs, 'runsHere' | 'serverContext' | 'instanceOffers'>) {
+  const theirs = instanceChoosesShell(i);
+  return {
+    /** The default-shell picker: this machine's choice, so only where the choice is ours. */
+    picker: !theirs,
+    /**
+     * The per-terminal shell menu. Ours whenever the shell is ours; on an instance it
+     * exists only where the instance offers more than one, and then the switch does too,
+     * because there is a button to hide.
+     */
+    newTerminalMenu: !theirs || i.instanceOffers.length > 0,
+  };
+}

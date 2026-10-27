@@ -12,7 +12,7 @@
  * Run: node e2e/local-shell-source-check.mjs
  */
 import assert from 'node:assert/strict';
-import { instanceChoosesShell, shellToStart } from '../apps/desktop/src/utils/localShellSource.ts';
+import { instanceChoosesShell, shellControls, shellToStart } from '../apps/desktop/src/utils/localShellSource.ts';
 
 let passed = 0;
 const check = (name, fn) => {
@@ -113,6 +113,36 @@ check('the desktop is never narrowed, context or not', () => {
 
 check('and a local vault has nobody to narrow it', () => {
   assert.equal(instanceChoosesShell({ runsHere: false, serverContext: false }), false);
+});
+
+/* A switch appears exactly when the button it governs can. The rule was written as
+   `isLocalContext` in Settings and as `!isServerCtx` in Workspace — two files asking the
+   same question in their own words, which is how the buttons came to render in a server
+   context while their switches did not. One answer now, read by both. */
+console.log('\nand which shell controls may exist at all:');
+
+check('the desktop gets both, context or not', () => {
+  for (const serverContext of [true, false]) {
+    const c = shellControls({ runsHere: true, serverContext, instanceOffers: [] });
+    assert.deepEqual(c, { picker: true, newTerminalMenu: true }, `serverContext=${serverContext}`);
+  }
+});
+
+check('a browser on an instance that offers nothing gets neither', () => {
+  // A switch for a button that cannot appear says you have a choice you do not have.
+  assert.deepEqual(shellControls({ runsHere: false, serverContext: true, instanceOffers: [] }), {
+    picker: false,
+    newTerminalMenu: false,
+  });
+});
+
+check('a browser gets the per-terminal menu once the instance offers a choice', () => {
+  // And then the switch too, because there is a button to hide. The default-shell picker
+  // stays absent: that choice is still the instance's.
+  assert.deepEqual(
+    shellControls({ runsHere: false, serverContext: true, instanceOffers: ['bash', 'zsh'] }),
+    { picker: false, newTerminalMenu: true },
+  );
 });
 
 console.log(`\n${passed} checks passed`);

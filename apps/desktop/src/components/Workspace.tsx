@@ -75,7 +75,7 @@ import {
   onCreateVault,
   type NativeVault,
 } from '../utils/nativeShell';
-import { instanceChoosesShell, shellToStart } from '../utils/localShellSource';
+import { instanceChoosesShell, shellControls, shellToStart } from '../utils/localShellSource';
 import { SHELL_CANDIDATES } from '../utils/shells';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 import { CreateVaultDialog } from './CreateVaultDialog';
@@ -296,14 +296,18 @@ export function Workspace({
   // instance; a browser has no machine of its own, so there the instance decides. One
   // function rather than four `isServerCtx` tests — the first pass at ADR 0031 converted
   // two of them and left the toolbar behind.
-  const theirShell = instanceChoosesShell({
-    runsHere: isNativeShell(),
-    serverContext: isServerCtx,
-  });
   // …unless the instance delegates the choice, in which case these are the shells it
   // offers and `serverShell` is this person's pick within them. Empty list ⇒ the
   // instance keeps the decision, which is every server that says nothing.
   const serverShellChoiceList = serverShellChoices(serverKeys.mode);
+  const shellOwnership = {
+    runsHere: isNativeShell(),
+    serverContext: isServerCtx,
+    instanceOffers: serverShellChoiceList,
+  };
+  const theirShell = instanceChoosesShell(shellOwnership);
+  /** Which shell buttons may exist — the same answer their switches use in Settings. */
+  const shellButtons = shellControls(shellOwnership);
   const serverShell = effectiveServerShell(serverKeys.mode, settings.defaultShell);
   /**
    * What the "+" beside the tabs offers for one terminal.
@@ -1752,7 +1756,7 @@ export function Workspace({
 
         {/* Local-shell selector — hidden in a server context (the server sets the
             shell), and hidden when this person took it out of their toolbar. */}
-        {!theirShell && toolbarPrefs.shellPicker && (
+        {shellButtons.picker && toolbarPrefs.shellPicker && (
           <button
             ref={defaultShellButtonRef}
             onClick={async () => {
