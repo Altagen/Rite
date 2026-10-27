@@ -16,7 +16,7 @@ import { openSettings } from './support/headerBar';
  */
 
 async function openPalette(page: import('@playwright/test').Page) {
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+K');
   await expect(page.getByTestId('command-palette')).toBeVisible();
 }
 
@@ -66,7 +66,7 @@ test('a command appears once something is implementing it', async ({ page }) => 
   // from — so a remap moves it here and a changed default cannot leave a stale chord in a
   // second list. This app has made that mistake before.
   const close = rows(page).filter({ hasText: 'Close pane' });
-  await expect(close.locator('kbd')).toHaveText('Ctrl+W');
+  await expect(close.locator('kbd')).toHaveText('Ctrl+Shift+W');
 
   await page.keyboard.press('Escape');
 });

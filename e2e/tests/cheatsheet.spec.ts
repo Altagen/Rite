@@ -57,10 +57,10 @@ test('the cheatsheet lists every command, chord or not', async ({ page }) => {
   await openCheatsheet(page);
   // EVERY command, which is where this and the palette deliberately disagree: the palette
   // lists what can run now, because offering to run the impossible is a dead end. A
-  // cheatsheet teaches the keyboard — `Ctrl+W` closes a pane, and that is worth knowing
+  // cheatsheet teaches the keyboard — `Ctrl+Shift+W` closes a pane, and that is worth knowing
   // while no pane is open.
   await expect(rows(page).filter({ hasText: 'Close pane' })).toHaveCount(1);
-  await expect(rows(page).filter({ hasText: 'Close pane' }).locator('kbd')).toHaveText('Ctrl+W');
+  await expect(rows(page).filter({ hasText: 'Close pane' }).locator('kbd')).toHaveText('Ctrl+Shift+W');
 
   // And the one that ships without a chord is listed saying so, rather than left out:
   // that it exists and can be given one is the useful fact.
@@ -118,7 +118,7 @@ test('the cheatsheet is reachable from the palette too, and runs nothing on a cl
 
   // It is a command like any other, so the registry lists it without being told to —
   // which is what the registry was built for.
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+K');
   await expect(page.getByTestId('command-palette')).toBeVisible();
   await page.getByTestId('palette-input').fill('keyboard shortcuts');
   const row = page.getByTestId('palette-row').filter({ hasText: 'Keyboard shortcuts' });

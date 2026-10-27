@@ -251,12 +251,12 @@ const ALLOWED = new Map([
   // keyboard table ships as defaults. Translating one would name a key nobody has.
   ['components/ShortcutsSettings.tsx: [ternary-else] Ctrl', 'a key name'],
   ['shortcuts/binding.ts: [ternary-else] Ctrl', 'a key name'],
-  ['shortcuts/commands.ts: [ternary-else] Mod+W', 'a default chord'],
+  ['shortcuts/commands.ts: [ternary-else] Mod+Shift+W', 'a default chord'],
   ['shortcuts/commands.ts: [ternary-else] Mod+Shift+H', 'a default chord'],
   ['shortcuts/commands.ts: [ternary-else] Mod+Shift+D', 'a default chord'],
-  ['shortcuts/commands.ts: [ternary-else] Mod+F', 'a default chord'],
+  ['shortcuts/commands.ts: [ternary-else] Mod+Shift+F', 'a default chord'],
   ['shortcuts/commands.ts: [ternary-else] Mod+Shift+L', 'a default chord'],
-  ['shortcuts/commands.ts: [ternary-else] Mod+K', 'a default chord'],
+  ['shortcuts/commands.ts: [ternary-else] Mod+Shift+K', 'a default chord'],
   ['shortcuts/commands.ts: [ternary-else] Mod+Shift+?', 'a default chord'],
   // A language is named in its own language, or the list is useless to the only person
   // who needs it: someone looking for a language they cannot find under its English name.

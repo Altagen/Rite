@@ -69,3 +69,9 @@ temp/
 # compose files reference them by path precisely so they stay out.
 deploy/admin_password.txt
 deploy/tls/
+
+# A release binary built from a branch, for trying a change in the real engine before it
+# ships. It lands here so one command keeps working across rebuilds — and `git add -A`
+# swallowed 65 MB of it into a commit once, which is why this line exists rather than a
+# reminder to be careful.
+/rite-*-dev
