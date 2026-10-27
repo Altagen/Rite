@@ -17,7 +17,7 @@ jobs:
   # pnpm security audit
   pnpm-audit:
     name: 🔒 pnpm Security Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -38,7 +38,7 @@ jobs:
   # Cargo security audit
   cargo-audit:
     name: 🔒 Cargo Security Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -54,7 +54,7 @@ jobs:
   # CodeQL analysis
   codeql:
     name: 🛡️ CodeQL
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -75,7 +75,7 @@ jobs:
   # Weekly SBOM
   sbom:
     name: 📋 Weekly SBOM
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
