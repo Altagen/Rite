@@ -1862,6 +1862,10 @@ impl SessionManager {
     /// Claim the initial output buffer for a session.
     /// Returns all SSH data buffered before the frontend registered its listener,
     /// and switches the session to streaming mode (future data emitted as events).
+    ///
+    /// ONE SHOT. A second call returns empty, because the first took the buffer and
+    /// everything after it goes to `terminal_data` events — so polling this waiting for
+    /// output waits forever. It cost issue #380 a day; read the events instead.
     pub async fn claim_session_output(&self, session_id: &str) -> Vec<u8> {
         let sessions = self.sessions.lock().await;
         match sessions.get(session_id) {
