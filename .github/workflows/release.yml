@@ -12,7 +12,7 @@ jobs:
   # Create draft release with changelog
   create-release:
     name: 📋 Create Release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     outputs:
@@ -75,7 +75,7 @@ jobs:
 
       - name: Create draft release
         id: create_release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: RITE ${{ steps.version.outputs.version }}
@@ -203,7 +203,7 @@ jobs:
       # publish job skipped behind the failure. The release stays a draft until
       # the publish job says otherwise.
       - name: Upload artifacts to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: dist/*
@@ -215,7 +215,7 @@ jobs:
   build-server-image:
     name: 🐳 Server image
     needs: create-release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
@@ -269,7 +269,7 @@ jobs:
   finalize:
     name: 📦 Finalize Release
     needs: [create-release, build-client, build-server-image]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
@@ -313,7 +313,7 @@ jobs:
           cat "rite-${VERSION}-checksums.txt"
 
       - name: Upload SBOM and checksums
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           files: |
@@ -327,7 +327,7 @@ jobs:
   publish:
     name: 🚀 Publish Release
     needs: [create-release, finalize]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

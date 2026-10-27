@@ -84,8 +84,13 @@ cp -r apps/desktop/dist/. packages/rite-server/web/
 #
 # Before the build, not after: both are cheap next to the steps below, and a format
 # violation is the kind of failure you want in the first ten seconds.
+# `cargo test` is here and not only in `task check` because CI runs it and this gate did
+# not: the version bump for 0.2.7 left `capabilities_reports_version` pinned to the old
+# number — a deliberate tripwire — and the gate had no way to trip it. It passed locally
+# and failed in CI, which is the one thing this script exists to prevent. ~45s.
 RUST_GATE='cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
+cargo test --workspace --all-features
 cargo build -p rite-server'
 if command -v cargo >/dev/null 2>&1; then
   printf '%s\n' "$RUST_GATE" | sh -e

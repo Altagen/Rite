@@ -1219,7 +1219,7 @@ test('desktop mock: the palette opens on its chord, filters, and runs what is pi
   await page.goto(mock('desktop'));
 
   // The chord has to work wherever the focus is, so it is taken on the document.
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+K');
   const palette = page.locator('[data-palette]');
   await expect(palette).toBeVisible();
   // Opens showing everything: a palette that opens empty is a menu, and a menu has an
@@ -1260,7 +1260,7 @@ test('desktop mock: the palette opens on its chord, filters, and runs what is pi
   await expect(page.locator('.toast')).toContainText(picked);
 
   // Escape closes it without running anything.
-  await page.keyboard.press('Control+k');
+  await page.keyboard.press('Control+Shift+K');
   await expect(page.locator('[data-palette]')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('[data-palette]')).toHaveCount(0);

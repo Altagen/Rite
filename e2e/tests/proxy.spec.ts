@@ -18,6 +18,28 @@ const argon2id: (opts: {
 const hexToBytes = (h: string) =>
   new Uint8Array((h.match(/.{2}/g) ?? []).map((b) => parseInt(b, 16)));
 
+const REMOTE = 'http://127.0.0.1:1423';
+
+/** A session token straight from the remote, bypassing the mux. */
+async function remoteToken(request: import('@playwright/test').APIRequestContext) {
+  const pre = await (
+    await request.post(`${REMOTE}/api/server/prelogin`, { data: { username: 'envadmin' } })
+  ).json();
+  const authHash = await argon2id({
+    password: 'EnvPass123!',
+    salt: hexToBytes(pre.salt),
+    parallelism: pre.params.par,
+    iterations: pre.params.iter,
+    memorySize: pre.params.mem,
+    hashLength: 32,
+    outputType: 'hex',
+  });
+  const login = await (
+    await request.post(`${REMOTE}/api/server/login`, { data: { username: 'envadmin', authHash } })
+  ).json();
+  return login.token as string;
+}
+
 /**
  * Context multiplexer proxy (ADR 0012 phase 2/3). The local server (:1424) adds
  * the remote accounts server (:1423) to its roster, switches to it, and logs in —
@@ -70,8 +92,20 @@ test('connect to a remote server through the local proxy', async ({ page }) => {
   });
 });
 
-test('a remote terminal streams over the WebSocket proxy', async ({ page }) => {
-  // The context is already remote (previous test switched it); sign in again.
+/**
+ * A local terminal is the CLIENT's, even when a remote context is active (ADR 0031).
+ *
+ * This route used to be proxied, so pressing Terminal here opened a shell inside the
+ * instance. The rule keyed on the context and never on what the client is — and a browser
+ * is the only client with no machine of its own, so the desktop inherited a reading that
+ * was only ever true for the web UI.
+ *
+ * Asserted through the one route that still goes to the instance: `GET /api/terminal` is
+ * the instance's roster, proxied. A shell this client opened must therefore be ABSENT from
+ * it. Before this change the create was proxied, the session lived on the remote, and the
+ * same roster listed it — so the assertion inverts exactly where the behaviour changed.
+ */
+test('a local terminal in a remote context is served by the client', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
   await page.locator('#username').fill('envadmin');
@@ -81,19 +115,111 @@ test('a remote terminal streams over the WebSocket proxy', async ({ page }) => {
     timeout: 30_000,
   });
 
-  // Drive a terminal ON THE REMOTE and listen on the proxied /ws — all same-origin
-  // to :1424, which bridges to :1423's /ws.
-  const result = await page.evaluate(async () => {
+  const owned = await page.evaluate(async () => {
+    const cr = await fetch('/api/terminal/local', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ shell: '/usr/bin/bash' }),
+    });
+    if (!cr.ok) return `create-${cr.status}`;
+    const { sessionId } = (await cr.json()) as { sessionId: string };
+
+    // The instance's roster, proxied. Our shell must not be in it.
+    const theirs = (await (await fetch('/api/terminal')).json()) as string[];
+    return theirs.includes(sessionId) ? 'the instance holds it' : 'ours';
+  });
+
+  expect(owned, 'the shell a desktop client asked for runs on that client').toBe('ours');
+});
+
+/**
+ * This machine's settings table is answered here, not by the instance.
+ *
+ * Found by the security review of ADR 0031 and opened by it. `/api/settings` is where the
+ * client reads `default_shell`, and `/api/terminal/local` is now served locally — so while
+ * this table was proxied, a remote could name the program the desktop executes on the
+ * user's own machine. `host_key_verification_mode` rode the same route, so a remote could
+ * also answer "accept" and switch off the TOFU refusal for our own SSH.
+ *
+ * The routing decision has a Rust test. This is the end-to-end half: a write through the
+ * mux while a remote context is active must land HERE and not there. Asked of the remote
+ * directly, with the remote's own token, so a false pass is not possible — if the request
+ * had been proxied, the remote would be holding the value.
+ */
+test('the settings table is this machine\'s, not the instance\'s', async ({ page, request }) => {
+  await page.goto('/');
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#username').fill('envadmin');
+  await page.locator('#password').fill('EnvPass123!');
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // A value no instance would produce, written through the mux while remote.
+  const marker = `rite-local-${Date.now()}`;
+  const wrote = await page.evaluate(async (value: string) => {
+    const r = await fetch('/api/settings/ssh_keep_alive_interval', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value }),
+    });
+    if (!r.ok) return `put-${r.status}`;
+    const back = (await (await fetch('/api/settings')).json()) as Record<string, string>;
+    return back.ssh_keep_alive_interval ?? 'absent';
+  }, marker);
+
+  expect(wrote, 'the write and the read both went to the local table').toBe(marker);
+
+  // And the instance never saw it. Its own token, no proxy in the path.
+  const token = await remoteToken(request);
+  const theirs = await (
+    await request.get(`${REMOTE}/api/settings`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+  ).json();
+  expect(
+    theirs.ssh_keep_alive_interval,
+    'the instance holds a value this client wrote, so the table was proxied',
+  ).not.toBe(marker);
+});
+
+test('a remote terminal streams over the WebSocket proxy', async ({ page, request }) => {
+  // The context is already remote (an earlier test switched it); sign in again.
+  await page.goto('/');
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#username').fill('envadmin');
+  await page.locator('#password').fill('EnvPass123!');
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // The session is created DIRECTLY on the remote, with the remote's own token, because
+  // nothing the desktop asks for lands there any more (ADR 0031). That is what makes this
+  // a test of the bridge: the session is unambiguously the instance's, so the only path its
+  // bytes can take to this page is the proxy. It used to ride on `/api/terminal/local`
+  // being proxied, which proved the bridge only as long as that was true.
+  const token = await remoteToken(request);
+  const created = await (
+    await request.post(`${REMOTE}/api/terminal/local`, {
+      data: { shell: '/usr/bin/bash' },
+      headers: { authorization: `Bearer ${token}` },
+    })
+  ).json();
+  const remoteSessionId = created.sessionId as string;
+  expect(remoteSessionId, 'the remote opened a session of its own').toBeTruthy();
+
+  // Drive it through the mux and listen on the proxied /ws — all same-origin to :1424,
+  // which bridges to :1423's /ws. The control requests are proxied because this session
+  // is not one we hold.
+  const result = await page.evaluate(async (sessionId: string) => {
     const post = (path: string, body?: unknown) =>
       fetch(path, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body ?? {}),
       });
-
-    const cr = await post('/api/terminal/local', { shell: '/usr/bin/bash' });
-    if (!cr.ok) return `create-${cr.status}`;
-    const { sessionId } = (await cr.json()) as { sessionId: string };
 
     const ws = new WebSocket(`ws://${location.host}/ws`);
     const got = new Promise<string>((resolve) => {
@@ -123,7 +249,7 @@ test('a remote terminal streams over the WebSocket proxy', async ({ page }) => {
       data: Array.from(new TextEncoder().encode('echo RITE_WS_PROXY\n')),
     });
     return got;
-  });
+  }, remoteSessionId);
 
   expect(result).toBe('got-terminal-data');
 });

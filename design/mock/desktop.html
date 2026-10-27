@@ -1315,9 +1315,11 @@ function toggleFocus(){
 document.addEventListener('mousemove',e=>{if(STATE.focus)document.body.classList.toggle('reveal',e.clientY<=56);});
 document.addEventListener('keydown',e=>{
   if(e.key==='F11'){e.preventDefault();toggleFocus();return;}
-  /* The palette's own chord. Taken on the document because it has to work wherever the
-     focus is — including inside a terminal, which claims most of the keyboard. */
-  if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='k'){
+  /* The palette's own chord, on the document because it has to work wherever the focus
+     is — including inside a terminal, which claims most of the keyboard. Shift is part of
+     it: where Mod is Ctrl, a bare Ctrl+letter is the shell's, and `Ctrl+K` is readline's
+     kill-line. The app shipped the bare chord once and ate it. */
+  if((e.ctrlKey||e.metaKey)&&e.shiftKey&&!e.altKey&&e.key.toLowerCase()==='k'){
     e.preventDefault();openPalette();return;}
   /* `?` is reached with Shift on both AZERTY and US layouts, so the chord names the key
      as the event reports it — modifiers held — rather than the one printed on the cap. */

@@ -1081,7 +1081,8 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   // the policy is reported and not offered. It used to be a dropdown writing one shared
   // row, so anyone who chose "accept" turned verification off for every account on the
   // instance — and `/api/settings` let any account write that row directly.
-  await page.getByTestId('settings-nav-security').click();
+  await page.getByTestId('settings-nav-ssh').click();
+  await expect(page.getByTestId('server-host-key')).toBeVisible();
   await expect(page.getByTestId('server-host-key')).toHaveText(
     mode.hostKeyVerification ?? 'strict',
   );

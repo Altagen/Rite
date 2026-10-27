@@ -178,6 +178,25 @@ negotiate against. Cheap later, expensive to get wrong now, and nobody is readin
 - [ ] Performance optimization
 - [ ] Logging system (non-sensitive data)
 
+### 🧱 Toolchain moves, each waiting on a date rather than a decision (Priority: LOW)
+
+Both are measured and ready. They sit here because engaging them early costs more
+than waiting, not because anything is unresolved.
+
+- [ ] **Ubuntu 24.04 → 26.04**, in `Containerfile` and every workflow's `runs-on`, in one
+      commit. Already measured: the image builds from `ubuntu:26.04` with
+      `libwebkit2gtk-4.1-dev` 2.52.6 and `libgtk-3-dev` 3.24.52 — no forced gtk4 move — and
+      the full Rust gate passes in it (14 test binaries, 217 tests, `cargo audit` with the
+      same single allowed warning). Waiting on GitHub finishing its `ubuntu-latest`
+      rollout to 26.04, which runs to 2026-11-19, so the pin and the label agree instead of
+      leapfrogging. `e2e/ci-image-check.mjs` fails if the two sides are moved apart.
+      The release client matrix stays on `ubuntu-22.04`: the build host's glibc is the
+      floor of the shipped binary, and 26.04's 2.43 would refuse to start on the current
+      LTS.
+- [ ] **TypeScript 5.9 → 7.0, with @types/node 24 → 26**, one PR, scheduled for 0.3.0. Two
+      majors: expect real diagnostics changes across the frontend, which is a body of work
+      rather than a bump. Tracked in #255.
+
 ---
 
 ## 🤖 Agent Manager (next major feature — ahead of Phase 2)

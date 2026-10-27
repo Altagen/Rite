@@ -35,6 +35,7 @@ import { useServerSession, quickSshAllowed, serverShellChoices } from '../store/
 import { useFocusMode } from '../store/focusMode';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { isNativeShell } from '../utils/nativeShell';
+import { instanceChoosesShell, shellControls } from '../utils/localShellSource';
 import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
@@ -162,6 +163,19 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const serverMode = useServerSession((s) => s.mode);
   const isLocalContext = !serverMode?.accounts;
   const serverShells = serverShellChoices(serverMode);
+  // Whose shell the Shell section is about follows WHO RUNS IT (ADR 0031), decided by the
+  // same function every other caller uses. Presenting the instance's shell read-only to a
+  // desktop client would describe a process that is not the one about to start. Four more
+  // sites in the toolbar were left on a bare `isServerCtx` when this first landed, which is
+  // why the rule has one home now.
+  const shellOwnership = {
+    runsHere: native,
+    serverContext: !isLocalContext,
+    instanceOffers: serverShells,
+  };
+  const shellIsMine = !instanceChoosesShell(shellOwnership);
+  /** Which shell switches may be offered — the same answer the buttons use. */
+  const shellRows = shellControls(shellOwnership);
   // Asked for once when Settings opens. It cannot change while the page is up: a new
   // build means a new page.
   const [build, setBuild] = useState<Capabilities | null>(null);
@@ -223,9 +237,9 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   // The shells this computer has, for the picker that used to be a path you typed.
   const [shellChoices, setShellChoices] = useState<ShellChoice[]>([]);
   useEffect(() => {
-    if (!isLocalContext) return;
+    if (!shellIsMine) return;
     void installedShells().then(setShellChoices);
-  }, [isLocalContext]);
+  }, [shellIsMine]);
 
   const toolbarRow = (key: keyof ToolbarPrefs, labelKey: string, descKey: string) => (
     <SettingsToggle
@@ -512,13 +526,13 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
             <section hidden={shown !== 'shell'} className="pb-2">
               <SettingsHead
                 title={t('settings.sec.shell')}
-                hint={isLocalContext ? t('settings.shellHint') : t('settings.shellServerHint')}
+                hint={shellIsMine ? t('settings.shellHint') : t('settings.shellServerHint')}
               />
               {/* On a server the shells are the instance's; which of them you open is yours
                 only if it says so. So: a value when it keeps the decision, a picker when
                 it delegates — and the picker's first entry follows the default rather
                 than copying it, so an administrator who changes it carries you along. */}
-              {!isLocalContext && serverShells.length === 0 && (
+              {!shellIsMine && serverShells.length === 0 && (
                 <SettingsRow title={t('settings.shellServer')} hint={t('settings.shellServerDesc')}>
                   <code
                     className="font-mono text-sm text-muted-foreground"
@@ -528,7 +542,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   </code>
                 </SettingsRow>
               )}
-              {!isLocalContext && serverShells.length > 0 && (
+              {!shellIsMine && serverShells.length > 0 && (
                 <SettingsField label={t('settings.shellYours')} hint={t('settings.shellYoursDesc')}>
                   <ul className="flex flex-col gap-1.5" data-testid="server-shell-choices">
                     {['', ...serverShells].map((name) => (
@@ -557,7 +571,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   </ul>
                 </SettingsField>
               )}
-              {isLocalContext && (
+              {shellIsMine && (
                 <>
                   <div>
                     {shellChoices.length > 0 && (
@@ -751,18 +765,19 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
             <section hidden={shown !== 'toolbar'} className="pb-2">
               <SettingsHead title={t('settings.sec.toolbar')} hint={t('settings.toolbarHint')} />
               <div>
-                {/* The shell picker is a LOCAL control: a server sets the shell for its own
-                  terminals, so in a browser this row governed a button that never renders
-                  (`Workspace.tsx`, `!isServerCtx`). A switch for something that cannot
-                  appear is worse than a missing switch — it says you have a choice. */}
-                {isLocalContext &&
+                {/* A switch appears exactly when the button it governs can. That rule used to
+                  be written here as `isLocalContext`, which stopped being the question when
+                  ADR 0031 made a desktop's shell its own: the buttons rendered in a server
+                  context and these switches did not. `shellControls` answers it once, and
+                  `Workspace.tsx` reads the same answer for the buttons themselves. */}
+                {shellRows.picker &&
                   toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
                 {/* Two shell controls, two questions: the picker above sets the default, this
                   menu overrides it for one terminal. Hiding the first was leaving the second,
                   which is why switching "the shell picker" off still asked which shell. On a
                   server the menu exists only where the instance offers a choice — and then
                   the switch does too, because there is a button to hide. */}
-                {(isLocalContext || serverShells.length > 0) &&
+                {shellRows.newTerminalMenu &&
                   toolbarRow(
                     'newTerminalMenu',
                     'settings.toolbarNewTermMenu',
@@ -840,55 +855,6 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   </SettingsRow>
                 )}
 
-                {/* Host-key verification is the connection's, and on a shared server every
-                  connection is the server's — so there the policy is the instance's and
-                  this row reports it instead of offering a dropdown. It used to offer one
-                  to everyone, writing a single shared row: one person choosing "accept"
-                  turned verification off for every account on the instance. */}
-                {isLocalContext ? (
-                  <SettingsRow
-                    title={t('settings.hostKeyVerification')}
-                    hint={t('settings.hostKeyVerificationDesc')}
-                  >
-                    <SettingsControl>
-                      <Dropdown<'strict' | 'warn' | 'accept'>
-                        value={hostKeyVerificationMode}
-                        label={t('settings.hostKeyVerification')}
-                        testId="host-key-mode"
-                        options={[
-                          { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
-                          { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
-                          { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
-                        ]}
-                        onChange={(mode) => {
-                          setHostKeyVerificationMode(mode);
-                          void updateSettings({ hostKeyVerificationMode: mode });
-                        }}
-                      />
-                    </SettingsControl>
-                  </SettingsRow>
-                ) : (
-                  <SettingsRow
-                    title={t('settings.hostKeyVerification')}
-                    hint={t('settings.hostKeyServerDesc')}
-                  >
-                    <code
-                      className="font-mono text-sm text-muted-foreground"
-                      data-testid="server-host-key"
-                    >
-                      {serverMode?.hostKeyVerification ?? 'strict'}
-                    </code>
-                  </SettingsRow>
-                )}
-
-                {/* Beside the policy that produced them: the dropdown above decides what
-                    happens to an unknown key, and this is the result of those decisions.
-                    The mock keeps both in its SSH section; this app has had the policy
-                    under Security since before either existed, and moving a settings row
-                    between sections is a design call, not a side effect of adding a list.
-                    Mounted only while the section is open, so the request is not made on
-                    every visit to Settings. */}
-                {shown === 'security' && <KnownHostsList />}
               </div>
             </section>
 
@@ -1086,9 +1052,62 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               </section>
             )}
 
-            {/* SSH connections */}
+            {/* SSH connections.
+                Host-key verification lives here, with the connections it governs, as the
+                mock has always shown it (ADR 0019). It sat under Security because it
+                predates the rail, and "security" is where nobody went looking for a
+                setting about SSH. e2e/settings-rail-check.mjs now pins the section a row
+                belongs to, not only that the section exists — which is why the two could
+                disagree for two releases without anything failing. */}
             <section hidden={shown !== 'ssh'} className="pb-2">
               <SettingsHead title={t('settings.sshConnections')} />
+
+              {/* On a shared server every connection is the server's, so there the policy
+                  is the instance's and this row reports it instead of offering a dropdown.
+                  It used to offer one to everyone, writing a single shared row: one person
+                  choosing "accept" turned verification off for every account. */}
+              {isLocalContext ? (
+                <SettingsRow
+                  title={t('settings.hostKeyVerification')}
+                  hint={t('settings.hostKeyVerificationDesc')}
+                >
+                  <SettingsControl>
+                    <Dropdown<'strict' | 'warn' | 'accept'>
+                      value={hostKeyVerificationMode}
+                      label={t('settings.hostKeyVerification')}
+                      testId="host-key-mode"
+                      options={[
+                        { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
+                        { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
+                        { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
+                      ]}
+                      onChange={(mode) => {
+                        setHostKeyVerificationMode(mode);
+                        void updateSettings({ hostKeyVerificationMode: mode });
+                      }}
+                    />
+                  </SettingsControl>
+                </SettingsRow>
+              ) : (
+                <SettingsRow
+                  title={t('settings.hostKeyVerification')}
+                  hint={t('settings.hostKeyServerDesc')}
+                >
+                  <code
+                    className="font-mono text-sm text-muted-foreground"
+                    data-testid="server-host-key"
+                  >
+                    {serverMode?.hostKeyVerification ?? 'strict'}
+                  </code>
+                </SettingsRow>
+              )}
+
+              {/* Beside the policy that produced them: the dropdown above decides what
+                  happens to an unknown key, and this is the result of those decisions.
+                  Mounted only while the section is open, so the request is not made on
+                  every visit to Settings. */}
+              {shown === 'ssh' && <KnownHostsList />}
+
               <SettingsToggle
                 title={t('settings.autoReconnect')}
                 hint={t('settings.autoReconnectHint')}

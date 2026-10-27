@@ -75,6 +75,7 @@ import {
   onCreateVault,
   type NativeVault,
 } from '../utils/nativeShell';
+import { instanceChoosesShell, shellControls, shellToStart } from '../utils/localShellSource';
 import { SHELL_CANDIDATES } from '../utils/shells';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 import { CreateVaultDialog } from './CreateVaultDialog';
@@ -290,10 +291,23 @@ export function Workspace({
   // In a server context terminals run on the server, so the shell is the server's default
   // (no local-shell picker); locally, the user picks their own shell.
   const isServerCtx = !!serverKeys.mode?.accounts;
+  // Whether the INSTANCE narrows which shell starts (ADR 0031). A local terminal runs on
+  // the client that asked, so on the desktop the shell is this machine's even against an
+  // instance; a browser has no machine of its own, so there the instance decides. One
+  // function rather than four `isServerCtx` tests — the first pass at ADR 0031 converted
+  // two of them and left the toolbar behind.
   // …unless the instance delegates the choice, in which case these are the shells it
   // offers and `serverShell` is this person's pick within them. Empty list ⇒ the
   // instance keeps the decision, which is every server that says nothing.
   const serverShellChoiceList = serverShellChoices(serverKeys.mode);
+  const shellOwnership = {
+    runsHere: isNativeShell(),
+    serverContext: isServerCtx,
+    instanceOffers: serverShellChoiceList,
+  };
+  const theirShell = instanceChoosesShell(shellOwnership);
+  /** Which shell buttons may exist — the same answer their switches use in Settings. */
+  const shellButtons = shellControls(shellOwnership);
   const serverShell = effectiveServerShell(serverKeys.mode, settings.defaultShell);
   /**
    * What the "+" beside the tabs offers for one terminal.
@@ -303,7 +317,7 @@ export function Workspace({
    * name. Empty on a server that keeps the shell to itself, which is why the chevron is
    * absent there without a second condition anywhere.
    */
-  const newTerminalShells = isServerCtx
+  const newTerminalShells = theirShell
     ? serverShellChoiceList.map((name) => ({
         name,
         path: name,
@@ -351,12 +365,28 @@ export function Workspace({
         return near === was ? was : near;
       });
     };
+    // Leaving the window is the whole difficulty, and only on the LEFT. Go out the top or
+    // the right and the last clientX seen is beyond REVEAL_EDGE, so the arrow hides on its
+    // own and nothing below is needed. Go out the left and the last clientX is inside the
+    // zone, so the state is `true` with no further event coming — the arrow stayed revealed
+    // for good. Three listeners rather than one because `mouseleave` on `document` is not
+    // delivered on every engine, and the desktop shell is WebKitGTK while the suites drive
+    // Chromium: `mouseout` with no `relatedTarget` is the pointer actually crossing out,
+    // and `blur` covers the pointer parked at the screen edge while another window takes
+    // focus — an unfocused window has nothing to reveal.
     const onLeave = () => setNearLeftEdge(false);
+    const onOut = (e: MouseEvent) => {
+      if (!e.relatedTarget) setNearLeftEdge(false);
+    };
     window.addEventListener('mousemove', onMove);
     document.addEventListener('mouseleave', onLeave);
+    document.addEventListener('mouseout', onOut);
+    window.addEventListener('blur', onLeave);
     return () => {
       window.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseleave', onLeave);
+      document.removeEventListener('mouseout', onOut);
+      window.removeEventListener('blur', onLeave);
     };
   }, [isSidebarOpen]);
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{
@@ -905,19 +935,25 @@ export function Workspace({
 
   // Handle new local terminal
   const handleNewLocalTerminal = async (shell?: string) => {
-    // Use provided shell or fall back to settings default
-    const asked = isServerCtx && shell && serverShellChoiceList.includes(shell) ? shell : undefined;
-    const shellToUse = isServerCtx ? (asked ?? serverShell) : shell || settings.defaultShell;
+    // Whose shell this is follows WHO RUNS IT, not which context is active (ADR 0031).
+    // The rule itself is in `utils/localShellSource.ts`, pure and covered by
+    // `e2e/local-shell-source-check.mjs` — its discriminator is a global the wry shell
+    // injects, which no browser suite can see, so a rule written inline here would ship
+    // its desktop arm untested.
+    const sent = shellToStart({
+      runsHere: isNativeShell(),
+      serverContext: isServerCtx,
+      asked: shell,
+      localDefault: settings.defaultShell,
+      instanceDefault: serverShell,
+      instanceOffers: serverShellChoiceList,
+    });
+    // What the pane is labelled with: whatever will actually start, falling back to the
+    // name the receiving end would apply.
+    const shellToUse = sent ?? serverShell ?? settings.defaultShell;
 
     try {
-      // On a server the client sends a NAME and only one the instance offers — the server
-      // resolves it to a path itself, so nothing here can name a program it did not offer.
-      // Nothing asked (or nothing offered) leaves the instance to apply its own rule.
-      const sessionId = await Backend.Terminal.connectLocalTerminal(
-        isServerCtx
-          ? (asked ?? (serverShellChoiceList.length > 0 ? serverShell : undefined))
-          : shellToUse,
-      );
+      const sessionId = await Backend.Terminal.connectLocalTerminal(sent);
 
       // Create terminal session
       const shellName = shellToUse.split('/').pop() || 'shell';
@@ -1709,7 +1745,7 @@ export function Workspace({
           onClick={() => handleNewLocalTerminal()}
           className="m-btn m-btn-primary m-btn-sm"
           title={
-            isServerCtx
+            theirShell
               ? `New server terminal (${serverShell})`
               : `New Local Terminal (${settings.defaultShell.split('/').pop()})`
           }
@@ -1720,7 +1756,7 @@ export function Workspace({
 
         {/* Local-shell selector — hidden in a server context (the server sets the
             shell), and hidden when this person took it out of their toolbar. */}
-        {!isServerCtx && toolbarPrefs.shellPicker && (
+        {shellButtons.picker && toolbarPrefs.shellPicker && (
           <button
             ref={defaultShellButtonRef}
             onClick={async () => {
@@ -2247,7 +2283,7 @@ export function Workspace({
                 onReorganizePane={handleReorganizePane}
                 onNewLocalTerminal={handleNewLocalTerminal}
                 shellMenu={toolbarPrefs.newTerminalMenu ? newTerminalShells : undefined}
-                probeShells={!isServerCtx}
+                probeShells={!theirShell}
                 onSaveQuickSSH={handleSaveQuickSSH}
                 quickSSHSessions={Array.from(quickSSHConnections.keys())}
               />
