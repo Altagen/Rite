@@ -1110,7 +1110,7 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
     {
         let active = { state.context.lock().unwrap().clone() };
         if let ActiveContext::Remote(server) = active
-            && !terminal_stays_local(&state, &path).await
+            && !served_locally(&state, &path).await
         {
             return proxy_to_remote(&state, &server, req).await;
         }
@@ -1137,7 +1137,14 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
 /// already runs from the client. From the instance's shell, the user's own machine is
 /// unreachable by any route. A browser user is untouched — a deployed server never holds a
 /// remote context, so this function only ever runs in the desktop's in-process server.
-async fn terminal_stays_local(state: &ServerState, path: &str) -> bool {
+async fn served_locally(state: &ServerState, path: &str) -> bool {
+    // Which shells exist is a question about THIS filesystem, and after ADR 0031 the shell
+    // runs here — so asking the instance would list another computer's programs. It was
+    // proxied, which is why a desktop client in a server context saw the instance's shells
+    // (or none) and could not choose its own.
+    if path == "/api/shells" {
+        return true;
+    }
     let Some(rest) = path.strip_prefix("/api/terminal") else {
         return false;
     };
@@ -6031,7 +6038,7 @@ mod tests {
         let state = test_state().await;
         let local = |p: &'static str| {
             let s = state.clone();
-            async move { terminal_stays_local(&s, p).await }
+            async move { served_locally(&s, p).await }
         };
 
         // Run here: a shell on this machine, and the SSH family, which needs this
@@ -6061,6 +6068,14 @@ mod tests {
 
         // And nothing outside the family is claimed by this rule.
         assert!(!local("/api/connections").await);
+
+        // Which shells this machine has is this machine's answer (ADR 0031). Proxied, a
+        // desktop client in a server context was shown the instance's programs — or none,
+        // and then it could not choose its shell at all.
+        assert!(
+            local("/api/shells").await,
+            "the shells that exist here are not the instance's to list"
+        );
     }
 
     fn test_user(id: &str) -> User {

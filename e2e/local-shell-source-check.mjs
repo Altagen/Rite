@@ -12,7 +12,7 @@
  * Run: node e2e/local-shell-source-check.mjs
  */
 import assert from 'node:assert/strict';
-import { shellToStart } from '../apps/desktop/src/utils/localShellSource.ts';
+import { instanceChoosesShell, shellToStart } from '../apps/desktop/src/utils/localShellSource.ts';
 
 let passed = 0;
 const check = (name, fn) => {
@@ -94,6 +94,25 @@ check('a local vault starts this machine\'s shell', () => {
     shellToStart({ ...base, runsHere: true, serverContext: false }),
     '/usr/bin/fish',
   );
+});
+
+/* The same rule, asked directly — because four toolbar sites ask it rather than asking for
+   a shell value, and the first pass at ADR 0031 left them on a bare `isServerCtx`: the
+   picker hidden, the chevron listing the instance's shells, the tooltip saying "New server
+   terminal", and probing switched off. One function, one check. */
+console.log('\nand who narrows the choice:');
+
+check('the instance narrows only a client with no machine of its own', () => {
+  assert.equal(instanceChoosesShell({ runsHere: false, serverContext: true }), true);
+});
+
+check('the desktop is never narrowed, context or not', () => {
+  assert.equal(instanceChoosesShell({ runsHere: true, serverContext: true }), false);
+  assert.equal(instanceChoosesShell({ runsHere: true, serverContext: false }), false);
+});
+
+check('and a local vault has nobody to narrow it', () => {
+  assert.equal(instanceChoosesShell({ runsHere: false, serverContext: false }), false);
 });
 
 console.log(`\n${passed} checks passed`);
