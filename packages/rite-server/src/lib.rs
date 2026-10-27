@@ -1122,15 +1122,28 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
 /// In a remote context, decide whether a `/api/terminal/*` request is handled by
 /// the LOCAL server (client-execute) rather than proxied (ADR 0011 §4):
 /// - `ssh` / `quick-ssh` creates open SSH locally from the client's network;
+/// - `local` opens a shell on THIS machine (ADR 0031);
 /// - a control request (`/{id}/…`) is local iff we own that session;
-/// - everything else (`local` shell on the remote, session list) is proxied.
+/// - the session list is proxied: it is the instance's roster, not ours.
+///
+/// `local` used to be proxied, so pressing Terminal on the desktop in a server context
+/// opened a shell inside the instance. It read as deliberate because it was — but the rule
+/// keys on the CONTEXT and never on what the client is, and a browser is the only client
+/// with no machine of its own. The desktop inherited a reading that was only ever true for
+/// the web UI.
+///
+/// What settles it is which capability contains the other: from a local terminal the
+/// instance's host is reachable by adding it as a machine and connecting over SSH, which
+/// already runs from the client. From the instance's shell, the user's own machine is
+/// unreachable by any route. A browser user is untouched — a deployed server never holds a
+/// remote context, so this function only ever runs in the desktop's in-process server.
 async fn terminal_stays_local(state: &ServerState, path: &str) -> bool {
     let Some(rest) = path.strip_prefix("/api/terminal") else {
         return false;
     };
     match rest {
-        "/ssh" | "/quick-ssh" | "/exec" | "/exec-quick" => true,
-        "" | "/" | "/local" => false,
+        "/ssh" | "/quick-ssh" | "/exec" | "/exec-quick" | "/local" => true,
+        "" | "/" => false,
         _ => {
             let id = rest.trim_start_matches('/').split('/').next().unwrap_or("");
             !id.is_empty() && state.sessions.has_session(id).await
@@ -6005,6 +6018,49 @@ mod tests {
         ServerState::new(&dir.path().join("vault.db"))
             .await
             .unwrap()
+    }
+
+    /// Which terminal requests the local server serves itself in a remote context
+    /// (ADR 0011 §4, amended by ADR 0031).
+    ///
+    /// `/local` is the one this pins hardest: it was proxied, so pressing Terminal on the
+    /// desktop opened a shell inside the instance. The values are asserted one by one
+    /// rather than as a set, so moving any single route shows up as that route.
+    #[tokio::test]
+    async fn a_local_terminal_is_served_by_the_client_and_the_roster_is_not() {
+        let state = test_state().await;
+        let local = |p: &'static str| {
+            let s = state.clone();
+            async move { terminal_stays_local(&s, p).await }
+        };
+
+        // Run here: a shell on this machine, and the SSH family, which needs this
+        // machine's network.
+        assert!(
+            local("/api/terminal/local").await,
+            "a shell runs on the client"
+        );
+        assert!(local("/api/terminal/ssh").await);
+        assert!(local("/api/terminal/quick-ssh").await);
+        assert!(local("/api/terminal/exec").await);
+        assert!(local("/api/terminal/exec-quick").await);
+
+        // Proxied: the session list is the instance's roster, not ours.
+        assert!(
+            !local("/api/terminal").await,
+            "the roster belongs to the instance"
+        );
+        assert!(!local("/api/terminal/").await);
+
+        // A control request is ours only while we hold that session, and this state holds
+        // none — so an id we never opened is the instance's to answer.
+        assert!(
+            !local("/api/terminal/a-session-we-never-opened/input").await,
+            "a session we do not hold is not ours to drive"
+        );
+
+        // And nothing outside the family is claimed by this rule.
+        assert!(!local("/api/connections").await);
     }
 
     fn test_user(id: &str) -> User {

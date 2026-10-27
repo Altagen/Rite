@@ -162,6 +162,12 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const serverMode = useServerSession((s) => s.mode);
   const isLocalContext = !serverMode?.accounts;
   const serverShells = serverShellChoices(serverMode);
+  // Whose shell the Shell section is about follows WHO RUNS IT (ADR 0031): a local
+  // terminal runs on the client that asked, so on the desktop it is this machine's even
+  // against an instance. Presenting the instance's shell read-only there would describe a
+  // process that is not the one about to start. A browser has no machine of its own, so
+  // for it the two remain the same question.
+  const shellIsMine = isLocalContext || native;
   // Asked for once when Settings opens. It cannot change while the page is up: a new
   // build means a new page.
   const [build, setBuild] = useState<Capabilities | null>(null);
@@ -223,9 +229,9 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   // The shells this computer has, for the picker that used to be a path you typed.
   const [shellChoices, setShellChoices] = useState<ShellChoice[]>([]);
   useEffect(() => {
-    if (!isLocalContext) return;
+    if (!shellIsMine) return;
     void installedShells().then(setShellChoices);
-  }, [isLocalContext]);
+  }, [shellIsMine]);
 
   const toolbarRow = (key: keyof ToolbarPrefs, labelKey: string, descKey: string) => (
     <SettingsToggle
@@ -512,13 +518,13 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
             <section hidden={shown !== 'shell'} className="pb-2">
               <SettingsHead
                 title={t('settings.sec.shell')}
-                hint={isLocalContext ? t('settings.shellHint') : t('settings.shellServerHint')}
+                hint={shellIsMine ? t('settings.shellHint') : t('settings.shellServerHint')}
               />
               {/* On a server the shells are the instance's; which of them you open is yours
                 only if it says so. So: a value when it keeps the decision, a picker when
                 it delegates — and the picker's first entry follows the default rather
                 than copying it, so an administrator who changes it carries you along. */}
-              {!isLocalContext && serverShells.length === 0 && (
+              {!shellIsMine && serverShells.length === 0 && (
                 <SettingsRow title={t('settings.shellServer')} hint={t('settings.shellServerDesc')}>
                   <code
                     className="font-mono text-sm text-muted-foreground"
@@ -528,7 +534,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   </code>
                 </SettingsRow>
               )}
-              {!isLocalContext && serverShells.length > 0 && (
+              {!shellIsMine && serverShells.length > 0 && (
                 <SettingsField label={t('settings.shellYours')} hint={t('settings.shellYoursDesc')}>
                   <ul className="flex flex-col gap-1.5" data-testid="server-shell-choices">
                     {['', ...serverShells].map((name) => (
@@ -557,7 +563,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   </ul>
                 </SettingsField>
               )}
-              {isLocalContext && (
+              {shellIsMine && (
                 <>
                   <div>
                     {shellChoices.length > 0 && (
