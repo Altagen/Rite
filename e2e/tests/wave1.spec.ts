@@ -775,10 +775,16 @@ test('a preference survives closing the dialog with the corner ✕', async ({ pa
   await openSettings(page);
   await page.getByTestId('settings-nav-security').click();
   await expect(page.getByTestId('auto-lock')).toContainText('Disabled');
-  await expect(page.getByTestId('host-key-mode')).toContainText('Accept');
-
   await page.getByTestId('auto-lock').click();
   await page.getByTestId('auto-lock-3').click();
+
+  // Host-key verification is under SSH, with the connections it governs. `toBeVisible`
+  // and not only `toContainText`: a section is hidden with the `hidden` attribute, so its
+  // rows stay in the DOM and their text still reads — this assertion passed from the wrong
+  // section while the row was being moved out of it.
+  await page.getByTestId('settings-nav-ssh').click();
+  await expect(page.getByTestId('host-key-mode')).toBeVisible();
+  await expect(page.getByTestId('host-key-mode')).toContainText('Accept');
   await page.getByTestId('host-key-mode').click();
   await page.getByTestId('host-key-mode-strict').click();
 
@@ -788,6 +794,7 @@ test('a preference survives closing the dialog with the corner ✕', async ({ pa
   await openSettings(page);
   await page.getByTestId('settings-nav-security').click();
   await expect(page.getByTestId('auto-lock')).toContainText('3 minutes');
+  await page.getByTestId('settings-nav-ssh').click();
   await expect(page.getByTestId('host-key-mode')).toContainText('Strict');
 
   // And it reached the server, not just this dialog's state.

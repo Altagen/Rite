@@ -840,55 +840,6 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                   </SettingsRow>
                 )}
 
-                {/* Host-key verification is the connection's, and on a shared server every
-                  connection is the server's — so there the policy is the instance's and
-                  this row reports it instead of offering a dropdown. It used to offer one
-                  to everyone, writing a single shared row: one person choosing "accept"
-                  turned verification off for every account on the instance. */}
-                {isLocalContext ? (
-                  <SettingsRow
-                    title={t('settings.hostKeyVerification')}
-                    hint={t('settings.hostKeyVerificationDesc')}
-                  >
-                    <SettingsControl>
-                      <Dropdown<'strict' | 'warn' | 'accept'>
-                        value={hostKeyVerificationMode}
-                        label={t('settings.hostKeyVerification')}
-                        testId="host-key-mode"
-                        options={[
-                          { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
-                          { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
-                          { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
-                        ]}
-                        onChange={(mode) => {
-                          setHostKeyVerificationMode(mode);
-                          void updateSettings({ hostKeyVerificationMode: mode });
-                        }}
-                      />
-                    </SettingsControl>
-                  </SettingsRow>
-                ) : (
-                  <SettingsRow
-                    title={t('settings.hostKeyVerification')}
-                    hint={t('settings.hostKeyServerDesc')}
-                  >
-                    <code
-                      className="font-mono text-sm text-muted-foreground"
-                      data-testid="server-host-key"
-                    >
-                      {serverMode?.hostKeyVerification ?? 'strict'}
-                    </code>
-                  </SettingsRow>
-                )}
-
-                {/* Beside the policy that produced them: the dropdown above decides what
-                    happens to an unknown key, and this is the result of those decisions.
-                    The mock keeps both in its SSH section; this app has had the policy
-                    under Security since before either existed, and moving a settings row
-                    between sections is a design call, not a side effect of adding a list.
-                    Mounted only while the section is open, so the request is not made on
-                    every visit to Settings. */}
-                {shown === 'security' && <KnownHostsList />}
               </div>
             </section>
 
@@ -1086,9 +1037,62 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               </section>
             )}
 
-            {/* SSH connections */}
+            {/* SSH connections.
+                Host-key verification lives here, with the connections it governs, as the
+                mock has always shown it (ADR 0019). It sat under Security because it
+                predates the rail, and "security" is where nobody went looking for a
+                setting about SSH. e2e/settings-rail-check.mjs now pins the section a row
+                belongs to, not only that the section exists — which is why the two could
+                disagree for two releases without anything failing. */}
             <section hidden={shown !== 'ssh'} className="pb-2">
               <SettingsHead title={t('settings.sshConnections')} />
+
+              {/* On a shared server every connection is the server's, so there the policy
+                  is the instance's and this row reports it instead of offering a dropdown.
+                  It used to offer one to everyone, writing a single shared row: one person
+                  choosing "accept" turned verification off for every account. */}
+              {isLocalContext ? (
+                <SettingsRow
+                  title={t('settings.hostKeyVerification')}
+                  hint={t('settings.hostKeyVerificationDesc')}
+                >
+                  <SettingsControl>
+                    <Dropdown<'strict' | 'warn' | 'accept'>
+                      value={hostKeyVerificationMode}
+                      label={t('settings.hostKeyVerification')}
+                      testId="host-key-mode"
+                      options={[
+                        { value: 'strict', label: t('settings.hostKeyVerificationStrict') },
+                        { value: 'warn', label: t('settings.hostKeyVerificationWarn') },
+                        { value: 'accept', label: t('settings.hostKeyVerificationAccept') },
+                      ]}
+                      onChange={(mode) => {
+                        setHostKeyVerificationMode(mode);
+                        void updateSettings({ hostKeyVerificationMode: mode });
+                      }}
+                    />
+                  </SettingsControl>
+                </SettingsRow>
+              ) : (
+                <SettingsRow
+                  title={t('settings.hostKeyVerification')}
+                  hint={t('settings.hostKeyServerDesc')}
+                >
+                  <code
+                    className="font-mono text-sm text-muted-foreground"
+                    data-testid="server-host-key"
+                  >
+                    {serverMode?.hostKeyVerification ?? 'strict'}
+                  </code>
+                </SettingsRow>
+              )}
+
+              {/* Beside the policy that produced them: the dropdown above decides what
+                  happens to an unknown key, and this is the result of those decisions.
+                  Mounted only while the section is open, so the request is not made on
+                  every visit to Settings. */}
+              {shown === 'ssh' && <KnownHostsList />}
+
               <SettingsToggle
                 title={t('settings.autoReconnect')}
                 hint={t('settings.autoReconnectHint')}
