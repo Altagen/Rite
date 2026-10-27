@@ -1145,6 +1145,25 @@ async fn served_locally(state: &ServerState, path: &str) -> bool {
     if path == "/api/shells" {
         return true;
     }
+    // This table is THIS machine's and THIS vault's: auto-lock, clipboard clearing, SSH
+    // keep-alive, the host-key mode, the default shell. None of it is an instance's to
+    // supply to a client that runs its own processes.
+    //
+    // Proxied, it let a remote name the program the desktop executes locally. The chain
+    // was real, not theoretical: a remote reports `accounts: false` in `/api/server/mode`
+    // (the shape of any rite-server started without RITE_ACCOUNTS), so the client stops
+    // reading device storage and fetches this table — from the remote; it hands back a
+    // `default_shell`; and since ADR 0031 made `/api/terminal/local` local, this server
+    // spawns that path, as this user, on this machine. `host_key_verification_mode` rode
+    // the same route, so a remote could also have answered "accept" and turned off the
+    // TOFU refusal for the client's own SSH connections.
+    //
+    // The instance's own policy is unaffected: an administrator writes these through
+    // `/api/admin/*` (see ADMIN_ROUTE_SETTINGS), which is where the console reads and
+    // writes them, and a browser talks to its instance directly with no proxy in the path.
+    if path == "/api/settings" || path.starts_with("/api/settings/") {
+        return true;
+    }
     let Some(rest) = path.strip_prefix("/api/terminal") else {
         return false;
     };
@@ -6076,6 +6095,19 @@ mod tests {
             local("/api/shells").await,
             "the shells that exist here are not the instance's to list"
         );
+
+        // And this machine's settings are not an instance's to supply. Proxied, they let a
+        // remote choose `default_shell` — the program `/api/terminal/local` then spawns
+        // here — and `host_key_verification_mode`, the TOFU refusal for our own SSH.
+        assert!(
+            local("/api/settings").await,
+            "a remote must not name the program this machine runs"
+        );
+        assert!(local("/api/settings/default_shell").await);
+        assert!(local("/api/settings/host_key_verification_mode").await);
+        // Not a prefix match on the word: a different route that merely starts with it
+        // stays whatever it was.
+        assert!(!local("/api/settings-of-the-instance").await);
     }
 
     fn test_user(id: &str) -> User {
