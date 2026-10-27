@@ -351,12 +351,28 @@ export function Workspace({
         return near === was ? was : near;
       });
     };
+    // Leaving the window is the whole difficulty, and only on the LEFT. Go out the top or
+    // the right and the last clientX seen is beyond REVEAL_EDGE, so the arrow hides on its
+    // own and nothing below is needed. Go out the left and the last clientX is inside the
+    // zone, so the state is `true` with no further event coming — the arrow stayed revealed
+    // for good. Three listeners rather than one because `mouseleave` on `document` is not
+    // delivered on every engine, and the desktop shell is WebKitGTK while the suites drive
+    // Chromium: `mouseout` with no `relatedTarget` is the pointer actually crossing out,
+    // and `blur` covers the pointer parked at the screen edge while another window takes
+    // focus — an unfocused window has nothing to reveal.
     const onLeave = () => setNearLeftEdge(false);
+    const onOut = (e: MouseEvent) => {
+      if (!e.relatedTarget) setNearLeftEdge(false);
+    };
     window.addEventListener('mousemove', onMove);
     document.addEventListener('mouseleave', onLeave);
+    document.addEventListener('mouseout', onOut);
+    window.addEventListener('blur', onLeave);
     return () => {
       window.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseleave', onLeave);
+      document.removeEventListener('mouseout', onOut);
+      window.removeEventListener('blur', onLeave);
     };
   }, [isSidebarOpen]);
   const [deleteCollectionTarget, setDeleteCollectionTarget] = useState<{
