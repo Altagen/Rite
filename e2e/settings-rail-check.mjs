@@ -87,4 +87,47 @@ check('web', () => {
   assert.deepEqual(forbidden, [], `a browser cannot show these, so the mock must not: ${forbidden.join(', ')}`);
 });
 
+/* A section existing on both sides was never enough. Host-key verification sat in the app's
+   Security section while the mock showed it under SSH, for two releases, and this file
+   passed the whole time because it compared the RAIL and not the rows. A reader looking for
+   a setting about SSH under SSH did not find it.
+
+   So the rows that have a home worth pinning are named here with it. Not every row: a
+   wholesale extraction would re-check the obvious and break on cosmetics. These are the
+   ones whose placement was argued about, which is exactly the set that drifts. */
+const PLACED = [
+  { id: 'host-key-mode', section: 'ssh', why: 'a policy about SSH belongs with SSH' },
+  { id: 'server-host-key', section: 'ssh', why: 'the server-side report of the same policy' },
+  { id: 'auto-lock', section: 'security', why: 'locking the vault is not an SSH concern' },
+];
+
+/** Which `<section hidden={shown !== 'x'}>` encloses a given `testId`/`data-testid`. */
+function sectionHolding(testId) {
+  const source = read('apps/desktop/src/components/Settings.tsx');
+  const at = source.search(new RegExp(`testId=["']${testId}["']|data-testid=["']${testId}["']`));
+  assert.notEqual(at, -1, `Settings.tsx has no row with the test id \`${testId}\``);
+  // The nearest section opened before it. Sections are siblings, never nested, so the last
+  // one to open is the one still open.
+  const opens = [...source.slice(0, at).matchAll(/shown !== '([a-z]+)'/g)];
+  assert.ok(opens.length > 0, `no section encloses \`${testId}\``);
+  return opens[opens.length - 1][1];
+}
+
+console.log('\nand a row that was argued about is in the section it was given:');
+
+for (const { id, section, why } of PLACED) {
+  check(`${id} → ${section}`, () => {
+    assert.equal(sectionHolding(id), section, `${why} (found it under \`${sectionHolding(id)}\`)`);
+  });
+}
+
+/* KnownHostsList renders no row of its own, so it is pinned by the guard that mounts it:
+   the list belongs beside the policy that fills it. */
+check('the known-hosts list mounts in the same section', () => {
+  const source = read('apps/desktop/src/components/Settings.tsx');
+  const m = source.match(/\{shown === '([a-z]+)' && <KnownHostsList \/>\}/);
+  assert.ok(m, 'KnownHostsList is no longer mounted behind a `shown ===` guard');
+  assert.equal(m[1], 'ssh', 'the list reports the result of the host-key policy above it');
+});
+
 console.log(`\n${passed} checks passed`);
