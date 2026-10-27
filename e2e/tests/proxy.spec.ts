@@ -132,6 +132,58 @@ test('a local terminal in a remote context is served by the client', async ({ pa
   expect(owned, 'the shell a desktop client asked for runs on that client').toBe('ours');
 });
 
+/**
+ * This machine's settings table is answered here, not by the instance.
+ *
+ * Found by the security review of ADR 0031 and opened by it. `/api/settings` is where the
+ * client reads `default_shell`, and `/api/terminal/local` is now served locally — so while
+ * this table was proxied, a remote could name the program the desktop executes on the
+ * user's own machine. `host_key_verification_mode` rode the same route, so a remote could
+ * also answer "accept" and switch off the TOFU refusal for our own SSH.
+ *
+ * The routing decision has a Rust test. This is the end-to-end half: a write through the
+ * mux while a remote context is active must land HERE and not there. Asked of the remote
+ * directly, with the remote's own token, so a false pass is not possible — if the request
+ * had been proxied, the remote would be holding the value.
+ */
+test('the settings table is this machine\'s, not the instance\'s', async ({ page, request }) => {
+  await page.goto('/');
+  await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
+  await page.locator('#username').fill('envadmin');
+  await page.locator('#password').fill('EnvPass123!');
+  await page.getByRole('button', { name: /^sign in$/i }).click();
+  await expect(page.getByRole('button', { name: 'Terminal', exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  // A value no instance would produce, written through the mux while remote.
+  const marker = `rite-local-${Date.now()}`;
+  const wrote = await page.evaluate(async (value: string) => {
+    const r = await fetch('/api/settings/ssh_keep_alive_interval', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value }),
+    });
+    if (!r.ok) return `put-${r.status}`;
+    const back = (await (await fetch('/api/settings')).json()) as Record<string, string>;
+    return back.ssh_keep_alive_interval ?? 'absent';
+  }, marker);
+
+  expect(wrote, 'the write and the read both went to the local table').toBe(marker);
+
+  // And the instance never saw it. Its own token, no proxy in the path.
+  const token = await remoteToken(request);
+  const theirs = await (
+    await request.get(`${REMOTE}/api/settings`, {
+      headers: { authorization: `Bearer ${token}` },
+    })
+  ).json();
+  expect(
+    theirs.ssh_keep_alive_interval,
+    'the instance holds a value this client wrote, so the table was proxied',
+  ).not.toBe(marker);
+});
+
 test('a remote terminal streams over the WebSocket proxy', async ({ page, request }) => {
   // The context is already remote (an earlier test switched it); sign in again.
   await page.goto('/');
