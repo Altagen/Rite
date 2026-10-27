@@ -125,6 +125,48 @@ check('the client is built on an ubuntu no newer than the image', () => {
   );
 });
 
+/* And the actions, which have the same failure mode as the runners: a version that moves
+   in one file and not another. `softprops/action-gh-release` sits in three jobs of the
+   release workflow, so bumping two of them would leave a release path running two majors —
+   and the only thing that exercises that path is a tag, by which point it is too late.
+
+   Asserted as a general rule rather than for that one action: any action used more than
+   once must be used at one version. It catches the next three as well. */
+function actionVersions() {
+  const seen = new Map();
+  for (const file of workflows) {
+    for (const [, action, ref] of read(`${WORKFLOWS}/${file}`).matchAll(
+      /^\s*-?\s*uses:\s*([A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]+)@([A-Za-z0-9_.-]+)\s*$/gm,
+    )) {
+      if (!seen.has(action)) seen.set(action, new Set());
+      seen.get(action).add(ref);
+    }
+  }
+  return seen;
+}
+
+console.log('\nand an action is used at one version, not two:');
+
+const actions = actionVersions();
+
+check('the workflows name some actions at all', () => {
+  assert.ok(actions.size > 5, `only ${actions.size} actions parsed`);
+});
+
+check('no action is pinned two ways', () => {
+  const split = [...actions]
+    .filter(([, refs]) => refs.size > 1)
+    .map(([action, refs]) => `${action} @ ${[...refs].join(' and ')}`);
+  assert.deepEqual(split, [], 'one of these moved in one file and not the others');
+});
+
+check('the release workflow publishes through one action version', () => {
+  // Named, because this is the one whose drift a gate cannot catch: only a tag runs it.
+  const refs = actions.get('softprops/action-gh-release');
+  assert.ok(refs, 'the release workflow no longer uses softprops/action-gh-release');
+  assert.equal(refs.size, 1, `publishing through ${[...refs].join(' and ')}`);
+});
+
 console.log(`\n${passed} checks passed (ubuntu ${image}, client on ${
   [...new Set(clientRunners.map((r) => r.value))].join(' + ')
-})`);
+}, ${actions.size} actions)`);
