@@ -35,7 +35,7 @@ import { useServerSession, quickSshAllowed, serverShellChoices } from '../store/
 import { useFocusMode } from '../store/focusMode';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { isNativeShell } from '../utils/nativeShell';
-import { instanceChoosesShell } from '../utils/localShellSource';
+import { instanceChoosesShell, shellControls } from '../utils/localShellSource';
 import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
@@ -168,10 +168,14 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   // desktop client would describe a process that is not the one about to start. Four more
   // sites in the toolbar were left on a bare `isServerCtx` when this first landed, which is
   // why the rule has one home now.
-  const shellIsMine = !instanceChoosesShell({
+  const shellOwnership = {
     runsHere: native,
     serverContext: !isLocalContext,
-  });
+    instanceOffers: serverShells,
+  };
+  const shellIsMine = !instanceChoosesShell(shellOwnership);
+  /** Which shell switches may be offered — the same answer the buttons use. */
+  const shellRows = shellControls(shellOwnership);
   // Asked for once when Settings opens. It cannot change while the page is up: a new
   // build means a new page.
   const [build, setBuild] = useState<Capabilities | null>(null);
@@ -761,18 +765,19 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
             <section hidden={shown !== 'toolbar'} className="pb-2">
               <SettingsHead title={t('settings.sec.toolbar')} hint={t('settings.toolbarHint')} />
               <div>
-                {/* The shell picker is a LOCAL control: a server sets the shell for its own
-                  terminals, so in a browser this row governed a button that never renders
-                  (`Workspace.tsx`, `!isServerCtx`). A switch for something that cannot
-                  appear is worse than a missing switch — it says you have a choice. */}
-                {isLocalContext &&
+                {/* A switch appears exactly when the button it governs can. That rule used to
+                  be written here as `isLocalContext`, which stopped being the question when
+                  ADR 0031 made a desktop's shell its own: the buttons rendered in a server
+                  context and these switches did not. `shellControls` answers it once, and
+                  `Workspace.tsx` reads the same answer for the buttons themselves. */}
+                {shellRows.picker &&
                   toolbarRow('shellPicker', 'settings.toolbarShell', 'settings.toolbarShellDesc')}
                 {/* Two shell controls, two questions: the picker above sets the default, this
                   menu overrides it for one terminal. Hiding the first was leaving the second,
                   which is why switching "the shell picker" off still asked which shell. On a
                   server the menu exists only where the instance offers a choice — and then
                   the switch does too, because there is a button to hide. */}
-                {(isLocalContext || serverShells.length > 0) &&
+                {shellRows.newTerminalMenu &&
                   toolbarRow(
                     'newTerminalMenu',
                     'settings.toolbarNewTermMenu',
