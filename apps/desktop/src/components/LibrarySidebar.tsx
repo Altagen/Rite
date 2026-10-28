@@ -102,7 +102,7 @@ function LibraryFolderNode({
   const hasAdd = !!(onNewSubfolder || onNewCollection);
   return (
     <div>
-      <div className="m-tnode" style={{ paddingLeft: '6px' }}>
+      <div className="m-tnode pl-1.5">
         <button
           onClick={onToggle}
           className="m-ca"
@@ -288,8 +288,7 @@ function CollectionNode({
     <div>
       <div
         onClick={onOpen}
-        className={`m-tnode ${active ? 'sel' : ''}`}
-        style={{ paddingLeft: '6px' }}
+        className={`m-tnode pl-1.5 ${active ? 'sel' : ''}`}
       >
         <button
           onClick={(e) => {
@@ -838,7 +837,7 @@ function FolderNode({
                             setShowMenu(false);
                             onDelete(path);
                           }}
-                          style={{ color: '#f7768e' }}
+                          className="text-destructive"
                         >
                           {t('lib.deleteFolder')}
                         </button>

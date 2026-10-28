@@ -1894,8 +1894,7 @@ export function Workspace({
               <div className="flex justify-end p-2">
                 <button
                   onClick={() => setIsSidebarOpen(false)}
-                  className="m-btn m-btn-ghost"
-                  style={{ padding: '4px' }}
+                  className="m-btn m-btn-ghost p-1"
                   title={t('ws.hideSidebar')}
                   aria-label={t('ws.hideSidebar')}
                 >
@@ -1961,8 +1960,7 @@ export function Workspace({
                     onClick={() => setShowNewMenu((v) => !v)}
                     aria-label={t('ws.addToLibrary')}
                     title={t('ws.addToLibrary')}
-                    className="m-btn m-btn-ghost"
-                    style={{ padding: '4px' }}
+                    className="m-btn m-btn-ghost p-1"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path
@@ -2036,8 +2034,7 @@ export function Workspace({
                   )}
                   <button
                     onClick={() => setIsSidebarOpen(false)}
-                    className="m-btn m-btn-ghost"
-                    style={{ padding: '4px' }}
+                    className="m-btn m-btn-ghost p-1"
                     title={t('ws.hideSidebar')}
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

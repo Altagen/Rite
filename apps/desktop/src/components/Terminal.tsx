@@ -750,8 +750,7 @@ export function Terminal({
     >
       {/* Terminal Header - keep pointer events enabled for grip dots */}
       <div
-        className="flex w-full items-center justify-between border-b border-border bg-card px-4 py-2 flex-shrink-0"
-        style={{ pointerEvents: 'auto' }}
+        className="pointer-events-auto flex w-full items-center justify-between border-b border-border bg-card px-4 py-2 flex-shrink-0"
       >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
@@ -860,11 +859,10 @@ export function Terminal({
               title={t('term.splitV', { chord: splitVChord })}
             >
               <svg
-                className="h-4 w-4"
+                className="h-4 w-4 [transform:rotate(90deg)]"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
-                style={{ transform: 'rotate(90deg)' }}
               >
                 <path
                   strokeLinecap="round"

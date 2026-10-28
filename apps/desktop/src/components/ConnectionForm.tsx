@@ -694,8 +694,7 @@ export function ConnectionForm({
                   placeholder={t('preconnect.placeholder')}
                   rows={2}
                   spellCheck={false}
-                  style={{ resize: 'vertical', minHeight: 52 }}
-                  className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm text-foreground focus:border-primary focus:outline-none"
+                  className="w-full resize-y rounded border border-border bg-input px-3 py-2 font-mono text-sm text-foreground min-h-[52px] focus:border-primary focus:outline-none"
                 />
                 <p className="mt-1 text-xs text-muted-foreground">{t('preconnect.hint')}</p>
               </div>

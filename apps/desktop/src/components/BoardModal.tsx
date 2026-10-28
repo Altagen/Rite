@@ -629,8 +629,7 @@ function CardForm({
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   rows={4}
-                  className={`${input} font-mono leading-relaxed`}
-                  style={{ resize: 'vertical' }}
+                  className={`${input} resize-y font-mono leading-relaxed`}
                 />
               </label>
               {catField}
