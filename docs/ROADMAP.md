@@ -32,7 +32,13 @@ inside the server container. What is left is the code.
 
 ### 🎯 Terminal Core (Priority: CRITICAL - New Focus)
   - [ ] A new tab starting in the active pane's directory — a split already does
-        (`/proc/<pid>/cwd` on Linux, the shell's own answer elsewhere); a new tab does not
+        (`/proc/<pid>/cwd` on Linux, the shell's own answer elsewhere); a new tab does not.
+        Settled during 0.2.7: a **setting**, `newTabCwd`, with `inherit` as one of its
+        values rather than as the new hard-coded behaviour. A split inherits because it
+        is a division of the pane it came from; a tab is a fresh start, and people
+        disagree about which they want. `cwd` support already exists in
+        `local_terminal.rs` (0.2.6), so the work is the setting and its two values, not
+        the plumbing. Scheduled for 0.2.8.
 
   Adding a kind is now three steps: extend `LeafPaneNode` in
   `apps/desktop/src/types/pane.ts`, write the kind under
@@ -135,22 +141,59 @@ inside the server container. What is left is the code.
 ### 🎨 Styling: one place for it (Priority: HIGH)
 
 The CSP served to browsers is strict on every axis but one: `style-src` carries
-`'unsafe-inline'`, because the app writes 42 inline `style={{}}` across about fifteen
-components — pane geometry, collection colours, computed widths. That directive is the
-symptom; the cause is that styling has no single home, so a value that belongs to the
-design lands in a component instead.
+`'unsafe-inline'`, because the app writes inline `style={{}}` across the components. That
+directive is the symptom; the cause is that styling has no single home, so a value that
+belongs to the design lands in a component instead.
 
 Not a security fix, which is why it waits: what `'unsafe-inline'` permits is
 CSS injection, and `script-src 'self'` with `object-src 'none'` hold the sharp edges.
-It is a refactor, and the dependency runs the other way — tighten the CSP once the
-styles have somewhere to live.
 
-- [ ] Inventory the 42 sites and sort them: geometry computed at runtime (a split's
-      percentage) against values that are really design tokens (a collection's colour)
-- [ ] Design tokens as CSS custom properties, set once, consumed by class
-- [ ] Runtime geometry through a CSS variable on the element rather than a style string
-- [ ] Then drop `'unsafe-inline'` from `style-src` in `packages/rite-server/src/lib.rs`
-      and let the tls-proxy suite prove nothing regressed
+**Inventoried 2026-10-28: 43 sites across 23 components**, and the sort came out as four
+groups rather than the two expected. The distinction that matters is not
+token-versus-geometry, it is *what could ever live in a stylesheet*:
+
+| | sites | |
+|---|---|---|
+| Runtime geometry | 14 | a split's percentage, a popup's coordinates, `paddingLeft` from a tree depth, `pointerEvents` during a drag |
+| Static CSS, inline for no reason | 13 | `padding: '4px'`, `resize: 'vertical'`, `userSelect: 'none'`, `rotate(90deg)` |
+| A colour the user chose | 14 | a collection's, a machine's, a member's avatar, the swatch grids |
+| A context's badge | 1 | `backgroundImage` from a hash |
+| **A design token, written as a hex** | **1** | `LibrarySidebar.tsx:841` |
+
+Only the second group belongs in a stylesheet. The third is the hard one and it is the
+one a theme has to coexist with: those values are per-element user data, not design, so
+no amount of tokenising moves them — the most that can be done is to give them one
+mechanism instead of fourteen hand-written ones.
+
+The fifth is one site and it is the whole argument for doing this before a theme exists.
+A folder's Delete button carries `color: '#f7768e'`, which is `--destructive`
+(`348.8 89% 71.6%`) converted to hex, exactly. Nothing marks it as the same value, so the
+day the palette changes that one button keeps the old red — a theme would not be broken
+by it, it would be *revealed* by it. One drift found in 43 sites is also the honest
+measure of the risk: low, and real.
+
+**And the last step as written here was wrong.** A design token passed through an
+attribute is still an attribute, and `'unsafe-inline'` in `style-src` covers `<style>`
+elements and `style` attributes alike — so no refactor of the 43 sites drops it. What
+would is splitting the directive: `style-src-elem 'self'` for the sheets, with
+`'unsafe-inline'` kept on `style-src-attr` for the attributes. An absent directive falls
+back to `style-src`, so an engine that does not know them enforces exactly what it
+enforces today: the split cannot regress, it can only fail to gain. `style-src-attr` is
+available everywhere since late 2022; `style-src-elem` is baseline 2025 and unverified on
+WebKitGTK. Whether the sheets survive `'self'` is a question about what the bundle injects
+at runtime — xterm.js builds style elements of its own — so it gets measured in the
+tls-proxy suite rather than asserted.
+
+- [x] Inventory the sites and sort them — the table above
+- [ ] The 13 static sites into classes, and the hex back onto its token: no behaviour
+      change, identical output
+- [ ] One mechanism for the 14 user-chosen colours instead of fourteen
+- [ ] Runtime geometry through a CSS variable on the element rather than a style string —
+      worth doing for readability, but it buys nothing on the CSP
+- [ ] `style-src-elem 'self'` beside the kept `style-src-attr 'unsafe-inline'` in
+      `packages/rite-server/src/lib.rs`, with the tls-proxy suite proving the sheets and
+      xterm still load — independent of the four items above, and the only one that
+      actually tightens anything
 
 ### 🌍 The server's refusals, as codes (Priority: LOW)
 
@@ -219,8 +262,13 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       without a PTY (one-shot); an agent wants both. Not the typed-after-a-delay
       shortcut: a shell discards queued input while it sets the tty up, so an early
       send is *gone*, which the split-preset work already proved and fixed once.
-- [ ] **`local_terminal.rs`** — argv-direct spawn (it goes through `cmd.arg("-c")`)
-      and `cwd` support, which does not exist. Desktop-local case only.
+- [x] **`local_terminal.rs`** — **done**, both halves. `cwd` arrived in 0.2.6 for splits;
+      the argv-direct spawn is `LocalProgram::{Shell, Script, Argv}` with
+      `LocalSession::run_program(events, argv, cwd)`, so a resume command reaches `execvp`
+      as written instead of being re-parsed by `sh -c`. An argv does not borrow the
+      shell's fallback resolution, which would have answered a missing CLI with an
+      anonymous `/bin/sh` prompt. Nothing reaches it from the UI yet — it is groundwork,
+      and six tests are its only caller. ADR 0022 §7.2 and its addendum.
 - [ ] **Agent pane**, not a menu: an agent has a context of its own — a working
       directory, a transcript, a lifetime — and belongs to no machine (see *Pane
       or menu* above). **Pane kinds** in Phase 1 are done, so this is a registration
