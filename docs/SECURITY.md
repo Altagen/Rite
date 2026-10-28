@@ -306,7 +306,8 @@ misbehaves, the bytes that actually arrive are the only ground truth.
 
 ## Security Checklist (Pre-Release)
 
-- [ ] All dependencies audited (`cargo audit`)
+- [ ] All dependencies audited (`task audit`, and it must print `every check ran` —
+      `cargo audit` alone exits 0 even when the yanked-crate check could not run)
 - [ ] Crypto implementation reviewed
 - [ ] No hardcoded secrets or test credentials
 - [ ] Proper zeroization of sensitive data

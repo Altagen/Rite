@@ -122,7 +122,9 @@ Run the full CI check suite locally before every push:
 task check
 ```
 
-This runs in order: `cargo fmt --check`, `clippy`, `cargo test`, `cargo audit`, and `tsc`. Same checks as CI — if it passes locally, it passes on the remote.
+This runs in order: `cargo fmt --check`, `clippy`, `cargo test`, both dependency audits
+(`scripts/audit.sh`, which fails when a check could not run rather than reporting what it
+managed to ask) and `tsc`. Same checks as CI — if it passes locally, it passes on the remote.
 
 ### Building for Production
 
