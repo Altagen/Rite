@@ -16,6 +16,23 @@ use crate::terminal::SessionCommand;
 
 pub type SessionId = String;
 
+/// What a local PTY runs.
+///
+/// Three callers, three needs, and the difference is not cosmetic: it is whether a shell
+/// gets to re-read the command before the kernel does.
+pub enum LocalProgram {
+    /// An interactive shell. A terminal pane.
+    Shell,
+    /// A mini-script for the user's shell, fail-fast on posix shells. The pre-connect
+    /// hook: it is written as shell, so it is run as shell.
+    Script(String),
+    /// One program and its arguments, reaching `execvp` as written, with no shell in
+    /// between. What an agent adapter's resume command needs (ADR 0022 §4, §7.2): the
+    /// argv comes from a vendor's CLI and a project path, so a space or a quote in it is
+    /// data, not syntax. Through `-c` the shell would re-parse both.
+    Argv(Vec<String>),
+}
+
 /// Represents an active local terminal session
 pub struct LocalSession {
     pub id: SessionId,
@@ -41,7 +58,7 @@ impl LocalSession {
         shell: Option<String>,
         cwd: Option<PathBuf>,
     ) -> Result<Self> {
-        Self::spawn_inner(events, shell, None, cwd).await
+        Self::spawn_inner(events, shell, LocalProgram::Shell, cwd).await
     }
 
     /// Run a one-shot local command (the pre-connect hook) in a PTY.
@@ -54,7 +71,25 @@ impl LocalSession {
     pub async fn run_command(events: SharedEvents, command: String) -> Result<Self> {
         // A pre-connect hook runs wherever the shell starts: it is the connection's
         // business, not a pane's, so it inherits nothing.
-        Self::spawn_inner(events, None, Some(command), None).await
+        Self::spawn_inner(events, None, LocalProgram::Script(command), None).await
+    }
+
+    /// Run one program in a PTY, with its arguments passed through unchanged.
+    ///
+    /// The interactive half of ADR 0022 §7: an agent is a PTY running a vendor's CLI, so
+    /// it needs what a shell session has — a tty, no timeout — while being a *command*
+    /// rather than a shell. The exit arrives as `terminal-exit` like any other session's.
+    ///
+    /// `cwd` is where the program starts, and it is checked rather than trusted for the
+    /// reason `spawn` checks it: a project directory can be gone by the time someone
+    /// resumes a conversation about it, and failing the spawn would lose the session
+    /// instead of its starting point.
+    pub async fn run_program(
+        events: SharedEvents,
+        argv: Vec<String>,
+        cwd: Option<PathBuf>,
+    ) -> Result<Self> {
+        Self::spawn_inner(events, None, LocalProgram::Argv(argv), cwd).await
     }
 
     /// Where the shell of `pid` currently is, or `None` when it cannot be known.
@@ -77,11 +112,28 @@ impl LocalSession {
     async fn spawn_inner(
         events: SharedEvents,
         shell: Option<String>,
-        run: Option<String>,
+        program: LocalProgram,
         cwd: Option<PathBuf>,
     ) -> Result<Self> {
         let session_id = Uuid::new_v4().to_string();
         tracing::info!("Creating local session: {}", session_id);
+
+        // An argv program is not a shell and must not borrow a shell's resolution: the
+        // fallback list below would silently answer "/bin/sh" for a missing binary, and a
+        // resume command that cannot run has to say so rather than open a shell instead.
+        if let LocalProgram::Argv(argv) = &program {
+            let mut parts = argv.iter();
+            let exe = parts
+                .next()
+                .filter(|a| !a.is_empty())
+                .ok_or_else(|| anyhow!("A program needs a name"))?;
+            let mut cmd = CommandBuilder::new(exe);
+            for arg in parts {
+                cmd.arg(arg);
+            }
+            tracing::info!("Running {} directly, {} argument(s)", exe, argv.len() - 1);
+            return Self::spawn_built(events, session_id, cmd, cwd, None).await;
+        }
 
         // Determine which shell to use with intelligent fallback
         let requested_shell = shell.unwrap_or_else(|| {
@@ -122,25 +174,11 @@ impl LocalSession {
 
         tracing::info!("Using shell: {}", shell_cmd);
 
-        // Create PTY system
-        let pty_system = NativePtySystem::default();
-        let pty_size = PtySize {
-            rows: 24,
-            cols: 80,
-            pixel_width: 0,
-            pixel_height: 0,
-        };
-
-        // Spawn PTY with shell
-        let pair = pty_system
-            .openpty(pty_size)
-            .map_err(|e| anyhow!("Failed to create PTY: {}", e))?;
-
         let mut cmd = CommandBuilder::new(&shell_cmd);
         let shell_name = shell_cmd.split('/').next_back().unwrap_or("");
 
-        match &run {
-            Some(run_cmd) => {
+        match &program {
+            LocalProgram::Script(run_cmd) => {
                 tracing::debug!("Running one-shot command via {}", shell_name);
                 // Fail-fast so a mini-script stops on the first error. fish uses a
                 // different option syntax, so only enable errexit on posix shells.
@@ -151,45 +189,85 @@ impl LocalSession {
                     cmd.arg(format!("set -e\n{run_cmd}"));
                 }
             }
-            None => {
+            LocalProgram::Shell => {
                 tracing::debug!("Launching {} as interactive shell", shell_name);
             }
+            // Returned above, before any shell was resolved.
+            LocalProgram::Argv(_) => unreachable!("an argv program takes the direct path"),
         }
 
-        // Start where the caller asked, when it is still a directory. Checked rather than
-        // trusted: a pane may be duplicated long after its shell's directory was removed,
-        // and `cwd()` on a path that is gone fails the whole spawn — losing the pane
-        // instead of its starting point.
+        Self::spawn_built(events, session_id, cmd, cwd, Some(shell_name)).await
+    }
+
+    /// Open a PTY, start the command in it, and keep it pumping until it exits.
+    ///
+    /// Shared by every program kind, because everything from here down is the SESSION and
+    /// not the command: where it starts, what it is told about the terminal, and the
+    /// reader that turns its bytes into events. `shell_name` is `None` when the program is
+    /// not a shell — the fish workarounds below are then neither needed nor honest.
+    async fn spawn_built(
+        events: SharedEvents,
+        session_id: SessionId,
+        mut cmd: CommandBuilder,
+        cwd: Option<PathBuf>,
+        shell_name: Option<&str>,
+    ) -> Result<Self> {
+        let pty_system = NativePtySystem::default();
+        let pty_size = PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+        let pair = pty_system
+            .openpty(pty_size)
+            .map_err(|e| anyhow!("Failed to create PTY: {}", e))?;
+
+        // Start where the caller asked, when it is still a directory. A pane may be
+        // duplicated, or an agent resumed, long after the directory was removed, and the
+        // session must survive that: start, and be wrong about where.
+        //
+        // The check is NOT load-bearing on Linux. Measured against portable-pty 0.9:
+        // `spawn_command` with a `cwd` that does not exist returns `Ok` and the child
+        // simply starts in this process's directory. It is load-bearing on Windows, where
+        // `CreateProcessW` refuses an unusable `lpCurrentDirectory` outright — so the
+        // guard makes one platform's behaviour the rule on both, rather than leaving a
+        // desktop client to fail a spawn that works everywhere else.
         if let Some(dir) = cwd.as_ref().filter(|d| d.is_dir()) {
             cmd.cwd(dir);
         }
 
         // Configure shell-specific environment variables
-        if shell_name == "fish" {
+        if shell_name == Some("fish") {
             cmd.env("fish_features", "no-query-term");
         }
 
-        // Set common terminal environment variables
+        // What any program in a PTY is entitled to know.
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
 
-        // Fish-specific: Tell fish about terminal capabilities to avoid DA queries
-        // These env vars inform fish what the terminal supports without needing to query
-        cmd.env("fish_term24bit", "1"); // Terminal supports 24-bit color
-        cmd.env("fish_wcwidth_version", "3"); // Unicode width version
-        cmd.env("fish_ambiguous_width", "1"); // Width of ambiguous-width chars
-        cmd.env("TERM_PROGRAM", "vscode"); // Pretend we're VSCode (fish trusts it)
-        cmd.env("TERM_PROGRAM_VERSION", "1.0.0"); // Version for compatibility
+        // The rest are fish workarounds, so they are set for a shell and for nothing else.
+        // They tell fish what the terminal supports instead of letting it ask by DA query,
+        // and the last two are a LIE fish happens to trust — which is why they must not
+        // reach an arbitrary program. A CLI that reads `TERM_PROGRAM` would tailor its
+        // output to an editor that is not running it.
+        if shell_name.is_some() {
+            cmd.env("fish_term24bit", "1"); // Terminal supports 24-bit color
+            cmd.env("fish_wcwidth_version", "3"); // Unicode width version
+            cmd.env("fish_ambiguous_width", "1"); // Width of ambiguous-width chars
+            cmd.env("TERM_PROGRAM", "vscode"); // Pretend we're VSCode (fish trusts it)
+            cmd.env("TERM_PROGRAM_VERSION", "1.0.0"); // Version for compatibility
+        }
 
         let mut child = pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| anyhow!("Failed to spawn shell: {}", e))?;
+            .map_err(|e| anyhow!("Failed to spawn the session's program: {}", e))?;
         // Read before the child is moved into the reader thread: after that there is
         // nothing left to ask, and this is the only handle on where the shell is.
         let pid = child.process_id();
 
-        tracing::debug!("Shell spawned successfully");
+        tracing::debug!("Session program spawned successfully");
 
         // Create command channel
         let (command_tx, mut command_rx) = mpsc::channel::<SessionCommand>(100);
