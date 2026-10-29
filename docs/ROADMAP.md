@@ -38,7 +38,47 @@ inside the server container. What is left is the code.
         is a division of the pane it came from; a tab is a fresh start, and people
         disagree about which they want. `cwd` support already exists in
         `local_terminal.rs` (0.2.6), so the work is the setting and its two values, not
-        the plumbing. Scheduled for 0.2.8.
+        the plumbing. Scheduled for 0.2.8 — a day and a half, not the two lines it
+        first looks like.
+
+        - [ ] `newTabCwd` in `[terminal]` of the workspace document, beside `copyMode`
+              (ADR 0023 addendum). A literal path, or `inherit`. The parser's whitelist
+              is strict — `[terminal] takes copyMode, not <key>` — which is what makes
+              adding a key a deliberate edit.
+        - [ ] A field in Settings that writes the document, rather than a second place
+              holding the same value.
+        - [ ] **A literal path carried end to end.** This is the bulk of it:
+              `inheritCwdFrom` transports a SESSION ID, not a path, so the frontend, the
+              HTTP route, the server and `create_local_session` all need the other shape.
+              `LocalSession::spawn` already takes `cwd: Option<PathBuf>`, so the core end
+              is ready.
+        - [ ] **Who governs it is decided by WHERE THE SHELL RUNS, not by which UI
+              asked.** On the user's own machine (a local vault) the user decides, and the
+              instance has no say. On the instance — the web UI, **and a desktop client in
+              a server context** — the instance may offer a default, impose one, or refuse
+              the choice. A desktop client in a server context opens its terminals on the
+              server, which the code already says for the shell itself (*"on a server the
+              shell is the server's"*), so the argument that justifies imposing a path
+              applies there exactly as in a browser. `isServerCtx` is the discriminator
+              that already exists; "desktop vs web" is not, and would leave that case
+              ungoverned.
+        - [ ] Two instance settings rather than one, pushed to the core like
+              `ssh_connect_timeout`: the path, and whether an account may override it. A
+              path has no ordering, so "can only be narrowed" — the health-check shape —
+              does not apply; it is free, defaulted, or imposed. Resolution follows
+              `resolve_host_key_mode`: imposed > account's document > the shell's own
+              default (ADR 0020 addendum).
+        - [ ] Its row in the admin console, in both locales — and in the account's
+              Settings the imposed case REPORTS the value instead of offering a field, as
+              the host-key row already does on a server. A control that cannot be used is
+              worse than a sentence saying who decided.
+
+        A path that is gone needs no new rule, but not for the reason first written here:
+        `CommandBuilder::cwd` on a missing directory does NOT fail the spawn on Linux
+        (portable-pty 0.9 returns `Ok` and the child starts in the calling process's
+        directory — measured). `spawn_inner` filters on `.is_dir()` anyway, which is
+        load-bearing on Windows, where `CreateProcessW` refuses. Either way a bad value
+        starts where the shell would have. Never a lost pane.
 
   Adding a kind is now three steps: extend `LeafPaneNode` in
   `apps/desktop/src/types/pane.ts`, write the kind under
