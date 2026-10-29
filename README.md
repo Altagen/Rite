@@ -124,7 +124,8 @@ task check
 
 This runs in order: `cargo fmt --check`, `clippy`, `cargo test`, both dependency audits
 (`scripts/audit.sh`, which fails when a check could not run, found a yanked crate, or
-never started — `cargo audit` exits 0 in all three cases) and `tsc`. Same checks as CI — if it passes locally, it passes on the remote.
+never started — `cargo audit` exits 0 in all three cases — and which is the only place
+the `pnpm audit` threshold is set) and `tsc`. Same checks as CI — if it passes locally, it passes on the remote.
 
 ### Building for Production
 

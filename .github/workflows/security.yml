@@ -32,8 +32,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      # Through the script: this step ended in `|| true`, so the weekly scan could not
+      # fail. See scripts/audit.sh.
       - name: Run pnpm audit
-        run: pnpm audit --audit-level=high || true
+        run: sh scripts/audit.sh js
 
   # Cargo security audit
   cargo-audit:

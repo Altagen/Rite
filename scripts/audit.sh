@@ -99,7 +99,10 @@ again."
 
 audit_js() {
   say "pnpm audit — the JavaScript tree"
-  pnpm audit
+  # The threshold lives here and nowhere else. Both CI jobs named it themselves and both
+  # then threw the result away — one with `|| true`, one with `continue-on-error: true` —
+  # so the JavaScript audit had never been able to fail anything.
+  pnpm audit --audit-level=high
 }
 
 case ${1:-all} in

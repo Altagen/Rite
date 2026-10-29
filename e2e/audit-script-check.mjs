@@ -8,9 +8,14 @@
  * image name pointed at nothing, the first version of the wrapper printed "audit
  * complete: every check ran" and exited 0.
  *
- * So `scripts/audit.sh` proves the run happened before it believes the result, and every
- * caller goes through it. This check holds both halves, because a bare `cargo audit` is
- * one line away and nothing else would notice.
+ * The JavaScript side was worse: both CI jobs named a threshold and both then threw the
+ * result away, one with `|| true` and one with `continue-on-error: true`, so `pnpm audit`
+ * had never been able to fail anything at all.
+ *
+ * So `scripts/audit.sh` proves the run happened before it believes the result, it is the
+ * only place either audit is invoked or thresholded, and no caller is allowed to discard
+ * what it says. This check holds all of that, because a bare `cargo audit` is one line
+ * away and nothing else would notice.
  *
  * Run: node e2e/audit-script-check.mjs
  */
@@ -28,6 +33,9 @@ const read = (rel) => readFileSync(resolve(ROOT, rel), 'utf8');
  */
 const INVOCATIONS = () => script.match(/(?<!")cargo audit\b[^\n]*/g) ?? [];
 
+/** The workflow jobs that run an audit, by the step's `run:` line. */
+const WORKFLOWS = ['.github/workflows/ci.yml', '.github/workflows/security.yml'];
+
 let passed = 0;
 const check = (name, fn) => {
   try {
@@ -41,8 +49,13 @@ const check = (name, fn) => {
   }
 };
 
-/** The script's code, header stripped: a comment can say anything, only code runs. */
-const strip = (text) => text.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+/**
+ * What actually runs: comments stripped, and a workflow step's `name:` with them — "Run
+ * pnpm audit" is a label, not an invocation.
+ */
+const strip = (text) => text.split('\n')
+  .filter((l) => !/^\s*#/.test(l) && !/^\s*-?\s*name:/.test(l))
+  .join('\n');
 const script = strip(read('scripts/audit.sh'));
 /** Every file that could invoke the audit itself. */
 const CALLERS = [
@@ -100,6 +113,39 @@ check('success is claimed once, and last', () => {
   assert.equal(lines.at(-1), hits[0], 'something runs after success is claimed');
 });
 
+check('the JavaScript threshold is named once', () => {
+  // Every caller said `--audit-level=high` itself, which is how both came to ignore it.
+  assert.match(script, /pnpm audit --audit-level=high/);
+  const elsewhere = CALLERS.filter((f) => /--audit-level/.test(strip(read(f))));
+  assert.deepEqual(elsewhere, [], 'these set the threshold themselves instead of calling the script');
+});
+
+check('no caller discards what the audit says', () => {
+  // `|| true` on the step and `continue-on-error: true` on the job are the same defect
+  // as a swallowed exit code: the audit runs, reports, and nothing happens.
+  const escaped = [];
+  for (const f of WORKFLOWS) {
+    const lines = strip(read(f)).split('\n');
+    lines.forEach((line, i) => {
+      if (!/sh scripts\/audit\.sh/.test(line)) return;
+      if (/\|\|\s*true/.test(line)) escaped.push(`${f}: || true`);
+      // The step's own keys follow its `run:`, at the same indentation.
+      const indent = line.match(/^\s*/)[0].length;
+      for (const next of lines.slice(i + 1)) {
+        if (!next.trim()) continue;
+        if (next.match(/^\s*/)[0].length < indent || /^\s*-\s/.test(next)) break;
+        if (/continue-on-error:\s*true/.test(next)) escaped.push(`${f}: continue-on-error`);
+      }
+    });
+  }
+  assert.deepEqual(escaped, [], 'an audit step whose result is thrown away');
+});
+
+check('no caller invokes pnpm audit bare', () => {
+  const bare = CALLERS.filter((f) => /(?<!scripts\/)\bpnpm audit\b/.test(strip(read(f))));
+  assert.deepEqual(bare, [], 'these run pnpm audit instead of scripts/audit.sh');
+});
+
 check('no caller invokes cargo audit bare', () => {
   const bare = CALLERS.filter((f) => /(?<!scripts\/)\bcargo audit\b/.test(strip(read(f))));
   assert.deepEqual(bare, [], 'these run cargo audit instead of scripts/audit.sh');
@@ -111,11 +157,14 @@ check('every caller runs the script', () => {
   }
 });
 
-check('the script answers for rust alone, as CI asks it to', () => {
+check('the script answers for one tree at a time, as CI asks it to', () => {
   // CI audits the two trees in two jobs, so the script has to be splittable.
   assert.match(script, /^\s*rust\)\s+audit_rust ;;$/m);
-  assert.match(read('.github/workflows/ci.yml'), /sh scripts\/audit\.sh rust/);
-  assert.match(read('.github/workflows/security.yml'), /sh scripts\/audit\.sh rust/);
+  assert.match(script, /^\s*js\)\s+audit_js ;;$/m);
+  for (const f of WORKFLOWS) {
+    assert.match(read(f), /sh scripts\/audit\.sh rust/, `${f} does not audit the Rust tree`);
+    assert.match(read(f), /sh scripts\/audit\.sh js/, `${f} does not audit the JavaScript tree`);
+  }
 });
 
 console.log(`\n${passed} checks passed (${CALLERS.length} callers, all through scripts/audit.sh)`);

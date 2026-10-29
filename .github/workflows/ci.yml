@@ -206,9 +206,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
+      # Through the script: this step carried `continue-on-error: true`, so a high
+      # advisory was printed and the job stayed green. See scripts/audit.sh.
       - name: Security audit
-        run: pnpm audit --audit-level=high
-        continue-on-error: true
+        run: sh scripts/audit.sh js
 
   # Cargo security audit
   cargo-audit:

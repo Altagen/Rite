@@ -51,7 +51,7 @@ task check
 `cargo fmt --check`, clippy, `cargo test`, both dependency audits, `tsc` and eslint — the
 same checks CI runs, in the same order. The audits go through `scripts/audit.sh`, which
 fails when a check could not run, found a yanked crate, or never started; `cargo audit`
-exits 0 in all three cases.
+exits 0 in all three cases. It is also where the `pnpm audit` threshold is set, once.
 
 Anything touching the UI, the server's policies or the SSH path wants the end-to-end
 gate as well. It builds what it tests, starts an SSH harness in a container, and runs
