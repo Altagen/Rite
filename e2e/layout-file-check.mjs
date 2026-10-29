@@ -26,6 +26,8 @@ import {
   formatLayoutFile,
   replacePresetBlocks,
   setLayoutStartup,
+  setTerminalValue,
+  NEW_TAB_CWD_INHERIT,
   planLayout,
   paneLabel,
 } from '../apps/desktop/src/store/layoutsFormat.ts';
@@ -118,6 +120,81 @@ check('a # inside a quoted command is part of the command', () => {
 
 console.log('\na file that does not:');
 
+/**
+ * Where a new tab starts (`[terminal] newTabCwd`).
+ *
+ * `inherit` is a value and not a behaviour change — a split already starts where its pane
+ * was standing, a tab does not, and the file is what settles which a person wants. So the
+ * parser has to tell the one keyword from a path, and refuse the near-miss rather than
+ * take it for a directory and fail at spawn with no line number.
+ */
+check('the documentation and the parser agree on what [terminal] takes', () => {
+  // The table was undocumented until `newTabCwd` needed a home, `copyMode` included. A
+  // documented key the parser refuses, or a key the parser takes and the file never
+  // mentions, is the drift this pins — the two were written three releases apart.
+  const doc = readFileSync(new URL('../docs/LAYOUTS.md', import.meta.url), 'utf8');
+  const section = doc.slice(doc.indexOf('## The terminal table'));
+  for (const key of ['copyMode', 'newTabCwd']) {
+    assert.ok(section.includes(key), `LAYOUTS.md does not document ${key}`);
+  }
+  // Every copy mode the parser accepts is named, so a mode added to one is missing here.
+  for (const mode of ['chord', 'select', 'selectRightPaste', 'ctrlC']) {
+    assert.ok(section.includes(mode), `LAYOUTS.md does not name the ${mode} copy mode`);
+  }
+  assert.ok(section.includes(NEW_TAB_CWD_INHERIT), 'the keyword is not in the documentation');
+  // And the example parses, which an example in prose is under no obligation to do.
+  const example = /```toml\n([\s\S]*?)```/.exec(section);
+  assert.ok(example, 'the section lost its example');
+  const parsed = parseLayoutFile(example[1]);
+  assert.equal(parsed.error, null, `the documented example does not parse: ${
+    parsed.error && parsed.error.message}`);
+  assert.equal(parsed.terminal.newTabCwd, NEW_TAB_CWD_INHERIT);
+  assert.equal(parsed.terminal.copyMode, 'select');
+});
+
+check('newTabCwd takes the keyword or an absolute path', () => {
+  assert.equal(
+    parseLayoutFile(`[terminal]\nnewTabCwd = "${NEW_TAB_CWD_INHERIT}"\n`).terminal.newTabCwd,
+    'inherit',
+  );
+  assert.equal(
+    parseLayoutFile('[terminal]\nnewTabCwd = "/srv/work"\n').terminal.newTabCwd,
+    '/srv/work',
+  );
+  // Absent is not the same as set: the shell's own default directory, as today.
+  assert.equal(parseLayoutFile('[terminal]\ncopyMode = "chord"\n').terminal.newTabCwd, undefined);
+});
+
+/** The writer, which is what a Settings control uses: the file is the value (ADR 0023). */
+check('a terminal value is written into the file, not beside it', () => {
+  // No table yet: it is created at the top, where a reader looks for a file-wide setting.
+  const fresh = setTerminalValue('', 'newTabCwd', 'inherit');
+  assert.equal(parseLayoutFile(fresh).terminal.newTabCwd, 'inherit');
+  assert.match(fresh, /^\[terminal\]\nnewTabCwd = "inherit"/);
+
+  // An existing file keeps its content, and the table goes above it rather than after a
+  // pane, where a bare key would have become that pane's.
+  const withLayout = '[[layout]]\nname = "Work"\n[[layout.pane]]\ncommand = "top"\n';
+  const added = setTerminalValue(withLayout, 'newTabCwd', '/srv/work');
+  assert.equal(parseLayoutFile(added).terminal.newTabCwd, '/srv/work');
+  assert.equal(parseLayoutFile(added).layouts[0].name, 'Work');
+  assert.ok(added.indexOf('[terminal]') < added.indexOf('[[layout]]'));
+
+  // Set again: replaced, not appended twice — which the parser would refuse.
+  const changed = setTerminalValue(added, 'newTabCwd', 'inherit');
+  assert.equal(parseLayoutFile(changed).error, null);
+  assert.equal(parseLayoutFile(changed).terminal.newTabCwd, 'inherit');
+
+  // And removed with null, leaving the table and its neighbours alone.
+  const both = setTerminalValue(changed, 'copyMode', 'chord');
+  const cleared = setTerminalValue(both, 'newTabCwd', null);
+  assert.equal(parseLayoutFile(cleared).terminal.newTabCwd, undefined);
+  assert.equal(parseLayoutFile(cleared).terminal.copyMode, 'chord', 'the sibling key stays');
+
+  // Removing what is not there changes nothing at all.
+  assert.equal(setTerminalValue(cleared, 'newTabCwd', null), cleared);
+});
+
 const fails = (text, line, fragment) => {
   const { layouts, error } = parseLayoutFile(text);
   assert.notEqual(error, null, 'this file should not have parsed');
@@ -130,6 +207,23 @@ const fails = (text, line, fragment) => {
     `the message should mention ${JSON.stringify(fragment)}: ${error.message}`,
   );
 };
+
+check('newTabCwd refuses what would fail later instead', () => {
+  // A near-miss of the keyword, which would otherwise be read as a relative directory.
+  fails('[terminal]\nnewTabCwd = "inherited"\n', 2, 'inherit or an absolute path');
+  // A relative path means two different places: the file is read on one machine and the
+  // shell can start on another.
+  fails('[terminal]\nnewTabCwd = "work"\n', 2, 'inherit or an absolute path');
+  fails('[terminal]\nnewTabCwd = ""\n', 2, 'not nothing');
+  fails('[terminal]\nnewTabCwd = "/a"\nnewTabCwd = "/b"\n', 3, 'set twice');
+});
+
+check('the terminal table still names what it takes', () => {
+  // The refusal grew a second key and has to say so, or the message sends someone looking
+  // for a typo in a key that is now legal.
+  fails('[terminal]\nnewTabCwdd = "/a"\n', 2, 'takes copyMode or newTabCwd');
+});
+
 
 check('an unquoted value names its line', () => {
   fails('[[layout]]\nname = "A"\n\n  [[layout.pane]]\n  machine = web-01\n', 5, 'quoted string');

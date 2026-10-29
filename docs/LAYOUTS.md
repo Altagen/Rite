@@ -257,6 +257,38 @@ host, the SSH handshakes — each pane is its own session, and OpenSSH ships wit
 `MaxSessions 10`. Use `tab` for the rest: panes for what you watch side by side, tabs
 for changing context.
 
+## The terminal table
+
+One table, not a list, for what this machine does rather than how it is arranged.
+
+```toml
+[terminal]
+copyMode = "select"                   # how copy and paste behave
+newTabCwd = "inherit"                 # where a new tab starts
+```
+
+`copyMode` is one of `chord`, `select`, `selectRightPaste`, `ctrlC`. Absent means the
+shipped default.
+
+`newTabCwd` is `inherit`, or an absolute path. Absent means the shell's own default
+directory, which is what Rite has always done.
+
+**Why `inherit` is a value and not the new behaviour.** A split already starts where the
+pane it came from is standing; a new tab does not. That is deliberate — "leave me where I
+was" is unambiguous for a division of a pane and a guess anywhere else — and people
+disagree about which they want for a tab. So the file says, rather than the application
+choosing for everyone.
+
+A relative path is refused with its line number. The file is read on one machine and the
+shell can start on another, so `work` would mean two different places; `inherited` is
+refused too, because a near-miss of the keyword would otherwise be taken for a directory
+and fail when the pane opened, with nothing to say why.
+
+**On a server, the instance may decide.** Where the shell runs is what settles who
+governs: a desktop window runs its terminals on your machine, whatever it is connected to,
+so this value is yours there. A browser has no machine of its own, so the instance's
+setting applies and this key is reported rather than offered.
+
 ## Pre-connect hooks
 
 A machine's pre-connect hook (**the connection's own setting** — VPN up, SSO refresh)
