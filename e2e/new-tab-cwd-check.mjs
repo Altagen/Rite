@@ -306,23 +306,36 @@ check('an empty field is the absent key, and only a path is written', () => {
   );
 });
 
-check('the row says what it governs, in both locales', () => {
-  // The first label was "Always start in one folder" — no subject, in a section that also
-  // holds the shell picker, so nothing on screen said what ended up in the folder. The
-  // owner read it and said so. A switch has to name a new tab; the hint has to say what
-  // the OTHER state does, or the setting is legible only to whoever wrote it.
+check('the row says what it governs, briefly, in both locales', () => {
+  // Three passes on these five strings, so the shape is pinned rather than remembered.
+  //
+  // "Always start in one folder" named no subject, in a section that also holds the shell
+  // picker — nothing on screen said what ended up in the folder. The pass that fixed it
+  // overcorrected into three sentences explaining the off state, the no-pane case and
+  // what a split does. A split is not this setting; `docs/LAYOUTS.md` is where that goes.
+  //
+  // So: the label names the thing, the hint says where a terminal opens and what off
+  // means, and nothing explains the control. The caps are what the second pass needed.
+  const CAP = { newTabCwd: 40, newTabCwdPath: 40, newTabCwdAbsolute: 40 };
   for (const locale of ['en', 'fr']) {
     const { settings } = JSON.parse(read(`apps/desktop/src/i18n/locales/${locale}.json`));
     const says = (key, rx, what) =>
       assert.match(settings[key], rx, `${locale}.${key} does not say ${what}`);
-    says('newTabCwd', /\btabs?\b|onglet/i, 'what it governs');
-    says('newTabCwdDesc', /\btabs?\b|onglet/i, 'what it governs');
-    says('newTabCwdDesc', /pane|panneau/i, 'where a new tab starts when it is off');
+    says('newTabCwd', /terminal/i, 'what it presets');
+    says('newTabCwd', /folder|dossier/i, 'that it is a folder');
+    says('newTabCwdDesc', /terminal/i, 'what it governs');
+    says('newTabCwdDesc', /pane|panneau/i, 'where a terminal opens when it is off');
     says('newTabCwdDesc', /home|personnel/i, 'what happens with no pane to follow');
-    says('newTabCwdDesc', /split|division/i, 'that a split is unaffected');
     says('newTabCwdPath', /folder|dossier/i, 'what the field holds');
     says('newTabCwdPathDesc', /absolute|absolu/i, 'which paths it takes');
-    says('newTabCwdPathDesc', /newTabCwd/, 'where the value is written');
+    says('newTabCwdPathDesc', /document/i, 'where the value is kept');
+    for (const [key, cap] of Object.entries({ ...CAP, newTabCwdDesc: 120 })) {
+      assert.ok(
+        settings[key].length <= cap,
+        `${locale}.${key} is ${settings[key].length} characters, over ${cap}: ` +
+          `"${settings[key]}"`,
+      );
+    }
   }
 });
 
