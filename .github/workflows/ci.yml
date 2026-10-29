@@ -223,8 +223,10 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit
 
+      # Through the script, not bare: `cargo audit` exits 0 on a yanked crate and on a
+      # check it could not run. See scripts/audit.sh.
       - name: Run security audit
-        run: cargo audit
+        run: sh scripts/audit.sh rust
 
   # CodeQL analysis
   codeql:

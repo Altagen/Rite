@@ -123,8 +123,8 @@ task check
 ```
 
 This runs in order: `cargo fmt --check`, `clippy`, `cargo test`, both dependency audits
-(`scripts/audit.sh`, which fails when a check could not run rather than reporting what it
-managed to ask) and `tsc`. Same checks as CI — if it passes locally, it passes on the remote.
+(`scripts/audit.sh`, which fails when a check could not run, found a yanked crate, or
+never started — `cargo audit` exits 0 in all three cases) and `tsc`. Same checks as CI — if it passes locally, it passes on the remote.
 
 ### Building for Production
 
