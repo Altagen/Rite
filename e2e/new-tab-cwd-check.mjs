@@ -306,4 +306,24 @@ check('an empty field is the absent key, and only a path is written', () => {
   );
 });
 
+check('the row says what it governs, in both locales', () => {
+  // The first label was "Always start in one folder" — no subject, in a section that also
+  // holds the shell picker, so nothing on screen said what ended up in the folder. The
+  // owner read it and said so. A switch has to name a new tab; the hint has to say what
+  // the OTHER state does, or the setting is legible only to whoever wrote it.
+  for (const locale of ['en', 'fr']) {
+    const { settings } = JSON.parse(read(`apps/desktop/src/i18n/locales/${locale}.json`));
+    const says = (key, rx, what) =>
+      assert.match(settings[key], rx, `${locale}.${key} does not say ${what}`);
+    says('newTabCwd', /\btabs?\b|onglet/i, 'what it governs');
+    says('newTabCwdDesc', /\btabs?\b|onglet/i, 'what it governs');
+    says('newTabCwdDesc', /pane|panneau/i, 'where a new tab starts when it is off');
+    says('newTabCwdDesc', /home|personnel/i, 'what happens with no pane to follow');
+    says('newTabCwdDesc', /split|division/i, 'that a split is unaffected');
+    says('newTabCwdPath', /folder|dossier/i, 'what the field holds');
+    says('newTabCwdPathDesc', /absolute|absolu/i, 'which paths it takes');
+    says('newTabCwdPathDesc', /newTabCwd/, 'where the value is written');
+  }
+});
+
 console.log(`\n${passed} checks passed`);

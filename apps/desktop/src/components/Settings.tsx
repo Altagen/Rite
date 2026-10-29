@@ -668,11 +668,12 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     }}
                     testId="new-tab-cwd"
                   />
+                  {/* One hint in both states: the greyed field is what says it is not in
+                    force, and a second sentence explaining the grey would be explaining
+                    the control rather than the setting. */}
                   <SettingsField
                     label={t('settings.newTabCwdPath')}
-                    hint={
-                      fixedStart ? t('settings.newTabCwdPathDesc') : t('settings.newTabCwdOff')
-                    }
+                    hint={t('settings.newTabCwdPathDesc')}
                   >
                     <input
                       value={newTabCwdDraft}
