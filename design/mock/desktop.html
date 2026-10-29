@@ -1062,7 +1062,7 @@ const PREFS=[
       `<h4>Terminals</h4><p class="lede">The shell a new local terminal opens, and in which folder. The shell is the same setting as the picker in the toolbar \u2014 changing it either way changes both.</p>`
     + prefRow('Shell','Detected on this computer',
         `<select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name} — ${s.path}${s.installed?'':' (not installed)'}</option>`).join('')}</select>`)
-    + prefRow('Custom path','For a shell Rite didn\'t find',`<input class="inp mono" style="width:190px" placeholder="/opt/bin/nu" onchange="if(this.value.trim()){STATE.defaultShell=this.value.trim();renderActs()}">`)
+    + prefRow('Another shell','By full path',`<input class="inp mono" style="width:190px" placeholder="/opt/bin/nu" onchange="if(this.value.trim()){STATE.defaultShell=this.value.trim();renderActs()}">`)
     /* WHERE a new tab starts, beside WHICH shell starts: one decision about one button.
 
        ONE FIELD, TWO STATES. A path and every new tab starts there; empty and a new tab
@@ -1079,7 +1079,7 @@ const PREFS=[
        path is read there and none is imposed (ADR 0031). A new tab there opens in the
        image's working directory every time, not the standing pane's; only a split follows
        its pane. */
-    + prefRow('Preset terminal folder','Where a new terminal opens. Off: the folder of the standing pane, or home.',
+    + prefRow('Preset terminal folder','Off, the shell\u2019s default path for the first terminal; then inherited from the standing pane. On, the given path, which must exist.',
         `<div class="toggle ${STATE.newTabFixed?'on':''}" onclick="STATE.newTabFixed=!STATE.newTabFixed;if(!STATE.newTabFixed)STATE.newTabCwd='';renderPrefsPane()"><i></i></div>`)
     /* One hint in both states: the greyed field is what says it is not in force, and a
        second sentence explaining the grey would explain the control, not the setting. */

@@ -314,8 +314,10 @@ check('the row says what it governs, briefly, in both locales', () => {
   // overcorrected into three sentences explaining the off state, the no-pane case and
   // what a split does. A split is not this setting; `docs/LAYOUTS.md` is where that goes.
   //
-  // So: the label names the thing, the hint says where a terminal opens and what off
-  // means, and nothing explains the control. The caps are what the second pass needed.
+  // So: the label names the thing, the hint covers both states, and nothing explains the
+  // control. The hint's wording is the owner's own — the first terminal gets the shell's
+  // default path, a later one follows the standing pane, and a named path has to exist —
+  // which is why its cap is 160 and not the 120 the second pass needed.
   const CAP = { newTabCwd: 40, newTabCwdPath: 40, newTabCwdAbsolute: 40 };
   for (const locale of ['en', 'fr']) {
     const { settings } = JSON.parse(read(`apps/desktop/src/i18n/locales/${locale}.json`));
@@ -324,12 +326,13 @@ check('the row says what it governs, briefly, in both locales', () => {
     says('newTabCwd', /terminal/i, 'what it presets');
     says('newTabCwd', /folder|dossier/i, 'that it is a folder');
     says('newTabCwdDesc', /terminal/i, 'what it governs');
-    says('newTabCwdDesc', /pane|panneau/i, 'where a terminal opens when it is off');
-    says('newTabCwdDesc', /home|personnel/i, 'what happens with no pane to follow');
+    says('newTabCwdDesc', /pane|panneau/i, 'what a later terminal follows when it is off');
+    says('newTabCwdDesc', /default|défaut/i, 'where the first terminal starts when it is off');
+    says('newTabCwdDesc', /exist/i, 'that a named path has to be there');
     says('newTabCwdPath', /folder|dossier/i, 'what the field holds');
     says('newTabCwdPathDesc', /absolute|absolu/i, 'which paths it takes');
     says('newTabCwdPathDesc', /document/i, 'where the value is kept');
-    for (const [key, cap] of Object.entries({ ...CAP, newTabCwdDesc: 120 })) {
+    for (const [key, cap] of Object.entries({ ...CAP, newTabCwdDesc: 160 })) {
       assert.ok(
         settings[key].length <= cap,
         `${locale}.${key} is ${settings[key].length} characters, over ${cap}: ` +
