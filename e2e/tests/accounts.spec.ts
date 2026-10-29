@@ -1054,6 +1054,7 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   // machine whose paths the workspace document never described — so no path is read here
   // and none is imposed, and a field offering one would describe nothing (ADR 0031).
   await expect(page.getByTestId('new-tab-cwd')).toHaveCount(0);
+  await expect(page.getByTestId('new-tab-cwd-path')).toHaveCount(0);
 
   // The toolbar section offers switches for buttons that exist. The shell picker is not one
   // of them in a browser, and neither is Quick SSH here: the premise is read from the server

@@ -222,7 +222,7 @@ check('Settings asks that function, and a document it can write', () => {
   );
 });
 
-check('the field reads the document and holds no copy of it', () => {
+check('the switch reads the document and holds no copy of its value', () => {
   // ADR 0023: the file IS the value. `copyMode` is reported rather than offered next door
   // because a control beside the file would be a second place to set one value; a control
   // that WRITES the file is not. The draft is the text being typed, not the value.
@@ -238,11 +238,44 @@ check('the field reads the document and holds no copy of it', () => {
     (l) => /useState[^\n]*newTabCwd/i.test(l) && !/Draft/.test(l),
   );
   assert.deepEqual(held, [], `Settings keeps the value in component state: ${held.join(' / ')}`);
-  // And the draft is seeded from the document rather than from a default, so the field
-  // opens showing what is in force.
+  // And both the draft and the switch are seeded from the document, so the row opens
+  // showing what is in force rather than what was last clicked.
   assert.ok(
     /setNewTabCwdDraft\(newTabCwd \?\? ''\)/.test(SETTINGS),
     'the field no longer opens on the value the document holds',
+  );
+  assert.ok(
+    /if \(newTabCwd !== null\) setFixedStart\(true\);/.test(SETTINGS),
+    'the switch no longer opens on whether the document holds a path',
+  );
+});
+
+check('the switch is the control, not a native checkbox', () => {
+  // A native one is drawn by WebKitGTK in the desktop shell and by the browser in the web
+  // UI: the same bundle showing two different controls, which is the one thing these two
+  // surfaces must never do. `SettingsToggle` draws `SwitchPill` for every switch here.
+  assert.ok(
+    /<SettingsToggle\n\s*title=\{t\('settings\.newTabCwd'\)\}/.test(SETTINGS),
+    'the row no longer uses the shared switch',
+  );
+  assert.ok(
+    !/type="checkbox"/.test(SETTINGS),
+    'Settings draws a native checkbox somewhere',
+  );
+});
+
+check('the path field is dead while the switch is off', () => {
+  // Greyed rather than hidden, so the setting reads as one thing with two states instead
+  // of a field that appears and disappears.
+  assert.ok(/disabled=\{!fixedStart\}/.test(SETTINGS), 'the path field is still live when off');
+  assert.ok(
+    /disabled:cursor-not-allowed disabled:opacity-50/.test(SETTINGS),
+    'the disabled field is not drawn as disabled',
+  );
+  // Switching off removes the key, so the standing pane answers again.
+  assert.ok(
+    /if \(!next && newTabCwd !== null\) void setNewTabCwd\(null\);/.test(SETTINGS),
+    'switching the row off no longer removes the key',
   );
 });
 
@@ -260,8 +293,9 @@ check('the field names no keyword, because there are none left', () => {
 });
 
 check('an empty field is the absent key, and only a path is written', () => {
-  // Cleared ⇒ the key goes, so the standing pane answers again. The parser refuses
-  // anything else with a line number, and this field would be writing that refusal.
+  // Cleared with the switch still on ⇒ the key goes and the field stays there to type in.
+  // The parser refuses anything else with a line number, and this field would be writing
+  // that refusal into the document.
   assert.ok(
     /if \(v === ''\) \{\n\s*if \(newTabCwd !== null\) void setNewTabCwd\(null\);/.test(SETTINGS),
     'clearing the field no longer removes the key',

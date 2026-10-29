@@ -337,9 +337,11 @@ let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false
   // say which it is (ADR 0023, addendum).
   copyMode:'select',
   // Where a new tab's shell starts, from the same table: an absolute path, or empty.
-  // Empty ⇒ the standing pane, or the home directory with no pane to follow. Offered and
-  // not merely reported, because the field writes the document — see Terminals.
-  newTabCwd:'',
+  // Empty ⇒ the standing pane, or the home directory with no pane to follow. The switch
+  // beside it is the two states made visible; it holds no value of its own, so turning it
+  // off clears the path. Offered and not merely reported, because the field writes the
+  // document — see Terminals.
+  newTabCwd:'', newTabFixed:false,
   // Which toolbar buttons this person wants. Hiding one never grants or revokes
   // anything: the server policies and the keyboard shortcuts are unchanged.
   toolbar:{shell:true,newTermMenu:true,focus:true,quick:true,agents:true,layouts:true},
@@ -1077,8 +1079,10 @@ const PREFS=[
        path is read there and none is imposed (ADR 0031). A new tab there opens in the
        image's working directory every time, not the standing pane's; only a split follows
        its pane. */
-    + prefRow('Where a new tab starts','An absolute path, and every new tab starts there. Empty, and a new tab follows the standing pane \u2014 or the home directory, with no pane to follow. Held in the workspace document, under [terminal] newTabCwd; a split always follows its pane.',
-        `<input class="inp mono" style="width:190px" placeholder="The standing pane, or the home directory" value="${STATE.newTabCwd}" onchange="STATE.newTabCwd=this.value.trim().startsWith('/')?this.value.trim():'';renderPrefsPane()">`) },
+    + prefRow('Always start in one folder','Off, a new tab follows the standing pane \u2014 or the home directory, with no pane to follow. Held in the workspace document, under [terminal] newTabCwd; a split always follows its pane.',
+        `<div class="toggle ${STATE.newTabFixed?'on':''}" onclick="STATE.newTabFixed=!STATE.newTabFixed;if(!STATE.newTabFixed)STATE.newTabCwd='';renderPrefsPane()"><i></i></div>`)
+    + prefRow('Folder',STATE.newTabFixed?'An absolute path, resolved on the machine the shell runs on.':'Not applied while the switch above is off.',
+        `<input class="inp mono" style="width:190px${STATE.newTabFixed?'':';opacity:.5'}" placeholder="/srv/work" value="${STATE.newTabCwd}" ${STATE.newTabFixed?'':'disabled'} onchange="STATE.newTabCwd=this.value.trim().startsWith('/')?this.value.trim():'';renderPrefsPane()">`) },
 
   { id:'splits', label:'Split presets', body:()=>
       `<h4>Split presets</h4><p class="lede">A divider opens a plain terminal — that is the button. A preset is that same divider running one named command, offered by the chevron beside it.</p>`

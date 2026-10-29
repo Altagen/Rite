@@ -77,12 +77,29 @@ inside the server container. What is left is the code.
               computer, so its id would have the server find no local session and start the
               shell wherever Rite stands — silently. `Workspace.tsx` follows a pane only
               when `connectionId === 'local'`, and the home directory answers otherwise.
-        - [x] **A field in Settings that writes the document**, rather than a second place
-              holding the same value — which is why it is offered and `copyMode` beside it
-              is only reported: nothing writes that one back. Under Terminals, beside which
-              shell starts, because where a new tab starts and which shell it starts are one
-              decision about one button. Empty is the absent key and the placeholder says
-              what empty does.
+        - [x] **A switch in Settings that writes the document**, rather than a second
+              place holding the same value — which is why it is offered and `copyMode`
+              beside it is only reported: nothing writes that one back. Under Terminals,
+              beside which shell starts, because where a new tab starts and which shell it
+              starts are one decision about one button.
+
+              A SWITCH AND A GREYED FIELD, the owner's shape: *« une case à cocher (par
+              défaut ce que je t'ai dit) et si on la coche => on arrive dans le path
+              prédéfini qui est grisé quand la case n'est pas cochée »*. It replaced a bare
+              path field whose empty state said what it does only in its hint. The switch
+              holds no value of its own — it is whether the key is set — and turning it off
+              removes the key. It is `SettingsToggle` and not a native checkbox: WebKitGTK
+              draws one here and the browser another, and the same bundle showing two
+              different controls is the one thing these two surfaces must never do.
+
+              The web UI gets no row, and that was weighed rather than assumed: the
+              container has one directory that matters (`useradd --home-dir /home/rite`,
+              with the data volume mounted beneath it) and everything else belongs to root,
+              so the field would offer a choice between the default it already has and
+              directories the member cannot write. Not a security argument — a member with
+              a shell can `cd` anywhere they can read — but a control with one useful
+              value. If a project volume is ever mounted there, this switch is the shape to
+              add.
 
               The field is gated on `newTabCwdApplies` — the same function `newTabCwdStart`
               applies a path through, not a second reading of `runsHere`, so a control that

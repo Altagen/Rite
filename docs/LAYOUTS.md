@@ -291,11 +291,13 @@ and nothing can `chdir` to it.
 A directory that is not there is not an error: the shell starts where it would have. A tab
 is worth more than the directory it opened in.
 
-**Settings holds the field, and writes it here.** On the desktop, under Terminals, beside
-which shell starts. Empty is the absent state and says so; a path is written as this key.
-There is no second place holding the value, so neither can win on which was touched last.
-`copyMode` above is reported and not offered for the opposite reason — nothing writes it
-back.
+**Settings holds the switch, and writes it here.** On the desktop, under Terminals,
+beside which shell starts: a switch for the two states, and a path field under it that is
+greyed while the switch is off. Turning it off removes the key. There is no second place
+holding the value, so neither can win on which was touched last. `copyMode` above is
+reported and not offered for the opposite reason — nothing writes it back.
+
+The web UI has no row at all, which is the same decision as the paragraph below.
 
 **On a server the path is not read, and none is imposed.** The desktop runs its terminals
 on your own machine, whatever context is active (ADR 0031), so the directory is yours and

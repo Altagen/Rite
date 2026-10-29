@@ -232,10 +232,16 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   /** Where a new tab starts: an absolute path, or null for the standing pane / home. */
   const newTabCwd = useLayouts((st) => st.newTabCwd);
   const setNewTabCwd = useLayouts((st) => st.setNewTabCwd);
+  // The switch is the document's two states — a path is set, or it is not — and the draft
+  // is the text being typed. `fixedStart` is held here and not derived, because checking
+  // the switch has to open the field before there is a path to write; until one is typed
+  // the key stays absent, so the document never holds a directory nobody named.
+  const [fixedStart, setFixedStart] = useState(false);
   const [newTabCwdDraft, setNewTabCwdDraft] = useState('');
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync draft to async-loaded value
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync to async-loaded value
     setNewTabCwdDraft(newTabCwd ?? '');
+    if (newTabCwd !== null) setFixedStart(true);
   }, [newTabCwd]);
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [layoutsOpen, setLayoutsOpen] = useState(false);
@@ -630,11 +636,14 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               {/* WHERE a new tab starts, beside WHICH shell starts, because they are one
                 decision about one button.
 
-                One field and two states, which is the whole setting: a path and every new
-                tab starts there, nothing and a new tab follows the standing pane — or
-                opens in the home directory when no pane stands. The earlier shape offered
-                `inherit` and `home` as choices beside a path, which made a question out of
-                what people expect anyway.
+                A switch and a field under it, which is the document's own two states made
+                visible: a path and every new tab starts there, nothing and a new tab
+                follows the standing pane — or opens in the home directory when no pane
+                stands. An empty field said the same thing and said it only in its hint.
+
+                A switch and not a checkbox: a native one is drawn by WebKitGTK here and by
+                the browser in the web UI, and the same bundle showing two different
+                controls is the one thing these two surfaces must never do (`Switch.tsx`).
 
                 Offered here rather than shown — unlike the copy convention next door —
                 because the field writes the document itself. There is no second place
@@ -642,33 +651,57 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
                 Two conditions, both borrowed rather than restated: `newTabCwdApplies` is
                 the function the behaviour runs on, so the field cannot offer a value this
-                client ignores; and a document that cannot be read cannot be written. */}
+                client ignores; and a document that cannot be read cannot be written. The
+                web UI therefore has no row at all — every terminal there opens in the
+                image's working directory. */}
               {newTabCwdApplies(shellOwnership) && hasWorkspaceFile && (
-                <SettingsField label={t('settings.newTabCwd')} hint={t('settings.newTabCwdDesc')}>
-                  <input
-                    value={newTabCwdDraft}
-                    onChange={(e) => setNewTabCwdDraft(e.target.value)}
-                    onBlur={() => {
-                      const v = newTabCwdDraft.trim();
-                      // Cleared ⇒ the key goes, and the standing pane answers again.
-                      // Anything the parser would refuse is not written at all: this field
-                      // would be writing the refusal into the document.
-                      if (v === '') {
-                        if (newTabCwd !== null) void setNewTabCwd(null);
-                      } else if (v.startsWith('/') && v !== newTabCwd) {
-                        void setNewTabCwd(v);
-                      }
+                <>
+                  <SettingsToggle
+                    title={t('settings.newTabCwd')}
+                    hint={t('settings.newTabCwdDesc')}
+                    checked={fixedStart}
+                    onChange={(next) => {
+                      setFixedStart(next);
+                      // Switched off ⇒ the key goes, and the standing pane answers again.
+                      // On, the field opens and the key waits for a path.
+                      if (!next && newTabCwd !== null) void setNewTabCwd(null);
                     }}
-                    placeholder={t('settings.newTabCwdEmpty')}
-                    className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm"
-                    data-testid="new-tab-cwd"
+                    testId="new-tab-cwd"
                   />
-                  {newTabCwdDraft.trim() !== '' && !newTabCwdDraft.trim().startsWith('/') && (
-                    <p className="mt-1 text-xs text-amber-500" data-testid="new-tab-cwd-refused">
-                      {t('settings.newTabCwdAbsolute')}
-                    </p>
-                  )}
-                </SettingsField>
+                  <SettingsField
+                    label={t('settings.newTabCwdPath')}
+                    hint={
+                      fixedStart ? t('settings.newTabCwdPathDesc') : t('settings.newTabCwdOff')
+                    }
+                  >
+                    <input
+                      value={newTabCwdDraft}
+                      disabled={!fixedStart}
+                      onChange={(e) => setNewTabCwdDraft(e.target.value)}
+                      onBlur={() => {
+                        const v = newTabCwdDraft.trim();
+                        // Cleared ⇒ the key goes, the switch staying on so the field is
+                        // still there to type in. Anything the parser would refuse is not
+                        // written at all: this field would be writing the refusal.
+                        if (v === '') {
+                          if (newTabCwd !== null) void setNewTabCwd(null);
+                        } else if (v.startsWith('/') && v !== newTabCwd) {
+                          void setNewTabCwd(v);
+                        }
+                      }}
+                      placeholder="/srv/work"
+                      className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                      data-testid="new-tab-cwd-path"
+                    />
+                    {fixedStart &&
+                      newTabCwdDraft.trim() !== '' &&
+                      !newTabCwdDraft.trim().startsWith('/') && (
+                        <p className="mt-1 text-xs text-amber-500" data-testid="new-tab-cwd-refused">
+                          {t('settings.newTabCwdAbsolute')}
+                        </p>
+                      )}
+                  </SettingsField>
+                </>
               )}
             </section>
 
