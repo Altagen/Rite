@@ -264,61 +264,49 @@ One table, not a list, for what this machine does rather than how it is arranged
 ```toml
 [terminal]
 copyMode = "select"                   # how copy and paste behave
-newTabCwd = "inherit"                 # where a new tab starts
+newTabCwd = "/srv/work"               # where a new tab starts
 ```
 
 `copyMode` is one of `chord`, `select`, `selectRightPaste`, `ctrlC`. Absent means the
 shipped default.
 
-`newTabCwd` is `inherit`, `home`, or an absolute path. Absent means the shell's own
-default directory, which is what Rite has always done.
+`newTabCwd` is an absolute path, or absent. One value and two states:
 
 | value | a new tab starts |
 | --- | --- |
-| absent | where the shell would have — the directory Rite itself stands in |
-| `inherit` | in the same directory as the pane that has focus |
-| `home` | in the home directory of the machine that runs the shell |
-| `/srv/work` | there |
+| absent | where the standing pane is — or in the home directory, with no pane to follow |
+| `/srv/work` | there, every time |
 
-**Why `inherit` is a value and not the new behaviour.** A split already starts where the
-pane it came from is standing; a new tab does not. That is deliberate — "leave me where I
-was" is unambiguous for a division of a pane and a guess anywhere else — and people
-disagree about which they want for a tab. So the file says, rather than the application
-choosing for everyone.
+**A split always follows its pane**, whatever this says. It is a division of the pane it
+came from, so "leave me where I was" is unambiguous there; this key is about the tab
+button, and about nothing else. A duplicated tab and a layout's panes are unaffected too —
+a declared workspace says what it wants, and a standing preference is not it.
 
-**Why `home` is a word and not a path.** The path is not the file's to write. This
-document travels: with an account it is read on every machine that account signs in from,
-and `/home/ada` is wrong on all but one of them — and is a username besides. So the word
-travels and the machine that starts the shell resolves it.
+**Why an absolute path and nothing else.** The file is read on one machine and the shell
+can start on another, so `work` would mean two different places. It is refused with its
+line number rather than taken for a directory and failing when the pane opens, with
+nothing to say why. A `~` is refused for the same reason: it is the shell's own expansion
+and nothing can `chdir` to it.
 
-A relative path is refused with its line number. The file is read on one machine and the
-shell can start on another, so `work` would mean two different places; `inherited` is
-refused too, because a near-miss of the keyword would otherwise be taken for a directory
-and fail when the pane opened, with nothing to say why.
+A directory that is not there is not an error: the shell starts where it would have. A tab
+is worth more than the directory it opened in.
 
-A directory that is not there is not an error either: the shell starts where it would have.
-A tab is worth more than the directory it opened in, and that is already what an `inherit`
-that cannot be read does.
+**Settings holds the field, and writes it here.** On the desktop, under Terminals, beside
+which shell starts. Empty is the absent state and says so; a path is written as this key.
+There is no second place holding the value, so neither can win on which was touched last.
+`copyMode` above is reported and not offered for the opposite reason — nothing writes it
+back.
 
-**This key governs a new tab, and nothing else.** A split inherits, always. A duplicated
-tab and a layout's panes start where a shell would — a declared workspace says what it
-wants, and a standing preference is not it.
-
-**On a server it is read and not applied.** The desktop runs its terminals on your own
-machine, whatever context is active (ADR 0031), so the directory is yours and the setting
-is yours. A browser's local terminal is the instance's shell in the instance's container:
-a directory named by a client would be a client choosing where a shared server spawns a
-shell, so the web UI sends nothing and the server refuses it anyway. Nothing is imposed
-there either — a machine reached over SSH from the web UI has its own paths, which this
-document never described. Where a terminal on a server does start is the image's business:
-`/home/rite`, which is `docs/SERVER.md`.
-
-**Settings offers it, and writes it here.** The desktop has a row for it under
-Default shell — the same decision as which shell starts, about the same button. The
-dropdown writes `[terminal] newTabCwd` into this document, so there is no second place
-holding the value and neither can win on which was touched last. It appears where the rule
-acts: on the desktop, and only once this document can be read. `copyMode` above is reported
-and not offered for the opposite reason — nothing writes it back.
+**On a server the path is not read, and none is imposed.** The desktop runs its terminals
+on your own machine, whatever context is active (ADR 0031), so the directory is yours and
+the field is yours. A browser's local terminal is the instance's shell in the instance's
+container: a path named by a client would be a client choosing where a shared server
+spawns a shell, so the web UI names none and the server refuses one anyway. Nothing is
+imposed there either — a machine reached over SSH from the web UI has its own paths, which
+this document never described. A new tab in a browser still follows the standing pane,
+which is one of the instance's own sessions on its own filesystem, exactly as a split
+there always has; with no pane to follow it starts in `/home/rite`, which is the image's
+business and `docs/SERVER.md`.
 
 ## Pre-connect hooks
 

@@ -954,18 +954,21 @@ export function Workspace({
     // name the receiving end would apply.
     const shellToUse = sent ?? serverShell ?? settings.defaultShell;
 
-    // Where it starts, from the workspace document. The rule is in `utils/newTabCwd.ts`
-    // for the same reason as the shell's: its discriminator is the native shell, which no
-    // browser suite can see. A focused SSH pane needs no screening here — its directory is
-    // on another machine, so the server answers nothing and the shell starts where it
-    // would have.
+    // Where it starts. The rule is in `utils/newTabCwd.ts` for the same reason as the
+    // shell's: its discriminator is the native shell, which no browser suite can see.
     const standing = getFocusedPane(
       tabGroups.find((tab) => tab.id === activeTabId)?.paneTree ?? null,
     );
+    // Only a local pane has a directory on THIS machine. A focused SSH pane is standing on
+    // another computer, so there is nothing here to follow and the home directory answers
+    // instead — the same as no pane at all. Passing its id would have the server find no
+    // local session and start the shell wherever Rite stands, which is nobody's directory.
+    const following =
+      standing?.session.connectionId === 'local' ? standing.session.id : undefined;
     const start = newTabCwdStart({
       asked: newTabCwd,
       runsHere: isNativeShell(),
-      from: standing?.session.id,
+      from: following,
     });
 
     try {
@@ -1034,9 +1037,10 @@ export function Workspace({
      *
      * Only a split passes one, and a split always does: "leave me where I was" is
      * unambiguous for a division of a pane, which is why it needs no setting. A new tab
-     * asks `[terminal] newTabCwd` instead (`handleNewLocalTerminal`), and a duplicate and
-     * a layout's panes still start where a shell would — a declared workspace says what it
-     * wants, and a standing preference is not it.
+     * follows the standing pane too unless `[terminal] newTabCwd` names a path
+     * (`handleNewLocalTerminal`), and a duplicate and a layout's panes still start where a
+     * shell would — a declared workspace says what it wants, and a standing preference is
+     * not it.
      *
      * The server reads the directory itself and refuses a session the caller does not own.
      */

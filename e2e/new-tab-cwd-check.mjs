@@ -1,11 +1,11 @@
 /**
- * Where a new tab's shell starts, and whose machine decides.
+ * Where a new tab's shell starts.
  *
  * `[terminal] newTabCwd` is parsed by `store/layoutsFormat.ts` and covered by
  * `e2e/layout-file-check.mjs`. What the value MEANS for the client reading it is a
- * different question, and this holds it: the document travels with the account, a browser
- * reads the same blob a desktop wrote, and a browser's local terminal is the instance's
- * shell in the instance's container (ADR 0031).
+ * different question, and this holds it: one value and two states — a path and every new
+ * tab starts there, nothing and a new tab follows the standing pane, or opens in the home
+ * directory when no pane stands.
  *
  * The rule's discriminator is `isNativeShell()`, a global the wry shell injects and
  * Chromium does not have, so every Playwright suite exercises the browser arm and the
@@ -20,10 +20,7 @@
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import {
-  NEW_TAB_CWD_HOME,
-  NEW_TAB_CWD_INHERIT,
-} from '../apps/desktop/src/store/layoutsFormat.ts';
+import { NEW_TAB_CWD_HOME } from '../apps/desktop/src/store/layoutsFormat.ts';
 import { newTabCwdApplies, newTabCwdStart } from '../apps/desktop/src/utils/newTabCwd.ts';
 
 let passed = 0;
@@ -45,50 +42,50 @@ const SETTINGS = read('apps/desktop/src/components/Settings.tsx');
 
 console.log('where a new tab starts:');
 
-check('a silent document starts the shell where it would have', () => {
-  // `null` and not the shipped default, deliberately: today's behaviour has to stay
-  // reachable by a document that never mentioned the key.
-  assert.deepEqual(newTabCwdStart({ asked: null, runsHere: true, from: 's1' }), {});
-});
-
-check('inherit asks for the pane that has focus', () => {
-  assert.deepEqual(newTabCwdStart({ asked: NEW_TAB_CWD_INHERIT, runsHere: true, from: 's1' }), {
+check('a silent document follows the standing pane', () => {
+  // The default, and a behaviour change from 0.2.7, where a new tab opened wherever Rite
+  // itself stood — which was nobody's directory. A split has always done this.
+  assert.deepEqual(newTabCwdStart({ asked: null, runsHere: true, from: 's1' }), {
     inheritCwdFrom: 's1',
   });
 });
 
-check('inherit with no pane to inherit from asks for nothing', () => {
-  // The first tab of a session: there is nothing to leave behind, and an id nobody owns
-  // would be refused by the server as another account's.
-  assert.deepEqual(newTabCwdStart({ asked: NEW_TAB_CWD_INHERIT, runsHere: true }), {});
+check('with no pane to follow, the home directory', () => {
+  // The first tab of a session: there is nothing to leave behind. `home` goes over the
+  // wire as the WORD — the client cannot know the home directory of the machine the shell
+  // starts on, and that machine can.
+  assert.deepEqual(newTabCwdStart({ asked: null, runsHere: true }), { cwd: NEW_TAB_CWD_HOME });
 });
 
-check('a directory is named, and the keyword for one travels unchanged', () => {
-  assert.deepEqual(newTabCwdStart({ asked: '/srv/work', runsHere: true, from: 's1' }), {
-    cwd: '/srv/work',
-  });
-  // `home` goes over the wire as the word: the client cannot know its own home directory,
-  // and the machine that starts the shell can.
-  assert.deepEqual(newTabCwdStart({ asked: NEW_TAB_CWD_HOME, runsHere: true }), {
-    cwd: NEW_TAB_CWD_HOME,
-  });
+check('a path is where every new tab starts, pane or no pane', () => {
+  // "Every time" is the point of naming one: a path that the standing pane could override
+  // would be a preference nobody could rely on.
+  for (const from of ['s1', undefined]) {
+    assert.deepEqual(newTabCwdStart({ asked: '/srv/work', runsHere: true, from }), {
+      cwd: '/srv/work',
+    });
+  }
 });
 
-check('a browser reads the value and asks for nothing', () => {
-  // The whole point. Its local terminal is the instance's shell in the instance's
-  // container, so a directory a desktop wrote means nothing there — and a client naming
-  // one would be choosing where a shared server spawns a shell. Nothing is imposed
-  // either: a machine reached over SSH from the web UI has paths this document never
-  // described.
-  for (const asked of [NEW_TAB_CWD_INHERIT, NEW_TAB_CWD_HOME, '/srv/work']) {
-    assert.deepEqual(newTabCwdStart({ asked, runsHere: false, from: 's1' }), {}, asked);
+check('a browser names no path, and follows the pane as a split does', () => {
+  // Its local terminal is the instance's shell in the instance's container, so a path a
+  // desktop wrote means nothing there — and a client naming one would be choosing where a
+  // shared server spawns a shell. Following a pane is not that: it is one of the
+  // instance's own sessions, on its own filesystem, which a split there already does.
+  assert.deepEqual(newTabCwdStart({ asked: '/srv/work', runsHere: false, from: 's1' }), {
+    inheritCwdFrom: 's1',
+  });
+  // And with no pane, nothing at all: the word would be refused in accounts mode, and the
+  // image starts its shells in /home/rite anyway (`e2e/server-image-check.mjs`).
+  for (const asked of [null, '/srv/work', NEW_TAB_CWD_HOME]) {
+    assert.deepEqual(newTabCwdStart({ asked, runsHere: false }), {}, `asked=${asked}`);
   }
 });
 
 check('at most one answer is ever asked for', () => {
-  // A session to inherit from and a directory to start in are two answers to one
-  // question. A request carrying both would leave the precedence to be agreed twice.
-  for (const asked of [null, NEW_TAB_CWD_INHERIT, NEW_TAB_CWD_HOME, '/srv/work']) {
+  // A session to follow and a directory to start in are two answers to one question. A
+  // request carrying both would leave the precedence to be agreed twice.
+  for (const asked of [null, '/srv/work', NEW_TAB_CWD_HOME]) {
     for (const from of ['s1', undefined]) {
       for (const runsHere of [true, false]) {
         const keys = Object.keys(newTabCwdStart({ asked, runsHere, from }));
@@ -100,9 +97,9 @@ check('at most one answer is ever asked for', () => {
 
 console.log('\nthe two sides spell the keyword the same way:');
 
-check('the server resolves the same word the document takes', () => {
+check('the server resolves the same word the client sends', () => {
   // Duplicated across two languages, where there is nothing to import. If one side is
-  // renamed, the document's `home` silently stops being a directory anyone starts in.
+  // renamed, a first tab silently stops opening in the home directory.
   assert.ok(
     SERVER.includes(`"${NEW_TAB_CWD_HOME}" => std::env::var_os("HOME")`),
     `rite-server does not resolve "${NEW_TAB_CWD_HOME}" against $HOME`,
@@ -111,7 +108,7 @@ check('the server resolves the same word the document takes', () => {
 
 check('a shared instance names no directory at all', () => {
   // The gate is INSIDE the rule, not beside its call: a second call site could otherwise
-  // be added without it. A browser sends nothing, and this is what makes that safe rather
+  // be added without it. A browser names nothing, and this is what makes that safe rather
   // than merely polite.
   const fn = /fn named_start_dir\([^)]*\) -> Option<std::path::PathBuf> \{\n([\s\S]*?)\n\}/.exec(
     SERVER,
@@ -129,7 +126,7 @@ check('a shared instance names no directory at all', () => {
 
 check('the directory reaches the request the client sends', () => {
   // Three files, one field name. `inheritCwdFrom` was dropped in silence once already,
-  // by a missing serde rename — a split that quietly stopped inheriting.
+  // by a missing serde rename — a split that quietly stopped following its pane.
   assert.ok(
     read('apps/desktop/src/utils/backend.ts').includes('cwd: start?.cwd'),
     'backend.ts no longer sends the named directory',
@@ -167,6 +164,16 @@ check('nothing else decides what newTabCwd means', () => {
     .split('\n')
     .filter((line) => /newTabCwd\s*===|=== NEW_TAB_CWD/.test(line));
   assert.deepEqual(inline, [], `Workspace compares the value itself: ${inline.join(' / ')}`);
+  // And it follows a LOCAL pane only. A focused SSH pane stands on another computer, so
+  // its id would have the server find no local session and start the shell wherever Rite
+  // itself stands — silently, and nowhere anybody asked for. The home directory is the
+  // answer there, which is what no pane at all gives.
+  assert.ok(
+    /standing\?\.session\.connectionId === 'local' \? standing\.session\.id : undefined/.test(
+      workspace,
+    ),
+    'Workspace follows a pane whose directory is not on this machine',
+  );
 });
 
 check('the store writes the value into the document and nowhere else', () => {
@@ -193,29 +200,29 @@ check('the store writes the value into the document and nowhere else', () => {
   );
 });
 
-console.log('\nthe row in Settings:');
+console.log('\nthe field in Settings:');
 
-check('the control is offered exactly where the rule acts', () => {
-  // Not two readings of `runsHere`. A row that writes a value this client ignores is a
-  // switch for something that cannot happen, which is the mistake `shellControls` was
+check('the field is offered exactly where a path is applied', () => {
+  // Not two readings of `runsHere`. A field that writes a value this client ignores is a
+  // control for something that cannot happen, which is the mistake `shellControls` was
   // written to end — so the gate and the behaviour are one function.
   for (const runsHere of [true, false]) {
-    const acts = Object.keys(newTabCwdStart({ asked: '/srv/work', runsHere })).length > 0;
-    assert.equal(newTabCwdApplies({ runsHere }), acts, `runsHere=${runsHere}`);
+    const applied = newTabCwdStart({ asked: '/srv/work', runsHere }).cwd === '/srv/work';
+    assert.equal(newTabCwdApplies({ runsHere }), applied, `runsHere=${runsHere}`);
   }
 });
 
 check('Settings asks that function, and a document it can write', () => {
   assert.ok(
     SETTINGS.includes('newTabCwdApplies(shellOwnership) && hasWorkspaceFile'),
-    'the row no longer borrows both conditions — the rule, and a readable document',
+    'the field no longer borrows both conditions — the rule, and a readable document',
   );
 });
 
-check('the row offers the document value and holds no copy of it', () => {
+check('the field reads the document and holds no copy of it', () => {
   // ADR 0023: the file IS the value. `copyMode` is reported rather than offered next door
-  // because a dropdown beside the file would be a second place to set one value; a
-  // dropdown that WRITES the file is not.
+  // because a control beside the file would be a second place to set one value; a control
+  // that WRITES the file is not. The draft is the text being typed, not the value.
   assert.ok(
     /useLayouts\(\(st\) => st\.newTabCwd\)/.test(SETTINGS),
     'Settings no longer reads the value from the workspace document',
@@ -224,38 +231,41 @@ check('the row offers the document value and holds no copy of it', () => {
     /useLayouts\(\(st\) => st\.setNewTabCwd\)/.test(SETTINGS),
     'Settings no longer writes through the store',
   );
-  const held = SETTINGS.split('\n').filter((l) => /useState[^\n]*newTabCwd/i.test(l));
+  const held = SETTINGS.split('\n').filter(
+    (l) => /useState[^\n]*newTabCwd/i.test(l) && !/Draft/.test(l),
+  );
   assert.deepEqual(held, [], `Settings keeps the value in component state: ${held.join(' / ')}`);
-});
-
-check('every choice the row offers is a value the parser takes', () => {
-  // Four entries: the three the document can hold, and one that reveals the path field.
-  const offered = [...SETTINGS.matchAll(/\{ value: ([^,]+), label: t\('settings\.newTabCwd/g)].map(
-    (m) => m[1],
-  );
-  assert.deepEqual(offered, ["'default'", 'NEW_TAB_CWD_INHERIT', 'NEW_TAB_CWD_HOME', "'folder'"]);
-  // The two words come from the module the parser reads them from, not retyped here.
+  // And the draft is seeded from the document rather than from a default, so the field
+  // opens showing what is in force.
   assert.ok(
-    /NEW_TAB_CWD_HOME,\n  NEW_TAB_CWD_INHERIT,\n  NEW_TAB_CWD_WORDS,\n\} from '\.\.\/store\/layoutsFormat'/.test(
-      SETTINGS,
-    ),
-    'Settings spells the keywords itself instead of importing them',
+    /setNewTabCwdDraft\(newTabCwd \?\? ''\)/.test(SETTINGS),
+    'the field no longer opens on the value the document holds',
   );
 });
 
-check('a folder is nothing until one is named', () => {
-  // Picking "a folder" removes the key, so the row and the document never disagree: a
-  // folder shown as chosen while the document holds the old value would be a lie about
-  // what the next tab does.
-  assert.ok(
-    /const value = next === 'default' \|\| next === 'folder' \? null : next;/.test(SETTINGS),
-    'picking a folder no longer clears the key while no path is named',
+check('the field names no keyword, because there are none left', () => {
+  // One value and two states: the states are what the key is absent or present, not words
+  // anybody types. A keyword spelled here would be a third state nothing else knows.
+  const row = SETTINGS.slice(
+    SETTINGS.indexOf('{newTabCwdApplies(shellOwnership)'),
+    SETTINGS.indexOf('{/* Keyboard'),
   );
-  // And only an absolute path is written: the parser refuses the rest with a line number,
-  // and this row would be writing the refusal into the document.
+  assert.ok(row.length > 0, 'the row is gone');
+  for (const word of ["'home'", "'inherit'", 'NEW_TAB_CWD']) {
+    assert.ok(!row.includes(word), `the field spells ${word} itself`);
+  }
+});
+
+check('an empty field is the absent key, and only a path is written', () => {
+  // Cleared ⇒ the key goes, so the standing pane answers again. The parser refuses
+  // anything else with a line number, and this field would be writing that refusal.
+  assert.ok(
+    /if \(v === ''\) \{\n\s*if \(newTabCwd !== null\) void setNewTabCwd\(null\);/.test(SETTINGS),
+    'clearing the field no longer removes the key',
+  );
   assert.ok(
     /v\.startsWith\('\/'\) && v !== newTabCwd/.test(SETTINGS),
-    'the folder field writes a value the document parser would refuse',
+    'the field writes a value the document parser would refuse',
   );
 });
 

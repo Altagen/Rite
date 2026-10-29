@@ -4802,8 +4802,12 @@ struct LocalReq {
     /// that named a path would be naming one it cannot see, and a client that could name
     /// any path would be choosing where a shared server spawns a shell.
     inherit_cwd_from: Option<String>,
-    /// Where the shell starts, when the caller's own workspace document names a directory
-    /// (`[terminal] newTabCwd`). `home`, or an absolute path.
+    /// Where the shell starts: `home`, or an absolute path.
+    ///
+    /// An absolute path is what the caller's own workspace document names (`[terminal]
+    /// newTabCwd`). `home` is what the caller asks for when no pane stands — the client
+    /// cannot know the home directory of the machine the shell starts on, and this side
+    /// can.
     ///
     /// REFUSED OUTRIGHT IN ACCOUNTS MODE, and the sentence above `inherit_cwd_from` says
     /// why: on a shared instance this would be a client choosing where the server spawns a
@@ -4811,9 +4815,10 @@ struct LocalReq {
     /// is the other one — a desktop's in-process server, where the machine is the caller's
     /// own and the path it names is its own filesystem (ADR 0031).
     ///
-    /// Nothing is imposed on a browser either way: a client that does not run its own
-    /// shells sends nothing at all (`utils/newTabCwd.ts`), so the container's shell starts
-    /// where it did before this key existed.
+    /// A browser names neither, so nothing is imposed there (`utils/newTabCwd.ts`). It
+    /// still passes `inherit_cwd_from` for a pane that stands, which is one of this
+    /// instance's own sessions, and with no pane the image's `WORKDIR` lands the shell in
+    /// the home directory anyway.
     cwd: Option<String>,
 }
 
@@ -6654,8 +6659,9 @@ mod tests {
         // `home` exists precisely so nobody has to send one.
         assert!(named_start_dir("~", false).is_none());
         assert!(named_start_dir("~/work", false).is_none());
-        // The other keyword means something on the wire, and it is not a directory: it
-        // travels as `inheritCwdFrom`, with a session id.
+        // `inherit` is no word at all any more — following the standing pane is what an
+        // absent key does, and it travels as `inheritCwdFrom` with a session id. Refused
+        // here too, so an old client cannot have it read as a relative directory.
         assert!(named_start_dir("inherit", false).is_none());
 
         // Trimmed, so a document line that ends in a space still starts a shell.

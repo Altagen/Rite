@@ -37,11 +37,6 @@ import { useAutoReconnect } from '../store/autoReconnect';
 import { isNativeShell } from '../utils/nativeShell';
 import { instanceChoosesShell, shellControls } from '../utils/localShellSource';
 import { newTabCwdApplies } from '../utils/newTabCwd';
-import {
-  NEW_TAB_CWD_HOME,
-  NEW_TAB_CWD_INHERIT,
-  NEW_TAB_CWD_WORDS,
-} from '../store/layoutsFormat';
 import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
@@ -99,19 +94,6 @@ interface SettingsProps {
  * before unlocking, which is what ADR 0014's base-first workspace already promised.
  * The two exceptions are the two with nothing to act on until a vault exists.
  */
-/**
- * What the "where a new tab starts" row offers.
- *
- * Three of the four are the document's own value — `default` meaning the key is absent.
- * `folder` is not a value: it reveals the path field, and the document holds nothing until
- * a path is typed there.
- */
-type NewTabCwdChoice =
-  | 'default'
-  | typeof NEW_TAB_CWD_INHERIT
-  | typeof NEW_TAB_CWD_HOME
-  | 'folder';
-
 type SectionId =
   | 'appearance'
   | 'toolbar'
@@ -247,26 +229,14 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const fileLayouts = useLayouts((st) => st.layouts);
   const layoutsError = useLayouts((st) => st.error);
   const setLayoutStartup = useLayouts((st) => st.setStartup);
-  /** Where a new tab starts, from the same document; null ⇒ the shell's own directory. */
+  /** Where a new tab starts: an absolute path, or null for the standing pane / home. */
   const newTabCwd = useLayouts((st) => st.newTabCwd);
   const setNewTabCwd = useLayouts((st) => st.setNewTabCwd);
-  // The step between picking "a folder" and naming one. The key is removed at that point,
-  // so the row never offers a folder the document does not hold.
-  const [folderAsked, setFolderAsked] = useState(false);
-  const [folderDraft, setFolderDraft] = useState('');
-  const newTabCwdIsPath = !!newTabCwd && !(NEW_TAB_CWD_WORDS as readonly string[]).includes(newTabCwd);
-  const newTabCwdChoice: NewTabCwdChoice = newTabCwdIsPath
-    ? 'folder'
-    : newTabCwd === NEW_TAB_CWD_INHERIT || newTabCwd === NEW_TAB_CWD_HOME
-      ? newTabCwd
-      : folderAsked
-        ? 'folder'
-        : 'default';
+  const [newTabCwdDraft, setNewTabCwdDraft] = useState('');
   useEffect(() => {
-    if (!newTabCwdIsPath) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sync draft to async-loaded value
-    setFolderDraft(newTabCwd);
-  }, [newTabCwd, newTabCwdIsPath]);
+    setNewTabCwdDraft(newTabCwd ?? '');
+  }, [newTabCwd]);
   const [presetsOpen, setPresetsOpen] = useState(false);
   const [layoutsOpen, setLayoutsOpen] = useState(false);
 
@@ -660,69 +630,45 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               {/* WHERE a new tab starts, beside WHICH shell starts, because they are one
                 decision about one button.
 
+                One field and two states, which is the whole setting: a path and every new
+                tab starts there, nothing and a new tab follows the standing pane — or
+                opens in the home directory when no pane stands. The earlier shape offered
+                `inherit` and `home` as choices beside a path, which made a question out of
+                what people expect anyway.
+
                 Offered here rather than shown — unlike the copy convention next door —
-                because the control writes the document itself. There is no second place
+                because the field writes the document itself. There is no second place
                 holding the value, so neither can win or lose on which was touched last.
 
                 Two conditions, both borrowed rather than restated: `newTabCwdApplies` is
-                the function the behaviour runs on, so a row cannot offer a value this
+                the function the behaviour runs on, so the field cannot offer a value this
                 client ignores; and a document that cannot be read cannot be written. */}
               {newTabCwdApplies(shellOwnership) && hasWorkspaceFile && (
-                <>
-                  <SettingsRow title={t('settings.newTabCwd')} hint={t('settings.newTabCwdDesc')}>
-                    <SettingsControl>
-                      <Dropdown<NewTabCwdChoice>
-                        value={newTabCwdChoice}
-                        label={t('settings.newTabCwd')}
-                        testId="new-tab-cwd"
-                        options={[
-                          { value: 'default', label: t('settings.newTabCwdDefault') },
-                          { value: NEW_TAB_CWD_INHERIT, label: t('settings.newTabCwdInherit') },
-                          { value: NEW_TAB_CWD_HOME, label: t('settings.newTabCwdHome') },
-                          { value: 'folder', label: t('settings.newTabCwdFolder') },
-                        ]}
-                        onChange={(next) => {
-                          setFolderAsked(next === 'folder');
-                          // "A folder" names none yet, so the key goes until one is typed:
-                          // the row and the document say the same thing at every step.
-                          const value = next === 'default' || next === 'folder' ? null : next;
-                          void setNewTabCwd(value);
-                        }}
-                      />
-                    </SettingsControl>
-                  </SettingsRow>
-                  {newTabCwdChoice === 'folder' && (
-                    <SettingsRow
-                      title={t('settings.newTabCwdPath')}
-                      hint={t('settings.newTabCwdPathDesc')}
-                    >
-                      <div className="w-full max-w-[18rem]">
-                        <input
-                          value={folderDraft}
-                          onChange={(e) => setFolderDraft(e.target.value)}
-                          onBlur={() => {
-                            const v = folderDraft.trim();
-                            // Cleared ⇒ the key goes. Anything the parser would refuse is
-                            // not written at all: this row would be writing the refusal.
-                            if (v === '') {
-                              if (newTabCwd !== null) void setNewTabCwd(null);
-                            } else if (v.startsWith('/') && v !== newTabCwd) {
-                              void setNewTabCwd(v);
-                            }
-                          }}
-                          placeholder="/srv/work"
-                          className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm"
-                          data-testid="new-tab-cwd-path"
-                        />
-                        {folderDraft.trim() !== '' && !folderDraft.trim().startsWith('/') && (
-                          <p className="mt-0.5 text-xs text-amber-500" data-testid="new-tab-cwd-refused">
-                            {t('settings.newTabCwdAbsolute')}
-                          </p>
-                        )}
-                      </div>
-                    </SettingsRow>
+                <SettingsField label={t('settings.newTabCwd')} hint={t('settings.newTabCwdDesc')}>
+                  <input
+                    value={newTabCwdDraft}
+                    onChange={(e) => setNewTabCwdDraft(e.target.value)}
+                    onBlur={() => {
+                      const v = newTabCwdDraft.trim();
+                      // Cleared ⇒ the key goes, and the standing pane answers again.
+                      // Anything the parser would refuse is not written at all: this field
+                      // would be writing the refusal into the document.
+                      if (v === '') {
+                        if (newTabCwd !== null) void setNewTabCwd(null);
+                      } else if (v.startsWith('/') && v !== newTabCwd) {
+                        void setNewTabCwd(v);
+                      }
+                    }}
+                    placeholder={t('settings.newTabCwdEmpty')}
+                    className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm"
+                    data-testid="new-tab-cwd"
+                  />
+                  {newTabCwdDraft.trim() !== '' && !newTabCwdDraft.trim().startsWith('/') && (
+                    <p className="mt-1 text-xs text-amber-500" data-testid="new-tab-cwd-refused">
+                      {t('settings.newTabCwdAbsolute')}
+                    </p>
                   )}
-                </>
+                </SettingsField>
               )}
             </section>
 

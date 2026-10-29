@@ -33,10 +33,11 @@ inside the server container. What is left is the code.
 ### 🎯 Terminal Core (Priority: CRITICAL - New Focus)
   - [x] A new tab starting where the workspace document says — a split already does
         (`/proc/<pid>/cwd` on Linux, the shell's own answer elsewhere); a new tab did not.
-        Settled during 0.2.7: a **setting**, `newTabCwd`, with `inherit` as one of its
-        values rather than as the new hard-coded behaviour. A split inherits because it
-        is a division of the pane it came from; a tab is a fresh start, and people
-        disagree about which they want. Shipped in 0.2.8.
+        Shipped in 0.2.8 as `newTabCwd`: one absolute path, or nothing — and nothing
+        means the standing pane, or the home directory with no pane to follow. Reached
+        that shape only after a four-choice first pass the owner cut; the sub-item below
+        records why, because the reasoning that produced the four choices reads
+        convincing and was wrong.
 
         - [x] `newTabCwd` in `[terminal]` of the workspace document, beside `copyMode`
               (ADR 0023 addendum). A keyword, or an absolute path. The parser's whitelist
@@ -51,34 +52,58 @@ inside the server container. What is left is the code.
               rather than two `Option`s, because "both at once" is a request nobody had
               decided the meaning of, and as a pair the precedence would have to be agreed
               by every caller.
-        - [x] **`home` is a keyword, not the path it stands for.** The document travels:
-              with an account it is read on every machine that account signs in from, and
-              `/home/ada` is wrong on all but one of them — and is a username besides. So
-              the word travels and the machine that starts the shell resolves it, which is
-              also the only side that can. It is the default a Settings control offers for
-              "the same folder every time".
-        - [x] **A field in Settings that writes the document**, rather than a second
-              place holding the same value — which is why it is offered here and
-              `copyMode` beside it is only reported: nothing writes that one back. Four
-              entries, under Default shell, because where a new tab starts and which shell
-              it starts are one decision about one button. "A folder" reveals a path field
-              and removes the key until a path is named, so the row never shows a choice
-              the document does not hold.
+        - [x] **ONE VALUE, TWO STATES — the shape the owner settled on.** A path and every
+              new tab starts there; nothing and a new tab follows the standing pane, or
+              opens in the home directory when no pane stands. A split is unchanged: it has
+              always followed the pane it divides.
 
-              The row is gated on `newTabCwdApplies` — the same function
-              `newTabCwdStart` acts on, not a second reading of `runsHere`, so a control
-              that writes a value this client ignores cannot exist. `shellControls` earned
-              that lesson: a switch for something that cannot happen says there is a
+              The first pass shipped four choices — absent, `inherit`, `home`, a folder —
+              with `inherit` argued as "a value and not a behaviour change, because people
+              disagree about which they want for a tab". The owner read the result and cut
+              it: *« soit on met un path et le shell se lance toujours dans le path, soit il
+              est grisé et il est hérité de la pane d'avant, et s'il n'y avait pas de pane
+              avant bah c'est le home directory »*. Nobody disagrees about following the
+              pane they are standing in; the disagreement was invented by offering the
               choice.
+
+              WHAT THAT COST, and it is the point: `inherit` and `home` stopped being values
+              the parser takes, the absent key stopped meaning "wherever Rite stands" — a
+              shipped behaviour change, and the directory it named was nobody's — and the
+              dropdown became one field. `home` survives as a WIRE word only: the client
+              asks for the home directory when no pane stands, and the machine that starts
+              the shell is the only side that can resolve it.
+
+              A FOCUSED SSH PANE IS NOT A PANE TO FOLLOW. Its directory is on another
+              computer, so its id would have the server find no local session and start the
+              shell wherever Rite stands — silently. `Workspace.tsx` follows a pane only
+              when `connectionId === 'local'`, and the home directory answers otherwise.
+        - [x] **A field in Settings that writes the document**, rather than a second place
+              holding the same value — which is why it is offered and `copyMode` beside it
+              is only reported: nothing writes that one back. Under Terminals, beside which
+              shell starts, because where a new tab starts and which shell it starts are one
+              decision about one button. Empty is the absent key and the placeholder says
+              what empty does.
+
+              The field is gated on `newTabCwdApplies` — the same function `newTabCwdStart`
+              applies a path through, not a second reading of `runsHere`, so a control that
+              writes a value this client ignores cannot exist. `shellControls` earned that
+              lesson: a switch for something that cannot happen says there is a choice.
         - [x] **NOTHING IS IMPOSED ON THE WEB UI, and nothing is read there.** Settled by
               the owner in 0.2.8, against what this item said twice before: a machine
               reached over SSH from the web UI has its own paths, so a directory the
               instance forced would describe none of them. A browser's own local terminal
               is the instance's shell in the container, where a path a desktop wrote means
-              nothing either. So the browser arm of `utils/newTabCwd.ts` sends nothing, and
+              nothing either. So the browser arm of `utils/newTabCwd.ts` names no path, and
               `named_start_dir` in `rite-server` answers `None` for every input in accounts
               mode — the gate is inside the rule rather than beside its call, so a second
               call site cannot be added without it.
+
+              FOLLOWING THE STANDING PANE IS NOT IMPOSING A PATH, and a browser does it:
+              the pane is one of the instance's own sessions on the instance's own
+              filesystem, which is what a split there has always done. With no pane to
+              follow a browser asks for nothing, and the image's `WORKDIR /home/rite`
+              lands the shell in the home directory anyway — the same answer, without a
+              client naming a directory.
 
               THIS ITEM HAS BEEN WRONG TWICE, which is worth recording. Written during
               0.2.6, it had a desktop client in a server context opening its terminals on

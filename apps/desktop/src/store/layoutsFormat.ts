@@ -84,33 +84,27 @@ export type FileCopyMode = (typeof FILE_COPY_MODES)[number];
 /**
  * Where a new tab starts, as `[terminal] newTabCwd`.
  *
- * `inherit` is a VALUE and not a behaviour change: a split starts where the pane it came
- * from is standing, a new tab does not, and that asymmetry is deliberate — "leave me where
- * I was" is unambiguous for a division of a pane and a guess anywhere else. People
- * disagree about which they want for a tab, so the file says.
+ * ONE VALUE, AND TWO STATES. A path and every new tab starts there; nothing and a new tab
+ * starts where the standing pane is, or in the home directory when there is no pane to
+ * follow. That is the whole rule, and the earlier shape — `inherit` and `home` as words
+ * beside a path — made a setting out of what people expect anyway.
  *
- * `home` is a KEYWORD rather than the path it stands for, because the path is not this
- * side's to write: a client reads the file and the shell starts on the machine that runs
- * it, so the home directory is resolved there. It also keeps the common answer out of a
- * document that travels — an account's blob is read on every machine the account signs in
- * from, and `/home/ange` is wrong on all but one of them.
+ * An absolute path only. The file is read on one machine and the shell can start on
+ * another, so `work` would mean two different places; the parser checks the shape, since
+ * there is no list of directories to validate against.
  *
- * Anything that is neither word is read as a path. There is no list to validate against,
- * so the parser checks the shape instead: a path and not a word someone meant as a
- * keyword.
+ * `home` survives as a WIRE word, not a value anybody writes: the client asks for the home
+ * directory when no pane stands, and the machine that starts the shell is the only side
+ * that can resolve it. See `utils/newTabCwd.ts`.
  */
-export const NEW_TAB_CWD_INHERIT = 'inherit';
 export const NEW_TAB_CWD_HOME = 'home';
-
-/** The words `newTabCwd` takes. Anything else it accepts is a path. */
-export const NEW_TAB_CWD_WORDS = [NEW_TAB_CWD_INHERIT, NEW_TAB_CWD_HOME] as const;
 
 /** What `[terminal]` carries: this machine's behaviour, not its arrangement (ADR 0023). */
 export interface TerminalSection {
   /** Absent ⇒ the shipped default, which is what Rite has always done. */
   copyMode?: FileCopyMode;
-  /** A word of `NEW_TAB_CWD_WORDS`, or an absolute path. Absent ⇒ the shell's own
-   *  default directory, which is what Rite has always done. */
+  /** An absolute path, where every new tab then starts. Absent ⇒ the standing pane's
+   *  directory, or the home directory when no pane stands. */
   newTabCwd?: string;
 }
 
@@ -230,16 +224,13 @@ export function parseLayoutFile(text: string): LayoutParse {
           return fail(i + 1, 'newTabCwd is set twice');
         }
         const where = String(parsed);
-        if (!(NEW_TAB_CWD_WORDS as readonly string[]).includes(where) && !where.startsWith('/')) {
+        if (!where.startsWith('/')) {
           // A relative path has no meaning here: the file is read on one machine and the
-          // shell starts on another in a server context, and "." would mean two places.
-          // Naming the accepted words beside it, because a near-miss like "inherited"
-          // would otherwise be taken for a directory and fail at spawn instead of here.
-          return fail(
-            i + 1,
-            `newTabCwd is ${NEW_TAB_CWD_WORDS.join(', ')} or an absolute path` +
-              ` — not ${where || 'nothing'}`,
-          );
+          // shell can start on another, so "." would mean two places. A word is refused
+          // too — there is nothing to say in words any more, and `inherit` written here
+          // would otherwise be taken for a directory and fail at spawn instead of on this
+          // line.
+          return fail(i + 1, `newTabCwd is an absolute path — not ${where || 'nothing'}`);
         }
         terminal.newTabCwd = where;
         continue;

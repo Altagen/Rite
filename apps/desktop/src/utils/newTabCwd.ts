@@ -1,17 +1,24 @@
 /**
- * Where a new tab's shell starts, and whose machine decides.
+ * Where a new tab's shell starts.
  *
- * `[terminal] newTabCwd` in the workspace document answers the first half (see
- * `store/layoutsFormat.ts`). This answers the second, which is the part that cannot be
- * read off the document: the document travels with the account, a browser reads the same
- * blob a desktop wrote, and a browser's local terminal is the INSTANCE's shell in the
- * instance's container (ADR 0031). A directory named on a desktop means nothing there, and
- * one named by a client would be choosing where a shared server spawns a shell.
+ * ONE VALUE, TWO STATES. `[terminal] newTabCwd` holds an absolute path and every new tab
+ * starts there; it holds nothing and a new tab starts where the standing pane is, or in the
+ * home directory when no pane stands. A split is unchanged — it has always followed the
+ * pane it divides.
  *
- * So the rule is: a client that runs its own shells honours the document, and a client that
- * does not sends nothing and lets the receiving end start where it would have. Nothing is
- * imposed on a browser and nothing is read there — an SSH session opened from a browser
- * lands on a machine whose paths this document never described.
+ * A PATH IS THE ONLY THING A CLIENT NAMES, and only a client that runs its own shells names
+ * it. A browser's local terminal is the instance's shell in the instance's container (ADR
+ * 0031): a directory a desktop wrote means nothing there, and a client naming one would be
+ * choosing where a shared server spawns a shell — `named_start_dir` in `rite-server`
+ * refuses it unconditionally in accounts mode. Following the standing pane is not that: it
+ * is one of the instance's own sessions, on the instance's own filesystem, which is what a
+ * split already does there.
+ *
+ * `home` goes over the wire as the WORD. The client cannot know the home directory of the
+ * machine the shell starts on, and that machine can. A browser asks for nothing instead:
+ * the word would be refused in accounts mode, and the image starts its shells in
+ * `/home/rite` anyway (`Containerfile.server`), so the answer is the same without a client
+ * naming a directory.
  *
  * WHY THIS IS A FUNCTION AND NOT FOUR LINES IN `Workspace.tsx`. The discriminator is
  * `isNativeShell()`, a global the wry shell injects and no browser suite can see, so the
@@ -21,21 +28,21 @@
  * Imports one module, which itself imports nothing, so `e2e/new-tab-cwd-check.mjs` can load
  * both through Node's type stripping.
  */
-import { NEW_TAB_CWD_INHERIT } from '../store/layoutsFormat.ts';
+import { NEW_TAB_CWD_HOME } from '../store/layoutsFormat.ts';
 
 export interface NewTabCwdInputs {
-  /** `[terminal] newTabCwd`, or null when the document says nothing. */
+  /** `[terminal] newTabCwd` — an absolute path, or null when the document says nothing. */
   asked: string | null;
   /** This client runs the shell: the native desktop, whatever the active context. */
   runsHere: boolean;
-  /** The session a new tab would inherit from — the active pane's, when there is one. */
+  /** The session a new tab would follow — the standing pane's, when there is one. */
   from?: string;
 }
 
 /**
- * What a new local terminal asks for. At most one field is set: a session to inherit from
- * and a directory to start in are two answers to one question, and a request carrying both
- * would leave the precedence to be agreed in two places.
+ * What a new local terminal asks for. At most one field is set: a session to follow and a
+ * directory to start in are two answers to one question, and a request carrying both would
+ * leave the precedence to be agreed in two places.
  */
 export interface NewTabCwdStart {
   /** A session whose shell's directory the new one opens in. Read on the server's side. */
@@ -44,36 +51,28 @@ export interface NewTabCwdStart {
   cwd?: string;
 }
 
+/** Nothing asked: the receiving end starts the shell where it would have. */
+const WHEREVER: NewTabCwdStart = {};
+
 /**
- * Does this client honour the document at all?
+ * Does this client's document govern where a new tab starts?
  *
- * Settings asks it before offering the control, and `newTabCwdStart` below asks it before
- * acting — one function rather than two readings of `runsHere`, so a row that writes a
- * value this client ignores cannot exist. A switch for something that cannot happen says
- * there is a choice; `utils/localShellSource.ts` records what that cost once already.
+ * Settings asks it before offering the path field, and `newTabCwdStart` below asks it
+ * before applying one — one function rather than two readings of `runsHere`, so a field
+ * that writes a value this client ignores cannot exist. A control for something that
+ * cannot happen says there is a choice; `utils/localShellSource.ts` records what that cost
+ * once already.
  */
 export function newTabCwdApplies(i: Pick<NewTabCwdInputs, 'runsHere'>): boolean {
   return i.runsHere;
 }
 
-/** Nothing asked: the receiving end starts the shell where it would have. */
-const WHEREVER: NewTabCwdStart = {};
-
 export function newTabCwdStart(i: NewTabCwdInputs): NewTabCwdStart {
-  // A browser: see the header. The document is read, the value is ignored, and the
-  // container's shell starts where the server process stands — which is what it did
-  // before this key existed.
-  if (!newTabCwdApplies(i)) return WHEREVER;
-  if (!i.asked) return WHEREVER;
-
-  if (i.asked === NEW_TAB_CWD_INHERIT) {
-    // No pane to inherit from is the first tab of a session, and there is nothing to
-    // leave behind. Sending an unknown id instead would be refused as another account's.
-    return i.from ? { inheritCwdFrom: i.from } : WHEREVER;
-  }
-
-  // `home` and an absolute path travel the same way, unchanged: the server resolves the
-  // word and checks the path, because it is the side the shell starts on. The parser
-  // already refused everything else, with a line number.
-  return { cwd: i.asked };
+  // The path, where there is one and this client is the machine it describes.
+  if (newTabCwdApplies(i) && i.asked) return { cwd: i.asked };
+  // Otherwise the standing pane, which is where a split would have gone.
+  if (i.from) return { inheritCwdFrom: i.from };
+  // And with no pane to follow — the first tab of a session — the home directory. A
+  // browser asks for nothing: see the header.
+  return newTabCwdApplies(i) ? { cwd: NEW_TAB_CWD_HOME } : WHEREVER;
 }

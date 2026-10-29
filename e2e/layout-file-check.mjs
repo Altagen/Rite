@@ -27,8 +27,6 @@ import {
   replacePresetBlocks,
   setLayoutStartup,
   setTerminalValue,
-  NEW_TAB_CWD_INHERIT,
-  NEW_TAB_CWD_WORDS,
   planLayout,
   paneLabel,
 } from '../apps/desktop/src/store/layoutsFormat.ts';
@@ -124,10 +122,10 @@ console.log('\na file that does not:');
 /**
  * Where a new tab starts (`[terminal] newTabCwd`).
  *
- * `inherit` is a value and not a behaviour change — a split already starts where its pane
- * was standing, a tab does not, and the file is what settles which a person wants. So the
- * parser has to tell the one keyword from a path, and refuse the near-miss rather than
- * take it for a directory and fail at spawn with no line number.
+ * One value and two states: an absolute path, or nothing — and nothing means the standing
+ * pane, or the home directory with no pane to follow. So the parser's whole job here is
+ * the shape, and it refuses a word rather than taking it for a relative directory and
+ * failing at spawn with no line number.
  */
 check('the documentation and the parser agree on what [terminal] takes', () => {
   // The table was undocumented until `newTabCwd` needed a home, `copyMode` included. A
@@ -142,10 +140,10 @@ check('the documentation and the parser agree on what [terminal] takes', () => {
   for (const mode of ['chord', 'select', 'selectRightPaste', 'ctrlC']) {
     assert.ok(section.includes(mode), `LAYOUTS.md does not name the ${mode} copy mode`);
   }
-  // Every word the parser accepts is named, so one added to the parser alone is caught
-  // here rather than by someone typing it and being told it is not a path.
-  for (const word of NEW_TAB_CWD_WORDS) {
-    assert.ok(section.includes(word), `LAYOUTS.md does not name the ${word} keyword`);
+  // The two states, named: a path, and what an absent key does. Documenting one without
+  // the other is how the empty field came to need explaining in a conversation.
+  for (const phrase of ['absolute path', 'standing pane', 'home directory']) {
+    assert.ok(section.includes(phrase), `LAYOUTS.md does not say "${phrase}"`);
   }
   // And the example parses, which an example in prose is under no obligation to do.
   const example = /```toml\n([\s\S]*?)```/.exec(section);
@@ -153,33 +151,35 @@ check('the documentation and the parser agree on what [terminal] takes', () => {
   const parsed = parseLayoutFile(example[1]);
   assert.equal(parsed.error, null, `the documented example does not parse: ${
     parsed.error && parsed.error.message}`);
-  assert.equal(parsed.terminal.newTabCwd, NEW_TAB_CWD_INHERIT);
+  assert.equal(parsed.terminal.newTabCwd, '/srv/work');
   assert.equal(parsed.terminal.copyMode, 'select');
 });
 
-check('newTabCwd takes a keyword or an absolute path', () => {
-  assert.equal(
-    parseLayoutFile(`[terminal]\nnewTabCwd = "${NEW_TAB_CWD_INHERIT}"\n`).terminal.newTabCwd,
-    'inherit',
-  );
-  // `home` is a word and not the path it stands for: the document travels and the path
-  // does not, so it is resolved on the machine that starts the shell.
-  assert.equal(parseLayoutFile('[terminal]\nnewTabCwd = "home"\n').terminal.newTabCwd, 'home');
-  assert.deepEqual([...NEW_TAB_CWD_WORDS], ['inherit', 'home'], 'the words changed');
+check('newTabCwd takes an absolute path, and nothing else', () => {
   assert.equal(
     parseLayoutFile('[terminal]\nnewTabCwd = "/srv/work"\n').terminal.newTabCwd,
     '/srv/work',
   );
-  // Absent is not the same as set: the shell's own default directory, as today.
+  assert.equal(parseLayoutFile('[terminal]\nnewTabCwd = "/"\n').terminal.newTabCwd, '/');
+  // The words the key used to take are now refused like any other relative path: the
+  // behaviour they named is what an absent key does.
+  for (const word of ['inherit', 'home']) {
+    assert.notEqual(
+      parseLayoutFile(`[terminal]\nnewTabCwd = "${word}"\n`).error,
+      null,
+      `${word} is still accepted as a value`,
+    );
+  }
+  // Absent is the two-state default, and the parser says nothing about it.
   assert.equal(parseLayoutFile('[terminal]\ncopyMode = "chord"\n').terminal.newTabCwd, undefined);
 });
 
 /** The writer, which is what a Settings control uses: the file is the value (ADR 0023). */
 check('a terminal value is written into the file, not beside it', () => {
   // No table yet: it is created at the top, where a reader looks for a file-wide setting.
-  const fresh = setTerminalValue('', 'newTabCwd', 'inherit');
-  assert.equal(parseLayoutFile(fresh).terminal.newTabCwd, 'inherit');
-  assert.match(fresh, /^\[terminal\]\nnewTabCwd = "inherit"/);
+  const fresh = setTerminalValue('', 'newTabCwd', '/srv/work');
+  assert.equal(parseLayoutFile(fresh).terminal.newTabCwd, '/srv/work');
+  assert.match(fresh, /^\[terminal\]\nnewTabCwd = "\/srv\/work"/);
 
   // An existing file keeps its content, and the table goes above it rather than after a
   // pane, where a bare key would have become that pane's.
@@ -190,9 +190,9 @@ check('a terminal value is written into the file, not beside it', () => {
   assert.ok(added.indexOf('[terminal]') < added.indexOf('[[layout]]'));
 
   // Set again: replaced, not appended twice — which the parser would refuse.
-  const changed = setTerminalValue(added, 'newTabCwd', 'inherit');
+  const changed = setTerminalValue(added, 'newTabCwd', '/opt/src');
   assert.equal(parseLayoutFile(changed).error, null);
-  assert.equal(parseLayoutFile(changed).terminal.newTabCwd, 'inherit');
+  assert.equal(parseLayoutFile(changed).terminal.newTabCwd, '/opt/src');
 
   // And removed with null, leaving the table and its neighbours alone.
   const both = setTerminalValue(changed, 'copyMode', 'chord');
@@ -218,15 +218,15 @@ const fails = (text, line, fragment) => {
 };
 
 check('newTabCwd refuses what would fail later instead', () => {
-  // A near-miss of the keyword, which would otherwise be read as a relative directory.
-  fails('[terminal]\nnewTabCwd = "inherited"\n', 2, 'inherit, home or an absolute path');
-  fails('[terminal]\nnewTabCwd = "homer"\n', 2, 'inherit, home or an absolute path');
-  // A tilde is the shell's own expansion and nothing can `chdir` to it — `home` is the
-  // word that exists so nobody writes one.
-  fails('[terminal]\nnewTabCwd = "~/work"\n', 2, 'inherit, home or an absolute path');
+  // The words the key used to take. Refused here rather than read as relative directories
+  // that fail at spawn, because a document written for 0.2.8 would otherwise go quiet.
+  fails('[terminal]\nnewTabCwd = "inherit"\n', 2, 'newTabCwd is an absolute path');
+  fails('[terminal]\nnewTabCwd = "home"\n', 2, 'newTabCwd is an absolute path');
+  // A tilde is the shell's own expansion and nothing can `chdir` to it.
+  fails('[terminal]\nnewTabCwd = "~/work"\n', 2, 'newTabCwd is an absolute path');
   // A relative path means two different places: the file is read on one machine and the
   // shell can start on another.
-  fails('[terminal]\nnewTabCwd = "work"\n', 2, 'inherit, home or an absolute path');
+  fails('[terminal]\nnewTabCwd = "work"\n', 2, 'newTabCwd is an absolute path');
   fails('[terminal]\nnewTabCwd = ""\n', 2, 'not nothing');
   fails('[terminal]\nnewTabCwd = "/a"\nnewTabCwd = "/b"\n', 3, 'set twice');
 });
