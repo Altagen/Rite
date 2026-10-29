@@ -52,22 +52,28 @@ inside the server container. What is left is the code.
               HTTP route, the server and `create_local_session` all need the other shape.
               `LocalSession::spawn` already takes `cwd: Option<PathBuf>`, so the core end
               is ready.
-        - [ ] **Who governs it is decided by WHERE THE SHELL RUNS, not by which UI
-              asked.** On the user's own machine (a local vault) the user decides, and the
-              instance has no say. On the instance — the web UI, **and a desktop client in
-              a server context** — the instance may offer a default, impose one, or refuse
-              the choice. A desktop client in a server context opens its terminals on the
-              server, which the code already says for the shell itself (*"on a server the
-              shell is the server's"*), so the argument that justifies imposing a path
-              applies there exactly as in a browser. `isServerCtx` is the discriminator
-              that already exists; "desktop vs web" is not, and would leave that case
-              ungoverned.
+        - [ ] **Who governs it is decided by WHERE THE SHELL RUNS.** A desktop setting,
+              imposed by the instance on the web UI — settled in conversation, and the
+              code already answers this question once:
+
+                  instanceChoosesShell = !runsHere && serverContext
+                  runsHere  // the native desktop, whatever the active context
+
+              So `newTabCwd` reuses `instanceChoosesShell` rather than inventing a
+              discriminator. A browser is the only client with no machine of its own, so
+              it is the only one the instance governs.
+
+              THIS ITEM USED TO SAY THE OPPOSITE for one case, and it is worth recording
+              why: written during 0.2.6, it had a desktop client in a server context
+              opening its terminals on the server, and concluded that the instance should
+              impose the path there too. ADR 0031 reversed the premise in 0.2.7 — a local
+              terminal is the client's own, always — so the conclusion went with it.
         - [ ] Two instance settings rather than one, pushed to the core like
-              `ssh_connect_timeout`: the path, and whether an account may override it. A
-              path has no ordering, so "can only be narrowed" — the health-check shape —
-              does not apply; it is free, defaulted, or imposed. Resolution follows
-              `resolve_host_key_mode`: imposed > account's document > the shell's own
-              default (ADR 0020 addendum).
+              `ssh_connect_timeout`: the path, and whether an account may override it.
+              They govern the web UI only, per the item above. A path has no ordering, so
+              "can only be narrowed" — the health-check shape — does not apply; it is
+              free, defaulted, or imposed. Resolution follows `resolve_host_key_mode`:
+              imposed > account's document > the shell's own default (ADR 0020 addendum).
         - [ ] Its row in the admin console, in both locales — and in the account's
               Settings the imposed case REPORTS the value instead of offering a field, as
               the host-key row already does on a server. A control that cannot be used is
