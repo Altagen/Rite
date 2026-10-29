@@ -1049,6 +1049,12 @@ test('the web UI is told which shell the server sets, and is not offered the loc
   // …and no picker: the choice is not this user's to make here.
   await expect(page.getByTestId('shell-choices')).toHaveCount(0);
   await expect(page.getByTestId('shell-path')).toHaveCount(0);
+  // Nor where a new tab starts. The workspace document is read here and the value is not
+  // applied — a browser's local terminal is the instance's shell in the instance's
+  // container, and an SSH session opened from here lands on a machine whose paths that
+  // document never described. A row offering it would describe nothing (ADR 0031).
+  await expect(page.getByTestId('new-tab-cwd')).toHaveCount(0);
+  await expect(page.getByTestId('new-tab-cwd-path')).toHaveCount(0);
 
   // The toolbar section offers switches for buttons that exist. The shell picker is not one
   // of them in a browser, and neither is Quick SSH here: the premise is read from the server

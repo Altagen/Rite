@@ -44,6 +44,18 @@ export interface NewTabCwdStart {
   cwd?: string;
 }
 
+/**
+ * Does this client honour the document at all?
+ *
+ * Settings asks it before offering the control, and `newTabCwdStart` below asks it before
+ * acting — one function rather than two readings of `runsHere`, so a row that writes a
+ * value this client ignores cannot exist. A switch for something that cannot happen says
+ * there is a choice; `utils/localShellSource.ts` records what that cost once already.
+ */
+export function newTabCwdApplies(i: Pick<NewTabCwdInputs, 'runsHere'>): boolean {
+  return i.runsHere;
+}
+
 /** Nothing asked: the receiving end starts the shell where it would have. */
 const WHEREVER: NewTabCwdStart = {};
 
@@ -51,7 +63,7 @@ export function newTabCwdStart(i: NewTabCwdInputs): NewTabCwdStart {
   // A browser: see the header. The document is read, the value is ignored, and the
   // container's shell starts where the server process stands — which is what it did
   // before this key existed.
-  if (!i.runsHere) return WHEREVER;
+  if (!newTabCwdApplies(i)) return WHEREVER;
   if (!i.asked) return WHEREVER;
 
   if (i.asked === NEW_TAB_CWD_INHERIT) {

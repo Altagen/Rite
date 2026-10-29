@@ -31,12 +31,12 @@ inside the server container. What is left is the code.
 **Goal:** Production-ready terminal with local shell + SSH, core modern features, and solid UX.
 
 ### 🎯 Terminal Core (Priority: CRITICAL - New Focus)
-  - [ ] A new tab starting where the workspace document says — a split already does
+  - [x] A new tab starting where the workspace document says — a split already does
         (`/proc/<pid>/cwd` on Linux, the shell's own answer elsewhere); a new tab did not.
         Settled during 0.2.7: a **setting**, `newTabCwd`, with `inherit` as one of its
         values rather than as the new hard-coded behaviour. A split inherits because it
         is a division of the pane it came from; a tab is a fresh start, and people
-        disagree about which they want. Scheduled for 0.2.8.
+        disagree about which they want. Shipped in 0.2.8.
 
         - [x] `newTabCwd` in `[terminal]` of the workspace document, beside `copyMode`
               (ADR 0023 addendum). A keyword, or an absolute path. The parser's whitelist
@@ -57,9 +57,19 @@ inside the server container. What is left is the code.
               the word travels and the machine that starts the shell resolves it, which is
               also the only side that can. It is the default a Settings control offers for
               "the same folder every time".
-        - [ ] A field in Settings that writes the document, rather than a second place
-              holding the same value. Shown only where the shell is this client's: the
-              desktop.
+        - [x] **A field in Settings that writes the document**, rather than a second
+              place holding the same value — which is why it is offered here and
+              `copyMode` beside it is only reported: nothing writes that one back. Four
+              entries, under Default shell, because where a new tab starts and which shell
+              it starts are one decision about one button. "A folder" reveals a path field
+              and removes the key until a path is named, so the row never shows a choice
+              the document does not hold.
+
+              The row is gated on `newTabCwdApplies` — the same function
+              `newTabCwdStart` acts on, not a second reading of `runsHere`, so a control
+              that writes a value this client ignores cannot exist. `shellControls` earned
+              that lesson: a switch for something that cannot happen says there is a
+              choice.
         - [x] **NOTHING IS IMPOSED ON THE WEB UI, and nothing is read there.** Settled by
               the owner in 0.2.8, against what this item said twice before: a machine
               reached over SSH from the web UI has its own paths, so a directory the

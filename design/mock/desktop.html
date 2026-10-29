@@ -336,6 +336,10 @@ let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false
   // nothing and the shipped one applies — which is NOT the same state, so the row can
   // say which it is (ADR 0023, addendum).
   copyMode:'select',
+  // Where a new tab's shell starts, from the same table. Empty ⇒ the document says
+  // nothing and the shell starts where it would have. Offered here and not merely
+  // reported, because the row writes the document — see the Terminals section.
+  newTabCwd:'',
   // Which toolbar buttons this person wants. Hiding one never grants or revokes
   // anything: the server policies and the keyboard shortcuts are unchanged.
   toolbar:{shell:true,newTermMenu:true,focus:true,quick:true,agents:true,layouts:true},
@@ -1056,7 +1060,25 @@ const PREFS=[
       `<h4>Terminals</h4><p class="lede">What a new local terminal opens. This is the same setting as the picker in the toolbar — changing it either way changes both.</p>`
     + prefRow('Shell','Detected on this computer',
         `<select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name} — ${s.path}${s.installed?'':' (not installed)'}</option>`).join('')}</select>`)
-    + prefRow('Custom path','For a shell Rite didn\'t find',`<input class="inp mono" style="width:190px" placeholder="/opt/bin/nu" onchange="if(this.value.trim()){STATE.defaultShell=this.value.trim();renderActs()}">`) },
+    + prefRow('Custom path','For a shell Rite didn\'t find',`<input class="inp mono" style="width:190px" placeholder="/opt/bin/nu" onchange="if(this.value.trim()){STATE.defaultShell=this.value.trim();renderActs()}">`)
+    /* WHERE a new tab starts, beside WHICH shell starts: one decision about one button.
+       Offered, unlike the copy convention in Clipboard, because this row writes
+       `[terminal] newTabCwd` into the workspace document itself — so there is no second
+       place holding the value and neither can win on which was touched last.
+       "A folder" is not a value: it reveals the path field and leaves the key removed
+       until a path is named, so the row never shows a choice the document does not hold.
+       Desktop only. A browser's local terminal is the instance's shell in the instance's
+       container, and a machine reached over SSH from the web UI has its own paths — so
+       nothing is read there and nothing is imposed (ADR 0031). */
+    + prefRow('Where a new tab starts','The directory of a new tab\'s shell. Held in the workspace document, under [terminal] newTabCwd. A split always inherits.',
+        `<select class="inp" style="width:auto" onchange="STATE.newTabCwd=this.value;renderPrefsPane()">${[
+          ['','The shell\'s own directory'],['inherit','The directory of the active pane'],
+          ['home','Home directory'],['folder','A folder…']
+        ].map(([v,l])=>`<option value="${v}" ${(STATE.newTabCwd.startsWith('/')?'folder':STATE.newTabCwd)===v?'selected':''}>${l}</option>`).join('')}</select>`)
+    + (STATE.newTabCwd==='folder'||STATE.newTabCwd.startsWith('/')
+        ? prefRow('Folder','An absolute path, resolved on the machine the shell runs on.',
+            `<input class="inp mono" style="width:190px" placeholder="/srv/work" value="${STATE.newTabCwd.startsWith('/')?STATE.newTabCwd:''}" onchange="STATE.newTabCwd=this.value.trim().startsWith('/')?this.value.trim():'folder';renderPrefsPane()">`)
+        : '') },
 
   { id:'splits', label:'Split presets', body:()=>
       `<h4>Split presets</h4><p class="lede">A divider opens a plain terminal — that is the button. A preset is that same divider running one named command, offered by the chevron beside it.</p>`

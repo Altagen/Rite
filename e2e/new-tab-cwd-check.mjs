@@ -24,7 +24,7 @@ import {
   NEW_TAB_CWD_HOME,
   NEW_TAB_CWD_INHERIT,
 } from '../apps/desktop/src/store/layoutsFormat.ts';
-import { newTabCwdStart } from '../apps/desktop/src/utils/newTabCwd.ts';
+import { newTabCwdApplies, newTabCwdStart } from '../apps/desktop/src/utils/newTabCwd.ts';
 
 let passed = 0;
 const check = (name, fn) => {
@@ -41,6 +41,7 @@ const check = (name, fn) => {
 
 const read = (p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const SERVER = read('packages/rite-server/src/lib.rs');
+const SETTINGS = read('apps/desktop/src/components/Settings.tsx');
 
 console.log('where a new tab starts:');
 
@@ -189,6 +190,72 @@ check('the store writes the value into the document and nowhere else', () => {
     (store.match(/newTabCwd: parse\.error/g) || []).length,
     3,
     'a path through the store re-parses the document without carrying newTabCwd',
+  );
+});
+
+console.log('\nthe row in Settings:');
+
+check('the control is offered exactly where the rule acts', () => {
+  // Not two readings of `runsHere`. A row that writes a value this client ignores is a
+  // switch for something that cannot happen, which is the mistake `shellControls` was
+  // written to end — so the gate and the behaviour are one function.
+  for (const runsHere of [true, false]) {
+    const acts = Object.keys(newTabCwdStart({ asked: '/srv/work', runsHere })).length > 0;
+    assert.equal(newTabCwdApplies({ runsHere }), acts, `runsHere=${runsHere}`);
+  }
+});
+
+check('Settings asks that function, and a document it can write', () => {
+  assert.ok(
+    SETTINGS.includes('newTabCwdApplies(shellOwnership) && hasWorkspaceFile'),
+    'the row no longer borrows both conditions — the rule, and a readable document',
+  );
+});
+
+check('the row offers the document value and holds no copy of it', () => {
+  // ADR 0023: the file IS the value. `copyMode` is reported rather than offered next door
+  // because a dropdown beside the file would be a second place to set one value; a
+  // dropdown that WRITES the file is not.
+  assert.ok(
+    /useLayouts\(\(st\) => st\.newTabCwd\)/.test(SETTINGS),
+    'Settings no longer reads the value from the workspace document',
+  );
+  assert.ok(
+    /useLayouts\(\(st\) => st\.setNewTabCwd\)/.test(SETTINGS),
+    'Settings no longer writes through the store',
+  );
+  const held = SETTINGS.split('\n').filter((l) => /useState[^\n]*newTabCwd/i.test(l));
+  assert.deepEqual(held, [], `Settings keeps the value in component state: ${held.join(' / ')}`);
+});
+
+check('every choice the row offers is a value the parser takes', () => {
+  // Four entries: the three the document can hold, and one that reveals the path field.
+  const offered = [...SETTINGS.matchAll(/\{ value: ([^,]+), label: t\('settings\.newTabCwd/g)].map(
+    (m) => m[1],
+  );
+  assert.deepEqual(offered, ["'default'", 'NEW_TAB_CWD_INHERIT', 'NEW_TAB_CWD_HOME', "'folder'"]);
+  // The two words come from the module the parser reads them from, not retyped here.
+  assert.ok(
+    /NEW_TAB_CWD_HOME,\n  NEW_TAB_CWD_INHERIT,\n  NEW_TAB_CWD_WORDS,\n\} from '\.\.\/store\/layoutsFormat'/.test(
+      SETTINGS,
+    ),
+    'Settings spells the keywords itself instead of importing them',
+  );
+});
+
+check('a folder is nothing until one is named', () => {
+  // Picking "a folder" removes the key, so the row and the document never disagree: a
+  // folder shown as chosen while the document holds the old value would be a lie about
+  // what the next tab does.
+  assert.ok(
+    /const value = next === 'default' \|\| next === 'folder' \? null : next;/.test(SETTINGS),
+    'picking a folder no longer clears the key while no path is named',
+  );
+  // And only an absolute path is written: the parser refuses the rest with a line number,
+  // and this row would be writing the refusal into the document.
+  assert.ok(
+    /v\.startsWith\('\/'\) && v !== newTabCwd/.test(SETTINGS),
+    'the folder field writes a value the document parser would refuse',
   );
 });
 

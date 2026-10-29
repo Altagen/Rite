@@ -313,10 +313,12 @@ there either — a machine reached over SSH from the web UI has its own paths, w
 document never described. Where a terminal on a server does start is the image's business:
 `/home/rite`, which is `docs/SERVER.md`.
 
-**On a server, the instance may decide.** Where the shell runs is what settles who
-governs: a desktop window runs its terminals on your machine, whatever it is connected to,
-so this value is yours there. A browser has no machine of its own, so the instance's
-setting applies and this key is reported rather than offered.
+**Settings offers it, and writes it here.** The desktop has a row for it under
+Default shell — the same decision as which shell starts, about the same button. The
+dropdown writes `[terminal] newTabCwd` into this document, so there is no second place
+holding the value and neither can win on which was touched last. It appears where the rule
+acts: on the desktop, and only once this document can be read. `copyMode` above is reported
+and not offered for the opposite reason — nothing writes it back.
 
 ## Pre-connect hooks
 
