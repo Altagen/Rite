@@ -11,6 +11,7 @@ import { transport } from './transport';
 // Type-only, so it is erased at build time and the store ↔ backend cycle stays a
 // documentation one rather than a runtime one.
 import type { AuthMethodInput } from '../store/connectionsStore';
+import type { NewTabCwdStart } from './newTabCwd';
 
 /**
  * Generic wrapper for Backend invoke with Zod validation
@@ -397,14 +398,26 @@ export const BackendTerminal = {
   /**
    * Connect to a local terminal with custom shell.
    *
+   * `start` says where, and carries at most one of two fields because they are two answers
+   * to one question — see `utils/newTabCwd.ts`, which builds it.
+   *
    * `inheritCwdFrom` names a session to start in the same directory as — splitting a pane
    * should leave you where you were. A session ID and not a path: the directory is read
    * from `/proc` on the machine the shell runs on, which this side of the wire cannot see,
    * and a client allowed to name any path would be choosing where a shared server spawns
    * a shell. The server also refuses a session the caller does not own.
+   *
+   * `cwd` is the other case, and the reason the first one is not enough: a directory the
+   * client's own document named, for a client that runs its own shells. A shared instance
+   * ignores it (`named_start_dir` in `rite-server`), so nothing a browser sends — and it
+   * sends nothing — reaches the container's shell.
    */
-  connectLocalTerminal: (shell?: string, inheritCwdFrom?: string) =>
-    invokeWithValidation('connect_local_terminal', StringSchema, { shell, inheritCwdFrom }),
+  connectLocalTerminal: (shell?: string, start?: NewTabCwdStart) =>
+    invokeWithValidation('connect_local_terminal', StringSchema, {
+      shell,
+      inheritCwdFrom: start?.inheritCwdFrom,
+      cwd: start?.cwd,
+    }),
 
   /**
    * Run a pre-connect hook: a one-shot local command in a PTY, before SSH.

@@ -89,17 +89,28 @@ export type FileCopyMode = (typeof FILE_COPY_MODES)[number];
  * I was" is unambiguous for a division of a pane and a guess anywhere else. People
  * disagree about which they want for a tab, so the file says.
  *
- * Anything that is not this literal is read as a path. There is no list to validate
- * against, so the parser checks the shape instead: a path and not a word someone meant as
- * a keyword.
+ * `home` is a KEYWORD rather than the path it stands for, because the path is not this
+ * side's to write: a client reads the file and the shell starts on the machine that runs
+ * it, so the home directory is resolved there. It also keeps the common answer out of a
+ * document that travels — an account's blob is read on every machine the account signs in
+ * from, and `/home/ange` is wrong on all but one of them.
+ *
+ * Anything that is neither word is read as a path. There is no list to validate against,
+ * so the parser checks the shape instead: a path and not a word someone meant as a
+ * keyword.
  */
 export const NEW_TAB_CWD_INHERIT = 'inherit';
+export const NEW_TAB_CWD_HOME = 'home';
+
+/** The words `newTabCwd` takes. Anything else it accepts is a path. */
+export const NEW_TAB_CWD_WORDS = [NEW_TAB_CWD_INHERIT, NEW_TAB_CWD_HOME] as const;
 
 /** What `[terminal]` carries: this machine's behaviour, not its arrangement (ADR 0023). */
 export interface TerminalSection {
   /** Absent ⇒ the shipped default, which is what Rite has always done. */
   copyMode?: FileCopyMode;
-  /** `inherit`, or an absolute path. Absent ⇒ the shell's own default directory. */
+  /** A word of `NEW_TAB_CWD_WORDS`, or an absolute path. Absent ⇒ the shell's own
+   *  default directory, which is what Rite has always done. */
   newTabCwd?: string;
 }
 
@@ -219,14 +230,15 @@ export function parseLayoutFile(text: string): LayoutParse {
           return fail(i + 1, 'newTabCwd is set twice');
         }
         const where = String(parsed);
-        if (where !== NEW_TAB_CWD_INHERIT && !where.startsWith('/')) {
+        if (!(NEW_TAB_CWD_WORDS as readonly string[]).includes(where) && !where.startsWith('/')) {
           // A relative path has no meaning here: the file is read on one machine and the
           // shell starts on another in a server context, and "." would mean two places.
-          // Naming the one accepted word beside it, because a near-miss like "inherited"
+          // Naming the accepted words beside it, because a near-miss like "inherited"
           // would otherwise be taken for a directory and fail at spawn instead of here.
           return fail(
             i + 1,
-            `newTabCwd is ${NEW_TAB_CWD_INHERIT} or an absolute path — not ${where || 'nothing'}`,
+            `newTabCwd is ${NEW_TAB_CWD_WORDS.join(', ')} or an absolute path` +
+              ` — not ${where || 'nothing'}`,
           );
         }
         terminal.newTabCwd = where;

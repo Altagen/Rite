@@ -270,8 +270,15 @@ newTabCwd = "inherit"                 # where a new tab starts
 `copyMode` is one of `chord`, `select`, `selectRightPaste`, `ctrlC`. Absent means the
 shipped default.
 
-`newTabCwd` is `inherit`, or an absolute path. Absent means the shell's own default
-directory, which is what Rite has always done.
+`newTabCwd` is `inherit`, `home`, or an absolute path. Absent means the shell's own
+default directory, which is what Rite has always done.
+
+| value | a new tab starts |
+| --- | --- |
+| absent | where the shell would have — the directory Rite itself stands in |
+| `inherit` | in the same directory as the pane that has focus |
+| `home` | in the home directory of the machine that runs the shell |
+| `/srv/work` | there |
 
 **Why `inherit` is a value and not the new behaviour.** A split already starts where the
 pane it came from is standing; a new tab does not. That is deliberate — "leave me where I
@@ -279,10 +286,31 @@ was" is unambiguous for a division of a pane and a guess anywhere else — and p
 disagree about which they want for a tab. So the file says, rather than the application
 choosing for everyone.
 
+**Why `home` is a word and not a path.** The path is not the file's to write. This
+document travels: with an account it is read on every machine that account signs in from,
+and `/home/ada` is wrong on all but one of them — and is a username besides. So the word
+travels and the machine that starts the shell resolves it.
+
 A relative path is refused with its line number. The file is read on one machine and the
 shell can start on another, so `work` would mean two different places; `inherited` is
 refused too, because a near-miss of the keyword would otherwise be taken for a directory
 and fail when the pane opened, with nothing to say why.
+
+A directory that is not there is not an error either: the shell starts where it would have.
+A tab is worth more than the directory it opened in, and that is already what an `inherit`
+that cannot be read does.
+
+**This key governs a new tab, and nothing else.** A split inherits, always. A duplicated
+tab and a layout's panes start where a shell would — a declared workspace says what it
+wants, and a standing preference is not it.
+
+**On a server it is read and not applied.** The desktop runs its terminals on your own
+machine, whatever context is active (ADR 0031), so the directory is yours and the setting
+is yours. A browser's local terminal is the instance's shell in the instance's container:
+a directory named by a client would be a client choosing where a shared server spawns a
+shell, so the web UI sends nothing and the server refuses it anyway. Nothing is imposed
+there either — a machine reached over SSH from the web UI has its own paths, which this
+document never described.
 
 **On a server, the instance may decide.** Where the shell runs is what settles who
 governs: a desktop window runs its terminals on your machine, whatever it is connected to,

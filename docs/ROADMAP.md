@@ -31,53 +31,56 @@ inside the server container. What is left is the code.
 **Goal:** Production-ready terminal with local shell + SSH, core modern features, and solid UX.
 
 ### 🎯 Terminal Core (Priority: CRITICAL - New Focus)
-  - [ ] A new tab starting in the active pane's directory — a split already does
-        (`/proc/<pid>/cwd` on Linux, the shell's own answer elsewhere); a new tab does not.
+  - [ ] A new tab starting where the workspace document says — a split already does
+        (`/proc/<pid>/cwd` on Linux, the shell's own answer elsewhere); a new tab did not.
         Settled during 0.2.7: a **setting**, `newTabCwd`, with `inherit` as one of its
         values rather than as the new hard-coded behaviour. A split inherits because it
         is a division of the pane it came from; a tab is a fresh start, and people
-        disagree about which they want. `cwd` support already exists in
-        `local_terminal.rs` (0.2.6), so the work is the setting and its two values, not
-        the plumbing. Scheduled for 0.2.8 — a day and a half, not the two lines it
-        first looks like.
+        disagree about which they want. Scheduled for 0.2.8.
 
-        - [ ] `newTabCwd` in `[terminal]` of the workspace document, beside `copyMode`
-              (ADR 0023 addendum). A literal path, or `inherit`. The parser's whitelist
-              is strict — `[terminal] takes copyMode, not <key>` — which is what makes
-              adding a key a deliberate edit.
+        - [x] `newTabCwd` in `[terminal]` of the workspace document, beside `copyMode`
+              (ADR 0023 addendum). A keyword, or an absolute path. The parser's whitelist
+              is strict — `[terminal] takes copyMode or newTabCwd, not <key>` — which is
+              what makes adding a key a deliberate edit. 0.2.8: the table turned out to
+              be undocumented entirely, `copyMode` included, so `docs/LAYOUTS.md` gained
+              it and a check parses the documented example against the parser.
+        - [x] **A directory carried end to end.** `inheritCwdFrom` transports a SESSION
+              ID, not a path, so the frontend, the HTTP route, the server and
+              `create_local_session` all needed the other shape. `LocalStart` in the core
+              is that shape: `Wherever`, `Inherit(&SessionId)`, `In(PathBuf)` — an enum
+              rather than two `Option`s, because "both at once" is a request nobody had
+              decided the meaning of, and as a pair the precedence would have to be agreed
+              by every caller.
+        - [x] **`home` is a keyword, not the path it stands for.** The document travels:
+              with an account it is read on every machine that account signs in from, and
+              `/home/ada` is wrong on all but one of them — and is a username besides. So
+              the word travels and the machine that starts the shell resolves it, which is
+              also the only side that can. It is the default a Settings control offers for
+              "the same folder every time".
         - [ ] A field in Settings that writes the document, rather than a second place
-              holding the same value.
-        - [ ] **A literal path carried end to end.** This is the bulk of it:
-              `inheritCwdFrom` transports a SESSION ID, not a path, so the frontend, the
-              HTTP route, the server and `create_local_session` all need the other shape.
-              `LocalSession::spawn` already takes `cwd: Option<PathBuf>`, so the core end
-              is ready.
-        - [ ] **Who governs it is decided by WHERE THE SHELL RUNS.** A desktop setting,
-              imposed by the instance on the web UI — settled in conversation, and the
-              code already answers this question once:
+              holding the same value. Shown only where the shell is this client's: the
+              desktop.
+        - [x] **NOTHING IS IMPOSED ON THE WEB UI, and nothing is read there.** Settled by
+              the owner in 0.2.8, against what this item said twice before: a machine
+              reached over SSH from the web UI has its own paths, so a directory the
+              instance forced would describe none of them. A browser's own local terminal
+              is the instance's shell in the container, where a path a desktop wrote means
+              nothing either. So the browser arm of `utils/newTabCwd.ts` sends nothing, and
+              `named_start_dir` in `rite-server` answers `None` for every input in accounts
+              mode — the gate is inside the rule rather than beside its call, so a second
+              call site cannot be added without it.
 
-                  instanceChoosesShell = !runsHere && serverContext
-                  runsHere  // the native desktop, whatever the active context
-
-              So `newTabCwd` reuses `instanceChoosesShell` rather than inventing a
-              discriminator. A browser is the only client with no machine of its own, so
-              it is the only one the instance governs.
-
-              THIS ITEM USED TO SAY THE OPPOSITE for one case, and it is worth recording
-              why: written during 0.2.6, it had a desktop client in a server context
-              opening its terminals on the server, and concluded that the instance should
-              impose the path there too. ADR 0031 reversed the premise in 0.2.7 — a local
-              terminal is the client's own, always — so the conclusion went with it.
-        - [ ] Two instance settings rather than one, pushed to the core like
-              `ssh_connect_timeout`: the path, and whether an account may override it.
-              They govern the web UI only, per the item above. A path has no ordering, so
-              "can only be narrowed" — the health-check shape — does not apply; it is
-              free, defaulted, or imposed. Resolution follows `resolve_host_key_mode`:
-              imposed > account's document > the shell's own default (ADR 0020 addendum).
-        - [ ] Its row in the admin console, in both locales — and in the account's
-              Settings the imposed case REPORTS the value instead of offering a field, as
-              the host-key row already does on a server. A control that cannot be used is
-              worse than a sentence saying who decided.
+              THIS ITEM HAS BEEN WRONG TWICE, which is worth recording. Written during
+              0.2.6, it had a desktop client in a server context opening its terminals on
+              the server, and concluded the instance should impose the path there too. ADR
+              0031 reversed that premise in 0.2.7 — a local terminal is the client's own,
+              always — and the item was rewritten to reuse `instanceChoosesShell`, keeping
+              the instance's authority over a browser. 0.2.8 dropped the authority itself:
+              a forced path is not a safeguard when every machine behind it has different
+              paths. What remains is a refusal, which needs no setting.
+        - [x] ~~Two instance settings, and their row in the admin console.~~ Dropped with
+              the item above: there is nothing for an administrator to decide. The
+              refusal is the whole server-side behaviour, and it is unconditional.
 
         A path that is gone needs no new rule, but not for the reason first written here:
         `CommandBuilder::cwd` on a missing directory does NOT fail the spawn on Linux

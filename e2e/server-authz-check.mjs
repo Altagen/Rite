@@ -207,6 +207,19 @@ try {
   assert.match(withdrawn, /\/sh$/, `a withdrawn choice stops being honoured (got ${withdrawn})`);
   ok('a delegated shell is a name off the instance list, and the instance can take it back');
 
+  // A deployed instance refuses the directory and does not refuse the terminal. The
+  // refusal itself is `named_start_dir` in `rite-server`, asserted input by input in the
+  // crate's own tests and over two languages in `e2e/new-tab-cwd-check.mjs` — nothing on
+  // the wire reports where a shell started, so what this adds is the other half: a client
+  // that sends the field anyway still gets its terminal, rather than a 400 from a server
+  // that had grown an opinion about a key the web UI never sends.
+  step = 'a-named-directory-is-ignored-and-not-an-error';
+  for (const cwd of ['/', 'home', '/srv/work', 'work']) {
+    const asked = await post('/api/terminal/local', { shell: 'sh', cwd }, pleb);
+    assert.equal(asked.status, 200, `a terminal asked with cwd=${cwd} (got ${asked.status})`);
+  }
+  ok('a deployed instance ignores a client-named directory without refusing the terminal');
+
   // A probe, not a known hole: the local-vault routes (ADR 0018) belong to a person's own
   // machine, and a shared server has no such vault. They are reachable by any session in
   // accounts mode, so what they answer there decides whether the reveal route added for a

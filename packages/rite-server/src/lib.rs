@@ -26,7 +26,7 @@ use rite_core::connection::{
 use rite_core::connections_manager::ConnectionsManager;
 use rite_core::db::Database;
 use rite_core::ssh_config::SshConfigEntry;
-use rite_core::terminal::SessionManager;
+use rite_core::terminal::{LocalStart, SessionManager};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
@@ -4802,6 +4802,19 @@ struct LocalReq {
     /// that named a path would be naming one it cannot see, and a client that could name
     /// any path would be choosing where a shared server spawns a shell.
     inherit_cwd_from: Option<String>,
+    /// Where the shell starts, when the caller's own workspace document names a directory
+    /// (`[terminal] newTabCwd`). `home`, or an absolute path.
+    ///
+    /// REFUSED OUTRIGHT IN ACCOUNTS MODE, and the sentence above `inherit_cwd_from` says
+    /// why: on a shared instance this would be a client choosing where the server spawns a
+    /// shell, which is the whole reason that field carries a session id. The case it is for
+    /// is the other one — a desktop's in-process server, where the machine is the caller's
+    /// own and the path it names is its own filesystem (ADR 0031).
+    ///
+    /// Nothing is imposed on a browser either way: a client that does not run its own
+    /// shells sends nothing at all (`utils/newTabCwd.ts`), so the container's shell starts
+    /// where it did before this key existed.
+    cwd: Option<String>,
 }
 
 /// The instance's shell, as something a PTY can spawn.
@@ -4815,6 +4828,37 @@ fn clamped_shell_name(raw: &str) -> &str {
         // Anything else was written by something other than the admin route — which only
         // accepts those four — so it is not a shell this server agreed to run.
         _ => "bash",
+    }
+}
+
+/// A directory a client may name for its own shell, as something a PTY can use.
+///
+/// `accounts` IS PART OF THE RULE and not a caller's business, which is why it is an
+/// argument rather than a check beside the call. On a shared instance this would be a
+/// client choosing where the server spawns a shell — the thing `inherit_cwd_from` carries a
+/// session id to avoid — so there the answer is always `None`, whatever was sent. The case
+/// it is for is a desktop's in-process server, where the machine is the caller's own
+/// (ADR 0031). One function, so the gate cannot be dropped at a second call site later.
+///
+/// `home` is a keyword rather than a path so the client never has to know its own home
+/// directory: it is read here, on the machine the shell runs on, which is the only side
+/// that can answer. The word is also what keeps a username out of a workspace document
+/// that travels between machines.
+///
+/// Anything that is neither the word nor an absolute path is refused. The document parser
+/// refuses it first, with a line number, and this is the side that would otherwise resolve
+/// a relative path against whatever directory the process happens to stand in.
+fn named_start_dir(raw: &str, accounts: bool) -> Option<std::path::PathBuf> {
+    if accounts {
+        return None;
+    }
+    match raw.trim() {
+        // Duplicated from `NEW_TAB_CWD_HOME` in `store/layoutsFormat.ts` — across two
+        // languages there is nothing to import — and `e2e/new-tab-cwd-check.mjs` asserts
+        // the two words are the same, so neither side can rename it alone.
+        "home" => std::env::var_os("HOME").map(std::path::PathBuf::from),
+        p if p.starts_with('/') => Some(std::path::PathBuf::from(p)),
+        _ => None,
     }
 }
 
@@ -4916,9 +4960,25 @@ async fn create_local(
     let inherit = req
         .inherit_cwd_from
         .filter(|from| state.owns_session(from, as_user(&user)));
+    // See `LocalReq::cwd` and `named_start_dir`, which holds the whole rule — including
+    // that a shared instance names nothing, exactly as the shell above is not the
+    // caller's to name.
+    let named = req
+        .cwd
+        .as_deref()
+        .and_then(|raw| named_start_dir(raw, state.accounts));
+    // Two answers to one question, so the precedence is settled here rather than by each
+    // caller. A split naming the pane it was cut from is explicit about that one pane and
+    // wins over a standing preference; a client sends one or the other anyway, since
+    // `utils/newTabCwd.ts` returns a union.
+    let start = match (inherit.as_ref(), named) {
+        (Some(from), _) => LocalStart::Inherit(from),
+        (None, Some(dir)) => LocalStart::In(dir),
+        (None, None) => LocalStart::Wherever,
+    };
     let id = state
         .sessions
-        .create_local_session(state.events_sink(), shell.clone(), inherit.as_ref())
+        .create_local_session(state.events_sink(), shell.clone(), start)
         .await?;
     state.record_session_owner(&id, as_user(&user));
     // The shell the session was given, so a client (and a test) can see that on a server
@@ -6551,6 +6611,104 @@ mod tests {
                 "{not_a_name} must not resolve to a shell"
             );
         }
+    }
+
+    /// Which directory a client may name for its own shell, and where it may not name one.
+    ///
+    /// The pure half of `[terminal] newTabCwd`. The accounts arm is asserted first because
+    /// it is the one that matters: a shared instance answers `None` to every input, so no
+    /// later case can be read as "allowed on a server too".
+    #[test]
+    fn a_client_names_a_directory_only_for_its_own_machine() {
+        // A shared instance: nothing is named, whatever was sent. The same three values
+        // that work below.
+        assert!(
+            named_start_dir("/srv/work", true).is_none(),
+            "a client naming where a shared server spawns a shell is the whole refusal"
+        );
+        assert!(named_start_dir("home", true).is_none());
+        assert!(named_start_dir("/", true).is_none());
+
+        // A desktop's own server: an absolute path is itself.
+        assert_eq!(
+            named_start_dir("/srv/work", false),
+            Some(std::path::PathBuf::from("/srv/work"))
+        );
+
+        // `home` is read here, because the client cannot know it.
+        if let Some(home) = std::env::var_os("HOME") {
+            assert_eq!(
+                named_start_dir("home", false),
+                Some(std::path::PathBuf::from(home)),
+                "the keyword resolves on the machine the shell starts on"
+            );
+        }
+
+        // Everything the document parser already refuses, refused again here: this is the
+        // side that would resolve a relative path against whatever directory the process
+        // happens to stand in.
+        assert!(named_start_dir("work", false).is_none(), "a relative path");
+        assert!(named_start_dir("./work", false).is_none());
+        assert!(named_start_dir("", false).is_none());
+        // A tilde is the shell's own expansion, not a path anything can `chdir` to —
+        // `home` exists precisely so nobody has to send one.
+        assert!(named_start_dir("~", false).is_none());
+        assert!(named_start_dir("~/work", false).is_none());
+        // The other keyword means something on the wire, and it is not a directory: it
+        // travels as `inheritCwdFrom`, with a session id.
+        assert!(named_start_dir("inherit", false).is_none());
+
+        // Trimmed, so a document line that ends in a space still starts a shell.
+        assert_eq!(
+            named_start_dir("  /srv/work  ", false),
+            Some(std::path::PathBuf::from("/srv/work"))
+        );
+    }
+
+    /// The named directory reaches the SPAWN, not just the rule above.
+    ///
+    /// The route, the request shape, the precedence and the manager, in one assertion.
+    /// Without it the serde rename alone could drop the field in silence — which is the
+    /// mistake `LocalReq`'s own comment records about `inheritCwdFrom`.
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_new_tab_starts_in_the_directory_the_request_named() {
+        let state = test_state().await;
+        let sessions = state.sessions.clone();
+        let app = build_router(state);
+
+        // Somewhere the test process does not already stand, or the assertion would pass
+        // without the value ever reaching the spawn.
+        let elsewhere = std::fs::canonicalize("/tmp").expect("/tmp");
+        assert_ne!(std::env::current_dir().ok(), Some(elsewhere.clone()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/terminal/local")
+                    .header("host", "127.0.0.1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"shell":"/bin/sh","cwd":"/tmp"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        let id = serde_json::from_slice::<Value>(&body).unwrap()["sessionId"]
+            .as_str()
+            .expect("the route answers with a session id")
+            .to_string();
+
+        assert_eq!(
+            sessions.local_cwd(&id).await,
+            Some(elsewhere),
+            "the shell did not start in the directory the request named"
+        );
     }
 }
 

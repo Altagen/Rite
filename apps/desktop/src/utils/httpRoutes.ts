@@ -694,7 +694,7 @@ const routes: Record<string, Route> = {
     (
       await json<{ sessionId: string }>(
         '/api/terminal/local',
-        post({ shell: a.shell, inheritCwdFrom: a.inheritCwdFrom }),
+        post({ shell: a.shell, inheritCwdFrom: a.inheritCwdFrom, cwd: a.cwd }),
       )
     ).sessionId,
 

@@ -28,6 +28,7 @@ import {
   setLayoutStartup,
   setTerminalValue,
   NEW_TAB_CWD_INHERIT,
+  NEW_TAB_CWD_WORDS,
   planLayout,
   paneLabel,
 } from '../apps/desktop/src/store/layoutsFormat.ts';
@@ -141,7 +142,11 @@ check('the documentation and the parser agree on what [terminal] takes', () => {
   for (const mode of ['chord', 'select', 'selectRightPaste', 'ctrlC']) {
     assert.ok(section.includes(mode), `LAYOUTS.md does not name the ${mode} copy mode`);
   }
-  assert.ok(section.includes(NEW_TAB_CWD_INHERIT), 'the keyword is not in the documentation');
+  // Every word the parser accepts is named, so one added to the parser alone is caught
+  // here rather than by someone typing it and being told it is not a path.
+  for (const word of NEW_TAB_CWD_WORDS) {
+    assert.ok(section.includes(word), `LAYOUTS.md does not name the ${word} keyword`);
+  }
   // And the example parses, which an example in prose is under no obligation to do.
   const example = /```toml\n([\s\S]*?)```/.exec(section);
   assert.ok(example, 'the section lost its example');
@@ -152,11 +157,15 @@ check('the documentation and the parser agree on what [terminal] takes', () => {
   assert.equal(parsed.terminal.copyMode, 'select');
 });
 
-check('newTabCwd takes the keyword or an absolute path', () => {
+check('newTabCwd takes a keyword or an absolute path', () => {
   assert.equal(
     parseLayoutFile(`[terminal]\nnewTabCwd = "${NEW_TAB_CWD_INHERIT}"\n`).terminal.newTabCwd,
     'inherit',
   );
+  // `home` is a word and not the path it stands for: the document travels and the path
+  // does not, so it is resolved on the machine that starts the shell.
+  assert.equal(parseLayoutFile('[terminal]\nnewTabCwd = "home"\n').terminal.newTabCwd, 'home');
+  assert.deepEqual([...NEW_TAB_CWD_WORDS], ['inherit', 'home'], 'the words changed');
   assert.equal(
     parseLayoutFile('[terminal]\nnewTabCwd = "/srv/work"\n').terminal.newTabCwd,
     '/srv/work',
@@ -210,10 +219,14 @@ const fails = (text, line, fragment) => {
 
 check('newTabCwd refuses what would fail later instead', () => {
   // A near-miss of the keyword, which would otherwise be read as a relative directory.
-  fails('[terminal]\nnewTabCwd = "inherited"\n', 2, 'inherit or an absolute path');
+  fails('[terminal]\nnewTabCwd = "inherited"\n', 2, 'inherit, home or an absolute path');
+  fails('[terminal]\nnewTabCwd = "homer"\n', 2, 'inherit, home or an absolute path');
+  // A tilde is the shell's own expansion and nothing can `chdir` to it — `home` is the
+  // word that exists so nobody writes one.
+  fails('[terminal]\nnewTabCwd = "~/work"\n', 2, 'inherit, home or an absolute path');
   // A relative path means two different places: the file is read on one machine and the
   // shell can start on another.
-  fails('[terminal]\nnewTabCwd = "work"\n', 2, 'inherit or an absolute path');
+  fails('[terminal]\nnewTabCwd = "work"\n', 2, 'inherit, home or an absolute path');
   fails('[terminal]\nnewTabCwd = ""\n', 2, 'not nothing');
   fails('[terminal]\nnewTabCwd = "/a"\nnewTabCwd = "/b"\n', 3, 'set twice');
 });

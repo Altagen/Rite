@@ -1086,6 +1086,24 @@ impl SshSession {
     }
 }
 
+/// Where a new local shell starts.
+///
+/// One enum rather than two optional arguments, because a session to inherit from and a
+/// directory to start in are two answers to one question. As a pair of `Option`s the
+/// precedence between them would have to be agreed by every caller, and "both at once"
+/// would be a request whose meaning nobody had decided. Here it cannot be built.
+pub enum LocalStart<'a> {
+    /// Where a shell would normally start: the directory this process stands in.
+    Wherever,
+    /// The same directory as this session's shell, when it can be read. Splitting a pane
+    /// should leave you where you were, which is what a terminal multiplexer does.
+    Inherit(&'a SessionId),
+    /// A directory the caller named, already resolved and checked by it — the caller is
+    /// the side that knows whether naming one was allowed at all (see `create_local` in
+    /// `rite-server`, which refuses it on a shared instance).
+    In(std::path::PathBuf),
+}
+
 /// Unified session type that can be either SSH or Local
 pub enum Session {
     Ssh(SshSession),
@@ -1430,16 +1448,17 @@ impl SessionManager {
         &self,
         events: SharedEvents,
         shell: Option<String>,
-        // Start in the same directory as this session's shell, when it can be read.
-        // Splitting a pane should leave you where you were, which is what a terminal
-        // multiplexer does and what this answers.
-        inherit_cwd_from: Option<&SessionId>,
+        start: LocalStart<'_>,
     ) -> Result<SessionId> {
         tracing::info!("[terminal.rs] create_local_session called");
 
-        let cwd = match inherit_cwd_from {
-            Some(from) => self.local_cwd(from).await,
-            None => None,
+        // A directory that cannot be read, or is not there any more, is not an error: the
+        // shell starts where it would have. `spawn_built` makes the same choice for the
+        // same reason — a pane is worth more than the directory it opened in.
+        let cwd = match start {
+            LocalStart::Inherit(from) => self.local_cwd(from).await,
+            LocalStart::In(dir) => Some(dir),
+            LocalStart::Wherever => None,
         };
 
         // Create local session
