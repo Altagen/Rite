@@ -19,17 +19,7 @@ import {
 import { escrowForCreate } from '../utils/adminGroup';
 import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
 import { useTranslation } from '../i18n/i18n';
-
-const COLORS = [
-  '#6366f1',
-  '#0ea5e9',
-  '#10b981',
-  '#f59e0b',
-  '#ef4444',
-  '#a855f7',
-  '#14b8a6',
-  '#94a3b8',
-];
+import { COLLECTION_SWATCHES } from '../theme/swatches';
 
 export function CollectionEditDialog({
   collectionId,
@@ -57,7 +47,7 @@ export function CollectionEditDialog({
   const { publicKey, privateKey } = useServerSession();
   const { t } = useTranslation();
   const [name, setName] = useState(initialName ?? '');
-  const [color, setColor] = useState(initialColor ?? COLORS[0]);
+  const [color, setColor] = useState(initialColor ?? COLLECTION_SWATCHES[0]);
   // Active health-check for this collection (owner setting). Off ⇒ hc=false in the sealed header.
   const [hcOn, setHcOn] = useState(initialHc !== false);
   const [error, setError] = useState<string | null>(null);
@@ -148,7 +138,7 @@ export function CollectionEditDialog({
 
         <label className="mb-1 block text-sm font-medium">{t('dlg.colour')}</label>
         <div className="mb-5 flex flex-wrap gap-2">
-          {COLORS.map((c) => (
+          {COLLECTION_SWATCHES.map((c) => (
             <button
               key={c}
               type="button"

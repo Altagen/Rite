@@ -694,7 +694,7 @@ function floatMenu(e,items){document.querySelectorAll('.menu').forEach(m=>m.remo
   m.querySelectorAll('.row').forEach((r,i)=>r.onclick=()=>{m.remove();items[i].onclick();});
   setTimeout(()=>document.addEventListener('click',function h(){m.remove();document.removeEventListener('click',h);}),0);}
 /* colour picker (folders & collections get a custom coloured icon) */
-const COLORS=['#7c9cf5','#9ece6a','#e5b567','#f0a35e','#f7768e','#bb9af7','#56c7c0','#8b93a7'];
+const COLORS=['#7c9cf5','#9ece6a','#e5b567','#f0a35e','#f7768e','#bb9af7','#56c7c0','#94a3b8','#8b93a7'];
 let __pickColor=COLORS[0];
 function swatchRow(initial){__pickColor=initial||COLORS[0];
   return `<label class="field"><span>Colour</span><div class="swatches">${COLORS.map(c=>`<button type="button" class="sw ${c===__pickColor?'sel':''}" style="background:${c}" onclick="pickColor(this,'${c}')"></button>`).join('')}</div></label>`;}

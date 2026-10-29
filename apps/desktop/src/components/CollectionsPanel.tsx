@@ -19,6 +19,7 @@ import {
 } from '../utils/collectionHeader';
 import { MemberPicker } from './MemberPicker';
 import { IconCollection } from './icons';
+import { COLLECTION_SWATCHES } from '../theme/swatches';
 
 /** The badge beside a shared collection's name reads the role, translated. */
 const ROLE_KEY: Record<'owner' | 'editor' | 'viewer', string> = {
@@ -27,16 +28,6 @@ const ROLE_KEY: Record<'owner' | 'editor' | 'viewer', string> = {
   viewer: 'members.roleViewer',
 };
 
-const COLLECTION_COLORS = [
-  '#6366f1',
-  '#0ea5e9',
-  '#10b981',
-  '#f59e0b',
-  '#ef4444',
-  '#a855f7',
-  '#14b8a6',
-  '#f472b6',
-];
 const DEFAULT_COLOR = '#94a3b8';
 
 export function CollectionsPanel() {
@@ -278,7 +269,7 @@ export function CollectionsPanel() {
                 <div className="mb-4 rounded-2xl border border-border bg-card p-4">
                   <div className="mb-3 text-sm font-semibold">{t('dlg.colour')}</div>
                   <div className="flex flex-wrap gap-2">
-                    {COLLECTION_COLORS.map((c) => (
+                    {COLLECTION_SWATCHES.map((c) => (
                       <button
                         key={c}
                         onClick={() => patchHeader(selected.id, { color: c })}

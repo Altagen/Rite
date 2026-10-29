@@ -22,33 +22,14 @@ import {
   encryptCollectionField,
 } from '../utils/collectionCrypto';
 import { escrowForCreate } from '../utils/adminGroup';
+import { AVATAR_SWATCHES, COLLECTION_SWATCHES } from '../theme/swatches';
 
 const ROLES: CollectionRole[] = ['owner', 'editor', 'viewer'];
-const COLLECTION_COLORS = [
-  '#6366f1',
-  '#0ea5e9',
-  '#10b981',
-  '#f59e0b',
-  '#ef4444',
-  '#a855f7',
-  '#14b8a6',
-  '#f472b6',
-];
-const AVATAR_COLORS = [
-  '#7c9cf5',
-  '#9ece6a',
-  '#e5b567',
-  '#f0a35e',
-  '#f7768e',
-  '#bb9af7',
-  '#56c7c0',
-  '#e0af68',
-];
 
 function avatarColor(name: string): string {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+  return AVATAR_SWATCHES[h % AVATAR_SWATCHES.length];
 }
 
 function Avatar({ name }: { name: string }) {
@@ -87,7 +68,7 @@ export function MemberPicker({
   const isCreate = mode === 'create';
 
   const [name, setName] = useState(initialName ?? '');
-  const [color, setColor] = useState(initialColor ?? COLLECTION_COLORS[0]);
+  const [color, setColor] = useState(initialColor ?? COLLECTION_SWATCHES[0]);
   const [directory, setDirectory] = useState<DirectoryEntry[]>([]);
   const [teams, setTeams] = useState<UserTeam[]>([]);
   const [chosen, setChosen] = useState<Map<string, CollectionRole>>(new Map());
@@ -360,7 +341,7 @@ export function MemberPicker({
               <div>
                 <label className="mb-1 block text-sm font-medium">{t('dlg.colour')}</label>
                 <div className="flex flex-wrap gap-2">
-                  {COLLECTION_COLORS.map((c) => (
+                  {COLLECTION_SWATCHES.map((c) => (
                     <button
                       key={c}
                       type="button"
