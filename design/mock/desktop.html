@@ -1074,8 +1074,9 @@ const PREFS=[
 
        Desktop only. A browser's local terminal is the instance's shell in the instance's
        container, and a machine reached over SSH from the web UI has its own paths — so no
-       path is read there and none is imposed (ADR 0031). Following the standing pane still
-       happens there, as a split always has. */
+       path is read there and none is imposed (ADR 0031). A new tab there opens in the
+       image's working directory every time, not the standing pane's; only a split follows
+       its pane. */
     + prefRow('Where a new tab starts','An absolute path, and every new tab starts there. Empty, and a new tab follows the standing pane \u2014 or the home directory, with no pane to follow. Held in the workspace document, under [terminal] newTabCwd; a split always follows its pane.',
         `<input class="inp mono" style="width:190px" placeholder="The standing pane, or the home directory" value="${STATE.newTabCwd}" onchange="STATE.newTabCwd=this.value.trim().startsWith('/')?this.value.trim():'';renderPrefsPane()">`) },
 

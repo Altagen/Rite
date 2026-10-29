@@ -6,19 +6,17 @@
  * home directory when no pane stands. A split is unchanged — it has always followed the
  * pane it divides.
  *
- * A PATH IS THE ONLY THING A CLIENT NAMES, and only a client that runs its own shells names
- * it. A browser's local terminal is the instance's shell in the instance's container (ADR
- * 0031): a directory a desktop wrote means nothing there, and a client naming one would be
- * choosing where a shared server spawns a shell — `named_start_dir` in `rite-server`
- * refuses it unconditionally in accounts mode. Following the standing pane is not that: it
- * is one of the instance's own sessions, on the instance's own filesystem, which is what a
- * split already does there.
+ * A BROWSER ASKS FOR NOTHING AT ALL, whatever the document says and whatever pane stands.
+ * Its local terminal is the instance's shell in the instance's container (ADR 0031), so a
+ * new tab there opens where the image starts a shell — `/home/rite`, from
+ * `Containerfile.server` — every time. A path a desktop wrote means nothing on that
+ * filesystem, a client naming one would be choosing where a shared server spawns a shell
+ * (`named_start_dir` refuses it unconditionally in accounts mode), and inheriting is not
+ * wanted either: the base shell directory, always. A SPLIT still follows the pane it
+ * divides, in both UIs — that is the gesture's own meaning and not this setting.
  *
- * `home` goes over the wire as the WORD. The client cannot know the home directory of the
- * machine the shell starts on, and that machine can. A browser asks for nothing instead:
- * the word would be refused in accounts mode, and the image starts its shells in
- * `/home/rite` anyway (`Containerfile.server`), so the answer is the same without a client
- * naming a directory.
+ * `home` goes over the wire as the WORD, from a desktop only. The client cannot know the
+ * home directory of the machine the shell starts on, and that machine can.
  *
  * WHY THIS IS A FUNCTION AND NOT FOUR LINES IN `Workspace.tsx`. The discriminator is
  * `isNativeShell()`, a global the wry shell injects and no browser suite can see, so the
@@ -68,11 +66,13 @@ export function newTabCwdApplies(i: Pick<NewTabCwdInputs, 'runsHere'>): boolean 
 }
 
 export function newTabCwdStart(i: NewTabCwdInputs): NewTabCwdStart {
-  // The path, where there is one and this client is the machine it describes.
-  if (newTabCwdApplies(i) && i.asked) return { cwd: i.asked };
+  // A browser: nothing, ever. See the header — the instance's shell starts where the image
+  // starts a shell, and that is the whole answer there.
+  if (!newTabCwdApplies(i)) return WHEREVER;
+  // The path, where the document names one.
+  if (i.asked) return { cwd: i.asked };
   // Otherwise the standing pane, which is where a split would have gone.
   if (i.from) return { inheritCwdFrom: i.from };
-  // And with no pane to follow — the first tab of a session — the home directory. A
-  // browser asks for nothing: see the header.
-  return newTabCwdApplies(i) ? { cwd: NEW_TAB_CWD_HOME } : WHEREVER;
+  // And with no pane to follow — the first tab of a session — the home directory.
+  return { cwd: NEW_TAB_CWD_HOME };
 }

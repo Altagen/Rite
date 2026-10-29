@@ -98,12 +98,14 @@ inside the server container. What is left is the code.
               mode — the gate is inside the rule rather than beside its call, so a second
               call site cannot be added without it.
 
-              FOLLOWING THE STANDING PANE IS NOT IMPOSING A PATH, and a browser does it:
-              the pane is one of the instance's own sessions on the instance's own
-              filesystem, which is what a split there has always done. With no pane to
-              follow a browser asks for nothing, and the image's `WORKDIR /home/rite`
-              lands the shell in the home directory anyway — the same answer, without a
-              client naming a directory.
+              A BROWSER ASKS FOR NOTHING AT ALL, pane or no pane. 0.2.8 briefly extended
+              "follow the standing pane" to the web UI as well, reasoning that a pane there
+              is one of the instance's own sessions and so nothing foreign; the owner
+              refused it — *« dans la webui on n'était même pas censé l'avoir ce paramètre,
+              c'est censé être par défaut le shell de base tout le temps, pas hérité »*.
+              Every terminal there opens in the image's `WORKDIR /home/rite`. A split
+              still follows its pane, in both UIs, because that is the gesture's own
+              meaning and not this setting.
 
               THIS ITEM HAS BEEN WRONG TWICE, which is worth recording. Written during
               0.2.6, it had a desktop client in a server context opening its terminals on

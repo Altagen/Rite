@@ -303,10 +303,10 @@ the field is yours. A browser's local terminal is the instance's shell in the in
 container: a path named by a client would be a client choosing where a shared server
 spawns a shell, so the web UI names none and the server refuses one anyway. Nothing is
 imposed there either — a machine reached over SSH from the web UI has its own paths, which
-this document never described. A new tab in a browser still follows the standing pane,
-which is one of the instance's own sessions on its own filesystem, exactly as a split
-there always has; with no pane to follow it starts in `/home/rite`, which is the image's
-business and `docs/SERVER.md`.
+this document never described. A new tab in a browser opens where the image starts a
+shell, `/home/rite`, every time: the base shell directory, not the standing pane's. That
+is the image's business and `docs/SERVER.md`. A split in a browser does follow its pane,
+because that is the gesture's own meaning and not this key.
 
 ## Pre-connect hooks
 

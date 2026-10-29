@@ -58,13 +58,14 @@ reaching a machine over SSH from the web UI lands on that machine's paths, which
 server has never seen, so a directory it imposed would describe none of them. A client
 naming one would be choosing where a shared server spawns a shell, and is refused.
 
-`/home/rite` is where the FIRST terminal of a session opens. A later one follows the pane
-that is standing, the way a split always has — that pane is one of this server's own
-sessions, on this server's own filesystem, so there is nothing foreign about it.
+`/home/rite` is where EVERY terminal opens here, not just the first: the web UI asks for
+no directory at all, so none of them inherits one. A split is the exception, and it is the
+gesture's own meaning rather than a setting — it divides a pane and opens where that pane
+is standing, which is one of this server's own sessions on this server's own filesystem.
 
 The desktop is the other case: its terminals run on your own machine whatever context is
 active (ADR 0031), so `[terminal] newTabCwd` in your workspace document can name a path —
-see `docs/LAYOUTS.md`. The path in that document is not read here.
+see `docs/LAYOUTS.md`. Nothing in that document is read here.
 
 Before 0.2.8 the image set no working directory, so a terminal opened in `/`.
 

@@ -67,18 +67,21 @@ check('a path is where every new tab starts, pane or no pane', () => {
   }
 });
 
-check('a browser names no path, and follows the pane as a split does', () => {
-  // Its local terminal is the instance's shell in the instance's container, so a path a
-  // desktop wrote means nothing there — and a client naming one would be choosing where a
-  // shared server spawns a shell. Following a pane is not that: it is one of the
-  // instance's own sessions, on its own filesystem, which a split there already does.
-  assert.deepEqual(newTabCwdStart({ asked: '/srv/work', runsHere: false, from: 's1' }), {
-    inheritCwdFrom: 's1',
-  });
-  // And with no pane, nothing at all: the word would be refused in accounts mode, and the
-  // image starts its shells in /home/rite anyway (`e2e/server-image-check.mjs`).
+check('a browser asks for nothing at all, pane or no pane', () => {
+  // The instance's shell in the instance's container, so a new tab there opens where the
+  // image starts a shell — /home/rite (`e2e/server-image-check.mjs`) — every time. A path
+  // a desktop wrote means nothing on that filesystem, naming one would be choosing where a
+  // shared server spawns a shell, and inheriting is not wanted either: the base shell
+  // directory, always. A SPLIT still follows its pane there; that is `localSession`, not
+  // this rule.
   for (const asked of [null, '/srv/work', NEW_TAB_CWD_HOME]) {
-    assert.deepEqual(newTabCwdStart({ asked, runsHere: false }), {}, `asked=${asked}`);
+    for (const from of ['s1', undefined]) {
+      assert.deepEqual(
+        newTabCwdStart({ asked, runsHere: false, from }),
+        {},
+        `asked=${asked} from=${from}`,
+      );
+    }
   }
 });
 

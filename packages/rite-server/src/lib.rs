@@ -4815,10 +4815,9 @@ struct LocalReq {
     /// is the other one — a desktop's in-process server, where the machine is the caller's
     /// own and the path it names is its own filesystem (ADR 0031).
     ///
-    /// A browser names neither, so nothing is imposed there (`utils/newTabCwd.ts`). It
-    /// still passes `inherit_cwd_from` for a pane that stands, which is one of this
-    /// instance's own sessions, and with no pane the image's `WORKDIR` lands the shell in
-    /// the home directory anyway.
+    /// A browser names neither, and asks for no directory at all (`utils/newTabCwd.ts`):
+    /// every terminal it opens starts in the image's `WORKDIR`, which is the home of the
+    /// user the server runs as. Only a split passes `inherit_cwd_from` there.
     cwd: Option<String>,
 }
 
