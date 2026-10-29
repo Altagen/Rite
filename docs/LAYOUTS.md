@@ -310,7 +310,8 @@ is yours. A browser's local terminal is the instance's shell in the instance's c
 a directory named by a client would be a client choosing where a shared server spawns a
 shell, so the web UI sends nothing and the server refuses it anyway. Nothing is imposed
 there either — a machine reached over SSH from the web UI has its own paths, which this
-document never described.
+document never described. Where a terminal on a server does start is the image's business:
+`/home/rite`, which is `docs/SERVER.md`.
 
 **On a server, the instance may decide.** Where the shell runs is what settles who
 governs: a desktop window runs its terminals on your machine, whatever it is connected to,

@@ -91,6 +91,13 @@ RUN apt-get update \
  && useradd --system --create-home --home-dir /home/rite --shell /usr/sbin/nologin rite
 COPY --from=builder /src/target/release/rite-server /usr/local/bin/rite-server
 USER rite
+# The home, and not the default `/`. A local terminal opened from the web UI inherits this
+# process's working directory — nothing makes a shell go to $HOME on its own — so without
+# this line a member landed in `/`, which they cannot write to and which holds nothing of
+# theirs. The data volume mounts under here too, so the one directory a session can use is
+# the one it starts in. `e2e/server-image-check.mjs` holds it, and the same line is in the
+# acceptance fixture: the test image has to start a shell where the real one does.
+WORKDIR /home/rite
 # Bind all interfaces so the container is reachable; the vault lives under the
 # rite user's data dir (mount a volume at /home/rite/.local/share/rite to persist).
 ENV RITE_ADDR=0.0.0.0:1421
