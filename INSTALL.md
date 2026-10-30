@@ -54,7 +54,7 @@ with a secret, so it will not ask anyone to run a script they have not seen.
 ### By hand
 
 ```bash
-VERSION=0.2.7
+VERSION=0.2.8
 BASE=https://github.com/Altagen/Rite/releases/download/$VERSION
 
 curl -fLO $BASE/rite-$VERSION-linux-x86_64.tar.gz
@@ -118,7 +118,7 @@ A download with `curl` is not quarantined and needs nothing.
 One image, the configuration outside it:
 
 ```bash
-podman pull ghcr.io/altagen/rite-server:0.2.7
+podman pull ghcr.io/altagen/rite-server:0.2.8
 ```
 
 [docs/SERVER.md](docs/SERVER.md) covers what it needs to be useful: a volume for the
