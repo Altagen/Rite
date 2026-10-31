@@ -26,7 +26,16 @@ async function run(page: import('@playwright/test').Page, line: string) {
   await page.keyboard.press('Enter');
 }
 
-/** The text of the pane at `index`, once it holds `needle`. */
+/** The text of the pane at `index`, once it holds `needle`.
+ *
+ * A `needle` has to match the shell's ANSWER and not the line that asked for it. A pane
+ * shows both: the shell echoes what you type, so `/SPLIT-/` is already on screen the
+ * instant `echo SPLIT-$PWD` is typed, and this would return before the shell had run
+ * anything. Matching a slash after the marker is what separates them — the typed line has
+ * `SPLIT-$`, only the expansion has `SPLIT-/`. The same trap is recorded in
+ * `packages/rite-core/tests/local_session.rs`, where it makes an assertion vacuous rather
+ * than a wait early.
+ */
 async function screenHolding(
   page: import('@playwright/test').Page,
   index: number,
@@ -54,7 +63,7 @@ test('a split opens in the directory the cut pane was in', async ({ page }) => {
   await panes(page).nth(1).click();
   await run(page, 'echo SPLIT-$PWD');
 
-  const text = await screenHolding(page, 1, /SPLIT-/);
+  const text = await screenHolding(page, 1, /SPLIT-\//);
   // THE assertion. A pane that ignored the inheritance would report the home directory,
   // which is what every pane reported before this.
   expect(text, 'the new pane started where the old one was').toContain('SPLIT-/usr/share');
@@ -76,6 +85,9 @@ test('a new tab starts fresh, not where another pane happened to be', async ({ p
   await panes(page).first().click();
   await run(page, 'echo TAB-$PWD');
 
-  const text = await screenHolding(page, 0, /TAB-/);
+  // Waited on `TAB-/` rather than `TAB-`, and this is the test that needed it most: the
+  // assertion below is a NEGATIVE one, so a wait satisfied by the echoed input would have
+  // passed on a screen that held no answer at all — green whatever a new tab inherited.
+  const text = await screenHolding(page, 0, /TAB-\//);
   expect(text, 'a new tab does not inherit').not.toContain('TAB-/usr/share');
 });

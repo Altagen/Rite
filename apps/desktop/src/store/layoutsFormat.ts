@@ -81,10 +81,31 @@ export interface LayoutError {
 export const FILE_COPY_MODES = ['chord', 'select', 'selectRightPaste', 'ctrlC'] as const;
 export type FileCopyMode = (typeof FILE_COPY_MODES)[number];
 
+/**
+ * Where a new tab starts, as `[terminal] newTabCwd`.
+ *
+ * ONE VALUE, AND TWO STATES. A path and every new tab starts there; nothing and a new tab
+ * starts where the standing pane is, or in the home directory when there is no pane to
+ * follow. That is the whole rule, and the earlier shape — `inherit` and `home` as words
+ * beside a path — made a setting out of what people expect anyway.
+ *
+ * An absolute path only. The file is read on one machine and the shell can start on
+ * another, so `work` would mean two different places; the parser checks the shape, since
+ * there is no list of directories to validate against.
+ *
+ * `home` survives as a WIRE word, not a value anybody writes: the client asks for the home
+ * directory when no pane stands, and the machine that starts the shell is the only side
+ * that can resolve it. See `utils/newTabCwd.ts`.
+ */
+export const NEW_TAB_CWD_HOME = 'home';
+
 /** What `[terminal]` carries: this machine's behaviour, not its arrangement (ADR 0023). */
 export interface TerminalSection {
   /** Absent ⇒ the shipped default, which is what Rite has always done. */
   copyMode?: FileCopyMode;
+  /** An absolute path, where every new tab then starts. Absent ⇒ the standing pane's
+   *  directory, or the home directory when no pane stands. */
+  newTabCwd?: string;
 }
 
 export interface LayoutParse {
@@ -198,8 +219,24 @@ export function parseLayoutFile(text: string): LayoutParse {
     else return fail(i + 1, `a value is a quoted string or true/false, not ${value || 'nothing'}`);
 
     if (inTerminal) {
+      if (key === 'newTabCwd') {
+        if (terminal.newTabCwd !== undefined) {
+          return fail(i + 1, 'newTabCwd is set twice');
+        }
+        const where = String(parsed);
+        if (!where.startsWith('/')) {
+          // A relative path has no meaning here: the file is read on one machine and the
+          // shell can start on another, so "." would mean two places. A word is refused
+          // too — there is nothing to say in words any more, and `inherit` written here
+          // would otherwise be taken for a directory and fail at spawn instead of on this
+          // line.
+          return fail(i + 1, `newTabCwd is an absolute path — not ${where || 'nothing'}`);
+        }
+        terminal.newTabCwd = where;
+        continue;
+      }
       if (key !== 'copyMode') {
-        return fail(i + 1, `[terminal] takes copyMode, not ${key}`);
+        return fail(i + 1, `[terminal] takes copyMode or newTabCwd, not ${key}`);
       }
       if (terminal.copyMode !== undefined) {
         return fail(i + 1, 'copyMode is set twice');
@@ -625,6 +662,53 @@ export function setLayoutStartup(text: string, index: number, startup: boolean):
   const nameAt = lines.slice(start + 1, end).findIndex((l) => keyOf(l) === 'name');
   const insertAt = nameAt >= 0 ? start + 2 + nameAt : start + 1;
   out.splice(insertAt, 0, indentOf(lines[insertAt - 1]) + 'startup = true');
+  return out.join('\n');
+}
+
+/**
+ * Write one `[terminal]` key into the file, or take it out with `null`.
+ *
+ * `[terminal]` is where this machine's behaviour lives (ADR 0023), so a Settings control
+ * edits the FILE rather than keeping a second copy of the value beside it — which is the
+ * whole reason the section exists. `setLayoutStartup` above does the same for a layout's
+ * own key, and this is its counterpart for the one table that is not a list.
+ *
+ * The table is created when it is absent, at the TOP of the file. It cannot go at the
+ * bottom: in this subset a key belongs to whichever table is currently open, so a
+ * `[terminal]` appended after a `[[layout.pane]]` would be fine but one appended without
+ * its header would silently become a pane's key. Writing the header too makes that
+ * impossible either way, and the top is where a reader looks for a file-wide setting.
+ */
+export function setTerminalValue(text: string, key: string, value: string | null): string {
+  const lines = (text ?? '').split('\n');
+  const isHeader = (line: string) => stripComment(line).trim().startsWith('[');
+  const keyOf = (line: string) =>
+    /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(stripComment(line).trim())?.[1];
+
+  const start = lines.findIndex((l) => stripComment(l).trim() === '[terminal]');
+
+  if (start < 0) {
+    if (value === null) return text ?? '';
+    const head = ['[terminal]', `${key} = ${quote(value)}`, ''];
+    // An empty file gets the table and nothing else: no leading blank line to strip later.
+    return (text ?? '').trim() === '' ? head.join('\n') : head.concat(lines).join('\n');
+  }
+
+  let end = start + 1;
+  while (end < lines.length && !isHeader(lines[end])) end++;
+
+  const at = lines.slice(start + 1, end).findIndex((l) => keyOf(l) === key);
+  const out = lines.slice();
+
+  if (at >= 0) {
+    const line = start + 1 + at;
+    if (value === null) out.splice(line, 1);
+    else out[line] = indentOf(lines[line]) + `${key} = ${quote(value)}`;
+    return out.join('\n');
+  }
+  if (value === null) return text ?? '';
+
+  out.splice(start + 1, 0, indentOf(lines[start + 1] ?? '') + `${key} = ${quote(value)}`);
   return out.join('\n');
 }
 

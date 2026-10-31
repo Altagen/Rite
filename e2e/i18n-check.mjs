@@ -427,6 +427,66 @@ check('and the allow-list has no stale entry', () => {
 });
 
 /*
+ * The interface addresses nobody.
+ *
+ * `e2e/mock-register-check.mjs` holds this for the mock, and its header says why: the
+ * app's 122 strings were rewritten to address nobody while the mock kept 258 of them, so
+ * the mock became the place the old register would come back from. Nothing held it on
+ * THIS side afterwards, and two strings survived the sweep — "A shell we didn't find" and
+ * "We'll keep trying on our own". The owner found them by reading the screen.
+ *
+ * A label, not prose: the interface states what a thing is, and a sentence with a speaker
+ * and a listener in it is a different product talking about itself.
+ */
+const SPEAKER_WORDS = [
+  'we',
+  'our',
+  'ours',
+  'us',
+  'you',
+  'your',
+  'yours',
+  'nous',
+  'notre',
+  'nos',
+  'vous',
+  'votre',
+  'vos',
+  'tu',
+  'ton',
+  'ta',
+  'tes',
+];
+// Unicode boundaries, not `\b`. JavaScript's `\b` is ASCII-only, so "hôtes" has a word
+// boundary between "ô" and "tes" and `\btes\b` matches inside it — five French strings
+// reported as addressing somebody on the first run, every one of them an accent.
+const SPEAKERS = new RegExp(
+  `(?<![\\p{L}\\p{N}_])(?:${SPEAKER_WORDS.join('|')})(?![\\p{L}\\p{N}_])`,
+  'iu',
+);
+
+console.log('\nthe interface addresses nobody:');
+
+check('no locale string has a speaker or a listener in it', () => {
+  const guilty = [];
+  for (const [locale, data] of Object.entries(LOCALES)) {
+    const walk = (node, path) => {
+      if (node && typeof node === 'object') {
+        for (const [k, v] of Object.entries(node)) walk(v, path ? `${path}.${k}` : k);
+      } else if (typeof node === 'string' && SPEAKERS.test(node)) {
+        guilty.push(`${locale}.${path}: ${node.slice(0, 70)}`);
+      }
+    };
+    walk(data, '');
+  }
+  assert.deepEqual(
+    guilty,
+    [],
+    `${guilty.length} string(s) address somebody:\n        ${guilty.join('\n        ')}`,
+  );
+});
+
+/*
  * One string must NOT be translated, and the locales have to quote it.
  *
  * The reset phrase is compared byte for byte in code (`utils/resetPhrase.ts`). A locale

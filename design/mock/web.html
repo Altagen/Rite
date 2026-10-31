@@ -474,7 +474,7 @@ function collMore(id,e){const c=find(id);floatMenu(e,c.personal
     {icon:EXICON.trash,label:'Delete collection',onclick:()=>toast(`Delete “${c.name}”…`)}]);}
 
 /* ================= colour + dialogs ================= */
-const COLORS=['#7c9cf5','#9ece6a','#e5b567','#f0a35e','#f7768e','#bb9af7','#56c7c0','#8b93a7'];
+const COLORS=['#7c9cf5','#9ece6a','#e5b567','#f0a35e','#f7768e','#bb9af7','#56c7c0','#94a3b8','#8b93a7'];
 let __pickColor=COLORS[0];
 function swatchRow(initial){__pickColor=initial||COLORS[0];
   return `<label class="field"><span>Colour</span><div class="swatches">${COLORS.map(c=>`<button type="button" class="sw ${c===__pickColor?'sel':''}" style="background:${c}" onclick="pickColor(this,'${c}')"></button>`).join('')}</div></label>`;}

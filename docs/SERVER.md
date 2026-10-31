@@ -47,6 +47,28 @@ secret rests anywhere. That screen asks for a password and nothing else: the acc
 `admin`, shown but not editable. One account an instance cannot be opened without, named
 by convention rather than by whoever gets there first.
 
+### Where a terminal on this server starts
+
+In `/home/rite`, the home of the unprivileged user the image runs as, and where the data
+volume mounts. It is the image's working directory and a terminal inherits it — nothing
+makes a shell go to `$HOME` on its own.
+
+It is not configurable, and that is the decision rather than an omission. A member
+reaching a machine over SSH from the web UI lands on that machine's paths, which this
+server has never seen, so a directory it imposed would describe none of them. A client
+naming one would be choosing where a shared server spawns a shell, and is refused.
+
+`/home/rite` is where EVERY terminal opens here, not just the first: the web UI asks for
+no directory at all, so none of them inherits one. A split is the exception, and it is the
+gesture's own meaning rather than a setting — it divides a pane and opens where that pane
+is standing, which is one of this server's own sessions on this server's own filesystem.
+
+The desktop is the other case: its terminals run on your own machine whatever context is
+active (ADR 0031), so `[terminal] newTabCwd` in your workspace document can name a path —
+see `docs/LAYOUTS.md`. Nothing in that document is read here.
+
+Before 0.2.8 the image set no working directory, so a terminal opened in `/`.
+
 ### The administrator, without a browser
 
 For a headless start — the instance comes up with the account already created — add one

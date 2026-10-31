@@ -160,6 +160,19 @@ task e2e                  # = sh e2e/gate.sh
 task audit                # advisories, cargo + pnpm
 ```
 
+`task audit` runs `scripts/audit.sh` rather than `cargo audit` directly, and it **fails
+when a check could not run** rather than reporting what it managed to ask. That is not
+hypothetical: the yanked-crate check had never run on a local machine, failing once per
+crate and then exiting 0, so the audit read as clean through the 0.2.7 release while ~170
+crates went unasked. A yanked crate that IS found is a warning rather than an error, so
+that exited 0 too, which is why the script passes `--deny yanked`. And the script proves
+`cargo audit` started at all before believing its result — pointed at a missing image, the
+first version of the wrapper printed success. The four CI audit jobs run the same script
+for the same reasons — and `pnpm audit` had never been able to fail anything either, one
+job ending in `|| true` and the other carrying `continue-on-error: true`. The JavaScript
+threshold (`--audit-level=high`) is named in the script and nowhere else. It needs a persistent cargo registry volume; the script's header has the
+measurements. Trust `audit complete: every check ran` and nothing less.
+
 The gate's step 5 **destroys the `deploy_rite-data` volume and removes
 `deploy/admin_password.txt`**, so it must not run against an instance someone is using.
 

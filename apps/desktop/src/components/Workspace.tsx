@@ -76,6 +76,7 @@ import {
   type NativeVault,
 } from '../utils/nativeShell';
 import { instanceChoosesShell, shellControls, shellToStart } from '../utils/localShellSource';
+import { newTabCwdStart } from '../utils/newTabCwd';
 import { SHELL_CANDIDATES } from '../utils/shells';
 import { VaultRemoveDialog } from './VaultRemoveDialog';
 import { CreateVaultDialog } from './CreateVaultDialog';
@@ -329,6 +330,7 @@ export function Workspace({
   // Which toolbar buttons this person keeps. Hiding one hides it and nothing else:
   // the shortcut still fires, and a server's Quick SSH policy still decides.
   const toolbarPrefs = useToolbar();
+  const newTabCwd = useLayouts((s) => s.newTabCwd);
   const layoutsFromFile = useLayouts((s) => s.layouts);
   const layoutsLoaded = useLayouts((s) => s.loaded);
   // No workspace to read, no Layouts button: the instance may refuse the feature, or the
@@ -952,8 +954,25 @@ export function Workspace({
     // name the receiving end would apply.
     const shellToUse = sent ?? serverShell ?? settings.defaultShell;
 
+    // Where it starts. The rule is in `utils/newTabCwd.ts` for the same reason as the
+    // shell's: its discriminator is the native shell, which no browser suite can see.
+    const standing = getFocusedPane(
+      tabGroups.find((tab) => tab.id === activeTabId)?.paneTree ?? null,
+    );
+    // Only a local pane has a directory on THIS machine. A focused SSH pane is standing on
+    // another computer, so there is nothing here to follow and the home directory answers
+    // instead — the same as no pane at all. Passing its id would have the server find no
+    // local session and start the shell wherever Rite stands, which is nobody's directory.
+    const following =
+      standing?.session.connectionId === 'local' ? standing.session.id : undefined;
+    const start = newTabCwdStart({
+      asked: newTabCwd,
+      runsHere: isNativeShell(),
+      from: following,
+    });
+
     try {
-      const sessionId = await Backend.Terminal.connectLocalTerminal(sent);
+      const sessionId = await Backend.Terminal.connectLocalTerminal(sent, start);
 
       // Create terminal session
       const shellName = shellToUse.split('/').pop() || 'shell';
@@ -1016,10 +1035,14 @@ export function Workspace({
     /**
      * Open in the same directory as this session's shell.
      *
-     * Only a split passes one. A new tab and a duplicate start where a shell would
-     * normally start: "leave me where I was" is unambiguous for a split and a guess
-     * anywhere else. The server reads the directory itself and refuses a session the
-     * caller does not own.
+     * Only a split passes one, and a split always does: "leave me where I was" is
+     * unambiguous for a division of a pane, which is why it needs no setting. A new tab
+     * follows the standing pane too unless `[terminal] newTabCwd` names a path
+     * (`handleNewLocalTerminal`), and a duplicate and a layout's panes still start where a
+     * shell would — a declared workspace says what it wants, and a standing preference is
+     * not it.
+     *
+     * The server reads the directory itself and refuses a session the caller does not own.
      */
     inheritCwdFrom?: string,
   ): Promise<TerminalSession> => {
@@ -1029,7 +1052,7 @@ export function Workspace({
     const shellToUse = isServerCtx ? serverShell : settings.defaultShell;
     const sessionId = await Backend.Terminal.connectLocalTerminal(
       isServerCtx ? (serverShellChoiceList.length > 0 ? serverShell : undefined) : shellToUse,
-      inheritCwdFrom,
+      { inheritCwdFrom },
     );
     const shellName = shellToUse.split('/').pop() || 'shell';
     return {
@@ -1894,8 +1917,7 @@ export function Workspace({
               <div className="flex justify-end p-2">
                 <button
                   onClick={() => setIsSidebarOpen(false)}
-                  className="m-btn m-btn-ghost"
-                  style={{ padding: '4px' }}
+                  className="m-btn m-btn-ghost p-1"
                   title={t('ws.hideSidebar')}
                   aria-label={t('ws.hideSidebar')}
                 >
@@ -1961,8 +1983,7 @@ export function Workspace({
                     onClick={() => setShowNewMenu((v) => !v)}
                     aria-label={t('ws.addToLibrary')}
                     title={t('ws.addToLibrary')}
-                    className="m-btn m-btn-ghost"
-                    style={{ padding: '4px' }}
+                    className="m-btn m-btn-ghost p-1"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path
@@ -2036,8 +2057,7 @@ export function Workspace({
                   )}
                   <button
                     onClick={() => setIsSidebarOpen(false)}
-                    className="m-btn m-btn-ghost"
-                    style={{ padding: '4px' }}
+                    className="m-btn m-btn-ghost p-1"
                     title={t('ws.hideSidebar')}
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

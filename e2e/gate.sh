@@ -74,8 +74,9 @@ pnpm --filter desktop build:frontend
 # …and into the embed folder, which is where `rust-embed` reads the UI from at compile
 # time (ADR 0004). `task build` does this and a bare `cargo build --release` does not, so
 # a release built right after a gate would otherwise ship the bundle from before it.
-# `embedded-ui-check` in step 3 is what notices; this is what keeps it true.
-cp -r apps/desktop/dist/. packages/rite-server/web/
+# `embedded-ui-check` in step 3 is what notices; this is what keeps it true. The script
+# REPLACES the folder rather than adding to it — its header says what that cost.
+sh scripts/embed-ui.sh
 # The Rust side gets the same treatment, and for the reason the eslint pass above
 # exists: `cargo fmt` and `clippy` only ever ran in `task check`, which needs a cargo on
 # the host — and there is none on the machine this was written on, so neither had ever

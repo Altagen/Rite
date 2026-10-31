@@ -94,15 +94,12 @@ export function SplitPane({
       {/* Resizable divider with larger hit area */}
       <div
         className={`
-          relative flex-shrink-0 cursor-${isHorizontal ? 'col' : 'row'}-resize
+          relative flex-shrink-0 select-none cursor-${isHorizontal ? 'col' : 'row'}-resize
           ${isHorizontal ? 'w-1' : 'h-1'}
         `}
         onMouseDown={handleDividerMouseDown}
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
-        style={{
-          userSelect: 'none',
-        }}
       >
         {/* Visual divider with enhanced hover effect */}
         <div
@@ -116,10 +113,9 @@ export function SplitPane({
         {/* Larger invisible hit area for easier grabbing */}
         <div
           className={`
-            absolute
+            absolute select-none
             ${isHorizontal ? 'w-3 h-full -left-1' : 'h-3 w-full -top-1'}
           `}
-          style={{ userSelect: 'none' }}
         />
       </div>
 

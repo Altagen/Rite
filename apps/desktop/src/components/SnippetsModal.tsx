@@ -150,8 +150,7 @@ export function SnippetsModal({ sessionId, paneLabel, onClose }: Props) {
                 rows={3}
                 spellCheck={false}
                 placeholder={'git pull\nnpm ci\nnpm run build'}
-                style={{ resize: 'vertical', minHeight: 66 }}
-                className="w-full rounded border border-border bg-input px-2.5 py-1.5 font-mono text-sm leading-relaxed"
+                className="w-full resize-y rounded border border-border bg-input px-2.5 py-1.5 font-mono text-sm leading-relaxed min-h-[66px]"
               />
             </label>
             {error && <p className="text-xs text-red-500">{error}</p>}

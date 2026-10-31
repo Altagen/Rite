@@ -18,10 +18,12 @@ tasks:
       # --lib skips the integration tests in tests/, which is where the SSH
       # transport and the pre-connect hook are covered. Run the lot.
       - cargo test --workspace --all-features
-      - cargo audit
-      # The JS side was never audited: four high advisories had accumulated in a
-      # transitive dev dependency without anything reporting them.
-      - pnpm audit --audit-level=high
+      # Both audits through the script, which fails when a check could not run rather
+      # than reporting what it managed to ask. `cargo audit` alone exited 0 while ~170
+      # yanked-crate checks errored out — see scripts/audit.sh.
+      # The JS side was never audited at all before: four high advisories had
+      # accumulated in a transitive dev dependency without anything reporting them.
+      - sh scripts/audit.sh
       - pnpm --filter desktop typecheck
       - pnpm --filter desktop exec eslint src
 
@@ -155,16 +157,18 @@ tasks:
 
   # Security audit
   audit:
-    desc: Run security audit on dependencies
+    desc: Security audit of every dependency, Rust and JavaScript
     cmds:
-      - cargo audit
+      # Not `cargo audit` directly. The yanked-crate check needs a persistent registry
+      # volume to run at all, and the script fails when it did not — see its header.
+      - sh scripts/audit.sh
 
   # Build
   build:
     desc: Build the desktop client (release) with the frontend embedded
     cmds:
       - pnpm --filter desktop build:frontend
-      - cp -r apps/desktop/dist/. packages/rite-server/web/
+      - sh scripts/embed-ui.sh
       - cargo build --release -p rite-desktop
 
   build-server-image:

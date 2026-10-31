@@ -31,8 +31,117 @@ inside the server container. What is left is the code.
 **Goal:** Production-ready terminal with local shell + SSH, core modern features, and solid UX.
 
 ### 🎯 Terminal Core (Priority: CRITICAL - New Focus)
-  - [ ] A new tab starting in the active pane's directory — a split already does
-        (`/proc/<pid>/cwd` on Linux, the shell's own answer elsewhere); a new tab does not
+  - [x] A new tab starting where the workspace document says — a split already does
+        (`/proc/<pid>/cwd` on Linux, the shell's own answer elsewhere); a new tab did not.
+        Shipped in 0.2.8 as `newTabCwd`: one absolute path, or nothing — and nothing
+        means the standing pane, or the home directory with no pane to follow. Reached
+        that shape only after a four-choice first pass the owner cut; the sub-item below
+        records why, because the reasoning that produced the four choices reads
+        convincing and was wrong.
+
+        - [x] `newTabCwd` in `[terminal]` of the workspace document, beside `copyMode`
+              (ADR 0023 addendum). A keyword, or an absolute path. The parser's whitelist
+              is strict — `[terminal] takes copyMode or newTabCwd, not <key>` — which is
+              what makes adding a key a deliberate edit. 0.2.8: the table turned out to
+              be undocumented entirely, `copyMode` included, so `docs/LAYOUTS.md` gained
+              it and a check parses the documented example against the parser.
+        - [x] **A directory carried end to end.** `inheritCwdFrom` transports a SESSION
+              ID, not a path, so the frontend, the HTTP route, the server and
+              `create_local_session` all needed the other shape. `LocalStart` in the core
+              is that shape: `Wherever`, `Inherit(&SessionId)`, `In(PathBuf)` — an enum
+              rather than two `Option`s, because "both at once" is a request nobody had
+              decided the meaning of, and as a pair the precedence would have to be agreed
+              by every caller.
+        - [x] **ONE VALUE, TWO STATES — the shape the owner settled on.** A path and every
+              new tab starts there; nothing and a new tab follows the standing pane, or
+              opens in the home directory when no pane stands. A split is unchanged: it has
+              always followed the pane it divides.
+
+              The first pass shipped four choices — absent, `inherit`, `home`, a folder —
+              with `inherit` argued as "a value and not a behaviour change, because people
+              disagree about which they want for a tab". The owner read the result and cut
+              it: *« soit on met un path et le shell se lance toujours dans le path, soit il
+              est grisé et il est hérité de la pane d'avant, et s'il n'y avait pas de pane
+              avant bah c'est le home directory »*. Nobody disagrees about following the
+              pane they are standing in; the disagreement was invented by offering the
+              choice.
+
+              WHAT THAT COST, and it is the point: `inherit` and `home` stopped being values
+              the parser takes, the absent key stopped meaning "wherever Rite stands" — a
+              shipped behaviour change, and the directory it named was nobody's — and the
+              dropdown became one field. `home` survives as a WIRE word only: the client
+              asks for the home directory when no pane stands, and the machine that starts
+              the shell is the only side that can resolve it.
+
+              A FOCUSED SSH PANE IS NOT A PANE TO FOLLOW. Its directory is on another
+              computer, so its id would have the server find no local session and start the
+              shell wherever Rite stands — silently. `Workspace.tsx` follows a pane only
+              when `connectionId === 'local'`, and the home directory answers otherwise.
+        - [x] **A switch in Settings that writes the document**, rather than a second
+              place holding the same value — which is why it is offered and `copyMode`
+              beside it is only reported: nothing writes that one back. Under Terminals,
+              beside which shell starts, because where a new tab starts and which shell it
+              starts are one decision about one button.
+
+              A SWITCH AND A GREYED FIELD, the owner's shape: *« une case à cocher (par
+              défaut ce que je t'ai dit) et si on la coche => on arrive dans le path
+              prédéfini qui est grisé quand la case n'est pas cochée »*. It replaced a bare
+              path field whose empty state said what it does only in its hint. The switch
+              holds no value of its own — it is whether the key is set — and turning it off
+              removes the key. It is `SettingsToggle` and not a native checkbox: WebKitGTK
+              draws one here and the browser another, and the same bundle showing two
+              different controls is the one thing these two surfaces must never do.
+
+              The web UI gets no row, and that was weighed rather than assumed: the
+              container has one directory that matters (`useradd --home-dir /home/rite`,
+              with the data volume mounted beneath it) and everything else belongs to root,
+              so the field would offer a choice between the default it already has and
+              directories the member cannot write. Not a security argument — a member with
+              a shell can `cd` anywhere they can read — but a control with one useful
+              value. If a project volume is ever mounted there, this switch is the shape to
+              add.
+
+              The field is gated on `newTabCwdApplies` — the same function `newTabCwdStart`
+              applies a path through, not a second reading of `runsHere`, so a control that
+              writes a value this client ignores cannot exist. `shellControls` earned that
+              lesson: a switch for something that cannot happen says there is a choice.
+        - [x] **NOTHING IS IMPOSED ON THE WEB UI, and nothing is read there.** Settled by
+              the owner in 0.2.8, against what this item said twice before: a machine
+              reached over SSH from the web UI has its own paths, so a directory the
+              instance forced would describe none of them. A browser's own local terminal
+              is the instance's shell in the container, where a path a desktop wrote means
+              nothing either. So the browser arm of `utils/newTabCwd.ts` names no path, and
+              `named_start_dir` in `rite-server` answers `None` for every input in accounts
+              mode — the gate is inside the rule rather than beside its call, so a second
+              call site cannot be added without it.
+
+              A BROWSER ASKS FOR NOTHING AT ALL, pane or no pane. 0.2.8 briefly extended
+              "follow the standing pane" to the web UI as well, reasoning that a pane there
+              is one of the instance's own sessions and so nothing foreign; the owner
+              refused it — *« dans la webui on n'était même pas censé l'avoir ce paramètre,
+              c'est censé être par défaut le shell de base tout le temps, pas hérité »*.
+              Every terminal there opens in the image's `WORKDIR /home/rite`. A split
+              still follows its pane, in both UIs, because that is the gesture's own
+              meaning and not this setting.
+
+              THIS ITEM HAS BEEN WRONG TWICE, which is worth recording. Written during
+              0.2.6, it had a desktop client in a server context opening its terminals on
+              the server, and concluded the instance should impose the path there too. ADR
+              0031 reversed that premise in 0.2.7 — a local terminal is the client's own,
+              always — and the item was rewritten to reuse `instanceChoosesShell`, keeping
+              the instance's authority over a browser. 0.2.8 dropped the authority itself:
+              a forced path is not a safeguard when every machine behind it has different
+              paths. What remains is a refusal, which needs no setting.
+        - [x] ~~Two instance settings, and their row in the admin console.~~ Dropped with
+              the item above: there is nothing for an administrator to decide. The
+              refusal is the whole server-side behaviour, and it is unconditional.
+
+        A path that is gone needs no new rule, but not for the reason first written here:
+        `CommandBuilder::cwd` on a missing directory does NOT fail the spawn on Linux
+        (portable-pty 0.9 returns `Ok` and the child starts in the calling process's
+        directory — measured). `spawn_inner` filters on `.is_dir()` anyway, which is
+        load-bearing on Windows, where `CreateProcessW` refuses. Either way a bad value
+        starts where the shell would have. Never a lost pane.
 
   Adding a kind is now three steps: extend `LeafPaneNode` in
   `apps/desktop/src/types/pane.ts`, write the kind under
@@ -135,22 +244,59 @@ inside the server container. What is left is the code.
 ### 🎨 Styling: one place for it (Priority: HIGH)
 
 The CSP served to browsers is strict on every axis but one: `style-src` carries
-`'unsafe-inline'`, because the app writes 42 inline `style={{}}` across about fifteen
-components — pane geometry, collection colours, computed widths. That directive is the
-symptom; the cause is that styling has no single home, so a value that belongs to the
-design lands in a component instead.
+`'unsafe-inline'`, because the app writes inline `style={{}}` across the components. That
+directive is the symptom; the cause is that styling has no single home, so a value that
+belongs to the design lands in a component instead.
 
 Not a security fix, which is why it waits: what `'unsafe-inline'` permits is
 CSS injection, and `script-src 'self'` with `object-src 'none'` hold the sharp edges.
-It is a refactor, and the dependency runs the other way — tighten the CSP once the
-styles have somewhere to live.
 
-- [ ] Inventory the 42 sites and sort them: geometry computed at runtime (a split's
-      percentage) against values that are really design tokens (a collection's colour)
-- [ ] Design tokens as CSS custom properties, set once, consumed by class
-- [ ] Runtime geometry through a CSS variable on the element rather than a style string
-- [ ] Then drop `'unsafe-inline'` from `style-src` in `packages/rite-server/src/lib.rs`
-      and let the tls-proxy suite prove nothing regressed
+**Inventoried 2026-10-28: 43 sites across 23 components**, and the sort came out as four
+groups rather than the two expected. The distinction that matters is not
+token-versus-geometry, it is *what could ever live in a stylesheet*:
+
+| | sites | |
+|---|---|---|
+| Runtime geometry | 14 | a split's percentage, a popup's coordinates, `paddingLeft` from a tree depth, `pointerEvents` during a drag |
+| Static CSS, inline for no reason | 13 | `padding: '4px'`, `resize: 'vertical'`, `userSelect: 'none'`, `rotate(90deg)` |
+| A colour the user chose | 14 | a collection's, a machine's, a member's avatar, the swatch grids |
+| A context's badge | 1 | `backgroundImage` from a hash |
+| **A design token, written as a hex** | **1** | `LibrarySidebar.tsx:841` |
+
+Only the second group belongs in a stylesheet. The third is the hard one and it is the
+one a theme has to coexist with: those values are per-element user data, not design, so
+no amount of tokenising moves them — the most that can be done is to give them one
+mechanism instead of fourteen hand-written ones.
+
+The fifth is one site and it is the whole argument for doing this before a theme exists.
+A folder's Delete button carries `color: '#f7768e'`, which is `--destructive`
+(`348.8 89% 71.6%`) converted to hex, exactly. Nothing marks it as the same value, so the
+day the palette changes that one button keeps the old red — a theme would not be broken
+by it, it would be *revealed* by it. One drift found in 43 sites is also the honest
+measure of the risk: low, and real.
+
+**And the last step as written here was wrong.** A design token passed through an
+attribute is still an attribute, and `'unsafe-inline'` in `style-src` covers `<style>`
+elements and `style` attributes alike — so no refactor of the 43 sites drops it. What
+would is splitting the directive: `style-src-elem 'self'` for the sheets, with
+`'unsafe-inline'` kept on `style-src-attr` for the attributes. An absent directive falls
+back to `style-src`, so an engine that does not know them enforces exactly what it
+enforces today: the split cannot regress, it can only fail to gain. `style-src-attr` is
+available everywhere since late 2022; `style-src-elem` is baseline 2025 and unverified on
+WebKitGTK. Whether the sheets survive `'self'` is a question about what the bundle injects
+at runtime — xterm.js builds style elements of its own — so it gets measured in the
+tls-proxy suite rather than asserted.
+
+- [x] Inventory the sites and sort them — the table above
+- [ ] The 13 static sites into classes, and the hex back onto its token: no behaviour
+      change, identical output
+- [ ] One mechanism for the 14 user-chosen colours instead of fourteen
+- [ ] Runtime geometry through a CSS variable on the element rather than a style string —
+      worth doing for readability, but it buys nothing on the CSP
+- [ ] `style-src-elem 'self'` beside the kept `style-src-attr 'unsafe-inline'` in
+      `packages/rite-server/src/lib.rs`, with the tls-proxy suite proving the sheets and
+      xterm still load — independent of the four items above, and the only one that
+      actually tightens anything
 
 ### 🌍 The server's refusals, as codes (Priority: LOW)
 
@@ -219,8 +365,13 @@ rather than in a pull request. An ADR follows the mock, and code follows the ADR
       without a PTY (one-shot); an agent wants both. Not the typed-after-a-delay
       shortcut: a shell discards queued input while it sets the tty up, so an early
       send is *gone*, which the split-preset work already proved and fixed once.
-- [ ] **`local_terminal.rs`** — argv-direct spawn (it goes through `cmd.arg("-c")`)
-      and `cwd` support, which does not exist. Desktop-local case only.
+- [x] **`local_terminal.rs`** — **done**, both halves. `cwd` arrived in 0.2.6 for splits;
+      the argv-direct spawn is `LocalProgram::{Shell, Script, Argv}` with
+      `LocalSession::run_program(events, argv, cwd)`, so a resume command reaches `execvp`
+      as written instead of being re-parsed by `sh -c`. An argv does not borrow the
+      shell's fallback resolution, which would have answered a missing CLI with an
+      anonymous `/bin/sh` prompt. Nothing reaches it from the UI yet — it is groundwork,
+      and six tests are its only caller. ADR 0022 §7.2 and its addendum.
 - [ ] **Agent pane**, not a menu: an agent has a context of its own — a working
       directory, a transcript, a lifetime — and belongs to no machine (see *Pane
       or menu* above). **Pane kinds** in Phase 1 are done, so this is a registration

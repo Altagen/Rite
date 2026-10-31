@@ -14,21 +14,12 @@ import { navigate } from '../store/route';
 import { IconLock, IconUsers, IconCollection } from './icons';
 import { OverlayHeaderControls } from './OverlayHeaderControls';
 import riteLogo from '../assets/rite.png';
+import { AVATAR_SWATCHES } from '../theme/swatches';
 
-const AVATAR_COLORS = [
-  '#7c9cf5',
-  '#9ece6a',
-  '#e5b567',
-  '#f0a35e',
-  '#f7768e',
-  '#bb9af7',
-  '#56c7c0',
-  '#e0af68',
-];
 function avatarColor(name: string) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+  return AVATAR_SWATCHES[h % AVATAR_SWATCHES.length];
 }
 function Avatar({ name }: { name: string }) {
   return (

@@ -50,6 +50,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && useradd --system --create-home --home-dir /home/rite --shell /usr/sbin/nologin rite
 COPY rite-server /usr/local/bin/rite-server
 USER rite
+# Mirrors Containerfile.server, and has to: a shell opened in this image starts in the
+# process's working directory, so a fixture left on `/` would accept a regression.
+WORKDIR /home/rite
 EXPOSE 1421
 ENTRYPOINT ["/usr/local/bin/rite-server"]
 CONTAINERFILE
@@ -58,6 +61,18 @@ CONTAINERFILE
   rm -rf "$ctx"
 fi
 export RITE_IMAGE="$IMAGE"
+
+# The image itself, not the recipe. `e2e/server-image-check.mjs` reads both Containerfiles
+# on every commit; this is the only place that asks the built artefact where it runs — and
+# that is what a shell opened from the web UI inherits, since nothing makes a shell go to
+# $HOME on its own. 0.2.6 and before ran in `/`, so an older tag passed in RITE_IMAGE fails
+# here, correctly.
+image_workdir=$(podman image inspect "$IMAGE" --format '{{.Config.WorkingDir}}')
+if [ "$image_workdir" != "/home/rite" ]; then
+  echo "  FAIL  the image runs in '${image_workdir:-/}' — a local terminal would open there" >&2
+  exit 1
+fi
+echo "— the image starts a shell in $image_workdir"
 
 # Both files: the bootstrap is an OVERRIDE now, so the acceptance exercises the
 # composition an operator actually types rather than a file that no longer carries the

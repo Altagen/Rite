@@ -162,7 +162,7 @@ jobs:
       - name: Build and embed frontend
         run: |
           pnpm --filter desktop build:frontend
-          cp -r apps/desktop/dist/. packages/rite-server/web/
+          sh scripts/embed-ui.sh
 
       # `build.rs` falls back to asking git, which works here — but passing it is what
       # makes the answer the TAG's commit rather than whatever the checkout resolved, and

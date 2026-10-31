@@ -30,6 +30,7 @@ import {
   formatLayoutFile,
   replacePresetBlocks,
   setLayoutStartup,
+  setTerminalValue,
   type Layout,
   type LayoutError,
   type Preset,
@@ -222,6 +223,15 @@ interface LayoutsState {
    * is null (ADR 0023, addendum).
    */
   copyMode: FileCopyMode | null;
+  /**
+   * Where a new tab starts, or `null` when the document says nothing.
+   *
+   * `null` for the same reason as `copyMode` above: a silent document must not look like
+   * one that chose today's behaviour, or changing it later would stop reaching anyone whose
+   * file had ever been read. What the value MEANS for this client is `utils/newTabCwd.ts` —
+   * a browser reads the value and sends nothing, because its local shell is the instance's.
+   */
+  newTabCwd: string | null;
   error: LayoutError | null;
   loaded: boolean;
   /** Re-read the file. */
@@ -232,6 +242,9 @@ interface LayoutsState {
   savePresets: (presets: Preset[]) => Promise<void>;
   /** Turn one layout's `startup` on or off, by its position in the file. */
   setStartup: (index: number, startup: boolean) => Promise<void>;
+  /** Write `[terminal] newTabCwd`, or remove it with `null`. The document is the one
+   *  place the value lives, so Settings edits it here rather than holding a copy. */
+  setNewTabCwd: (where: string | null) => Promise<void>;
   /** Flip the reader's switch, then re-read. */
   setEnabled: (enabled: boolean) => Promise<void>;
   /** Flip this machine's support, then re-read. Switching away from the account does not
@@ -259,6 +272,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
   presets: [],
   layouts: [],
   copyMode: null,
+  newTabCwd: null,
   error: null,
   loaded: false,
 
@@ -312,6 +326,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
           presets: parse.error ? get().presets : resolvePresets(parse),
           layouts: parse.error ? get().layouts : parse.layouts,
           copyMode: parse.error ? get().copyMode : (parse.terminal.copyMode ?? null),
+          newTabCwd: parse.error ? get().newTabCwd : (parse.terminal.newTabCwd ?? null),
           error: parse.error,
           loaded: true,
           enabled,
@@ -352,6 +367,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
         presets: parse.error ? get().presets : resolvePresets(parse),
         layouts: parse.error ? get().layouts : parse.layouts,
         copyMode: parse.error ? get().copyMode : (parse.terminal.copyMode ?? null),
+        newTabCwd: parse.error ? get().newTabCwd : (parse.terminal.newTabCwd ?? null),
         error: parse.error,
         loaded: true,
         enabled,
@@ -388,6 +404,13 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
     await get().save(setLayoutStartup(get().text, index, startup));
   },
 
+  // Through the document, not beside it. `save` re-parses, so the state this store hands
+  // out is what a reader of the file would get — including a refusal, if the rest of the
+  // document had been hand-edited into something that no longer parses.
+  setNewTabCwd: async (where: string | null) => {
+    await get().save(setTerminalValue(get().text, 'newTabCwd', where));
+  },
+
   save: async (text: string) => {
     const parse = parseLayoutFile(text);
     // The text is saved even when it does not parse: it is the user's document, and
@@ -405,6 +428,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
       presets: parse.error ? get().presets : resolvePresets(parse),
       layouts: parse.error ? get().layouts : parse.layouts,
       copyMode: parse.error ? get().copyMode : (parse.terminal.copyMode ?? null),
+      newTabCwd: parse.error ? get().newTabCwd : (parse.terminal.newTabCwd ?? null),
       error: parse.error,
     });
     return parse.error;

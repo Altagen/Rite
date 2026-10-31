@@ -22,7 +22,7 @@
 use rite_core::auth::AuthManager;
 use rite_core::db::Database;
 use rite_core::events::{SessionEvents, SharedEvents};
-use rite_core::terminal::SessionManager;
+use rite_core::terminal::{LocalStart, SessionManager};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -88,7 +88,7 @@ async fn a_local_session_runs_what_it_is_sent() {
     let events: SharedEvents = spy.clone();
 
     let id = mgr
-        .create_local_session(events, Some("/bin/sh".into()), None)
+        .create_local_session(events, Some("/bin/sh".into()), LocalStart::Wherever)
         .await
         .expect("a local session should open");
 
@@ -117,7 +117,7 @@ async fn closing_a_session_ends_its_shell() {
     let events: SharedEvents = spy.clone();
 
     let id = mgr
-        .create_local_session(events, Some("/bin/sh".into()), None)
+        .create_local_session(events, Some("/bin/sh".into()), LocalStart::Wherever)
         .await
         .expect("a local session should open");
 
@@ -160,7 +160,7 @@ async fn a_split_starts_where_the_pane_it_came_from_is_standing() {
     let events: SharedEvents = spy.clone();
 
     let first = mgr
-        .create_local_session(events.clone(), Some("/bin/sh".into()), None)
+        .create_local_session(events.clone(), Some("/bin/sh".into()), LocalStart::Wherever)
         .await
         .expect("the first session should open");
 
@@ -183,7 +183,7 @@ async fn a_split_starts_where_the_pane_it_came_from_is_standing() {
     assert!(walked, "the first shell never reached /tmp");
 
     let second = mgr
-        .create_local_session(events, Some("/bin/sh".into()), Some(&first))
+        .create_local_session(events, Some("/bin/sh".into()), LocalStart::Inherit(&first))
         .await
         .expect("the split should open");
 
@@ -191,5 +191,42 @@ async fn a_split_starts_where_the_pane_it_came_from_is_standing() {
         mgr.local_cwd(&second).await,
         Some(elsewhere),
         "the split did not start where the pane it came from was standing"
+    );
+}
+
+/// A new tab starts in the directory the workspace document named (`[terminal] newTabCwd`).
+///
+/// The counterpart of the split above, and the other arm of `LocalStart`: a directory the
+/// caller named rather than one read from another shell. `/tmp` again, because it is
+/// somewhere the test process does not already stand — a session that started in the
+/// repository would pass an assertion against the process's own directory without the
+/// value ever reaching the spawn.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_named_directory_is_where_the_shell_starts() {
+    let (_dir, mgr) = manager().await;
+    let spy = Arc::new(Spy::default());
+    let events: SharedEvents = spy.clone();
+
+    let elsewhere = std::fs::canonicalize("/tmp").expect("/tmp");
+    assert_ne!(
+        std::env::current_dir().ok(),
+        Some(elsewhere.clone()),
+        "the test process already stands where the shell is asked to start"
+    );
+
+    let id = mgr
+        .create_local_session(
+            events,
+            Some("/bin/sh".into()),
+            LocalStart::In(elsewhere.clone()),
+        )
+        .await
+        .expect("the session should open");
+
+    assert_eq!(
+        mgr.local_cwd(&id).await,
+        Some(elsewhere),
+        "the shell did not start in the directory it was given"
     );
 }

@@ -207,6 +207,19 @@ try {
   assert.match(withdrawn, /\/sh$/, `a withdrawn choice stops being honoured (got ${withdrawn})`);
   ok('a delegated shell is a name off the instance list, and the instance can take it back');
 
+  // A deployed instance refuses the directory and does not refuse the terminal. The
+  // refusal itself is `named_start_dir` in `rite-server`, asserted input by input in the
+  // crate's own tests and over two languages in `e2e/new-tab-cwd-check.mjs` — nothing on
+  // the wire reports where a shell started, so what this adds is the other half: a client
+  // that sends the field anyway still gets its terminal, rather than a 400 from a server
+  // that had grown an opinion about a key the web UI never sends.
+  step = 'a-named-directory-is-ignored-and-not-an-error';
+  for (const cwd of ['/', 'home', '/srv/work', 'work']) {
+    const asked = await post('/api/terminal/local', { shell: 'sh', cwd }, pleb);
+    assert.equal(asked.status, 200, `a terminal asked with cwd=${cwd} (got ${asked.status})`);
+  }
+  ok('a deployed instance ignores a client-named directory without refusing the terminal');
+
   // A probe, not a known hole: the local-vault routes (ADR 0018) belong to a person's own
   // machine, and a shared server has no such vault. They are reachable by any session in
   // accounts mode, so what they answer there decides whether the reveal route added for a
@@ -287,6 +300,35 @@ try {
   const probe = await (await post('/api/shells', { shells: ['/etc/shadow', '/etc/passwd', '/bin/sh'] }, pleb)).json();
   assert.deepEqual(probe, ['/bin/sh'], `only shells are answered for (got ${JSON.stringify(probe)})`);
   ok('/api/shells answers for shells, not for whatever path was sent');
+
+  step = 'nobody-moves-the-instance-context';
+  // #394: `/api/context/*` carried no role check and no accounts check, so any member
+  // could add a remote and make it the instance's active context — proxying everyone's
+  // traffic to a host one person chose, under one stored token, with the WebSocket taking
+  // the merge branch before events are scoped per owner.
+  //
+  // Refused outright and not admin-gated: the reason is not seniority. A deployed
+  // instance has no machine of its own to multiplex from (ADR 0012, ADR 0031), so the
+  // ADMIN is asserted here too — an administrator doing it would be the same fan-out,
+  // decided by one person for everyone.
+  for (const [who, token] of [['a regular account', pleb], ['an administrator', admin]]) {
+    assert.equal((await post('/api/context/active', { server: 'local' }, token)).status, 403,
+      `${who} may not switch the instance's context`);
+    assert.equal((await post('/api/context/servers', { url: 'https://example.invalid' }, token)).status, 403,
+      `${who} may not add a remote to the roster`);
+    assert.equal((await post('/api/context/probe', { url: 'https://example.invalid' }, token)).status, 403,
+      `${who} may not probe one`);
+    // ADR 0011: the unwrapped key goes to the trusted LOCAL server. A deployed instance
+    // accepting it would hold a member's key.
+    assert.equal((await post('/api/context/vault/unlock', { userKey: '00'.repeat(32) }, token)).status, 403,
+      `${who} may not hand this instance a vault key`);
+  }
+  // The read is answered, so the refusal is scoped to the writes rather than to the path.
+  const ctx = await get('/api/context', pleb);
+  assert.equal(ctx.status, 200, 'the active context stays readable by a member');
+  assert.equal((await ctx.json()).active, 'local',
+    'and a deployed instance answers `local`, which is the only thing it can be');
+  ok('nobody moves a deployed instance\'s active context, administrator included');
 
   console.log('\nserver-authz-check: PASS');
 } catch (e) {

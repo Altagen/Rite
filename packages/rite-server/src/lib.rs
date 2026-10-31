@@ -12,7 +12,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use axum::extract::ws::{Message, WebSocketUpgrade};
 use axum::extract::{Path, Query, Request, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
@@ -26,7 +26,7 @@ use rite_core::connection::{
 use rite_core::connections_manager::ConnectionsManager;
 use rite_core::db::Database;
 use rite_core::ssh_config::SshConfigEntry;
-use rite_core::terminal::SessionManager;
+use rite_core::terminal::{LocalStart, SessionManager};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::broadcast;
@@ -1048,6 +1048,19 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
         return (StatusCode::FORBIDDEN, "cross-origin websocket rejected").into_response();
     }
 
+    // The multiplexer's control plane is refused on a deployed instance (#394). Here
+    // rather than in each handler: seven routes write it, and a condition repeated seven
+    // times is a condition forgotten once. BEFORE the session check, because the answer
+    // does not depend on who is asking — and `/api/server/mode` is public, so a refusal
+    // tells an anonymous caller nothing it could not already read.
+    if is_api && state.accounts && writes_the_multiplexer_control_plane(&path, req.method()) {
+        return (
+            StatusCode::FORBIDDEN,
+            "a deployed instance holds no remote context",
+        )
+            .into_response();
+    }
+
     // Shared server (ADR 0010): a valid session is required, except for the
     // public auth endpoints (prelogin/login/bootstrap/logout/mode) and health.
     if is_api && state.accounts && !is_public_server_path(&path) {
@@ -1117,6 +1130,41 @@ async fn guard(State(state): State<ServerState>, mut req: Request, next: Next) -
     }
 
     next.run(req).await
+}
+
+/// Whether a request WRITES the multiplexer's control plane, which only a client with a
+/// machine of its own may do (#394).
+///
+/// `/api/context/*` carried no role check and no accounts check, so on a deployed instance
+/// any authenticated member could add a remote server to the roster and make it the active
+/// context — for the whole server, not for themselves. With `ActiveContext::Remote` set
+/// there, every member's `/api/*` is proxied to a host one member chose under the single
+/// stored `remote_token`, and `ws_handler` takes the `merge_ws` branch before the
+/// `event_visible_to` scoping, so local events fan out unscoped.
+///
+/// Refused outright rather than gated on the admin role, because the reason is not
+/// seniority: a deployed instance has no machine of its own to multiplex from. ADR 0012
+/// built this for the desktop's in-process server, where the only principal is the person
+/// at the keyboard, and ADR 0031 settled that the multiplexer belongs to a client that
+/// owns a machine. An administrator pointing a shared instance at a remote would be the
+/// same unscoped fan-out, decided by one person for everyone.
+///
+/// READS STAY OPEN. The web UI asks which context is active and is answered `local`, which
+/// is the truth and tells it nothing it did not already know. `syncLocalVault` in the
+/// frontend already handles the control plane being absent — it only hands the key over
+/// when the active context is NOT local, and catches a refusal with *"not a
+/// multiplexer"* — so nothing an official client does reaches this on a deployed instance.
+///
+/// The vault key handoff is refused with the rest, for the same reason read the other way:
+/// ADR 0011 has the unwrapped key going to the TRUSTED LOCAL server. A deployed instance
+/// accepting it would hold a member's key and break zero-knowledge for that member, and
+/// nothing on a deployed instance ever offers it one.
+/// The prefix is compared loosely, unlike `/api/admin` a few lines up, and for the
+/// opposite reason: a loose match there hands a door to managers, a loose match here
+/// refuses one. Fail-closed is the safe direction for a refusal, so a route named like this
+/// one and meant to be reachable has to be excluded deliberately.
+fn writes_the_multiplexer_control_plane(path: &str, method: &Method) -> bool {
+    path.starts_with("/api/context") && method != Method::GET
 }
 
 /// In a remote context, decide whether a `/api/terminal/*` request is handled by
@@ -4754,6 +4802,23 @@ struct LocalReq {
     /// that named a path would be naming one it cannot see, and a client that could name
     /// any path would be choosing where a shared server spawns a shell.
     inherit_cwd_from: Option<String>,
+    /// Where the shell starts: `home`, or an absolute path.
+    ///
+    /// An absolute path is what the caller's own workspace document names (`[terminal]
+    /// newTabCwd`). `home` is what the caller asks for when no pane stands — the client
+    /// cannot know the home directory of the machine the shell starts on, and this side
+    /// can.
+    ///
+    /// REFUSED OUTRIGHT IN ACCOUNTS MODE, and the sentence above `inherit_cwd_from` says
+    /// why: on a shared instance this would be a client choosing where the server spawns a
+    /// shell, which is the whole reason that field carries a session id. The case it is for
+    /// is the other one — a desktop's in-process server, where the machine is the caller's
+    /// own and the path it names is its own filesystem (ADR 0031).
+    ///
+    /// A browser names neither, and asks for no directory at all (`utils/newTabCwd.ts`):
+    /// every terminal it opens starts in the image's `WORKDIR`, which is the home of the
+    /// user the server runs as. Only a split passes `inherit_cwd_from` there.
+    cwd: Option<String>,
 }
 
 /// The instance's shell, as something a PTY can spawn.
@@ -4767,6 +4832,37 @@ fn clamped_shell_name(raw: &str) -> &str {
         // Anything else was written by something other than the admin route — which only
         // accepts those four — so it is not a shell this server agreed to run.
         _ => "bash",
+    }
+}
+
+/// A directory a client may name for its own shell, as something a PTY can use.
+///
+/// `accounts` IS PART OF THE RULE and not a caller's business, which is why it is an
+/// argument rather than a check beside the call. On a shared instance this would be a
+/// client choosing where the server spawns a shell — the thing `inherit_cwd_from` carries a
+/// session id to avoid — so there the answer is always `None`, whatever was sent. The case
+/// it is for is a desktop's in-process server, where the machine is the caller's own
+/// (ADR 0031). One function, so the gate cannot be dropped at a second call site later.
+///
+/// `home` is a keyword rather than a path so the client never has to know its own home
+/// directory: it is read here, on the machine the shell runs on, which is the only side
+/// that can answer. The word is also what keeps a username out of a workspace document
+/// that travels between machines.
+///
+/// Anything that is neither the word nor an absolute path is refused. The document parser
+/// refuses it first, with a line number, and this is the side that would otherwise resolve
+/// a relative path against whatever directory the process happens to stand in.
+fn named_start_dir(raw: &str, accounts: bool) -> Option<std::path::PathBuf> {
+    if accounts {
+        return None;
+    }
+    match raw.trim() {
+        // Duplicated from `NEW_TAB_CWD_HOME` in `store/layoutsFormat.ts` — across two
+        // languages there is nothing to import — and `e2e/new-tab-cwd-check.mjs` asserts
+        // the two words are the same, so neither side can rename it alone.
+        "home" => std::env::var_os("HOME").map(std::path::PathBuf::from),
+        p if p.starts_with('/') => Some(std::path::PathBuf::from(p)),
+        _ => None,
     }
 }
 
@@ -4868,9 +4964,25 @@ async fn create_local(
     let inherit = req
         .inherit_cwd_from
         .filter(|from| state.owns_session(from, as_user(&user)));
+    // See `LocalReq::cwd` and `named_start_dir`, which holds the whole rule — including
+    // that a shared instance names nothing, exactly as the shell above is not the
+    // caller's to name.
+    let named = req
+        .cwd
+        .as_deref()
+        .and_then(|raw| named_start_dir(raw, state.accounts));
+    // Two answers to one question, so the precedence is settled here rather than by each
+    // caller. A split naming the pane it was cut from is explicit about that one pane and
+    // wins over a standing preference; a client sends one or the other anyway, since
+    // `utils/newTabCwd.ts` returns a union.
+    let start = match (inherit.as_ref(), named) {
+        (Some(from), _) => LocalStart::Inherit(from),
+        (None, Some(dir)) => LocalStart::In(dir),
+        (None, None) => LocalStart::Wherever,
+    };
     let id = state
         .sessions
-        .create_local_session(state.events_sink(), shell.clone(), inherit.as_ref())
+        .create_local_session(state.events_sink(), shell.clone(), start)
         .await?;
     state.record_session_owner(&id, as_user(&user));
     // The shell the session was given, so a client (and a test) can see that on a server
@@ -6046,6 +6158,118 @@ mod tests {
             .unwrap()
     }
 
+    /// The rule reaches the ROUTE, not just the function (#394).
+    ///
+    /// The pure function above is where the rule lives; this is the only thing that proves
+    /// the middleware asks it. Both halves are needed: a wiring with no rule refuses the
+    /// wrong things, a rule with no wiring refuses nothing at all.
+    #[tokio::test]
+    async fn the_context_routes_are_refused_on_a_deployed_instance() {
+        let deployed = build_router(test_state().await.with_accounts());
+        let desktop = build_router(test_state().await);
+
+        let ask = |app: axum::Router, method: Method, path: &'static str| async move {
+            app.oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(path)
+                    // Loopback, so the token guard is not what answers.
+                    .header("host", "127.0.0.1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"server":"local"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status()
+        };
+
+        // No session is sent, and the refusal still comes first: nobody may do this.
+        assert_eq!(
+            ask(deployed.clone(), Method::POST, "/api/context/active").await,
+            StatusCode::FORBIDDEN,
+            "switching a deployed instance's context is refused, not merely unauthorised"
+        );
+        assert_eq!(
+            ask(deployed.clone(), Method::POST, "/api/context/servers").await,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            ask(deployed.clone(), Method::POST, "/api/context/vault/unlock").await,
+            StatusCode::FORBIDDEN,
+            "ADR 0011: a deployed instance is not the server that holds a member's key"
+        );
+
+        // The read is NOT refused: it falls through to the ordinary session check, like
+        // every other route on a deployed instance. 401 and not 403 is the whole point —
+        // it says a member with a session reads this, where no session whatsoever opens
+        // the writes above.
+        assert_eq!(
+            ask(deployed, Method::GET, "/api/context").await,
+            StatusCode::UNAUTHORIZED,
+            "the read is authenticated, not refused outright"
+        );
+
+        // And the desktop's own in-process server, which is who this control plane is for,
+        // is untouched: the same request gets through to the handler.
+        assert_eq!(
+            ask(desktop, Method::POST, "/api/context/active").await,
+            StatusCode::NO_CONTENT,
+            "a client with a machine of its own still switches its own context"
+        );
+    }
+
+    /// Who may move a deployed instance's active context (#394): nobody.
+    ///
+    /// Every route is asserted on its own rather than as a set, so moving one shows up as
+    /// that one. The methods matter as much as the paths: the same path is a read and a
+    /// write, and only the write is refused.
+    #[test]
+    fn a_deployed_instance_refuses_every_write_to_its_context() {
+        let writes = |p: &str, m: Method| writes_the_multiplexer_control_plane(p, &m);
+
+        // The roster: what a member could add, rename, drop, pin or decorate.
+        assert!(
+            writes("/api/context/servers", Method::POST),
+            "adding a remote to the roster is a write"
+        );
+        assert!(writes("/api/context/servers/abc", Method::DELETE));
+        assert!(writes("/api/context/servers/abc", Method::PATCH));
+        assert!(writes("/api/context/servers/abc/pin", Method::POST));
+        assert!(writes("/api/context/servers/abc/icon", Method::POST));
+
+        // The two that turn the multiplexer on, and the probe that scouts for it.
+        assert!(
+            writes("/api/context/active", Method::POST),
+            "this is the one that proxies every member's traffic to a chosen host"
+        );
+        assert!(writes("/api/context/probe", Method::POST));
+
+        // ADR 0011: the unwrapped key goes to the trusted LOCAL server, never to a
+        // deployed one, which would then hold a member's key.
+        assert!(writes("/api/context/vault/unlock", Method::POST));
+        assert!(writes("/api/context/vault/lock", Method::POST));
+
+        // Reads are answered. The web UI asks which context is active and gets `local`.
+        assert!(
+            !writes("/api/context", Method::GET),
+            "the active context is readable — the answer is `local` and reveals nothing"
+        );
+        assert!(!writes("/api/context/vault/status", Method::GET));
+
+        // And the rule is about this control plane, not about writes in general.
+        assert!(!writes("/api/connections", Method::POST));
+        assert!(!writes("/api/terminal/local", Method::POST));
+        // The prefix OVER-matches, on purpose. `/api/admin` is compared segment by segment
+        // because there a loose match would hand a door to managers; here a loose match
+        // refuses a door, so the same looseness fails closed. A route named like this one
+        // and meant to be reachable has to say so deliberately.
+        assert!(
+            writes("/api/contexts-elsewhere", Method::POST),
+            "a route that merely begins like this one is refused, which is the safe way round"
+        );
+    }
+
     /// Which terminal requests the local server serves itself in a remote context
     /// (ADR 0011 §4, amended by ADR 0031).
     ///
@@ -6244,7 +6468,7 @@ mod tests {
             .unwrap();
         let payload: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(
-            payload["version"], "0.2.7",
+            payload["version"], "0.2.8",
             "the release this server reports (Cargo.toml's workspace version)"
         );
         assert_eq!(
@@ -6391,6 +6615,105 @@ mod tests {
                 "{not_a_name} must not resolve to a shell"
             );
         }
+    }
+
+    /// Which directory a client may name for its own shell, and where it may not name one.
+    ///
+    /// The pure half of `[terminal] newTabCwd`. The accounts arm is asserted first because
+    /// it is the one that matters: a shared instance answers `None` to every input, so no
+    /// later case can be read as "allowed on a server too".
+    #[test]
+    fn a_client_names_a_directory_only_for_its_own_machine() {
+        // A shared instance: nothing is named, whatever was sent. The same three values
+        // that work below.
+        assert!(
+            named_start_dir("/srv/work", true).is_none(),
+            "a client naming where a shared server spawns a shell is the whole refusal"
+        );
+        assert!(named_start_dir("home", true).is_none());
+        assert!(named_start_dir("/", true).is_none());
+
+        // A desktop's own server: an absolute path is itself.
+        assert_eq!(
+            named_start_dir("/srv/work", false),
+            Some(std::path::PathBuf::from("/srv/work"))
+        );
+
+        // `home` is read here, because the client cannot know it.
+        if let Some(home) = std::env::var_os("HOME") {
+            assert_eq!(
+                named_start_dir("home", false),
+                Some(std::path::PathBuf::from(home)),
+                "the keyword resolves on the machine the shell starts on"
+            );
+        }
+
+        // Everything the document parser already refuses, refused again here: this is the
+        // side that would resolve a relative path against whatever directory the process
+        // happens to stand in.
+        assert!(named_start_dir("work", false).is_none(), "a relative path");
+        assert!(named_start_dir("./work", false).is_none());
+        assert!(named_start_dir("", false).is_none());
+        // A tilde is the shell's own expansion, not a path anything can `chdir` to —
+        // `home` exists precisely so nobody has to send one.
+        assert!(named_start_dir("~", false).is_none());
+        assert!(named_start_dir("~/work", false).is_none());
+        // `inherit` is no word at all any more — following the standing pane is what an
+        // absent key does, and it travels as `inheritCwdFrom` with a session id. Refused
+        // here too, so an old client cannot have it read as a relative directory.
+        assert!(named_start_dir("inherit", false).is_none());
+
+        // Trimmed, so a document line that ends in a space still starts a shell.
+        assert_eq!(
+            named_start_dir("  /srv/work  ", false),
+            Some(std::path::PathBuf::from("/srv/work"))
+        );
+    }
+
+    /// The named directory reaches the SPAWN, not just the rule above.
+    ///
+    /// The route, the request shape, the precedence and the manager, in one assertion.
+    /// Without it the serde rename alone could drop the field in silence — which is the
+    /// mistake `LocalReq`'s own comment records about `inheritCwdFrom`.
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_new_tab_starts_in_the_directory_the_request_named() {
+        let state = test_state().await;
+        let sessions = state.sessions.clone();
+        let app = build_router(state);
+
+        // Somewhere the test process does not already stand, or the assertion would pass
+        // without the value ever reaching the spawn.
+        let elsewhere = std::fs::canonicalize("/tmp").expect("/tmp");
+        assert_ne!(std::env::current_dir().ok(), Some(elsewhere.clone()));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/terminal/local")
+                    .header("host", "127.0.0.1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"shell":"/bin/sh","cwd":"/tmp"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        let id = serde_json::from_slice::<Value>(&body).unwrap()["sessionId"]
+            .as_str()
+            .expect("the route answers with a session id")
+            .to_string();
+
+        assert_eq!(
+            sessions.local_cwd(&id).await,
+            Some(elsewhere),
+            "the shell did not start in the directory the request named"
+        );
     }
 }
 

@@ -257,6 +257,59 @@ host, the SSH handshakes — each pane is its own session, and OpenSSH ships wit
 `MaxSessions 10`. Use `tab` for the rest: panes for what you watch side by side, tabs
 for changing context.
 
+## The terminal table
+
+One table, not a list, for what this machine does rather than how it is arranged.
+
+```toml
+[terminal]
+copyMode = "select"                   # how copy and paste behave
+newTabCwd = "/srv/work"               # where a new tab starts
+```
+
+`copyMode` is one of `chord`, `select`, `selectRightPaste`, `ctrlC`. Absent means the
+shipped default.
+
+`newTabCwd` is an absolute path, or absent. One value and two states:
+
+| value | a new tab starts |
+| --- | --- |
+| absent | where the standing pane is — or in the home directory, with no pane to follow |
+| `/srv/work` | there, every time |
+
+**A split always follows its pane**, whatever this says. It is a division of the pane it
+came from, so "leave me where I was" is unambiguous there; this key is about the tab
+button, and about nothing else. A duplicated tab and a layout's panes are unaffected too —
+a declared workspace says what it wants, and a standing preference is not it.
+
+**Why an absolute path and nothing else.** The file is read on one machine and the shell
+can start on another, so `work` would mean two different places. It is refused with its
+line number rather than taken for a directory and failing when the pane opens, with
+nothing to say why. A `~` is refused for the same reason: it is the shell's own expansion
+and nothing can `chdir` to it.
+
+A directory that is not there is not an error: the shell starts where it would have. A tab
+is worth more than the directory it opened in.
+
+**Settings holds the switch, and writes it here.** On the desktop, under Terminals,
+beside which shell starts: a switch for the two states, and a path field under it that is
+greyed while the switch is off. Turning it off removes the key. There is no second place
+holding the value, so neither can win on which was touched last. `copyMode` above is
+reported and not offered for the opposite reason — nothing writes it back.
+
+The web UI has no row at all, which is the same decision as the paragraph below.
+
+**On a server the path is not read, and none is imposed.** The desktop runs its terminals
+on your own machine, whatever context is active (ADR 0031), so the directory is yours and
+the field is yours. A browser's local terminal is the instance's shell in the instance's
+container: a path named by a client would be a client choosing where a shared server
+spawns a shell, so the web UI names none and the server refuses one anyway. Nothing is
+imposed there either — a machine reached over SSH from the web UI has its own paths, which
+this document never described. A new tab in a browser opens where the image starts a
+shell, `/home/rite`, every time: the base shell directory, not the standing pane's. That
+is the image's business and `docs/SERVER.md`. A split in a browser does follow its pane,
+because that is the gesture's own meaning and not this key.
+
 ## Pre-connect hooks
 
 A machine's pre-connect hook (**the connection's own setting** — VPN up, SSO refresh)

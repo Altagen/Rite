@@ -15,6 +15,7 @@ import {
 } from '../store/connectionsStore';
 import type { QuickSSHConnectionInfo } from './QuickSSHModal';
 import { AuthSection } from './AuthSection';
+import { MACHINE_SWATCHES } from '../theme/swatches';
 import {
   makeAuthState,
   storedAuthType,
@@ -45,16 +46,6 @@ interface ConnectionFormProps {
   defaultFolder?: string | null;
 }
 
-const MACHINE_COLORS = [
-  '#7c9cf5',
-  '#9ece6a',
-  '#e5b567',
-  '#f0a35e',
-  '#f7768e',
-  '#bb9af7',
-  '#56c7c0',
-  '#8b93a7',
-];
 
 export function ConnectionForm({
   connection,
@@ -597,7 +588,7 @@ export function ConnectionForm({
           <div>
             <label className="mb-1 block text-sm font-medium">{t('connections.color')}</label>
             <div className="m-swatches">
-              {MACHINE_COLORS.map((c) => (
+              {MACHINE_SWATCHES.map((c) => (
                 <button
                   key={c}
                   type="button"
@@ -694,8 +685,7 @@ export function ConnectionForm({
                   placeholder={t('preconnect.placeholder')}
                   rows={2}
                   spellCheck={false}
-                  style={{ resize: 'vertical', minHeight: 52 }}
-                  className="w-full rounded border border-border bg-input px-3 py-2 font-mono text-sm text-foreground focus:border-primary focus:outline-none"
+                  className="w-full resize-y rounded border border-border bg-input px-3 py-2 font-mono text-sm text-foreground min-h-[52px] focus:border-primary focus:outline-none"
                 />
                 <p className="mt-1 text-xs text-muted-foreground">{t('preconnect.hint')}</p>
               </div>

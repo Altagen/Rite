@@ -336,6 +336,12 @@ let STATE={ctx:{type:'home'},sideCollapsed:false,mainTab:'term',agentsView:false
   // nothing and the shipped one applies — which is NOT the same state, so the row can
   // say which it is (ADR 0023, addendum).
   copyMode:'select',
+  // Where a new tab's shell starts, from the same table: an absolute path, or empty.
+  // Empty ⇒ the standing pane, or the home directory with no pane to follow. The switch
+  // beside it is the two states made visible; it holds no value of its own, so turning it
+  // off clears the path. Offered and not merely reported, because the field writes the
+  // document — see Terminals.
+  newTabCwd:'', newTabFixed:false,
   // Which toolbar buttons this person wants. Hiding one never grants or revokes
   // anything: the server policies and the keyboard shortcuts are unchanged.
   toolbar:{shell:true,newTermMenu:true,focus:true,quick:true,agents:true,layouts:true},
@@ -694,7 +700,7 @@ function floatMenu(e,items){document.querySelectorAll('.menu').forEach(m=>m.remo
   m.querySelectorAll('.row').forEach((r,i)=>r.onclick=()=>{m.remove();items[i].onclick();});
   setTimeout(()=>document.addEventListener('click',function h(){m.remove();document.removeEventListener('click',h);}),0);}
 /* colour picker (folders & collections get a custom coloured icon) */
-const COLORS=['#7c9cf5','#9ece6a','#e5b567','#f0a35e','#f7768e','#bb9af7','#56c7c0','#8b93a7'];
+const COLORS=['#7c9cf5','#9ece6a','#e5b567','#f0a35e','#f7768e','#bb9af7','#56c7c0','#94a3b8','#8b93a7'];
 let __pickColor=COLORS[0];
 function swatchRow(initial){__pickColor=initial||COLORS[0];
   return `<label class="field"><span>Colour</span><div class="swatches">${COLORS.map(c=>`<button type="button" class="sw ${c===__pickColor?'sel':''}" style="background:${c}" onclick="pickColor(this,'${c}')"></button>`).join('')}</div></label>`;}
@@ -1053,10 +1059,32 @@ const PREFS=[
      shells you actually have installed — two editors for one setting, and the worse
      one was in the preferences. Same picker here as up there, same value. */
   { id:'terminals', label:'Terminals', body:()=>
-      `<h4>Terminals</h4><p class="lede">What a new local terminal opens. This is the same setting as the picker in the toolbar — changing it either way changes both.</p>`
+      `<h4>Terminals</h4><p class="lede">The shell a new local terminal opens, and in which folder. The shell is the same setting as the picker in the toolbar \u2014 changing it either way changes both.</p>`
     + prefRow('Shell','Detected on this computer',
         `<select class="inp" style="width:auto" onchange="STATE.defaultShell=this.value;renderActs()">${SHELLS.map(s=>`<option value="${s.name}" ${s.name===STATE.defaultShell?'selected':''} ${s.installed?'':'disabled'}>${s.name} — ${s.path}${s.installed?'':' (not installed)'}</option>`).join('')}</select>`)
-    + prefRow('Custom path','For a shell Rite didn\'t find',`<input class="inp mono" style="width:190px" placeholder="/opt/bin/nu" onchange="if(this.value.trim()){STATE.defaultShell=this.value.trim();renderActs()}">`) },
+    + prefRow('Another shell','By full path',`<input class="inp mono" style="width:190px" placeholder="/opt/bin/nu" onchange="if(this.value.trim()){STATE.defaultShell=this.value.trim();renderActs()}">`)
+    /* WHERE a new tab starts, beside WHICH shell starts: one decision about one button.
+
+       ONE FIELD, TWO STATES. A path and every new tab starts there; empty and a new tab
+       follows the standing pane, or opens in the home directory when no pane stands. The
+       first pass offered `inherit` and `home` as choices beside a path, which made a
+       question out of what people expect anyway — the owner cut it in 0.2.8.
+
+       Offered, unlike the copy convention in Clipboard, because this field writes
+       `[terminal] newTabCwd` into the workspace document itself — so there is no second
+       place holding the value and neither can win on which was touched last.
+
+       Desktop only. A browser's local terminal is the instance's shell in the instance's
+       container, and a machine reached over SSH from the web UI has its own paths — so no
+       path is read there and none is imposed (ADR 0031). A new tab there opens in the
+       image's working directory every time, not the standing pane's; only a split follows
+       its pane. */
+    + prefRow('Preset terminal folder','Off, the shell\u2019s default path for the first terminal; then inherited from the standing pane. On, the given path, which must exist.',
+        `<div class="toggle ${STATE.newTabFixed?'on':''}" onclick="STATE.newTabFixed=!STATE.newTabFixed;if(!STATE.newTabFixed)STATE.newTabCwd='';renderPrefsPane()"><i></i></div>`)
+    /* One hint in both states: the greyed field is what says it is not in force, and a
+       second sentence explaining the grey would explain the control, not the setting. */
+    + prefRow('Folder','Absolute path, kept in the workspace document.',
+        `<input class="inp mono" style="width:190px${STATE.newTabFixed?'':';opacity:.5'}" placeholder="/srv/work" value="${STATE.newTabCwd}" ${STATE.newTabFixed?'':'disabled'} onchange="STATE.newTabCwd=this.value.trim().startsWith('/')?this.value.trim():'';renderPrefsPane()">`) },
 
   { id:'splits', label:'Split presets', body:()=>
       `<h4>Split presets</h4><p class="lede">A divider opens a plain terminal — that is the button. A preset is that same divider running one named command, offered by the chevron beside it.</p>`

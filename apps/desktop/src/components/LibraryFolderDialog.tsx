@@ -5,17 +5,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
-
-const COLORS = [
-  '#7c9cf5',
-  '#9ece6a',
-  '#e5b567',
-  '#f0a35e',
-  '#f7768e',
-  '#bb9af7',
-  '#56c7c0',
-  '#94a3b8',
-];
+import { MACHINE_SWATCHES } from '../theme/swatches';
 
 export function LibraryFolderDialog({
   initialName,
@@ -31,7 +21,7 @@ export function LibraryFolderDialog({
   const editing = initialName !== undefined;
   const { t } = useTranslation();
   const [name, setName] = useState(initialName ?? '');
-  const [color, setColor] = useState(initialColor ?? COLORS[0]);
+  const [color, setColor] = useState(initialColor ?? MACHINE_SWATCHES[0]);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
@@ -70,7 +60,7 @@ export function LibraryFolderDialog({
 
         <label className="mb-1 block text-sm font-medium">{t('dlg.colour')}</label>
         <div className="mb-5 flex flex-wrap gap-2">
-          {COLORS.map((c) => (
+          {MACHINE_SWATCHES.map((c) => (
             <button
               key={c}
               type="button"
