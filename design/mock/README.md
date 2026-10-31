@@ -112,6 +112,36 @@ rather than claiming the machine does not have it. An adapter is yours, not a
 machine's: the binary may be missing on one host and present on the next, and that is
 what the probe reports.
 
+**Six adapters ship, and each says where its two commands came from.** `measured` was
+read off the installed binary's own `--help` on 2026-10-31 — Claude Code, Codex, Gemini
+and Grok, which are the four installed on the machine this was written on. Hermes is
+`vendor docs` and opencode is `community`, meaning a third-party write-up: a guess with
+a footnote. The badge exists because a built-in is not more trustworthy than one you
+wrote — yours you tested — and without it the dialog teaches the opposite.
+
+Two findings came out of measuring rather than listing, and both are on screen:
+
+- **a handle is not always durable.** Gemini resumes by *position* in the current
+  project's list, so the number that resumes a conversation today resumes another one
+  next week. ADR 0022 §5 promises the id is never typed and always reachable; for that
+  tool the second half is not available, so the row offers "copy the index — it moves"
+  instead of a copy that quietly rots. Grok and Hermes match a non-uuid value against
+  session *titles* and fail as ambiguous on duplicates, so the uuid is what Rite keeps.
+- **"list its conversations" is not one shape.** Claude and Grok are files on disk,
+  Gemini is a flag, Codex has no machine-readable listing at all (its `resume` opens an
+  interactive picker, which an adapter cannot read), and Hermes keeps sessions in
+  **SQLite**. A contract that had said "two paths" instead of "two commands" would
+  already be broken. §4 survives the measurement, which is the useful result.
+
+**Detection is the list command**, and nothing else. One command per machine runs each
+enabled adapter's listing and keeps what came back: not found, an error with its text,
+or conversations. Nothing is inferred from a binary being present — a CLI that is
+installed and cannot read its own transcripts is a different answer from one that is
+absent, and only running it tells them apart. The error text also separates two
+failures that look identical: the machine refused us, or *our own adapter* is wrong for
+the build that is installed. The fix is in a different place for each, so the card says
+which one it is.
+
 **Agents run on a machine, under the account you already have there.** A machine from
 your library works in *both* shells, because that is an SSH session and Rite already
 has the transport. Your own machine is native on the desktop and needs an attached
@@ -120,6 +150,35 @@ Rite-Server container is a **non-goal**, on screen, with its reason: an agent ru
 arbitrary code, and in the server's own process it would sit beside every user's
 encrypted data. On a target machine Rite grants no access the user did not already
 have; inside the container it would grant all of it.
+
+### The first condition: an account you already have on that host
+
+**No usable SSH access, no agent management.** Not a rail Rite adds on top — it is the
+whole of what Rite does here: it signs in as you, with the credential you already
+hold, and runs the CLI that is already installed. No account, nothing to sign in with,
+nothing to manage. A machine in that state gets no tool cards, no conversations and no
+probe button, because there is no host that would answer.
+
+Which is also why this machine, on the desktop, is not an exception to the rule: the
+condition is *an account you already have*, and on your own machine you are already
+signed in. There is no transport to authorise because there is no transport.
+
+The two ways to lack access get different text, because they have different fixes:
+
+| | on screen | the fix |
+|---|---|---|
+| **No key to the collection** (`grafana-01`) | offered to you, not shared with you — Rite holds no credential | ask a key-holder (ADR 0016) |
+| **The credential stopped working** (`edge-01`) | the key was refused by the host, rotated and never re-enrolled | open a terminal there; when a shell works, so does this |
+
+Neither machine is removed from the picker. A machine that disappears reads as "no
+agents here", which is a claim Rite cannot make — and it hides the one thing the user
+can act on, which is the access.
+
+**This is the same in both shells, and that is the point of the feature.** The agents
+live on the host, not in the thing you are looking at them with: a desktop client and a
+browser reach the same machines, over the same SSH session, under the same account. In
+the web UI the reachable set is the member's own — two members on one instance see two
+different managers — so the manager is never a property of the instance.
 
 Four things the mock insists on being able to say, because each is an hour lost when
 a UI stays quiet instead: a machine **nobody has probed** (not an empty list), a tool

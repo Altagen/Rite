@@ -82,15 +82,36 @@ for (const shell of ['web', 'desktop'] as const) {
       'Claude Code',
       'Codex CLI',
       'Gemini CLI',
+      'Grok',
+      'Hermes',
+      'opencode',
     ]);
     await expect(page.locator('.arow')).toHaveCount(3);
 
     // A tool that is absent, and a tool that is present but cannot read its own
     // transcripts, both keep their block and say which they are. A session that
     // vanishes from a list is the failure this is here to prevent.
-    await expect(page.locator('.atool.off')).toHaveCount(1);
-    await expect(page.locator('.anote')).toContainText(
+    await expect(page.locator('.atool.off')).toHaveCount(3);
+    await expect(page.locator('.atool .anote')).toHaveCount(2);
+    await expect(page.locator('.atool .anote').first()).toContainText(
       /installed but its sessions could not be read/,
+    );
+
+    // Every adapter says where its two commands came from, and the four that ship
+    // measured are not dressed the same as the two that came from documentation and a
+    // blog post. A built-in that is really a guess has to read as one.
+    await expect(page.locator('.atool .afrom')).toHaveCount(3);
+    await expect(page.locator('.atool', { hasText: 'Claude Code' }).locator('.afrom')).toHaveText(
+      'measured',
+    );
+
+    // Two failures wear the same shape and have fixes in different places: the host
+    // refused us, or our own adapter is wrong for the build that is installed.
+    await expect(page.locator('.atool', { hasText: 'opencode' }).locator('.anote')).toContainText(
+      /this adapter.*is wrong for this build/,
+    );
+    await expect(page.locator('.atool', { hasText: 'Gemini' }).locator('.anote')).toContainText(
+      /a permission to fix, not an absence/,
     );
 
     // Discovery is one command per machine, so the view says when it was read.
@@ -111,6 +132,139 @@ for (const shell of ['web', 'desktop'] as const) {
     expect(errs, 'the mock must not log errors').toEqual([]);
   });
 }
+
+/**
+ * THE FIRST CONDITION: agents are managed only on machines you can already sign in
+ * to. Managing them is opening a terminal on the host, so a machine with no usable
+ * SSH credential has nothing to manage — and that is true in a browser exactly as it
+ * is on the desktop, which is why this runs in both shells.
+ *
+ * The two ways to lack access have different fixes, so they get different text: a key
+ * you can ask a holder for, and a credential that stopped working on the host. And
+ * neither machine is removed from the list — a missing machine reads as "no agents
+ * here", a claim Rite cannot make, and it hides the one thing the user can act on.
+ */
+for (const shell of ['web', 'desktop'] as const) {
+  test(`${shell} mock: no SSH access, no agent management — with the reason and the fix`, async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    await page.goto(mock(shell));
+    await page.evaluate(() => openAgents());
+
+    // No key to the collection: visible, askable, and keyless (ADR 0016).
+    await page.evaluate(() => agentPickScope('grafana-01'));
+    await expect(page.locator('.dnote')).toContainText(
+      /Agents are managed only on a machine Rite can already sign in to/,
+    );
+    await expect(page.locator('.dnote')).toContainText(/no key to it is held here/);
+    await expect(page.locator('.dnote')).toContainText(/A key-holder can share the collection/);
+    // Nothing is offered on a machine that cannot be reached: no tools, no
+    // conversations, and no probe button to press at a host that would refuse us.
+    await expect(page.locator('.atool')).toHaveCount(0);
+    await expect(page.locator('.arow')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Probe/ })).toHaveCount(0);
+    await expect(page.locator('.mdash-hd')).not.toContainText(/read /);
+
+    // A credential that stopped working — mine to fix, on the host, not here.
+    await page.evaluate(() => agentPickScope('edge-01'));
+    await expect(page.locator('.dnote')).toContainText(/key was refused/);
+    await expect(page.locator('.dnote')).toContainText(/A terminal on edge-01 is where that credential/);
+    await expect(page.locator('.atool')).toHaveCount(0);
+
+    await expect(page.locator('.atool')).toHaveCount(0);
+
+    // Both stay in the picker, marked.
+    const marked = await page.evaluate(() =>
+      agentScopes()
+        .filter((s: { access?: string }) => s.access === 'nokey' || s.access === 'refused')
+        .map((s: { id: string }) => s.id),
+    );
+    expect(marked).toEqual(['edge-01', 'grafana-01']);
+
+    // Probing is refused rather than merely unclickable: the button is one route to it
+    // and a mock is not the only caller. Observed on the probe record, not on the
+    // cards — the view's own gate keeps those absent either way, so a probe that ran
+    // anyway would leave no trace on screen.
+    const probedAnyway = await page.evaluate(() => {
+      AGENT_PROBES['grafana-01'] = { at: 'an hour ago', tools: [] };
+      agentPickScope('grafana-01');
+      agentProbeNow();
+      const at = AGENT_PROBES['grafana-01'].at;
+      delete AGENT_PROBES['grafana-01'];
+      return at;
+    });
+    expect(probedAnyway, 'a machine we cannot sign in to is never probed').toBe('an hour ago');
+
+    // And the manager never opens on one of them — not even when it is the ONLY
+    // machine with anything to show. The other probes are taken away for the
+    // question, because otherwise the default lands on a reachable machine for
+    // reasons that have nothing to do with access and the rule goes untested.
+    const landedOn = await page.evaluate(() => {
+      const saved = { ...AGENT_PROBES };
+      Object.keys(AGENT_PROBES).forEach((k) => delete AGENT_PROBES[k]);
+      AGENT_PROBES['grafana-01'] = {
+        at: 'just now',
+        tools: [
+          {
+            id: 'claude',
+            installed: true,
+            version: '2.1.4',
+            sessions: [
+              { id: 'x', project: 'p', cwd: '/p', title: 't', last: 'now', state: 'idle', turns: 1 },
+            ],
+          },
+        ],
+      };
+      const d = agentScopes().find((s: { id: string }) => s.id === agentDefaultScope());
+      Object.keys(AGENT_PROBES).forEach((k) => delete AGENT_PROBES[k]);
+      Object.assign(AGENT_PROBES, saved);
+      return { id: d.id, access: d.access };
+    });
+    expect(landedOn.id, 'the manager never opens on a machine with no access').not.toBe(
+      'grafana-01',
+    );
+    expect(landedOn.access).toBe('held');
+
+    expect(errs, 'the mock must not log errors').toEqual([]);
+  });
+}
+
+/**
+ * The escape hatch has to still work tomorrow, and for one of the six it cannot:
+ * Gemini resumes by POSITION in the current project's list, so the handle Rite could
+ * copy is a number that will mean another conversation next week. ADR 0022 §5 says the
+ * id is never typed and always reachable; measurement says that promise is not
+ * available for every tool, so the manager marks the rows where it is not instead of
+ * offering a copy that quietly rots.
+ */
+test('desktop mock: a handle that is not durable says so', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => openAgents());
+  await page.evaluate(() => agentPickScope('@local'));
+
+  // Gemini's row does not pretend to offer a durable id, and says what it is handing
+  // over. Taken first because clicking the entry is what closes the menu.
+  const geminiRow = page.locator('.atool', { hasText: 'Gemini' }).locator('.arow').first();
+  await geminiRow.scrollIntoViewIfNeeded();
+  await geminiRow.getByRole('button', { name: 'More' }).click();
+  await expect(page.locator('.menu .row', { hasText: /Copy conversation id/ })).toHaveCount(0);
+  await page.locator('.menu .row', { hasText: /Copy the index/ }).click();
+  await expect(page.locator('.toast')).toContainText(/resumes by position/);
+
+  // Claude's offers the id plainly, because for that tool the promise holds.
+  await page
+    .locator('.atool', { hasText: 'Claude Code' })
+    .locator('.arow')
+    .first()
+    .getByRole('button', { name: 'More' })
+    .click();
+  await expect(page.locator('.menu .row', { hasText: /Copy conversation id/ })).toHaveCount(1);
+  await expect(page.locator('.menu .row', { hasText: /Copy the index/ })).toHaveCount(0);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
 
 /**
  * Resuming opens a PANE in a NEW TAB, and the manager survives it. This is the
@@ -384,7 +538,7 @@ test('desktop mock: every agent control can be used without the page throwing', 
   await page.evaluate(() => agentProbeNow());
   await expect(page.locator('.mdash-hd')).toContainText('read just now');
   await page.evaluate(() => agentPickScope('lb-01'));
-  await expect(page.locator('.atool.off')).toHaveCount(3);
+  await expect(page.locator('.atool.off')).toHaveCount(6);
   await page.evaluate(() => agentPickScope('@local'));
 
   // Start a new agent: the dialog asks for the one thing it cannot guess.

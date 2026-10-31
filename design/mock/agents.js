@@ -48,17 +48,66 @@
    under a vendor's home directory and the transcript format are not a stable API.
    The id the user never types is still the id they can always copy — when an
    adapter breaks, `claude --resume <id>` in a terminal pane must still work. Rite
-   is never the only way back to your own session. */
+   is never the only way back to your own session.
+
+   `from` is on every row because it is the one thing a reader needs and no vendor
+   prints: where these two commands came from. `measured` was read off the installed
+   binary's own `--help` on the date given; `vendor` is the vendor's documentation,
+   unverified here; `community` is a third-party write-up, which is a guess with a
+   footnote. A built-in adapter that is really a guess has to say so, or the Tools
+   dialog teaches the wrong lesson — that the set shipped with Rite is the trusted
+   one and yours is the risky one. The opposite is true: yours you tested.
+
+   `idKind` is the finding that measurement produced and the first draft missed.
+   Three of these six have no durable per-conversation handle:
+
+     * `uuid`  — a stable id, copyable, good a month from now (claude, codex, grok);
+     * `index` — gemini resumes by POSITION in the current project's list, so the
+       number that resumes a conversation today resumes another one next week. It
+       cannot be copied as an escape hatch, which is a hole in §5 of ADR 0022 and is
+       marked rather than smoothed over;
+     * `title` — grok and hermes match a non-uuid value against session titles in the
+       current directory, and fail as ambiguous on duplicates. Fine for a human,
+       wrong for an adapter, so the uuid is what Rite keeps.
+
+   Measured on 2026-10-31 against the four binaries installed on this machine. */
 const AGENT_TOOLS = [
-  { id: 'claude', name: 'Claude Code', bin: 'claude', on: true,
+  { id: 'claude', name: 'Claude Code', bin: 'claude', on: true, idKind: 'uuid',
+    from: 'measured', seen: '2026-10-31',
     list: 'ls ~/.claude/projects/*/*.jsonl', resumeFmt: 'claude --resume {id}' },
-  { id: 'codex', name: 'Codex CLI', bin: 'codex', on: true,
-    list: 'codex sessions --json', resumeFmt: 'codex resume {id}' },
-  { id: 'gemini', name: 'Gemini CLI', bin: 'gemini', on: true,
-    list: 'ls ~/.gemini/tmp', resumeFmt: 'gemini chat --session {id}' },
+  // No machine-readable listing: `codex resume` with no argument opens an interactive
+  // picker, which an adapter cannot read. So the list is the rollout files, and the
+  // resume takes the uuid the picker would have shown.
+  { id: 'codex', name: 'Codex CLI', bin: 'codex', on: true, idKind: 'uuid',
+    from: 'measured', seen: '2026-10-31',
+    list: 'ls ~/.codex/sessions/**/*.jsonl', resumeFmt: 'codex resume {id}' },
+  { id: 'gemini', name: 'Gemini CLI', bin: 'gemini', on: true, idKind: 'index',
+    from: 'measured', seen: '2026-10-31',
+    list: 'gemini --list-sessions', resumeFmt: 'gemini --resume {id}' },
+  { id: 'grok', name: 'Grok', bin: 'grok', on: true, idKind: 'uuid',
+    from: 'measured', seen: '2026-10-31',
+    list: 'ls ~/.grok/sessions', resumeFmt: 'grok --resume {id}' },
+  // Sessions in SQLite rather than files — which is why the adapter is two COMMANDS
+  // and not two paths. A contract that assumed `ls` would already have broken here.
+  { id: 'hermes', name: 'Hermes', bin: 'hermes', on: true, idKind: 'title',
+    from: 'vendor', seen: 'docs, not verified here',
+    list: 'sqlite3 ~/.hermes/state.db "select id,title from sessions"',
+    resumeFmt: 'hermes --resume {id}' },
+  { id: 'opencode', name: 'opencode', bin: 'opencode', on: true, idKind: 'uuid',
+    from: 'community', seen: 'third-party write-up',
+    list: 'opencode session list --format json', resumeFmt: 'opencode -s {id}' },
 ];
 const agentTool = (id) => AGENT_TOOLS.find((t) => t.id === id);
 const agentResume = (tool, id) => (tool.resumeFmt || '{id}').replace('{id}', id);
+
+/* How sure we are of an adapter's two commands, said in the fewest words that still
+   mean something. Not a quality score — a provenance. */
+const AGENT_FROM = {
+  measured: { label: 'measured', hint: 'read off the installed binary on 2026-10-31' },
+  vendor: { label: 'vendor docs', hint: "the vendor's documentation, not verified here" },
+  community: { label: 'community', hint: 'a third-party write-up — expect drift' },
+  added: { label: 'added here', hint: 'added on this machine, and tested against the tool in hand' },
+};
 
 /* Which adapters are switched on. An adapter is yours, not a machine's: the binary
    may be missing on one host and present on the next, and that is what the probe
@@ -69,13 +118,28 @@ const agentEnabled = () => AGENT_TOOLS.filter((t) => t.on);
    and how to resume one. Nothing else about a vendor is depended on — that is the
    whole adapter boundary, kept small because it is written expecting to break. */
 function dlgAgentTools() {
+  const prov = (t) => {
+    const f = AGENT_FROM[t.from] || AGENT_FROM.added;
+    return `<span class="afrom ${t.from}" title="${f.hint}">${f.label}</span>`;
+  };
+  const idNote = (t) => t.idKind === 'index'
+    ? `<span class="aidkind warn" title="Resumes by position in this project's list, so the number moves as conversations accumulate — there is no durable id to copy">by index</span>`
+    : t.idKind === 'title'
+      ? `<span class="aidkind warn" title="A non-uuid value is matched against session titles in the current directory, and fails as ambiguous on duplicates — Rite keeps the uuid">by title</span>`
+      : '';
   const row = (t) => `<label class="mrow" style="align-items:flex-start" onclick="agentToggleTool('${t.id}',this)">
       <span class="chk ${t.on ? 'on' : ''}" style="margin-top:3px">${t.on ? '✓' : ''}</span>
-      <div class="grow"><div class="title" style="font-weight:600">${t.name} <span class="muted mono" style="font-weight:400">${t.bin}</span></div>
-        <div class="sub mono" style="font-size:11.5px;color:var(--fg-dim);line-height:1.6">list &nbsp;${t.list}<br>resume &nbsp;${t.resumeFmt}</div></div></label>`;
+      <div class="grow"><div class="title" style="font-weight:600">${t.name} <span class="muted mono" style="font-weight:400">${t.bin}</span>
+        ${prov(t)}${idNote(t)}</div>
+        <div class="sub mono" style="font-size:11.5px;color:var(--fg-dim);line-height:1.6">list &nbsp;${esc(t.list)}<br>resume &nbsp;${esc(t.resumeFmt)}</div></div></label>`;
   showModal({
     title: 'Agent CLIs', subtitle: 'Which tools Rite looks for, and how it talks to each', wide: true, confirm: 'Done',
     body: `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">${AGENT_TOOLS.map(row).join('')}</div>
+      <div class="anote" style="margin-bottom:14px">${IC_INFO}<span><b>Detection is the list command.</b> One command per machine
+        runs each enabled adapter's listing and reports what came back: not found, an error with its text, or
+        conversations. Nothing is probed in the background and nothing is guessed from a binary's presence —
+        a CLI that is installed and cannot read its own transcripts is a different answer from one that is absent,
+        and only running it tells them apart.</span></div>
       <div class="sec"><span class="eyebrow">Add a CLI</span><span class="line"></span></div>
       <label class="field"><span>Name</span><input class="inp" id="at-name" placeholder="e.g. Aider"></label>
       <label class="field"><span>Binary</span><input class="inp mono" id="at-bin" placeholder="aider"></label>
@@ -83,11 +147,14 @@ function dlgAgentTools() {
       <label class="field"><span>Command that resumes one</span><input class="inp mono" id="at-resume" placeholder="aider --restore {id}"></label>
       <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55"><b>{id}</b> is where the conversation id goes — never typed by hand, and the adapter never
       asks for it. These two commands are the <i>entire</i> contract with a tool: a vendor changing
-      its flags or its file layout breaks this adapter and nothing else.</p>`,
+      its flags or its file layout breaks this adapter and nothing else. The six above ship with Rite and
+      carry where their commands came from, because a built-in adapter is not more trustworthy than an added
+      one — an added one was tested against the tool in hand.</p>`,
     onConfirm: (m) => {
       const g = (k) => (m.querySelector('#at-' + k).value || '').trim();
       if (!g('name') || !g('bin')) return;             // nothing typed — just close
       AGENT_TOOLS.push({ id: g('bin'), name: g('name'), bin: g('bin'), on: true,
+        idKind: 'uuid', from: 'added', seen: 'added here',
         list: g('list') || `which ${g('bin')}`, resumeFmt: g('resume') || `${g('bin')} {id}` });
       toast(`<span class="accent">${g('name')}</span> added — probe a machine to see if it is installed there`);
       renderMain();
@@ -127,7 +194,14 @@ const AGENT_PROBES = {
       // Installed, reachable, and still unable to answer — the row says why instead
       // of vanishing. A session that disappears from a list costs an hour.
       { id: 'gemini', installed: true, version: '0.4.2', sessions: [],
-        error: '~/.gemini/tmp is not readable by deploy (permission denied)' },
+        error: 'gemini --list-sessions exited 1: no project trusted for deploy' },
+      { id: 'grok', installed: false },
+      { id: 'hermes', installed: false },
+      // The adapter is a guess from a third-party write-up, and this is what that
+      // costs: the binary is there, the listing command is wrong. Distinguishable
+      // from "absent" only because Rite ran it and kept the error.
+      { id: 'opencode', installed: true, version: '0.6.1', sessions: [],
+        error: "opencode: unknown flag --format (the adapter's listing predates this build)" },
     ],
   },
   'stg-web': {
@@ -142,10 +216,16 @@ const AGENT_PROBES = {
       },
       { id: 'codex', installed: false },
       { id: 'gemini', installed: false },
+      { id: 'grok', installed: false },
+      { id: 'hermes', installed: false },
+      { id: 'opencode', installed: false },
     ],
   },
   // Answers the probe and has nothing — different from never having been asked.
-  'lb-01': { at: '5 min ago', tools: [{ id: 'claude', installed: false }, { id: 'codex', installed: false }, { id: 'gemini', installed: false }] },
+  'lb-01': {
+    at: '5 min ago',
+    tools: ['claude', 'codex', 'gemini', 'grok', 'hermes', 'opencode'].map((id) => ({ id, installed: false })),
+  },
 };
 
 /* This machine, in the desktop shell. Local agents run through client-execute,
@@ -163,7 +243,18 @@ const AGENT_LOCAL = {
       ],
     },
     { id: 'codex', installed: true, version: '1.3.0', sessions: [] },
-    { id: 'gemini', installed: false },
+    // Installed and listable, and the handle it gives back is an index rather than an
+    // id — so the row can be resumed and the id cannot be copied for later. The gap
+    // is in the tool, and the manager says which rows have it instead of pretending
+    // every conversation is equally recoverable.
+    { id: 'gemini', installed: true, version: '0.9.1',
+      sessions: [
+        { id: '2', project: 'rite', cwd: '~/Dev/projects/Rite',
+          title: 'Walk the layouts parser', last: '1 h ago', state: 'idle', turns: 11 },
+      ] },
+    { id: 'grok', installed: true, version: '0.2.56', sessions: [] },
+    { id: 'hermes', installed: false },
+    { id: 'opencode', installed: false },
   ],
 };
 
@@ -177,15 +268,34 @@ function agentScopes() {
   const machines = [];
   if (typeof walk === 'function') {
     walk(typeof lib === 'function' ? lib() : LIB, (n) => {
-      (n.conns || []).forEach((m) => machines.push({ id: m.name, kind: 'ssh', name: m.name, sub: `${m.user || 'user'}@${m.host || m.name}` }));
+      (n.conns || []).forEach((m) => machines.push({
+        id: m.name, kind: 'ssh', name: m.name, sub: `${m.user || 'user'}@${m.host || m.name}`,
+        // THE PRECONDITION, read off the library rather than asked for separately.
+        // No usable SSH access, no agent management — and the two ways to lack it are
+        // different enough that collapsing them would cost the user the fix.
+        ...(n.noKey
+          ? { access: 'nokey', why: `${n.name} is offered, not shared — no key to it is held here, so Rite holds no credential for ${m.name}.` }
+          : m.authFail
+            ? { access: 'refused', why: m.authFail }
+            : { access: 'held' }),
+      }));
     });
   }
+  // This machine is the one scope the SSH precondition does not apply to, and saying
+  // why keeps the rule intact rather than carving an exception out of it: the
+  // condition is "an account you already have on that host", and on your own machine
+  // you are already signed in. There is no transport to authorise because there is no
+  // transport. In a browser the gap is the opposite one — the access exists and the
+  // reach does not.
   const local = AGENT_SHELL === 'desktop'
-    ? { id: '@local', kind: 'local', name: 'This machine', sub: 'alex@thinkpad · runs here, not over SSH' }
-    : { id: '@local', kind: 'local', name: 'This machine', sub: 'needs an attached desktop client' };
+    ? { id: '@local', kind: 'local', name: 'This machine', access: 'held',
+        sub: 'alex@thinkpad · runs here, not over SSH' }
+    : { id: '@local', kind: 'local', name: 'This machine', access: 'unreachable',
+        sub: 'needs an attached desktop client' };
   // The server's own host is offered so the refusal has somewhere to be read. It is
   // listed, and it is the one scope that never resumes anything.
-  const server = { id: '@server', kind: 'server', name: 'Rite server host', sub: 'rite.acme.io · the container Rite itself runs in' };
+  const server = { id: '@server', kind: 'server', name: 'Rite server host', access: 'never',
+    sub: 'rite.acme.io · the container Rite itself runs in' };
   return [local, ...machines, server];
 }
 const agentScope = (id) => agentScopes().find((s) => s.id === id) || agentScopes()[0];
@@ -195,10 +305,17 @@ const agentScope = (id) => agentScopes().find((s) => s.id === id) || agentScopes
    actually answer, since its local entry is an explanation rather than a list. */
 function agentDefaultScope() {
   if (AGENT_SHELL === 'desktop') return '@local';
-  const machines = agentScopes().filter((s) => s.kind === 'ssh');
+  // A machine Rite cannot sign in to is never where the manager opens: landing on a
+  // refusal reads as "the feature is broken" rather than "that host is not yours".
+  const machines = agentScopes().filter((s) => s.kind === 'ssh' && s.access === 'held');
   const hasSessions = (s) => (agentProbeOf(s.id)?.tools || []).some((t) => (t.sessions || []).length);
   return (machines.find(hasSessions) || machines.find((s) => agentProbeOf(s.id)) || machines[0] || agentScopes()[0]).id;
 }
+
+/* The precondition, in one place. Everything the manager offers hangs off it: there is
+   no managing agents on a machine you could not open a terminal on, because managing
+   them IS opening a terminal on it. */
+const agentHasAccess = (sc) => sc.access === 'held';
 
 /* The probe result for a scope, or null when it has never been asked. */
 function agentProbeOf(id) {
@@ -254,19 +371,44 @@ function openAgentsOn(name) { STATE.agentScope = name; openAgents(); }
    a browser says why it cannot answer. */
 function agentScopeMenu(e) {
   e.stopPropagation();
+  // A machine without access stays in the list and is marked. Removing it would read
+  // as "that host has no agents", which is a different and wrong statement — and it
+  // would hide the one thing the user can act on, which is the access.
   floatMenu(e, agentScopes().map((s) => ({
     icon: s.kind === 'local' ? ICON.term : s.kind === 'server' ? ICON.server : M.machine,
-    label: `${esc(s.name)}<div class="sub mono" style="font-size:11px;color:var(--muted);font-weight:400">${esc(s.sub)}</div>`,
+    label: `${esc(s.name)}${agentHasAccess(s) ? '' : ' <span class="aidkind warn">no access</span>'}
+      <div class="sub mono" style="font-size:11px;color:var(--muted);font-weight:400">${esc(s.sub)}</div>`,
     onclick: () => agentPickScope(s.id),
   })));
 }
 function agentProbeNow() {
   const sc = agentScope(STATE.agentScope);
-  if (sc.kind === 'server') return;              // nothing to probe: see agentServerNote
+  if (!agentHasAccess(sc)) return;               // nothing to probe: see agentGateNote
   const p = agentProbeOf(sc.id);
   if (p) { p.at = 'just now'; toast(`Probed <span class="accent">${sc.name}</span> for agent sessions`); }
   else toast(`No agent CLI answered on <span class="accent">${sc.name}</span>`);
   renderMain();
+}
+
+/* THE FIRST CONDITION, and the one that decides whether there is a manager at all.
+   Agents are managed only on machines you already have an SSH account on. That is
+   not a safety rail Rite adds — it is the whole of what Rite does here: it signs in
+   as you, with the credential you already hold, and runs the CLI that is already
+   installed. No account, nothing to sign in with, nothing to manage.
+
+   Stated rather than hidden, for the reason every other refusal in this file is
+   stated: a machine missing from the list says "no agents here", which is a claim
+   Rite cannot make and which sends the user looking in the wrong place. The two
+   causes get different text because they have different fixes — one is a key you can
+   ask for, one is a credential that stopped working. */
+function agentGateNote(sc) {
+  const fix = sc.access === 'nokey'
+    ? `A key-holder can share the collection; ${esc(sc.name)} then appears here like any other machine, its agents reached over the same SSH session as its terminal.`
+    : `A terminal on ${esc(sc.name)} is where that credential gets fixed. When a shell works there, so does this — nothing else needs enabling.`;
+  return `<div class="dnote" style="border-color:color-mix(in oklab,var(--amber) 35%,transparent)">${IC_INFO}<span>
+    <b>Agents are managed only on a machine Rite can already sign in to.</b>
+    ${esc(sc.why || 'No usable SSH credential for this machine.')}
+    <br><br>${fix}</span></div>`;
 }
 
 /* The refusal, written where it is read. Not a "later" — a decision. */
@@ -299,15 +441,24 @@ function agentSessionRow(sc, tool, s) {
 }
 function agentRowMenu(scopeId, toolId, sessionId, e) {
   const tool = agentTool(toolId);
+  // The escape hatch is only an escape hatch if it still works tomorrow. Gemini
+  // resumes by position in the current project's list, so the copied handle is a
+  // number that will mean another conversation next week — the menu says that rather
+  // than offering a copy that quietly rots.
+  const durable = tool.idKind !== 'index';
   floatMenu(e, [
     { icon: ICON.play, label: 'Resume here', onclick: () => resumeAgent(scopeId, toolId, sessionId) },
     { icon: EXICON.split, label: 'Resume in a new window', onclick: () => { resumeAgent(scopeId, toolId, sessionId); openInNewWindow(tool.name); } },
     { icon: EXICON.shield, label: 'What is in effect — skills, commands, hooks', onclick: () => dlgAgentContext(scopeId, toolId, sessionId) },
-    { icon: M.edit, label: 'Copy conversation id', onclick: () => agentCopyId(sessionId) },
+    { icon: M.edit, label: durable ? 'Copy conversation id' : 'Copy the index — it moves', onclick: () => agentCopyId(sessionId, tool) },
     { icon: ICON.term, label: 'Copy the resume command', onclick: () => agentCopyCmd(tool, sessionId) },
   ]);
 }
-function agentCopyId(id) { toast(`Conversation id copied — <span class="mono">${id}</span>`); }
+function agentCopyId(id, tool) {
+  toast(tool && tool.idKind === 'index'
+    ? `Index copied — <span class="mono">${id}</span>. ${tool.name} resumes by position, so this points elsewhere once the list changes`
+    : `Conversation id copied — <span class="mono">${id}</span>`);
+}
 function agentCopyCmd(tool, id) { toast(`Copied — <span class="mono">${agentResume(tool, id)}</span>`); }
 
 /* One tool on one machine. Three outcomes, all of them visible: sessions, not
@@ -322,18 +473,27 @@ function agentToolBlock(sc, probeTool) {
   const sessions = probeTool.sessions || [];
   let body;
   if (probeTool.error) {
+    // Two different failures wear the same shape, and the fix is in a different place
+    // for each: the machine refused us, or our own adapter is wrong for this build.
+    // The error text is what tells them apart, so it is shown rather than summarised.
+    const ours = /unknown (flag|option|command)|no such (option|subcommand)|usage:/i.test(probeTool.error);
     body = `<div class="anote">${IC_INFO}<span><b>${tool.name} is installed but its sessions could not be read.</b>
-      <span class="mono">${probeTool.error}</span> — the tool is there, so this is a permission to fix, not an absence.</span></div>`;
+      <span class="mono">${esc(probeTool.error)}</span> — ${ours
+        ? `the tool answered and rejected the command, so it is <b>this adapter</b> that is wrong for this build, not the machine. Its two commands are the ones to correct.`
+        : `the tool is there, so this is a permission to fix, not an absence.`}</span></div>`;
   } else if (!sessions.length) {
     body = `<p class="muted" style="font-size:12.5px;margin:0">No conversation yet on this machine.</p>`;
   } else {
     body = sessions.map((s) => agentSessionRow(sc, tool, s)).join('');
   }
+  const f = AGENT_FROM[tool.from] || AGENT_FROM.added;
   return `<div class="dcard atool">
     <div class="dcard-h">${M.agent}<span class="dcard-t">${tool.name}</span>
       <span class="chip-sm">${probeTool.version}</span>
+      <span class="afrom ${tool.from}" title="Where this adapter's two commands came from — ${f.hint}">${f.label}</span>
       ${sessions.length ? `<span class="muted" style="font-size:12px">${sessions.length} conversation${sessions.length > 1 ? 's' : ''}</span>` : ''}
       <span style="flex:1"></span>
+      <button class="btn btn-ghost btn-sm" onclick="dlgAgentTools()" title="The two commands this adapter uses">${EXICON.gear}</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgNewAgent('${sc.id}','${tool.id}')">${ICON.plus} New</button></div>
     <div class="alist">${body}</div></div>`;
 }
@@ -343,12 +503,14 @@ function agentToolBlock(sc, probeTool) {
 function agentsViewHTML() {
   const sc = agentScope(STATE.agentScope);
   const probe = agentProbeOf(sc.id);
-  // A local scope in a browser can never answer, so it never claims to have been read.
-  const readable = sc.kind === 'ssh' || (sc.kind === 'local' && AGENT_SHELL === 'desktop');
+  // Only a scope Rite can sign in to ever claims to have been read.
+  const readable = agentHasAccess(sc);
 
   let body;
   if (sc.kind === 'server') {
     body = agentServerNote();
+  } else if (sc.kind === 'ssh' && !agentHasAccess(sc)) {
+    body = agentGateNote(sc);
   } else if (sc.kind === 'local' && AGENT_SHELL === 'web') {
     body = `<div class="dnote">${IC_INFO}<span><b>This machine is not reachable from a browser.</b>
       Attach the Rite desktop client to this server and its agents appear here. Agents on the
@@ -382,8 +544,10 @@ function agentsViewHTML() {
         <button class="btn btn-ghost btn-sm" onclick="agentProbeNow()">${M.refresh} Probe again</button>` : ''}
     </div>
     <div class="dgrid">${body}</div>
-    <div class="mdash-foot">${IC_INFO}<span>Agents run on the chosen machine, under the SSH account already in use
-      there — never inside the Rite server. Resuming opens a pane in a new tab; this list stays where it is.</span></div>
+    <div class="mdash-foot">${IC_INFO}<span>Agents are managed only on a machine with an SSH account already in
+      place, and they run under that account — never inside the Rite server. A desktop client and a browser reach the same
+      machines the same way, which is the point: the agents live on the host, not in the surface that displays
+      them. Resuming opens a pane in a new tab; this list stays where it is.</span></div>
   </div>`;
 }
 
@@ -424,7 +588,7 @@ function agentPaneHTML(p, i) {
   const where = scope.kind === 'local' ? 'on this machine' : `on ${scope.name}`;
   // The only button that is the agent's own: the id it never made you type.
   const copyId = `<button title="What is in effect — skills, commands, hooks" onclick="dlgAgentContext('${scope.id}','${tool.id}','${session.id}')">${I('M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z')}</button>
-    <button title="Conversation id — ${session.id}" onclick="agentCopyId('${session.id}')">${I('M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z')}</button>`;
+    <button title="Conversation id — ${session.id}" onclick="agentCopyId('${session.id}',agentTool('${tool.id}'))">${I('M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z')}</button>`;
   return `<div class="termpane agentpane">
     <div class="termpane-hdr">
       <div class="who">

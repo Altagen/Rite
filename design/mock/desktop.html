@@ -277,11 +277,23 @@ const SLIB=[
            {name:'web-03',host:'10.0.0.7',user:'deploy',port:22,last:'2h ago'}]},
         {id:'cf-cache',type:'folder',color:'#f0a35e',name:'Cache',open:true,conns:[
            {name:'cache-01',host:'10.0.0.8',user:'ops',port:22,last:'yesterday'}]}]},
+     /* A credential that stopped working: the collection is mine, the key was rotated
+        on the host. Visible everywhere a machine is, and the agent manager's first
+        condition fails on it — no sign-in, nothing to manage. */
+     {id:'c-edge',type:'coll',color:'#7dcfff',name:'Edge',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
+        {name:'edge-01',host:'10.3.0.2',user:'deploy',port:22,last:'never',
+         authFail:'The key was refused by deploy@10.3.0.2 — rotated on the host on 12 Oct and never re-enrolled here.'}]},
      {id:'c-stg',type:'coll',color:'#bb9af7',name:'Staging',shared:true,members:['alex','carol','dan'],roles:{alex:'owner',carol:'editor',dan:'editor'},open:false,conns:[
         {name:'stg-web',host:'10.1.0.5',user:'deploy',port:22,last:'3h ago'}]} ]},
    {id:'c-db',type:'coll',color:'#f0a35e',name:'Databases',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
       {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,jump:'bastion',forwards:[{type:'local',localPort:'5432',remoteHost:'localhost',remotePort:'5432',active:false}],last:'1h ago'},
-      {name:'redis',host:'cache.acme.io',user:'ops',port:22,last:'4h ago'}]} ]},
+      {name:'redis',host:'cache.acme.io',user:'ops',port:22,last:'4h ago'}]},
+   /* Offered to my team, not shared with me: I can see that it exists and ask for it,
+      and I hold no key — so Rite holds no credential for its machines (ADR 0016).
+      `noKey` stands in for that here; in the app the signal is the absent itemsKey. */
+   {id:'c-analytics',type:'coll',color:'#56c7c0',name:'Analytics',shared:true,noKey:true,members:['carol','dan'],roles:{carol:'owner',dan:'editor'},
+    offer:{team:'Eng',label:'Analytics dashboards'},open:false,conns:[
+      {name:'grafana-01',host:'10.2.0.9',user:'viewer',port:22,last:'never'}]} ]},
 ];
 
 /* A local vault: same shape, zero collaboration. Flip VLIB to [] to see the
@@ -696,7 +708,17 @@ function moveConnByName(name,targetId){
 /* ================= create menus + dialogs ================= */
 function floatMenu(e,items){document.querySelectorAll('.menu').forEach(m=>m.remove());const m=document.createElement('div');m.className='menu';
   m.innerHTML=items.map((it,i)=>`<div class="row" data-i="${i}">${it.icon||''}<div class="grow"><div class="title" style="font-size:13px;font-weight:550">${it.label}</div></div></div>`).join('');
-  document.body.appendChild(m);m.style.left=Math.min(e.clientX,innerWidth-220)+'px';m.style.top=Math.min(e.clientY,innerHeight-14-items.length*38)+'px';
+  document.body.appendChild(m);
+  /* Positioned from the MEASURED box, because both axes used to guess a size and the
+     WIDTH guess is the one that bit: `innerWidth-220` assumes the menu is 220px wide,
+     so the agent row's menu — whose longest entry is "What is in effect — skills,
+     commands, hooks" — hung off the right edge with its rows visible and unclickable.
+     Found by a test that clicked one, not by looking. `items.length*38` is the same
+     mistake on the other axis, latent until a label wraps. The menu is already in the
+     DOM here, so its real size is there for the asking. */
+  const mb=m.getBoundingClientRect();
+  m.style.left=Math.max(8,Math.min(e.clientX,innerWidth-mb.width-8))+'px';
+  m.style.top=Math.max(8,Math.min(e.clientY,innerHeight-mb.height-8))+'px';
   m.querySelectorAll('.row').forEach((r,i)=>r.onclick=()=>{m.remove();items[i].onclick();});
   setTimeout(()=>document.addEventListener('click',function h(){m.remove();document.removeEventListener('click',h);}),0);}
 /* colour picker (folders & collections get a custom coloured icon) */

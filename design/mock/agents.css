@@ -85,6 +85,22 @@
   .arow.hook.foreign{border-color:color-mix(in oklab,var(--amber) 70%,transparent);
     background:color-mix(in oklab,var(--amber) 7%,var(--card2))}
 
+  /* ---- an adapter's provenance, and what its ids are worth ----
+     Deliberately quiet: this is a footnote on a working row, not a warning. Only the
+     two that mean "expect this to drift" borrow the amber the hooks use, and even
+     those stay a text colour rather than a filled badge — a built-in adapter sourced
+     from a blog post is a caveat, not a fault. */
+  .afrom{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    border:1px solid var(--border);border-radius:5px;padding:1px 6px;flex:none;color:var(--muted)}
+  .afrom.measured{color:var(--teal);border-color:color-mix(in oklab,var(--teal) 40%,transparent)}
+  .afrom.yours{color:var(--accent);border-color:color-mix(in oklab,var(--accent) 40%,transparent)}
+  .afrom.vendor,.afrom.community{color:var(--amber);border-color:color-mix(in oklab,var(--amber) 40%,transparent)}
+  /* A handle that is not durable, and a machine that cannot be signed in to. Same
+     treatment, because they are the same kind of statement: this row looks usable and
+     one thing about it is not. */
+  .aidkind{font-size:10.5px;font-weight:600;flex:none;color:var(--muted)}
+  .aidkind.warn{color:var(--amber)}
+
   /* The split button splits plainly; this opens everything else. Narrow on purpose:
      most people never need it, and it must not look like a seventh action. */
   .split-more{padding:2px 0 !important;width:14px;margin-left:-4px;opacity:.7}
