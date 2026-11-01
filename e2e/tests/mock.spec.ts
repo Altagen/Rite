@@ -219,19 +219,19 @@ test('desktop mock: a band folds, and one CLI can be shown alone', async ({ page
 });
 
 /**
- * A CONVERSATION IS ONLY CALLED ALIVE WHEN A PROCESS WAS FOUND. The listing gives a
- * transcript's modification time and nothing else, and a file written four minutes ago
- * by a session that has since exited is byte-for-byte one written by a session still
- * going — so "running" inferred from a recent write is an invented fact.
+ * NOTHING CLAIMS A CONVERSATION IS RUNNING, because nothing can.
  *
- * What is measurable is a process on that host whose command line carries the
- * conversation's id, which `pgrep -af claude` shows directly. The signal is therefore
- * asymmetric: a mark means one was found, its absence means NOT SEEN RUNNING, and the
- * view has to say that in words rather than leave "idle" to be assumed.
+ * A session's folder gives the id, the project and the modification time, and that last
+ * one is when the agent WROTE — not whether it is still there. A transcript written
+ * twenty seconds ago by a session that has since exited is byte-for-byte one written by
+ * a session mid-answer. Grok even leaves `.lock` files beside its session files, and
+ * they sit on disk with no Grok running: stale write locks, not liveness.
+ *
+ * So the card says when the transcript was last written and says nothing it cannot
+ * support. A check against the process table stays possible later, and optional — a
+ * refinement on a surface that is already honest, not a third command every adapter owes.
  */
-test('desktop mock: a conversation is marked alive only where a process was found', async ({
-  page,
-}) => {
+test('desktop mock: no conversation is claimed to be running', async ({ page }) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
   await page.evaluate(() => {
@@ -239,29 +239,22 @@ test('desktop mock: a conversation is marked alive only where a process was foun
     agentPickScope('@all');
   });
 
-  // Some are marked and some are not — a mock where every row is alive would prove
-  // nothing about the ones that are not.
-  const marks = await page.locator('.acard').evaluateAll((els) =>
-    els.map((e) => ({
-      live: !!e.querySelector('.pst.up'),
-      title: e.querySelector('.pst.up')?.getAttribute('title') || '',
-    })),
-  );
-  const live = marks.filter((m) => m.live);
-  expect(live.length).toBeGreaterThan(0);
-  expect(live.length).toBeLessThan(marks.length);
+  // No status dot anywhere on a conversation, in either layout.
+  await expect(page.locator('.acard .pst')).toHaveCount(0);
+  await page.locator('.acard').first().click();
+  await expect(page.locator('.apanel')).toHaveCount(1);
+  await expect(page.locator('.apanel .pst')).toHaveCount(0);
 
-  // The mark names the fact it rests on, and a pid is a fact.
-  for (const m of live) expect(m.title).toMatch(/process on .+ is this conversation — pid \d+/);
-
-  // No row calls an unmarked conversation idle. The footnote uses the word once, to
-  // say what the absence is NOT, which is the opposite of the failure guarded here.
-  const rowText = await page
-    .locator('.acard')
+  // And no row calls one running or idle.
+  const text = await page
+    .locator('.acard, .apanel')
     .evaluateAll((els) => els.map((e) => `${e.textContent} ${e.innerHTML}`).join(' '));
-  expect(rowText).not.toMatch(/\bidle\b/i);
-  await expect(page.locator('.mdash-foot')).toContainText(/not seen running/i);
+  expect(text).not.toMatch(/\b(running|idle|working now)\b/i);
+
+  // What IS said is said plainly, and it is the fact the listing carries.
   await expect(page.locator('.mdash-foot')).toContainText(/transcript was last written/i);
+  await expect(page.locator('.mdash-foot')).toContainText(/conversation is running/i);
+  await expect(page.locator('.mdash-foot')).toContainText(/a folder cannot say so/i);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
@@ -423,6 +416,71 @@ test('desktop mock: a mark keys on a reference, not on a machine name', async ({
 });
 
 /**
+ * THE MACHINE PICKER IS TWO LEVELS: type if you know the name, browse if you do not.
+ *
+ * The flat menu this replaces listed every machine one after another, which reads fine
+ * with five and falls apart at the size a fleet actually reaches — and it flattened a
+ * structure the reader already has in their head, since the Library is collections
+ * holding machines. The field searches every collection the reader holds a key to, so
+ * there is no collection to pick first when the name is known; and a result carries its
+ * collection, so "which Production?" is answered on the row.
+ */
+for (const shell of ['web', 'desktop'] as const) {
+  test(`${shell} mock: the machine picker searches every collection, and browses by one`, async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    await page.goto(mock(shell));
+    await page.evaluate(() => openAgents());
+    // By its title, not its label: the label is whichever scope is current, and the web
+    // shell does not open on the same one the desktop does.
+    await page.locator('.mdash-hd button[title="Choose the machine to look on"]').click();
+    const pick = page.locator('.apick');
+    await expect(pick).toHaveCount(1);
+
+    // BROWSING. The two scopes that belong to no collection come first, then the
+    // collections group their own machines — each with the colour the Library gave it.
+    const heads = await pick.locator('.apick-h').allTextContents();
+    expect(heads.length).toBeGreaterThan(1);
+    await expect(pick.locator('.apick-r').first()).toContainText('All machines');
+    await expect(pick.locator('.apick-dot')).not.toHaveCount(0);
+
+    // Every machine in the library is reachable, and each one is under exactly one
+    // collection — a machine listed twice would mean the walk counted a folder as one.
+    const inPicker = await pick.locator('.apick-n').allTextContents();
+    const inLibrary = await page.evaluate(() =>
+      agentScopes().filter((s: { kind: string }) => s.kind === 'ssh').map((s: { name: string }) => s.name),
+    );
+    for (const m of inLibrary) expect(inPicker.filter((n) => n === m)).toHaveLength(1);
+
+    // SEARCHING. One flat answer across every collection, each row saying where it
+    // came from — that is the whole reason not to make the reader pick a collection.
+    await pick.locator('.apick-q').fill('web');
+    await expect(pick.locator('.apick-h')).toHaveCount(0);
+    const hits = await pick.locator('.apick-r').allTextContents();
+    expect(hits.length).toBeGreaterThan(1);
+    expect(hits.every((h) => /web/i.test(h))).toBe(true);
+    await expect(pick.locator('.apick-r', { hasText: 'web-01' })).toContainText('Production');
+
+    // A collection's own name finds its machines, which is the browse case typed out.
+    await pick.locator('.apick-q').fill('production');
+    expect(await pick.locator('.apick-r').count()).toBeGreaterThan(1);
+
+    // Nothing matching says so, rather than drawing an empty panel.
+    await pick.locator('.apick-q').fill('zzzz');
+    await expect(pick.locator('.apick-none')).toContainText('zzzz');
+
+    // And picking one closes the picker and moves the view.
+    await pick.locator('.apick-q').fill('web-01');
+    await pick.locator('.apick-r', { hasText: 'web-01' }).click();
+    await expect(page.locator('.apick')).toHaveCount(0);
+    expect(await page.evaluate(() => STATE.agentScope)).toBe('web-01');
+
+    expect(errs, 'the mock must not log errors').toEqual([]);
+  });
+}
+
+/**
  * ALL MACHINES is the entry no single-machine tool on the market has: every one of
  * them reads the home directory of the host it runs on. It aggregates what has
  * already been read, and it must never fan a probe out across the library — that
@@ -479,7 +537,6 @@ test('desktop mock: a card says which conversation it is, beyond its name', asyn
   await expect(card.locator('.acard-f')).toContainText('web-01');
   await expect(card.locator('.acard-f')).toContainText('42 turns');
   await expect(card.locator('.acard-f')).toContainText('12 min ago');
-  await expect(card.locator('.pst.up')).toHaveCount(1);
 
   // Two conversations on ONE project are told apart by the branch, which is the
   // whole reason it is on the card.

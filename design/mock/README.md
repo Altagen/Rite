@@ -211,31 +211,44 @@ question and stays in **Tools**; the uuid, which is never typed and is one menu 
 and the agent's last line, which only matters once a conversation is the one being
 considered, so it lives in the drawer.
 
-#### Alive, and how it is known
+#### Recency, and nothing more
 
-A conversation is marked alive only when **a process was found**: one on that host
-whose command line carries the conversation's id. Measured rather than assumed —
+A session's **folder** gives three of the five facts a card carries, with one listing:
+the file name is the id, the path encodes the project (Claude slugs it, Grok
+URL-encodes it), and the modification time is when the agent last wrote. Measured here:
+125 files under `~/.claude/projects`, 55 under `~/.codex/sessions`, 3821 under
+`~/.grok/sessions`, 567 under `~/.gemini/tmp`. Hermes is the exception and keeps its
+sessions in SQLite, which is why an adapter can still name a command instead of a
+folder.
 
-```
-$ pgrep -af claude
-38691 /opt/claude-code/bin/claude --resume 4a349d90-345e-4c94-ae23-47644f50bbd5
-```
+**What a folder cannot tell you is whether anything is running**, and an earlier pass
+claimed it did. `state: 'running' | 'idle'` came from nothing: a transcript written
+twenty seconds ago by a session that has since exited is byte-for-byte one written by a
+session mid-answer. Grok even leaves `.lock` files beside its session files, and they
+sit on disk with no Grok running — stale write locks, not liveness. Claude, Codex and
+Gemini leave nothing at all.
 
-— so the id is right there to match on, and one command per machine answers for every
-conversation at once.
+So **no conversation is marked alive**. The card says when the transcript was last
+written, which is a fact, and says nothing it cannot support. A check against the
+process table — `pgrep -af claude` does show a resumed session's id on its command line
+— stays possible later and stays *optional*: a refinement on a surface that is already
+honest, not a third command every adapter owes.
 
-**What was there before was a lie.** `state: 'running' | 'idle'` came from nothing: the
-listing gives a transcript's modification time and nothing else, and a file written
-four minutes ago by a session that has since exited is byte-for-byte a file written
-four minutes ago by one that is still going. Calling the first "running" invents a
-fact, and a manager that invents one is worse than a manager that is quiet.
+#### Choosing a machine, at two levels
 
-The signal is **asymmetric on purpose**, and the view says so in words: a mark means a
-process was found, its absence means *not seen running* — never "idle". A conversation
-started without its id on the argv (a plain `claude`, not `claude --resume <id>`)
-cannot be attributed, so Rite misses it rather than guessing. No false positives, some
-false negatives, and the sentence on screen matches. Times are when the transcript was
-last written, which is the other fact the listing already carries.
+The flat menu this replaces listed every machine one after another. That reads fine
+with five and falls apart at the size a fleet reaches — and it flattened a structure the
+reader already has in their head, since the Library is collections holding machines.
+
+**Type if you know the name, browse if you do not.** The field searches every collection
+the reader holds a key to, so there is no collection to pick first; below it the
+collections group their own machines, each under the colour the Library gave it. A
+search result always carries its collection, so "which Production?" is answered on the
+row rather than one click away.
+
+A themed panel rather than a native `<select>`, for the reason the flat menu already
+gave — an OS dropdown paints its own list in its own colours — and because a `<select>`
+could not hold a search field.
 
 #### Naming a conversation
 

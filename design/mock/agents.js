@@ -184,16 +184,27 @@ function agentToggleTool(id, el) {
    one project, and `ask` is the opening message — the thing actually typed, which is
    what a conversation IS to the person looking for it. `last` is the agent's most
    recent line; it is in the data for the preview panel, and off the card on purpose. */
-/* `pid` is the whole of what Rite claims about a conversation being alive, and it is a
-   MEASURED fact: a process on that host whose command line carries this conversation's
-   id. Measured on this machine while writing it —
+/* RECENCY IS THE ONLY TIME SIGNAL, and it is the one that is always true.
 
-     $ pgrep -af claude
-     38691 /opt/claude-code/bin/claude --resume 4a349d90-345e-4c94-ae23-47644f50bbd5
+   A session's folder gives three of the five facts a card carries, with one listing:
+   the file name is the id, the path encodes the project (Claude slugs it, Grok
+   URL-encodes it), and the modification time is when the agent last wrote. Measured on
+   this machine — 125 files under `~/.claude/projects`, 55 under `~/.codex/sessions`,
+   3821 under `~/.grok/sessions`, 567 under `~/.gemini/tmp`. Hermes is the exception and
+   keeps its sessions in SQLite, which is why an adapter can still name a command instead
+   of a folder.
 
-   — so the id is right there to match on, and one command per machine answers for every
-   conversation at once.
+   WHAT A FOLDER CANNOT TELL YOU IS WHETHER ANYTHING IS RUNNING, and an earlier pass
+   claimed it did. `state: 'running' | 'idle'` came from nothing: a transcript written
+   twenty seconds ago by a session that has since exited is byte-for-byte one written by
+   a session mid-answer. Grok leaves `.lock` files beside its session files and they sit
+   there with no Grok running — stale write locks, not liveness. Claude, Codex and Gemini
+   leave nothing at all.
 
+   So no conversation is marked alive. The card says when the transcript was last
+   written, which is a fact, and says nothing it cannot support. A liveness check against
+   the process table remains possible later and stays OPTIONAL — it would be a refinement
+   on top of a surface that is already honest, not a third command every adapter owes.
    WHAT WAS THERE BEFORE WAS A LIE. `state: 'running' | 'idle'` came from nothing: the
    listing gives a transcript's modification time and nothing else, and a file written
    four minutes ago by a session that has since exited is byte-for-byte a file written
@@ -208,10 +219,8 @@ function agentToggleTool(id, el) {
 
    `seen` is the transcript's modification time, which is a fact the listing already
    carries — "last written", never "last used". */
-let __pid = 38600;
-const PID = () => (__pid += 37);
-const S = (id, project, branch, cwd, ask, seen, pid, turns, last) =>
-  ({ id, project, branch, cwd, ask, title: ask, last: seen, pid, turns, tail: last });
+const S = (id, project, branch, cwd, ask, seen, turns, last) =>
+  ({ id, project, branch, cwd, ask, title: ask, last: seen, turns, tail: last });
 
 const AGENT_PROBES = {
   'web-01': {
@@ -221,16 +230,16 @@ const AGENT_PROBES = {
         id: 'claude', installed: true, version: '2.1.4',
         sessions: [
           S('3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11', 'acme/api', 'fix/flaky-migration', '/srv/acme/api',
-            'Fix the flaky migration test', '12 min ago', PID(), 42,
+            'Fix the flaky migration test', '12 min ago', 42,
             'Edited 2 files, ran the suite — 41 passed, 1 failed.'),
           S('b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77', 'acme/api', 'feat/queue-client', '/srv/acme/api',
-            'Port the queue worker to the new client', '3 h ago', null, 18,
+            'Port the queue worker to the new client', '3 h ago', 18,
             'Waiting on a decision about the retry budget.'),
           S('c0a51d93-2e77-4b06-91ff-5d4c8b7e3a20', 'acme/web', 'main', '/srv/acme/web',
-            'Add the dark theme toggle', 'yesterday', null, 7,
+            'Add the dark theme toggle', 'yesterday', 7,
             'Opened a PR; review not started.'),
           S('1d8b3f60-74ae-4c92-a7e1-6f0c9b5d2e38', 'acme/api', 'hotfix/502', '/srv/acme/api',
-            'Trace the 502s under load', '2 days ago', null, 55,
+            'Trace the 502s under load', '2 days ago', 55,
             'Narrowed it to the upstream keepalive timeout.'),
         ],
       },
@@ -255,10 +264,10 @@ const AGENT_PROBES = {
         id: 'claude', installed: true, version: '2.0.9',
         sessions: [
           S('9e4f7c02-1a83-4d55-b6e8-02c7f1a94b63', 'acme/api', 'hotfix/502', '/srv/acme/api',
-            'Reproduce the staging 502', '1 h ago', null, 31,
+            'Reproduce the staging 502', '1 h ago', 31,
             'Reproduced it with 40 concurrent requests.'),
           S('4a0d9e18-5c63-4b77-9e2a-81f3c7d05b49', 'acme/api', 'chore/logs', '/srv/acme/api',
-            'Turn the access log into something greppable', '4 days ago', null, 9,
+            'Turn the access log into something greppable', '4 days ago', 9,
             'Switched the formatter; left the rotation alone.'),
         ],
       },
@@ -266,10 +275,10 @@ const AGENT_PROBES = {
         id: 'codex', installed: true, version: '1.3.0',
         sessions: [
           S('7f3e1b9c-2d48-4a60-85c1-9b0e4d7a3f62', 'acme/web', 'feat/checkout', '/srv/acme/web',
-            'Split the checkout form into steps', '2 h ago', PID(), 24,
+            'Split the checkout form into steps', '2 h ago', 24,
             'Three steps wired; validation still shared.'),
           S('e2b7c450-8f91-4d23-a6b8-0c5e9f1a7d34', 'acme/web', 'main', '/srv/acme/web',
-            'Why does the bundle weigh 900 kB', '1 week ago', null, 13,
+            'Why does the bundle weigh 900 kB', '1 week ago', 13,
             'Two icon sets are bundled twice.'),
         ],
       },
@@ -286,13 +295,13 @@ const AGENT_PROBES = {
         id: 'claude', installed: true, version: '2.1.4',
         sessions: [
           S('a5c8e2f1-6b30-4d79-9f24-7e1b05c8a93d', 'acme/infra', 'main', '/srv/infra',
-            'Tune the eviction policy', '20 min ago', PID(), 16,
+            'Tune the eviction policy', '20 min ago', 16,
             'allkeys-lru set; watching the hit rate.'),
           S('0b4f7d26-93a1-4e58-8c07-2f6a1d9b5e40', 'acme/infra', 'spike/cluster', '/srv/infra',
-            'Would clustering buy us anything here', '5 days ago', null, 28,
+            'Would clustering buy us anything here', '5 days ago', 28,
             'Not at this volume; the write path is the limit.'),
           S('6e1a9c73-4f52-4b86-a0d9-3c7e8b2f1d05', 'acme/infra', 'main', '/srv/infra',
-            'Write the runbook for a cold start', '2 weeks ago', null, 11,
+            'Write the runbook for a cold start', '2 weeks ago', 11,
             'Runbook drafted; untested against a real cold start.'),
         ],
       },
@@ -300,7 +309,7 @@ const AGENT_PROBES = {
         id: 'gemini', installed: true, version: '0.9.1',
         sessions: [
           S('2', 'acme/infra', 'main', '/srv/infra',
-            'Summarise what changed in the eviction config', '2 days ago', null, 5,
+            'Summarise what changed in the eviction config', '2 days ago', 5,
             'Three keys moved; the rest is untouched.'),
         ],
       },
@@ -326,19 +335,19 @@ const AGENT_LOCAL = {
       id: 'claude', installed: true, version: '2.1.4',
       sessions: [
         S('41b9c8d7-6e52-4a19-83f0-9c1d5b2e7a44', 'rite', 'develop', '~/Dev/projects/Rite',
-          'Mock the agent manager before building it', '4 min ago', PID(), 63,
+          'Mock the agent manager before building it', '4 min ago', 63,
           'Two layouts up; waiting on which one wins.'),
         S('7c2e091a-4d6f-4b83-a50c-18e3f9d4b26a', 'rite', 'develop', '~/Dev/projects/Rite',
-          'Register pane kinds instead of branching', '2 days ago', null, 95,
+          'Register pane kinds instead of branching', '2 days ago', 95,
           'Registry landed; one kind registered.'),
         S('b3d5f817-2a69-4c04-9e73-5f8b1c6d0a29', 'rite', 'feat/agents', '~/Dev/projects/Rite',
-          'Measure what each agent CLI actually exposes', '1 h ago', null, 22,
+          'Measure what each agent CLI actually exposes', '1 h ago', 22,
           'Four binaries read; gemini resumes by index.'),
         S('c8a2e5b0-9d43-4f17-a86c-2b7e0d4f9a61', 'rite', 'main', '~/Dev/projects/Rite',
-          'Why is the release binary 83 MB', '3 days ago', null, 34,
+          'Why is the release binary 83 MB', '3 days ago', 34,
           'The embed folder was never emptied.'),
         S('f0e7b3a9-1c54-4d28-b961-07a4e2c8f5d3', 'dotfiles', 'main', '~/.dotfiles',
-          'Make fish and bash agree about PATH', '1 week ago', null, 6,
+          'Make fish and bash agree about PATH', '1 week ago', 6,
           'One shared file, sourced by both.'),
       ],
     },
@@ -352,7 +361,7 @@ const AGENT_LOCAL = {
         S('2', 'rite', 'develop', '~/Dev/projects/Rite',
           'Walk the layouts parser', '1 h ago', null, 11, 'Read 4 files; no change proposed.'),
         S('5', 'notes', 'main', '~/Notes',
-          'Turn three years of notes into something searchable', '6 days ago', null, 19,
+          'Turn three years of notes into something searchable', '6 days ago', 19,
           'Indexed; the tagging is still by hand.'),
       ],
     },
@@ -360,10 +369,10 @@ const AGENT_LOCAL = {
       id: 'grok', installed: true, version: '0.2.56',
       sessions: [
         S('d4f8a1e6-7b23-4c95-8e01-6a2d9f3b7c48', 'rite', 'feat/agents', '~/Dev/projects/Rite',
-          'Sketch the card layout for the agent manager', '35 min ago', null, 8,
+          'Sketch the card layout for the agent manager', '35 min ago', 8,
           'Three sketches; the second is the one.'),
         S('9a3c6e02-5d71-4f84-b2a7-13e8c0d5f9b6', 'scratch', 'main', '~/scratch',
-          'Explain this regex to me like I wrote it', '9 days ago', null, 4,
+          'Explain this regex to me like I wrote it', '9 days ago', 4,
           'Lookahead, not a group. It was never a group.'),
       ],
     },
@@ -371,7 +380,7 @@ const AGENT_LOCAL = {
       id: 'codex', installed: true, version: '1.3.0',
       sessions: [
         S('5b7e2d94-8a16-4c38-9f50-2e6b1d7a4c03', 'rite', 'main', '~/Dev/projects/Rite',
-          'Port the audit script off the host cargo', '3 h ago', null, 15,
+          'Port the audit script off the host cargo', '3 h ago', 15,
           'Runs in the container; the threshold is named once.'),
       ],
     },
@@ -570,22 +579,123 @@ function agentPickScope(id) { STATE.agentScope = id; renderMain(); }
    containers. */
 function openAgentsOn(name) { STATE.agentScope = name; openAgents(); }
 
-/* The scope picker is a themed menu, not a native <select>: an OS dropdown paints
-   its own list in its own colours and lands a white panel in the middle of a dark
-   app. It also lets each entry carry its subtitle, which is where the local row in
-   a browser says why it cannot answer. */
-function agentScopeMenu(e) {
-  e.stopPropagation();
-  // A machine without access stays in the list and is marked. Removing it would read
-  // as "that host has no agents", which is a different and wrong statement — and it
-  // would hide the one thing the user can act on, which is the access.
-  floatMenu(e, agentScopes().map((s) => ({
-    icon: s.kind === 'local' ? ICON.term : s.kind === 'server' ? ICON.server : M.machine,
-    label: `${esc(s.name)}${agentHasAccess(s) ? '' : ' <span class="aidkind warn">no access</span>'}
-      <div class="sub mono" style="font-size:11px;color:var(--muted);font-weight:400">${esc(s.sub)}</div>`,
-    onclick: () => agentPickScope(s.id),
-  })));
+/* ---- choosing a machine, at two levels ----
+
+   The flat menu this replaces listed every machine in the library one after another.
+   That reads fine with five and falls apart with fifty, which is the size a fleet
+   actually reaches — and it is the wrong shape anyway, because the library is already
+   collections holding machines and the picker was flattening a structure the reader
+   has in their head.
+
+   So: TYPE IF YOU KNOW THE NAME, BROWSE IF YOU DO NOT. The field searches every
+   collection the reader holds a key to — one place, no collection to pick first — and
+   below it the collections group their own machines. A result always carries its
+   collection, so the answer to "which Production?" is on the row rather than one
+   click away.
+
+   A themed panel rather than a native <select>, for the reason the flat menu already
+   gave: an OS dropdown paints its own list in its own colours and lands a white panel
+   in the middle of a dark app. It also could not hold a search field. */
+function agentCollections() {
+  const groups = new Map();
+  const put = (coll, m) => {
+    const key = coll ? coll.id : '@loose';
+    if (!groups.has(key)) {
+      groups.set(key, { id: key, name: coll ? coll.name : 'Not in a collection',
+        color: coll ? coll.color : null, machines: [] });
+    }
+    groups.get(key).machines.push(m);
+  };
+  // The nearest enclosing COLLECTION, carried down — a machine in a folder inside a
+  // collection belongs to that collection, and a top-level folder is an organiser
+  // (ADR 0016: nesting is display, never permission).
+  const rec = (list, coll) => {
+    (list || []).forEach((n) => {
+      const here = n.type === 'coll' ? n : coll;
+      (n.conns || []).forEach((m) => put(here, m));
+      rec(n.children, here);
+    });
+  };
+  rec(typeof lib === 'function' ? lib() : LIB, null);
+  return [...groups.values()];
 }
+
+/* The collection a machine sits in, for the row that says so. */
+function agentCollectionOf(name) {
+  const g = agentCollections().find((c) => c.machines.some((m) => m.name === name));
+  return g ? g.name : '';
+}
+
+function agentScopePicker(e) {
+  e.stopPropagation();
+  document.querySelectorAll('.menu,.apick').forEach((m) => m.remove());
+  const el = document.createElement('div');
+  el.className = 'apick';
+  el.innerHTML = `<input class="inp inp-sm apick-q" placeholder="Search every collection" autofocus>
+    <div class="apick-list"></div>`;
+  document.body.appendChild(el);
+  // Measured, not guessed — the same correction the float menu needed.
+  const box = el.getBoundingClientRect();
+  el.style.left = `${Math.max(8, Math.min(e.clientX - box.width + 40, innerWidth - box.width - 8))}px`;
+  el.style.top = `${Math.max(8, Math.min(e.clientY + 8, innerHeight - box.height - 8))}px`;
+
+  const pick = (id) => { el.remove(); agentPickScope(id); };
+  const row = (sc, sub) => {
+    const b = document.createElement('button');
+    b.className = `apick-r ${sc.id === STATE.agentScope ? 'on' : ''}`;
+    b.innerHTML = `<span class="apick-i">${sc.kind === 'local' ? ICON.term
+      : sc.kind === 'server' ? ICON.server : sc.kind === 'all' ? M.grid : M.machine}</span>
+      <span class="grow"><span class="apick-n">${esc(sc.name)}</span>
+        ${sub ? `<span class="apick-s mono">${esc(sub)}</span>` : ''}</span>
+      ${agentHasAccess(sc) ? '' : '<span class="aidkind warn">no access</span>'}`;
+    b.onclick = () => pick(sc.id);
+    return b;
+  };
+
+  const list = el.querySelector('.apick-list');
+  const draw = (q) => {
+    list.innerHTML = '';
+    const query = q.trim().toLowerCase();
+    const all = agentScopes();
+    const fixed = all.filter((s) => s.kind === 'all' || s.kind === 'local');
+    const byName = (n) => all.find((s) => s.id === n);
+
+    if (query) {
+      // One flat answer across every collection, each row carrying where it came from.
+      const hits = all.filter((s) =>
+        `${s.name} ${s.sub} ${s.kind === 'ssh' ? agentCollectionOf(s.name) : ''}`
+          .toLowerCase().includes(query));
+      if (!hits.length) {
+        list.innerHTML = `<p class="apick-none">No machine matches <span class="mono">${esc(q)}</span>.</p>`;
+        return;
+      }
+      hits.forEach((s) => list.append(row(s,
+        s.kind === 'ssh' ? `${agentCollectionOf(s.name)} · ${s.sub}` : s.sub)));
+      return;
+    }
+
+    fixed.forEach((s) => list.append(row(s, s.sub)));
+    agentCollections().forEach((c) => {
+      const h = document.createElement('div');
+      h.className = 'apick-h';
+      h.innerHTML = `${c.color ? `<span class="apick-dot" style="background:${c.color}"></span>` : ''}
+        ${esc(c.name)}<span class="muted" style="font-weight:400"> · ${c.machines.length}</span>`;
+      list.append(h);
+      c.machines.forEach((m) => { const sc = byName(m.name); if (sc) list.append(row(sc, sc.sub)); });
+    });
+    const server = all.find((s) => s.kind === 'server');
+    if (server) list.append(row(server, server.sub));
+  };
+  draw('');
+  const q = el.querySelector('.apick-q');
+  q.addEventListener('input', () => draw(q.value));
+  setTimeout(() => q.focus(), 0);
+  setTimeout(() => document.addEventListener('click', function h(ev) {
+    if (el.contains(ev.target)) return;
+    el.remove(); document.removeEventListener('click', h);
+  }), 0);
+}
+
 function agentProbeNow() {
   const sc = agentScope(STATE.agentScope);
   if (!agentHasAccess(sc)) return;               // nothing to probe: see agentGateNote
@@ -759,14 +869,6 @@ function agentShowMenu(e) {
    so it is defined once here and both use it. */
 const IC_COPY = `<svg class="icon" viewBox="0 0 24 24"><path d="M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z"/></svg>`;
 
-/* The only claim Rite makes about a conversation being alive, and it is made only when
-   a process was actually found. No mark is NOT "idle" — it is "not seen running", which
-   the footnote under the view says in words, once. */
-function agentLiveMark(scope, s) {
-  if (!s.pid) return '<span class="pst-gap"></span>';
-  return `<span class="pst up" title="A process on ${esc(scope.name)} is this conversation — pid ${s.pid}"></span>`;
-}
-
 function agentCardHTML(r, i) {
   const { scope, tool, session: s } = r;
   return `<div class="acard ${STATE.agentPick === s.id ? 'on' : ''}" style="--edge:${scope.color || 'var(--muted)'}"
@@ -774,7 +876,6 @@ function agentCardHTML(r, i) {
       ondblclick="resumeAgent('${scope.id}','${tool.id}','${s.id}')"
       title="${esc(s.ask)} — double-click to resume">
     <div class="acard-h">
-      ${agentLiveMark(scope, s)}
       <span class="acard-proj">${esc(s.project)}</span>
       <span class="acard-br mono" title="git branch">${esc(s.branch)}</span>
       <span style="flex:1"></span>
@@ -958,7 +1059,6 @@ function agentPanelHTML(r) {
         <div class="apanel-t">${esc(s.project)} <span class="mono apanel-br">${esc(s.branch)}</span></div>
         <div class="apanel-sub mono">${esc(scope.name)} · ${esc(tool.name)}</div>
       </div>
-      ${agentLiveMark(scope, s)}
       <button class="dcard-x" title="Close" onclick="agentPick(null)">✕</button>
     </div>
     <div class="apanel-tabs">${t('preview', 'Preview')}${t('effect', 'In effect')}</div>
@@ -1077,7 +1177,7 @@ function agentsViewHTML() {
         title="Which CLIs this view draws">${STATE.agentShow
           ? `${STATE.agentShow.length} of ${bands.length} CLIs`
           : 'All CLIs'} ${EXICON.chevD}</button>` : ''}
-      <button class="btn btn-sm" onclick="agentScopeMenu(event)" title="Choose the machine to look on">${M.machine} ${sc.name} ${EXICON.chevD}</button>
+      <button class="btn btn-sm" onclick="agentScopePicker(event)" title="Choose the machine to look on">${M.machine} ${sc.name} ${EXICON.chevD}</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgAgentTools()" title="Which agent CLIs Rite looks for">${EXICON.gear} Tools</button>
       ${readable && probe ? `<span class="muted" style="font-size:12px" title="Discovery is one command over SSH — read on request, not continuously">read ${probe.at}</span>
         <button class="btn btn-ghost btn-sm" onclick="agentProbeNow()">${M.refresh} Probe again</button>` : ''}
@@ -1086,9 +1186,9 @@ function agentsViewHTML() {
     ${broken ? `<div class="dgrid">${broken}</div>` : ''}
     ${absent}
     <div class="mdash-foot">${IC_INFO}<span>Agents run on the machine, under the SSH account already in place there —
-      never inside the Rite server. A dot means a process on that machine was found carrying the conversation's id;
-      no dot means <b>not seen running</b>, which is not the same as idle — a session started without its id on the
-      command line cannot be attributed. Times are when the transcript was last written.</span></div>
+      never inside the Rite server. Times are <b>when the transcript was last written</b> — nothing here claims a
+      conversation is running, because a folder cannot say so and guessing it would be worse than staying quiet.
+      Resuming opens a pane in a new tab.</span></div>
   </div>`;
 }
 
