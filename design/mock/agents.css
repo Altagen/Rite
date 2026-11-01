@@ -55,7 +55,6 @@
   .ameta{flex:1;min-width:0}
   .atitle{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .asub{display:block;font-size:11.5px;color:var(--fg-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-  .aage{font-size:12px;color:var(--muted);white-space:nowrap;flex:none}
 
   /* An adapter that cannot answer says so here, in the tool's own block — never by
      leaving the list empty, which reads as "you have no agents". */

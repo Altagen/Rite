@@ -1170,7 +1170,7 @@ function agentsViewHTML() {
   // Tools that answered "not installed" are said once, here, instead of as a card
   // each. Six empty cards per machine is how a surface stops being read.
   const absent = (() => {
-    if (sc.kind === 'all' || !probe) return '';
+    if (sc.kind === 'all' || !probe || probe.error) return '';
     const on = new Set(agentEnabled().map((t) => t.id));
     // A tool that is not installed is not mentioned at all. It is not a state of this
     // machine worth a line — it is the absence of one, and naming six absences is how a
@@ -1195,7 +1195,10 @@ function agentsViewHTML() {
     <div class="mdash-hd">
       <span style="color:var(--purple);display:grid;place-items:center">${M.agent}</span>
       <div class="mdash-id"><div class="mdash-name">Agents</div>
-        <div class="mdash-sub">${rows.length} conversation${rows.length === 1 ? '' : 's'}${sc.kind === 'all' ? ' across the machines read so far' : ` on ${esc(sc.name)}`}</div></div>
+        <div class="mdash-sub">${probe && probe.error
+          ? `Could not sign in to ${esc(sc.name)}`
+          : `${rows.length} conversation${rows.length === 1 ? '' : 's'}${
+              sc.kind === 'all' ? ' across the machines read so far' : ` on ${esc(sc.name)}`}`}</div></div>
       <span style="flex:1"></span>
       <input class="inp inp-sm asearch" placeholder="Search the ask, project, branch or machine"
         value="${esc(q)}" oninput="agentSearch(this.value)">

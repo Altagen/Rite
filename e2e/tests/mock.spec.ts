@@ -724,9 +724,15 @@ for (const shell of ['web', 'desktop'] as const) {
     // And when it was read, because a failure with no date is a failure nobody can act on.
     await expect(page.locator('.dnote')).toContainText(/Read 2 min ago/);
 
-    // Nothing is offered on a machine that cannot be reached.
+    // Nothing is offered on a machine that cannot be reached — and nothing is CLAIMED
+    // about it either. "0 conversations" asserts an empty machine; what happened is
+    // that nobody got to look. The adapters are not listed as "not looked for yet"
+    // for the same reason: the probe did not skip them, it never got in.
     await expect(page.locator('.acard')).toHaveCount(0);
     await expect(page.locator('.aband')).toHaveCount(0);
+    await expect(page.locator('.aabsent')).toHaveCount(0);
+    await expect(page.locator('.mdash-sub')).toContainText(/Could not sign in to edge-01/);
+    await expect(page.locator('.mdash-sub')).not.toContainText(/0 conversation/);
 
     // THE PRECONDITION IS SATISFIED BY CONSTRUCTION, which is why no machine in the
     // library is barred in advance: holding a collection's key is holding its machines'
