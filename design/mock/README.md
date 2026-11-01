@@ -315,6 +315,206 @@ one state with something to do about it — and the error text separates a host 
 refused us from an adapter of ours that is wrong for the installed build. Those have
 fixes in different places, so the block says which.
 
+### The first condition is satisfied by construction
+
+Agents are managed only on a machine the reader can already sign in to — and **the
+library holds nothing else**. Holding a collection's key *is* holding its machines'
+credentials, and a collection offered to a team but not joined lives in **Discover**,
+which reads `COLL` and not the tree. So no machine in the picker can be barred in
+advance, and the condition needs no UI because it cannot be violated.
+
+An earlier pass built an apparatus for two states that do not exist: an offered
+collection dropped into the library, and a stored "the host refused this key" that
+nothing in Rite records. Both were removed. The lesson is worth keeping — a refusal
+that cannot happen is a refusal nobody can act on, and it sends a reader looking for a
+key they already hold.
+
+**What is knowable is what the last probe came back with.** A machine Rite could not
+sign in to carries one word — **error**, in red, not "no access", which reads as a
+permission and is the wrong diagnosis — with the error on the badge's title and the
+whole of it when the machine is selected: what failed, that the fix is on the host, and
+when it was read. A failure with no date is a failure nobody can act on.
+
+The two markers that remain are not failures at all, and say so in their own words:
+**never** on the Rite server host (a non-goal no credential changes) and **no client**
+on this machine in a browser (the access exists, the reach does not).
+
+#### Machine status is not shared, and could not be
+
+`/api/healthcheck/probe` is stateless: *"the client hands over host:port (decrypted from
+its own blob — the server stays zero-knowledge about which machines these are) and gets
+back an up/down verdict per target."* Nothing is stored and the server never learns
+which machine it just probed, so one member's result cannot become another's.
+
+That is a consequence of the threat model rather than a gap, and it is also right on the
+facts: reachability belongs to the pair *(machine, vantage point)*. A host behind one
+member's VPN is down from everyone else's desk. A shared "it is up" would be somebody
+else's answer to a different question.
+
+### Two layouts, both on screen, because the choice is not obvious
+
+The manager draws the same conversations two ways and a switch in its header picks
+one. Both are in the mock on purpose: which survives a real fleet is answered by
+looking at twenty-one conversations in both, not by arguing about it in a pull
+request. They are built from one `agentRows`, and a test holds that the rail's CLIs
+are the stacked bands and that each holds the same conversations — a layout must not
+win by quietly showing fewer rows.
+
+**Stacked** draws every CLI at once, each a band of cards. **Rail** puts the CLIs in a
+narrow column on the left and gives the whole width to one of them at a time. What
+the rail buys is the thing that bites at forty conversations: there is no scrolling
+past one tool to reach another, because only one is on screen, and switching is one
+click away at all times. The cards are the same cards — the rail is a different way
+of choosing, not a second way of drawing a conversation.
+
+Three controls keep the stacked view usable as it grows, and they answer three
+different questions:
+
+| | |
+|---|---|
+| **Fold a band** (click its heading) | not right now. The count stays visible while folded, because that is the reason to unfold it |
+| **Only** (on a band) | this one and nothing else, in one gesture instead of unticking five |
+| **The CLI filter** (in the header) | which CLIs this view draws at all |
+
+None of them is the **Tools** switch, which is a fourth thing: turning an adapter off
+there stops Rite *looking* for it, so using it to tidy a screen would silently stop
+discovery.
+
+#### The drawer
+
+Selecting a conversation opens a column beside **either** arrangement. It is not half
+of a layout, which is the point: its **tab strip is a seam left open**, and what comes
+after "In effect" — a note vault, a map of what a project loads, a view of pre-hooks —
+arrives as another tab rather than as a redesign. The per-conversation menu is the
+other seam, on both layouts.
+
+It holds the facts a chooser legitimately has — where the agent runs, its directory,
+its branch, its depth, its handle and the exact command that resumes it — rather than
+more transcript. A preview that grew into a transcript reader would be the chat UI
+ADR 0022 §8 refuses, reached slowly.
+
+#### What identifies a conversation, since its name does not
+
+Five facts, the same in both layouts because they belong to the conversation and not
+to the arrangement:
+
+| | |
+|---|---|
+| **The opening ask** | what was actually typed. It is the headline and it gets two lines, because a truncated question is the one thing here that cannot be guessed from the rest |
+| **The project and its branch** | two conversations about one project are told apart by the branch, and nothing else on the card would do it |
+| **The working directory** | truncated from the *left*, because the tail of a path is what separates two projects and `~/Dev/projects/…` hides exactly the useful half |
+| **The machine, as a coloured edge** | taken from the folder or collection it sits in — a colour already chosen in the Library, so "the orange ones are the cache boxes" is a fact the user established and the manager only reads |
+| **Depth and recency** | a long conversation from yesterday and this morning's two-minute try stop looking alike |
+
+What is **not** on a card: the adapter's provenance, which answers a maintainer's
+question and stays in **Tools**; the uuid, which is never typed and is one menu away;
+and the agent's last line, which only matters once a conversation is the one being
+considered, so it lives in the drawer.
+
+#### Recency, and nothing more
+
+A session's **folder** gives three of the five facts a card carries, with one listing:
+the file name is the id, the path encodes the project (Claude slugs it, Grok
+URL-encodes it), and the modification time is when the agent last wrote. Measured here:
+125 files under `~/.claude/projects`, 55 under `~/.codex/sessions`, 3821 under
+`~/.grok/sessions`, 567 under `~/.gemini/tmp`. Hermes is the exception and keeps its
+sessions in SQLite, which is why an adapter can still name a command instead of a
+folder.
+
+**What a folder cannot tell you is whether anything is running**, and an earlier pass
+claimed it did. `state: 'running' | 'idle'` came from nothing: a transcript written
+twenty seconds ago by a session that has since exited is byte-for-byte one written by a
+session mid-answer. Grok even leaves `.lock` files beside its session files, and they
+sit on disk with no Grok running — stale write locks, not liveness. Claude, Codex and
+Gemini leave nothing at all.
+
+So **no conversation is marked alive**. The card says when the transcript was last
+written, which is a fact, and says nothing it cannot support. A check against the
+process table — `pgrep -af claude` does show a resumed session's id on its command line
+— stays possible later and stays *optional*: a refinement on a surface that is already
+honest, not a third command every adapter owes.
+
+#### Choosing a machine, at two levels
+
+The flat menu this replaces listed every machine one after another. That reads fine
+with five and falls apart at the size a fleet reaches — and it flattened a structure the
+reader already has in their head, since the Library is collections holding machines.
+
+**Type if you know the name, browse if you do not.** The field searches every collection
+the reader holds a key to, so there is no collection to pick first; below it the
+collections group their own machines, each under the colour the Library gave it. A
+search result always carries its collection, so "which Production?" is answered on the
+row rather than one click away.
+
+A themed panel rather than a native `<select>`, for the reason the flat menu already
+gave — an OS dropdown paints its own list in its own colours — and because a `<select>`
+could not hold a search field.
+
+#### Naming a conversation
+
+A name and a colour, over a session Rite did not create. Rite keeps them and the
+vendor's files are never touched — §6's read-only rule is about Rite not becoming a
+second source of truth for *their* data, and a label that exists only in Rite is not
+their data. The label becomes the headline and **the ask stays underneath**: renaming
+must not lose what was asked, which is the one thing on a card nobody can reconstruct.
+
+**Personal, not shared, and that is a decision.** Access to an agent is already settled
+by the collection that holds the machine — hold its key, hold the SSH credential, see
+that machine's conversations — so nothing here needs a permission of its own. But a
+label is not access, and people work with these tools differently enough that one
+person's "spike, throw away" is another's "the queue work". A shared rename would take
+someone's filing system away from them.
+
+Keyed by the machine's **reference**, the **tool** and the **conversation id**. The
+reference and not the name, because an id is meaningless without the store that resolves
+it — a mark read out of context says nothing about which host it is about, which is what
+makes sealing it worth anything. The tool, because an id is only unique within its tool:
+Gemini hands back an *index*, and the index `2` exists on every machine that has a second
+conversation in that project. The mock carries that collision so the key is tested rather
+than assumed.
+
+#### Where a mark is kept is not a setting
+
+It follows the machine's own record, and nothing else. No preference, no per-machine
+switch, no reconciliation — because naming a conversation must not become a configuration
+problem, and that requirement outranks the rest.
+
+| The machine is | The mark goes to |
+|---|---|
+| **This machine**, no vault open | the device, in the clear. No record to hang it on and no key to seal it with |
+| in the **local vault** | the vault, sealed with its key. A local vault *is* a vault, so it is the same mechanism, not a second one |
+| on a **server** | the account, sealed client-side under the reader's own key, on the `user_library` pattern |
+
+Everything that *can* be sealed is sealed. The account's copy is per reader, so a mark on
+a machine in a **shared** collection is still the reader's own, and the server stores
+ciphertext it cannot parse — as it does for every other per-user store in the product.
+The single exception is the first row, and it is an exception because nothing exists to
+seal with, not because a choice was made.
+
+A label is prose a person wrote, and free text is where the sensitive thing ends up:
+"the Acme diligence" is a sentence nobody types into a colour picker.
+
+#### All machines
+
+The default scope aggregates every machine already read, newest first. No
+single-machine tool on the market has this entry — every one of them reads the home
+directory of the host it runs on — and it is the reason the machine had to be a fact
+on the card rather than a heading above it. It aggregates what has **already** been
+read and never fans a probe out across the library: that would be one SSH round trip
+per machine behind a view that opened by itself.
+
+Search covers what identifies a conversation — the ask, the project, the branch, the
+machine — and not the transcript, which is a different feature with a different cost.
+
+#### What a tool's state looks like now
+
+A tool that is **not installed** gets no card and no block. It is a word in one line
+at the foot: six empty cards per machine is how a surface stops being read. A tool
+that is installed and **cannot answer** keeps a block of its own, because it is the
+one state with something to do about it — and the error text separates a host that
+refused us from an adapter of ours that is wrong for the installed build. Those have
+fixes in different places, so the block says which.
+
 ### The first condition: an account you already have on that host
 
 **No usable SSH access, no agent management.** Not a rail Rite adds on top — it is the

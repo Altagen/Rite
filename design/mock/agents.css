@@ -280,6 +280,8 @@
      one thing about it is not. */
   .aidkind{font-size:10.5px;font-weight:600;flex:none;color:var(--muted)}
   .aidkind.warn{color:var(--amber)}
+  /* A failure, not a caveat: this one is red because it is something to go and fix. */
+  .aidkind.bad{color:var(--red)}
 
   /* The split button splits plainly; this opens everything else. Narrow on purpose:
      most people never need it, and it must not look like a seventh action. */

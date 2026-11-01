@@ -458,12 +458,16 @@ for (const shell of ['web', 'desktop'] as const) {
         })),
     );
     const word = (n: string) => blocked.find((b) => b.name === n)?.word;
-    expect(word('edge-01'), 'a refused credential').toBe('no access');
-    expect(word('grafana-01'), 'no key to the collection').toBe('no access');
+    // A host that turned the key down is an ERROR, not a missing permission. "No access"
+    // read as "you lack a right" and sent the reader looking for a key they already hold.
+    expect(word('edge-01'), 'the host refused the key').toBe('error');
     expect(word('Rite server host'), 'a non-goal, not a missing key').toBe('never');
     if (shell === 'web') {
       expect(word('This machine'), 'a browser cannot reach it — not a missing key').toBe('no client');
     }
+    // And nothing is marked for a reason Rite cannot know: holding a collection's key is
+    // holding its machines' credentials, so no machine in the library is barred up front.
+    expect(blocked.map((b) => b.word)).not.toContain('no access');
 
     // Every machine in the library is reachable, and each one is under exactly one
     // collection — a machine listed twice would mean the walk counted a folder as one.
@@ -692,97 +696,47 @@ test('desktop mock: the drawer opens beside either layout, read-only, with room 
 });
 
 /**
- * THE FIRST CONDITION: agents are managed only on machines you can already sign in
- * to. Managing them is opening a terminal on the host, so a machine with no usable
- * SSH credential has nothing to manage — and that is true in a browser exactly as it
- * is on the desktop, which is why this runs in both shells.
+ * A MACHINE RITE COULD NOT SIGN IN TO says so, says which error, and says where it gets
+ * fixed. This is what replaced a "no access" badge that was wrong twice over.
  *
- * The two ways to lack access have different fixes, so they get different text: a key
- * you can ask a holder for, and a credential that stopped working on the host. And
- * neither machine is removed from the list — a missing machine reads as "no agents
- * here", a claim Rite cannot make, and it hides the one thing the user can act on.
+ * It was wrong in its WORD: "no access" reads as a permission the reader lacks, and sent
+ * them looking for a key they already hold. And it was wrong in its SOURCE: the two
+ * states it described — an offered collection in the library, a stored "the host refused
+ * this key" — are states Rite cannot be in. Discover reads `COLL`, not the tree, so a
+ * collection without its key is never in the library; and nothing records a refused
+ * credential, because only trying reveals one.
+ *
+ * What is knowable is what the last probe came back with. Observed, not supposed.
  */
 for (const shell of ['web', 'desktop'] as const) {
-  test(`${shell} mock: no SSH access, no agent management — with the reason and the fix`, async ({
+  test(`${shell} mock: a machine Rite could not sign in to says so, and where to fix it`, async ({
     page,
   }) => {
     const errs = watchErrors(page);
     await page.goto(mock(shell));
     await page.evaluate(() => openAgents());
-
-    // No key to the collection: visible, askable, and keyless (ADR 0016).
-    await page.evaluate(() => agentPickScope('grafana-01'));
-    await expect(page.locator('.dnote')).toContainText(
-      /Agents are managed only on a machine Rite can already sign in to/,
-    );
-    await expect(page.locator('.dnote')).toContainText(/no key to it is held here/);
-    await expect(page.locator('.dnote')).toContainText(/A key-holder can share the collection/);
-    // Nothing is offered on a machine that cannot be reached: no tools, no
-    // conversations, and no probe button to press at a host that would refuse us.
-    await expect(page.locator('.atool')).toHaveCount(0);
-    await expect(page.locator('.arow')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /Probe/ })).toHaveCount(0);
-    await expect(page.locator('.mdash-hd')).not.toContainText(/read /);
-
-    // A credential that stopped working — mine to fix, on the host, not here.
     await page.evaluate(() => agentPickScope('edge-01'));
-    await expect(page.locator('.dnote')).toContainText(/key was refused/);
-    await expect(page.locator('.dnote')).toContainText(/A terminal on edge-01 is where that credential/);
-    await expect(page.locator('.atool')).toHaveCount(0);
 
-    await expect(page.locator('.atool')).toHaveCount(0);
+    await expect(page.locator('.dnote')).toContainText(/could not sign in to edge-01/);
+    await expect(page.locator('.dnote')).toContainText(/refused the key/);
+    // The fix is on the host, and the view says so rather than implying Rite has a switch.
+    await expect(page.locator('.dnote')).toContainText(/Opening a terminal on edge-01/);
+    // And when it was read, because a failure with no date is a failure nobody can act on.
+    await expect(page.locator('.dnote')).toContainText(/Read 2 min ago/);
 
-    // Both stay in the picker, marked.
-    const marked = await page.evaluate(() =>
+    // Nothing is offered on a machine that cannot be reached.
+    await expect(page.locator('.acard')).toHaveCount(0);
+    await expect(page.locator('.aband')).toHaveCount(0);
+
+    // THE PRECONDITION IS SATISFIED BY CONSTRUCTION, which is why no machine in the
+    // library is barred in advance: holding a collection's key is holding its machines'
+    // credentials, and a collection without its key is not in the library at all.
+    const barred = await page.evaluate(() =>
       agentScopes()
-        .filter((s: { access?: string }) => s.access === 'nokey' || s.access === 'refused')
-        .map((s: { id: string }) => s.id),
+        .filter((s: { kind: string; access: string }) => s.kind === 'ssh' && s.access !== 'held')
+        .map((s: { name: string }) => s.name),
     );
-    expect(marked).toEqual(['edge-01', 'grafana-01']);
-
-    // Probing is refused rather than merely unclickable: the button is one route to it
-    // and a mock is not the only caller. Observed on the probe record, not on the
-    // cards — the view's own gate keeps those absent either way, so a probe that ran
-    // anyway would leave no trace on screen.
-    const probedAnyway = await page.evaluate(() => {
-      AGENT_PROBES['grafana-01'] = { at: 'an hour ago', tools: [] };
-      agentPickScope('grafana-01');
-      agentProbeNow();
-      const at = AGENT_PROBES['grafana-01'].at;
-      delete AGENT_PROBES['grafana-01'];
-      return at;
-    });
-    expect(probedAnyway, 'a machine we cannot sign in to is never probed').toBe('an hour ago');
-
-    // And the manager never opens on one of them — not even when it is the ONLY
-    // machine with anything to show. The other probes are taken away for the
-    // question, because otherwise the default lands on a reachable machine for
-    // reasons that have nothing to do with access and the rule goes untested.
-    const landedOn = await page.evaluate(() => {
-      const saved = { ...AGENT_PROBES };
-      Object.keys(AGENT_PROBES).forEach((k) => delete AGENT_PROBES[k]);
-      AGENT_PROBES['grafana-01'] = {
-        at: 'just now',
-        tools: [
-          {
-            id: 'claude',
-            installed: true,
-            version: '2.1.4',
-            sessions: [
-              { id: 'x', project: 'p', cwd: '/p', title: 't', last: 'now', state: 'idle', turns: 1 },
-            ],
-          },
-        ],
-      };
-      const d = agentScopes().find((s: { id: string }) => s.id === agentDefaultScope());
-      Object.keys(AGENT_PROBES).forEach((k) => delete AGENT_PROBES[k]);
-      Object.assign(AGENT_PROBES, saved);
-      return { id: d.id, access: d.access };
-    });
-    expect(landedOn.id, 'the manager never opens on a machine with no access').not.toBe(
-      'grafana-01',
-    );
-    expect(landedOn.access).toBe('held');
+    expect(barred).toEqual([]);
 
     expect(errs, 'the mock must not log errors').toEqual([]);
   });

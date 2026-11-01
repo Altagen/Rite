@@ -281,19 +281,12 @@ const SLIB=[
         on the host. Visible everywhere a machine is, and the agent manager's first
         condition fails on it — no sign-in, nothing to manage. */
      {id:'c-edge',type:'coll',color:'#7dcfff',name:'Edge',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
-        {id:'m-b158623dce',name:'edge-01',host:'10.3.0.2',user:'deploy',port:22,last:'never',
-         authFail:'The key was refused by deploy@10.3.0.2 — rotated on the host on 12 Oct and never re-enrolled here.'}]},
+        {id:'m-b158623dce',name:'edge-01',host:'10.3.0.2',user:'deploy',port:22,last:'never'}]},
      {id:'c-stg',type:'coll',color:'#bb9af7',name:'Staging',shared:true,members:['alex','carol','dan'],roles:{alex:'owner',carol:'editor',dan:'editor'},open:false,conns:[
         {id:'m-644094cb50',name:'stg-web',host:'10.1.0.5',user:'deploy',port:22,last:'3h ago'}]} ]},
    {id:'c-db',type:'coll',color:'#f0a35e',name:'Databases',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
       {id:'m-43f6add7c6',name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,jump:'bastion',forwards:[{type:'local',localPort:'5432',remoteHost:'localhost',remotePort:'5432',active:false}],last:'1h ago'},
-      {id:'m-34fb46c847',name:'redis',host:'cache.acme.io',user:'ops',port:22,last:'4h ago'}]},
-   /* Offered to my team, not shared with me: I can see that it exists and ask for it,
-      and I hold no key — so Rite holds no credential for its machines (ADR 0016).
-      `noKey` stands in for that here; in the app the signal is the absent itemsKey. */
-   {id:'c-analytics',type:'coll',color:'#56c7c0',name:'Analytics',shared:true,noKey:true,members:['carol','dan'],roles:{carol:'owner',dan:'editor'},
-    offer:{team:'Eng',label:'Analytics dashboards'},open:false,conns:[
-      {id:'m-cd2c6114b0',name:'grafana-01',host:'10.2.0.9',user:'viewer',port:22,last:'never'}]} ]},
+      {id:'m-34fb46c847',name:'redis',host:'cache.acme.io',user:'ops',port:22,last:'4h ago'}]}, ]},
 ];
 
 /* A local vault: same shape, zero collaboration. Flip VLIB to [] to see the
@@ -1049,6 +1042,14 @@ function runPreconnect(willFail){const o=PRECONNECT;
 const PREFS=[
   { id:'appearance', label:'Appearance', body:()=>
       prefRow('Theme','Dark / light',`<div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div>`)
+    /* TWO THEMES, and the row above is not this one. That one is the application's
+       chrome; this is what the terminal itself is painted with, and the app has shipped
+       it for releases while the mock showed only the first — so the mock described a
+       product with one theme where there are two. Keeping them adjacent is also the
+       clearest way to argue the distinction the owner raised: the Rite surface and the
+       terminal surface are themed separately. */
+    + prefRow('Terminal theme','What the terminal itself is painted with — the application\'s own chrome is the row above.',
+        `<select class="inp" style="width:auto"><option>Dark</option><option>Grey</option><option>Translucent</option></select>`)
     + prefRow('Show member count on collections','The number next to shared collections (the 👥 shared icon stays either way)',prefToggle('showMemberCount','renderAll()')) },
 
   /* The toolbar is the one row of the app every person sees all day, and the

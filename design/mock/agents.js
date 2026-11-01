@@ -319,6 +319,14 @@ const AGENT_PROBES = {
       { id: 'opencode', installed: false },
     ],
   },
+  // Answered the probe with a refusal. The machine is the reader's, its key decrypts
+  // from a collection they hold — and the host turned that key down, which only trying
+  // can reveal. A probe result, never a property of the library.
+  'edge-01': {
+    at: '2 min ago',
+    error: 'ssh: handshake failed — deploy@10.3.0.2 refused the key (rotated on the host on 12 Oct)',
+    tools: [],
+  },
   // Answers the probe and has nothing — different from never having been asked.
   'lb-01': {
     at: '5 min ago',
@@ -439,14 +447,18 @@ function agentScopes() {
         // user established and the manager only reads. A machine of its own colour
         // would be a second, competing language for the same thing.
         color: m.color || n.color || 'var(--muted)',
-        // THE PRECONDITION, read off the library rather than asked for separately.
-        // No usable SSH access, no agent management — and the two ways to lack it are
-        // different enough that collapsing them would cost the user the fix.
-        ...(n.noKey
-          ? { access: 'nokey', why: `${n.name} is offered, not shared — no key to it is held here, so Rite holds no credential for ${m.name}.` }
-          : m.authFail
-            ? { access: 'refused', why: m.authFail }
-            : { access: 'held' }),
+        // THE PRECONDITION IS SATISFIED BY CONSTRUCTION, and that is the finding that
+        // removed an apparatus from this file. Agents are managed only on machines the
+        // reader can already sign in to — and the library holds nothing else. Holding a
+        // collection's key IS holding its machines' credentials; a collection offered
+        // and not joined lives in Discover, which reads `COLL` and not the tree.
+        //
+        // So no machine here can be marked inaccessible in advance. An earlier pass
+        // invented two that could — an offered collection dropped into the library, and
+        // a stored "the host refused this key" that nothing in Rite records. What IS
+        // knowable is what a PROBE came back with, which is observed rather than
+        // supposed, and that is where a failure now lives.
+        access: 'held',
       }));
     });
   }
@@ -538,14 +550,18 @@ const agentHasAccess = (sc) => sc.access === 'held';
    access to their own computer, when what is missing is a client to reach it with.
    A marker that is nearly right is the kind a reader acts on. */
 const AGENT_BLOCK = {
-  nokey: { word: 'no access', why: 'No key to the collection that holds it' },
-  refused: { word: 'no access', why: 'The credential was refused by the host' },
   unreachable: { word: 'no client', why: 'A browser cannot reach this computer — attach a desktop client' },
   never: { word: 'never', why: 'Rite does not run agents in its own server container, with any credential' },
 };
+/* The badge on a machine Rite could not sign in to. NOT "no access", which reads as a
+   permission the reader lacks and sends them looking for a key — the credential is
+   right there and the host turned it down. "Error" says what it is in one word, the
+   title says which error, and selecting the machine gives the whole of it. */
 const agentBlockMark = (sc) => {
   const b = AGENT_BLOCK[sc.access];
-  return b ? `<span class="aidkind warn" title="${esc(b.why)}">${b.word}</span>` : '';
+  if (b) return `<span class="aidkind warn" title="${esc(b.why)}">${b.word}</span>`;
+  const p = agentProbeOf(sc.id);
+  return p && p.error ? `<span class="aidkind bad" title="${esc(p.error)}">error</span>` : '';
 };
 
 /* The probe result for a scope, or null when it has never been asked. */
@@ -715,32 +731,26 @@ function agentScopePicker(e) {
 
 function agentProbeNow() {
   const sc = agentScope(STATE.agentScope);
-  if (!agentHasAccess(sc)) return;               // nothing to probe: see agentGateNote
+  if (!agentHasAccess(sc)) return;               // nothing to probe: see agentServerNote
   const p = agentProbeOf(sc.id);
   if (p) { p.at = 'just now'; toast(`Probed <span class="accent">${sc.name}</span> for agent sessions`); }
   else toast(`No agent CLI answered on <span class="accent">${sc.name}</span>`);
   renderMain();
 }
 
-/* THE FIRST CONDITION, and the one that decides whether there is a manager at all.
-   Agents are managed only on machines you already have an SSH account on. That is
-   not a safety rail Rite adds — it is the whole of what Rite does here: it signs in
-   as you, with the credential you already hold, and runs the CLI that is already
-   installed. No account, nothing to sign in with, nothing to manage.
+/* A MACHINE RITE COULD NOT SIGN IN TO. This is the honest version of what an earlier
+   pass called "no access": not a permission the reader lacks, not a state read off the
+   library, but what the last probe came back with. The credential is right there and
+   the host turned it down — and the fix is on the host, not in Rite.
 
-   Stated rather than hidden, for the reason every other refusal in this file is
-   stated: a machine missing from the list says "no agents here", which is a claim
-   Rite cannot make and which sends the user looking in the wrong place. The two
-   causes get different text because they have different fixes — one is a key you can
-   ask for, one is a credential that stopped working. */
-function agentGateNote(sc) {
-  const fix = sc.access === 'nokey'
-    ? `A key-holder can share the collection; ${esc(sc.name)} then appears here like any other machine, its agents reached over the same SSH session as its terminal.`
-    : `A terminal on ${esc(sc.name)} is where that credential gets fixed. When a shell works there, so does this — nothing else needs enabling.`;
-  return `<div class="dnote" style="border-color:color-mix(in oklab,var(--amber) 35%,transparent)">${IC_INFO}<span>
-    <b>Agents are managed only on a machine Rite can already sign in to.</b>
-    ${esc(sc.why || 'No usable SSH credential for this machine.')}
-    <br><br>${fix}</span></div>`;
+   Said where it is read, and with the error text, because "error" on a badge is enough
+   to know something is wrong and never enough to fix it. */
+function agentProbeFailNote(sc, probe) {
+  return `<div class="dnote" style="border-color:color-mix(in oklab,var(--red) 40%,transparent)">${IC_INFO}<span>
+    <b>Rite could not sign in to ${esc(sc.name)}.</b>
+    <span class="mono">${esc(probe.error)}</span>
+    <br><br>Opening a terminal on ${esc(sc.name)} is where that gets fixed — when a shell works there, so
+    does this, and nothing else needs enabling. Read ${esc(probe.at)}.</span></div>`;
 }
 
 /* The refusal, written where it is read. Not a "later" — a decision. */
@@ -1121,8 +1131,8 @@ function agentsViewHTML() {
   let body = null;
   if (sc.kind === 'server') {
     body = `<div class="dgrid">${agentServerNote()}</div>`;
-  } else if (sc.kind === 'ssh' && !agentHasAccess(sc)) {
-    body = `<div class="dgrid">${agentGateNote(sc)}</div>`;
+  } else if (sc.kind === 'ssh' && probe && probe.error) {
+    body = `<div class="dgrid">${agentProbeFailNote(sc, probe)}</div>`;
   } else if (sc.kind === 'local' && AGENT_SHELL === 'web') {
     body = `<div class="dgrid"><div class="dnote">${IC_INFO}<span><b>This machine is not reachable from a browser.</b>
       Attach the Rite desktop client to this server and its agents appear here. Agents on the

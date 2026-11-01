@@ -195,14 +195,7 @@ const LIB=[
       // A credential that stopped working — the collection is mine, the key was rotated
       // on the host. The agent manager's first condition fails on it: no sign-in,
       // nothing to manage. Same statement in both shells, because it is the same fact.
-      {id:'m-b158623dce',name:'edge-01',host:'10.3.0.2',user:'deploy',port:22,last:'never',
-       authFail:'The key was refused by deploy@10.3.0.2 — rotated on the host on 12 Oct and never re-enrolled here.'}]},
-   /* Offered to my team, not shared with me: visible, askable, and keyless — so Rite
-      holds no credential for its machines (ADR 0016). `noKey` stands in for the
-      absent itemsKey. */
-   {id:'c-analytics',type:'coll',color:'#56c7c0',name:'Analytics',shared:true,noKey:true,members:['carol','dan'],roles:{carol:'owner',dan:'editor'},
-    offer:{team:'Eng',label:'Analytics dashboards'},open:false,conns:[
-      {id:'m-cd2c6114b0',name:'grafana-01',host:'10.2.0.9',user:'viewer',port:22,last:'never'}]} ]},
+      {id:'m-b158623dce',name:'edge-01',host:'10.3.0.2',user:'deploy',port:22,last:'never'}]}, ]},
 ];
 function walk(list,fn){list.forEach(n=>{fn(n);if(n.children)walk(n.children,fn);});}
 function find(id){let r=null;walk(LIB,n=>{if(n.id===id)r=n;});return r;}
@@ -630,6 +623,14 @@ function openHostKey(){showModal({title:'Unknown host key',subtitle:'First conne
 const PREFS=[
   { id:'appearance', label:'Appearance', body:()=>
       prefRow('Theme','Dark / light',`<div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div>`)
+    /* TWO THEMES, and the row above is not this one. That one is the application's
+       chrome; this is what the terminal itself is painted with, and the app has shipped
+       it for releases while the mock showed only the first — so the mock described a
+       product with one theme where there are two. Keeping them adjacent is also the
+       clearest way to argue the distinction the owner raised: the Rite surface and the
+       terminal surface are themed separately. */
+    + prefRow('Terminal theme','What the terminal itself is painted with — the application\'s own chrome is the row above.',
+        `<select class="inp" style="width:auto"><option>Dark</option><option>Grey</option><option>Translucent</option></select>`)
     + prefRow('Show member count on collections','The number next to shared collections',prefToggle('showMemberCount','renderAll()')) },
 
   { id:'toolbar', label:'Toolbar', body:()=>
