@@ -2117,50 +2117,54 @@ test('desktop mock: a right click on a tab offers rename, duplicate and close ot
 });
 
 /**
- * The copy convention is CHOSEN here and kept in the workspace document.
+ * The copy convention is CHOSEN here and kept in the workspace document — in BOTH
+ * shells, because the rail entry carries no `native` flag in the app either: a terminal
+ * in a browser copies and pastes like any other. The web mock was missing the row
+ * entirely, which is how a mock stops being the source of truth it claims to be.
  *
  * It used to be shown and not offered, on the argument that a control would be a second
  * place to set one value. `newTabCwd` shipped the opposite arrangement in 0.2.8, and two
  * keys in one file behaving differently is the real trap — so the rule is the one that
- * file already follows: one value, one home, and Settings is a way of writing it. The
- * document is not an editing surface; it is what an export carries between machines.
+ * file already follows: one value, one home, and Settings is a way of writing it. In a
+ * browser that home is the sealed blob, never a file.
  *
  * What the row still has to carry is the COST, because the mode people reach for out of
  * xterm habit has one: a webview cannot touch the X11 primary selection, so "selecting
- * copies" writes the real clipboard and every drag replaces what was there. Discovering
- * that by losing something is the outcome this wording exists to prevent.
+ * copies" writes the real clipboard and every drag replaces what was there.
  */
-test('desktop mock: the copy convention is chosen, and says what it costs', async ({ page }) => {
-  const errs = watchErrors(page);
-  await page.goto(mock('desktop'));
+for (const shell of ['web', 'desktop'] as const) {
+  test(`${shell} mock: the copy convention is chosen, and says what it costs`, async ({ page }) => {
+    const errs = watchErrors(page);
+    await page.goto(mock(shell));
 
-  await page.evaluate(() => openSettings('clipboard'));
-  const pane = page.locator('.prefs-pane');
-  const picker = pane.locator('[data-copy-mode]');
-  await expect(picker).toHaveValue('select');
+    await page.evaluate(() => openSettings('clipboard'));
+    const pane = page.locator('.prefs-pane');
+    const picker = pane.locator('[data-copy-mode]');
+    await expect(picker).toHaveValue('select');
 
-  // Where it is kept, so a reader knows an export carries it.
-  await expect(pane).toContainText(/workspace document/i);
-  await expect(pane).toContainText(/\[terminal\] copyMode/);
+    // Where it is kept, so a reader knows an export carries it.
+    await expect(pane).toContainText(/workspace document/i);
+    await expect(pane).toContainText(/\[terminal\] copyMode/);
 
-  // And the cost of the one people reach for, named.
-  await expect(pane).toContainText(/primary selection/i);
-  await expect(pane).toContainText(/every drag replaces/i);
+    // And the cost of the one people reach for, named.
+    await expect(pane).toContainText(/primary selection/i);
+    await expect(pane).toContainText(/every drag replaces/i);
 
-  // Every convention is offered, and picking one changes what the row explains.
-  await expect(picker.locator('option')).toHaveCount(4);
-  await picker.selectOption('selectRightPaste');
-  await expect(pane).toContainText(/PuTTY/);
-  await expect(pane).not.toContainText(/every drag replaces/i);
+    // Every convention is offered, and picking one changes what the row explains.
+    await expect(picker.locator('option')).toHaveCount(4);
+    await picker.selectOption('selectRightPaste');
+    await expect(pane).toContainText(/PuTTY/);
+    await expect(pane).not.toContainText(/every drag replaces/i);
 
-  // Back to the shipped convention ⇒ the document holds nothing, rather than pinning
-  // the value that happens to be the default today.
-  await picker.selectOption('chord');
-  expect(await page.evaluate(() => STATE.copyMode)).toBe('');
-  await expect(pane).toContainText(/says nothing, so the shipped convention applies/i);
+    // Back to the shipped convention ⇒ the document holds nothing, rather than pinning
+    // the value that happens to be the default today.
+    await picker.selectOption('chord');
+    expect(await page.evaluate(() => STATE.copyMode)).toBe('');
+    await expect(pane).toContainText(/says nothing, so the shipped convention applies/i);
 
-  expect(errs, 'no console errors').toEqual([]);
-});
+    expect(errs, 'no console errors').toEqual([]);
+  });
+}
 
 /**
  * Broadcast is a MODE, so the badge is the whole safety story.

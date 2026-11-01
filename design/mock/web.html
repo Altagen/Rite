@@ -237,10 +237,15 @@ function isLocal(){return false;}
 function probeGoverned(){return true;}
 let STATE={sideCollapsed:false,mainTab:'term',agentsView:false,agentScope:null,agentTab:null,termTab:null,selColl:null,collPath:null,machineView:null,sort:'name',layout:'grid',showMemberCount:true,lang:'en',sessionPersistence:true,instanceName:'Acme Corp',hcMode:'passive',hcMethod:'tcp',machineProbes:true,dashPolicy:{webui:true,clients:true,minInterval:30},
   myShell:'', /* '' = whatever the instance defaults to */
-  toolbar:{quick:true,agents:true,library:true,newTermMenu:true},
+  toolbar:{quick:true,agents:true,library:true,newTermMenu:true,layouts:true},
   /* ADR 0027: the reader's own switch, and — in a server context on a desktop — which
      support this computer reads from. Both are device preferences, so neither travels. */
-  layoutsOn:true, layoutSource:'account'};
+  layoutsOn:true, layoutSource:'account',
+  /* The copy convention, chosen in Settings and kept in the workspace document — which
+     in a browser is the sealed blob, never a file. Same row as the desktop, because the
+     rail entry carries no `native` flag in the app either: a terminal in a browser
+     copies and pastes like any other. */
+  copyMode:'select', autoReconnect:false};
 /* No layouts FILE in a browser — there is no filesystem to read one from — so the
    workspace here is the account's sealed copy (ADR 0027). This used to hide the Layouts
    button and the "Split presets…" row altogether; now it only picks the support, and the
@@ -633,6 +638,11 @@ const PREFS=[
         prefToggle('toolbar.quick','renderActs()'))
     + prefRow('Agents','The AI sessions running on the machines.',prefToggle('toolbar.agents','renderActs()'))
     + prefRow('Teams and Collections','The two library shortcuts.',prefToggle('toolbar.library','renderActs()'))
+    /* The button is rendered here (`layoutsBtnHTML()` in the bar), and ADR 0027 gave a
+       browser its own workspace — so it needs the switch that governs it. A button with
+       no switch is the mirror of the defect fixed in 0.2.7: a switch for a button that
+       cannot appear is worse than none, and so is a button nobody can put away. */
+    + prefRow('Layouts','The button beside the tabs. It hides itself when no layout exists.',prefToggle('toolbar.layouts','renderMain()'))
     + (ALLOW_SHELL_CHOICE
         ? prefRow('Shell menu on “+”','The chevron on the <b>+</b> beside the tabs, to open one terminal with another of the server\'s shells without changing the pick in <b>Terminals</b>. Hiding it leaves <b>+</b> opening the chosen shell.',prefToggle('toolbar.newTermMenu','renderMain()'))
         : '') },
@@ -692,12 +702,23 @@ const PREFS=[
      },
 
   { id:'ssh', label:'SSH connections', body:()=>
-      prefRow('Host-key verification','How unknown server keys are handled',`<select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select>`) },
+      prefRow('Host-key verification','How unknown server keys are handled',`<select class="inp" style="width:auto"><option>Strict — show modal (most secure)</option><option>Warn — show notification</option><option>Accept — silent TOFU</option></select>`)
+    /* A dropped session is dropped in a browser too, and the app's toggle is not gated
+       on the shell — this page was simply missing it. Same wording as the desktop,
+       because it is the same setting about the same thing. */
+    + prefRow('Auto-reconnect lost connections','Off by default. On → a dropped session reconnects automatically (a <b>new shell</b>: history, on-screen output and any running job are lost). Off → a <b>Reconnect</b> button instead. Either way the disconnection is reported.',prefToggle('autoReconnect','renderMain()')) },
 
   /* Its own rail entry, as in the app: one row, and the rail is how a setting is found at
      all now. It used to be a line inside Security, which is where nobody looked for it. */
   { id:'clipboard', label:'Clipboard', body:()=>
       `<h4>Clipboard</h4>`
+    + prefRow('Copy and paste', STATE.copyMode
+        ? 'Kept in the workspace document, under [terminal] copyMode.'
+        : 'The document says nothing, so the shipped convention applies.',
+        `<select class="inp" data-copy-mode onchange="setCopyMode(this.value)">
+          ${Object.keys(COPY_MODE_WHY).map((m)=>`<option value="${m}" ${(STATE.copyMode||'chord')===m?'selected':''}>${COPY_MODE_NAME[m]}</option>`).join('')}
+        </select>`)
+    + `<p class="muted" style="font-size:12px;margin:-6px 0 14px;line-height:1.6">${COPY_MODE_WHY[STATE.copyMode||'chord']}</p>`
     + prefRow('Auto-clear clipboard','Clear the clipboard 30 seconds after a copy',`<div class="toggle on" onclick="this.classList.toggle('on')"><i></i></div>`) },
 
   { id:'language', label:'Language', body:()=>
