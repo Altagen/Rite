@@ -154,46 +154,62 @@ have; inside the container it would grant all of it.
 ### Two layouts, both on screen, because the choice is not obvious
 
 The manager draws the same conversations two ways and a switch in its header picks
-one. Both are in the mock on purpose: the question is which survives a real fleet,
-and that is answered by looking at twenty-one conversations in both, not by arguing
-about it in a pull request. They are built from one `agentRows`, so neither can look
-better by quietly showing fewer rows — a test holds that they list exactly the same
-asks, in the same groups, in the same order.
+one. Both are in the mock on purpose: which survives a real fleet is answered by
+looking at twenty-one conversations in both, not by arguing about it in a pull
+request. They are built from one `agentRows`, and a test holds that the rail's CLIs
+are the stacked bands and that each holds the same conversations — a layout must not
+win by quietly showing fewer rows.
 
-**Cards** group by CLI and lay the conversations out in a grid under each band. "By
-CLI" is then the structure of the page rather than a filter on it, and the band's
-heading carries the tool so no card repeats it. It reads at a glance and it is the
-one that gets worse fastest: forty conversations is a long wall.
+**Stacked** draws every CLI at once, each a band of cards. **Rail** puts the CLIs in a
+narrow column on the left and gives the whole width to one of them at a time. What
+the rail buys is the thing that bites at forty conversations: there is no scrolling
+past one tool to reach another, because only one is on screen, and switching is one
+click away at all times. The cards are the same cards — the rail is a different way
+of choosing, not a second way of drawing a conversation.
 
-**List** puts the same grouping in a narrow column and gives the rest of the width to
-one conversation. It holds roughly twice the rows per screen, which is the whole
-argument for it. Its weakness is the other side: a panel that may only ever hold a
-preview can look empty, so it is filled with the facts a chooser legitimately has —
-where the agent runs, its directory, its branch, its depth, its handle and the exact
-command that resumes it — rather than with more transcript. A preview that grew into
-a transcript reader would be the chat UI ADR 0022 §8 refuses, reached slowly.
+Three controls keep the stacked view usable as it grows, and they answer three
+different questions:
 
-The panel's **tab strip is a seam left open**. "In effect" is the skills, commands and
-hooks read that is a modal elsewhere; what comes after it — a note vault, a map of
-what a project loads, whatever earns its place — arrives as another tab rather than as
-a redesign. The per-conversation menu is the other seam, on both layouts.
+| | |
+|---|---|
+| **Fold a band** (click its heading) | not right now. The count stays visible while folded, because that is the reason to unfold it |
+| **Only** (on a band) | this one and nothing else, in one gesture instead of unticking five |
+| **The CLI filter** (in the header) | which CLIs this view draws at all |
+
+None of them is the **Tools** switch, which is a fourth thing: turning an adapter off
+there stops Rite *looking* for it, so using it to tidy a screen would silently stop
+discovery.
+
+#### The drawer
+
+Selecting a conversation opens a column beside **either** arrangement. It is not half
+of a layout, which is the point: its **tab strip is a seam left open**, and what comes
+after "In effect" — a note vault, a map of what a project loads, a view of pre-hooks —
+arrives as another tab rather than as a redesign. The per-conversation menu is the
+other seam, on both layouts.
+
+It holds the facts a chooser legitimately has — where the agent runs, its directory,
+its branch, its depth, its handle and the exact command that resumes it — rather than
+more transcript. A preview that grew into a transcript reader would be the chat UI
+ADR 0022 §8 refuses, reached slowly.
 
 #### What identifies a conversation, since its name does not
 
-Four facts, the same in both layouts because they belong to the conversation and not
+Five facts, the same in both layouts because they belong to the conversation and not
 to the arrangement:
 
 | | |
 |---|---|
 | **The opening ask** | what was actually typed. It is the headline and it gets two lines, because a truncated question is the one thing here that cannot be guessed from the rest |
 | **The project and its branch** | two conversations about one project are told apart by the branch, and nothing else on the card would do it |
+| **The working directory** | truncated from the *left*, because the tail of a path is what separates two projects and `~/Dev/projects/…` hides exactly the useful half |
 | **The machine, as a coloured edge** | taken from the folder or collection it sits in — a colour already chosen in the Library, so "the orange ones are the cache boxes" is a fact the user established and the manager only reads |
 | **Depth and recency** | a long conversation from yesterday and this morning's two-minute try stop looking alike |
 
 What is **not** on a card: the adapter's provenance, which answers a maintainer's
 question and stays in **Tools**; the uuid, which is never typed and is one menu away;
 and the agent's last line, which only matters once a conversation is the one being
-considered, so it lives in the panel.
+considered, so it lives in the drawer.
 
 #### All machines
 

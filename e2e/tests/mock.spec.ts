@@ -120,14 +120,13 @@ for (const shell of ['web', 'desktop'] as const) {
 }
 
 /**
- * THE TWO LAYOUTS SHOW THE SAME CONVERSATIONS. That is the whole point of having
- * both in the mock: the choice between them is a choice about arrangement, and a
- * layout that looked better by quietly showing fewer rows would settle the argument
- * dishonestly. Both are built from one `agentRows`, and this is what holds that.
+ * THE TWO LAYOUTS SHOW THE SAME CONVERSATIONS, arranged two ways. Stacked draws every
+ * CLI at once as a band of cards; the rail draws one CLI at a time, chosen on the
+ * left, with its conversations filling the width. Both are built from one
+ * `agentRows`, and that has to stay true — a layout that won the comparison by
+ * quietly showing fewer rows would settle it dishonestly.
  */
-test('desktop mock: the two layouts arrange the same rows, and nothing else differs', async ({
-  page,
-}) => {
+test('desktop mock: stacked and rail arrange the same rows, CLI for CLI', async ({ page }) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
   await page.evaluate(() => {
@@ -135,24 +134,84 @@ test('desktop mock: the two layouts arrange the same rows, and nothing else diff
     agentPickScope('@all');
   });
 
-  const asks = (sel: string) =>
-    page.locator(sel).evaluateAll((els) => els.map((e) => e.textContent?.trim() || ''));
+  const asks = () =>
+    page.locator('.acard-ask').evaluateAll((els) => els.map((e) => e.textContent?.trim() || ''));
 
   await page.evaluate(() => agentSetLayout('cards'));
-  const cards = await asks('.acard-ask');
-  expect(cards.length, 'the fleet is big enough for the comparison to mean something')
+  const stacked = await asks();
+  expect(stacked.length, 'the fleet is big enough for the comparison to mean something')
     .toBeGreaterThan(15);
 
-  await page.evaluate(() => agentSetLayout('panes'));
-  const rows = await asks('.arow-s-ask');
-  expect(rows).toEqual(cards);
+  // Per band, so the grouping is compared and not just the total.
+  const perBand = await page.locator('.aband').evaluateAll((bs) =>
+    bs.map((b) => ({
+      tool: b.querySelector('.aband-t')?.textContent?.trim() || '',
+      asks: [...b.querySelectorAll('.acard-ask')].map((c) => c.textContent?.trim() || ''),
+    })),
+  );
 
-  // The bands are the same groups, in the same order, in both.
-  await page.evaluate(() => agentSetLayout('cards'));
-  const bands = await asks('.aband-t');
+  // The rail shows one CLI at a time, so its entries must be those same bands and
+  // each one must hold the same conversations.
   await page.evaluate(() => agentSetLayout('panes'));
-  const groups = await asks('.alist-grp');
-  expect(groups.map((g) => g.replace(/\s+\d+$/, ''))).toEqual(bands);
+  const rail = await page
+    .locator('.arail-e')
+    .evaluateAll((es) => es.map((e) => (e.textContent || '').trim().replace(/\s*\d+$/, '')));
+  expect(rail).toEqual(perBand.map((b) => b.tool));
+
+  const seen: string[] = [];
+  for (const band of perBand) {
+    await page.locator('.arail-e', { hasText: band.tool }).click();
+    await expect(page.locator('.arail-main .aband-t')).toHaveText(band.tool);
+    expect(await asks(), `${band.tool} holds the same conversations`).toEqual(band.asks);
+    seen.push(...band.asks);
+  }
+  // And nothing is lost between the two.
+  expect(seen.sort()).toEqual([...stacked].sort());
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * A band folds and a CLI can be shown alone. Twenty-one conversations fit; forty do
+ * not, and the answer to "I only want Claude Code right now" has to be one gesture,
+ * not a trip to the adapter settings — which are a different thing again, because
+ * switching an adapter off there stops Rite LOOKING for it.
+ */
+test('desktop mock: a band folds, and one CLI can be shown alone', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('@all');
+    agentSetLayout('cards');
+  });
+  const all = await page.locator('.acard').count();
+
+  // Folding hides a band's cards and keeps its heading — and its count, because
+  // "how many are in there" is the reason to unfold it.
+  const claude = page.locator('.aband', { hasText: 'Claude Code' });
+  await claude.locator('.aband-fold').click();
+  await expect(claude).toHaveClass(/folded/);
+  await expect(claude.locator('.acard')).toHaveCount(0);
+  await expect(claude.locator('.aband-fold')).toContainText('14 conversations');
+  expect(await page.locator('.acard').count()).toBeLessThan(all);
+  await claude.locator('.aband-fold').click();
+  await expect(page.locator('.acard')).toHaveCount(all);
+
+  // "Only" is the one-click version of unticking everything else.
+  await page.locator('.aband', { hasText: 'Grok' }).getByRole('button', { name: 'Only' }).click();
+  await expect(page.locator('.aband')).toHaveCount(1);
+  await expect(page.locator('.aband-t')).toHaveText('Grok');
+  await expect(page.locator('.mdash-hd')).toContainText('1 of 4 CLIs');
+
+  // And the filter menu puts them back, one at a time or all at once.
+  await page.locator('.mdash-hd').getByRole('button', { name: /1 of 4 CLIs/ }).click();
+  await page.locator('.menu .row', { hasText: 'Codex CLI' }).click();
+  await expect(page.locator('.aband')).toHaveCount(2);
+  await page.locator('.mdash-hd').getByRole('button', { name: /2 of 4 CLIs/ }).click();
+  await page.locator('.menu .row', { hasText: 'Every CLI' }).click();
+  await expect(page.locator('.mdash-hd')).toContainText('All CLIs');
+  await expect(page.locator('.acard')).toHaveCount(all);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
@@ -210,6 +269,7 @@ test('desktop mock: a card says which conversation it is, beyond its name', asyn
   const card = page.locator('.acard', { hasText: 'Fix the flaky migration test' });
   await expect(card.locator('.acard-proj')).toHaveText('acme/api');
   await expect(card.locator('.acard-br')).toHaveText('fix/flaky-migration');
+  await expect(card.locator('.acard-cwd')).toHaveText('/srv/acme/api');
   await expect(card.locator('.acard-f')).toContainText('web-01');
   await expect(card.locator('.acard-f')).toContainText('42 turns');
   await expect(card.locator('.acard-f')).toContainText('12 min ago');
@@ -289,13 +349,16 @@ test('desktop mock: search narrows on the ask, the project, the branch and the m
 });
 
 /**
- * The panel is where one conversation gets the width, and its TAB STRIP is the seam
- * left open on purpose: "In effect" is the skills/commands/hooks read, and what comes
- * after it arrives as another tab rather than as a redesign. It stays read-only and
- * short — ADR 0022 section 8 refuses a chat UI rebuilt over a vendor's TUI, and a
- * preview that grew into a transcript reader would be that by a slower route.
+ * THE DRAWER. One conversation gets its own column, beside EITHER arrangement — it is
+ * not half of a layout any more, so the tab strip that later integrations arrive
+ * through survives the next rearrangement too.
+ *
+ * It holds FACTS a chooser legitimately has — where the agent runs, its directory, its
+ * handle, the exact command that resumes it — rather than more transcript. A preview
+ * that grew into a transcript reader is the chat UI ADR 0022 section 8 refuses,
+ * reached slowly.
  */
-test('desktop mock: the panel previews one conversation, read-only, with room for more', async ({
+test('desktop mock: the drawer opens beside either layout, read-only, with room for more', async ({
   page,
 }) => {
   const errs = watchErrors(page);
@@ -303,26 +366,41 @@ test('desktop mock: the panel previews one conversation, read-only, with room fo
   await page.evaluate(() => {
     openAgents();
     agentPickScope('@local');
-    agentSetLayout('panes');
+    agentSetLayout('cards');
   });
 
-  // The panel opens on the first conversation rather than on nothing.
-  await expect(page.locator('.apanel-t')).toContainText('rite');
+  // Closed until a conversation is picked.
+  await expect(page.locator('.apanel')).toHaveCount(0);
 
-  await page.locator('.arow-s', { hasText: 'Register pane kinds' }).click();
+  await page.locator('.acard', { hasText: 'Register pane kinds' }).click();
+  await expect(page.locator('.apanel-t')).toContainText('rite');
   await expect(page.locator('.apanel-sub')).toContainText('This machine');
   await expect(page.locator('.apanel-sub')).toContainText('Claude Code');
   // The agent's last line lives here and not on the card: it is only useful once a
   // conversation is the one being considered.
   await expect(page.locator('.apanel-body')).toContainText('Registry landed');
+  // And the command that resumes it, in full, because that is the escape hatch.
+  await expect(page.locator('.apanel-body')).toContainText('claude --resume');
 
-  // The other tab is the read that is a modal elsewhere, and nothing in the panel
-  // can be typed into.
+  // The other tab is the read that is a modal elsewhere, and nothing can be typed in.
   await page.locator('.apanel-tab', { hasText: 'In effect' }).click();
   await expect(page.locator('.apanel-body .aeff')).not.toHaveCount(0);
   await expect(page.locator('.apanel input, .apanel textarea')).toHaveCount(0);
 
-  // Resume from the panel does what resume from a card does.
+  // It follows the layout switch rather than belonging to one.
+  await page.evaluate(() => agentSetLayout('panes'));
+  await expect(page.locator('.apanel-t')).toContainText('rite');
+  await expect(page.locator('.arail-e')).not.toHaveCount(0);
+
+  // Picking the same conversation again closes it; so does its own control.
+  await page.locator('.acard', { hasText: 'Register pane kinds' }).click();
+  await expect(page.locator('.apanel')).toHaveCount(0);
+  await page.locator('.acard', { hasText: 'Register pane kinds' }).click();
+  await page.locator('.apanel-h .dcard-x').click();
+  await expect(page.locator('.apanel')).toHaveCount(0);
+
+  // Resume from the drawer does what resume from a card does.
+  await page.locator('.acard', { hasText: 'Register pane kinds' }).click();
   await page.locator('.apanel-acts').getByRole('button', { name: 'Resume' }).click();
   await expect(page.locator('.mtab', { hasText: 'Agents' })).toHaveCount(1);
   await expect(page.locator('.agentpane')).toHaveCount(1);
@@ -464,12 +542,12 @@ test('desktop mock: a handle that is not durable says so', async ({ page }) => {
   await expect(page.locator('.menu .row', { hasText: /Copy the index/ })).toHaveCount(0);
   await page.locator('.menu .row', { hasText: /Copy conversation id/ }).click();
 
-  // The panel's own button carries the same distinction in one word, because by then
-  // there is no room for a sentence.
-  await page.evaluate(() => agentSetLayout('panes'));
-  await page.locator('.arow-s', { hasText: 'Walk the layouts parser' }).click();
+  // The drawer's own button carries the same distinction in one word, because by
+  // then there is no room for a sentence.
+  await page.locator('.acard', { hasText: 'Walk the layouts parser' }).click();
   await expect(page.locator('.apanel-acts')).toContainText('Index');
-  await page.locator('.arow-s').first().click();
+  await expect(page.locator('.apanel-body')).toContainText(/moves as the list changes/);
+  await page.locator('.acard', { hasText: 'Mock the agent manager' }).click();
   await expect(page.locator('.apanel-acts')).toContainText('Id');
 
   expect(errs, 'the mock must not log errors').toEqual([]);
@@ -764,7 +842,7 @@ test('desktop mock: every agent control can be used without the page throwing', 
   await page.evaluate(() => agentPickScope('@local'));
 
   // Both layouts, and the search box, from the header.
-  for (const label of ['List', 'Cards']) {
+  for (const label of ['Rail', 'Stacked']) {
     await page.locator('.aseg').getByRole('button', { name: label, exact: true }).click();
   }
   await page.locator('.asearch').fill('layouts');

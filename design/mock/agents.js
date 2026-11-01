@@ -657,11 +657,50 @@ function agentToolBlock(sc, probeTool) {
    Not the uuid, which is never typed and always one menu away. */
 
 const AGENT_LAYOUTS = {
-  cards: { label: 'Cards', hint: 'Grouped by CLI, laid out as a grid' },
-  panes: { label: 'List', hint: 'Grouped by CLI in a narrow list, with one conversation open' },
+  cards: { label: 'Stacked', hint: 'Every CLI at once, each a band of cards' },
+  panes: { label: 'Rail', hint: 'One CLI at a time, chosen from a rail' },
 };
 function agentSetLayout(k) { STATE.agentLayout = k; renderMain(); }
 function agentSearch(v) { STATE.agentQuery = v; renderMain(); }
+
+/* Which bands are folded, and which CLIs are drawn at all. Two controls because they
+   answer two questions: folding is "not right now", filtering is "not in this view".
+   Neither is the Tools switch, which is a third thing again — that one stops Rite
+   LOOKING for a tool, so using it to tidy a screen would silently stop discovery. */
+const AGENT_TICK = (on) => `<span class="atick">${on ? '\u2713' : ''}</span>`;
+const agentFolded = (id) => (STATE.agentFold || {})[id] === true;
+function agentToggleFold(id) {
+  STATE.agentFold = { ...(STATE.agentFold || {}), [id]: !agentFolded(id) };
+  renderMain();
+}
+const agentShown = (id) => !STATE.agentShow || STATE.agentShow.includes(id);
+function agentToggleShow(id, all) {
+  const ids = agentEnabled().map((t) => t.id);
+  if (all) STATE.agentShow = null;
+  else {
+    const cur = STATE.agentShow || ids;
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    STATE.agentShow = next.length === ids.length ? null : next;
+  }
+  renderMain();
+}
+/* "Only this one" is the gesture actually wanted most of the time — it is one click
+   where unticking five is five. */
+function agentShowOnly(id) { STATE.agentShow = [id]; renderMain(); }
+function agentShowMenu(e) {
+  e.stopPropagation();
+  // Recomputed here rather than passed in: serialising a band into an inline onclick
+  // is a quoting bug waiting for the first tool with an apostrophe in its name.
+  const bands = agentBands(agentRows(STATE.agentScope, STATE.agentQuery));
+  floatMenu(e, [
+    { icon: AGENT_TICK(!STATE.agentShow), label: 'Every CLI', onclick: () => agentToggleShow(null, true) },
+    ...bands.map((b) => ({
+      icon: AGENT_TICK(agentShown(b.tool.id)),
+      label: `${esc(b.tool.name)}<span class="muted" style="font-weight:400"> · ${b.rows.length}</span>`,
+      onclick: () => agentToggleShow(b.tool.id),
+    })),
+  ]);
+}
 
 /* The coloured edge, the state dot and the two lines of identity. `tail` — the agent's
    most recent line — is deliberately NOT here: on a card it doubles the height for a
@@ -683,45 +722,66 @@ function agentCardHTML(r, i) {
         onclick="event.stopPropagation();agentRowMenu('${scope.id}','${tool.id}','${s.id}',event)">${EXICON.more}</button>
     </div>
     <div class="acard-ask">${esc(s.ask)}</div>
+    <div class="acard-cwd mono" title="${esc(s.cwd)}" dir="rtl">${esc(s.cwd)}</div>
     <div class="acard-f mono">${esc(scope.name)} · ${s.turns} turns · ${esc(s.last)}</div>
   </div>`;
 }
-function agentPick(id) { STATE.agentPick = id; renderMain(); }
+function agentPick(id) {
+  STATE.agentPick = STATE.agentPick === id ? null : id;
+  renderMain();
+}
 
 /* A band per tool that answered. The count is in the heading because "how many
    conversations does this tool hold" is read far more often than any one card. */
 function agentBandHTML(b) {
   const n = b.rows.length;
-  return `<div class="aband">
+  const folded = agentFolded(b.tool.id);
+  return `<div class="aband ${folded ? 'folded' : ''}">
     <div class="aband-h">
-      <span style="color:var(--purple);display:grid;place-items:center">${M.agent}</span>
-      <span class="aband-t">${b.tool.name}</span>
-      <span class="muted" style="font-size:12px">${n} conversation${n > 1 ? 's' : ''}</span>
+      <button class="aband-fold" onclick="agentToggleFold('${b.tool.id}')"
+        title="${folded ? 'Unfold' : 'Fold'} ${esc(b.tool.name)}">
+        <span style="color:var(--purple);display:grid;place-items:center">${M.agent}</span>
+        <span class="aband-t">${b.tool.name}</span>
+        <span class="muted" style="font-size:12px">${n} conversation${n > 1 ? 's' : ''}</span>
+        <span class="aband-chev">${EXICON.chevD}</span>
+      </button>
       <span class="line"></span>
+      <button class="btn btn-ghost btn-sm" onclick="agentShowOnly('${b.tool.id}')"
+        title="Hide every other CLI in this view">Only</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgNewAgent('${b.rows[0].scope.id}','${b.tool.id}')">${ICON.plus} New</button>
     </div>
-    <div class="acards">${b.rows.map(agentCardHTML).join('')}</div>
+    ${folded ? '' : `<div class="acards">${b.rows.map(agentCardHTML).join('')}</div>`}
   </div>`;
 }
 
-/* The sidebar row: the same facts, one line shorter, because the branch and the ask
-   have to share a width that is a quarter of the page. */
-function agentListRowHTML(r) {
-  const { scope, tool, session: s } = r;
-  const dot = s.state === 'running' ? 'up' : 'seen';
-  return `<div class="arow-s ${STATE.agentPick === s.id ? 'on' : ''}" style="--edge:${scope.color || 'var(--muted)'}"
-      role="button" tabindex="0" onclick="agentPick('${s.id}')"
-      ondblclick="resumeAgent('${scope.id}','${tool.id}','${s.id}')">
-    <div class="arow-s-h">
-      <span class="pst ${dot}"></span>
-      <span class="arow-s-proj">${esc(s.project)}</span>
-      <span class="arow-s-br mono">${esc(s.branch)}</span>
-      <span class="arow-s-age">${esc(s.last)}</span>
-      <button class="acard-more" title="More"
-        onclick="event.stopPropagation();agentRowMenu('${scope.id}','${tool.id}','${s.id}',event)">${EXICON.more}</button>
+/* THE RAIL. A narrow column of CLIs on the left, and that CLI's conversations filling
+   the width on the right — the same cards, not a second way of drawing a conversation.
+   It differs from the stacked bands in one thing that matters at forty conversations:
+   there is no scrolling past a tool to reach another, because only one is on screen.
+   Picking the CLI is the gesture, and it is one click away at all times. */
+function agentRailHTML(bands, rows) {
+  const pick = bands.find((b) => b.tool.id === STATE.agentCli) || bands[0];
+  const entry = (b) => `<button class="arail-e ${b.tool.id === pick.tool.id ? 'on' : ''}"
+      onclick="STATE.agentCli='${b.tool.id}';renderMain()">
+    <span style="color:var(--purple);display:grid;place-items:center">${M.agent}</span>
+    <span class="grow">${esc(b.tool.name)}</span>
+    <span class="arail-n">${b.rows.length}</span>
+  </button>`;
+  return `<div class="arail-wrap">
+    <div class="arail">
+      <div class="arail-h">Agent CLI</div>
+      ${bands.map(entry).join('')}
+      <div class="arail-all mono">${rows.length} in all</div>
     </div>
-    <div class="arow-s-ask">${esc(s.ask)}</div>
-    <div class="arow-s-f mono">${esc(scope.name)} · ${s.turns} turns</div>
+    <div class="arail-main scroll">
+      <div class="aband-h">
+        <span class="aband-t">${esc(pick.tool.name)}</span>
+        <span class="muted" style="font-size:12px">${pick.rows.length} conversation${pick.rows.length > 1 ? 's' : ''}</span>
+        <span class="line"></span>
+        <button class="btn btn-ghost btn-sm" onclick="dlgNewAgent('${pick.rows[0].scope.id}','${pick.tool.id}')">${ICON.plus} New</button>
+      </div>
+      <div class="acards">${pick.rows.map(agentCardHTML).join('')}</div>
+    </div>
   </div>`;
 }
 
@@ -732,9 +792,7 @@ function agentListRowHTML(r) {
    refuses a chat UI rebuilt over a vendor's TUI, and a preview that grew into a
    transcript reader would be that by a slower route. */
 function agentPanelHTML(r) {
-  if (!r) {
-    return `<div class="apanel empty"><span class="muted" style="font-size:13px">Pick a conversation.</span></div>`;
-  }
+  if (!r) return '';
   const { scope, tool, session: s } = r;
   const tab = STATE.agentPanelTab || 'preview';
   const t = (k, label) => `<button class="apanel-tab ${tab === k ? 'on' : ''}" onclick="STATE.agentPanelTab='${k}';renderMain()">${label}</button>`;
@@ -761,9 +819,10 @@ function agentPanelHTML(r) {
     <div class="apanel-h">
       <div class="grow">
         <div class="apanel-t">${esc(s.project)} <span class="mono apanel-br">${esc(s.branch)}</span></div>
-        <div class="apanel-sub mono">${esc(scope.name)} · ${esc(tool.name)} · ${esc(s.cwd)}</div>
+        <div class="apanel-sub mono">${esc(scope.name)} · ${esc(tool.name)}</div>
       </div>
       <span class="pst ${s.state === 'running' ? 'up' : 'seen'}"></span>
+      <button class="dcard-x" title="Close" onclick="agentPick(null)">✕</button>
     </div>
     <div class="apanel-tabs">${t('preview', 'Preview')}${t('effect', 'In effect')}</div>
     ${body}
@@ -829,15 +888,16 @@ function agentsViewHTML() {
       body = `<div class="dgrid"><div class="aempty"><div class="muted" style="font-size:13px;max-width:520px">${q
         ? `No conversation matches <span class="mono">${esc(q)}</span>.`
         : 'No conversation on the machines read so far.'}</div></div></div>`;
-    } else if (layout === 'panes') {
-      const pick = rows.find((r) => r.session.id === STATE.agentPick) || rows[0];
-      body = `<div class="asplit">
-        <div class="alist-side scroll">${bands.map((b) => `<div class="alist-grp">${b.tool.name}
-            <span class="muted" style="font-weight:400">${b.rows.length}</span></div>${b.rows.map(agentListRowHTML).join('')}`).join('')}</div>
-        ${agentPanelHTML(pick)}
-      </div>`;
     } else {
-      body = `<div class="abands">${bands.map(agentBandHTML).join('')}</div>`;
+      const shown = bands.filter((b) => agentShown(b.tool.id));
+      const seen = shown.length ? shown : bands;
+      const inner = layout === 'panes'
+        ? agentRailHTML(seen, rows)
+        : `<div class="abands scroll">${seen.map(agentBandHTML).join('')}</div>`;
+      // The drawer rides beside either arrangement, so the seam that later
+      // integrations arrive through does not belong to one of them.
+      const open = rows.find((r) => r.session.id === STATE.agentPick);
+      body = `<div class="adrawer-wrap ${open ? 'open' : ''}">${inner}${agentPanelHTML(open)}</div>`;
     }
   }
 
@@ -872,6 +932,10 @@ function agentsViewHTML() {
       <input class="inp inp-sm asearch" placeholder="Search the ask, project, branch or machine"
         value="${esc(q)}" oninput="agentSearch(this.value)">
       <span class="aseg">${lay('cards')}${lay('panes')}</span>
+      ${bands.length > 1 ? `<button class="btn btn-ghost btn-sm" onclick="agentShowMenu(event)"
+        title="Which CLIs this view draws">${STATE.agentShow
+          ? `${STATE.agentShow.length} of ${bands.length} CLIs`
+          : 'All CLIs'} ${EXICON.chevD}</button>` : ''}
       <button class="btn btn-sm" onclick="agentScopeMenu(event)" title="Choose the machine to look on">${M.machine} ${sc.name} ${EXICON.chevD}</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgAgentTools()" title="Which agent CLIs Rite looks for">${EXICON.gear} Tools</button>
       ${readable && probe ? `<span class="muted" style="font-size:12px" title="Discovery is one command over SSH — read on request, not continuously">read ${probe.at}</span>
