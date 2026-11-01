@@ -208,11 +208,11 @@ const M={
 };
 /* hosts "parsed" from ~/.ssh/config (mock) */
 const SSH_HOSTS=[
-  {name:'gitlab',host:'gitlab.com',user:'git',port:22},
-  {name:'prod-bastion',host:'bastion.acme.io',user:'alex',port:22},
-  {name:'db1',host:'10.0.0.20',user:'dba',port:2222},
-  {name:'staging',host:'stg.acme.io',user:'deploy',port:22},
-  {name:'nas',host:'nas.local',user:'admin',port:22},
+  {id:'m-9d96d9d5b1',name:'gitlab',host:'gitlab.com',user:'git',port:22},
+  {id:'m-88d43889b0',name:'prod-bastion',host:'bastion.acme.io',user:'alex',port:22},
+  {id:'m-82e64648d9',name:'db1',host:'10.0.0.20',user:'dba',port:2222},
+  {id:'m-e919a75364',name:'staging',host:'stg.acme.io',user:'deploy',port:22},
+  {id:'m-047de0f543',name:'nas',host:'nas.local',user:'admin',port:22},
 ];
 const avColor=u=>({alex:'#7c9cf5',carol:'#9ece6a',dan:'#e5b567',erin:'#bb9af7',frank:'#56c7c0'}[u]||'#888');
 const av=u=>`<span class="av" title="${u}" style="background:${avColor(u)}">${u[0].toUpperCase()}</span>`;
@@ -254,10 +254,10 @@ function hcCheckNow(){CHECKING=true;renderSide();renderMain();setTimeout(()=>{CH
 const SLIB=[
  {id:'f-perso',type:'folder',color:'#7c9cf5',name:'Personal',open:true,children:[
    {id:'c-home',type:'coll',color:'#9ece6a',name:'Home lab',shared:false,members:['alex'],roles:{alex:'owner'},open:false,conns:[
-      {name:'Homelab',host:'192.168.1.10',user:'alex',port:22,last:'2h ago'},
-      {name:'Router',host:'192.168.1.1',user:'admin',port:22,last:'3d ago'},
-      {name:'NAS',host:'nas.local',user:'admin',port:22,last:'1w ago'},
-      {name:'Scratch VPS',host:'vps.me',user:'root',port:22,last:'yesterday'}]} ]},
+      {id:'m-a71d508e50',name:'Homelab',host:'192.168.1.10',user:'alex',port:22,last:'2h ago'},
+      {id:'m-065d8e6c0b',name:'Router',host:'192.168.1.1',user:'admin',port:22,last:'3d ago'},
+      {id:'m-ef0d1931f1',name:'NAS',host:'nas.local',user:'admin',port:22,last:'1w ago'},
+      {id:'m-30e3e17b41',name:'Scratch VPS',host:'vps.me',user:'root',port:22,last:'yesterday'}]} ]},
  {id:'f-acme',type:'folder',color:'#e5b567',name:'Acme',open:true,children:[
    {id:'f-infra',type:'folder',color:'#56c7c0',name:'Infrastructure',open:true,children:[
      {id:'c-prod',type:'coll',color:'#f7768e',name:'Production',shared:true,members:['alex','carol','erin'],roles:{alex:'owner',carol:'editor',erin:'viewer'},open:true,
@@ -269,31 +269,31 @@ const SLIB=[
         {id:'b5',type:'live',cat:'Monitoring',title:'Failed units (web-01)',rows:[{up:false,text:'backup.service — failed'},{up:true,text:'nginx.service — active'}]},
       ],
       conns:[
-        {name:'bastion',host:'bastion.acme.io',user:'alex',port:22,last:'10m ago'},
-        {name:'lb-01',host:'10.0.0.4',user:'deploy',port:22,last:'1h ago'}],children:[
+        {id:'m-a1c509df21',name:'bastion',host:'bastion.acme.io',user:'alex',port:22,last:'10m ago'},
+        {id:'m-b7e137e66b',name:'lb-01',host:'10.0.0.4',user:'deploy',port:22,last:'1h ago'}],children:[
         {id:'cf-web',type:'folder',color:'#7c9cf5',name:'Web servers',open:true,conns:[
-           {name:'web-01',host:'10.0.0.5',user:'deploy',port:22,jump:'bastion',forwards:[{type:'local',localPort:'8080',remoteHost:'10.0.0.9',remotePort:'80',active:true}],last:'5m ago'},
-           {name:'web-02',host:'10.0.0.6',user:'deploy',port:22,last:'12m ago'},
-           {name:'web-03',host:'10.0.0.7',user:'deploy',port:22,last:'2h ago'}]},
+           {id:'m-0b9d9f06cc',name:'web-01',host:'10.0.0.5',user:'deploy',port:22,jump:'bastion',forwards:[{type:'local',localPort:'8080',remoteHost:'10.0.0.9',remotePort:'80',active:true}],last:'5m ago'},
+           {id:'m-02d0871fdc',name:'web-02',host:'10.0.0.6',user:'deploy',port:22,last:'12m ago'},
+           {id:'m-cbbfdf7c75',name:'web-03',host:'10.0.0.7',user:'deploy',port:22,last:'2h ago'}]},
         {id:'cf-cache',type:'folder',color:'#f0a35e',name:'Cache',open:true,conns:[
-           {name:'cache-01',host:'10.0.0.8',user:'ops',port:22,last:'yesterday'}]}]},
+           {id:'m-648ff6079b',name:'cache-01',host:'10.0.0.8',user:'ops',port:22,last:'yesterday'}]}]},
      /* A credential that stopped working: the collection is mine, the key was rotated
         on the host. Visible everywhere a machine is, and the agent manager's first
         condition fails on it — no sign-in, nothing to manage. */
      {id:'c-edge',type:'coll',color:'#7dcfff',name:'Edge',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
-        {name:'edge-01',host:'10.3.0.2',user:'deploy',port:22,last:'never',
+        {id:'m-b158623dce',name:'edge-01',host:'10.3.0.2',user:'deploy',port:22,last:'never',
          authFail:'The key was refused by deploy@10.3.0.2 — rotated on the host on 12 Oct and never re-enrolled here.'}]},
      {id:'c-stg',type:'coll',color:'#bb9af7',name:'Staging',shared:true,members:['alex','carol','dan'],roles:{alex:'owner',carol:'editor',dan:'editor'},open:false,conns:[
-        {name:'stg-web',host:'10.1.0.5',user:'deploy',port:22,last:'3h ago'}]} ]},
+        {id:'m-644094cb50',name:'stg-web',host:'10.1.0.5',user:'deploy',port:22,last:'3h ago'}]} ]},
    {id:'c-db',type:'coll',color:'#f0a35e',name:'Databases',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
-      {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,jump:'bastion',forwards:[{type:'local',localPort:'5432',remoteHost:'localhost',remotePort:'5432',active:false}],last:'1h ago'},
-      {name:'redis',host:'cache.acme.io',user:'ops',port:22,last:'4h ago'}]},
+      {id:'m-43f6add7c6',name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,jump:'bastion',forwards:[{type:'local',localPort:'5432',remoteHost:'localhost',remotePort:'5432',active:false}],last:'1h ago'},
+      {id:'m-34fb46c847',name:'redis',host:'cache.acme.io',user:'ops',port:22,last:'4h ago'}]},
    /* Offered to my team, not shared with me: I can see that it exists and ask for it,
       and I hold no key — so Rite holds no credential for its machines (ADR 0016).
       `noKey` stands in for that here; in the app the signal is the absent itemsKey. */
    {id:'c-analytics',type:'coll',color:'#56c7c0',name:'Analytics',shared:true,noKey:true,members:['carol','dan'],roles:{carol:'owner',dan:'editor'},
     offer:{team:'Eng',label:'Analytics dashboards'},open:false,conns:[
-      {name:'grafana-01',host:'10.2.0.9',user:'viewer',port:22,last:'never'}]} ]},
+      {id:'m-cd2c6114b0',name:'grafana-01',host:'10.2.0.9',user:'viewer',port:22,last:'never'}]} ]},
 ];
 
 /* A local vault: same shape, zero collaboration. Flip VLIB to [] to see the
@@ -305,15 +305,15 @@ const VLIB=[
     {id:'vb2',type:'note',cat:'Ops',title:'Disks',text:'NAS pool scrub runs **Sunday 03:00**. Replace a drive before it hits 5 reallocated sectors.'},
   ],
   conns:[
-    {name:'nas',host:'192.168.1.20',user:'admin',port:22,last:'2h ago'},
-    {name:'router',host:'192.168.1.1',user:'admin',port:22,last:'3d ago'}],
+    {id:'m-047de0f543',name:'nas',host:'192.168.1.20',user:'admin',port:22,last:'2h ago'},
+    {id:'m-74c9560404',name:'router',host:'192.168.1.1',user:'admin',port:22,last:'3d ago'}],
   children:[
     {id:'vf-hyp',type:'folder',color:'#7c9cf5',name:'Hypervisors',open:true,conns:[
-       {name:'pve-01',host:'192.168.1.30',user:'root',port:22,forwards:[{type:'local',localPort:'8006',remoteHost:'localhost',remotePort:'8006',active:true}],last:'20m ago'},
-       {name:'pve-02',host:'192.168.1.31',user:'root',port:22,last:'1d ago'}]}]},
+       {id:'m-64fd741f6e',name:'pve-01',host:'192.168.1.30',user:'root',port:22,forwards:[{type:'local',localPort:'8006',remoteHost:'localhost',remotePort:'8006',active:true}],last:'20m ago'},
+       {id:'m-9a188c64a5',name:'pve-02',host:'192.168.1.31',user:'root',port:22,last:'1d ago'}]}]},
  {id:'v-edge',type:'coll',color:'#f0a35e',name:'Edge sites',open:false,conns:[
-    {name:'edge-lyon',host:'10.20.0.2',user:'ops',port:22,jump:'router',last:'5h ago'},
-    {name:'edge-lille',host:'10.21.0.2',user:'ops',port:22,last:'2d ago'}]},
+    {id:'m-e9e7f32784',name:'edge-lyon',host:'10.20.0.2',user:'ops',port:22,jump:'router',last:'5h ago'},
+    {id:'m-bde309f1a6',name:'edge-lille',host:'10.21.0.2',user:'ops',port:22,last:'2d ago'}]},
 ];
 
 /* The active library follows the context: a vault has no collaborative data. */

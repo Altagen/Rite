@@ -345,6 +345,84 @@ test('desktop mock: a conversation can be named and coloured, without losing the
 });
 
 /**
+ * WHERE A MARK IS KEPT IS NOT A SETTING. It follows the machine's own record, and
+ * nothing else: naming a conversation must not become a configuration problem, which
+ * is the one requirement that outranks the rest here.
+ *
+ * Everything that CAN be sealed is sealed. A local vault is a vault, so it seals with
+ * its own key exactly as the account does; the account's copy is per-reader, so a mark
+ * on a machine in a SHARED collection is still the reader's own. The single exception
+ * is "This machine" with no vault open — there is no record to hang a mark on and no
+ * key to seal it with, so it rides on the device in the clear, as the rest of the
+ * per-machine state already does on the reader's own disk.
+ */
+for (const shell of ['web', 'desktop'] as const) {
+  test(`${shell} mock: a mark is kept where the machine is, and sealed wherever it can be`, async ({
+    page,
+  }) => {
+    const errs = watchErrors(page);
+    await page.goto(mock(shell));
+    await page.evaluate(() => openAgents());
+
+    // A machine on a server: the account, sealed under the reader's own key. True in a
+    // browser, which has no local vault at all, and in a desktop signed into one.
+    expect(await page.evaluate(() => agentMarkHomeOf('web-01'))).toBe('account');
+    // "This machine" is the one that cannot be sealed, in either shell.
+    expect(await page.evaluate(() => agentMarkHomeOf('@local'))).toBe('device');
+
+    // A local vault seals with its own key — the same mechanism, not a second one.
+    // There is no such context in a browser, which is itself the point.
+    if (shell === 'desktop') {
+      await page.evaluate(() => {
+        STATE.ctx = { type: 'vault', name: 'Perso' };
+        renderMain();
+      });
+      expect(await page.evaluate(() => agentMarkHomeOf('Homelab'))).toBe('vault');
+      expect(await page.evaluate(() => agentMarkHomeOf('@local'))).toBe('device');
+    } else {
+      expect(await page.evaluate(() => typeof isLocal === 'function' && isLocal())).toBe(false);
+    }
+
+    // The dialog says which of the three, so the rule is arguable on screen rather than
+    // only in a comment.
+    await page.evaluate(() => dlgAgentMark('@local', 'claude', 'x'));
+    await expect(page.locator('.backdrop')).toContainText(/no vault to seal it with/);
+    await page.locator('.backdrop [data-x]').click();
+
+    expect(errs, 'the mock must not log errors').toEqual([]);
+  });
+}
+
+/**
+ * A mark keys on the machine's REFERENCE, never on its name. An id is meaningless
+ * without the store that resolves it, so a mark read out of context says nothing about
+ * which host it is about — which is what makes sealing it worth anything.
+ */
+test('desktop mock: a mark keys on a reference, not on a machine name', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => openAgents());
+
+  const key = await page.evaluate(() => agentMarkKey('web-01', 'claude', 'abc'));
+  expect(key).toContain('abc');
+  expect(key).toContain('claude');
+  // The machine's own id, and not the name a reader typed.
+  expect(key).not.toContain('web-01');
+  expect(key.split('|')[0]).toMatch(/^m-/);
+
+  // Every machine in the library carries one, so no mark can fall back to a name.
+  const refs = await page.evaluate(() =>
+    agentScopes()
+      .filter((s: { kind: string }) => s.kind === 'ssh')
+      .map((s: { ref?: string }) => s.ref ?? ''),
+  );
+  expect(refs.length).toBeGreaterThan(5);
+  expect(refs.every((r: string) => r.startsWith('m-'))).toBe(true);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
  * ALL MACHINES is the entry no single-machine tool on the market has: every one of
  * them reads the home directory of the host it runs on. It aggregates what has
  * already been read, and it must never fan a probe out across the library — that

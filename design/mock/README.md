@@ -252,10 +252,34 @@ label is not access, and people work with these tools differently enough that on
 person's "spike, throw away" is another's "the queue work". A shared rename would take
 someone's filing system away from them.
 
-Keyed by **machine, tool and id**, because an id is only unique within its tool: Gemini
-hands back an *index*, and the index `2` exists on every machine that has a second
-conversation in that project. The mock carries that collision so the key is tested
-rather than assumed.
+Keyed by the machine's **reference**, the **tool** and the **conversation id**. The
+reference and not the name, because an id is meaningless without the store that resolves
+it — a mark read out of context says nothing about which host it is about, which is what
+makes sealing it worth anything. The tool, because an id is only unique within its tool:
+Gemini hands back an *index*, and the index `2` exists on every machine that has a second
+conversation in that project. The mock carries that collision so the key is tested rather
+than assumed.
+
+#### Where a mark is kept is not a setting
+
+It follows the machine's own record, and nothing else. No preference, no per-machine
+switch, no reconciliation — because naming a conversation must not become a configuration
+problem, and that requirement outranks the rest.
+
+| The machine is | The mark goes to |
+|---|---|
+| **This machine**, no vault open | the device, in the clear. No record to hang it on and no key to seal it with |
+| in the **local vault** | the vault, sealed with its key. A local vault *is* a vault, so it is the same mechanism, not a second one |
+| on a **server** | the account, sealed client-side under the reader's own key, on the `user_library` pattern |
+
+Everything that *can* be sealed is sealed. The account's copy is per reader, so a mark on
+a machine in a **shared** collection is still the reader's own, and the server stores
+ciphertext it cannot parse — as it does for every other per-user store in the product.
+The single exception is the first row, and it is an exception because nothing exists to
+seal with, not because a choice was made.
+
+A label is prose a person wrote, and free text is where the sensitive thing ends up:
+"the Acme diligence" is a sentence nobody types into a colour picker.
 
 #### All machines
 

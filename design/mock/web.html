@@ -136,9 +136,9 @@ const M={
   jump:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 18c0-6 4-10 8-10s8 4 8 10M9 8l3-4 3 4"/></svg>',
 };
 const SSH_HOSTS=[
-  {name:'gitlab',host:'gitlab.com',user:'git',port:22},
-  {name:'prod-bastion',host:'bastion.acme.io',user:'alex',port:22},
-  {name:'db1',host:'10.0.0.20',user:'dba',port:2222},
+  {id:'m-9d96d9d5b1',name:'gitlab',host:'gitlab.com',user:'git',port:22},
+  {id:'m-88d43889b0',name:'prod-bastion',host:'bastion.acme.io',user:'alex',port:22},
+  {id:'m-82e64648d9',name:'db1',host:'10.0.0.20',user:'dba',port:2222},
 ];
 const avColor=u=>({alex:'#7c9cf5',carol:'#9ece6a',dan:'#e5b567',erin:'#bb9af7',frank:'#56c7c0'}[u]||'#888');
 const av=u=>`<span class="av" title="${u}" style="background:${avColor(u)}">${u[0].toUpperCase()}</span>`;
@@ -164,14 +164,14 @@ const LIB=[
  // "Personal" is a REAL 1-member collection (auto-provisioned), sorted first. Like
  // any collection it can hold nested sub-folders (a machine's folder is a path).
  {id:'c-perso',type:'coll',color:'#7c9cf5',name:'Personal',personal:true,shared:false,members:['alex'],roles:{alex:'owner'},open:true,
-   conns:[{name:'Scratch VPS',host:'vps.me',user:'root',port:22,last:'yesterday'}],
+   conns:[{id:'m-30e3e17b41',name:'Scratch VPS',host:'vps.me',user:'root',port:22,last:'yesterday'}],
    children:[
      {id:'pf-home',type:'folder',color:'#9ece6a',name:'Home',open:true,
-       conns:[{name:'Homelab',host:'192.168.1.10',user:'alex',port:22,last:'2h ago'}],
+       conns:[{id:'m-a71d508e50',name:'Homelab',host:'192.168.1.10',user:'alex',port:22,last:'2h ago'}],
        children:[
          {id:'pf-net',type:'folder',color:'#56c7c0',name:'Network',open:true,conns:[
-            {name:'Router',host:'192.168.1.1',user:'admin',port:22,last:'3d ago'},
-            {name:'NAS',host:'nas.local',user:'admin',port:22,last:'1w ago'}]}]}]},
+            {id:'m-065d8e6c0b',name:'Router',host:'192.168.1.1',user:'admin',port:22,last:'3d ago'},
+            {id:'m-ef0d1931f1',name:'NAS',host:'nas.local',user:'admin',port:22,last:'1w ago'}]}]}]},
  // A personal ORGANISER folder (view hierarchy) that groups shared collections.
  {id:'f-acme',type:'folder',color:'#e5b567',name:'Acme',open:true,children:[
    {id:'c-prod',type:'coll',color:'#f7768e',name:'Production',shared:true,members:['alex','carol','erin'],roles:{alex:'owner',carol:'editor',erin:'viewer'},open:true,
@@ -185,24 +185,24 @@ const LIB=[
       {id:'b5',type:'live',cat:'Monitoring',title:'Failed units (web-01)',rows:[{up:false,text:'backup.service — failed'},{up:true,text:'nginx.service — active'}]},
     ],
     conns:[
-      {name:'lb-01',host:'10.0.0.4',user:'deploy',port:22,last:'1h ago'}],children:[
+      {id:'m-b7e137e66b',name:'lb-01',host:'10.0.0.4',user:'deploy',port:22,last:'1h ago'}],children:[
       {id:'cf-web',type:'folder',color:'#7c9cf5',name:'Web servers',open:true,conns:[
-         {name:'web-01',host:'10.0.0.5',user:'deploy',port:22,forwards:[{type:'local',localPort:'8080',remoteHost:'10.0.0.9',remotePort:'80',active:true}],last:'5m ago'}],children:[
+         {id:'m-0b9d9f06cc',name:'web-01',host:'10.0.0.5',user:'deploy',port:22,forwards:[{type:'local',localPort:'8080',remoteHost:'10.0.0.9',remotePort:'80',active:true}],last:'5m ago'}],children:[
          {id:'cf-eu',type:'folder',color:'#bb9af7',name:'EU',open:true,conns:[
-            {name:'web-02',host:'10.0.0.6',user:'deploy',port:22,last:'12m ago'}]}]}]},
+            {id:'m-02d0871fdc',name:'web-02',host:'10.0.0.6',user:'deploy',port:22,last:'12m ago'}]}]}]},
    {id:'c-db',type:'coll',color:'#f0a35e',name:'Databases',shared:true,members:['alex','dan'],roles:{alex:'owner',dan:'editor'},open:false,conns:[
-      {name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,forwards:[{type:'local',localPort:'5432',remoteHost:'localhost',remotePort:'5432',active:false}],last:'1h ago'},
+      {id:'m-43f6add7c6',name:'pg-prod',host:'db.acme.io',user:'dba',port:2222,forwards:[{type:'local',localPort:'5432',remoteHost:'localhost',remotePort:'5432',active:false}],last:'1h ago'},
       // A credential that stopped working — the collection is mine, the key was rotated
       // on the host. The agent manager's first condition fails on it: no sign-in,
       // nothing to manage. Same statement in both shells, because it is the same fact.
-      {name:'edge-01',host:'10.3.0.2',user:'deploy',port:22,last:'never',
+      {id:'m-b158623dce',name:'edge-01',host:'10.3.0.2',user:'deploy',port:22,last:'never',
        authFail:'The key was refused by deploy@10.3.0.2 — rotated on the host on 12 Oct and never re-enrolled here.'}]},
    /* Offered to my team, not shared with me: visible, askable, and keyless — so Rite
       holds no credential for its machines (ADR 0016). `noKey` stands in for the
       absent itemsKey. */
    {id:'c-analytics',type:'coll',color:'#56c7c0',name:'Analytics',shared:true,noKey:true,members:['carol','dan'],roles:{carol:'owner',dan:'editor'},
     offer:{team:'Eng',label:'Analytics dashboards'},open:false,conns:[
-      {name:'grafana-01',host:'10.2.0.9',user:'viewer',port:22,last:'never'}]} ]},
+      {id:'m-cd2c6114b0',name:'grafana-01',host:'10.2.0.9',user:'viewer',port:22,last:'never'}]} ]},
 ];
 function walk(list,fn){list.forEach(n=>{fn(n);if(n.children)walk(n.children,fn);});}
 function find(id){let r=null;walk(LIB,n=>{if(n.id===id)r=n;});return r;}

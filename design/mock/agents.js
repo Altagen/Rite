@@ -380,6 +380,30 @@ const AGENT_LOCAL = {
   ],
 };
 
+/* WHERE A MARK IS KEPT, decided by where the MACHINE's record lives and by nothing
+   else. There is no preference, no switch and no reconciliation — which is the whole
+   requirement: naming a conversation must not become a configuration problem.
+
+     'device'  — "This machine", with no vault open. There is no record to hang it on
+                 and no key to seal it with, so it rides in `deviceStore` beside the
+                 other per-machine state, in the clear on the reader's own disk. The
+                 one case that cannot be sealed, because nothing exists to seal with.
+     'vault'   — a machine in the local vault. Sealed with the vault's key, the same
+                 mechanism the account uses: a local vault IS a vault.
+     'account' — a machine on a server, in the web UI or in a desktop signed into one.
+                 Sealed client-side under the user's own key, per user, on the
+                 `user_library` pattern — so a mark on a machine in a SHARED collection
+                 is still the reader's own. The server stores ciphertext it cannot
+                 parse, as it does for every other per-user store in the product.
+
+   Everything but the first is sealed. A label is prose a person wrote, and free text
+   is where the sensitive thing ends up — "the Acme diligence" is a sentence nobody
+   types into a colour picker. */
+const agentMarkHome = () =>
+  AGENT_SHELL === 'web' ? 'account'
+    : typeof isLocal === 'function' && isLocal() ? 'vault'
+      : 'account';
+
 /* ---- scopes: every machine an agent could run on, plus the one it may not ----
    This machine is listed in BOTH shells, and that is deliberate: a browser
    cannot spawn a process, so in the web UI the entry exists to carry the one real
@@ -392,6 +416,14 @@ function agentScopes() {
     walk(typeof lib === 'function' ? lib() : LIB, (n) => {
       (n.conns || []).forEach((m) => machines.push({
         id: m.name, kind: 'ssh', name: m.name, sub: `${m.user || 'user'}@${m.host || m.name}`,
+        // What a mark keys on, and deliberately NOT the name: a name is an identity, an
+        // id is a reference. A stored mark then says nothing about which host it is
+        // about to anyone who has not already opened the vault that holds it. The scope's
+        // own `id` stays the name because that is what the picker and the tests read.
+        ref: m.id || m.name,
+        // Which store the mark goes to, decided by where the MACHINE's record lives
+        // rather than by a preference. Nothing here is configurable, which is the point.
+        home: agentMarkHome(),
         // The card's coloured edge. Taken from the folder or collection the machine
         // sits in rather than from a palette invented here: that colour was already
         // chosen in the Library, so "the green ones are the home lab" is a fact the
@@ -778,8 +810,23 @@ function agentCardHTML(r, i) {
    Keyed on all three because an id is only unique within its tool, and the same
    project checked out on two machines is two conversations. */
 const AGENT_MARKS = {};
-const agentMarkKey = (scopeId, toolId, id) => `${scopeId}|${toolId}|${id}`;
+/* Keyed on the machine's REFERENCE, the tool and the conversation — never on the
+   machine's name. An id is meaningless without the store that resolves it, so a mark
+   read out of context says nothing about which host it is about. The tool is in the key
+   because an id is only unique within its tool: Gemini hands back an index, and `2`
+   exists on every machine with a second conversation in that project. */
+const agentMarkKey = (scopeId, toolId, id) =>
+  `${(agentScopes().find((s) => s.id === scopeId) || {}).ref || scopeId}|${toolId}|${id}`;
 const agentMark = (scopeId, toolId, id) => AGENT_MARKS[agentMarkKey(scopeId, toolId, id)] || {};
+/* "This machine" has no record in any library, so its marks have nowhere to hang and no
+   key to be sealed with. They ride on the device, in the clear, which is what the rest
+   of the per-machine state already does on the reader's own disk. */
+const agentMarkHomeOf = (scopeId) => (scopeId === '@local' ? 'device' : agentMarkHome());
+const AGENT_MARK_HOME = {
+  device: 'this device, in the clear — there is no vault to seal it with',
+  vault: 'the local vault, sealed with its key',
+  account: 'the account, sealed under this reader\u2019s own key — the server cannot read it',
+};
 /* The label replaces the ask as the headline when there is one, and the ask stays on
    the card underneath — renaming a conversation must not lose what was asked, which is
    the one thing that cannot be reconstructed. */
@@ -799,9 +846,11 @@ function dlgAgentMark(scopeId, toolId, id) {
         <button type="button" class="sw none ${!m.color ? 'sel' : ''}" title="No colour"
           onclick="this.parentNode.querySelectorAll('.sw').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');this.parentNode.dataset.c=''"></button>
         ${AGENT_COLORS.map(sw).join('')}</div></label>
-      <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55">Personal, not shared. Access to an
-      agent is already settled by the collection that holds the machine; a name is not access, and one person’s
-      filing system is not another’s.</p>`,
+      <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55">Kept in
+      <b>${AGENT_MARK_HOME[agentMarkHomeOf(scopeId)]}</b>, because that is where this machine’s own record
+      lives — there is nothing to configure. Personal, not shared: access to an agent is already settled by the
+      collection that holds the machine, a name is not access, and one person’s filing system is not
+      another’s.</p>`,
     onConfirm: (mo) => {
       const label = (mo.querySelector('#am-label').value || '').trim();
       const color = mo.querySelector('.swatches').dataset.c || '';
