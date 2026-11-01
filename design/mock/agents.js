@@ -531,6 +531,23 @@ function agentDefaultScope() {
    them IS opening a terminal on it. */
 const agentHasAccess = (sc) => sc.access === 'held';
 
+/* Why a scope cannot be used, in the fewest words that are TRUE for that reason. One
+   word for all of them was wrong: "no access" on the server host says a key is missing
+   and that the right one would open it, when running an agent there is a non-goal that
+   no credential changes — and on this machine in a browser it says the reader lacks
+   access to their own computer, when what is missing is a client to reach it with.
+   A marker that is nearly right is the kind a reader acts on. */
+const AGENT_BLOCK = {
+  nokey: { word: 'no access', why: 'No key to the collection that holds it' },
+  refused: { word: 'no access', why: 'The credential was refused by the host' },
+  unreachable: { word: 'no client', why: 'A browser cannot reach this computer — attach a desktop client' },
+  never: { word: 'never', why: 'Rite does not run agents in its own server container, with any credential' },
+};
+const agentBlockMark = (sc) => {
+  const b = AGENT_BLOCK[sc.access];
+  return b ? `<span class="aidkind warn" title="${esc(b.why)}">${b.word}</span>` : '';
+};
+
 /* The probe result for a scope, or null when it has never been asked. */
 function agentProbeOf(id) {
   if (id === '@local') return AGENT_LOCAL;
@@ -647,7 +664,7 @@ function agentScopePicker(e) {
       : sc.kind === 'server' ? ICON.server : sc.kind === 'all' ? M.grid : M.machine}</span>
       <span class="grow"><span class="apick-n">${esc(sc.name)}</span>
         ${sub ? `<span class="apick-s mono">${esc(sub)}</span>` : ''}</span>
-      ${agentHasAccess(sc) ? '' : '<span class="aidkind warn">no access</span>'}`;
+      ${agentBlockMark(sc)}`;
     b.onclick = () => pick(sc.id);
     return b;
   };

@@ -445,6 +445,26 @@ for (const shell of ['web', 'desktop'] as const) {
     await expect(pick.locator('.apick-r').first()).toContainText('All machines');
     await expect(pick.locator('.apick-dot')).not.toHaveCount(0);
 
+    // A scope that cannot be used says WHY in its own words. One word for every
+    // reason was wrong: "no access" on the server host claims a key is missing and
+    // that the right one would open it, when running an agent there is a non-goal no
+    // credential changes.
+    const blocked = await pick.locator('.apick-r').evaluateAll((es) =>
+      es
+        .filter((e) => e.querySelector('.aidkind'))
+        .map((e) => ({
+          name: e.querySelector('.apick-n')?.textContent?.trim() || '',
+          word: e.querySelector('.aidkind')?.textContent?.trim() || '',
+        })),
+    );
+    const word = (n: string) => blocked.find((b) => b.name === n)?.word;
+    expect(word('edge-01'), 'a refused credential').toBe('no access');
+    expect(word('grafana-01'), 'no key to the collection').toBe('no access');
+    expect(word('Rite server host'), 'a non-goal, not a missing key').toBe('never');
+    if (shell === 'web') {
+      expect(word('This machine'), 'a browser cannot reach it — not a missing key').toBe('no client');
+    }
+
     // Every machine in the library is reachable, and each one is under exactly one
     // collection — a machine listed twice would mean the walk counted a folder as one.
     const inPicker = await pick.locator('.apick-n').allTextContents();
