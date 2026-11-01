@@ -135,21 +135,18 @@ function dlgAgentTools() {
   showModal({
     title: 'Agent CLIs', subtitle: 'Which tools Rite looks for, and how it talks to each', wide: true, confirm: 'Done',
     body: `<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px">${AGENT_TOOLS.map(row).join('')}</div>
-      <div class="anote" style="margin-bottom:14px">${IC_INFO}<span><b>Detection is the list command.</b> One command per machine
-        runs each enabled adapter's listing and reports what came back: not found, an error with its text, or
-        conversations. Nothing is probed in the background and nothing is guessed from a binary's presence —
-        a CLI that is installed and cannot read its own transcripts is a different answer from one that is absent,
-        and only running it tells them apart.</span></div>
+      <div class="anote" style="margin-bottom:14px">${IC_INFO}<span><b>Detection is the list command.</b> One command per machine runs
+        each enabled adapter's listing and reports what came back: not found, an error with its text, or
+        conversations. Nothing runs in the background, and nothing is guessed from a binary being present.</span></div>
       <div class="sec"><span class="eyebrow">Add a CLI</span><span class="line"></span></div>
       <label class="field"><span>Name</span><input class="inp" id="at-name" placeholder="e.g. Aider"></label>
       <label class="field"><span>Binary</span><input class="inp mono" id="at-bin" placeholder="aider"></label>
       <label class="field"><span>Command that lists its conversations</span><input class="inp mono" id="at-list" placeholder="ls ~/.aider/sessions"></label>
       <label class="field"><span>Command that resumes one</span><input class="inp mono" id="at-resume" placeholder="aider --restore {id}"></label>
       <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55"><b>{id}</b> is where the conversation id goes — never typed by hand, and the adapter never
-      asks for it. These two commands are the <i>entire</i> contract with a tool: a vendor changing
-      its flags or its file layout breaks this adapter and nothing else. The six above ship with Rite and
-      carry where their commands came from, because a built-in adapter is not more trustworthy than an added
-      one — an added one was tested against the tool in hand.</p>`,
+      asks for it. These two commands are the <i>entire</i> contract with a tool: a vendor
+      changing its flags breaks this adapter and nothing else. The six above carry where their commands came
+      from — a built-in is not more trustworthy than an added one.</p>`,
     onConfirm: (m) => {
       const g = (k) => (m.querySelector('#at-' + k).value || '').trim();
       if (!g('name') || !g('bin')) return;             // nothing typed — just close
@@ -749,20 +746,16 @@ function agentProbeFailNote(sc, probe) {
   return `<div class="dnote" style="border-color:color-mix(in oklab,var(--red) 40%,transparent)">${IC_INFO}<span>
     <b>Rite could not sign in to ${esc(sc.name)}.</b>
     <span class="mono">${esc(probe.error)}</span>
-    <br><br>Opening a terminal on ${esc(sc.name)} is where that gets fixed — when a shell works there, so
-    does this, and nothing else needs enabling. Read ${esc(probe.at)}.</span></div>`;
+    <br><br>Opening a terminal on ${esc(sc.name)} fixes this issue. Read ${esc(probe.at)}.</span></div>`;
 }
 
 /* The refusal, written where it is read. Not a "later" — a decision. */
 function agentServerNote() {
   return `<div class="dnote" style="border-color:color-mix(in oklab,var(--amber) 35%,transparent)">${IC_INFO}<span>
-    <b>Rite never runs an agent inside its own server container.</b> An agent executes
-    arbitrary code and writes to disk; in the server's process it would sit beside every
-    user's encrypted data, the database and administrator sessions. On a machine from the
-    library it runs under the SSH account already in use, so Rite grants no access that did
-    not already have — which is why that is the only place agents run.
-    <br><br>Add this host to a collection like any other machine to run agents on it:
-    the work is then done by that SSH account, not by the server's.</span></div>`;
+    <b>Rite never runs an agent inside its own server container.</b> An agent executes arbitrary
+    code, and in the server's process it would sit beside every user's encrypted data.
+    <br><br>Add this host to a collection like any other machine. The work is then done by that
+    SSH account, not the server's.</span></div>`;
 }
 
 function agentRowMenu(scopeId, toolId, sessionId, e) {
@@ -803,7 +796,7 @@ function agentToolBlock(sc, probeTool) {
     const ours = /unknown (flag|option|command)|no such (option|subcommand)|usage:/i.test(probeTool.error);
     body = `<div class="anote">${IC_INFO}<span><b>${tool.name} is installed but its sessions could not be read.</b>
       <span class="mono">${esc(probeTool.error)}</span> — ${ours
-        ? `the tool answered and rejected the command, so it is <b>this adapter</b> that is wrong for this build, not the machine. Its two commands are the ones to correct.`
+        ? `the tool rejected the command, so <b>this adapter</b> is wrong for this build. Correct its two commands.`
         : `the tool is there, so this is a permission to fix, not an absence.`}</span></div>`;
   } else {
     body = `<p class="muted" style="font-size:12.5px;margin:0">No conversation yet on this machine.</p>`;
@@ -975,10 +968,8 @@ function dlgAgentMark(scopeId, toolId, id) {
           onclick="this.parentNode.querySelectorAll('.sw').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');this.parentNode.dataset.c=''"></button>
         ${AGENT_COLORS.map(sw).join('')}</div></label>
       <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55">Kept in
-      <b>${AGENT_MARK_HOME[agentMarkHomeOf(scopeId)]}</b>, because that is where this machine’s own record
-      lives — there is nothing to configure. Personal, not shared: access to an agent is already settled by the
-      collection that holds the machine, a name is not access, and one person’s filing system is not
-      another’s.</p>`,
+      <b>${AGENT_MARK_HOME[agentMarkHomeOf(scopeId)]}</b>, where this machine’s own record lives. Personal,
+      not shared.</p>`,
     onConfirm: (mo) => {
       const label = (mo.querySelector('#am-label').value || '').trim();
       const color = mo.querySelector('.swatches').dataset.c || '';
@@ -1077,8 +1068,8 @@ function agentPanelHTML(r) {
               : ''}</dd>
           <dt>Resumes with</dt><dd class="mono">${esc(agentResume(tool, s.id))}</dd>
         </dl>
-        <p class="muted" style="font-size:11.5px;margin:14px 0 0;line-height:1.6">Read, never written, and never stored.
-          The pane shows the real CLI — this is the chooser, not a second place to hold the conversation.</p>
+        <p class="muted" style="font-size:11.5px;margin:14px 0 0;line-height:1.6">Read, never written, never
+          stored. The pane shows the real CLI.</p>
       </div>`;
   return `<div class="apanel">
     <div class="apanel-h">
@@ -1135,14 +1126,13 @@ function agentsViewHTML() {
     body = `<div class="dgrid">${agentProbeFailNote(sc, probe)}</div>`;
   } else if (sc.kind === 'local' && AGENT_SHELL === 'web') {
     body = `<div class="dgrid"><div class="dnote">${IC_INFO}<span><b>This machine is not reachable from a browser.</b>
-      Attach the Rite desktop client to this server and its agents appear here. Agents on the
-      machines in the library need nothing — they run over SSH, the same way their terminals do.</span></div></div>`;
+      Attach the Rite desktop client and its agents appear here. Machines in the library need nothing —
+      they run over SSH.</span></div></div>`;
   } else if (sc.kind !== 'all' && !probe) {
     body = `<div class="dgrid"><div class="aempty">
       <div class="muted" style="font-size:13px;line-height:1.6;max-width:520px">
         <b>${sc.name} has not been probed yet.</b><br>
-        Looking for agent sessions runs one command on the machine, so Rite asks before it does it —
-        and reports when the answer was read, not just what it said.</div>
+        Looking for sessions runs one command on the machine, so Rite asks first — and dates the answer.</div>
       <button class="btn btn-primary btn-sm" onclick="agentProbeNow()">${M.refresh} Probe ${sc.name}</button></div></div>`;
   }
 
@@ -1215,9 +1205,8 @@ function agentsViewHTML() {
     ${body}
     ${broken ? `<div class="dgrid">${broken}</div>` : ''}
     ${absent}
-    <div class="mdash-foot">${IC_INFO}<span>Agents run on the machine, under the SSH account already in place there —
-      never inside the Rite server. Times are <b>when the transcript was last written</b> — nothing here claims a
-      conversation is running, because a folder cannot say so and guessing it would be worse than staying quiet.
+    <div class="mdash-foot">${IC_INFO}<span>Agents run on the machine, under the SSH account already in place
+      there. Times are <b>when the transcript was last written</b> — nothing here says a conversation is running.
       Resuming opens a pane in a new tab.</span></div>
   </div>`;
 }
@@ -1295,8 +1284,8 @@ function dlgNewAgent(scopeId, toolId) {
   showModal({
     title: `New ${tool.name} agent`, subtitle: `on ${sc.name}`, confirm: 'Start',
     body: `<label class="field"><span>Working directory</span><input class="inp mono" id="na-cwd" value="/srv/acme/api"></label>
-      <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55">The agent starts with this directory as its context — the project, its git state and
-      the machine it runs on are passed along. No prompt has to be pasted to tell it where it is.</p>`,
+      <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55">The agent starts here, with the
+      project and its git state passed along. No prompt to paste.</p>`,
     onConfirm: (m) => { toast(`${tool.name} started in <span class="mono">${m.querySelector('#na-cwd').value}</span> on ${sc.name}`); },
   });
 }

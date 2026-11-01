@@ -253,8 +253,7 @@ test('desktop mock: no conversation is claimed to be running', async ({ page }) 
 
   // What IS said is said plainly, and it is the fact the listing carries.
   await expect(page.locator('.mdash-foot')).toContainText(/transcript was last written/i);
-  await expect(page.locator('.mdash-foot')).toContainText(/conversation is running/i);
-  await expect(page.locator('.mdash-foot')).toContainText(/a folder cannot say so/i);
+  await expect(page.locator('.mdash-foot')).toContainText(/nothing here says a conversation is running/i);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
