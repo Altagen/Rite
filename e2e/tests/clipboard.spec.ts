@@ -270,7 +270,7 @@ test('saving a typo in the editor leaves the convention in force', async ({
 
   await openSettings(page);
   await page.getByTestId('settings-nav-clipboard').click();
-  await expect(page.getByTestId('copy-mode')).toHaveText('select');
+  await expect(page.getByTestId('copy-mode')).toHaveText('Select to copy');
 
   // Now break it through the editor, as someone editing by hand would.
   await page.getByTestId('settings-nav-layouts').click();
@@ -286,7 +286,58 @@ test('saving a typo in the editor leaves the convention in force', async ({
   // surviving half.
   await editor.getByRole('button', { name: /close/i }).last().click();
   await page.getByTestId('settings-nav-clipboard').click();
-  await expect(page.getByTestId('copy-mode'), 'the typo changed nothing').toHaveText('select');
+  await expect(
+    page.getByTestId('copy-mode'),
+    'the typo changed nothing',
+  ).toHaveText('Select to copy');
+
+  await request.put('/api/layouts', { data: { value: '' } });
+});
+
+/**
+ * THE CONVENTION IS SET IN SETTINGS, AND KEPT IN THE DOCUMENT.
+ *
+ * This row used to be read-only, on the argument that a control here would be a second
+ * place to set one value. `newTabCwd` shipped the opposite arrangement in 0.2.8, and two
+ * keys in one file behaving differently is the real trap — so the rule is the one that
+ * file already follows: one value, one home, and Settings is a way of writing it. The
+ * document is not an editing surface; it is what an export carries between machines.
+ *
+ * Choosing the shipped convention REMOVES the key rather than writing out the value that
+ * happens to be the default today. A file that pins `chord` would keep pinning it after
+ * the shipped default moved, which is a decision nobody made.
+ */
+test('the copy convention is chosen in Settings and written to the document', async ({
+  page,
+  request,
+}) => {
+  await request.put('/api/layouts', { data: { value: '' } });
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+
+  await openSettings(page);
+  await page.getByTestId('settings-nav-clipboard').click();
+
+  // Nothing in the document ⇒ the shipped convention, named.
+  await expect(page.getByTestId('copy-mode')).toHaveText('Chord');
+  await expect(page.getByTestId('copy-mode-means')).toContainText('Ctrl+Shift+C');
+
+  // Pick another, and the document carries it.
+  await page.getByTestId('copy-mode').click();
+  await page.getByTestId('copy-mode-selectRightPaste').click();
+  await expect(page.getByTestId('copy-mode')).toHaveText('Select to copy, right click pastes');
+  await expect(page.getByTestId('copy-mode-means')).toContainText('PuTTY');
+  await expect
+    .poll(async () => (await (await request.get('/api/layouts')).json()).text ?? '')
+    .toMatch(/copyMode\s*=\s*"selectRightPaste"/);
+
+  // Back to the shipped convention ⇒ the key goes, not `copyMode = "chord"`.
+  await page.getByTestId('copy-mode').click();
+  await page.getByTestId('copy-mode-chord').click();
+  await expect(page.getByTestId('copy-mode')).toHaveText('Chord');
+  await expect
+    .poll(async () => (await (await request.get('/api/layouts')).json()).text ?? '')
+    .not.toMatch(/copyMode/);
 
   await request.put('/api/layouts', { data: { value: '' } });
 });

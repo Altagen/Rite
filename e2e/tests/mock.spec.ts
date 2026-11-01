@@ -1962,38 +1962,47 @@ test('desktop mock: a right click on a tab offers rename, duplicate and close ot
 });
 
 /**
- * The copy convention is SHOWN, not offered.
+ * The copy convention is CHOSEN here and kept in the workspace document.
  *
- * It lives in the workspace document so it travels between machines (ADR 0023, addendum).
- * A dropdown here would be a second place to set one value, and the file would win or lose
- * depending on which was touched last — the same trap the layouts cards avoid by reading
- * the file rather than duplicating it.
+ * It used to be shown and not offered, on the argument that a control would be a second
+ * place to set one value. `newTabCwd` shipped the opposite arrangement in 0.2.8, and two
+ * keys in one file behaving differently is the real trap — so the rule is the one that
+ * file already follows: one value, one home, and Settings is a way of writing it. The
+ * document is not an editing surface; it is what an export carries between machines.
  *
- * What the row has to carry is the COST, because the mode people will reach for out of
+ * What the row still has to carry is the COST, because the mode people reach for out of
  * xterm habit has one: a webview cannot touch the X11 primary selection, so "selecting
  * copies" writes the real clipboard and every drag replaces what was there. Discovering
  * that by losing something is the outcome this wording exists to prevent.
  */
-test('desktop mock: Settings shows the copy convention and what it costs', async ({ page }) => {
+test('desktop mock: the copy convention is chosen, and says what it costs', async ({ page }) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
 
   await page.evaluate(() => openSettings('clipboard'));
   const pane = page.locator('.prefs-pane');
-  await expect(pane.locator('[data-copy-mode]')).toHaveText('select');
+  const picker = pane.locator('[data-copy-mode]');
+  await expect(picker).toHaveValue('select');
 
-  // Where it came from, so nobody looks for a control that is not here.
+  // Where it is kept, so a reader knows an export carries it.
   await expect(pane).toContainText(/workspace document/i);
   await expect(pane).toContainText(/\[terminal\] copyMode/);
 
-  // And the cost, named.
+  // And the cost of the one people reach for, named.
   await expect(pane).toContainText(/primary selection/i);
   await expect(pane).toContainText(/every drag replaces/i);
 
-  // Nothing to set it with: no select, no toggle on that row.
-  const row = pane.locator('.settings-row', { hasText: 'Copy and paste' });
-  await expect(row.locator('select')).toHaveCount(0);
-  await expect(row.locator('.toggle')).toHaveCount(0);
+  // Every convention is offered, and picking one changes what the row explains.
+  await expect(picker.locator('option')).toHaveCount(4);
+  await picker.selectOption('selectRightPaste');
+  await expect(pane).toContainText(/PuTTY/);
+  await expect(pane).not.toContainText(/every drag replaces/i);
+
+  // Back to the shipped convention ⇒ the document holds nothing, rather than pinning
+  // the value that happens to be the default today.
+  await picker.selectOption('chord');
+  expect(await page.evaluate(() => STATE.copyMode)).toBe('');
+  await expect(pane).toContainText(/says nothing, so the shipped convention applies/i);
 
   expect(errs, 'no console errors').toEqual([]);
 });

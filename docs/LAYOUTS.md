@@ -294,8 +294,15 @@ is worth more than the directory it opened in.
 **Settings holds the switch, and writes it here.** On the desktop, under Terminals,
 beside which shell starts: a switch for the two states, and a path field under it that is
 greyed while the switch is off. Turning it off removes the key. There is no second place
-holding the value, so neither can win on which was touched last. `copyMode` above is
-reported and not offered for the opposite reason — nothing writes it back.
+holding the value, so neither can win on which was touched last.
+
+`copyMode` works the same way, under Clipboard, and used to be the exception: it was
+reported and not offered, on the argument that a control would be a second place to set
+one value. Two keys in one file behaving differently was the real trap. **This document is
+not an editing surface** — it is what an export carries between machines, and the binary
+owns it. Choosing the shipped convention removes the key rather than writing
+`copyMode = "chord"`, because a file that pins today's default would keep pinning it after
+the default moved.
 
 The web UI has no row at all, which is the same decision as the paragraph below.
 

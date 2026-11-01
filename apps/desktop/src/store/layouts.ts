@@ -245,6 +245,11 @@ interface LayoutsState {
   /** Write `[terminal] newTabCwd`, or remove it with `null`. The document is the one
    *  place the value lives, so Settings edits it here rather than holding a copy. */
   setNewTabCwd: (where: string | null) => Promise<void>;
+  /** Write `[terminal] copyMode`, or remove it with `null` to fall back to the shipped
+   *  convention. Same arrangement as `setNewTabCwd`, and for the same reason: one value,
+   *  one home, and Settings is a way of writing it rather than a second place to keep it.
+   *  The document was never meant to be edited by hand — it is what an export carries. */
+  setCopyMode: (mode: FileCopyMode | null) => Promise<void>;
   /** Flip the reader's switch, then re-read. */
   setEnabled: (enabled: boolean) => Promise<void>;
   /** Flip this machine's support, then re-read. Switching away from the account does not
@@ -409,6 +414,10 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
   // document had been hand-edited into something that no longer parses.
   setNewTabCwd: async (where: string | null) => {
     await get().save(setTerminalValue(get().text, 'newTabCwd', where));
+  },
+
+  setCopyMode: async (mode: FileCopyMode | null) => {
+    await get().save(setTerminalValue(get().text, 'copyMode', mode));
   },
 
   save: async (text: string) => {

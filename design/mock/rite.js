@@ -1235,6 +1235,27 @@ function openCheatsheet() {
  * "selecting copies" writes the real clipboard and every drag replaces what was there.
  * Someone choosing it from xterm habit would otherwise discover that the hard way.
  */
+/* The short name each convention goes by in the picker, beside the sentence that says
+   what it does. Two registers on purpose: the name is what is scanned, the sentence is
+   what is read once. */
+const COPY_MODE_NAME = {
+  chord: 'Chord',
+  select: 'Select to copy',
+  selectRightPaste: 'Select to copy, right click pastes',
+  ctrlC: 'Ctrl+C copies a selection',
+};
+/* Choosing the shipped convention REMOVES the key rather than writing out the value that
+   happens to be the default today — a file pinning `chord` would keep pinning it after
+   the shipped default moved, which is a decision nobody made. */
+function setCopyMode(m) {
+  STATE.copyMode = m === 'chord' ? '' : m;
+  // PREF_REDRAW, not renderMain: the settings pane is a modal body of its own, and the
+  // sentence under this control has to follow the control. `renderMain` redraws the
+  // page behind the dialog, which is exactly where nobody is looking.
+  renderMain();
+  if (typeof PREF_REDRAW === 'function') PREF_REDRAW();
+  toast(`Copy and paste: <span class="accent">${COPY_MODE_NAME[m]}</span>`);
+}
 const COPY_MODE_WHY = {
   chord: 'Ctrl+Shift+C copies. Ctrl+Shift+V and the middle button paste.',
   select:

@@ -13,6 +13,7 @@ import { useDisplayPrefs } from '../store/displayPrefs';
 import { useTranslation } from '../i18n/i18n';
 import { KnownHostsList } from './KnownHostsList';
 import { DEFAULT_CLIPBOARD_MODE } from '../utils/terminalClipboard';
+import { FILE_COPY_MODES, type FileCopyMode } from '../store/layoutsFormat';
 import { SplitsModal } from './SplitsModal';
 import { LayoutsModal } from './LayoutsModal';
 import { LayoutCards } from './LayoutCards';
@@ -217,6 +218,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const layoutsSupport = useLayouts((st) => st.support);
   /** The copy convention the workspace document asks for; null ⇒ the shipped default. */
   const copyMode = useLayouts((st) => st.copyMode);
+  const setCopyMode = useLayouts((st) => st.setCopyMode);
   const layoutsVerdictNow = useLayouts((st) => st.verdict);
   const layoutsEnabled = useLayouts((st) => st.enabled);
   const layoutsPrefer = useLayouts((st) => st.prefer);
@@ -948,36 +950,50 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
             {/* Clipboard settings */}
             <section hidden={shown !== 'clipboard'} className="pb-2">
               <SettingsHead title={t('settings.clipboard')} />
-              {/* Shown, not offered. The convention lives in the workspace document so it
-                  travels between machines (ADR 0023, addendum) — a dropdown here would be
-                  a second place to set one value, and the file would win or lose
-                  depending on which was touched last. The row says what is in force, why,
-                  and what it means. */}
+              {/* Set here, kept in the workspace document. This row used to be read-only,
+                  on the argument that a control here would be a second place to set one
+                  value — but `newTabCwd` shipped the opposite arrangement in 0.2.8, and
+                  two keys in one file behaving differently is the real trap. The document
+                  is not an editing surface: it is what an export carries between machines,
+                  and the binary owns it. So one value, one home, and Settings is a way of
+                  writing it. The file still wins when it is the only thing that was
+                  touched, because this writes the file. */}
               <SettingsRow
                 title={t('settings.copyMode')}
-                hint={
-                  copyMode
-                    ? t('settings.copyModeFile')
-                    : t('settings.copyModeDefault')
-                }
+                hint={t(copyMode ? 'settings.copyModeFile' : 'settings.copyModeDefault')}
               >
-                <div className="max-w-[22rem] text-right">
-                  <code
-                    className="font-mono text-sm text-foreground"
-                    data-testid="copy-mode"
-                  >
-                    {copyMode ?? DEFAULT_CLIPBOARD_MODE}
-                  </code>
-                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                    {t(
-                      `settings.copyMode${
-                        (copyMode ?? DEFAULT_CLIPBOARD_MODE).charAt(0).toUpperCase() +
-                        (copyMode ?? DEFAULT_CLIPBOARD_MODE).slice(1)
-                      }`,
-                    )}
-                  </p>
-                </div>
+                <SettingsControl>
+                  <Dropdown<FileCopyMode>
+                    value={copyMode ?? DEFAULT_CLIPBOARD_MODE}
+                    label={t('settings.copyMode')}
+                    testId="copy-mode"
+                    disabled={!hasWorkspaceFile}
+                    options={FILE_COPY_MODES.map((m) => ({
+                      value: m,
+                      label: t(`settings.copyModeName${m.charAt(0).toUpperCase()}${m.slice(1)}`),
+                    }))}
+                    onChange={(m) => {
+                      // Back to the shipped convention ⇒ the key goes, rather than being
+                      // written out as the value that happens to be the default today.
+                      void setCopyMode(m === DEFAULT_CLIPBOARD_MODE ? null : m);
+                    }}
+                  />
+                </SettingsControl>
               </SettingsRow>
+              {/* What the chosen convention actually does, under the control that chose
+                  it. It is four sentences of real behaviour — a tooltip would hide the one
+                  thing a reader is here for. */}
+              <p
+                className="-mt-1 pb-3 text-xs leading-relaxed text-muted-foreground"
+                data-testid="copy-mode-means"
+              >
+                {t(
+                  `settings.copyMode${
+                    (copyMode ?? DEFAULT_CLIPBOARD_MODE).charAt(0).toUpperCase() +
+                    (copyMode ?? DEFAULT_CLIPBOARD_MODE).slice(1)
+                  }`,
+                )}
+              </p>
               <SettingsToggle
                 title={t('settings.clipboardClearEnabled')}
                 hint={t('settings.clipboardClearEnabledDesc')}
