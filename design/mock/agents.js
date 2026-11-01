@@ -184,8 +184,34 @@ function agentToggleTool(id, el) {
    one project, and `ask` is the opening message — the thing actually typed, which is
    what a conversation IS to the person looking for it. `last` is the agent's most
    recent line; it is in the data for the preview panel, and off the card on purpose. */
-const S = (id, project, branch, cwd, ask, ago, state, turns, last) =>
-  ({ id, project, branch, cwd, ask, title: ask, last: ago, state, turns, tail: last });
+/* `pid` is the whole of what Rite claims about a conversation being alive, and it is a
+   MEASURED fact: a process on that host whose command line carries this conversation's
+   id. Measured on this machine while writing it —
+
+     $ pgrep -af claude
+     38691 /opt/claude-code/bin/claude --resume 4a349d90-345e-4c94-ae23-47644f50bbd5
+
+   — so the id is right there to match on, and one command per machine answers for every
+   conversation at once.
+
+   WHAT WAS THERE BEFORE WAS A LIE. `state: 'running' | 'idle'` came from nothing: the
+   listing gives a transcript's modification time and nothing else, and a file written
+   four minutes ago by a session that has since exited is byte-for-byte a file written
+   four minutes ago by one that is still going. Calling the first "running" is inventing
+   a fact, and a manager that invents one is worse than a manager that is quiet.
+
+   The signal is deliberately ASYMMETRIC, and the view says so once: a mark means a
+   process was found, its absence means NOT SEEN RUNNING — never "idle". A conversation
+   started without its id on the argv (a plain `claude`, not `claude --resume <id>`)
+   cannot be attributed, so Rite misses it rather than guessing. No false positives, some
+   false negatives, and the sentence on screen matches.
+
+   `seen` is the transcript's modification time, which is a fact the listing already
+   carries — "last written", never "last used". */
+let __pid = 38600;
+const PID = () => (__pid += 37);
+const S = (id, project, branch, cwd, ask, seen, pid, turns, last) =>
+  ({ id, project, branch, cwd, ask, title: ask, last: seen, pid, turns, tail: last });
 
 const AGENT_PROBES = {
   'web-01': {
@@ -195,16 +221,16 @@ const AGENT_PROBES = {
         id: 'claude', installed: true, version: '2.1.4',
         sessions: [
           S('3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11', 'acme/api', 'fix/flaky-migration', '/srv/acme/api',
-            'Fix the flaky migration test', '12 min ago', 'running', 42,
+            'Fix the flaky migration test', '12 min ago', PID(), 42,
             'Edited 2 files, ran the suite — 41 passed, 1 failed.'),
           S('b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77', 'acme/api', 'feat/queue-client', '/srv/acme/api',
-            'Port the queue worker to the new client', '3 h ago', 'idle', 18,
+            'Port the queue worker to the new client', '3 h ago', null, 18,
             'Waiting on a decision about the retry budget.'),
           S('c0a51d93-2e77-4b06-91ff-5d4c8b7e3a20', 'acme/web', 'main', '/srv/acme/web',
-            'Add the dark theme toggle', 'yesterday', 'idle', 7,
+            'Add the dark theme toggle', 'yesterday', null, 7,
             'Opened a PR; review not started.'),
           S('1d8b3f60-74ae-4c92-a7e1-6f0c9b5d2e38', 'acme/api', 'hotfix/502', '/srv/acme/api',
-            'Trace the 502s under load', '2 days ago', 'idle', 55,
+            'Trace the 502s under load', '2 days ago', null, 55,
             'Narrowed it to the upstream keepalive timeout.'),
         ],
       },
@@ -229,10 +255,10 @@ const AGENT_PROBES = {
         id: 'claude', installed: true, version: '2.0.9',
         sessions: [
           S('9e4f7c02-1a83-4d55-b6e8-02c7f1a94b63', 'acme/api', 'hotfix/502', '/srv/acme/api',
-            'Reproduce the staging 502', '1 h ago', 'idle', 31,
+            'Reproduce the staging 502', '1 h ago', null, 31,
             'Reproduced it with 40 concurrent requests.'),
           S('4a0d9e18-5c63-4b77-9e2a-81f3c7d05b49', 'acme/api', 'chore/logs', '/srv/acme/api',
-            'Turn the access log into something greppable', '4 days ago', 'idle', 9,
+            'Turn the access log into something greppable', '4 days ago', null, 9,
             'Switched the formatter; left the rotation alone.'),
         ],
       },
@@ -240,10 +266,10 @@ const AGENT_PROBES = {
         id: 'codex', installed: true, version: '1.3.0',
         sessions: [
           S('7f3e1b9c-2d48-4a60-85c1-9b0e4d7a3f62', 'acme/web', 'feat/checkout', '/srv/acme/web',
-            'Split the checkout form into steps', '2 h ago', 'running', 24,
+            'Split the checkout form into steps', '2 h ago', PID(), 24,
             'Three steps wired; validation still shared.'),
           S('e2b7c450-8f91-4d23-a6b8-0c5e9f1a7d34', 'acme/web', 'main', '/srv/acme/web',
-            'Why does the bundle weigh 900 kB', '1 week ago', 'idle', 13,
+            'Why does the bundle weigh 900 kB', '1 week ago', null, 13,
             'Two icon sets are bundled twice.'),
         ],
       },
@@ -260,18 +286,25 @@ const AGENT_PROBES = {
         id: 'claude', installed: true, version: '2.1.4',
         sessions: [
           S('a5c8e2f1-6b30-4d79-9f24-7e1b05c8a93d', 'acme/infra', 'main', '/srv/infra',
-            'Tune the eviction policy', '20 min ago', 'running', 16,
+            'Tune the eviction policy', '20 min ago', PID(), 16,
             'allkeys-lru set; watching the hit rate.'),
           S('0b4f7d26-93a1-4e58-8c07-2f6a1d9b5e40', 'acme/infra', 'spike/cluster', '/srv/infra',
-            'Would clustering buy us anything here', '5 days ago', 'idle', 28,
+            'Would clustering buy us anything here', '5 days ago', null, 28,
             'Not at this volume; the write path is the limit.'),
           S('6e1a9c73-4f52-4b86-a0d9-3c7e8b2f1d05', 'acme/infra', 'main', '/srv/infra',
-            'Write the runbook for a cold start', '2 weeks ago', 'idle', 11,
+            'Write the runbook for a cold start', '2 weeks ago', null, 11,
             'Runbook drafted; untested against a real cold start.'),
         ],
       },
+      {
+        id: 'gemini', installed: true, version: '0.9.1',
+        sessions: [
+          S('2', 'acme/infra', 'main', '/srv/infra',
+            'Summarise what changed in the eviction config', '2 days ago', null, 5,
+            'Three keys moved; the rest is untouched.'),
+        ],
+      },
       { id: 'codex', installed: false },
-      { id: 'gemini', installed: false },
       { id: 'grok', installed: false },
       { id: 'hermes', installed: false },
       { id: 'opencode', installed: false },
@@ -293,19 +326,19 @@ const AGENT_LOCAL = {
       id: 'claude', installed: true, version: '2.1.4',
       sessions: [
         S('41b9c8d7-6e52-4a19-83f0-9c1d5b2e7a44', 'rite', 'develop', '~/Dev/projects/Rite',
-          'Mock the agent manager before building it', '4 min ago', 'running', 63,
+          'Mock the agent manager before building it', '4 min ago', PID(), 63,
           'Two layouts up; waiting on which one wins.'),
         S('7c2e091a-4d6f-4b83-a50c-18e3f9d4b26a', 'rite', 'develop', '~/Dev/projects/Rite',
-          'Register pane kinds instead of branching', '2 days ago', 'idle', 95,
+          'Register pane kinds instead of branching', '2 days ago', null, 95,
           'Registry landed; one kind registered.'),
         S('b3d5f817-2a69-4c04-9e73-5f8b1c6d0a29', 'rite', 'feat/agents', '~/Dev/projects/Rite',
-          'Measure what each agent CLI actually exposes', '1 h ago', 'idle', 22,
+          'Measure what each agent CLI actually exposes', '1 h ago', null, 22,
           'Four binaries read; gemini resumes by index.'),
         S('c8a2e5b0-9d43-4f17-a86c-2b7e0d4f9a61', 'rite', 'main', '~/Dev/projects/Rite',
-          'Why is the release binary 83 MB', '3 days ago', 'idle', 34,
+          'Why is the release binary 83 MB', '3 days ago', null, 34,
           'The embed folder was never emptied.'),
         S('f0e7b3a9-1c54-4d28-b961-07a4e2c8f5d3', 'dotfiles', 'main', '~/.dotfiles',
-          'Make fish and bash agree about PATH', '1 week ago', 'idle', 6,
+          'Make fish and bash agree about PATH', '1 week ago', null, 6,
           'One shared file, sourced by both.'),
       ],
     },
@@ -317,9 +350,9 @@ const AGENT_LOCAL = {
       id: 'gemini', installed: true, version: '0.9.1',
       sessions: [
         S('2', 'rite', 'develop', '~/Dev/projects/Rite',
-          'Walk the layouts parser', '1 h ago', 'idle', 11, 'Read 4 files; no change proposed.'),
+          'Walk the layouts parser', '1 h ago', null, 11, 'Read 4 files; no change proposed.'),
         S('5', 'notes', 'main', '~/Notes',
-          'Turn three years of notes into something searchable', '6 days ago', 'idle', 19,
+          'Turn three years of notes into something searchable', '6 days ago', null, 19,
           'Indexed; the tagging is still by hand.'),
       ],
     },
@@ -327,10 +360,10 @@ const AGENT_LOCAL = {
       id: 'grok', installed: true, version: '0.2.56',
       sessions: [
         S('d4f8a1e6-7b23-4c95-8e01-6a2d9f3b7c48', 'rite', 'feat/agents', '~/Dev/projects/Rite',
-          'Sketch the card layout for the agent manager', '35 min ago', 'idle', 8,
+          'Sketch the card layout for the agent manager', '35 min ago', null, 8,
           'Three sketches; the second is the one.'),
         S('9a3c6e02-5d71-4f84-b2a7-13e8c0d5f9b6', 'scratch', 'main', '~/scratch',
-          'Explain this regex to me like I wrote it', '9 days ago', 'idle', 4,
+          'Explain this regex to me like I wrote it', '9 days ago', null, 4,
           'Lookahead, not a group. It was never a group.'),
       ],
     },
@@ -338,7 +371,7 @@ const AGENT_LOCAL = {
       id: 'codex', installed: true, version: '1.3.0',
       sessions: [
         S('5b7e2d94-8a16-4c38-9f50-2e6b1d7a4c03', 'rite', 'main', '~/Dev/projects/Rite',
-          'Port the audit script off the host cargo', '3 h ago', 'idle', 15,
+          'Port the audit script off the host cargo', '3 h ago', null, 15,
           'Runs in the container; the threshold is named once.'),
       ],
     },
@@ -563,22 +596,6 @@ function agentServerNote() {
     the work is then done by that SSH account, not by the server's.</span></div>`;
 }
 
-/* A conversation row. The id is never typed and always reachable: the row is read by
-   project and intention, and the id waits behind the menu for the day an adapter
-   breaks. */
-function agentSessionRow(sc, tool, s) {
-  const dot = s.state === 'running' ? 'up' : 'seen';
-  return `<div class="arow">
-    <span class="pst ${dot}" title="${s.state === 'running' ? 'Working now' : 'Idle — resumable'}"></span>
-    <div class="ameta">
-      <div class="atitle">${s.title}</div>
-      <div class="asub mono">${s.project} · ${s.cwd} · ${s.turns} turns</div>
-    </div>
-    <span class="aage">${s.last}</span>
-    <button class="btn btn-primary btn-sm" onclick="resumeAgent('${sc.id}','${tool.id}','${s.id}')">${ICON.play} Resume</button>
-    <button class="btn btn-ghost btn-sm" title="More" onclick="agentRowMenu('${sc.id}','${tool.id}','${s.id}',event)">${EXICON.more}</button>
-  </div>`;
-}
 function agentRowMenu(scopeId, toolId, sessionId, e) {
   const tool = agentTool(toolId);
   // The escape hatch is only an escape hatch if it still works tomorrow. Gemini
@@ -590,7 +607,8 @@ function agentRowMenu(scopeId, toolId, sessionId, e) {
     { icon: ICON.play, label: 'Resume here', onclick: () => resumeAgent(scopeId, toolId, sessionId) },
     { icon: EXICON.split, label: 'Resume in a new window', onclick: () => { resumeAgent(scopeId, toolId, sessionId); openInNewWindow(tool.name); } },
     { icon: EXICON.shield, label: 'What is in effect — skills, commands, hooks', onclick: () => dlgAgentContext(scopeId, toolId, sessionId) },
-    { icon: M.edit, label: durable ? 'Copy conversation id' : 'Copy the index — it moves', onclick: () => agentCopyId(sessionId, tool) },
+    { icon: M.edit, label: 'Name and colour…', onclick: () => dlgAgentMark(scopeId, toolId, sessionId) },
+    { icon: IC_COPY, label: durable ? 'Copy conversation id' : 'Copy the index — it moves', onclick: () => agentCopyId(sessionId, tool) },
     { icon: ICON.term, label: 'Copy the resume command', onclick: () => agentCopyCmd(tool, sessionId) },
   ]);
 }
@@ -618,10 +636,8 @@ function agentToolBlock(sc, probeTool) {
       <span class="mono">${esc(probeTool.error)}</span> — ${ours
         ? `the tool answered and rejected the command, so it is <b>this adapter</b> that is wrong for this build, not the machine. Its two commands are the ones to correct.`
         : `the tool is there, so this is a permission to fix, not an absence.`}</span></div>`;
-  } else if (!sessions.length) {
-    body = `<p class="muted" style="font-size:12.5px;margin:0">No conversation yet on this machine.</p>`;
   } else {
-    body = sessions.map((s) => agentSessionRow(sc, tool, s)).join('');
+    body = `<p class="muted" style="font-size:12.5px;margin:0">No conversation yet on this machine.</p>`;
   }
   return `<div class="dcard atool">
     <div class="dcard-h">${M.agent}<span class="dcard-t">${tool.name}</span>
@@ -706,26 +722,98 @@ function agentShowMenu(e) {
    most recent line — is deliberately NOT here: on a card it doubles the height for a
    sentence that is only useful once a conversation is the one being considered, which
    is what the preview panel is for. */
+/* The copy glyph. The agent pane already drew this path inline for its id button and
+   the drawer borrowed `M.edit`, which reads as "rename this" on a control that copies —
+   so it is defined once here and both use it. */
+const IC_COPY = `<svg class="icon" viewBox="0 0 24 24"><path d="M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z"/></svg>`;
+
+/* The only claim Rite makes about a conversation being alive, and it is made only when
+   a process was actually found. No mark is NOT "idle" — it is "not seen running", which
+   the footnote under the view says in words, once. */
+function agentLiveMark(scope, s) {
+  if (!s.pid) return '<span class="pst-gap"></span>';
+  return `<span class="pst up" title="A process on ${esc(scope.name)} is this conversation — pid ${s.pid}"></span>`;
+}
+
 function agentCardHTML(r, i) {
   const { scope, tool, session: s } = r;
-  const dot = s.state === 'running' ? 'up' : 'seen';
   return `<div class="acard ${STATE.agentPick === s.id ? 'on' : ''}" style="--edge:${scope.color || 'var(--muted)'}"
       role="button" tabindex="0" onclick="agentPick('${s.id}')"
       ondblclick="resumeAgent('${scope.id}','${tool.id}','${s.id}')"
       title="${esc(s.ask)} — double-click to resume">
     <div class="acard-h">
-      <span class="pst ${dot}" title="${s.state === 'running' ? 'Working now' : 'Idle — resumable'}"></span>
+      ${agentLiveMark(scope, s)}
       <span class="acard-proj">${esc(s.project)}</span>
       <span class="acard-br mono" title="git branch">${esc(s.branch)}</span>
       <span style="flex:1"></span>
       <button class="acard-more" title="More"
         onclick="event.stopPropagation();agentRowMenu('${scope.id}','${tool.id}','${s.id}',event)">${EXICON.more}</button>
     </div>
-    <div class="acard-ask">${esc(s.ask)}</div>
+    ${(() => {
+      const mk = agentMark(scope.id, tool.id, s.id);
+      return mk.label
+        ? `<div class="acard-label"${mk.color ? ` style="--mark:${mk.color}"` : ''}>${esc(mk.label)}</div>
+           <div class="acard-ask under">${esc(s.ask)}</div>`
+        : `<div class="acard-ask">${esc(s.ask)}</div>`;
+    })()}
     <div class="acard-cwd mono" title="${esc(s.cwd)}" dir="rtl">${esc(s.cwd)}</div>
     <div class="acard-f mono">${esc(scope.name)} · ${s.turns} turns · ${esc(s.last)}</div>
   </div>`;
 }
+/* ---- a conversation, as the person filing it sees it ----
+
+   A name and a colour, both the user's, over a session the user did not create here.
+   Rite stores them and the vendor's files are never touched — §6's read-only rule is
+   about Rite not becoming a second source of truth for THEIR data, and a label that
+   exists only in Rite is not their data.
+
+   PERSONAL, not shared, and that is a decision rather than an omission. Access to an
+   agent is already settled by the collection: hold its key, hold the SSH credential,
+   see the machine's conversations — so nothing here needs a permission of its own.
+   But a label is not access. People work with these tools differently enough that one
+   person's "spike, throw away" is another's "the queue work", and a shared rename is a
+   small way to take someone's filing system away from them. So the label rides with
+   the person, in the workspace document (ADR 0023), keyed by machine, tool and id.
+
+   Keyed on all three because an id is only unique within its tool, and the same
+   project checked out on two machines is two conversations. */
+const AGENT_MARKS = {};
+const agentMarkKey = (scopeId, toolId, id) => `${scopeId}|${toolId}|${id}`;
+const agentMark = (scopeId, toolId, id) => AGENT_MARKS[agentMarkKey(scopeId, toolId, id)] || {};
+/* The label replaces the ask as the headline when there is one, and the ask stays on
+   the card underneath — renaming a conversation must not lose what was asked, which is
+   the one thing that cannot be reconstructed. */
+const agentLabel = (r) => agentMark(r.scope.id, r.tool.id, r.session.id).label || '';
+
+const AGENT_COLORS = ['#7c9cf5', '#9ece6a', '#e5b567', '#f0a35e', '#f7768e', '#bb9af7', '#56c7c0'];
+function dlgAgentMark(scopeId, toolId, id) {
+  const m = agentMark(scopeId, toolId, id);
+  const sw = (c) => `<button type="button" class="sw ${m.color === c ? 'sel' : ''}" style="background:${c}"
+    onclick="this.parentNode.querySelectorAll('.sw').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');this.parentNode.dataset.c='${c}'"></button>`;
+  showModal({
+    title: 'Name this conversation', subtitle: 'Kept by Rite — the tool’s own files are not touched',
+    confirm: 'Save',
+    body: `<label class="field"><span>Name</span><input class="inp" id="am-label" value="${esc(m.label || '')}"
+        placeholder="The ask stays on the card underneath"></label>
+      <label class="field"><span>Colour</span><div class="swatches" data-c="${m.color || ''}">
+        <button type="button" class="sw none ${!m.color ? 'sel' : ''}" title="No colour"
+          onclick="this.parentNode.querySelectorAll('.sw').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');this.parentNode.dataset.c=''"></button>
+        ${AGENT_COLORS.map(sw).join('')}</div></label>
+      <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55">Personal, not shared. Access to an
+      agent is already settled by the collection that holds the machine; a name is not access, and one person’s
+      filing system is not another’s.</p>`,
+    onConfirm: (mo) => {
+      const label = (mo.querySelector('#am-label').value || '').trim();
+      const color = mo.querySelector('.swatches').dataset.c || '';
+      const key = agentMarkKey(scopeId, toolId, id);
+      if (!label && !color) delete AGENT_MARKS[key];
+      else AGENT_MARKS[key] = { label, color };
+      renderMain();
+      toast(label ? `Named <span class="accent">${esc(label)}</span>` : 'Name cleared');
+    },
+  });
+}
+
 function agentPick(id) {
   STATE.agentPick = STATE.agentPick === id ? null : id;
   renderMain();
@@ -821,14 +909,16 @@ function agentPanelHTML(r) {
         <div class="apanel-t">${esc(s.project)} <span class="mono apanel-br">${esc(s.branch)}</span></div>
         <div class="apanel-sub mono">${esc(scope.name)} · ${esc(tool.name)}</div>
       </div>
-      <span class="pst ${s.state === 'running' ? 'up' : 'seen'}"></span>
+      ${agentLiveMark(scope, s)}
       <button class="dcard-x" title="Close" onclick="agentPick(null)">✕</button>
     </div>
     <div class="apanel-tabs">${t('preview', 'Preview')}${t('effect', 'In effect')}</div>
     ${body}
     <div class="apanel-acts">
       <button class="btn btn-primary btn-sm" onclick="resumeAgent('${scope.id}','${tool.id}','${s.id}')">${ICON.play} Resume</button>
-      <button class="btn btn-ghost btn-sm" onclick="agentCopyId('${s.id}',agentTool('${tool.id}'))">${M.edit} ${tool.idKind === 'index' ? 'Index' : 'Id'}</button>
+      <button class="btn btn-ghost btn-sm" onclick="dlgAgentMark('${scope.id}','${tool.id}','${s.id}')"
+        title="Name this conversation, and give it a colour">${M.edit} Name</button>
+      <button class="btn btn-ghost btn-sm" onclick="agentCopyId('${s.id}',agentTool('${tool.id}'))">${IC_COPY} ${tool.idKind === 'index' ? 'Index' : 'Id'}</button>
       <button class="btn btn-ghost btn-sm" onclick="agentCopyCmd(agentTool('${tool.id}'),'${s.id}')">${ICON.term} Command</button>
     </div>
   </div>`;
@@ -906,12 +996,14 @@ function agentsViewHTML() {
   const absent = (() => {
     if (sc.kind === 'all' || !probe) return '';
     const on = new Set(agentEnabled().map((t) => t.id));
-    const miss = probe.tools.filter((t) => on.has(t.id) && !t.installed).map((t) => agentTool(t.id).name);
+    // A tool that is not installed is not mentioned at all. It is not a state of this
+    // machine worth a line — it is the absence of one, and naming six absences is how a
+    // foot line stops being read. An adapter that has not been LOOKED for is different:
+    // that one is about Rite, not about the host, and only Rite can resolve it.
     const added = agentEnabled().filter((t) => !probe.tools.some((p) => p.id === t.id)).map((t) => t.name);
-    const parts = [];
-    if (miss.length) parts.push(`Not installed on ${esc(sc.name)}: ${miss.join(', ')}.`);
-    if (added.length) parts.push(`Added since the last probe, not looked for yet: ${added.join(', ')}.`);
-    return parts.length ? `<div class="aabsent mono">${parts.join(' ')}</div>` : '';
+    return added.length
+      ? `<div class="aabsent mono">Added since the last probe, not looked for yet: ${added.join(', ')}.</div>`
+      : '';
   })();
 
   // A tool that is installed and cannot answer is NOT folded into that line: it is
@@ -945,7 +1037,9 @@ function agentsViewHTML() {
     ${broken ? `<div class="dgrid">${broken}</div>` : ''}
     ${absent}
     <div class="mdash-foot">${IC_INFO}<span>Agents run on the machine, under the SSH account already in place there —
-      never inside the Rite server. Resuming opens a pane in a new tab.</span></div>
+      never inside the Rite server. A dot means a process on that machine was found carrying the conversation's id;
+      no dot means <b>not seen running</b>, which is not the same as idle — a session started without its id on the
+      command line cannot be attributed. Times are when the transcript was last written.</span></div>
   </div>`;
 }
 

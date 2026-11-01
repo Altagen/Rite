@@ -162,6 +162,17 @@
      two projects apart, and `~/Dev/projects/…` would hide exactly the useful half.
      `dir="rtl"` moves the ellipsis to the front; `plaintext` keeps the slashes from
      being reordered with it. */
+  /* A conversation the user has named: the label is the headline and the ask moves
+     under it, smaller and dimmer. Renaming must not lose what was asked — that is the
+     one thing on the card nobody can reconstruct. */
+  .acard-label{font-size:13px;font-weight:650;line-height:1.35;display:-webkit-box;
+    -webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+    border-left:3px solid var(--mark,transparent);padding-left:7px;margin-left:-10px}
+  .acard-ask.under{font-size:11.5px;color:var(--fg-dim);-webkit-line-clamp:1}
+  /* The absent live mark still holds its column, so a named card and an unnamed one do
+     not sit a few pixels apart from each other. */
+  .pst-gap{display:inline-block;width:8px;height:8px;flex:none}
+  .swatches .sw.none{background:var(--card2);border:1px dashed var(--border)}
   .acard-cwd{font-size:10.5px;color:var(--fg-dim);white-space:nowrap;overflow:hidden;
     text-overflow:ellipsis;unicode-bidi:plaintext;text-align:left}
   .acard-f{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -194,7 +205,11 @@
   .adrawer-wrap.open{grid-template-columns:1fr minmax(300px,34%)}
   .adrawer-wrap > .abands,.adrawer-wrap > .arail-wrap{min-width:0}
   .apanel{display:flex;flex-direction:column;min-height:0;overflow:hidden;border-left:1px solid var(--border)}
-  .apanel-h{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--border)}
+  /* Aligned to the TITLE's line, not to the centre of a two-line block: centring put
+     the dot and the close between the name and the subtitle, reading as floating above
+     the name rather than belonging to it. */
+  .apanel-h{display:flex;align-items:flex-start;gap:10px;padding:13px 16px;border-bottom:1px solid var(--border)}
+  .apanel-h > .pst,.apanel-h > .pst-gap,.apanel-h > .dcard-x{margin-top:3px}
   .apanel-t{font-size:13.5px;font-weight:650}
   .apanel-br{font-size:11px;color:var(--muted);font-weight:400}
   .apanel-sub{font-size:11px;color:var(--muted);margin-top:2px}

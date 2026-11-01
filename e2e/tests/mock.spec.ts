@@ -81,10 +81,12 @@ for (const shell of ['web', 'desktop'] as const) {
     await expect(page.locator('.aband-t')).toHaveText(['Claude Code']);
     await expect(page.locator('.acard')).toHaveCount(4);
 
-    // The absent tools are a line, not cards.
-    await expect(page.locator('.aabsent')).toContainText(/Not installed on web-01/);
-    await expect(page.locator('.aabsent')).toContainText(/Codex/);
+    // A tool that is not installed is not mentioned AT ALL — not a card, not a block,
+    // not a line. It is the absence of a state, not a state, and naming six absences is
+    // how a foot line stops being read.
     await expect(page.locator('.atool.off')).toHaveCount(0);
+    await expect(page.locator('.mdash')).not.toContainText(/not installed/i);
+    await expect(page.locator('.aabsent')).toHaveCount(0);
 
     // A tool that is installed and cannot answer keeps its block: it is the one state
     // with something to do about it. Two of them here, and they fail differently —
@@ -212,6 +214,132 @@ test('desktop mock: a band folds, and one CLI can be shown alone', async ({ page
   await page.locator('.menu .row', { hasText: 'Every CLI' }).click();
   await expect(page.locator('.mdash-hd')).toContainText('All CLIs');
   await expect(page.locator('.acard')).toHaveCount(all);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * A CONVERSATION IS ONLY CALLED ALIVE WHEN A PROCESS WAS FOUND. The listing gives a
+ * transcript's modification time and nothing else, and a file written four minutes ago
+ * by a session that has since exited is byte-for-byte one written by a session still
+ * going — so "running" inferred from a recent write is an invented fact.
+ *
+ * What is measurable is a process on that host whose command line carries the
+ * conversation's id, which `pgrep -af claude` shows directly. The signal is therefore
+ * asymmetric: a mark means one was found, its absence means NOT SEEN RUNNING, and the
+ * view has to say that in words rather than leave "idle" to be assumed.
+ */
+test('desktop mock: a conversation is marked alive only where a process was found', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('@all');
+  });
+
+  // Some are marked and some are not — a mock where every row is alive would prove
+  // nothing about the ones that are not.
+  const marks = await page.locator('.acard').evaluateAll((els) =>
+    els.map((e) => ({
+      live: !!e.querySelector('.pst.up'),
+      title: e.querySelector('.pst.up')?.getAttribute('title') || '',
+    })),
+  );
+  const live = marks.filter((m) => m.live);
+  expect(live.length).toBeGreaterThan(0);
+  expect(live.length).toBeLessThan(marks.length);
+
+  // The mark names the fact it rests on, and a pid is a fact.
+  for (const m of live) expect(m.title).toMatch(/process on .+ is this conversation — pid \d+/);
+
+  // No row calls an unmarked conversation idle. The footnote uses the word once, to
+  // say what the absence is NOT, which is the opposite of the failure guarded here.
+  const rowText = await page
+    .locator('.acard')
+    .evaluateAll((els) => els.map((e) => `${e.textContent} ${e.innerHTML}`).join(' '));
+  expect(rowText).not.toMatch(/\bidle\b/i);
+  await expect(page.locator('.mdash-foot')).toContainText(/not seen running/i);
+  await expect(page.locator('.mdash-foot')).toContainText(/transcript was last written/i);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * A conversation can be named and coloured, and that is Rite's own record — the
+ * vendor's files are never touched. It is PERSONAL rather than shared: access to an
+ * agent is already settled by the collection that holds the machine, so nothing here
+ * needs a permission of its own, but a label is not access and people file their own
+ * work differently enough that sharing one would take someone's filing system away.
+ */
+test('desktop mock: a conversation can be named and coloured, without losing the ask', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('web-01');
+  });
+
+  const card = page.locator('.acard', { hasText: 'Fix the flaky migration test' });
+  await card.getByRole('button', { name: 'More' }).click();
+  await page.locator('.menu .row', { hasText: /Name and colour/ }).click();
+  await page.locator('#am-label').fill('The queue work');
+  await page.locator('.swatches .sw').nth(2).click();
+  await page.locator('.backdrop [data-ok]').click();
+
+  // The label is the headline AND the ask stays underneath: renaming must not lose
+  // what was asked, which is the one thing nobody can reconstruct.
+  const named = page.locator('.acard').filter({ has: page.locator('.acard-label') });
+  await expect(named).toHaveCount(1);
+  await expect(named.locator('.acard-label')).toHaveText('The queue work');
+  await expect(named.locator('.acard-ask.under')).toHaveText('Fix the flaky migration test');
+  const mark = await named
+    .locator('.acard-label')
+    .evaluate((el) => getComputedStyle(el).getPropertyValue('--mark').trim());
+  expect(mark).toMatch(/^#[0-9a-f]{6}$/i);
+
+  // KEYED BY MACHINE, TOOL AND ID. Gemini hands back an index rather than an id, and
+  // an index is per project per machine — so "2" exists on two hosts and means two
+  // different conversations. Naming one must not name the other, and a key that was
+  // the id alone would.
+  await page.evaluate(() => agentPickScope('@all'));
+  const twos = await page.evaluate(() =>
+    agentRows('@all', '')
+      .filter((r) => r.session.id === '2')
+      .map((r) => r.scope.id),
+  );
+  expect(twos.length, 'two conversations share the index 2').toBeGreaterThan(1);
+  await page.evaluate(() => {
+    AGENT_MARKS[agentMarkKey('@local', 'gemini', '2')] = { label: 'Mine alone', color: '' };
+    renderMain();
+  });
+  // Exactly one of the two "2"s carries it, and it is the one that was named.
+  await expect(page.locator('.acard-label', { hasText: 'Mine alone' })).toHaveCount(1);
+  const named2 = await page
+    .locator('.acard')
+    .filter({ has: page.locator('.acard-label', { hasText: 'Mine alone' }) })
+    .locator('.acard-f')
+    .textContent();
+  expect(named2).toContain('This machine');
+  await page.evaluate(() => {
+    delete AGENT_MARKS[agentMarkKey('@local', 'gemini', '2')];
+    renderMain();
+  });
+  await expect(page.locator('.acard-label', { hasText: 'Mine alone' })).toHaveCount(0);
+  await page.evaluate(() => agentPickScope('web-01'));
+  await expect(page.locator('.acard-label')).toHaveCount(1);
+
+  // Clearing both removes the record rather than storing an empty one.
+  await named.getByRole('button', { name: 'More' }).click();
+  await page.locator('.menu .row', { hasText: /Name and colour/ }).click();
+  await page.locator('#am-label').fill('');
+  await page.locator('.swatches .sw.none').click();
+  await page.locator('.backdrop [data-ok]').click();
+  await expect(page.locator('.acard-label')).toHaveCount(0);
+  expect(await page.evaluate(() => Object.keys(AGENT_MARKS).length)).toBe(0);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
@@ -547,6 +675,18 @@ test('desktop mock: a handle that is not durable says so', async ({ page }) => {
   await page.locator('.acard', { hasText: 'Walk the layouts parser' }).click();
   await expect(page.locator('.apanel-acts')).toContainText('Index');
   await expect(page.locator('.apanel-body')).toContainText(/moves as the list changes/);
+
+  // The copy control wears a COPY glyph. It wore the edit pencil, which reads as
+  // "rename this" on a button that copies — and the drawer now has a real rename
+  // beside it, so the two must not look alike.
+  const glyph = (name: string) =>
+    page
+      .locator('.apanel-acts')
+      .getByRole('button', { name })
+      .locator('svg path')
+      .first()
+      .getAttribute('d');
+  expect(await glyph('Index')).not.toBe(await glyph('Name'));
   await page.locator('.acard', { hasText: 'Mock the agent manager' }).click();
   await expect(page.locator('.apanel-acts')).toContainText('Id');
 
@@ -838,7 +978,7 @@ test('desktop mock: every agent control can be used without the page throwing', 
   await expect(page.locator('.mdash-hd')).toContainText('read just now');
   await page.evaluate(() => agentPickScope('lb-01'));
   await expect(page.locator('.acard')).toHaveCount(0);
-  await expect(page.locator('.aabsent')).toContainText(/Not installed on lb-01/);
+  await expect(page.locator('.aempty')).toHaveCount(1);
   await page.evaluate(() => agentPickScope('@local'));
 
   // Both layouts, and the search box, from the header.

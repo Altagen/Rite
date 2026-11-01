@@ -211,6 +211,52 @@ question and stays in **Tools**; the uuid, which is never typed and is one menu 
 and the agent's last line, which only matters once a conversation is the one being
 considered, so it lives in the drawer.
 
+#### Alive, and how it is known
+
+A conversation is marked alive only when **a process was found**: one on that host
+whose command line carries the conversation's id. Measured rather than assumed —
+
+```
+$ pgrep -af claude
+38691 /opt/claude-code/bin/claude --resume 4a349d90-345e-4c94-ae23-47644f50bbd5
+```
+
+— so the id is right there to match on, and one command per machine answers for every
+conversation at once.
+
+**What was there before was a lie.** `state: 'running' | 'idle'` came from nothing: the
+listing gives a transcript's modification time and nothing else, and a file written
+four minutes ago by a session that has since exited is byte-for-byte a file written
+four minutes ago by one that is still going. Calling the first "running" invents a
+fact, and a manager that invents one is worse than a manager that is quiet.
+
+The signal is **asymmetric on purpose**, and the view says so in words: a mark means a
+process was found, its absence means *not seen running* — never "idle". A conversation
+started without its id on the argv (a plain `claude`, not `claude --resume <id>`)
+cannot be attributed, so Rite misses it rather than guessing. No false positives, some
+false negatives, and the sentence on screen matches. Times are when the transcript was
+last written, which is the other fact the listing already carries.
+
+#### Naming a conversation
+
+A name and a colour, over a session Rite did not create. Rite keeps them and the
+vendor's files are never touched — §6's read-only rule is about Rite not becoming a
+second source of truth for *their* data, and a label that exists only in Rite is not
+their data. The label becomes the headline and **the ask stays underneath**: renaming
+must not lose what was asked, which is the one thing on a card nobody can reconstruct.
+
+**Personal, not shared, and that is a decision.** Access to an agent is already settled
+by the collection that holds the machine — hold its key, hold the SSH credential, see
+that machine's conversations — so nothing here needs a permission of its own. But a
+label is not access, and people work with these tools differently enough that one
+person's "spike, throw away" is another's "the queue work". A shared rename would take
+someone's filing system away from them.
+
+Keyed by **machine, tool and id**, because an id is only unique within its tool: Gemini
+hands back an *index*, and the index `2` exists on every machine that has a second
+conversation in that project. The mock carries that collision so the key is tested
+rather than assumed.
+
 #### All machines
 
 The default scope aggregates every machine already read, newest first. No
