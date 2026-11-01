@@ -465,6 +465,69 @@ const SPEAKERS = new RegExp(
   'iu',
 );
 
+/*
+ * A description says the thing and stops.
+ *
+ * Length is the tell. The forms that make a hint read like a generated answer are a
+ * preamble naming the category the control already shows ("A local forward:", "Off by
+ * default"), a mechanism nobody acts on ("Rite opens the jump first, then tunnels the
+ * session"), and a closing clause that restates the one before it. Eighteen strings
+ * carried at least one; none lost a fact when it went.
+ *
+ * ENGLISH IS CAPPED AND FRENCH IS BOUNDED BY ITS RATIO, which is not a style choice: the
+ * translation runs 1.17 longer on average and 1.40 at the worst, so a second flat number
+ * would have to be loose enough to let a padded French string through under it. The
+ * ratio catches the thing that actually goes wrong on this side — a translation that
+ * explains where the original stated.
+ *
+ * The cap is where the remaining strings sit, not a round number, so a new one that runs
+ * past it is a deliberate act with a line to add here.
+ */
+const LONG_OK = new Map([
+  [
+    'admin.zkBody',
+    'four distinct facts about what an administrator can and cannot reach — the shortest ' +
+      'form is still long, and the one to shorten next by moving the legacy-collection ' +
+      'sentence onto the rows it describes',
+  ],
+  [
+    'admin.inst.dashStrength',
+    'enforcement versus policy, said twice because the two switches above it are not ' +
+      'equally strong and a reader who assumes they are is wrong about what off means',
+  ],
+]);
+const LONG_MAX = 185;
+// Measured: the worst honest translation sits at 1.40. Above 1.5 is padding, not French.
+const FR_RATIO_MAX = 1.5;
+const RATIO_FROM = 60;
+
+console.log('\nno description runs on:');
+
+check(`no English string is longer than ${LONG_MAX} characters`, () => {
+  const over = flatten(LOCALES.en)
+    .filter((key) => !LONG_OK.has(key))
+    .map((key) => [key, resolve(LOCALES.en, key)])
+    .filter(([, v]) => typeof v === 'string' && v.length > LONG_MAX)
+    .map(([key, v]) => `${key} (${v.length})`);
+  assert.deepEqual(over, [], `${over.length} over ${LONG_MAX}:\n        ` + over.join('\n        '));
+});
+
+check(`and no French string runs past ${FR_RATIO_MAX}× its English`, () => {
+  const over = flatten(LOCALES.en)
+    .map((key) => [key, resolve(LOCALES.en, key), resolve(LOCALES.fr, key)])
+    .filter(([, e, f]) => typeof e === 'string' && typeof f === 'string' && e.length >= RATIO_FROM)
+    .filter(([, e, f]) => f.length / e.length > FR_RATIO_MAX)
+    .map(([key, e, f]) => `${key} (en ${e.length}, fr ${f.length})`);
+  assert.deepEqual(over, [], `${over.length} padded:\n        ` + over.join('\n        '));
+});
+
+check('and nothing is allowed to run on without a reason that still applies', () => {
+  const stale = [...LONG_OK.keys()].filter(
+    (key) => (resolve(LOCALES.en, key) ?? '').length <= LONG_MAX,
+  );
+  assert.deepEqual(stale, [], `${stale.length} entr(y/ies) no longer run long: ${stale.join(', ')}`);
+});
+
 console.log('\nthe interface addresses nobody:');
 
 check('no locale string has a speaker or a listener in it', () => {

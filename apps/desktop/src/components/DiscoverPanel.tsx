@@ -65,7 +65,7 @@ export function DiscoverPanel() {
         <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/[0.08] p-3 text-sm text-foreground/80">
           <IconCollection className="mt-0.5 h-4 w-4 flex-none text-primary" />
           <div>
-            <b>{t('discover.labelsTitle')}</b> {t('discover.labelsWhy')}
+            <b>{t('discover.labelsTitle')}</b> {t('coll.labelNotEncrypted')}
           </div>
         </div>
 
