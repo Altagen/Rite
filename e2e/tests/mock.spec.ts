@@ -59,60 +59,46 @@ for (const shell of ['web', 'desktop'] as const) {
 }
 
 /**
- * The agent manager, in both shells.
+ * The agent manager lays conversations out BY CLI, in whichever of the two
+ * arrangements is switched on, and only a tool that answered gets a band.
  *
- * The selector is machine → tool → conversation, the manager is a view (so resuming
- * leaves it where it was), and an agent session is a pane that opens in a new tab.
- * Each case below is one that a silent UI gets wrong in a way that costs an hour:
- * a machine nobody asked about, a tool that is not there, a tool that is there and
- * cannot answer, and the one host Rite refuses to run an agent on at all.
+ * Each case below is one that a silent UI gets wrong in a way that costs an hour: a
+ * machine nobody asked about, a tool that is there and cannot answer, and the one
+ * host Rite refuses to run an agent on at all. A tool that is simply absent is NOT
+ * one of them any more — six empty cards per machine is how a surface stops being
+ * read, so what was not found is said once, in a line, at the foot.
  */
 for (const shell of ['web', 'desktop'] as const) {
-  test(`${shell} mock: the agent manager selects machine, then tool, then conversation`, async ({
+  test(`${shell} mock: conversations are grouped by CLI, and only installed tools get a band`, async ({
     page,
   }) => {
     const errs = watchErrors(page);
     await page.goto(mock(shell));
     await page.evaluate(() => openAgents());
 
-    // The manager opens on a machine that can answer — not on an empty one, and not
-    // on the local entry in a browser, which can never answer.
     await page.evaluate(() => agentPickScope('web-01'));
-    await expect(page.locator('.atool .dcard-t')).toHaveText([
-      'Claude Code',
-      'Codex CLI',
-      'Gemini CLI',
-      'Grok',
-      'Hermes',
-      'opencode',
-    ]);
-    await expect(page.locator('.arow')).toHaveCount(3);
+    // One band, because one tool on this machine answered with conversations.
+    await expect(page.locator('.aband-t')).toHaveText(['Claude Code']);
+    await expect(page.locator('.acard')).toHaveCount(4);
 
-    // A tool that is absent, and a tool that is present but cannot read its own
-    // transcripts, both keep their block and say which they are. A session that
-    // vanishes from a list is the failure this is here to prevent.
-    await expect(page.locator('.atool.off')).toHaveCount(3);
-    await expect(page.locator('.atool .anote')).toHaveCount(2);
-    await expect(page.locator('.atool .anote').first()).toContainText(
-      /installed but its sessions could not be read/,
-    );
+    // The absent tools are a line, not cards.
+    await expect(page.locator('.aabsent')).toContainText(/Not installed on web-01/);
+    await expect(page.locator('.aabsent')).toContainText(/Codex/);
+    await expect(page.locator('.atool.off')).toHaveCount(0);
 
-    // Every adapter says where its two commands came from, and the four that ship
-    // measured are not dressed the same as the two that came from documentation and a
-    // blog post. A built-in that is really a guess has to read as one.
-    await expect(page.locator('.atool .afrom')).toHaveCount(3);
-    await expect(page.locator('.atool', { hasText: 'Claude Code' }).locator('.afrom')).toHaveText(
-      'measured',
-    );
-
-    // Two failures wear the same shape and have fixes in different places: the host
-    // refused us, or our own adapter is wrong for the build that is installed.
-    await expect(page.locator('.atool', { hasText: 'opencode' }).locator('.anote')).toContainText(
+    // A tool that is installed and cannot answer keeps its block: it is the one state
+    // with something to do about it. Two of them here, and they fail differently —
+    // the host refused us, or our own adapter is wrong for the installed build.
+    await expect(page.locator('.atool')).toHaveCount(2);
+    await expect(page.locator('.atool', { hasText: 'opencode' })).toContainText(
       /this adapter.*is wrong for this build/,
     );
-    await expect(page.locator('.atool', { hasText: 'Gemini' }).locator('.anote')).toContainText(
+    await expect(page.locator('.atool', { hasText: 'Gemini' })).toContainText(
       /a permission to fix, not an absence/,
     );
+
+    // An adapter's provenance is a maintainer's question and has left this surface.
+    await expect(page.locator('.mdash .afrom')).toHaveCount(0);
 
     // Discovery is one command per machine, so the view says when it was read.
     await expect(page.locator('.mdash-hd')).toContainText(/read /);
@@ -120,18 +106,229 @@ for (const shell of ['web', 'desktop'] as const) {
     // A machine nobody has probed is a state of its own, not an empty list.
     await page.evaluate(() => agentPickScope('Homelab'));
     await expect(page.locator('.aempty')).toHaveCount(1);
-    await expect(page.locator('.arow')).toHaveCount(0);
+    await expect(page.locator('.acard')).toHaveCount(0);
 
     // The refusal is on screen, in both shells, with its reason.
     await page.evaluate(() => agentPickScope('@server'));
     await expect(page.locator('.dnote')).toContainText(
       /never runs an agent inside its own server container/,
     );
-    await expect(page.locator('.arow')).toHaveCount(0);
+    await expect(page.locator('.acard')).toHaveCount(0);
 
     expect(errs, 'the mock must not log errors').toEqual([]);
   });
 }
+
+/**
+ * THE TWO LAYOUTS SHOW THE SAME CONVERSATIONS. That is the whole point of having
+ * both in the mock: the choice between them is a choice about arrangement, and a
+ * layout that looked better by quietly showing fewer rows would settle the argument
+ * dishonestly. Both are built from one `agentRows`, and this is what holds that.
+ */
+test('desktop mock: the two layouts arrange the same rows, and nothing else differs', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('@all');
+  });
+
+  const asks = (sel: string) =>
+    page.locator(sel).evaluateAll((els) => els.map((e) => e.textContent?.trim() || ''));
+
+  await page.evaluate(() => agentSetLayout('cards'));
+  const cards = await asks('.acard-ask');
+  expect(cards.length, 'the fleet is big enough for the comparison to mean something')
+    .toBeGreaterThan(15);
+
+  await page.evaluate(() => agentSetLayout('panes'));
+  const rows = await asks('.arow-s-ask');
+  expect(rows).toEqual(cards);
+
+  // The bands are the same groups, in the same order, in both.
+  await page.evaluate(() => agentSetLayout('cards'));
+  const bands = await asks('.aband-t');
+  await page.evaluate(() => agentSetLayout('panes'));
+  const groups = await asks('.alist-grp');
+  expect(groups.map((g) => g.replace(/\s+\d+$/, ''))).toEqual(bands);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * ALL MACHINES is the entry no single-machine tool on the market has: every one of
+ * them reads the home directory of the host it runs on. It aggregates what has
+ * already been read, and it must never fan a probe out across the library — that
+ * would be one SSH round trip per machine behind a view that opened by itself.
+ */
+test('desktop mock: all machines aggregates what was read, and probes nothing', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('@all');
+  });
+
+  // More than one machine's worth, and each card says which machine it came from.
+  const machines = await page
+    .locator('.acard-f')
+    .evaluateAll((els) => [...new Set(els.map((e) => (e.textContent || '').split(' · ')[0]))]);
+  expect(machines.length).toBeGreaterThan(2);
+
+  // No "read at" and no probe button: there is no single answer to date, and asking
+  // every machine at once is not something a view does on its own.
+  await expect(page.locator('.mdash-hd span[title^="Discovery is one command"]')).toHaveCount(0);
+  await expect(page.locator('.mdash-hd').getByRole('button', { name: /Probe/ })).toHaveCount(0);
+
+  // Nothing was read as a side effect of opening it.
+  const before = await page.evaluate(() => JSON.stringify(Object.keys(AGENT_PROBES).map((k) => AGENT_PROBES[k].at)));
+  await page.evaluate(() => agentProbeNow());
+  const after = await page.evaluate(() => JSON.stringify(Object.keys(AGENT_PROBES).map((k) => AGENT_PROBES[k].at)));
+  expect(after).toBe(before);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * What identifies a conversation, since its name alone does not. The four facts
+ * chosen for the card: the opening ask, the project and its BRANCH, the machine —
+ * carried as a coloured edge taken from the Library, not from a palette invented
+ * here — and how deep and how recent it is.
+ */
+test('desktop mock: a card says which conversation it is, beyond its name', async ({ page }) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('web-01');
+  });
+
+  const card = page.locator('.acard', { hasText: 'Fix the flaky migration test' });
+  await expect(card.locator('.acard-proj')).toHaveText('acme/api');
+  await expect(card.locator('.acard-br')).toHaveText('fix/flaky-migration');
+  await expect(card.locator('.acard-f')).toContainText('web-01');
+  await expect(card.locator('.acard-f')).toContainText('42 turns');
+  await expect(card.locator('.acard-f')).toContainText('12 min ago');
+  await expect(card.locator('.pst.up')).toHaveCount(1);
+
+  // Two conversations on ONE project are told apart by the branch, which is the
+  // whole reason it is on the card.
+  const sameProject = page.locator('.acard', { hasText: 'acme/api' });
+  expect(await sameProject.count()).toBeGreaterThan(1);
+  const branches = await sameProject
+    .locator('.acard-br')
+    .evaluateAll((els) => els.map((e) => e.textContent));
+  expect(new Set(branches).size).toBe(branches.length);
+
+  // The edge is the colour the Library already holds for that machine's collection,
+  // so the manager reads a decision the user made rather than making its own. Asserted
+  // as a DIFFERENCE between machines, because a custom property resolves its `var()`
+  // at computed-value time — a single card's edge looks like a real colour even when
+  // every card is painted the same fallback, and that assertion passed a mutation.
+  await page.evaluate(() => agentPickScope('@all'));
+  const edges = await page
+    .locator('.acard')
+    .evaluateAll((els) =>
+      els.map((e) => ({
+        machine: (e.querySelector('.acard-f')?.textContent || '').split(' · ')[0],
+        edge: getComputedStyle(e).getPropertyValue('--edge').trim(),
+      })),
+    );
+  const byMachine = new Map(edges.map((e) => [e.machine, e.edge]));
+  expect(byMachine.size, 'the fleet spans several machines').toBeGreaterThan(2);
+  expect(
+    new Set(byMachine.values()).size,
+    'machines in different collections do not share one edge',
+  ).toBeGreaterThan(1);
+  expect(byMachine.get('web-01')).not.toBe(byMachine.get('cache-01'));
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * Search is what a fleet needs once it has more conversations than a screen, and it
+ * covers what IDENTIFIES one — the ask, the project, the branch, the machine. Not the
+ * transcript: that is a different feature with a different cost, and pretending
+ * otherwise would be a slow surprise.
+ */
+test('desktop mock: search narrows on the ask, the project, the branch and the machine', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('@all');
+  });
+  const all = await page.locator('.acard').count();
+
+  for (const [q, shouldMatch] of [
+    ['flaky', 'Fix the flaky migration test'],
+    ['hotfix/502', 'Reproduce the staging 502'],
+    ['acme/infra', 'Tune the eviction policy'],
+    ['cache-01', 'Tune the eviction policy'],
+  ] as const) {
+    await page.locator('.asearch').fill(q);
+    const n = await page.locator('.acard').count();
+    expect(n, `${q} narrows`).toBeLessThan(all);
+    expect(n).toBeGreaterThan(0);
+    await expect(page.locator('.acard', { hasText: shouldMatch })).toHaveCount(1);
+  }
+
+  // A query that matches nothing says so with the query in it, rather than drawing
+  // an empty grid that reads as a broken view.
+  await page.locator('.asearch').fill('zzzz');
+  await expect(page.locator('.acard')).toHaveCount(0);
+  await expect(page.locator('.aempty')).toContainText('zzzz');
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
+
+/**
+ * The panel is where one conversation gets the width, and its TAB STRIP is the seam
+ * left open on purpose: "In effect" is the skills/commands/hooks read, and what comes
+ * after it arrives as another tab rather than as a redesign. It stays read-only and
+ * short — ADR 0022 section 8 refuses a chat UI rebuilt over a vendor's TUI, and a
+ * preview that grew into a transcript reader would be that by a slower route.
+ */
+test('desktop mock: the panel previews one conversation, read-only, with room for more', async ({
+  page,
+}) => {
+  const errs = watchErrors(page);
+  await page.goto(mock('desktop'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('@local');
+    agentSetLayout('panes');
+  });
+
+  // The panel opens on the first conversation rather than on nothing.
+  await expect(page.locator('.apanel-t')).toContainText('rite');
+
+  await page.locator('.arow-s', { hasText: 'Register pane kinds' }).click();
+  await expect(page.locator('.apanel-sub')).toContainText('This machine');
+  await expect(page.locator('.apanel-sub')).toContainText('Claude Code');
+  // The agent's last line lives here and not on the card: it is only useful once a
+  // conversation is the one being considered.
+  await expect(page.locator('.apanel-body')).toContainText('Registry landed');
+
+  // The other tab is the read that is a modal elsewhere, and nothing in the panel
+  // can be typed into.
+  await page.locator('.apanel-tab', { hasText: 'In effect' }).click();
+  await expect(page.locator('.apanel-body .aeff')).not.toHaveCount(0);
+  await expect(page.locator('.apanel input, .apanel textarea')).toHaveCount(0);
+
+  // Resume from the panel does what resume from a card does.
+  await page.locator('.apanel-acts').getByRole('button', { name: 'Resume' }).click();
+  await expect(page.locator('.mtab', { hasText: 'Agents' })).toHaveCount(1);
+  await expect(page.locator('.agentpane')).toHaveCount(1);
+
+  expect(errs, 'the mock must not log errors').toEqual([]);
+});
 
 /**
  * THE FIRST CONDITION: agents are managed only on machines you can already sign in
@@ -241,27 +438,39 @@ for (const shell of ['web', 'desktop'] as const) {
 test('desktop mock: a handle that is not durable says so', async ({ page }) => {
   const errs = watchErrors(page);
   await page.goto(mock('desktop'));
-  await page.evaluate(() => openAgents());
-  await page.evaluate(() => agentPickScope('@local'));
+  await page.evaluate(() => {
+    openAgents();
+    agentPickScope('@local');
+  });
 
-  // Gemini's row does not pretend to offer a durable id, and says what it is handing
-  // over. Taken first because clicking the entry is what closes the menu.
-  const geminiRow = page.locator('.atool', { hasText: 'Gemini' }).locator('.arow').first();
-  await geminiRow.scrollIntoViewIfNeeded();
-  await geminiRow.getByRole('button', { name: 'More' }).click();
+  // Gemini's card does not pretend to offer a durable id, and says what it is
+  // handing over. Taken first because clicking the entry is what closes the menu.
+  const gemini = page
+    .locator('.aband', { hasText: 'Gemini' })
+    .locator('.acard', { hasText: 'Walk the layouts parser' });
+  await gemini.scrollIntoViewIfNeeded();
+  await gemini.getByRole('button', { name: 'More' }).click();
   await expect(page.locator('.menu .row', { hasText: /Copy conversation id/ })).toHaveCount(0);
   await page.locator('.menu .row', { hasText: /Copy the index/ }).click();
   await expect(page.locator('.toast')).toContainText(/resumes by position/);
 
   // Claude's offers the id plainly, because for that tool the promise holds.
-  await page
-    .locator('.atool', { hasText: 'Claude Code' })
-    .locator('.arow')
-    .first()
-    .getByRole('button', { name: 'More' })
-    .click();
+  const claude = page
+    .locator('.aband', { hasText: 'Claude Code' })
+    .locator('.acard')
+    .first();
+  await claude.getByRole('button', { name: 'More' }).click();
   await expect(page.locator('.menu .row', { hasText: /Copy conversation id/ })).toHaveCount(1);
   await expect(page.locator('.menu .row', { hasText: /Copy the index/ })).toHaveCount(0);
+  await page.locator('.menu .row', { hasText: /Copy conversation id/ }).click();
+
+  // The panel's own button carries the same distinction in one word, because by then
+  // there is no room for a sentence.
+  await page.evaluate(() => agentSetLayout('panes'));
+  await page.locator('.arow-s', { hasText: 'Walk the layouts parser' }).click();
+  await expect(page.locator('.apanel-acts')).toContainText('Index');
+  await page.locator('.arow-s').first().click();
+  await expect(page.locator('.apanel-acts')).toContainText('Id');
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
@@ -280,10 +489,9 @@ test('desktop mock: resuming an agent opens a pane beside the manager, not over 
   await page.evaluate(() => agentPickScope('@local'));
 
   const before = await page.locator('.mtab').count();
-  await page
-    .locator('.arow', { hasText: 'Mock the agent manager' })
-    .getByRole('button', { name: 'Resume' })
-    .click();
+  const card = page.locator('.acard', { hasText: 'Mock the agent manager' });
+  await card.getByRole('button', { name: 'More' }).click();
+  await page.locator('.menu .row', { hasText: /Resume here/ }).click();
 
   // One more tab, and the manager's own tab is still there to go back to.
   await expect(page.locator('.mtab')).toHaveCount(before + 1);
@@ -316,7 +524,8 @@ test('desktop mock: an agent pane splits with plain terminals, with the same chr
     openAgents();
     agentPickScope('@local');
   });
-  await page.locator('.arow').first().getByRole('button', { name: 'Resume' }).click();
+  await page.locator('.acard').first().getByRole('button', { name: 'More' }).click();
+  await page.locator('.menu .row', { hasText: /Resume here/ }).click();
 
   // One pane, no divider yet.
   await expect(page.locator('.pane-wrap')).toHaveCount(1);
@@ -389,7 +598,8 @@ for (const shell of ['web', 'desktop'] as const) {
 
     // A resumed agent holds panes, so its tab is not a view tab.
     await page.evaluate(() => agentPickScope('web-01'));
-    await page.locator('.arow').first().getByRole('button', { name: 'Resume' }).click();
+    await page.locator('.acard').first().getByRole('button', { name: 'More' }).click();
+    await page.locator('.menu .row', { hasText: /Resume here/ }).click();
     await expect(page.locator('.mtab.view')).toHaveCount(2);
     await expect(page.locator('.mtab', { hasText: 'acme/api' })).not.toHaveClass(/view/);
 
@@ -413,7 +623,6 @@ test('desktop mock: another agent CLI can be registered, and is looked for', asy
     openAgents();
     agentPickScope('web-01');
   });
-  const before = await page.locator('.atool').count();
 
   await page.evaluate(() => dlgAgentTools());
   // The dialog focuses its first input on a timer; typing before it is attached
@@ -425,19 +634,31 @@ test('desktop mock: another agent CLI can be registered, and is looked for', asy
   await page.locator('#at-resume').fill('aider --restore {id}');
   await page.locator('.backdrop [data-ok]').click();
 
-  // It appears, and says honestly that the last probe predates it rather than
-  // claiming the machine does not have it.
-  await expect(page.locator('.atool')).toHaveCount(before + 1);
-  await expect(page.locator('.atool', { hasText: 'Aider' })).toContainText(
-    /added since the last probe/,
-  );
+  // No band, because it has no conversations here — and it is not claimed absent
+  // either. The last probe simply predates it, which the foot line says.
+  await expect(page.locator('.aband-t', { hasText: 'Aider' })).toHaveCount(0);
+  await expect(page.locator('.aabsent')).toContainText(/Added since the last probe/);
+  await expect(page.locator('.aabsent')).toContainText(/Aider/);
+
+  // An added adapter is marked as added, where the provenance of the built-in six is.
+  await page.evaluate(() => dlgAgentTools());
+  await expect(
+    page.locator('.backdrop .mrow', { hasText: 'Aider' }).locator('.afrom'),
+  ).toHaveText('added here');
+  await page.locator('.backdrop [data-ok]').click();
 
   // Switching an adapter off stops Rite looking for it at all.
   await page.evaluate(() => {
+    agentPickScope('@local');
     agentTool('gemini').on = false;
     renderMain();
   });
-  await expect(page.locator('.atool', { hasText: 'Gemini' })).toHaveCount(0);
+  await expect(page.locator('.aband-t', { hasText: 'Gemini' })).toHaveCount(0);
+  await page.evaluate(() => {
+    agentTool('gemini').on = true;
+    renderMain();
+  });
+  await expect(page.locator('.aband-t', { hasText: 'Gemini' })).toHaveCount(1);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
@@ -534,29 +755,45 @@ test('desktop mock: every agent control can be used without the page throwing', 
   await page.locator('.mdash-hd').getByRole('button', { name: 'Agents' }).click();
   expect(await page.evaluate(() => STATE.agentScope)).toBe('web-01');
 
-  // Probe, scope menu, a machine that answers nothing, and back.
+  // Probe, the scope menu, a machine that answers nothing, and back.
   await page.evaluate(() => agentProbeNow());
   await expect(page.locator('.mdash-hd')).toContainText('read just now');
   await page.evaluate(() => agentPickScope('lb-01'));
-  await expect(page.locator('.atool.off')).toHaveCount(6);
+  await expect(page.locator('.acard')).toHaveCount(0);
+  await expect(page.locator('.aabsent')).toContainText(/Not installed on lb-01/);
   await page.evaluate(() => agentPickScope('@local'));
+
+  // Both layouts, and the search box, from the header.
+  for (const label of ['List', 'Cards']) {
+    await page.locator('.aseg').getByRole('button', { name: label, exact: true }).click();
+  }
+  await page.locator('.asearch').fill('layouts');
+  await expect(page.locator('.acard')).toHaveCount(1);
+  await page.locator('.asearch').fill('');
 
   // Start a new agent: the dialog asks for the one thing it cannot guess.
   await page
-    .locator('.atool', { hasText: 'Claude Code' })
+    .locator('.aband', { hasText: 'Claude Code' })
     .getByRole('button', { name: 'New' })
     .click();
   await expect(page.locator('#na-cwd')).toBeVisible();
   await page.locator('.backdrop [data-ok]').click();
   await expect(page.locator('.backdrop')).toHaveCount(0);
 
-  // Each entry of the row menu, one at a time.
+  // The read that opens a modal, closed by its own control.
+  await page.locator('.acard').first().getByRole('button', { name: 'More' }).click();
+  await page.locator('.menu .row', { hasText: /What is in effect/ }).click();
+  await expect(page.locator('.backdrop')).toHaveCount(1);
+  await page.locator('.backdrop [data-ok]').click();
+  await expect(page.locator('.backdrop')).toHaveCount(0);
+
+  // And the entries that only copy or resume.
   for (const label of [
     /Copy conversation id/,
     /Copy the resume command/,
     /Resume in a new window/,
   ]) {
-    await page.locator('.arow').first().getByRole('button', { name: 'More' }).click();
+    await page.locator('.acard').first().getByRole('button', { name: 'More' }).click();
     await page.locator('.menu .row', { hasText: label }).click();
   }
 

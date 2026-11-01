@@ -171,10 +171,22 @@ function agentToggleTool(id, el) {
 
 /* ---- what a probe of one machine came back with ----
    Keyed by machine name; a machine that is absent here has simply never been
-   probed, which is a state of its own and not an empty list. Every awkward case a
-   real fleet produces is represented on purpose: a tool that is not installed, a
-   tool that is installed but whose transcripts cannot be read, and a host that
-   answers nothing at all. */
+   probed, which is a state of its own and not an empty list.
+
+   Deliberately BIG. The question being asked of this mock is which layout survives
+   a real fleet, and a layout that holds four conversations tells nobody anything —
+   twenty-one across five machines, six projects and four tools is where a wall of
+   cards starts to need sorting and a sidebar starts to need grouping. Every awkward
+   case a fleet produces is still here: a tool installed whose transcripts cannot be
+   read, an adapter wrong for the installed build, and a host that answers nothing.
+
+   `branch` is on every session because it is what separates two conversations about
+   one project, and `ask` is the opening message — the thing actually typed, which is
+   what a conversation IS to the person looking for it. `last` is the agent's most
+   recent line; it is in the data for the preview panel, and off the card on purpose. */
+const S = (id, project, branch, cwd, ask, ago, state, turns, last) =>
+  ({ id, project, branch, cwd, ask, title: ask, last: ago, state, turns, tail: last });
+
 const AGENT_PROBES = {
   'web-01': {
     at: '2 min ago',
@@ -182,26 +194,32 @@ const AGENT_PROBES = {
       {
         id: 'claude', installed: true, version: '2.1.4',
         sessions: [
-          { id: '3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11', project: 'acme/api', cwd: '/srv/acme/api',
-            title: 'Fix the flaky migration test', last: '12 min ago', state: 'running', turns: 42 },
-          { id: 'b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77', project: 'acme/api', cwd: '/srv/acme/api',
-            title: 'Port the queue worker to the new client', last: '3 h ago', state: 'idle', turns: 18 },
-          { id: 'c0a51d93-2e77-4b06-91ff-5d4c8b7e3a20', project: 'acme/web', cwd: '/srv/acme/web',
-            title: 'Add the dark theme toggle', last: 'yesterday', state: 'idle', turns: 7 },
+          S('3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11', 'acme/api', 'fix/flaky-migration', '/srv/acme/api',
+            'Fix the flaky migration test', '12 min ago', 'running', 42,
+            'Edited 2 files, ran the suite — 41 passed, 1 failed.'),
+          S('b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77', 'acme/api', 'feat/queue-client', '/srv/acme/api',
+            'Port the queue worker to the new client', '3 h ago', 'idle', 18,
+            'Waiting on a decision about the retry budget.'),
+          S('c0a51d93-2e77-4b06-91ff-5d4c8b7e3a20', 'acme/web', 'main', '/srv/acme/web',
+            'Add the dark theme toggle', 'yesterday', 'idle', 7,
+            'Opened a PR; review not started.'),
+          S('1d8b3f60-74ae-4c92-a7e1-6f0c9b5d2e38', 'acme/api', 'hotfix/502', '/srv/acme/api',
+            'Trace the 502s under load', '2 days ago', 'idle', 55,
+            'Narrowed it to the upstream keepalive timeout.'),
         ],
       },
-      { id: 'codex', installed: false },
       // Installed, reachable, and still unable to answer — the row says why instead
       // of vanishing. A session that disappears from a list costs an hour.
       { id: 'gemini', installed: true, version: '0.4.2', sessions: [],
         error: 'gemini --list-sessions exited 1: no project trusted for deploy' },
-      { id: 'grok', installed: false },
-      { id: 'hermes', installed: false },
       // The adapter is a guess from a third-party write-up, and this is what that
       // costs: the binary is there, the listing command is wrong. Distinguishable
       // from "absent" only because Rite ran it and kept the error.
       { id: 'opencode', installed: true, version: '0.6.1', sessions: [],
         error: "opencode: unknown flag --format (the adapter's listing predates this build)" },
+      { id: 'codex', installed: false },
+      { id: 'grok', installed: false },
+      { id: 'hermes', installed: false },
     ],
   },
   'stg-web': {
@@ -210,8 +228,46 @@ const AGENT_PROBES = {
       {
         id: 'claude', installed: true, version: '2.0.9',
         sessions: [
-          { id: '9e4f7c02-1a83-4d55-b6e8-02c7f1a94b63', project: 'acme/api', cwd: '/srv/acme/api',
-            title: 'Reproduce the staging 502', last: '1 h ago', state: 'idle', turns: 31 },
+          S('9e4f7c02-1a83-4d55-b6e8-02c7f1a94b63', 'acme/api', 'hotfix/502', '/srv/acme/api',
+            'Reproduce the staging 502', '1 h ago', 'idle', 31,
+            'Reproduced it with 40 concurrent requests.'),
+          S('4a0d9e18-5c63-4b77-9e2a-81f3c7d05b49', 'acme/api', 'chore/logs', '/srv/acme/api',
+            'Turn the access log into something greppable', '4 days ago', 'idle', 9,
+            'Switched the formatter; left the rotation alone.'),
+        ],
+      },
+      {
+        id: 'codex', installed: true, version: '1.3.0',
+        sessions: [
+          S('7f3e1b9c-2d48-4a60-85c1-9b0e4d7a3f62', 'acme/web', 'feat/checkout', '/srv/acme/web',
+            'Split the checkout form into steps', '2 h ago', 'running', 24,
+            'Three steps wired; validation still shared.'),
+          S('e2b7c450-8f91-4d23-a6b8-0c5e9f1a7d34', 'acme/web', 'main', '/srv/acme/web',
+            'Why does the bundle weigh 900 kB', '1 week ago', 'idle', 13,
+            'Two icon sets are bundled twice.'),
+        ],
+      },
+      { id: 'gemini', installed: false },
+      { id: 'grok', installed: false },
+      { id: 'hermes', installed: false },
+      { id: 'opencode', installed: false },
+    ],
+  },
+  'cache-01': {
+    at: '20 min ago',
+    tools: [
+      {
+        id: 'claude', installed: true, version: '2.1.4',
+        sessions: [
+          S('a5c8e2f1-6b30-4d79-9f24-7e1b05c8a93d', 'acme/infra', 'main', '/srv/infra',
+            'Tune the eviction policy', '20 min ago', 'running', 16,
+            'allkeys-lru set; watching the hit rate.'),
+          S('0b4f7d26-93a1-4e58-8c07-2f6a1d9b5e40', 'acme/infra', 'spike/cluster', '/srv/infra',
+            'Would clustering buy us anything here', '5 days ago', 'idle', 28,
+            'Not at this volume; the write path is the limit.'),
+          S('6e1a9c73-4f52-4b86-a0d9-3c7e8b2f1d05', 'acme/infra', 'main', '/srv/infra',
+            'Write the runbook for a cold start', '2 weeks ago', 'idle', 11,
+            'Runbook drafted; untested against a real cold start.'),
         ],
       },
       { id: 'codex', installed: false },
@@ -236,23 +292,56 @@ const AGENT_LOCAL = {
     {
       id: 'claude', installed: true, version: '2.1.4',
       sessions: [
-        { id: '41b9c8d7-6e52-4a19-83f0-9c1d5b2e7a44', project: 'rite', cwd: '~/Dev/projects/Rite',
-          title: 'Mock the agent manager before building it', last: '4 min ago', state: 'running', turns: 63 },
-        { id: '7c2e091a-4d6f-4b83-a50c-18e3f9d4b26a', project: 'rite', cwd: '~/Dev/projects/Rite',
-          title: 'Register pane kinds instead of branching', last: '2 days ago', state: 'idle', turns: 95 },
+        S('41b9c8d7-6e52-4a19-83f0-9c1d5b2e7a44', 'rite', 'develop', '~/Dev/projects/Rite',
+          'Mock the agent manager before building it', '4 min ago', 'running', 63,
+          'Two layouts up; waiting on which one wins.'),
+        S('7c2e091a-4d6f-4b83-a50c-18e3f9d4b26a', 'rite', 'develop', '~/Dev/projects/Rite',
+          'Register pane kinds instead of branching', '2 days ago', 'idle', 95,
+          'Registry landed; one kind registered.'),
+        S('b3d5f817-2a69-4c04-9e73-5f8b1c6d0a29', 'rite', 'feat/agents', '~/Dev/projects/Rite',
+          'Measure what each agent CLI actually exposes', '1 h ago', 'idle', 22,
+          'Four binaries read; gemini resumes by index.'),
+        S('c8a2e5b0-9d43-4f17-a86c-2b7e0d4f9a61', 'rite', 'main', '~/Dev/projects/Rite',
+          'Why is the release binary 83 MB', '3 days ago', 'idle', 34,
+          'The embed folder was never emptied.'),
+        S('f0e7b3a9-1c54-4d28-b961-07a4e2c8f5d3', 'dotfiles', 'main', '~/.dotfiles',
+          'Make fish and bash agree about PATH', '1 week ago', 'idle', 6,
+          'One shared file, sourced by both.'),
       ],
     },
-    { id: 'codex', installed: true, version: '1.3.0', sessions: [] },
     // Installed and listable, and the handle it gives back is an index rather than an
     // id — so the row can be resumed and the id cannot be copied for later. The gap
     // is in the tool, and the manager says which rows have it instead of pretending
     // every conversation is equally recoverable.
-    { id: 'gemini', installed: true, version: '0.9.1',
+    {
+      id: 'gemini', installed: true, version: '0.9.1',
       sessions: [
-        { id: '2', project: 'rite', cwd: '~/Dev/projects/Rite',
-          title: 'Walk the layouts parser', last: '1 h ago', state: 'idle', turns: 11 },
-      ] },
-    { id: 'grok', installed: true, version: '0.2.56', sessions: [] },
+        S('2', 'rite', 'develop', '~/Dev/projects/Rite',
+          'Walk the layouts parser', '1 h ago', 'idle', 11, 'Read 4 files; no change proposed.'),
+        S('5', 'notes', 'main', '~/Notes',
+          'Turn three years of notes into something searchable', '6 days ago', 'idle', 19,
+          'Indexed; the tagging is still by hand.'),
+      ],
+    },
+    {
+      id: 'grok', installed: true, version: '0.2.56',
+      sessions: [
+        S('d4f8a1e6-7b23-4c95-8e01-6a2d9f3b7c48', 'rite', 'feat/agents', '~/Dev/projects/Rite',
+          'Sketch the card layout for the agent manager', '35 min ago', 'idle', 8,
+          'Three sketches; the second is the one.'),
+        S('9a3c6e02-5d71-4f84-b2a7-13e8c0d5f9b6', 'scratch', 'main', '~/scratch',
+          'Explain this regex to me like I wrote it', '9 days ago', 'idle', 4,
+          'Lookahead, not a group. It was never a group.'),
+      ],
+    },
+    {
+      id: 'codex', installed: true, version: '1.3.0',
+      sessions: [
+        S('5b7e2d94-8a16-4c38-9f50-2e6b1d7a4c03', 'rite', 'main', '~/Dev/projects/Rite',
+          'Port the audit script off the host cargo', '3 h ago', 'idle', 15,
+          'Runs in the container; the threshold is named once.'),
+      ],
+    },
     { id: 'hermes', installed: false },
     { id: 'opencode', installed: false },
   ],
@@ -270,6 +359,12 @@ function agentScopes() {
     walk(typeof lib === 'function' ? lib() : LIB, (n) => {
       (n.conns || []).forEach((m) => machines.push({
         id: m.name, kind: 'ssh', name: m.name, sub: `${m.user || 'user'}@${m.host || m.name}`,
+        // The card's coloured edge. Taken from the folder or collection the machine
+        // sits in rather than from a palette invented here: that colour was already
+        // chosen in the Library, so "the green ones are the home lab" is a fact the
+        // user established and the manager only reads. A machine of its own colour
+        // would be a second, competing language for the same thing.
+        color: m.color || n.color || 'var(--muted)',
         // THE PRECONDITION, read off the library rather than asked for separately.
         // No usable SSH access, no agent management — and the two ways to lack it are
         // different enough that collapsing them would cost the user the fix.
@@ -296,9 +391,54 @@ function agentScopes() {
   // listed, and it is the one scope that never resumes anything.
   const server = { id: '@server', kind: 'server', name: 'Rite server host', access: 'never',
     sub: 'rite.acme.io · the container Rite itself runs in' };
-  return [local, ...machines, server];
+  // EVERY MACHINE AT ONCE, and this is the entry no single-machine tool on the market
+  // has: every one of them reads the home directory of the host it runs on. Rite holds
+  // the fleet, so the default question is "where did I leave that conversation" and
+  // not "which host shall I interrogate". It aggregates what has ALREADY been read —
+  // it never fans a probe out across the library, because that would be one SSH round
+  // trip per machine behind a view that opened by itself.
+  const all = { id: '@all', kind: 'all', name: 'All machines', access: 'held',
+    sub: 'every conversation already read, newest first' };
+  return [all, local, ...machines, server];
 }
 const agentScope = (id) => agentScopes().find((s) => s.id === id) || agentScopes()[0];
+
+/* One flat list of conversations, which is what both layouts are built from: they
+   differ in how they arrange these rows and in nothing else. Keeping the selection in
+   one function is what makes the comparison honest — a layout cannot look better by
+   quietly showing different data. */
+function agentRows(scopeId, query) {
+  const q = (query || '').trim().toLowerCase();
+  const scopes = agentScopes().filter((s) =>
+    (scopeId === '@all' ? s.kind === 'ssh' || s.kind === 'local' : s.id === scopeId) &&
+    agentHasAccess(s));
+  const rows = [];
+  scopes.forEach((sc) => {
+    const probe = agentProbeOf(sc.id);
+    if (!probe) return;
+    const on = new Set(agentEnabled().map((t) => t.id));
+    probe.tools.forEach((pt) => {
+      if (!pt.installed || !on.has(pt.id)) return;
+      (pt.sessions || []).forEach((s) => rows.push({ scope: sc, tool: agentTool(pt.id), session: s }));
+    });
+  });
+  if (!q) return rows;
+  // Searched across what identifies a conversation, not across the transcript: the
+  // ask, the project, the branch and the machine. A transcript search is a different
+  // feature with a different cost, and pretending otherwise would be a slow surprise.
+  return rows.filter(({ scope, session }) =>
+    [session.ask, session.project, session.branch, scope.name].join(' ').toLowerCase().includes(q));
+}
+
+/* The tools that actually answered, in the order they are configured. A tool that is
+   not installed gets no band and no card: it is not a conversation, and six empty
+   cards per machine is how a surface stops being read at all. What was not found is
+   said once, in one line, at the foot of the view. */
+function agentBands(rows) {
+  return agentEnabled()
+    .map((t) => ({ tool: t, rows: rows.filter((r) => r.tool.id === t.id) }))
+    .filter((b) => b.rows.length);
+}
 
 /* Where the manager opens. The desktop lands on this machine, which is where its
    user's agents usually are; the browser lands on the first machine that can
@@ -461,15 +601,12 @@ function agentCopyId(id, tool) {
 }
 function agentCopyCmd(tool, id) { toast(`Copied — <span class="mono">${agentResume(tool, id)}</span>`); }
 
-/* One tool on one machine. Three outcomes, all of them visible: sessions, not
-   installed, or installed and unable to answer. */
+/* The one tool state that still earns a block of its own: INSTALLED AND UNABLE TO
+   ANSWER. A tool with conversations is a band of cards, and a tool that is absent is a
+   word in a line at the foot — neither comes through here. This is the state with
+   something to do about it, so it keeps the room to say what and where. */
 function agentToolBlock(sc, probeTool) {
   const tool = agentTool(probeTool.id);
-  if (!probeTool.installed) {
-    return `<div class="dcard atool off">
-      <div class="dcard-h">${M.agent}<span class="dcard-t">${tool.name}</span><span style="flex:1"></span>
-        <span class="muted" style="font-size:12px">not installed on ${sc.name}</span></div></div>`;
-  }
   const sessions = probeTool.sessions || [];
   let body;
   if (probeTool.error) {
@@ -486,68 +623,265 @@ function agentToolBlock(sc, probeTool) {
   } else {
     body = sessions.map((s) => agentSessionRow(sc, tool, s)).join('');
   }
-  const f = AGENT_FROM[tool.from] || AGENT_FROM.added;
   return `<div class="dcard atool">
     <div class="dcard-h">${M.agent}<span class="dcard-t">${tool.name}</span>
       <span class="chip-sm">${probeTool.version}</span>
-      <span class="afrom ${tool.from}" title="Where this adapter's two commands came from — ${f.hint}">${f.label}</span>
-      ${sessions.length ? `<span class="muted" style="font-size:12px">${sessions.length} conversation${sessions.length > 1 ? 's' : ''}</span>` : ''}
       <span style="flex:1"></span>
-      <button class="btn btn-ghost btn-sm" onclick="dlgAgentTools()" title="The two commands this adapter uses">${EXICON.gear}</button>
+      <button class="btn btn-ghost btn-sm" onclick="dlgAgentTools()" title="The two commands this adapter uses">${EXICON.gear} Adapter</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgNewAgent('${sc.id}','${tool.id}')">${ICON.plus} New</button></div>
     <div class="alist">${body}</div></div>`;
 }
 
 /* The view itself: scope first, because discovery is per-machine and costs a round
    trip; then the tools; then their conversations. */
+/* ================= the two layouts =================
+
+   One set of rows, two arrangements, and a switch in the header. They are both here
+   on purpose rather than one being chosen in a pull request: the question is which
+   survives a fleet, and that is answered by looking at twenty-one conversations in
+   both, not by arguing about it.
+
+   CARDS group by CLI and lay the conversations out in a grid under each. "By CLI" is
+   then the structure of the page rather than a filter on it, and the band's heading
+   carries the tool so no card has to repeat it.
+
+   PANES put the same grouping in a narrow list and give the rest of the width to one
+   conversation. The list holds more rows per screen than cards do, which is the whole
+   argument for it: forty conversations is a long wall of cards and a short scroll in
+   a sidebar.
+
+   What identifies a conversation is the same in both, because it is a property of the
+   conversation and not of the layout: the opening ask, the project and its BRANCH, the
+   machine's own colour from the Library, and how deep and how recent it is. Not the
+   adapter's provenance — that answers a maintainer's question, and it stays in Tools.
+   Not the uuid, which is never typed and always one menu away. */
+
+const AGENT_LAYOUTS = {
+  cards: { label: 'Cards', hint: 'Grouped by CLI, laid out as a grid' },
+  panes: { label: 'List', hint: 'Grouped by CLI in a narrow list, with one conversation open' },
+};
+function agentSetLayout(k) { STATE.agentLayout = k; renderMain(); }
+function agentSearch(v) { STATE.agentQuery = v; renderMain(); }
+
+/* The coloured edge, the state dot and the two lines of identity. `tail` — the agent's
+   most recent line — is deliberately NOT here: on a card it doubles the height for a
+   sentence that is only useful once a conversation is the one being considered, which
+   is what the preview panel is for. */
+function agentCardHTML(r, i) {
+  const { scope, tool, session: s } = r;
+  const dot = s.state === 'running' ? 'up' : 'seen';
+  return `<div class="acard ${STATE.agentPick === s.id ? 'on' : ''}" style="--edge:${scope.color || 'var(--muted)'}"
+      role="button" tabindex="0" onclick="agentPick('${s.id}')"
+      ondblclick="resumeAgent('${scope.id}','${tool.id}','${s.id}')"
+      title="${esc(s.ask)} — double-click to resume">
+    <div class="acard-h">
+      <span class="pst ${dot}" title="${s.state === 'running' ? 'Working now' : 'Idle — resumable'}"></span>
+      <span class="acard-proj">${esc(s.project)}</span>
+      <span class="acard-br mono" title="git branch">${esc(s.branch)}</span>
+      <span style="flex:1"></span>
+      <button class="acard-more" title="More"
+        onclick="event.stopPropagation();agentRowMenu('${scope.id}','${tool.id}','${s.id}',event)">${EXICON.more}</button>
+    </div>
+    <div class="acard-ask">${esc(s.ask)}</div>
+    <div class="acard-f mono">${esc(scope.name)} · ${s.turns} turns · ${esc(s.last)}</div>
+  </div>`;
+}
+function agentPick(id) { STATE.agentPick = id; renderMain(); }
+
+/* A band per tool that answered. The count is in the heading because "how many
+   conversations does this tool hold" is read far more often than any one card. */
+function agentBandHTML(b) {
+  const n = b.rows.length;
+  return `<div class="aband">
+    <div class="aband-h">
+      <span style="color:var(--purple);display:grid;place-items:center">${M.agent}</span>
+      <span class="aband-t">${b.tool.name}</span>
+      <span class="muted" style="font-size:12px">${n} conversation${n > 1 ? 's' : ''}</span>
+      <span class="line"></span>
+      <button class="btn btn-ghost btn-sm" onclick="dlgNewAgent('${b.rows[0].scope.id}','${b.tool.id}')">${ICON.plus} New</button>
+    </div>
+    <div class="acards">${b.rows.map(agentCardHTML).join('')}</div>
+  </div>`;
+}
+
+/* The sidebar row: the same facts, one line shorter, because the branch and the ask
+   have to share a width that is a quarter of the page. */
+function agentListRowHTML(r) {
+  const { scope, tool, session: s } = r;
+  const dot = s.state === 'running' ? 'up' : 'seen';
+  return `<div class="arow-s ${STATE.agentPick === s.id ? 'on' : ''}" style="--edge:${scope.color || 'var(--muted)'}"
+      role="button" tabindex="0" onclick="agentPick('${s.id}')"
+      ondblclick="resumeAgent('${scope.id}','${tool.id}','${s.id}')">
+    <div class="arow-s-h">
+      <span class="pst ${dot}"></span>
+      <span class="arow-s-proj">${esc(s.project)}</span>
+      <span class="arow-s-br mono">${esc(s.branch)}</span>
+      <span class="arow-s-age">${esc(s.last)}</span>
+      <button class="acard-more" title="More"
+        onclick="event.stopPropagation();agentRowMenu('${scope.id}','${tool.id}','${s.id}',event)">${EXICON.more}</button>
+    </div>
+    <div class="arow-s-ask">${esc(s.ask)}</div>
+    <div class="arow-s-f mono">${esc(scope.name)} · ${s.turns} turns</div>
+  </div>`;
+}
+
+/* The panel. Its tab strip is the seam deliberately left open: "In effect" is the
+   skills/commands/hooks read that is a modal today, and what comes after it — a note
+   vault, a map of what a project loads, whatever earns its place — arrives as another
+   tab rather than as a redesign. The panel is READ-ONLY and stays short: ADR 0022 §8
+   refuses a chat UI rebuilt over a vendor's TUI, and a preview that grew into a
+   transcript reader would be that by a slower route. */
+function agentPanelHTML(r) {
+  if (!r) {
+    return `<div class="apanel empty"><span class="muted" style="font-size:13px">Pick a conversation.</span></div>`;
+  }
+  const { scope, tool, session: s } = r;
+  const tab = STATE.agentPanelTab || 'preview';
+  const t = (k, label) => `<button class="apanel-tab ${tab === k ? 'on' : ''}" onclick="STATE.agentPanelTab='${k}';renderMain()">${label}</button>`;
+  const body = tab === 'effect'
+    ? agentEffectHTML(scope, tool, s)
+    : `<div class="apanel-body">
+        <div class="ln"><span class="pr">❯</span> ${esc(s.ask)}</div>
+        <div class="ln di">  ${esc(s.tail || '')}</div>
+        <dl class="afacts">
+          <dt>Runs on</dt><dd class="mono">${esc(scope.name)} · ${esc(scope.sub)}</dd>
+          <dt>Directory</dt><dd class="mono">${esc(s.cwd)}</dd>
+          <dt>Branch</dt><dd class="mono">${esc(s.branch)}</dd>
+          <dt>Depth</dt><dd>${s.turns} turns · last active ${esc(s.last)}</dd>
+          <dt>${tool.idKind === 'index' ? 'Index' : 'Conversation id'}</dt><dd class="mono">${esc(s.id)}${
+            tool.idKind === 'index'
+              ? ' <span class="aidkind warn">moves as the list changes</span>'
+              : ''}</dd>
+          <dt>Resumes with</dt><dd class="mono">${esc(agentResume(tool, s.id))}</dd>
+        </dl>
+        <p class="muted" style="font-size:11.5px;margin:14px 0 0;line-height:1.6">Read, never written, and never stored.
+          The pane shows the real CLI — this is the chooser, not a second place to hold the conversation.</p>
+      </div>`;
+  return `<div class="apanel">
+    <div class="apanel-h">
+      <div class="grow">
+        <div class="apanel-t">${esc(s.project)} <span class="mono apanel-br">${esc(s.branch)}</span></div>
+        <div class="apanel-sub mono">${esc(scope.name)} · ${esc(tool.name)} · ${esc(s.cwd)}</div>
+      </div>
+      <span class="pst ${s.state === 'running' ? 'up' : 'seen'}"></span>
+    </div>
+    <div class="apanel-tabs">${t('preview', 'Preview')}${t('effect', 'In effect')}</div>
+    ${body}
+    <div class="apanel-acts">
+      <button class="btn btn-primary btn-sm" onclick="resumeAgent('${scope.id}','${tool.id}','${s.id}')">${ICON.play} Resume</button>
+      <button class="btn btn-ghost btn-sm" onclick="agentCopyId('${s.id}',agentTool('${tool.id}'))">${M.edit} ${tool.idKind === 'index' ? 'Index' : 'Id'}</button>
+      <button class="btn btn-ghost btn-sm" onclick="agentCopyCmd(agentTool('${tool.id}'),'${s.id}')">${ICON.term} Command</button>
+    </div>
+  </div>`;
+}
+
+/* The skills/commands/hooks read, as a tab instead of a modal. Same data and same
+   refusal to write; it is here because a panel that can hold it should, and because
+   this is the shape every later integration will take. */
+function agentEffectHTML(scope, tool, s) {
+  const ctx = agentContextOf(scope.id, s.cwd);
+  if (!ctx) {
+    return `<div class="apanel-body"><p class="muted" style="font-size:12.5px;margin:0;line-height:1.6">Nothing has been read for
+      <span class="mono">${esc(s.cwd)}</span> yet. Reading it runs one command on ${esc(scope.name)} — the same deal as discovery.</p></div>`;
+  }
+  const row = (x) => `<div class="aeff ${x.shadowed ? 'shadowed' : ''}"><span class="alayer ${x.from}">${x.from}</span>
+    <span class="grow">${esc(x.name || x.event)}</span><span class="mono aeff-p" title="${esc(x.path)}">${esc(x.path)}</span></div>`;
+  return `<div class="apanel-body">
+    ${ctx.shared ? `<div class="anote" style="margin:0 0 10px">${IC_INFO}<span><b>Shared account.</b> Anything under
+      <span class="mono">${esc(ctx.account.split('@')[0])}</span>'s home runs for everyone who signs in as it.</span></div>` : ''}
+    ${ctx.skills.map(row).join('')}${ctx.commands.map(row).join('')}${ctx.hooks.map(row).join('')}
+    <button class="btn btn-ghost btn-sm" style="margin-top:8px"
+      onclick="dlgAgentContext('${scope.id}','${tool.id}','${s.id}')">Open the full read</button>
+  </div>`;
+}
+
 function agentsViewHTML() {
   const sc = agentScope(STATE.agentScope);
   const probe = agentProbeOf(sc.id);
   // Only a scope Rite can sign in to ever claims to have been read.
-  const readable = agentHasAccess(sc);
+  const readable = agentHasAccess(sc) && sc.kind !== 'all';
+  const layout = STATE.agentLayout || 'cards';
+  const q = STATE.agentQuery || '';
 
-  let body;
+  let body = null;
   if (sc.kind === 'server') {
-    body = agentServerNote();
+    body = `<div class="dgrid">${agentServerNote()}</div>`;
   } else if (sc.kind === 'ssh' && !agentHasAccess(sc)) {
-    body = agentGateNote(sc);
+    body = `<div class="dgrid">${agentGateNote(sc)}</div>`;
   } else if (sc.kind === 'local' && AGENT_SHELL === 'web') {
-    body = `<div class="dnote">${IC_INFO}<span><b>This machine is not reachable from a browser.</b>
+    body = `<div class="dgrid"><div class="dnote">${IC_INFO}<span><b>This machine is not reachable from a browser.</b>
       Attach the Rite desktop client to this server and its agents appear here. Agents on the
-      machines in the library need nothing — they run over SSH, the same way their terminals do.</span></div>`;
-  } else if (!probe) {
-    body = `<div class="aempty">
+      machines in the library need nothing — they run over SSH, the same way their terminals do.</span></div></div>`;
+  } else if (sc.kind !== 'all' && !probe) {
+    body = `<div class="dgrid"><div class="aempty">
       <div class="muted" style="font-size:13px;line-height:1.6;max-width:520px">
         <b>${sc.name} has not been probed yet.</b><br>
         Looking for agent sessions runs one command on the machine, so Rite asks before it does it —
         and reports when the answer was read, not just what it said.</div>
-      <button class="btn btn-primary btn-sm" onclick="agentProbeNow()">${M.refresh} Probe ${sc.name}</button></div>`;
-  } else {
-    const on = new Set(agentEnabled().map((t) => t.id));
-    const known = probe.tools.filter((t) => on.has(t.id));
-    // An adapter added after the last probe has simply not been looked for yet.
-    const unprobed = agentEnabled().filter((t) => !probe.tools.some((p) => p.id === t.id));
-    body = known.map((t) => agentToolBlock(sc, t)).join('')
-      + unprobed.map((t) => `<div class="dcard atool off"><div class="dcard-h">${M.agent}<span class="dcard-t">${t.name}</span>
-          <span style="flex:1"></span><span class="muted" style="font-size:12px">added since the last probe — probe again to look for it</span></div></div>`).join('');
+      <button class="btn btn-primary btn-sm" onclick="agentProbeNow()">${M.refresh} Probe ${sc.name}</button></div></div>`;
   }
 
-  return `<div class="mdash">
+  // The conversations, in whichever arrangement is switched on.
+  const rows = agentRows(sc.id, q);
+  const bands = agentBands(rows);
+  if (body === null) {
+    if (!rows.length) {
+      body = `<div class="dgrid"><div class="aempty"><div class="muted" style="font-size:13px;max-width:520px">${q
+        ? `No conversation matches <span class="mono">${esc(q)}</span>.`
+        : 'No conversation on the machines read so far.'}</div></div></div>`;
+    } else if (layout === 'panes') {
+      const pick = rows.find((r) => r.session.id === STATE.agentPick) || rows[0];
+      body = `<div class="asplit">
+        <div class="alist-side scroll">${bands.map((b) => `<div class="alist-grp">${b.tool.name}
+            <span class="muted" style="font-weight:400">${b.rows.length}</span></div>${b.rows.map(agentListRowHTML).join('')}`).join('')}</div>
+        ${agentPanelHTML(pick)}
+      </div>`;
+    } else {
+      body = `<div class="abands">${bands.map(agentBandHTML).join('')}</div>`;
+    }
+  }
+
+  // Tools that answered "not installed" are said once, here, instead of as a card
+  // each. Six empty cards per machine is how a surface stops being read.
+  const absent = (() => {
+    if (sc.kind === 'all' || !probe) return '';
+    const on = new Set(agentEnabled().map((t) => t.id));
+    const miss = probe.tools.filter((t) => on.has(t.id) && !t.installed).map((t) => agentTool(t.id).name);
+    const added = agentEnabled().filter((t) => !probe.tools.some((p) => p.id === t.id)).map((t) => t.name);
+    const parts = [];
+    if (miss.length) parts.push(`Not installed on ${esc(sc.name)}: ${miss.join(', ')}.`);
+    if (added.length) parts.push(`Added since the last probe, not looked for yet: ${added.join(', ')}.`);
+    return parts.length ? `<div class="aabsent mono">${parts.join(' ')}</div>` : '';
+  })();
+
+  // A tool that is installed and cannot answer is NOT folded into that line: it is
+  // the one state with something to do about it.
+  const broken = (sc.kind === 'all' || !probe) ? '' : probe.tools
+    .filter((t) => t.installed && t.error)
+    .map((t) => agentToolBlock(sc, t)).join('');
+
+  const lay = (k) => `<button class="btn btn-sm ${layout === k ? 'btn-primary' : 'btn-ghost'}"
+    onclick="agentSetLayout('${k}')" title="${AGENT_LAYOUTS[k].hint}">${AGENT_LAYOUTS[k].label}</button>`;
+
+  return `<div class="mdash agents">
     <div class="mdash-hd">
       <span style="color:var(--purple);display:grid;place-items:center">${M.agent}</span>
       <div class="mdash-id"><div class="mdash-name">Agents</div>
-        <div class="mdash-sub">Pick the machine, then the tool, then the conversation.</div></div>
+        <div class="mdash-sub">${rows.length} conversation${rows.length === 1 ? '' : 's'}${sc.kind === 'all' ? ' across the machines read so far' : ` on ${esc(sc.name)}`}</div></div>
       <span style="flex:1"></span>
+      <input class="inp inp-sm asearch" placeholder="Search the ask, project, branch or machine"
+        value="${esc(q)}" oninput="agentSearch(this.value)">
+      <span class="aseg">${lay('cards')}${lay('panes')}</span>
       <button class="btn btn-sm" onclick="agentScopeMenu(event)" title="Choose the machine to look on">${M.machine} ${sc.name} ${EXICON.chevD}</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgAgentTools()" title="Which agent CLIs Rite looks for">${EXICON.gear} Tools</button>
-      ${probe && readable ? `<span class="muted" style="font-size:12px" title="Discovery is one command over SSH — read on request, not continuously">read ${probe.at}</span>
+      ${readable && probe ? `<span class="muted" style="font-size:12px" title="Discovery is one command over SSH — read on request, not continuously">read ${probe.at}</span>
         <button class="btn btn-ghost btn-sm" onclick="agentProbeNow()">${M.refresh} Probe again</button>` : ''}
     </div>
-    <div class="dgrid">${body}</div>
-    <div class="mdash-foot">${IC_INFO}<span>Agents are managed only on a machine with an SSH account already in
-      place, and they run under that account — never inside the Rite server. A desktop client and a browser reach the same
-      machines the same way, which is the point: the agents live on the host, not in the surface that displays
-      them. Resuming opens a pane in a new tab; this list stays where it is.</span></div>
+    ${body}
+    ${broken ? `<div class="dgrid">${broken}</div>` : ''}
+    ${absent}
+    <div class="mdash-foot">${IC_INFO}<span>Agents run on the machine, under the SSH account already in place there —
+      never inside the Rite server. Resuming opens a pane in a new tab.</span></div>
   </div>`;
 }
 

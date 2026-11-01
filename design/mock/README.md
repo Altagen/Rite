@@ -151,6 +151,71 @@ arbitrary code, and in the server's own process it would sit beside every user's
 encrypted data. On a target machine Rite grants no access the user did not already
 have; inside the container it would grant all of it.
 
+### Two layouts, both on screen, because the choice is not obvious
+
+The manager draws the same conversations two ways and a switch in its header picks
+one. Both are in the mock on purpose: the question is which survives a real fleet,
+and that is answered by looking at twenty-one conversations in both, not by arguing
+about it in a pull request. They are built from one `agentRows`, so neither can look
+better by quietly showing fewer rows — a test holds that they list exactly the same
+asks, in the same groups, in the same order.
+
+**Cards** group by CLI and lay the conversations out in a grid under each band. "By
+CLI" is then the structure of the page rather than a filter on it, and the band's
+heading carries the tool so no card repeats it. It reads at a glance and it is the
+one that gets worse fastest: forty conversations is a long wall.
+
+**List** puts the same grouping in a narrow column and gives the rest of the width to
+one conversation. It holds roughly twice the rows per screen, which is the whole
+argument for it. Its weakness is the other side: a panel that may only ever hold a
+preview can look empty, so it is filled with the facts a chooser legitimately has —
+where the agent runs, its directory, its branch, its depth, its handle and the exact
+command that resumes it — rather than with more transcript. A preview that grew into
+a transcript reader would be the chat UI ADR 0022 §8 refuses, reached slowly.
+
+The panel's **tab strip is a seam left open**. "In effect" is the skills, commands and
+hooks read that is a modal elsewhere; what comes after it — a note vault, a map of
+what a project loads, whatever earns its place — arrives as another tab rather than as
+a redesign. The per-conversation menu is the other seam, on both layouts.
+
+#### What identifies a conversation, since its name does not
+
+Four facts, the same in both layouts because they belong to the conversation and not
+to the arrangement:
+
+| | |
+|---|---|
+| **The opening ask** | what was actually typed. It is the headline and it gets two lines, because a truncated question is the one thing here that cannot be guessed from the rest |
+| **The project and its branch** | two conversations about one project are told apart by the branch, and nothing else on the card would do it |
+| **The machine, as a coloured edge** | taken from the folder or collection it sits in — a colour already chosen in the Library, so "the orange ones are the cache boxes" is a fact the user established and the manager only reads |
+| **Depth and recency** | a long conversation from yesterday and this morning's two-minute try stop looking alike |
+
+What is **not** on a card: the adapter's provenance, which answers a maintainer's
+question and stays in **Tools**; the uuid, which is never typed and is one menu away;
+and the agent's last line, which only matters once a conversation is the one being
+considered, so it lives in the panel.
+
+#### All machines
+
+The default scope aggregates every machine already read, newest first. No
+single-machine tool on the market has this entry — every one of them reads the home
+directory of the host it runs on — and it is the reason the machine had to be a fact
+on the card rather than a heading above it. It aggregates what has **already** been
+read and never fans a probe out across the library: that would be one SSH round trip
+per machine behind a view that opened by itself.
+
+Search covers what identifies a conversation — the ask, the project, the branch, the
+machine — and not the transcript, which is a different feature with a different cost.
+
+#### What a tool's state looks like now
+
+A tool that is **not installed** gets no card and no block. It is a word in one line
+at the foot: six empty cards per machine is how a surface stops being read. A tool
+that is installed and **cannot answer** keeps a block of its own, because it is the
+one state with something to do about it — and the error text separates a host that
+refused us from an adapter of ours that is wrong for the installed build. Those have
+fixes in different places, so the block says which.
+
 ### The first condition: an account you already have on that host
 
 **No usable SSH access, no agent management.** Not a rail Rite adds on top — it is the
