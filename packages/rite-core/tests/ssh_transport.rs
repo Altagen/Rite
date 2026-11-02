@@ -22,7 +22,7 @@ use rite_core::connections_manager::ConnectionsManager;
 use rite_core::db::Database;
 use rite_core::events::{SessionEvents, SharedEvents};
 use rite_core::known_hosts;
-use rite_core::terminal::{HostKeyTrust, SessionManager, SshSession};
+use rite_core::terminal::{HostKeyTrust, RemoteProgram, SessionManager, SshSession};
 
 use russh::server::{
     Auth, ChannelOpenHandle, Config as ServerConfig, Handler, Msg, Server, Session,
@@ -45,11 +45,19 @@ struct TestServer;
 impl Server for TestServer {
     type Handler = TestHandler;
     fn new_client(&mut self, _peer: Option<SocketAddr>) -> TestHandler {
-        TestHandler
+        TestHandler::default()
     }
 }
 
-struct TestHandler;
+/// `with_pty` is how this server tells the two exec paths apart, which is what sshd
+/// does too: an exec on a channel that asked for a PTY is an interactive program and
+/// the channel stays open for as long as it runs; an exec with no PTY is the one-shot
+/// probe, answered and closed. Without the distinction the agent path would look
+/// exactly like `run_remote_command` and the test would prove nothing.
+#[derive(Default)]
+struct TestHandler {
+    with_pty: bool,
+}
 
 impl Handler for TestHandler {
     type Error = russh::Error;
@@ -93,6 +101,7 @@ impl Handler for TestHandler {
         _modes: &[(russh::Pty, u32)],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        self.with_pty = true;
         session.channel_success(channel)?;
         Ok(())
     }
@@ -144,6 +153,12 @@ impl Handler for TestHandler {
     ) -> Result<(), Self::Error> {
         session.channel_success(channel)?;
         let command = String::from_utf8_lossy(data).to_string();
+        if self.with_pty {
+            // An interactive program: it announces itself and keeps running, so the
+            // channel is left open and the data handler above keeps echoing.
+            session.data(channel, format!("started:{command}").into_bytes())?;
+            return Ok(());
+        }
         session.data(channel, format!("ran:{command}").into_bytes())?;
         session.extended_data(channel, 1, b"on-stderr".to_vec())?;
         let code = if command == "fail" { 3 } else { 0 };
@@ -411,6 +426,7 @@ async fn ssh_session_connects_authenticates_and_round_trips() {
         HostKeyTrust::local().forcing(),
         None,
         Vec::new(),
+        RemoteProgram::Shell,
     )
     .await
     .expect("SSH session should connect and authenticate");
@@ -438,6 +454,173 @@ async fn ssh_session_connects_authenticates_and_round_trips() {
         .resize(120, 40)
         .await
         .expect("resize should succeed");
+    session.close().await.expect("close should succeed");
+}
+
+/// A saved machine opens a SHELL, and nothing else.
+///
+/// `create_session` is the path every saved-machine terminal takes and it had no test:
+/// the transport tests above drive `SshSession::connect` directly, so changing what
+/// this call site asks for went unnoticed. A mutation proved it — swapping its
+/// `RemoteProgram::Shell` for a command left all sixteen tests green.
+///
+/// The assertion is the banner, which only `shell_request` emits on the test server, so
+/// it cannot be satisfied by an exec. It needs an unlocked vault and a saved machine,
+/// which is also the first end-to-end coverage this entry point has had.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_saved_machine_opens_a_shell() {
+    let port = spawn_test_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::new(&dir.path().join("t.db")).await.unwrap();
+    sqlx::query(
+        "INSERT OR REPLACE INTO settings (key, value, updated_at) \
+         VALUES ('host_key_verification_mode', 'accept', strftime('%s','now'))",
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
+    let auth = AuthManager::new(db.clone());
+    auth.setup_master_password("Str0ng!P@ss1").await.unwrap();
+    auth.unlock("Str0ng!P@ss1").await.unwrap();
+    let conns = ConnectionsManager::new(db.clone(), auth.clone());
+    let info = conns
+        .create_connection(CreateConnectionInput {
+            name: "host".into(),
+            protocol: "SSH".into(),
+            hostname: "127.0.0.1".into(),
+            port,
+            username: USER.into(),
+            auth_method: AuthMethod::Password {
+                password: Some(PASS.into()),
+            },
+            color: None,
+            icon: None,
+            folder: None,
+            notes: None,
+            ssh_keep_alive_override: None,
+            ssh_keep_alive_interval: None,
+            preconnect: None,
+            jump: None,
+            forwards: None,
+            needs_passphrase: false,
+            needs_password: false,
+        })
+        .await
+        .unwrap();
+
+    let mgr = SessionManager::new(db.clone(), auth.clone());
+    let spy = Arc::new(Spy::default());
+    let out = spy.out.clone();
+    let events: SharedEvents = spy;
+
+    let session_id = mgr
+        .create_session(
+            info.id.clone(),
+            events,
+            None,
+            None,
+            known_hosts::LOCAL_OWNER,
+        )
+        .await
+        .expect("a saved machine should open a session");
+
+    let buffered = mgr.claim_session_output(&session_id).await;
+    out.lock().unwrap().extend_from_slice(&buffered);
+
+    assert!(
+        wait_for(&out, BANNER, Duration::from_secs(5)).await,
+        "a saved machine opens a login shell, so its banner must arrive"
+    );
+    // And not through the other request: `started:` is what an exec answers with.
+    assert!(
+        !String::from_utf8_lossy(&out.lock().unwrap()).contains("started:"),
+        "a terminal pane must not be opened by running a command"
+    );
+
+    mgr.close_session(&session_id).await.expect("close");
+}
+
+/// A PTY, then a named program — the path ADR 0022 §7.1 said the core still owed.
+///
+/// Until this existed, `connect` asked for a PTY and then a shell, unconditionally.
+/// Neither of the two shapes that did exist could carry an agent's resume command:
+/// `run_remote_command` is exec with NO pty under a 15 s cap, and typing the command
+/// into a shell after a delay is forbidden by name, because a shell discards queued
+/// input while it sets the tty up — an early send is gone, not late.
+///
+/// The test server tells the two execs apart the way sshd does, on whether the channel
+/// asked for a PTY first. Asserted on `started:` and not on `ran:`: the one-shot probe
+/// answers `ran:` and closes, so matching that would pass against the old path and
+/// prove nothing. And the session must keep LIVING afterwards — input round-trips and
+/// a resize is accepted — because an agent is long-lived and a channel that closed on
+/// its first reply would be `run_remote_command` wearing a different name.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ssh_session_runs_one_program_under_a_pty() {
+    let port = spawn_test_server().await;
+    let (_dir, pool) = test_db().await;
+
+    let spy = Arc::new(Spy::default());
+    let out = spy.out.clone();
+    let events: SharedEvents = spy;
+
+    let session = SshSession::connect(
+        test_connection(port),
+        AuthMethod::Password {
+            password: Some(PASS.into()),
+        },
+        events,
+        pool,
+        None,
+        HostKeyTrust::local().forcing(),
+        None,
+        Vec::new(),
+        // A command line, not an argv: SSH "exec" carries a string and sshd hands it to
+        // the login shell, so the quoting is this caller's to get right.
+        RemoteProgram::Exec("claude --resume 3f1c9e7a-58b4-4c21".into()),
+    )
+    .await
+    .expect("a session should open with a PTY and a command");
+
+    let buffered = session.claim_initial_output().await;
+    out.lock().unwrap().extend_from_slice(&buffered);
+
+    // The command reached the server as written, through the exec request.
+    assert!(
+        wait_for(
+            &out,
+            b"started:claude --resume 3f1c9e7a-58b4-4c21",
+            Duration::from_secs(5)
+        )
+        .await,
+        "the command should arrive through exec, on a channel that has a PTY"
+    );
+    // And NOT through the one-shot path, which would have answered and closed.
+    assert!(
+        !String::from_utf8_lossy(&out.lock().unwrap()).contains("ran:"),
+        "an exec with a PTY must not be answered as the one-shot probe"
+    );
+    // No shell was asked for: the banner is what `shell_request` emits.
+    assert!(
+        !out.lock()
+            .unwrap()
+            .windows(BANNER.len())
+            .any(|w| w == BANNER),
+        "a named program must not come with a login shell as well"
+    );
+
+    // Still alive: an agent is interactive and long-lived.
+    session
+        .send_input(b"hello\n")
+        .await
+        .expect("the channel should still take input");
+    assert!(
+        wait_for(&out, b"echo:hello", Duration::from_secs(5)).await,
+        "the channel should still be open after the program started"
+    );
+    session
+        .resize(120, 40)
+        .await
+        .expect("a PTY was allocated, so a resize must be accepted");
     session.close().await.expect("close should succeed");
 }
 
@@ -474,6 +657,7 @@ async fn ssh_session_rejects_changed_host_key() {
         HostKeyTrust::local(),
         None,
         Vec::new(),
+        RemoteProgram::Shell,
     )
     .await;
 
@@ -529,6 +713,7 @@ async fn ssh_session_authenticates_with_rsa_key() {
         HostKeyTrust::local().forcing(),
         None,
         Vec::new(),
+        RemoteProgram::Shell,
     )
     .await
     .expect("RSA public-key auth should succeed with rsa-sha2 negotiation");
@@ -568,6 +753,7 @@ async fn ssh_session_fails_cleanly_on_refused_connection() {
         HostKeyTrust::local().forcing(),
         None,
         Vec::new(),
+        RemoteProgram::Shell,
     )
     .await;
 
@@ -737,6 +923,7 @@ async fn ssh_session_completes_keyboard_interactive_via_provider() {
         HostKeyTrust::local().forcing(),
         Some(provider),
         Vec::new(),
+        RemoteProgram::Shell,
     )
     .await
     .expect("keyboard-interactive should complete via the provider");
@@ -772,6 +959,7 @@ async fn ssh_session_autoanswers_keyboard_interactive_password() {
         HostKeyTrust::local().forcing(),
         None, // no UI provider — the password prompt must be auto-answered
         Vec::new(),
+        RemoteProgram::Shell,
     )
     .await
     .expect("a keyboard-interactive password prompt should be auto-answered");
@@ -947,6 +1135,7 @@ async fn ssh_session_publickey_then_second_factor() {
         HostKeyTrust::local().forcing(),
         Some(provider),
         Vec::new(),
+        RemoteProgram::Shell,
     )
     .await
     .expect("a partial-success primary should complete via the second factor");
@@ -990,6 +1179,7 @@ async fn ssh_session_connects_through_a_jump_host() {
                 password: Some(PASS.into()),
             },
         )],
+        RemoteProgram::Shell,
     )
     .await
     .expect("session should connect through the jump host");
@@ -1053,6 +1243,7 @@ async fn ssh_session_connects_through_two_jump_hosts() {
                 },
             ),
         ],
+        RemoteProgram::Shell,
     )
     .await
     .expect("session should connect through two chained jump hosts");
