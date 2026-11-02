@@ -657,6 +657,15 @@ const ServerModeSchema = z.object({
     })
     .optional(),
   // Collection governance policy (admin → Collections). Absent ⇒ permissive defaults.
+  // Where the agent manager may discover and read (ADR 0022 §3). Its own key rather than
+  // `dashboardPolicy`: allowing `docker ps` is not the same decision as allowing a home
+  // directory to be enumerated. No `minInterval` — discovery is explicit, never periodic.
+  agentPolicy: z
+    .object({
+      webui: z.boolean(),
+      clients: z.boolean(),
+    })
+    .optional(),
   // Where layouts may be used (ADR 0027): `webui` for a browser, `clients` for a desktop
   // window signed into this instance. Absent ⇒ both, like a server never configured.
   // Policy only — the blob is sealed client-side, so the server cannot enforce it.
@@ -679,6 +688,7 @@ export type HealthcheckPolicy = NonNullable<z.infer<typeof ServerModeSchema>['he
 export type CollectionPolicy = NonNullable<z.infer<typeof ServerModeSchema>['collectionPolicy']>;
 export type DashboardPolicy = NonNullable<z.infer<typeof ServerModeSchema>['dashboardPolicy']>;
 export type LayoutsPolicy = NonNullable<z.infer<typeof ServerModeSchema>['layoutsPolicy']>;
+export type AgentPolicy = NonNullable<z.infer<typeof ServerModeSchema>['agentPolicy']>;
 // Active health-check probe (ADR 0017). The client sends host:port (decrypted from its own
 // blob) per target; the server returns a reachability verdict. `unsupported` ≠ `down` — it
 // means the method can't run (e.g. icmp without privileges), so the UI won't paint it offline.
@@ -964,6 +974,13 @@ export const BackendAdmin = {
   setDashboardPolicy: (policy: DashboardPolicy) =>
     invokeWithValidation(
       'admin_set_dashboard_policy',
+      z.null(),
+      policy as unknown as Record<string, unknown>,
+    ),
+  /** Set the agent-manager policy (org-admin, ADR 0022). Sends the whole policy object. */
+  setAgentPolicy: (policy: AgentPolicy) =>
+    invokeWithValidation(
+      'admin_set_agent_policy',
       z.null(),
       policy as unknown as Record<string, unknown>,
     ),

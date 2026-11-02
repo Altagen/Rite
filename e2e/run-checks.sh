@@ -76,7 +76,8 @@ echo "server checks (fresh accounts server each):"
 for c in discovery-check first-login-check reset-check manager-role-check \
          rbac-hierarchy-check enrollment-token-check enrollment-scoping-check \
          invitations-switch-check self-register-check collection-policy-check \
-         healthcheck-check dashboard-policy-check layouts-policy-check \
+         healthcheck-check dashboard-policy-check agent-policy-check \
+         layouts-policy-check \
          server-authz-check; do
   pkill -f 'target/debug/rite-server' 2>/dev/null
   sleep 1

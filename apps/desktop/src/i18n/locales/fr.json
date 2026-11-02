@@ -934,7 +934,16 @@
       "layoutsWebuiLabel": "Autoriser les dispositions dans la web UI",
       "layoutsClients": "Autoriser dans les clients attachés",
       "layoutsClientsDesc": "Une fenêtre desktop choisit poste par poste entre la copie du compte et un fichier local. Désactivé retire les deux.",
-      "layoutsClientsLabel": "Autoriser les dispositions dans les clients attachés"
+      "layoutsClientsLabel": "Autoriser les dispositions dans les clients attachés",
+      "agents": "Gestionnaire d’agents — découverte",
+      "agentsDesc": "La découverte exécute une commande sur une machine et lit le répertoire personnel du compte utilisé pour s’y connecter. Reprendre une conversation n’est pas gouverné : c’est un shell que ce compte possède déjà.",
+      "agentsStrength": "Les deux ne se valent pas. Web UI est une application : ce serveur exécute la commande. Clients est une politique : un client sonde depuis son propre réseau et un client modifié peut ignorer l’interrupteur.",
+      "agentsWebui": "Autoriser dans la web UI",
+      "agentsWebuiDesc": "Ce serveur exécute la commande, donc sa propre sortie réseau paie. Désactivé, c’est désactivé pour tout le monde dans un navigateur.",
+      "agentsWebuiLabel": "Autoriser la découverte des agents dans la web UI",
+      "agentsClients": "Autoriser dans les clients attachés",
+      "agentsClientsDesc": "Chaque client sonde depuis son propre réseau, donc les postes paient. Désactivé retire la découverte, pas le terminal.",
+      "agentsClientsLabel": "Autoriser la découverte des agents dans les clients attachés"
     },
     "teams": {
       "title": "Équipes",

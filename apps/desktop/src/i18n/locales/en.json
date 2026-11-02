@@ -934,7 +934,16 @@
       "layoutsWebuiLabel": "Allow layouts in the web UI",
       "layoutsClients": "Allow in attached clients",
       "layoutsClientsDesc": "A desktop window picks per computer between the account's copy and a local file. Off removes both.",
-      "layoutsClientsLabel": "Allow layouts in attached clients"
+      "layoutsClientsLabel": "Allow layouts in attached clients",
+      "agents": "Agent manager — discovery",
+      "agentsDesc": "Discovery runs one command on a machine and reads the home directory of the account it signed in as. Resuming a conversation is not governed: it is a shell that account already has.",
+      "agentsStrength": "Not equally strong. Web UI is enforcement: this server runs the command. Clients is policy: a client probes from its own network and a modified one can ignore the switch.",
+      "agentsWebui": "Allow in the web UI",
+      "agentsWebuiDesc": "This server runs the command, so its own egress pays. Off is off for everyone in a browser.",
+      "agentsWebuiLabel": "Allow agent discovery in the web UI",
+      "agentsClients": "Allow in attached clients",
+      "agentsClientsDesc": "Each client probes from its own network, so the endpoints pay. Off removes discovery, not the terminal.",
+      "agentsClientsLabel": "Allow agent discovery in attached clients"
     },
     "teams": {
       "title": "Teams",

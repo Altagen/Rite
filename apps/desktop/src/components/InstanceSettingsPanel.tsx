@@ -11,6 +11,7 @@ import {
   type DashboardPolicy,
   type HealthcheckPolicy,
   type LayoutsPolicy,
+  type AgentPolicy,
 } from '../utils/backend';
 import { Switch } from './Switch';
 
@@ -26,6 +27,8 @@ const DEFAULT_HC: HealthcheckPolicy = {
 const DEFAULT_DASH: DashboardPolicy = { webui: true, clients: true, minInterval: 30 };
 /** ADR 0027: both true, so an instance that says nothing has the feature on. */
 const DEFAULT_LAYOUTS: LayoutsPolicy = { webui: true, clients: true };
+/** ADR 0022 §3: both on, for the same reason. No interval — discovery is explicit. */
+const DEFAULT_AGENTS: AgentPolicy = { webui: true, clients: true };
 const HC_METHODS: { id: string; label: string }[] = [
   { id: 'tcp-connect', label: 'TCP-connect' },
   { id: 'icmp', label: 'ICMP' },
@@ -71,6 +74,7 @@ export function InstanceSettingsPanel() {
   const [hc, setHc] = useState<HealthcheckPolicy>(DEFAULT_HC);
   const [dash, setDash] = useState<DashboardPolicy>(DEFAULT_DASH);
   const [layouts, setLayouts] = useState<LayoutsPolicy>(DEFAULT_LAYOUTS);
+  const [agents, setAgents] = useState<AgentPolicy>(DEFAULT_AGENTS);
   // ADR 0020: keys this instance holds as code, mapped to where each was declared.
   const [managed, setManaged] = useState<Record<string, string>>({});
   const [userInput, setUserInput] = useState('');
@@ -98,6 +102,7 @@ export function InstanceSettingsPanel() {
       setHc(mode.healthcheck ?? DEFAULT_HC);
       setDash(mode.dashboardPolicy ?? DEFAULT_DASH);
       setLayouts(mode.layoutsPolicy ?? DEFAULT_LAYOUTS);
+      setAgents(mode.agentPolicy ?? DEFAULT_AGENTS);
       setManaged(mode.managed ?? {});
     } catch {
       setError(t('admin.inst.errLoad'));
@@ -137,6 +142,17 @@ export function InstanceSettingsPanel() {
       await Backend.Admin.setLayoutsPolicy(next);
     } catch (err) {
       setLayouts(prev);
+      setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
+    }
+  };
+
+  const saveAgents = async (next: AgentPolicy) => {
+    const prev = agents;
+    setAgents(next);
+    try {
+      await Backend.Admin.setAgentPolicy(next);
+    } catch (err) {
+      setAgents(prev);
       setError(err instanceof Error ? err.message : t('admin.inst.errSave'));
     }
   };
@@ -801,6 +817,46 @@ export function InstanceSettingsPanel() {
             disabled={!!managed.layouts_policy}
             onChange={() => saveLayouts({ ...layouts, clients: !layouts.clients })}
             testId="instance-layouts-clients"
+          />
+        </div>
+
+        {/* Agent manager (ADR 0022 §3). Governs LOOKING — discovery and reading what is
+            in effect — and not running: a server cannot stop a shell the user already
+            has, so there is no switch here pretending to. */}
+        <div className="border-t border-border p-4">
+          <div className="font-medium">{t('admin.inst.agents')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.agentsDesc')}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{t('admin.inst.agentsStrength')}</p>
+          {managed.agent_policy && <ManagedBy origin={managed.agent_policy} />}
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.agentsWebui')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.agentsWebuiDesc')}</p>
+          </div>
+          <Switch
+            checked={agents.webui}
+            label={t('admin.inst.agentsWebuiLabel')}
+            disabled={!!managed.agent_policy}
+            onChange={() => saveAgents({ ...agents, webui: !agents.webui })}
+            testId="instance-agents-webui"
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 border-t border-border p-4">
+          <div>
+            <div className="font-medium">{t('admin.inst.agentsClients')}</div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {t('admin.inst.agentsClientsDesc')}
+            </p>
+          </div>
+          <Switch
+            checked={agents.clients}
+            label={t('admin.inst.agentsClientsLabel')}
+            disabled={!!managed.agent_policy}
+            onChange={() => saveAgents({ ...agents, clients: !agents.clients })}
+            testId="instance-agents-clients"
           />
         </div>
       </div>

@@ -206,6 +206,26 @@ The two halves are **not equally strong**, and we do not claim otherwise:
 Only the cards that execute on a host are governed. Overview, port forwarding and the collection
 Board touch no host and are never gated.
 
+### Governance of agent discovery (ADR 0022)
+
+`agent_policy { webui, clients }` governs **looking**: discovery, and reading what is in
+effect on a machine. Same two halves, same strengths as above, and no `minInterval` — the
+user picks a machine and asks, so there is no automatic refresh to floor.
+
+Its own key rather than `dashboard_policy`, because allowing `docker ps` is not the same
+decision as allowing a home directory to be enumerated, and an administrator must be able
+to make them separately.
+
+**Running an agent is not governed, and that is a decision.** A server cannot stop it:
+anyone who can open a terminal pane on a machine can type `claude --resume <id>` there
+themselves, and an agent runs under the SSH account the user already had. A switch would
+hide a button, be relied on, and change nothing. The place to stop agents is the host — do
+not install the CLI, or constrain the account that would run it.
+
+Neither exec gate is a confinement either. Both routes take the command from the caller,
+and so does the one that opens a session. What they decide is whether Rite generates that
+traffic and reads those files on the user's behalf.
+
 ## Configuration Security
 
 ### Master Password

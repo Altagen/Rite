@@ -228,6 +228,7 @@ export async function mockInvoke(
           minInterval: 60,
         },
         dashboardPolicy: { webui: true, clients: true, minInterval: 30 },
+        agentPolicy: { webui: true, clients: true },
         managed: {},
         collectionPolicy: {
           allowCreate: true,
@@ -249,6 +250,7 @@ export async function mockInvoke(
     case 'admin_set_confirm_role_change':
     case 'admin_set_healthcheck':
     case 'admin_set_dashboard_policy':
+    case 'admin_set_agent_policy':
     case 'admin_set_layouts_policy':
     case 'admin_set_collection_policy':
     case 'admin_revoke_enrollment_token':

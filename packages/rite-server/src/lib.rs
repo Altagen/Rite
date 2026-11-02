@@ -695,6 +695,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/admin/collection-policy", patch(set_collection_policy))
         .route("/api/admin/healthcheck", patch(set_healthcheck))
         .route("/api/admin/dashboard-policy", patch(set_dashboard_policy))
+        .route("/api/admin/agent-policy", patch(set_agent_policy))
         .route("/api/admin/layouts-policy", patch(set_layouts_policy))
         .route("/api/healthcheck/probe", post(healthcheck_probe))
         // Teams / RBAC (product-model.md). Org-admin manages teams (/api/admin/*,
@@ -894,6 +895,11 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/terminal/quick-ssh", post(quick_ssh))
         .route("/api/terminal/exec", post(machine_exec))
         .route("/api/terminal/exec-quick", post(machine_exec_quick))
+        // Agent discovery (ADR 0022 §4). The same transport as the two above and its own
+        // gate, because allowing `docker ps` is not the same decision as allowing a home
+        // directory to be enumerated.
+        .route("/api/agents/probe", post(agent_probe))
+        .route("/api/agents/probe-quick", post(agent_probe_quick))
         .route("/api/terminal/local", post(create_local))
         .route("/api/terminal/preconnect", post(run_preconnect))
         .route("/api/forwards", get(list_forwards).post(start_forward))
@@ -1210,6 +1216,13 @@ async fn served_locally(state: &ServerState, path: &str) -> bool {
     // `/api/admin/*` (see ADMIN_ROUTE_SETTINGS), which is where the console reads and
     // writes them, and a browser talks to its instance directly with no proxy in the path.
     if path == "/api/settings" || path.starts_with("/api/settings/") {
+        return true;
+    }
+    // Agent discovery is client-execute too (ADR 0011 §4): a desktop client probes from
+    // its own network position, with its own vault, so this never reaches the instance.
+    // Which is also why `agent_policy.clients` is policy the client obeys rather than
+    // something this server could enforce.
+    if path == "/api/agents/probe" || path == "/api/agents/probe-quick" {
         return true;
     }
     let Some(rest) = path.strip_prefix("/api/terminal") else {
@@ -1629,6 +1642,7 @@ async fn server_mode(State(state): State<ServerState>) -> Result<Json<Value>, Ap
         "healthcheck": healthcheck,
         "collectionPolicy": collection_policy(&state).await?,
         "dashboardPolicy": dashboard_policy(&state).await?,
+        "agentPolicy": agent_policy(&state).await?,
         "layoutsPolicy": layouts_policy(&state).await?,
         "hostKey": state.host_key.as_deref(),
         // ADR 0020: the keys this instance holds as code. The console renders these
@@ -1681,6 +1695,26 @@ async fn dashboard_probes_allowed(state: &ServerState) -> Result<bool, AppError>
         return Ok(true);
     }
     Ok(dashboard_policy(state)
+        .await?
+        .get("webui")
+        .and_then(Value::as_bool)
+        .unwrap_or(true))
+}
+
+/// Agent-manager policy (ADR 0022 §3): may discovery and reading what is in effect run,
+/// in a browser and in an attached client. Two booleans, no `minInterval` — discovery is
+/// explicit, so there is no periodic traffic to floor.
+async fn agent_policy(state: &ServerState) -> Result<Value, AppError> {
+    state.setting_policy("agent_policy").await
+}
+
+/// May a browser against this server run agent discovery right now? Same shape, and the
+/// same reason for living here, as `dashboard_probes_allowed`.
+async fn agent_discovery_allowed(state: &ServerState) -> Result<bool, AppError> {
+    if !state.accounts {
+        return Ok(true);
+    }
+    Ok(agent_policy(state)
         .await?
         .get("webui")
         .and_then(Value::as_bool)
@@ -2031,6 +2065,25 @@ async fn set_dashboard_policy(
     state
         .db
         .set_setting("dashboard_policy", &policy.to_string())
+        .await?;
+    nudge_mode_changed(&state);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Admin: set the agent-manager policy (ADR 0022 §3).
+async fn set_agent_policy(
+    State(state): State<ServerState>,
+    Json(policy): Json<Value>,
+) -> Result<Response, AppError> {
+    if let Some(refusal) = managed_refusal(&state, "agent_policy") {
+        return Ok(refusal);
+    }
+    if let Err(why) = config::validate("agent_policy", &policy) {
+        return Ok((StatusCode::BAD_REQUEST, format!("{why:#}")).into_response());
+    }
+    state
+        .db
+        .set_setting("agent_policy", &policy.to_string())
         .await?;
     nudge_mode_changed(&state);
     Ok(StatusCode::NO_CONTENT.into_response())
@@ -3835,6 +3888,7 @@ async fn delete_collection_item_ep(
 /// and any path at all would be allowed here — but each of these is a policy the whole
 /// instance obeys, so none of them is this route's to write.
 const ADMIN_ROUTE_SETTINGS: &[&str] = &[
+    "agent_policy",
     "allow_invitations",
     "allow_quick_ssh",
     "allow_secret_reveal",
@@ -5745,13 +5799,75 @@ struct MachineExecReq {
     session_secret: Option<String>,
 }
 
+/// Which feature's policy governs a one-shot exec, and therefore which refusal it gets.
+///
+/// Two gates and not one because an administrator must be able to allow container
+/// listings while refusing to let the product enumerate home directories, and the
+/// reverse (ADR 0022 §3).
+///
+/// NEITHER IS A CONFINEMENT, which is worth stating where the gates are rather than
+/// leaving to be assumed. Both routes take the command from the caller, and
+/// `POST /api/terminal/ssh` carries a command with no gate at all — deliberately, since
+/// running an agent is not governed: anyone who can open a terminal pane on a machine
+/// can type the same thing themselves, and a switch that hid the button would be relied
+/// on while changing nothing. What these two decide is whether RITE generates that
+/// traffic and reads those files on the user's behalf, which is a product decision an
+/// administrator can legitimately make. The place to actually stop a command is the
+/// host, or the machine the user is given.
+#[derive(Clone, Copy)]
+enum ExecGate {
+    Dashboard,
+    Agents,
+}
+
+impl ExecGate {
+    async fn allows(self, state: &ServerState) -> Result<bool, AppError> {
+        match self {
+            Self::Dashboard => dashboard_probes_allowed(state).await,
+            Self::Agents => agent_discovery_allowed(state).await,
+        }
+    }
+
+    /// The reason, not just the status, because a client that gets this is meant to say
+    /// which side refused rather than render an empty panel.
+    fn refusal(self) -> Response {
+        let why = match self {
+            Self::Dashboard => {
+                "the machine dashboard's container and service checks are turned off \
+                 for the web UI on this server"
+            }
+            Self::Agents => "agent discovery is turned off for the web UI on this server",
+        };
+        (StatusCode::FORBIDDEN, why).into_response()
+    }
+}
+
 async fn machine_exec(
     State(state): State<ServerState>,
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<MachineExecReq>,
 ) -> Result<Response, AppError> {
-    if !dashboard_probes_allowed(&state).await? {
-        return Ok(probes_refused());
+    exec_saved(state, user, req, ExecGate::Dashboard).await
+}
+
+/// Agent discovery on a saved machine (ADR 0022 §4). Same request, same transport, its
+/// own gate — the command is `agentProbeCmd`'s, built on the client.
+async fn agent_probe(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<MachineExecReq>,
+) -> Result<Response, AppError> {
+    exec_saved(state, user, req, ExecGate::Agents).await
+}
+
+async fn exec_saved(
+    state: ServerState,
+    user: Option<Extension<Arc<User>>>,
+    req: MachineExecReq,
+    gate: ExecGate,
+) -> Result<Response, AppError> {
+    if !gate.allows(&state).await? {
+        return Ok(gate.refusal());
     }
     let out = state
         .sessions
@@ -5764,16 +5880,6 @@ async fn machine_exec(
         )
         .await?;
     Ok(Json(out).into_response())
-}
-
-/// One wording for both exec routes: the reason, not just the status, because a client
-/// that gets this is meant to say which side refused rather than render an empty panel.
-fn probes_refused() -> Response {
-    (
-        StatusCode::FORBIDDEN,
-        "the machine dashboard's container and service checks are turned off for the web UI on this server",
-    )
-        .into_response()
 }
 
 /// Run a one-shot command on an ad-hoc target (accounts client-execute) and return
@@ -5796,8 +5902,26 @@ async fn machine_exec_quick(
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<MachineExecQuickReq>,
 ) -> Result<Response, AppError> {
-    if !dashboard_probes_allowed(&state).await? {
-        return Ok(probes_refused());
+    exec_quick(state, user, req, ExecGate::Dashboard).await
+}
+
+/// Agent discovery on an ad-hoc target: the browser already decrypted it (ADR 0011).
+async fn agent_probe_quick(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<MachineExecQuickReq>,
+) -> Result<Response, AppError> {
+    exec_quick(state, user, req, ExecGate::Agents).await
+}
+
+async fn exec_quick(
+    state: ServerState,
+    user: Option<Extension<Arc<User>>>,
+    req: MachineExecQuickReq,
+    gate: ExecGate,
+) -> Result<Response, AppError> {
+    if !gate.allows(&state).await? {
+        return Ok(gate.refusal());
     }
     let auth = match quick_auth(&state, req.auth_method) {
         Ok(auth) => auth,
@@ -6349,6 +6473,11 @@ mod tests {
         assert!(local("/api/terminal/quick-ssh").await);
         assert!(local("/api/terminal/exec").await);
         assert!(local("/api/terminal/exec-quick").await);
+        // ADR 0022 §4 rides the same rule: a desktop client discovers agents from its
+        // own network position, with its own vault. Which is why `agent_policy.clients`
+        // is policy the client obeys and not something a remote could enforce.
+        assert!(local("/api/agents/probe").await);
+        assert!(local("/api/agents/probe-quick").await);
 
         // Proxied: the session list is the instance's roster, not ours.
         assert!(

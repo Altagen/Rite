@@ -29,3 +29,8 @@ allow_quick_ssh = false
 webui       = true
 clients     = true
 minInterval = 30
+
+# Agent discovery (ADR 0022) has its own key, `agent_policy { webui, clients }`, and is
+# left UNDECLARED on purpose: both halves ship on, and an operator can turn either off
+# from the console without editing this file. Declaring it here would lock it to a value
+# nobody has had a reason to change yet.

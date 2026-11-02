@@ -376,6 +376,14 @@ const routes: Record<string, Route> = {
     });
     return null;
   },
+  admin_set_agent_policy: async (a) => {
+    await json('/api/admin/agent-policy', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(a),
+    });
+    return null;
+  },
   admin_set_layouts_policy: async (a) => {
     await json('/api/admin/layouts-policy', {
       method: 'PATCH',
