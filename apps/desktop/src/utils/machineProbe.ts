@@ -29,16 +29,64 @@ export interface ServiceRow {
   description: string;
 }
 
+/**
+ * One argument of a command this app builds, safe to put in front of a shell.
+ *
+ * Every name below is **read off a remote host** — a container name from
+ * `docker ps`, a unit name from `systemctl list-units` — and the command built from
+ * it is typed into a live shell on that host. Docker and systemd both restrict the
+ * names they accept, which is why nothing here has ever gone wrong; but that is
+ * their rule, enforced somewhere else, about data that has already left their hands
+ * by the time it reaches this file. This function is this file's own rule.
+ *
+ * It quotes only what needs it, because these strings are also the tooltip on the
+ * button: `docker logs -f --tail 200 web-01` is what the user is about to run and is
+ * worth reading, and quoting every ordinary name to guard against the one that is
+ * not would cost that for nothing. A name outside the conservative set below — or
+ * one that does not start with a letter or a digit, so that it cannot be read as a
+ * flag — is single-quoted instead.
+ *
+ * What it does not solve: a name that *is* a flag is still passed as one, since no
+ * amount of quoting changes argv parsing. Neither docker nor systemd will produce
+ * such a name, and putting `--` in every builder would be guarding the same corner
+ * twice. It is named here so the next person does not have to rediscover the limit.
+ */
+const PLAIN_ARG = /^[A-Za-z0-9][A-Za-z0-9._@:+-]*$/;
+
+export function shellArg(value: string): string {
+  if (PLAIN_ARG.test(value)) return value;
+  // POSIX single quotes: everything is literal inside them, and a literal quote is
+  // written by leaving, escaping it, and coming back.
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * Run a script on the far side under `sh`, whatever the account's login shell is.
+ *
+ * SSH "exec" hands a command STRING to the login shell (RFC 4254 §6.5), so the shell
+ * on the other end is the user's, not ours. `if … then … fi` is a parse error in fish,
+ * and fish is a common login shell — measured: the container probe below failed
+ * outright there while the service probe, which is one plain command, worked. The
+ * dashboard then showed services and an empty container list, which reads as "no
+ * containers on this host". A false fact, from a shell we did not pick.
+ *
+ * So anything with shell syntax in it goes through here. `shellArg` does the quoting,
+ * because a second quoter in one file is how two of them come to disagree.
+ */
+export const posixScript = (script: string) => `sh -c ${shellArg(script)}`;
+
 // List all containers (running + stopped) with a stable, delimiter-based format.
 // The leading `__rt__` line names the runtime so the parser can drive actions.
-export const CONTAINERS_CMD =
+export const CONTAINERS_CMD = posixScript(
   "if command -v docker >/dev/null 2>&1; then echo '__rt__ docker'; " +
-  "docker ps -a --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Ports}}|{{.RunningFor}}'; " +
-  "elif command -v podman >/dev/null 2>&1; then echo '__rt__ podman'; " +
-  "podman ps -a --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Ports}}|{{.RunningFor}}'; " +
-  "else echo '__rt__ none'; fi";
+    "docker ps -a --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Ports}}|{{.RunningFor}}'; " +
+    "elif command -v podman >/dev/null 2>&1; then echo '__rt__ podman'; " +
+    "podman ps -a --format '{{.Names}}|{{.Image}}|{{.State}}|{{.Ports}}|{{.RunningFor}}'; " +
+    "else echo '__rt__ none'; fi",
+);
 
 // List all systemd service units, plain (no legend/pager/colour) so columns are stable.
+// One command with one redirection: no shell syntax, so no `posixScript` needed.
 export const SERVICES_CMD =
   'systemctl list-units --type=service --all --no-pager --plain --no-legend 2>/dev/null';
 
@@ -87,37 +135,6 @@ export function parseServices(stdout: string): ServiceRow[] {
 }
 
 export const isRunning = (c: ContainerRow) => c.state === 'running' || c.state === 'up';
-
-/**
- * One argument of a command this app builds, safe to put in front of a shell.
- *
- * Every name below is **read off a remote host** — a container name from
- * `docker ps`, a unit name from `systemctl list-units` — and the command built from
- * it is typed into a live shell on that host. Docker and systemd both restrict the
- * names they accept, which is why nothing here has ever gone wrong; but that is
- * their rule, enforced somewhere else, about data that has already left their hands
- * by the time it reaches this file. This function is this file's own rule.
- *
- * It quotes only what needs it, because these strings are also the tooltip on the
- * button: `docker logs -f --tail 200 web-01` is what the user is about to run and is
- * worth reading, and quoting every ordinary name to guard against the one that is
- * not would cost that for nothing. A name outside the conservative set below — or
- * one that does not start with a letter or a digit, so that it cannot be read as a
- * flag — is single-quoted instead.
- *
- * What it does not solve: a name that *is* a flag is still passed as one, since no
- * amount of quoting changes argv parsing. Neither docker nor systemd will produce
- * such a name, and putting `--` in every builder would be guarding the same corner
- * twice. It is named here so the next person does not have to rediscover the limit.
- */
-const PLAIN_ARG = /^[A-Za-z0-9][A-Za-z0-9._@:+-]*$/;
-
-export function shellArg(value: string): string {
-  if (PLAIN_ARG.test(value)) return value;
-  // POSIX single quotes: everything is literal inside them, and a literal quote is
-  // written by leaving, escaping it, and coming back.
-  return `'${value.replace(/'/g, "'\\''")}'`;
-}
 
 // --- lazy enrichments (fetched only when a card is expanded) -----------------
 
