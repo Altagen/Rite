@@ -5114,6 +5114,13 @@ struct StartQuickForwardReq {
     local_port: u16,
     remote_host: String,
     remote_port: u16,
+    /// Where this target came from. `connection_id` above is echoed, not checked — it is
+    /// the caller's own id for the row — so the proof is named separately and read by
+    /// `ad_hoc_target_allowed`.
+    #[serde(default)]
+    collection_id: Option<String>,
+    #[serde(default)]
+    item_id: Option<String>,
 }
 
 async fn start_quick_forward(
@@ -5121,6 +5128,17 @@ async fn start_quick_forward(
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<StartQuickForwardReq>,
 ) -> Result<Response, AppError> {
+    // A forward is a standing tunnel from the server into the target, so it needs at
+    // least what a one-shot command needs.
+    if !ad_hoc_target_allowed(
+        &state,
+        as_user(&user),
+        req.collection_id.as_deref().zip(req.item_id.as_deref()),
+    )
+    .await?
+    {
+        return Ok(ad_hoc_refusal());
+    }
     let bind_host = forward_bind_host(state.accounts, req.bind_host.as_deref());
     let auth = match quick_auth(&state, req.auth_method) {
         Ok(auth) => auth,
@@ -5726,37 +5744,64 @@ struct QuickSshReq {
     command: Option<String>,
 }
 
+/// May this caller have the server open an SSH connection to a target IT NAMED?
+///
+/// `allow_quick_ssh` is off unless an instance says otherwise, and the refusal has to let
+/// a saved connection through: zero-knowledge means the browser decrypts the target and
+/// hands it over (ADR 0011), so an ad-hoc target and a saved one arrive here as the same
+/// decrypted host. They are told apart by what the saved one can prove — the collection
+/// item it came from, checked against this caller's membership. Claiming an item is not a
+/// way in.
+///
+/// FOUR ROUTES TAKE A CALLER-NAMED HOST, and this check lived in one of them. `quick-ssh`
+/// enforced it; `/api/terminal/exec-quick`, `/api/forwards/quick` and then
+/// `/api/agents/probe-quick` did not. So an instance with the setting off still let any
+/// authenticated member open a connection from the server's own network position — the
+/// one thing the setting exists to refuse. A member supplies the credentials, so nothing
+/// is stolen; what is reached is whatever the server can reach and the member cannot.
+///
+/// It is one function and not a block per handler because the third and fourth routes are
+/// how it was lost: each was written from the shape of the second, which did not have it.
+async fn ad_hoc_target_allowed(
+    state: &ServerState,
+    user: Option<&User>,
+    origin: Option<(&str, &str)>,
+) -> Result<bool, AppError> {
+    if !state.accounts || state.setting_bool("allow_quick_ssh", false).await? {
+        return Ok(true);
+    }
+    let (Some((collection, item)), Some(caller)) = (origin, user) else {
+        return Ok(false);
+    };
+    Ok(coll_role(state, caller, collection).await?.is_some()
+        && coll::list_items(state.db.pool(), collection)
+            .await?
+            .iter()
+            .any(|i| i.id == item))
+}
+
+/// The refusal, worded after the setting an administrator has to go and find.
+fn ad_hoc_refusal() -> Response {
+    (
+        StatusCode::FORBIDDEN,
+        "ad-hoc Quick SSH is disabled by this server",
+    )
+        .into_response()
+}
+
 async fn quick_ssh(
     State(state): State<ServerState>,
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<QuickSshReq>,
 ) -> Result<Response, AppError> {
-    // `allow_quick_ssh` is off unless an instance says otherwise, and it was enforced
-    // nowhere: the client hid its button while this route accepted any host and port from
-    // any account — an outbound SSH connection from the server into whatever it can reach.
-    //
-    // It was missed because this is also how a SAVED connection opens: zero-knowledge
-    // means the browser decrypts the target and hands it over (ADR 0011), so the two
-    // requests look alike. They are told apart now by what the saved one can prove — the
-    // collection item it came from, checked against this caller's membership.
-    if state.accounts && !state.setting_bool("allow_quick_ssh", false).await? {
-        let from_a_collection = match (&req.collection_id, &req.item_id, as_user(&user)) {
-            (Some(collection), Some(item), Some(caller)) => {
-                coll_role(&state, caller, collection).await?.is_some()
-                    && coll::list_items(state.db.pool(), collection)
-                        .await?
-                        .iter()
-                        .any(|i| &i.id == item)
-            }
-            _ => false,
-        };
-        if !from_a_collection {
-            return Ok((
-                StatusCode::FORBIDDEN,
-                "ad-hoc Quick SSH is disabled by this server",
-            )
-                .into_response());
-        }
+    if !ad_hoc_target_allowed(
+        &state,
+        as_user(&user),
+        req.collection_id.as_deref().zip(req.item_id.as_deref()),
+    )
+    .await?
+    {
+        return Ok(ad_hoc_refusal());
     }
     // Ad-hoc connection, never persisted (mirrors the desktop quick_ssh_connect).
     let auth = match quick_auth(&state, req.auth_method.clone()) {
@@ -5895,6 +5940,13 @@ struct MachineExecQuickReq {
     /// Resolved jump chain, outermost-first. Absent/empty ⇒ direct.
     #[serde(default)]
     jumps: Vec<QuickHop>,
+    /// Where this target came from, when it came from a collection. See `QuickSshReq`:
+    /// the same proof, because this route opens the same connection to run one command
+    /// in place of a shell.
+    #[serde(default)]
+    collection_id: Option<String>,
+    #[serde(default)]
+    item_id: Option<String>,
 }
 
 async fn machine_exec_quick(
@@ -5922,6 +5974,17 @@ async fn exec_quick(
 ) -> Result<Response, AppError> {
     if !gate.allows(&state).await? {
         return Ok(gate.refusal());
+    }
+    // The feature switch above is a product decision; this one is the boundary. A command
+    // on a host the caller named is the same outbound connection `quick-ssh` makes.
+    if !ad_hoc_target_allowed(
+        &state,
+        as_user(&user),
+        req.collection_id.as_deref().zip(req.item_id.as_deref()),
+    )
+    .await?
+    {
+        return Ok(ad_hoc_refusal());
     }
     let auth = match quick_auth(&state, req.auth_method) {
         Ok(auth) => auth,

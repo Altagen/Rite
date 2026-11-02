@@ -17,6 +17,12 @@
 //     has to let a proven collection item through.
 //   * `/api/shells` answered for any path the caller sent — an existence oracle.
 //
+// And a fifth, found later by the same reading. The `allow_quick_ssh` refusal lived in
+// `quick_ssh` alone, while three more routes took a caller-named host and opened a
+// connection from the server's own network position: `/api/terminal/exec-quick`,
+// `/api/forwards/quick`, and then `/api/agents/probe-quick`. One function answers for all
+// four now, and the step below holds every one of them.
+//
 // Self-contained: own port, own HOME, own throwaway admin.  node e2e/server-authz-check.mjs
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -257,15 +263,28 @@ try {
   step = 'quick-ssh-policy';
   assert.equal((await mode(admin)).allowQuickSsh, false, 'ad-hoc Quick SSH is off by default');
   const adhoc = { host: '127.0.0.1', port: 65001, username: 'x', authMethod: { type: 'password', password: 'x' } };
-  assert.equal((await post('/api/terminal/quick-ssh', adhoc, pleb)).status, 403, 'an ad-hoc target is refused');
-  assert.equal(
-    (await post('/api/terminal/quick-ssh', { ...adhoc, collectionId: 'not-mine', itemId: 'nope' }, pleb)).status, 403,
-    'and naming a collection one is not a member of is not a way in');
+  const exec = { ...adhoc, command: 'echo hi' };
+  // Every route that takes a host from the caller, not just the one the setting is named
+  // after. A member supplies the credentials, so nothing is stolen; what is reached is
+  // whatever the server can reach and the member cannot.
+  const adhocRoutes = [
+    ['/api/terminal/quick-ssh', adhoc],
+    ['/api/terminal/exec-quick', exec],
+    ['/api/agents/probe-quick', exec],
+    ['/api/forwards/quick', { ...adhoc, connectionId: 'x', localPort: 65004, remoteHost: '127.0.0.1', remotePort: 22 }],
+  ];
+  for (const [route, body] of adhocRoutes) {
+    assert.equal((await post(route, body, pleb)).status, 403, `${route} refuses an ad-hoc target`);
+    assert.equal((await post(route, { ...body, collectionId: 'not-mine', itemId: 'nope' }, pleb)).status, 403,
+      `${route}: naming a collection one is not a member of is not a way in`);
+  }
   await patch('/api/admin/quick-ssh', { enabled: true }, admin);
-  const allowed = await post('/api/terminal/quick-ssh', adhoc, pleb);
-  assert.notEqual(allowed.status, 403, 'with the policy on, the refusal is gone (the connection itself fails)');
+  for (const [route, body] of adhocRoutes) {
+    assert.notEqual((await post(route, body, pleb)).status, 403,
+      `${route}: with the policy on, the refusal is gone (the connection itself fails)`);
+  }
   await patch('/api/admin/quick-ssh', { enabled: false }, admin);
-  ok('`allow_quick_ssh` is a refusal from the server, not a hidden button');
+  ok('`allow_quick_ssh` is a refusal from the server on all four routes, not a hidden button');
 
   step = 'a-key-path-is-not-read-off-the-server';
   // ADR 0028 §4. A path here names a file in the server's own container: a member cannot

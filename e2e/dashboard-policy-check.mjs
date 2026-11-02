@@ -38,6 +38,10 @@ try {
   const bv = await vaultFor('BobTemp1!');
   await post('/api/admin/users', { username: 'bob', role: 'user', ...bv.body }, admin);
   const bob = (await login('bob', 'BobTemp1!')).token;
+  // Ad-hoc Quick SSH on, for the whole run. `exec-quick` takes a host from the caller, so
+  // it also answers to `allow_quick_ssh` — and a 403 from that refusal would read exactly
+  // like the policy gate this file is about. `server-authz-check` holds that one.
+  assert.equal((await patch('/api/admin/quick-ssh', { enabled: true }, admin)).status, 204, 'ad-hoc on');
   ok('admin + non-admin bob provisioned');
 
   step = 'defaults';

@@ -457,6 +457,8 @@ export const BackendTerminal = {
   startQuickForward: (args: {
     connectionId: string;
     target: QuickExecTarget;
+    /** See `quickSshConnect`. `connectionId` is echoed back, so it proves nothing. */
+    origin?: { collectionId: string; itemId: string };
     bindHost?: string;
     localPort: number;
     remoteHost: string;
@@ -473,6 +475,8 @@ export const BackendTerminal = {
       localPort: args.localPort,
       remoteHost: args.remoteHost,
       remotePort: args.remotePort,
+      collectionId: args.origin?.collectionId,
+      itemId: args.origin?.itemId,
     }),
 
   /** Stop a running port forward by id. */
@@ -497,7 +501,13 @@ export const BackendTerminal = {
    * Run a one-shot command on an ad-hoc target (accounts client-execute): the
    * browser passes the already-decrypted target and its resolved jump chain.
    */
-  machineExecQuick: (target: QuickExecTarget, command: string) =>
+  machineExecQuick: (
+    target: QuickExecTarget,
+    command: string,
+    // See `quickSshConnect`. Same proof, because this is the same outbound connection
+    // with a command in place of a shell.
+    origin?: { collectionId: string; itemId: string },
+  ) =>
     invokeWithValidation('machine_exec_quick', RemoteCommandOutputSchema, {
       host: target.host,
       port: target.port,
@@ -505,6 +515,8 @@ export const BackendTerminal = {
       authMethod: target.authMethod,
       jumps: target.jumps ?? [],
       command,
+      collectionId: origin?.collectionId,
+      itemId: origin?.itemId,
     }),
 
   /**

@@ -734,6 +734,8 @@ const routes: Record<string, Route> = {
         authMethod: a.authMethod,
         jumps: a.jumps ?? [],
         command: a.command,
+        collectionId: a.collectionId,
+        itemId: a.itemId,
       }),
     ),
 
@@ -799,6 +801,8 @@ const routes: Record<string, Route> = {
         localPort: a.localPort,
         remoteHost: a.remoteHost,
         remotePort: a.remotePort,
+        collectionId: a.collectionId,
+        itemId: a.itemId,
       }),
     ),
   stop_forward: async (a) => {

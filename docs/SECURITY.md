@@ -226,6 +226,22 @@ Neither exec gate is a confinement either. Both routes take the command from the
 and so does the one that opens a session. What they decide is whether Rite generates that
 traffic and reads those files on the user's behalf.
 
+### A host the caller named (`allow_quick_ssh`)
+
+What **is** a boundary. A request may name a host instead of a saved connection, and on a
+deployed instance the server is what opens the connection. `allow_quick_ssh` is off by
+default; a saved target gets through by proving where it came from — the collection item
+it was decrypted from, checked against this caller's membership.
+
+Four routes take a host from the caller: a session, a one-shot command, an agent probe,
+and a port forward. The check lived in the first, and the other three were each written
+from the shape of one that did not have it — so an instance with the setting off still
+lent any authenticated member the server's network position. One function answers for all
+four now (`ad_hoc_target_allowed`), and `e2e/server-authz-check.mjs` holds every one.
+
+The member supplies the credentials, so this was never about a stolen secret. It is about
+reach: what the server gets to and the member does not.
+
 ## Configuration Security
 
 ### Master Password

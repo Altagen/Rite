@@ -676,6 +676,9 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     return Backend.Terminal.machineExecQuick(
       { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
       command,
+      // Which item this is, as `connect` sends it: an instance that forbids ad-hoc Quick
+      // SSH must still run a probe on what its members saved.
+      entry.collectionId ? { collectionId: entry.collectionId, itemId: conn.id } : undefined,
     );
   }, []);
 
@@ -691,6 +694,9 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       return Backend.Terminal.startQuickForward({
         connectionId: conn.id,
         target: { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
+        origin: entry.collectionId
+          ? { collectionId: entry.collectionId, itemId: conn.id }
+          : undefined,
         bindHost: forward.bindHost ?? undefined,
         localPort: forward.localPort,
         remoteHost: forward.remoteHost,
