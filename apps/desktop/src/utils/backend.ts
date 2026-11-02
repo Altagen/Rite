@@ -391,9 +391,17 @@ export const BackendTerminal = {
 
   /**
    * Connect to a terminal (SSH connection)
+   *
+   * `command` runs one program under the PTY instead of the login shell — an
+   * adapter's resume line, for an agent pane (ADR 0022 §7.1). Omitted for every
+   * terminal pane, which is what a shell is for.
    */
-  connectTerminal: (connectionId: string, sessionSecret?: string) =>
-    invokeWithValidation('connect_terminal', StringSchema, { connectionId, sessionSecret }),
+  connectTerminal: (connectionId: string, sessionSecret?: string, command?: string) =>
+    invokeWithValidation('connect_terminal', StringSchema, {
+      connectionId,
+      sessionSecret,
+      command,
+    }),
 
   /**
    * Connect to a local terminal with custom shell.
@@ -517,6 +525,9 @@ export const BackendTerminal = {
     // arrive here as a decrypted host — so a saved one says which item it is, and the
     // server checks that against this caller's membership (`quick_ssh` in rite-server).
     origin?: { collectionId: string; itemId: string },
+    // See `connectTerminal`. This is the route a browser reaches a collection's machine
+    // by, so an agent pane in the web UI passes its resume line here.
+    command?: string,
   ) =>
     invokeWithValidation('quick_ssh_connect', StringSchema, {
       host,
@@ -526,6 +537,7 @@ export const BackendTerminal = {
       jumps,
       collectionId: origin?.collectionId,
       itemId: origin?.itemId,
+      command,
     }),
 
   /**

@@ -1252,7 +1252,11 @@ function agentPaneHTML(p, i) {
   return `<div class="termpane agentpane">
     <div class="termpane-hdr">
       <div class="who">
-        <span class="st" style="background:var(--purple)"></span>
+        <!-- The connection's own status, exactly as a terminal pane shows it. It was
+             purple here, to mark the kind — and a kind marker in the place a reader
+             looks for "is this host up" is a fact replaced by decoration. The pane is
+             marked by its border, its header and the chip; the dot stays a status. -->
+        <span class="st"></span>
         <span class="name">${session.project}</span>
         <span class="chip-sm" style="color:var(--purple)">${tool.name}</span>
         <span class="muted" style="font-size:12px">${where} · ${session.cwd}</span>

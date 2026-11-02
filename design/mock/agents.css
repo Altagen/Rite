@@ -30,7 +30,6 @@
   .agentpane{border-color:color-mix(in oklab,var(--purple) 60%,var(--border))}
   .agentpane .termpane-hdr{border-bottom-color:color-mix(in oklab,var(--purple) 55%,var(--border));
     background:linear-gradient(to right,color-mix(in oklab,var(--purple) 14%,var(--card)),var(--card) 55%)}
-  .agentpane .termpane-hdr .st{box-shadow:0 0 6px color-mix(in oklab,var(--purple) 70%,transparent)}
 
   /* The header carries more than a terminal's does — project, tool, machine, working
      directory — and a pane is often half a screen wide. It truncates from the least

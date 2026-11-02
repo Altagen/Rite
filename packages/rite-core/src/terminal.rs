@@ -1348,6 +1348,8 @@ impl SessionManager {
     /// none (ADR 0024 §4). It fills the record's empty slot for this session and is never
     /// written back; `None` means the record holds what it needs, or holds nothing and the
     /// authentication will say so.
+    /// `program` is what the channel runs: a shell for a terminal pane, or one command
+    /// for an agent pane. It is not a convenience — see `RemoteProgram`.
     pub async fn create_session(
         &self,
         connection_id: String,
@@ -1355,6 +1357,7 @@ impl SessionManager {
         interactive: Option<SharedInteractive>,
         session_secret: Option<String>,
         owner: &str,
+        program: RemoteProgram,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_session called for connection_id: {}",
@@ -1419,8 +1422,7 @@ impl SessionManager {
             HostKeyTrust::of(owner),
             interactive,
             jumps,
-            // A saved machine opens a terminal pane, so it opens a shell.
-            RemoteProgram::Shell,
+            program,
         )
         .await?;
         let session_id = ssh_session.id.clone();
@@ -1854,6 +1856,7 @@ impl SessionManager {
     /// Create a quick SSH session (no unlock required, credentials not saved)
     ///
     /// For ad-hoc SSH connections that don't need to be saved to the vault
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_quick_ssh_session(
         &self,
         connection: Connection,
@@ -1862,6 +1865,7 @@ impl SessionManager {
         interactive: Option<SharedInteractive>,
         jumps: Vec<(Connection, AuthMethod)>,
         owner: &str,
+        program: RemoteProgram,
     ) -> Result<SessionId> {
         tracing::info!(
             "[terminal.rs] create_quick_ssh_session called for {}",
@@ -1901,7 +1905,7 @@ impl SessionManager {
             // Quick SSH proper passes an empty chain; the accounts path passes the
             // hops it decrypted client-side, since the server holds no record of them.
             jumps,
-            RemoteProgram::Shell,
+            program,
         )
         .await?;
         let session_id = ssh_session.id.clone();

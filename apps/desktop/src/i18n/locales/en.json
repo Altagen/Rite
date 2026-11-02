@@ -1183,6 +1183,11 @@
     "splitV": "Split vertical ({chord})",
     "searchIn": "Search in terminal ({chord})"
   },
+  "agent": {
+    "onMachine": "on {machine}",
+    "onThisMachine": "on this machine",
+    "copyId": "Conversation id — {id}"
+  },
   "connErr": {
     "retrying": "Retrying automatically…",
     "tryAgain": "Try again",

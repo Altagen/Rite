@@ -1183,6 +1183,11 @@
     "splitV": "Diviser verticalement ({chord})",
     "searchIn": "Rechercher dans le terminal ({chord})"
   },
+  "agent": {
+    "onMachine": "sur {machine}",
+    "onThisMachine": "sur cette machine",
+    "copyId": "Identifiant de conversation — {id}"
+  },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",
     "tryAgain": "Réessayer",

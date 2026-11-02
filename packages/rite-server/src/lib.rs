@@ -5412,6 +5412,27 @@ struct ConnectSshReq {
     /// Used for this session and written nowhere.
     #[serde(default, rename = "sessionSecret")]
     session_secret: Option<String>,
+    /// One command to run under the PTY instead of the login shell — an adapter's
+    /// resume line, for an agent pane (ADR 0022 §7.1). Absent ⇒ a shell, which is
+    /// every terminal pane.
+    ///
+    /// NO NEW REACH. A terminal pane on this machine already runs whatever its reader
+    /// types, so naming the program up front grants nothing a shell did not. What it
+    /// buys is a channel that ends when the agent does, instead of a shell left behind.
+    #[serde(default)]
+    command: Option<String>,
+}
+
+/// What a connect request asked to run, as the core names it.
+///
+/// Blank is a shell, not an empty command: a client that sends `""` has asked for
+/// nothing in particular, and exec'ing an empty string would open a channel that
+/// closes at once — a pane that dies on arrival for a request that reads as ordinary.
+fn program_for(command: Option<&str>) -> rite_core::terminal::RemoteProgram {
+    match command.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => rite_core::terminal::RemoteProgram::Exec(c.to_string()),
+        None => rite_core::terminal::RemoteProgram::Shell,
+    }
 }
 
 async fn connect_ssh(
@@ -5444,6 +5465,7 @@ async fn connect_ssh(
                 state.interactive_provider(as_user(&user)),
                 jumps,
                 &host_key_owner(as_user(&user)),
+                program_for(req.command.as_deref()),
             )
             .await?;
         state.record_session_owner(&id, as_user(&user));
@@ -5457,6 +5479,7 @@ async fn connect_ssh(
             state.interactive_provider(as_user(&user)),
             req.session_secret.clone(),
             &host_key_owner(as_user(&user)),
+            program_for(req.command.as_deref()),
         )
         .await?;
     // Record "last used" in the local vault (ADR 0017 passive status). This is the local
@@ -5641,6 +5664,12 @@ struct QuickSshReq {
     collection_id: Option<String>,
     #[serde(default)]
     item_id: Option<String>,
+    /// See `ConnectSshReq::command`. This is the route a browser reaches a collection's
+    /// machine by (ADR 0011), so an agent pane in the web UI arrives here and not at
+    /// `/api/terminal/ssh`. The gate above is unchanged — a command is what to run on a
+    /// host this caller was already allowed to open a shell on, never a second way in.
+    #[serde(default)]
+    command: Option<String>,
 }
 
 async fn quick_ssh(
@@ -5697,6 +5726,7 @@ async fn quick_ssh(
             state.interactive_provider(as_user(&user)),
             hops,
             &host_key_owner(as_user(&user)),
+            program_for(req.command.as_deref()),
         )
         .await?;
     state.record_session_owner(&id, as_user(&user));
@@ -6063,6 +6093,31 @@ mod tests {
     use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt;
+
+    /// What a connect request asked to run.
+    ///
+    /// The blank cases are the whole point of the function and the reason it is not an
+    /// inline `match` at three call sites: a JSON body built by a client that always
+    /// sends the field reaches here as `Some("")`, and exec'ing an empty string opens a
+    /// channel that closes at once — a pane that dies on arrival for a request that
+    /// looked ordinary. Every blank shape answers "a shell".
+    #[test]
+    fn a_blank_command_is_a_shell_and_a_real_one_is_not() {
+        use rite_core::terminal::RemoteProgram;
+        let shell = |c: Option<&str>| matches!(program_for(c), RemoteProgram::Shell);
+
+        assert!(shell(None), "no command at all is a terminal pane");
+        assert!(shell(Some("")), "a client that always sends the field");
+        assert!(shell(Some("   ")), "and one that sends whitespace");
+
+        match program_for(Some("  claude --resume 3f1c9e7a  ")) {
+            RemoteProgram::Exec(command) => assert_eq!(
+                command, "claude --resume 3f1c9e7a",
+                "the command is trimmed, because the shell on the far side would not be"
+            ),
+            RemoteProgram::Shell => panic!("a named command must not open a shell"),
+        }
+    }
 
     #[test]
     fn register_limiter_caps_per_window_per_key() {

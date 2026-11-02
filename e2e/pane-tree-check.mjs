@@ -358,6 +358,50 @@ check('the session helpers pass over a leaf that holds no session', () => {
   assert.equal(updateSession(m, 's-a', () => { throw new Error('must not be called'); }), m);
 });
 
+// A kind that holds a session, which `mockLeaf` above deliberately does not. The agent
+// pane is the first one, and it is the case the old code got wrong: the traversals asked
+// `type === 'terminal'`, which still compiled and answered "no session" for a pane that
+// holds a live SSH channel.
+const agentLeaf = (name) => ({
+  id: `a-${name}`,
+  type: 'agent',
+  isFocused: false,
+  session: session(name),
+  agent: {
+    toolId: 'claude',
+    toolName: 'Claude Code',
+    conversationId: `uuid-${name}`,
+    project: `acme/${name}`,
+    cwd: `/srv/${name}`,
+  },
+});
+
+check('a leaf of another kind that holds a session is counted with the terminals', () => {
+  // WHAT THIS CATCHES, said plainly because it already happened: closing a tab asks for
+  // confirmation only when it holds more than one session, and `getAllSessions` is what
+  // counts them. An agent pane that counted as zero meant a tab holding an agent and a
+  // terminal reported one, skipped the confirmation, and closed a running conversation
+  // on a single click.
+  const t = createTerminalPane(session('a'), true);
+  const g = agentLeaf('b');
+  const tree = createSplitPane('horizontal', t, g);
+
+  assert.deepEqual(names(tree), ['a', 'b']);
+  assert.deepEqual(getSessionsInPane(tree, g.id).map((s) => s.connectionName), ['b']);
+});
+
+check('and it is updated like one, whatever the kind', () => {
+  // A reconnect, an exit status and a note are facts about the session, not about the
+  // kind of pane it is shown in — so an agent pane's session has them too.
+  const tree = createSplitPane('horizontal', createTerminalPane(session('a')), agentLeaf('b'));
+  const renamed = updateSession(tree, 's-b', (s) => ({ ...s, connectionName: 'renamed' }));
+
+  assert.deepEqual(names(renamed), ['a', 'renamed']);
+  // Everything the pane is stays untouched — only its session changed.
+  assert.deepEqual(renamed.children[1].agent, tree.children[1].agent);
+  assert.equal(renamed.children[1].type, 'agent');
+});
+
 check('extracting a split container is refused — only a leaf detaches', () => {
   // extractPane promises a leaf: the caller opens a new tab from it, and a container
   // handed over instead would be nested as if it were content. The guard is on both

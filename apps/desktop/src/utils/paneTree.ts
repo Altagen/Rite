@@ -5,6 +5,8 @@
  */
 
 import type {
+  AgentConversation,
+  AgentPaneNode,
   AnyPaneNode,
   LeafPaneNode,
   TerminalPaneNode,
@@ -30,13 +32,33 @@ function generateId(): string {
  * displays. The two were the same question only while terminal was the only kind.
  *
  * Asked this way, a kind added to `LeafPaneNode` is handled by every traversal
- * below without a further change. The three functions that genuinely are about
- * terminals (`getAllSessions`, `getSessionsInPane`, `updateSession`) narrow on
- * `type` *after* this guard, so when a second kind arrives the compiler points at
- * them and at nothing else.
+ * below without a further change.
+ *
+ * WHAT THIS DOES NOT DO, written down because it claimed otherwise until an agent
+ * pane arrived: it does not make the compiler point at the functions that ask about
+ * a session. Narrowing a union more tightly than it now is stays valid, so
+ * `type === 'terminal'` kept compiling and silently answered "no session" for a pane
+ * that holds one — a tab would have reported the wrong terminal count and asked no
+ * confirmation before closing work. Those functions go through `paneSession` now, and
+ * `pane-tree-check.mjs` holds the behaviour, because a comment cannot.
  */
 export function isLeaf(node: AnyPaneNode): node is LeafPaneNode {
   return node.type !== 'split';
+}
+
+/**
+ * The terminal session this leaf holds, if it holds one.
+ *
+ * Two kinds do, and for the same reason: a terminal pane is a shell under a PTY and
+ * an agent pane is one command under a PTY, both over the same transport. The callers
+ * ask "how many live shells does closing this cost" and the answer is yes for both.
+ *
+ * Structural rather than a list of kinds, so a future pane that holds nothing — an
+ * SFTP browser, a manager view — answers correctly by having no session, instead of
+ * by being remembered here.
+ */
+function paneSession(node: LeafPaneNode): TerminalSession | undefined {
+  return 'session' in node ? node.session : undefined;
 }
 
 /**
@@ -47,6 +69,23 @@ export function createTerminalPane(session: TerminalSession, isFocused = false):
     id: generateId(),
     type: 'terminal',
     session,
+    isFocused,
+  };
+}
+
+/**
+ * Create an agent pane node: a resumed conversation and the session it runs in.
+ */
+export function createAgentPane(
+  session: TerminalSession,
+  agent: AgentConversation,
+  isFocused = false,
+): AgentPaneNode {
+  return {
+    id: generateId(),
+    type: 'agent',
+    session,
+    agent,
     isFocused,
   };
 }
@@ -266,17 +305,19 @@ export function getFirstLeafPane(tree: LayoutTree): LeafPaneNode | null {
 }
 
 /**
- * Get all terminal sessions from the tree (flat list)
+ * Every live session in the tree, flat.
  *
- * Terminal-specific by design: a leaf of another kind has no session, and
- * contributing nothing is the right answer rather than an error. The callers are
- * about terminals — closing a tab disposes the sessions it held.
+ * What the callers do with it is count and recognise: how many terminals a tab will
+ * close, and whether any of them is a Quick SSH. A leaf that holds no session
+ * contributes nothing, which is the right answer and not an error — releasing what a
+ * pane holds goes through the kind registry (`disposeAllPanes`) and not through here.
  */
 export function getAllSessions(tree: LayoutTree): TerminalSession[] {
   if (!tree) return [];
 
   if (isLeaf(tree)) {
-    return tree.type === 'terminal' ? [tree.session] : [];
+    const session = paneSession(tree);
+    return session ? [session] : [];
   }
 
   return [...getAllSessions(tree.children[0]), ...getAllSessions(tree.children[1])];
@@ -347,8 +388,9 @@ export function updateSplitRatio(tree: LayoutTree, splitId: string, newRatio: nu
 /**
  * Replace a session in the tree (used when updating session data)
  *
- * Terminal-specific, like getAllSessions: a leaf of another kind holds no session
- * to update and is returned untouched.
+ * A leaf that holds no session has nothing to update and is returned untouched. One
+ * that does is updated whatever kind it is: a reconnect, a note, an exit status are
+ * facts about the session, and an agent pane's session has them too.
  */
 export function updateSession(
   tree: LayoutTree,
@@ -358,10 +400,11 @@ export function updateSession(
   if (!tree) return null;
 
   if (isLeaf(tree)) {
-    if (tree.type === 'terminal' && tree.session.id === sessionId) {
+    const session = paneSession(tree);
+    if (session && session.id === sessionId) {
       return {
         ...tree,
-        session: updater(tree.session),
+        session: updater(session),
       };
     }
     return tree;

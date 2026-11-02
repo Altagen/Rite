@@ -469,6 +469,62 @@ async fn ssh_session_connects_authenticates_and_round_trips() {
 /// which is also the first end-to-end coverage this entry point has had.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_saved_machine_opens_a_shell() {
+    let (out, mgr, session_id, _dir) = open_saved_machine(RemoteProgram::Shell).await;
+
+    assert!(
+        wait_for(&out, BANNER, Duration::from_secs(5)).await,
+        "a saved machine opens a login shell, so its banner must arrive"
+    );
+    // And not through the other request: `started:` is what an exec answers with.
+    assert!(
+        !String::from_utf8_lossy(&out.lock().unwrap()).contains("started:"),
+        "a terminal pane must not be opened by running a command"
+    );
+
+    mgr.close_session(&session_id).await.expect("close");
+}
+
+/// The same saved machine, asked for a program instead.
+///
+/// `create_session` is the only path a machine in the vault opens by, so this is where
+/// an agent pane in the product arrives — and until the program reached this far, the
+/// enum existed and nothing could use it. Asserted both ways round: the command must
+/// start, and the login shell must NOT, because an agent pane that also sourced the
+/// account's rc files would read its prompt as the agent's first output.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_saved_machine_can_run_one_program() {
+    let resume = "claude --resume 3f1c9e7a-58b4-4c21";
+    let (out, mgr, session_id, _dir) = open_saved_machine(RemoteProgram::Exec(resume.into())).await;
+
+    assert!(
+        wait_for(
+            &out,
+            format!("started:{resume}").as_bytes(),
+            Duration::from_secs(5)
+        )
+        .await,
+        "a saved machine must be able to run one named program under its PTY"
+    );
+    assert!(
+        !String::from_utf8_lossy(&out.lock().unwrap()).contains("RITE-TEST-BANNER"),
+        "the login shell must not run as well — its prompt would read as the agent's"
+    );
+
+    mgr.close_session(&session_id).await.expect("close");
+}
+
+/// A machine in an unlocked vault, opened with the given program.
+///
+/// Returns the output sink, the manager, the session and the tempdir — the last one
+/// because dropping it takes the database with it, and the session is still live.
+async fn open_saved_machine(
+    program: RemoteProgram,
+) -> (
+    Arc<std::sync::Mutex<Vec<u8>>>,
+    SessionManager,
+    String,
+    tempfile::TempDir,
+) {
     let port = spawn_test_server().await;
     let dir = tempfile::tempdir().unwrap();
     let db = Database::new(&dir.path().join("t.db")).await.unwrap();
@@ -520,6 +576,7 @@ async fn a_saved_machine_opens_a_shell() {
             None,
             None,
             known_hosts::LOCAL_OWNER,
+            program,
         )
         .await
         .expect("a saved machine should open a session");
@@ -527,17 +584,7 @@ async fn a_saved_machine_opens_a_shell() {
     let buffered = mgr.claim_session_output(&session_id).await;
     out.lock().unwrap().extend_from_slice(&buffered);
 
-    assert!(
-        wait_for(&out, BANNER, Duration::from_secs(5)).await,
-        "a saved machine opens a login shell, so its banner must arrive"
-    );
-    // And not through the other request: `started:` is what an exec answers with.
-    assert!(
-        !String::from_utf8_lossy(&out.lock().unwrap()).contains("started:"),
-        "a terminal pane must not be opened by running a command"
-    );
-
-    mgr.close_session(&session_id).await.expect("close");
+    (out, mgr, session_id, dir)
 }
 
 /// A PTY, then a named program — the path ADR 0022 §7.1 said the core still owed.
@@ -1483,6 +1530,7 @@ async fn quick_session_connects_through_a_jump_host() {
             None,
             vec![hop(bastion_port)],
             known_hosts::LOCAL_OWNER,
+            RemoteProgram::Shell,
         )
         .await
         .expect("quick session should connect through the jump host");

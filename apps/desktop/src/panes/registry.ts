@@ -16,6 +16,7 @@
 import type { ComponentType } from 'react';
 import type { LeafPaneNode, SplitTarget } from '../types/pane';
 import { disposePanes, type PaneDisposer } from './dispose';
+import { agentKind } from './kinds/agent';
 import { terminalKind } from './kinds/terminal';
 
 /**
@@ -89,6 +90,7 @@ export interface PaneKind<N extends LeafPaneNode = LeafPaneNode> {
 
 const kinds: { [T in LeafPaneNode['type']]: PaneKind<Extract<LeafPaneNode, { type: T }>> } = {
   terminal: terminalKind,
+  agent: agentKind,
 };
 
 /**

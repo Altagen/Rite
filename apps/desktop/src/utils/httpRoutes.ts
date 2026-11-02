@@ -674,6 +674,7 @@ const routes: Record<string, Route> = {
           jumps: a.jumps ?? [],
           collectionId: a.collectionId,
           itemId: a.itemId,
+          command: a.command,
         }),
       )
     ).sessionId,
@@ -686,7 +687,11 @@ const routes: Record<string, Route> = {
     (
       await json<{ sessionId: string }>(
         '/api/terminal/ssh',
-        post({ connectionId: a.connectionId, sessionSecret: a.sessionSecret }),
+        post({
+          connectionId: a.connectionId,
+          sessionSecret: a.sessionSecret,
+          command: a.command,
+        }),
       )
     ).sessionId,
 

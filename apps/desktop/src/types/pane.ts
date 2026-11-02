@@ -82,6 +82,50 @@ export interface TerminalPaneNode extends LeafPaneNodeBase {
 }
 
 /**
+ * What a resumed agent conversation is, beyond the terminal it runs in.
+ *
+ * Every field here is read off the discovery listing, never typed by the reader —
+ * which is the point of the adapter: the id in particular is a uuid nobody should
+ * have to handle. Kept on the node rather than looked up again because the pane must
+ * still say what it is after the machine has been probed again, or not at all.
+ */
+export interface AgentConversation {
+  /** The adapter, by its own id: `claude`, `codex`, `gemini`, … */
+  toolId: string;
+  /** The adapter's display name, for the chip. */
+  toolName: string;
+  /** The conversation's handle, as that adapter reports it. */
+  conversationId: string;
+  /** What the pane is called: the project the conversation is about. */
+  project: string;
+  /** Where the agent works on that machine. */
+  cwd: string;
+  /**
+   * The machine, by name, as the library names it. Absent ⇒ this computer.
+   *
+   * By name and not by id, like a layout's pane (`SplitTarget.machine`) — this is
+   * what a reader recognises, and it is the only thing on screen that says which
+   * host an agent is answering from.
+   */
+  machine?: string;
+}
+
+/**
+ * A resumed agent conversation.
+ *
+ * It holds an SSH session like a terminal pane does, because that is what it is: one
+ * command under a PTY on the machine the conversation lives on, started by the
+ * adapter's resume line. What differs from a terminal is the header and nothing else,
+ * which is why it is a kind and not a component — splitting, focusing, closing,
+ * detaching and layouts all come from the tree, unchanged.
+ */
+export interface AgentPaneNode extends LeafPaneNodeBase {
+  type: 'agent';
+  session: TerminalSession;
+  agent: AgentConversation;
+}
+
+/**
  * Split container node - contains two child panes (recursive structure)
  */
 export interface SplitPaneNode extends PaneNodeBase {
@@ -94,12 +138,12 @@ export interface SplitPaneNode extends PaneNodeBase {
 /**
  * Every kind of pane that holds content rather than other panes.
  *
- * Terminal is the only one today. SFTP and the agent manager join this union, and
- * joining it is the whole of what the tree has to learn about them: `paneTree`
- * reaches a leaf through `isLeaf()` and never asks which kind it is, except in the
- * three places that genuinely are about terminals.
+ * A terminal and a resumed agent today; SFTP joins them. Joining this union is the
+ * whole of what the tree has to learn about a kind: `paneTree` reaches a leaf through
+ * `isLeaf()` and never asks which kind it is, except where it asks for the session a
+ * leaf holds — and both of these hold one.
  */
-export type LeafPaneNode = TerminalPaneNode;
+export type LeafPaneNode = TerminalPaneNode | AgentPaneNode;
 
 /**
  * Union type for any pane node

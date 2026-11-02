@@ -27,14 +27,15 @@
  * stripping — the same reason `commands.ts` and `palette.ts` import nothing.
  */
 import type { AnyPaneNode, TerminalSession } from '../types/pane';
+// With the extension, because this module is also loaded raw: `tab-plan-check.mjs`
+// hands it to Node, whose ESM loader resolves no extensions. Vite and tsc both accept
+// it (`allowImportingTsExtensions`), so one spelling serves both — which is what lets
+// `isLeaf` have exactly one definition instead of a copy per reader.
+import { isLeaf } from '../utils/paneTree.ts';
 import type { LayoutPane, SplitStep, TabPlan } from './layoutsFormat';
 
 /** The connection id a local shell carries, as `Workspace.localSession` mints it. */
 const LOCAL = 'local';
-
-/** True for a node that holds content rather than other panes. */
-const isLeaf = (node: AnyPaneNode): node is Extract<AnyPaneNode, { type: 'terminal' }> =>
-  node.type === 'terminal';
 
 /**
  * What one live pane asks for, as a plan pane.
@@ -53,7 +54,15 @@ function paneFor(session: TerminalSession): LayoutPane {
   return machine ? { machine, command: '' } : { command: '' };
 }
 
-/** The first leaf a walk of this subtree reaches: the pane that holds its area. */
+/**
+ * The first leaf a walk of this subtree reaches: the pane that holds its area.
+ *
+ * `isLeaf` comes from `paneTree` rather than being written again here. It WAS written
+ * again here, narrowed to `type === 'terminal'`, and the day a second kind arrived the
+ * compiler failed this file — which is the only reason the copy was found. Both kinds
+ * that exist hold a session, and a kind that holds none will fail here loudly for the
+ * same reason, which is better than a plan quietly naming the wrong machine.
+ */
 function firstLeaf(node: AnyPaneNode): TerminalSession {
   let at = node;
   while (!isLeaf(at)) at = at.children[0];
