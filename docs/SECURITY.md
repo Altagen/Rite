@@ -242,6 +242,11 @@ four now (`ad_hoc_target_allowed`), and `e2e/server-authz-check.mjs` holds every
 The member supplies the credentials, so this was never about a stolen secret. It is about
 reach: what the server gets to and the member does not.
 
+The other half of the same question is a saved id. The two routes that take one answered
+`Application is locked` on a deployed instance — held by that instance having no vault
+key rather than by a rule, and the connection table has no owner column. They refuse
+outright now, and name the route that does work.
+
 ## Configuration Security
 
 ### Master Password

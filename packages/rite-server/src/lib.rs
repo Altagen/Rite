@@ -5914,6 +5914,23 @@ async fn exec_saved(
     if !gate.allows(&state).await? {
         return Ok(gate.refusal());
     }
+    // A deployed instance has no vault to resolve an id in: a member's machines live in
+    // collections, encrypted, and this instance is refused a vault key even to an
+    // administrator (ADR 0011, ADR 0018). So this answered `Application is locked` — an
+    // error, which reads as a fault rather than as an answer, and which would become a
+    // lookup the day an instance did hold a vault. The connection table has no owner
+    // column, so that lookup would be any member's id against every member's row.
+    //
+    // Said plainly instead, and before the id is touched. A browser reaches a collection
+    // machine through `exec-quick`; a desktop client serves this route itself.
+    if state.accounts {
+        return Ok((
+            StatusCode::GONE,
+            "a deployed instance resolves no connection ids: send the decrypted target \
+             to /api/terminal/exec-quick (ADR 0011)",
+        )
+            .into_response());
+    }
     let out = state
         .sessions
         .run_remote_command(

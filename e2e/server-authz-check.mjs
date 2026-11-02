@@ -260,6 +260,19 @@ try {
   }
   ok('the local-vault routes hand nothing to a session on a shared server');
 
+  step = 'a-connection-id-resolves-to-nothing-on-a-shared-server';
+  // The two exec routes that take a saved id answered `500 Application is locked`: held
+  // by the instance having no vault key, not by a rule. The connection table has no owner
+  // column, so the day an instance did hold a vault that lookup would be any member's id
+  // against every member's row. 410, like the local-vault routes above: an answer, not a
+  // fault. A browser reaches a collection machine through `exec-quick`.
+  for (const route of ['/api/terminal/exec', '/api/agents/probe']) {
+    const res = await post(route, { connectionId: 'whatever', command: 'id' }, pleb);
+    assert.equal(res.status, 410, `${route} must refuse an id outright (got ${res.status})`);
+    assert.match(await res.text(), /exec-quick/, `${route} names what does work instead`);
+  }
+  ok('a saved connection id is refused by the rule, not by the vault being locked');
+
   step = 'quick-ssh-policy';
   assert.equal((await mode(admin)).allowQuickSsh, false, 'ad-hoc Quick SSH is off by default');
   const adhoc = { host: '127.0.0.1', port: 65001, username: 'x', authMethod: { type: 'password', password: 'x' } };
