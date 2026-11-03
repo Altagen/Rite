@@ -97,6 +97,28 @@ test('the local probe answers on a local vault, framed for the parser', async ({
   expect(body.stdout).toContain('__missing__');
 });
 
+test('the filters are offered without a second grouping to fight the first', async ({ page }) => {
+  // ONE GROUPING, THREE FILTERS. The band per CLI is the structure of the page; Claude
+  // Code Desktop offers "group by date" beside "group by project" and its open tickets
+  // are what that costs — grouped by date a session no longer says which project it is
+  // from, and the activity filter stops being offered when the grouping changes.
+  //
+  // With no machine read yet there is nothing to filter, so what holds here is that the
+  // controls appear with the conversations and not before: a row of dead filters over an
+  // empty panel is how a screen teaches people to ignore it.
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('toolbar-agents').click();
+  await expect(page.getByTestId('agent-manager')).toBeVisible({ timeout: 15_000 });
+
+  await expect(page.getByTestId('agent-since')).toHaveCount(0);
+  await expect(page.getByTestId('agent-search')).toHaveCount(0);
+  await expect(page.getByTestId('agent-only-asked')).toHaveCount(0);
+  // And no grouping control at all, in either layout — the two layouts arrange one
+  // grouping, they do not offer a second.
+  await expect(page.getByTestId('agent-layout-stacked')).toHaveCount(0);
+});
+
 test('the CLIs panel names the six adapters and the commands they will run', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });

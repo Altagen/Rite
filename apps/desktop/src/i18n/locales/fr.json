@@ -1243,7 +1243,16 @@
     "close": "Fermer le gestionnaire d’agents",
     "thisMachine": "Cette machine",
     "noLocalInBrowser": "Un navigateur n’atteint aucune machine locale. Les agents viennent de machines en SSH.",
-    "started": "démarrée {when}"
+    "started": "démarrée {when}",
+    "since": "Depuis",
+    "sinceAll": "Tout",
+    "since1": "24 dernières heures",
+    "since7": "7 derniers jours",
+    "since30": "30 derniers jours",
+    "onlyAsked": "Avec une question",
+    "onlyAskedHint": "Masque {count} sessions sans question saisie — une exécution déléguée, ou laissée au prompt.",
+    "noneLeft": "Aucune conversation ne correspond aux filtres",
+    "noneLeftHint": "{count} sur cette machine en tout."
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",

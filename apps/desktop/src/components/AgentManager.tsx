@@ -110,6 +110,10 @@ export function AgentManager({
   const [folded, setFolded] = useState<Record<string, boolean>>({});
   const [railTool, setRailTool] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
+  /** How far back to look, in days. 0 is all of it. */
+  const [since, setSince] = useState(0);
+  /** Hide the sessions nobody typed into. Off, because hiding by default is a surprise. */
+  const [asked, setAsked] = useState(false);
 
   const native = isNativeShell();
   const onLocal = machineId === LOCAL;
@@ -157,15 +161,33 @@ export function AgentManager({
     return out;
   }, [answer]);
 
+  /** How many conversations no question was ever typed into. */
+  const quiet = useMemo(() => rows.filter((r) => !r.conv.ask).length, [rows]);
+
+  /**
+   * THREE FILTERS AND NO SECOND GROUPING, which is a decision rather than a shortcut.
+   *
+   * The band per CLI is the structure of the page. Claude Code Desktop offers "group by
+   * date" beside "group by project" and its open tickets are what that costs: grouped by
+   * date a session no longer says which project it belongs to, and the activity filter
+   * stops being offered the moment the grouping changes. Two axes that each undo the
+   * other. So this screen has one grouping and filters that compose with it.
+   *
+   * A conversation whose time the host could not say is never filtered OUT by time: the
+   * absence of a fact is not evidence about it.
+   */
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
-      [r.conv.ask, r.conv.project, r.conv.label, r.conv.id, r.adapter.name]
+    const floor = since ? Date.now() / 1000 - since * 86400 : 0;
+    return rows.filter((r) => {
+      if (asked && !r.conv.ask) return false;
+      if (floor && r.conv.writtenAt !== undefined && r.conv.writtenAt < floor) return false;
+      if (!q) return true;
+      return [r.conv.ask, r.conv.project, r.conv.label, r.conv.id, r.adapter.name]
         .filter(Boolean)
-        .some((v) => v!.toLowerCase().includes(q)),
-    );
-  }, [rows, query]);
+        .some((v) => v!.toLowerCase().includes(q));
+    });
+  }, [rows, query, since, asked]);
 
   /** One band per tool that reported something, in the shipped order. */
   const bands = useMemo(() => {
@@ -225,6 +247,35 @@ export function AgentManager({
             onChange={(e) => setQuery(e.target.value)}
             data-testid="agent-search"
           />
+        )}
+        {rows.length > 0 && (
+          <Dropdown
+            value={since}
+            options={[
+              { value: 0, label: t('agent.sinceAll') },
+              { value: 1, label: t('agent.since1') },
+              { value: 7, label: t('agent.since7') },
+              { value: 30, label: t('agent.since30') },
+            ]}
+            onChange={setSince}
+            label={t('agent.since')}
+            testId="agent-since"
+          />
+        )}
+        {quiet > 0 && (
+          // Counted, so the switch says what it would take away. Measured on a real
+          // machine: sixty-one Codex rollouts, sixty of them never typed into.
+          <button
+            type="button"
+            onClick={() => setAsked((v) => !v)}
+            title={t('agent.onlyAskedHint', { count: String(quiet) })}
+            data-testid="agent-only-asked"
+            className={`rounded-md border border-border px-2.5 py-1 text-xs ${
+              asked ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'
+            }`}
+          >
+            {t('agent.onlyAsked')}
+          </button>
         )}
         {rows.length > 0 && (
           <div className="flex overflow-hidden rounded-md border border-border" role="group">
@@ -304,7 +355,13 @@ export function AgentManager({
                 body={t('agent.readAt', { when: new Date(answer.at).toLocaleTimeString() })}
               />
             ) : shown.length === 0 ? (
-              <Note testId="agent-no-match" title={t('agent.noMatch', { query })} body="" />
+              // Which filter emptied the screen, because three of them can and a blank
+              // panel that does not say leaves the reader turning them off one by one.
+              <Note
+                testId="agent-no-match"
+                title={query ? t('agent.noMatch', { query }) : t('agent.noneLeft')}
+                body={t('agent.noneLeftHint', { count: String(rows.length) })}
+              />
             ) : layout === 'stacked' ? (
               bands.map((b) => (
                 <Band
