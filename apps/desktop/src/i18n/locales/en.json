@@ -1242,7 +1242,8 @@
     "open": "Agents — the conversations each CLI holds on a machine",
     "close": "Close the agent manager",
     "thisMachine": "This machine",
-    "noLocalInBrowser": "A browser reaches no local machine. Agents come from machines over SSH."
+    "noLocalInBrowser": "A browser reaches no local machine. Agents come from machines over SSH.",
+    "started": "started {when}"
   },
   "connErr": {
     "retrying": "Retrying automatically…",

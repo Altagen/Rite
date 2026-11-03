@@ -5,10 +5,10 @@
  * AN ADAPTER IS TWO COMMANDS (ADR 0022 §4): how to list a tool's conversations and how
  * to resume one. Its 0.2.9 addendum settled where an adapter lives — local to the
  * client, never exported, never a collection item — because an adapter is code, and a
- * screen that lists shell is a screen people click. These six are the defaults; the set
- * is the user's and the Tools dialog edits it.
+ * screen that lists shell is a screen people click. These seven are the defaults; the
+ * set is the user's and the Tools dialog edits it.
  *
- * MEASURED ON THIS MACHINE, 2026-11-03, against the installed binaries. Four of the six
+ * MEASURED ON THIS MACHINE, 2026-11-03, against the installed binaries. Five of the seven
  * were there, and three of the four commands the mock carried could not work:
  *
  *   - `ls ~/.codex/sessions/**\/*.jsonl` — `sh` has no recursive glob, and `**` is one
@@ -24,13 +24,17 @@
  * written to that morning — a September conversation resumed in November. So ordering
  * comes from `ls -t`, the modification time, and never from a parsed name.
  *
- * RECENCY IS THE ONLY TIME SIGNAL, and here it is an ORDER rather than a clock. A
- * portable timestamp costs more than one line of shell: `find -printf '%T@'` is GNU and
- * answers an error on macOS, `stat` takes `-c` there and `-f` here, and batching either
- * one over paths that may contain a space needs `tr`, `xargs -0` and a fallback chain.
- * So the listing is ordered and the parser numbers it, which is a fact on every host.
- * An absolute "last written" is a LAZY ENRICHMENT, fetched when a card is opened, the
- * way `statsCmd` already does it for a container (`machineProbe.ts`).
+ * EVERY FILE LISTING CARRIES ITS LAST-WRITTEN TIME, and it has to: the order is by that
+ * time, so a card showing anything else contradicts the list it sits in. Sixty-one Codex
+ * cards labelled with the date in their FILE NAME read as a shuffled list, because a
+ * conversation started in September and resumed today sorts first and reads last.
+ *
+ * It is not one line of shell, which is why it was deferred once. `find -printf '%T@'`
+ * is GNU and answers an error on macOS; `stat` takes `-c` on one and `-f` on the other;
+ * and batching either over paths that may hold a space needs `tr` and `xargs -0`. So the
+ * chain is written once, in `RECENT`, and tried in order — GNU, then BSD, then the bare
+ * paths, which still give the order. A host with neither `stat` loses the clock and
+ * keeps the list.
  *
  * WHAT A LISTING CANNOT SAY is whether anything is running, and nothing here pretends
  * otherwise. A transcript written twenty seconds ago by a session that has since exited
@@ -55,17 +59,37 @@ import { shellArg } from './machineProbe.ts';
 export const LIST_CAP = 200;
 
 /**
- * The tail of every file-listing adapter: newest first, capped, and quiet about a glob
- * that matched nothing.
+ * Every file-listing adapter's whole command: newest first, capped, each line its
+ * last-written time and its path.
  *
- * The pipe is what sets the exit status. `ls` answers non-zero when a glob matches
- * nothing — the shell hands it the pattern itself — and a tool with no conversations is
- * not a tool that failed. Ending on `head` makes the status `head`'s, which is 0, so an
- * empty answer reads as "none" and a real failure shows up as an empty list rather than
- * as a red card. Named rather than solved: telling those two apart would cost a second
- * command, and the first is what happens every day.
+ * `ls -1t` is the order, and `$L` holds it so the two `stat` syntaxes can both be tried
+ * — a pipeline would hand the first one the input and leave the second nothing. GNU
+ * first because that is what a Linux host answers; BSD second for macOS; the bare paths
+ * last, so a host with neither still gets its conversations, without a clock.
+ *
+ * THE EXIT STATUS IS THE EMPTY CASE. `ls` answers non-zero when a glob matches nothing —
+ * the shell hands it the pattern itself — and a tool with no conversations is not a tool
+ * that failed, so the empty list leaves through `exit 0`. The cost is named rather than
+ * solved: a genuinely broken command also reads as none, and telling the two apart would
+ * cost a second command for a case that does not happen daily.
  */
-const RECENT = `2>/dev/null | head -n ${LIST_CAP}`;
+/** The field separator a listing line uses. A real tab; see `listing`. */
+const TAB = '\t';
+
+const listing = (glob: string): string =>
+  [
+    `L=$(ls -1t ${glob} 2>/dev/null | head -n ${LIST_CAP}); [ -n "$L" ] || exit 0`,
+    // `String.raw`, so `\n` and `\0` reach the shell as the two characters `printf` and
+    // `tr` read themselves — a real newline here would end the command early.
+    //
+    // THE SEPARATOR IS A REAL TAB, interpolated, and that is not a style choice:
+    // measured, GNU `stat -c` does NOT interpret backslash escapes (only `--printf`
+    // does, which BSD has no spelling for), so `'%Y\t%n'` printed a literal `\t`
+    // between the time and the path and every line failed to parse.
+    String.raw`printf '%s\n' "$L" | tr '\n' '\0' | xargs -0 stat -c '%Y${TAB}%n' 2>/dev/null ||`,
+    String.raw`printf '%s\n' "$L" | tr '\n' '\0' | xargs -0 stat -f '%m${TAB}%N' 2>/dev/null ||`,
+    String.raw`printf '%s\n' "$L"`,
+  ].join('\n');
 
 /**
  * One conversation, as a listing can honestly describe it.
@@ -87,8 +111,17 @@ export interface DiscoveredConversation {
   project?: string;
   /** What the tool's own listing printed for it, when that is a title or a date. */
   label?: string;
-  /** 0 is the most recent in the tool's own ordering. The only time signal. */
+  /** 0 is the most recent in the tool's own ordering. */
   rank: number;
+  /**
+   * When the conversation was last written, as a Unix second, when the host could say.
+   *
+   * The sort key, which is why it is on the card: showing any other date beside a list
+   * ordered by this one is showing a shuffled list. Absent on a host whose `stat`
+   * answered neither syntax, and on a tool whose listing is not files — the order still
+   * holds there, and a card then shows no time rather than a made-up one.
+   */
+  writtenAt?: number;
 }
 
 /** An adapter Rite ships, which is the probe's adapter plus what the view needs. */
@@ -110,8 +143,23 @@ export interface ShippedAdapter extends AgentAdapter {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * One line of a file listing: a path, and its last-written second when `stat` answered.
+ *
+ * The tab is the separator because a path can hold a space and cannot hold a tab without
+ * saying so — and the epoch is read only when it is all digits, so a path that happens to
+ * start with a number and a tab is a path.
+ */
+function fileLine(line: string): { path: string; writtenAt?: number } {
+  const tab = line.indexOf('\t');
+  if (tab < 0) return { path: line.trim() };
+  const head = line.slice(0, tab);
+  if (!/^\d+$/.test(head)) return { path: line.trim() };
+  return { path: line.slice(tab + 1).trim(), writtenAt: Number(head) };
+}
+
 /** Split a path the way the listings print it: forward slashes, no trailing one. */
-const parts = (line: string): string[] => line.trim().split('/').filter(Boolean);
+const parts = (p: string): string[] => p.trim().split('/').filter(Boolean);
 
 export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
   {
@@ -121,20 +169,21 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     id: 'claude',
     name: 'Claude Code',
     bin: 'claude',
-    list: `ls -1t ~/.claude/projects/*/*.jsonl ${RECENT}`,
+    list: listing('~/.claude/projects/*/*.jsonl'),
     resume: 'claude --resume {id}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
       const out: DiscoveredConversation[] = [];
       for (const line of lines) {
-        const p = parts(line);
+        const { path, writtenAt } = fileLine(line);
+        const p = parts(path);
         const file = p[p.length - 1] ?? '';
         if (!file.endsWith('.jsonl')) continue;
         const id = file.slice(0, -'.jsonl'.length);
         if (!UUID.test(id)) continue;
         const slug = p[p.length - 2];
-        out.push({ id, project: slug, label: slug, rank: out.length });
+        out.push({ id, project: slug, label: slug, rank: out.length, writtenAt });
       }
       return out;
     },
@@ -145,22 +194,26 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     id: 'codex',
     name: 'Codex CLI',
     bin: 'codex',
-    list: `ls -1t ~/.codex/sessions/*/*/*/*.jsonl ${RECENT}`,
+    list: listing('~/.codex/sessions/*/*/*/*.jsonl'),
     resume: 'codex resume {id}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
       const out: DiscoveredConversation[] = [];
       for (const line of lines) {
-        const p = parts(line);
+        const { path, writtenAt } = fileLine(line);
+        const p = parts(path);
         const file = p[p.length - 1] ?? '';
         if (!file.startsWith('rollout-') || !file.endsWith('.jsonl')) continue;
         const stem = file.slice('rollout-'.length, -'.jsonl'.length);
-        // The uuid is the tail; what precedes it is when the conversation STARTED, which
-        // is not when it was last written — the ordering above is the recency.
         const id = stem.slice(-36);
         if (!UUID.test(id)) continue;
-        out.push({ id, label: stem.slice(0, -37), rank: out.length });
+        // The name says when the conversation STARTED, which is not when it was last
+        // written: measured on this machine, a rollout named 2026-09-08 had been written
+        // to that morning, because `codex resume` appends to the file it reopens. The
+        // card shows `writtenAt`, which is what the list is sorted by; the started-at is
+        // kept as the label, where it cannot be read as the sort key.
+        out.push({ id, label: stem.slice(0, -37), rank: out.length, writtenAt });
       }
       return out;
     },
@@ -200,27 +253,57 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     id: 'grok',
     name: 'Grok',
     bin: 'grok',
-    list: `ls -1t ~/.grok/sessions/*/*/chat_history.jsonl ${RECENT}`,
+    list: listing('~/.grok/sessions/*/*/chat_history.jsonl'),
     resume: 'grok --resume {id}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
       const out: DiscoveredConversation[] = [];
-      for (const line of lines) {
-        const p = parts(line);
+      for (const raw of lines) {
+        const { path, writtenAt } = fileLine(raw);
+        const p = parts(path);
         if (p[p.length - 1] !== 'chat_history.jsonl') continue;
         const id = p[p.length - 2] ?? '';
         if (!UUID.test(id)) continue;
         // URL-encoding is lossless, so decoding gives the real path back. A malformed
         // escape is the encoder's business, not a reason to drop the conversation.
-        const raw = p[p.length - 3] ?? '';
-        let project = raw;
+        const encoded = p[p.length - 3] ?? '';
+        let project = encoded;
         try {
-          project = decodeURIComponent(raw);
+          project = decodeURIComponent(encoded);
         } catch {
           /* keep it as printed */
         }
-        out.push({ id, project, label: project, rank: out.length });
+        out.push({ id, project, label: project, rank: out.length, writtenAt });
+      }
+      return out;
+    },
+  },
+  {
+    // Google's other one, and it is a FOLDER OF DATABASES: one `<uuid>.db` per
+    // conversation under `~/.gemini/antigravity-cli/conversations`, which is why the
+    // listing is `ls` and the file is not read. `--conversation <id>` resumes one, read
+    // off `agy --help` on the installed build — a durable id, unlike `gemini --resume`,
+    // which is the same vendor and takes a position.
+    id: 'antigravity',
+    name: 'Antigravity',
+    bin: 'agy',
+    list: listing('~/.gemini/antigravity-cli/conversations/*.db'),
+    resume: 'agy --conversation {id}',
+    idKind: 'uuid',
+    from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
+    parse: (lines) => {
+      const out: DiscoveredConversation[] = [];
+      for (const line of lines) {
+        const { path, writtenAt } = fileLine(line);
+        const p = parts(path);
+        const file = p[p.length - 1] ?? '';
+        if (!file.endsWith('.db')) continue;
+        const id = file.slice(0, -'.db'.length);
+        // `conversation_summaries.db` sits beside them and is not one, which the uuid
+        // test is enough to say.
+        if (!UUID.test(id)) continue;
+        out.push({ id, rank: out.length, writtenAt });
       }
       return out;
     },
@@ -232,7 +315,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     id: 'hermes',
     name: 'Hermes',
     bin: 'hermes',
-    list: `sqlite3 ~/.hermes/state.db 'select id,title from sessions order by rowid desc' ${RECENT}`,
+    list: `sqlite3 ~/.hermes/state.db 'select id,title from sessions order by rowid desc' 2>/dev/null | head -n ${LIST_CAP}`,
     resume: 'hermes --resume {id}',
     idKind: 'title',
     from: { kind: 'vendor', seen: 'documentation; not installed here' },

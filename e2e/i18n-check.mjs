@@ -251,6 +251,7 @@ const ALLOWED = new Map([
   ['utils/agentAdapters.ts: [ternary-else] Codex CLI', "a vendor's product name"],
   ['utils/agentAdapters.ts: [ternary-else] Gemini CLI', "a vendor's product name"],
   ['utils/agentAdapters.ts: [ternary-else] Grok', "a vendor's product name"],
+  ['utils/agentAdapters.ts: [ternary-else] Antigravity', "a vendor's product name"],
   ['utils/agentAdapters.ts: [ternary-else] Hermes', "a vendor's product name"],
   // A CSS font-family stack. Font names are not translated.
   ['utils/terminalPool.ts: [ternary-else] JetBrains Mono, Fira Code, monospace', 'CSS font stack'],

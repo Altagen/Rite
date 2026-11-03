@@ -385,6 +385,19 @@ export function AgentManager({
   }
 }
 
+/**
+ * How a last-written time reads on a card: short, and in the reader's own locale.
+ *
+ * `Intl` rather than a format of our own, because a date is one of the few things every
+ * platform already knows how to say in the order the person reading it expects.
+ */
+const WHEN: Intl.DateTimeFormatOptions = {
+  month: 'short',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+};
+
 /** A titled note. Every empty and every refusal on this screen is one of these. */
 function Note({ title, body, testId }: { title: string; body: string; testId: string }) {
   return (
@@ -395,20 +408,43 @@ function Note({ title, body, testId }: { title: string; body: string; testId: st
   );
 }
 
-/** One conversation. Project, handle, and a way in — nothing a listing cannot support. */
+/**
+ * One conversation. Project, when it was last written, handle, and a way in.
+ *
+ * WHAT IS ON THE FIRST LINE IS THE SORT KEY, or something that does not compete with it:
+ * a project when the path gives one, otherwise the time this conversation was last
+ * written, which is what the list is ordered by. Codex's file name carries the date it
+ * STARTED, and putting that on the first line made sixty-one cards read as a shuffle — a
+ * conversation begun in September and resumed today sorts first and reads last. It is
+ * still there, under `title`, where it cannot be mistaken for the order.
+ */
 function Card({ row, onResume }: { row: Row; onResume: () => void }) {
   const { t } = useTranslation();
   const { conv } = row;
+  const written = conv.writtenAt ? new Date(conv.writtenAt * 1000) : null;
+  const stamp = written ? written.toLocaleString(undefined, WHEN) : null;
+  const headline = conv.project ?? stamp ?? conv.label ?? null;
   return (
     <div
       className="flex flex-col gap-1.5 rounded-md border border-border bg-card p-3"
       data-testid={`agent-card-${conv.id}`}
     >
-      <div className="truncate text-sm font-medium" title={conv.project ?? conv.label ?? conv.id}>
-        {conv.project ?? conv.label ?? (
-          <span className="text-muted-foreground">{t('agent.noProject')}</span>
-        )}
+      <div
+        className="truncate text-sm font-medium"
+        title={[conv.project, conv.label && t('agent.started', { when: conv.label })]
+          .filter(Boolean)
+          .join(' · ')}
+      >
+        {headline ?? <span className="text-muted-foreground">{t('agent.noProject')}</span>}
       </div>
+      {/* Under a project rather than replacing it, so a card never has to choose between
+          the two — and absent when the host's `stat` answered neither syntax, rather
+          than showing a time nobody measured. */}
+      {stamp && conv.project && (
+        <div className="truncate text-[11px] text-muted-foreground" title={written!.toString()}>
+          {stamp}
+        </div>
+      )}
       <div className="flex items-center gap-1.5">
         <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">
           {conv.id}

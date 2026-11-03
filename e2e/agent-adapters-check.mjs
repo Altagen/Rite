@@ -1,5 +1,5 @@
 /**
- * The six shipped agent adapters: their two commands, and the parser that turns each
+ * The seven shipped agent adapters: their two commands, and the parser that turns each
  * tool's listing into conversations.
  *
  * Loads `apps/desktop/src/utils/agentAdapters.ts` directly — Node strips the types and
@@ -49,46 +49,67 @@ console.log('\nthe two commands, pinned:');
 check('every shipped tool is there, and nothing else', () => {
   assert.deepEqual(
     SHIPPED_ADAPTERS.map((a) => a.id),
-    ['claude', 'codex', 'gemini', 'grok', 'hermes', 'opencode'],
+    ['claude', 'codex', 'gemini', 'grok', 'antigravity', 'hermes', 'opencode'],
   );
 });
 
 check('the three commands the mock had wrong are the measured ones now', () => {
   // Codex files under sessions/YYYY/MM/DD, and `sh` has no recursive glob — `**` is one
   // `*`, so the mock's command listed a directory level that does not exist.
-  assert.equal(
-    A('codex').list,
-    `ls -1t ~/.codex/sessions/*/*/*/*.jsonl 2>/dev/null | head -n ${LIST_CAP}`,
-  );
+  assert.match(A('codex').list, /ls -1t ~\/\.codex\/sessions\/\*\/\*\/\*\/\*\.jsonl/);
   // Grok keeps one directory per URL-encoded working directory, each holding one
-  // directory per conversation. `ls ~/.grok/sessions` listed the projects.
-  assert.equal(
-    A('grok').list,
-    `ls -1t ~/.grok/sessions/*/*/chat_history.jsonl 2>/dev/null | head -n ${LIST_CAP}`,
-  );
+  // directory per conversation. `ls ~/.grok/sessions` listed the projects, and the
+  // history file is what tells a conversation from what sits beside one.
+  assert.match(A('grok').list, /ls -1t ~\/\.grok\/sessions\/\*\/\*\/chat_history\.jsonl/);
   // Gemini's is KEPT, deliberately: `--resume` takes an index, and only this listing
   // produces one. What changed is that the row is scoped to a directory, not a machine.
   assert.equal(A('gemini').list, 'gemini --list-sessions 2>&1');
   assert.equal(A('gemini').idKind, 'index');
 });
 
+check('a file listing asks for the time it is sorted by', () => {
+  // THE CARD AND THE LIST HAVE TO AGREE. Ordered by last-written and labelled with the
+  // date in the file name, sixty-one Codex cards read as a shuffle: a conversation
+  // started in September and resumed today sorts first and reads last.
+  //
+  // Three syntaxes, tried in order, because there is no portable one — `stat -c` is GNU,
+  // `stat -f` is BSD, and a host with neither still gets its conversations without a
+  // clock. `$L` holds the list because a pipeline would leave the second `stat` nothing
+  // left to read.
+  for (const id of ['claude', 'codex', 'grok', 'antigravity']) {
+    const list = A(id).list;
+    assert.match(list, /^L=\$\(ls -1t /, id);
+    assert.ok(list.includes('[ -n "$L" ] || exit 0'), id);
+    assert.ok(list.includes("stat -c '%Y\tsentinel-n'".replace('sentinel-n', '%n')), id);
+    assert.ok(list.includes("stat -f '%m\tsentinel-N'".replace('sentinel-N', '%N')), id);
+    assert.ok(list.includes("tr '\\n' '\\0' | xargs -0"), id);
+    assert.ok(list.trimEnd().endsWith(`printf '%s\\n' "$L"`), id);
+  }
+});
+
 check('no listing uses a recursive glob, which sh does not have', () => {
   for (const a of SHIPPED_ADAPTERS) assert.equal(a.list.includes('**'), false, a.id);
 });
 
-check('no listing uses a GNU-only flag a macOS host would refuse', () => {
-  // `find -printf` and `stat -c` are the two that were reached for while writing this.
+check('no listing uses a GNU-only flag with nothing behind it', () => {
+  // `find -printf` has no BSD spelling at all, so it is never reachable. `stat` has two
+  // and both are tried, which is why that one is allowed here and this one is not.
   for (const a of SHIPPED_ADAPTERS) {
-    assert.equal(/-printf|stat\s+-c|stat\s+-f/.test(a.list), false, a.id);
+    assert.equal(/-printf/.test(a.list), false, a.id);
   }
 });
 
-check('every file listing is ordered by write time, capped, and exits through head', () => {
-  // The order IS the recency signal, so a listing that lost `-t` would silently sort by
-  // name. The pipe is what makes the status 0 when a glob matches nothing.
-  for (const id of ['claude', 'codex', 'grok']) {
-    assert.match(A(id).list, /^ls -1t /, id);
-    assert.ok(A(id).list.endsWith(`| head -n ${LIST_CAP}`), id);
+check('every listing is capped, and an empty one is not a failure', () => {
+  // `ls` answers non-zero when a glob matches nothing — the shell hands it the pattern —
+  // and a tool with no conversations is not a tool that failed.
+  // Every listing Rite shapes. The two it does not are the vendor's own output: Gemini
+  // prints a project's sessions in prose, and opencode prints one JSON document — which
+  // `head` would cut in half rather than shorten.
+  for (const a of SHIPPED_ADAPTERS.filter((a) => a.id !== 'gemini' && a.id !== 'opencode')) {
+    assert.ok(a.list.includes(`head -n ${LIST_CAP}`), a.id);
+  }
+  for (const id of ['claude', 'codex', 'grok', 'antigravity']) {
+    assert.ok(A(id).list.includes('|| exit 0'), id);
   }
   assert.equal(LIST_CAP, 200);
 });
@@ -100,6 +121,7 @@ check('a provenance says how far it goes, and only four were installed', () => {
     codex: 'measured',
     gemini: 'measured',
     grok: 'measured',
+    antigravity: 'measured',
     hermes: 'vendor',
     opencode: 'community',
   });
@@ -118,10 +140,10 @@ check('the probe can build its command from a shipped adapter', () => {
 
 console.log('\nclaude — a uuid per file, the project slugged into the path:');
 
-check('a listing becomes conversations, newest first', () => {
+check('a listing becomes conversations, newest first, with their times', () => {
   const got = parse('claude', [
-    '/home/u/.claude/projects/-srv-acme-api/3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11.jsonl',
-    '/home/u/.claude/projects/-srv-acme-web/b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77.jsonl',
+    '1793704737\t/home/u/.claude/projects/-srv-acme-api/3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11.jsonl',
+    '1793377732\t/home/u/.claude/projects/-srv-acme-web/b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77.jsonl',
   ]);
   assert.deepEqual(got, [
     {
@@ -129,14 +151,36 @@ check('a listing becomes conversations, newest first', () => {
       project: '-srv-acme-api',
       label: '-srv-acme-api',
       rank: 0,
+      writtenAt: 1793704737,
     },
     {
       id: 'b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77',
       project: '-srv-acme-web',
       label: '-srv-acme-web',
       rank: 1,
+      writtenAt: 1793377732,
     },
   ]);
+});
+
+check('a host whose stat answered neither syntax still gets its conversations', () => {
+  // The third branch of the chain prints the bare paths. The clock is lost, the order is
+  // not — and a card then shows no time rather than one nobody measured.
+  const [c] = parse('claude', [
+    '/home/u/.claude/projects/-srv-acme-api/3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11.jsonl',
+  ]);
+  assert.equal(c.writtenAt, undefined);
+  assert.equal(c.project, '-srv-acme-api');
+});
+
+check('a path that begins with digits and a tab is a path, not a time', () => {
+  // The separator is a tab because a path can hold a space; the epoch is read only when
+  // the whole field is digits, so a directory called `2026` cannot become a clock.
+  const [c] = parse('claude', [
+    '/home/u/.claude/projects/2026-srv/3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11.jsonl',
+  ]);
+  assert.equal(c.writtenAt, undefined);
+  assert.equal(c.project, '2026-srv');
 });
 
 check('the slug is shown as it is, never turned back into a path', () => {
@@ -161,28 +205,37 @@ console.log('\ncodex — the uuid is the tail of the name, and the date is not t
 
 check('the uuid comes off the end and the start time becomes the label', () => {
   const got = parse('codex', [
-    '/home/u/.codex/sessions/2026/09/08/rollout-2026-09-08T12-52-12-01a080a5-9ce0-7841-bec7-866f002c969b.jsonl',
+    '1793692980\t/home/u/.codex/sessions/2026/09/08/rollout-2026-09-08T12-52-12-01a080a5-9ce0-7841-bec7-866f002c969b.jsonl',
   ]);
   assert.deepEqual(got, [
-    { id: '01a080a5-9ce0-7841-bec7-866f002c969b', label: '2026-09-08T12-52-12', rank: 0 },
+    {
+      id: '01a080a5-9ce0-7841-bec7-866f002c969b',
+      label: '2026-09-08T12-52-12',
+      rank: 0,
+      writtenAt: 1793692980,
+    },
   ]);
 });
 
-check('the oldest NAME can be the most recent conversation, and the order is kept', () => {
-  // This is the fourth measurement, and the one that looked right: on the machine that
-  // was read, the `2026-09-08` rollout had been written to that morning. `ls -t` put it
-  // first and the parser must not reorder by the name it just parsed.
+check('the oldest NAME can be the most recent conversation, and the time says so', () => {
+  // The measurement that looked right and was not: on the machine that was read, the
+  // `2026-09-08` rollout had been written to that morning, because `codex resume`
+  // appends to the file it reopens. `ls -t` puts it first, the parser must not reorder
+  // by the name it just parsed — and the card has to show `writtenAt`, or a correctly
+  // ordered list reads as a shuffled one.
   const got = parse('codex', [
-    '/home/u/.codex/sessions/2026/09/08/rollout-2026-09-08T12-52-12-01a080a5-9ce0-7841-bec7-866f002c969b.jsonl',
-    '/home/u/.codex/sessions/2026/11/03/rollout-2026-11-03T08-41-33-01a1a05b-31b7-7b11-b3b8-35333cf07b0b.jsonl',
+    '1793692980\t/home/u/.codex/sessions/2026/09/08/rollout-2026-09-08T12-52-12-01a080a5-9ce0-7841-bec7-866f002c969b.jsonl',
+    '1793691937\t/home/u/.codex/sessions/2026/11/03/rollout-2026-11-03T08-41-33-01a1a05b-31b7-7b11-b3b8-35333cf07b0b.jsonl',
   ]);
   assert.deepEqual(
-    got.map((c) => [c.rank, c.label]),
+    got.map((c) => [c.rank, c.label, c.writtenAt]),
     [
-      [0, '2026-09-08T12-52-12'],
-      [1, '2026-11-03T08-41-33'],
+      [0, '2026-09-08T12-52-12', 1793692980],
+      [1, '2026-11-03T08-41-33', 1793691937],
     ],
   );
+  // The order is the times' own, which is the whole point of asking for them.
+  assert.ok(got[0].writtenAt > got[1].writtenAt);
 });
 
 check('a codex conversation has no project, because its path carries a date', () => {
@@ -222,7 +275,7 @@ check('the id is the conversation directory and the project is decoded', () => {
   // URL-encoding is lossless, so decoding gives the real path back rather than a guess.
   assert.deepEqual(
     parse('grok', [
-      '/home/u/.grok/sessions/%2Fsrv%2Facme%2Fapi/019fdcfe-08ee-7ca3-aaae-02470f138ad1/chat_history.jsonl',
+      '1793300000\t/home/u/.grok/sessions/%2Fsrv%2Facme%2Fapi/019fdcfe-08ee-7ca3-aaae-02470f138ad1/chat_history.jsonl',
     ]),
     [
       {
@@ -230,6 +283,7 @@ check('the id is the conversation directory and the project is decoded', () => {
         project: '/srv/acme/api',
         label: '/srv/acme/api',
         rank: 0,
+        writtenAt: 1793300000,
       },
     ],
   );
@@ -360,4 +414,4 @@ if (failed) {
   console.log(`❌ ${failed} failed`);
   process.exit(1);
 }
-console.log('✅ the six adapters list, parse and resume as measured');
+console.log('✅ the seven adapters list, parse and resume as measured');
