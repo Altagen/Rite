@@ -32,10 +32,13 @@ import type { RemoteCommandOutput, ServerMode } from '../utils/backend';
 import { agentProbeCmd, parseAgentProbe } from '../utils/agentProbe';
 import {
   SHIPPED_ADAPTERS,
+  agentFactsCmd,
   agentRemoveCmd,
   agentResumeCmd,
+  parseAgentFacts,
   shippedAdapter,
   withoutConversation,
+  type AgentFacts,
   type DiscoveredConversation,
   type ShippedAdapter,
 } from '../utils/agentAdapters';
@@ -44,7 +47,15 @@ import { useMarks, type Mark } from '../store/marks';
 import { keepAnswer, readAnswers, type Answer } from '../store/agentAnswers';
 import { MACHINE_SWATCHES } from '../theme/swatches';
 import { askConfirm } from '../utils/confirmPrompt';
-import { IconCopy, IconEdit, IconPlay, IconPlus, IconTerminal, IconTrash } from './icons';
+import {
+  IconCopy,
+  IconEdit,
+  IconPlay,
+  IconPlus,
+  IconRefresh,
+  IconTerminal,
+  IconTrash,
+} from './icons';
 import { Backend } from '../utils/backend';
 import { isNativeShell } from '../utils/nativeShell';
 
@@ -274,6 +285,31 @@ export function AgentManager({
 
   /** The conversation a rename is open on, or null. */
   const [renaming, setRenaming] = useState<Row | null>(null);
+
+  /**
+   * Ask the machine what can have CHANGED about one conversation.
+   *
+   * ON THE PROBE ROUTE AND NOT THE MANAGE ONE, because this is a read. Same gate either
+   * way; the name is what tells a log which of the two happened.
+   *
+   * Nothing is cached and nothing is stored: `agentFactsCmd`'s own note holds the rule,
+   * and the panel calls this on every open — a branch read once and kept would be the
+   * same lie as a card carrying it.
+   */
+  const readFacts = useCallback(
+    async (r: Row): Promise<AgentFacts | null> => {
+      const cmd = agentFactsCmd(r.adapter, r.conv);
+      if (!cmd) return null;
+      const host = r.on === LOCAL ? null : (connections.find((c) => c.id === r.on) ?? null);
+      if (!host && r.on !== LOCAL) return null;
+      if (host && !probeAgents) return null;
+      const out = host
+        ? await probeAgents!(host, cmd)
+        : await Backend.Terminal.agentProbeLocal(cmd);
+      return parseAgentFacts(out.stdout);
+    },
+    [connections, probeAgents],
+  );
 
   /**
    * Whether this conversation can be removed AT ALL, which is two questions.
@@ -777,6 +813,7 @@ export function AgentManager({
             onRename={() => setRenaming(open1)}
             onDelete={canRemove(open1) ? () => void remove(open1) : undefined}
             onNew={() => setStarting({ tool: open1.adapter })}
+            readFacts={() => readFacts(open1)}
             deleting={removing === `${open1.on}:${open1.adapter.id}:${open1.conv.id}`}
           />
         )}
@@ -836,6 +873,15 @@ const WHEN: Intl.DateTimeFormatOptions = {
   minute: '2-digit',
 };
 
+/** Why a live read has no branch to report, as a key. One sentence each, no overlap. */
+const LIVE_MISSING = {
+  cwd: 'agent.liveNoCwd',
+  directory: 'agent.liveGone',
+  git: 'agent.liveNoGit',
+  repository: 'agent.liveNoRepo',
+  permission: 'agent.livePermission',
+} as const;
+
 /**
  * What is known about one conversation, beside the list rather than over it.
  *
@@ -866,6 +912,7 @@ function Detail({
   onRename,
   onDelete,
   onNew,
+  readFacts,
   deleting,
 }: {
   row: Row;
@@ -876,6 +923,8 @@ function Detail({
   /** Absent when this tool's listing names no file to remove. */
   onDelete?: () => void;
   onNew: () => void;
+  /** Asks the machine what has changed. Resolves null when there is nothing to ask. */
+  readFacts: () => Promise<AgentFacts | null>;
   deleting: boolean;
 }) {
   const { t } = useTranslation();
@@ -890,6 +939,34 @@ function Detail({
     const el = ask.current;
     setMore(!!el && el.scrollHeight > el.clientHeight + 1);
   }, [conv.ask]);
+  /**
+   * What the machine says NOW: undefined while it is being asked, null when there is
+   * nothing to ask, a string when the ask failed.
+   *
+   * READ ON EVERY OPEN. The panel is keyed by the conversation, so this effect runs again
+   * for the next card — and again for the same card reopened, which is the point: a
+   * branch is only true at the moment it was read, so it is read at the moment it is
+   * shown and never kept afterwards.
+   */
+  const [facts, setFacts] = useState<AgentFacts | null | undefined>(undefined);
+  const [factsError, setFactsError] = useState<string | null>(null);
+  const [turn, setTurn] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setFacts(undefined);
+    setFactsError(null);
+    readFacts()
+      .then((f) => live && setFacts(f))
+      .catch((e) => {
+        if (!live) return;
+        setFacts(null);
+        setFactsError(e instanceof Error ? e.message : String(e));
+      });
+    // Not `readFacts` in the dependencies: it is a closure the parent rebuilds on every
+    // render, and asking the machine again on each of those is the one thing this must
+    // not do. The conversation is keyed by the panel; `turn` is the reload button.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turn]);
   const fact = (label: string, value: React.ReactNode, mono = false) => (
     <>
       <dt className="text-muted-foreground">{label}</dt>
@@ -975,6 +1052,70 @@ function Detail({
         )}
         {fact(t('agent.detailResumes'), line, true)}
       </dl>
+
+      {/* WHAT THE MACHINE SAYS NOW, and it is a block of its own rather than two more
+          rows above — because everything above came out of a file and everything here
+          came out of an answer to a question asked a second ago. Mixing them would make
+          a branch look as settled as a uuid, which is the whole reason it is down here
+          and not on the card. */}
+      {facts !== null && (
+        <div className="rounded-md border border-border/70 p-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{t('agent.detailLive')}</span>
+            <span className="flex-1" />
+            <button
+              type="button"
+              onClick={() => setTurn((v) => v + 1)}
+              disabled={facts === undefined}
+              title={t('agent.again')}
+              aria-label={t('agent.again')}
+              className="rounded p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-50"
+              data-testid="agent-detail-live-again"
+            >
+              <IconRefresh className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {facts === undefined ? (
+            <div className="mt-1 text-xs text-muted-foreground" data-testid="agent-detail-live">
+              {t('agent.liveReading')}
+            </div>
+          ) : (
+            <dl
+              className="mt-1 grid grid-cols-[auto,1fr] gap-x-3 gap-y-1 text-xs"
+              data-testid="agent-detail-live"
+            >
+              {facts.cwd && fact(t('agent.detailCwd'), facts.cwd, true)}
+              {/* A branch, a detached head, or the reason there is neither — never a
+                  branch called `HEAD`, which is what `git` prints and nobody is on. */}
+              {(facts.branch || facts.detached || facts.missing) &&
+                fact(
+                  t('agent.detailBranch'),
+                  facts.branch ? (
+                    <>
+                      <span className="font-mono">{facts.branch}</span>
+                      <span className="text-muted-foreground">
+                        {' · '}
+                        {t(facts.dirty ? 'agent.liveDirty' : 'agent.liveClean')}
+                      </span>
+                    </>
+                  ) : facts.detached ? (
+                    t('agent.liveDetached')
+                  ) : (
+                    t(LIVE_MISSING[facts.missing!])
+                  ),
+                )}
+            </dl>
+          )}
+        </div>
+      )}
+      {factsError && (
+        <div
+          className="text-[11px] leading-relaxed text-amber-500"
+          data-testid="agent-detail-live-failed"
+        >
+          {t('agent.liveFailed')} — {factsError}
+        </div>
+      )}
 
       {/* Resume keeps its word on it: it is what the panel is for, and the four beside it
           are variations on getting hold of the thing. Delete is last and apart, in the

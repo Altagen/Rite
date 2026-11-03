@@ -46,7 +46,7 @@
  */
 
 import type { AgentAdapter } from './agentProbe.ts';
-import { shellArg } from './machineProbe.ts';
+import { posixScript, shellArg } from './machineProbe.ts';
 
 /**
  * How many conversations a listing may return.
@@ -210,6 +210,17 @@ export interface ShippedAdapter extends AgentAdapter {
    * that nothing opened them.
    */
   readsAsk?: boolean;
+  /**
+   * Where a live read can find this conversation's working directory, when it can.
+   *
+   * `transcript` means the file carries a `"cwd"` near its start — measured on Claude
+   * Code and Codex, both in the first 64 KB, in 9ms on a 1.1 GB transcript. `path` means
+   * the listing already decoded it, which is Grok's URL-encoded project directory.
+   * Absent means no live read is offered: a SQLite database and three listings that are
+   * not files have no directory to ask about, and inventing one would be the opposite of
+   * the reason this read exists.
+   */
+  livesIn?: 'transcript' | 'path';
   /** Pure: the listing's lines in, conversations out. Never throws. */
   parse: (lines: string[]) => DiscoveredConversation[];
 }
@@ -313,6 +324,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     list: listing('~/.claude/projects/*/*.jsonl', { ask: true }),
     readsAsk: true,
     resume: 'claude --resume {id}',
+    livesIn: 'transcript',
     // One file is one conversation, so removing it is removing the conversation. `-f` so
     // a file already gone is not an error, `--` so a path is never read as a flag.
     remove: 'rm -f -- {path}',
@@ -342,6 +354,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     list: listing('~/.codex/sessions/*/*/*/*.jsonl', { ask: true }),
     readsAsk: true,
     resume: 'codex resume {id}',
+    livesIn: 'transcript',
     remove: 'rm -f -- {path}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
@@ -402,6 +415,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     bin: 'grok',
     list: listing('~/.grok/sessions/*/*/chat_history.jsonl'),
     resume: 'grok --resume {id}',
+    livesIn: 'path',
     // THE DIRECTORY, not the history file — which is why `path` is what an adapter says
     // it is rather than what its glob matched. A Grok conversation is a folder holding a
     // history, a lock and a search index; deleting the history alone would leave the tool
@@ -607,9 +621,25 @@ export function agentRemoveCmd(
   conv: DiscoveredConversation,
 ): string | null {
   const template = adapter.remove;
-  const path = conv.path?.trim();
+  const path = vettedPath(conv);
   if (!template || !path) return null;
-  if (!path.startsWith('/')) return null;
+  const quoted = shellArg(path);
+  // `split`/`join` rather than `replaceAll`, which this target's lib does not carry, and
+  // rather than `replace`, which would substitute the first of two.
+  return template.includes('{path}') ? template.split('{path}').join(quoted) : null;
+}
+
+/**
+ * The path a listing reported, or null when it does not survive the four checks.
+ *
+ * ONE GUARD FOR BOTH CALLERS. A removal puts this behind `rm` and a live read puts it
+ * behind `head`, and the argument is the same either way: the value came out of a file
+ * name on a remote host, so it is checked once, here, rather than twice with a drift
+ * between them.
+ */
+function vettedPath(conv: DiscoveredConversation): string | null {
+  const path = conv.path?.trim();
+  if (!path || !path.startsWith('/')) return null;
   const segments = parts(path);
   if (segments.length < REMOVE_MIN_DEPTH) return null;
   // A traversal cannot arrive from a listing, and a listing is the only caller. It is
@@ -618,10 +648,7 @@ export function agentRemoveCmd(
   if (segments.includes('..')) return null;
   const last = segments[segments.length - 1];
   if (!conv.id || !last.includes(conv.id)) return null;
-  const quoted = shellArg(path);
-  // `split`/`join` rather than `replaceAll`, which this target's lib does not carry, and
-  // rather than `replace`, which would substitute the first of two.
-  return template.includes('{path}') ? template.split('{path}').join(quoted) : null;
+  return path;
 }
 
 /**
@@ -668,3 +695,116 @@ export function agentStartCmd(adapter: ShippedAdapter, cwd: string): string {
 
 /** The same start as argv, for a conversation on THIS machine. See `agentResumeArgv`. */
 export const agentStartArgv = (adapter: ShippedAdapter): string[] => [adapter.bin];
+
+/**
+ * How much of a transcript is read to find the directory it ran in.
+ *
+ * Measured: `"cwd"` sits in the first 64 KB of both a Claude Code transcript and a Codex
+ * rollout — 9ms on a 1.1 GB file, because `head` stops there. It is the directory the
+ * conversation was STARTED in, which is the one the tool reopens.
+ *
+ * The bound is the whole point. The same value could be found by scanning the file, and
+ * on one real transcript that is 1.1 GB over an SSH channel, two hundred times.
+ */
+const CWD_WINDOW = 65536;
+
+/**
+ * Everything about one conversation that CAN HAVE CHANGED since it was listed, as a
+ * single command.
+ *
+ * READ WHEN THE PANEL OPENS, NEVER CARRIED ON A CARD AND NEVER KEPT. A branch is the
+ * example and the rule is general: a listing says what a file says, and anything that is
+ * a property of the MACHINE RIGHT NOW is a different question with a different answer
+ * every time it is asked. Shown on a card it would be read as current, go stale the
+ * moment someone switches branches, and send a person to resume the wrong conversation —
+ * which is the same failure as claiming a session is running (see the view's own note).
+ *
+ * So it is one round trip, on one machine, for one conversation, on an explicit gesture:
+ * exactly what ADR 0022 §4 allows and nothing more. Opening the panel again asks again.
+ *
+ * `null` when there is nothing to ask: a tool whose listing names no directory, or a path
+ * that fails the same guard a removal has to pass. Every state the script can report is
+ * named rather than collapsed — `HEAD` is a detached head and not a branch called HEAD,
+ * a missing `git` is not "not a repository", and a repository git REFUSED to read (the
+ * dubious-ownership error, which is what a bind mount under another uid produces) is
+ * neither.
+ */
+export function agentFactsCmd(
+  adapter: ShippedAdapter,
+  conv: DiscoveredConversation,
+): string | null {
+  // Grok's project is the URL-decoded working directory, so no file has to be opened.
+  const hint = adapter.livesIn === 'path' ? conv.project?.trim() : '';
+  if (adapter.livesIn === 'path' && !hint?.startsWith('/')) return null;
+  let read = '';
+  if (adapter.livesIn === 'transcript') {
+    const path = vettedPath(conv);
+    if (!path) return null;
+    read = `if [ -z "$d" ]; then d=$(head -c ${CWD_WINDOW} ${shellArg(path)} 2>/dev/null | grep -m1 -o '"cwd":"[^"]*"' | cut -d'"' -f4); fi`;
+  } else if (adapter.livesIn !== 'path') {
+    return null;
+  }
+  return posixScript(
+    [
+      `d=${shellArg(hint ?? '')}`,
+      read,
+      'if [ -z "$d" ]; then echo __nocwd__; exit 0; fi',
+      `printf '__cwd__ %s\\n' "$d"`,
+      'if [ ! -d "$d" ]; then echo __gone__; exit 0; fi',
+      'if ! command -v git >/dev/null 2>&1; then echo __nogit__; exit 0; fi',
+      'b=$(git -C "$d" rev-parse --abbrev-ref HEAD 2>/dev/null) || b=',
+      `if [ -n "$b" ]; then printf '__branch__ %s\\n' "$b";`,
+      'elif [ -e "$d/.git" ]; then echo __gitrefused__;',
+      'else echo __norepo__; fi',
+      `if [ -n "$(git -C "$d" status --porcelain 2>/dev/null | head -n 1)" ]; then echo __dirty__; fi`,
+      'exit 0',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+  );
+}
+
+/** What a live read came back with. Every field is absent until the script said it. */
+export interface AgentFacts {
+  /** The directory the conversation runs in, as the machine reported it. */
+  cwd?: string;
+  /** The branch it stands on now. Absent on a detached head — see `detached`. */
+  branch?: string;
+  /**
+   * `git` answered `HEAD`, which is not a branch called HEAD.
+   *
+   * Printing it as one is the exact shape of mistake this whole read exists to avoid: it
+   * would name a branch nobody is on.
+   */
+  detached?: boolean;
+  /** The working tree has at least one change. Absent means it had none. */
+  dirty?: boolean;
+  /** Why there is nothing more to say, when there is not. */
+  missing?: 'cwd' | 'directory' | 'git' | 'repository' | 'permission';
+}
+
+/**
+ * The live read's answer. Pure, never throws, and ignores anything it did not write.
+ *
+ * A line this does not recognise is dropped rather than shown: the script runs through
+ * the account's own shell, which prints its own warnings on login — a `.bashrc` that
+ * echoes is not a fact about a repository.
+ */
+export function parseAgentFacts(stdout: string): AgentFacts {
+  const facts: AgentFacts = {};
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim();
+    if (line.startsWith('__cwd__ ')) facts.cwd = line.slice('__cwd__ '.length).trim() || undefined;
+    else if (line.startsWith('__branch__ ')) {
+      const b = line.slice('__branch__ '.length).trim();
+      if (b === 'HEAD') facts.detached = true;
+      else if (b) facts.branch = b;
+    } else if (line === '__dirty__') facts.dirty = true;
+    else if (line === '__nocwd__') facts.missing = 'cwd';
+    else if (line === '__gone__') facts.missing = 'directory';
+    else if (line === '__nogit__') facts.missing = 'git';
+    else if (line === '__norepo__') facts.missing = 'repository';
+    else if (line === '__gitrefused__') facts.missing = 'permission';
+  }
+  return facts;
+}

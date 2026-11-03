@@ -22,10 +22,12 @@ import {
   SHIPPED_ADAPTERS,
   LIST_CAP,
   ASK_CAP,
+  agentFactsCmd,
   agentRemoveCmd,
   agentResumeCmd,
   agentStartArgv,
   agentStartCmd,
+  parseAgentFacts,
   shippedAdapter,
   withoutConversation,
 } from '../apps/desktop/src/utils/agentAdapters.ts';
@@ -613,6 +615,93 @@ check('a grok folder leaves by the id in its path, not by the file name', () => 
     '1793200000\t/home/u/.grok/sessions/%2Fsrv/019fdcfe-08ee-7ca3-aaae-02470f138ad2/chat_history.jsonl',
   ];
   assert.deepEqual(withoutConversation(A('grok'), lines, id), [lines[1]]);
+});
+
+console.log('\nasking the machine what has changed — read at the click, never kept:');
+
+check('a transcript adapter reads the directory out of the file, bounded', () => {
+  const cmd = agentFactsCmd(A('claude'), { id: CLAUDE_ID, path: CLAUDE_PATH, rank: 0 });
+  // BOUNDED, and that is the measurement rather than a precaution: `"cwd"` sits in the
+  // first 64 KB of both a Claude transcript and a Codex rollout, and one real transcript
+  // on the machine this was written on is 1.1 GB. Scanning it would be that, over SSH.
+  assert.match(cmd, /head -c 65536 /);
+  assert.ok(cmd.includes(CLAUDE_PATH), cmd);
+  assert.match(cmd, /git -C "\$d" rev-parse --abbrev-ref HEAD/);
+  // Through `sh -c`, because SSH hands the command to the ACCOUNT's login shell and
+  // `if … then … fi` is a parse error in fish — which is how the dashboard once showed
+  // an empty container list on a host that had containers.
+  assert.match(cmd, /^sh -c '/);
+});
+
+check('a path adapter already knows the directory and opens no file', () => {
+  const cmd = agentFactsCmd(A('grok'), { id: 'x', project: '/srv/acme/api', rank: 0 });
+  assert.ok(cmd.includes("/srv/acme/api"), cmd);
+  assert.ok(!cmd.includes('head -c'), 'Grok decoded the path, so there is nothing to read');
+});
+
+check('a tool with no directory to ask about is offered no live read', () => {
+  // A SQLite database per conversation, and three listings that are not files at all.
+  // Inventing a directory for them is the opposite of why this read exists.
+  for (const id of ['antigravity', 'gemini', 'hermes', 'opencode']) {
+    assert.equal(A(id).livesIn, undefined, id);
+    assert.equal(agentFactsCmd(A(id), { id: 'x', path: '/a/b/c/x', rank: 0 }), null, id);
+  }
+});
+
+check('the live read passes the same path guard a removal does', () => {
+  // One guard, one place. A `head` is cheaper to be wrong about than an `rm`, and that is
+  // not a reason to check it twice with a drift between the two.
+  assert.equal(
+    agentFactsCmd(A('claude'), { id: CLAUDE_ID, path: '/home/u/x/y/other.jsonl', rank: 0 }),
+    null,
+  );
+  assert.equal(agentFactsCmd(A('claude'), { id: CLAUDE_ID, rank: 0 }), null);
+  // And a path adapter needs an absolute directory, which a failed URL decode does not give.
+  assert.equal(agentFactsCmd(A('grok'), { id: 'x', project: '%zz', rank: 0 }), null);
+  assert.equal(agentFactsCmd(A('grok'), { id: 'x', rank: 0 }), null);
+});
+
+check('a branch and a clean or dirty tree', () => {
+  assert.deepEqual(parseAgentFacts('__cwd__ /srv/acme/api\n__branch__ develop\n__dirty__\n'), {
+    cwd: '/srv/acme/api',
+    branch: 'develop',
+    dirty: true,
+  });
+  // Absent means the tree had no change, which is a fact and not a silence.
+  assert.deepEqual(parseAgentFacts('__cwd__ /srv/acme/api\n__branch__ develop\n'), {
+    cwd: '/srv/acme/api',
+    branch: 'develop',
+  });
+});
+
+check('HEAD IS NOT A BRANCH CALLED HEAD', () => {
+  // What `git rev-parse --abbrev-ref` prints on a detached head. Shown as a branch name
+  // it would name a branch nobody is on — the exact shape of wrong fact this read exists
+  // to prevent, arriving through the read itself.
+  const f = parseAgentFacts('__cwd__ /srv/a\n__branch__ HEAD\n');
+  assert.equal(f.branch, undefined);
+  assert.equal(f.detached, true);
+});
+
+check('each reason there is no branch is its own answer', () => {
+  const only = (out) => parseAgentFacts(out).missing;
+  assert.equal(only('__nocwd__'), 'cwd');
+  assert.equal(only('__cwd__ /srv/a\n__gone__'), 'directory');
+  assert.equal(only('__cwd__ /srv/a\n__nogit__'), 'git');
+  assert.equal(only('__cwd__ /srv/a\n__norepo__'), 'repository');
+  // A repository `git` REFUSED to read — the dubious-ownership error a bind mount under
+  // another uid produces. Reported as "not a repository" it would be false.
+  assert.equal(only('__cwd__ /srv/a\n__gitrefused__'), 'permission');
+});
+
+check('what the account own shell prints is not a fact about a repository', () => {
+  // Measured: running this command under the login shell on the machine it was written
+  // on printed `Using Node v24.21.0` first, from a user's own config. A parser that took
+  // the first line, or that failed on an unknown one, would have reported that.
+  const f = parseAgentFacts('Using Node v24.21.0\n__cwd__ /srv/a\n__branch__ main\n');
+  assert.deepEqual(f, { cwd: '/srv/a', branch: 'main' });
+  assert.deepEqual(parseAgentFacts(''), {});
+  assert.deepEqual(parseAgentFacts('command not found: git\n'), {});
 });
 
 console.log('\nstarting one, which is the tool with no arguments:');

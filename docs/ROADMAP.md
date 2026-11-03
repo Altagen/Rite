@@ -417,9 +417,18 @@ ahead, and it is corrected from the code when the code has measured something it
       layer under the project's, resolved on that host under that account, every row
       carrying its path, a shadowed copy shown *losing*. Read-only on purpose, and mocked
       already (`dlgAgentContext`).
-- [ ] **A card that says more than a listing can** — the branch, the working directory and
-      the turn count live *inside* a transcript, which is a second read per conversation.
-      Until it exists those lines are absent rather than filled in.
+- [x] **What only the machine can say** — **done**, and not on a card: the working
+      directory, the branch it stands on now and whether that tree is clean are read when
+      the detail panel opens, and kept nowhere. A branch on a card is read as current and
+      goes stale at the next `git switch`. The read is bounded — `"cwd"` is in the first
+      64 KB of a transcript, measured against one that is 1.1 GB.
+- [ ] **The vendor's own name for a conversation** — Claude Code writes an `aiTitle` and
+      6 of 8 transcripts here carry one. It is better than falling back to the first
+      message, and it is in the LAST 64 KB, so it is a second bounded read per file rather
+      than the same pass as the question.
+- [ ] **A turn count: refused, not pending.** It needs the whole transcript, and
+      `"type":"user"` is not a turn — on the 1.1 GB one it appears 14 091 times, because a
+      tool result carries the same type. There is no cheap honest count to show.
 - [ ] **The Tools dialog, writable** — the adapter set is the user's (ADR 0022 §4
       addendum): editing the two commands, turning a tool off, adding a CLI that is not one
       of the seven. Read-only today.

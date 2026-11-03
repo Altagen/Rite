@@ -1,7 +1,12 @@
 /**
- * Icon set — the exact SVG paths from the design mock (design/mock/rite.js +
+ * Icon set — the SVG paths from the design mock (design/mock/rite.js +
  * full-data.js + the per-mock `M` set), as React components, so the app matches
  * the mock's iconography. All are stroked (fill:none, 2px, round caps), 24×24.
+ *
+ * `IconRefresh` has no counterpart in the mock yet: it marks the live read in the agent
+ * panel, which the mock has not caught up with either (see design/mock/README.md). Drawn
+ * in the same single-path, stroked style so the mock can adopt this one rather than
+ * inventing a second.
  */
 
 type IconProps = { className?: string };
@@ -147,6 +152,11 @@ export const IconGrid = (p: IconProps) => (
 export const IconList = (p: IconProps) => (
   <Svg {...p}>
     <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />
+  </Svg>
+);
+export const IconRefresh = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M21 12a9 9 0 11-3-6.7M21 4v5h-5" />
   </Svg>
 );
 export const IconSort = (p: IconProps) => (

@@ -13,7 +13,23 @@
 #
 #   sh e2e/desktop-bench/seed-agents.sh <home>
 set -e
-H=${1:?usage: seed-agents.sh <home>}
+H=${1:?usage: seed-agents.sh <home> [path-inside-the-client]}
+# Where this home is MOUNTED where the client reads it, which is not where this script
+# writes it: the bench seeds on the host and the binary runs in a container with
+# `HOME=/bench`. A transcript records an absolute working directory, so the one written
+# into it has to be the path the client will resolve, not this script's.
+AS=${2:-/bench}
+
+# A real repository for the live read to answer about — a BRANCH is the thing that can
+# change between two looks at the same conversation, so the bench needs one it is allowed
+# to switch. This one is in the throwaway home and belongs to nobody.
+if command -v git >/dev/null 2>&1; then
+  rm -rf "$H/repo"
+  mkdir -p "$H/repo"
+  git -C "$H/repo" init -q -b main
+  git -C "$H/repo" -c user.email=bench@example.invalid -c user.name=bench \
+    commit -q --allow-empty -m 'the bench'
+fi
 
 uuid() { printf '%08x-%04x-7%03x-%04x-%012x' "$1" "$((1000 + $1))" "$1" "$((2000 + $1))" "$1"; }
 ask() { printf '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"%s"}]}}\n' "$1"; }
@@ -25,7 +41,16 @@ for slug in -srv-acme-api -srv-acme-web -home-dev-notes; do
   for n in 1 2; do
     i=$((i + 1))
     f="$H/.claude/projects/$slug/$(uuid $i).jsonl"
-    printf '{"type":"mode","mode":"normal"}\n' > "$f"
+    # The working directory, where the real transcripts carry it — on an early line, which
+    # is what lets the live read find it with a bounded `head`. The first conversation
+    # points at the repository above; the second at a directory that does not exist, which
+    # is the other answer the panel has to be able to give.
+    case $i in
+      1) cwd=$AS/repo ;;
+      2) cwd=$AS/nowhere-at-all ;;
+      *) cwd=$AS/elsewhere ;;
+    esac
+    printf '{"type":"mode","mode":"normal","cwd":"%s"}\n' "$cwd" > "$f"
     if [ $i -eq 6 ]; then
       # ONE OF THEM IS A PASTED FILE, because that is the case the detail panel is built
       # around: a first message of a few thousand characters, which used to push every

@@ -208,8 +208,8 @@ Board touch no host and are never gated.
 
 ### Governance of agent discovery (ADR 0022)
 
-`agent_policy { webui, clients }` governs **looking**: discovery, and reading what is in
-effect on a machine. Same two halves, same strengths as above, and no `minInterval` — the
+`agent_policy { webui, clients }` governs **looking**: discovery, the detail panel's live
+read of one conversation's directory, and reading what is in effect on a machine. Same two halves, same strengths as above, and no `minInterval` — the
 user picks a machine and asks, so there is no automatic refresh to floor.
 
 **Removing a conversation answers to the same key, and there is no second switch.** The

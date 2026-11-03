@@ -1249,6 +1249,62 @@ def scenario_agentload(wid):
     check("a short prompt grows no control",
           js("!document.querySelector('[data-testid=agent-detail-ask-more]')"))
 
+    # WHAT THE MACHINE SAYS NOW, read when the card was clicked and kept nowhere. A branch
+    # is the example and the rule is general: anything that is a property of the machine
+    # rather than of the file is asked for on the gesture, because shown on a card it would
+    # be read as current and go stale the moment someone switches branches.
+    #
+    # The proof is the switch itself: this repository is in the throwaway home, so the
+    # bench is allowed to move it between two looks at the SAME conversation.
+    repo = os.path.join(os.environ.get("HOME", ""), "repo")
+
+    def live_text():
+        for _ in range(40):
+            out = js("document.querySelector('[data-testid=agent-detail-live]')?.textContent || ''")
+            if out and "Reading" not in out:
+                return out
+            time.sleep(0.25)
+        return out
+
+    out = live_text()
+    check("the machine answers with the branch it is on", "main" in out, f"got {out!r}")
+    check("and whether the tree is clean", "clean" in out or "uncommitted" in out, f"got {out!r}")
+    check("and names the directory it asked about", repo in out, f"got {out!r}")
+
+    # Moved on the machine, behind the panel's back.
+    x("git", "-C", repo, "checkout", "-q", "-b", "hotfix")
+    js("document.querySelector('[data-testid=agent-detail-live-again]')?.click(); 1")
+    time.sleep(0.5)
+    out = live_text()
+    check("asking again follows the machine", "hotfix" in out, f"got {out!r}")
+
+    # AND NOTHING IS KEPT: closing and reopening the same card asks the machine again
+    # rather than showing what the last look found.
+    x("git", "-C", repo, "checkout", "-q", "main")
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+    check("the same card reopens", open_card_with("Question 1 sur") is True)
+    time.sleep(0.5)
+    out = live_text()
+    check("and it is read again, not remembered", "main" in out and "hotfix" not in out,
+          f"got {out!r}")
+    shot("agentload-live")
+
+    # The other answer the panel has to be able to give, on the conversation seeded with a
+    # directory that does not exist. "Not a git repository" there would be false.
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+    check("the conversation with a vanished directory is on screen",
+          open_card_with("Question 2 sur") is True)
+    time.sleep(0.5)
+    out = live_text()
+    check("a directory that is gone says so, and not 'no repository'",
+          "gone" in out.lower() and "repositor" not in out.lower(), f"got {out!r}")
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+    check("back on the one being deleted", open_card_with("Question 1 sur") is True)
+    time.sleep(0.6)
+
     # DELETING ONE, which is a vendor's file going away on a real machine. The card is
     # expected to go with it, and the file is read back off the disk — a screen that
     # dropped the row without the `rm` landing would pass every assertion but one.
