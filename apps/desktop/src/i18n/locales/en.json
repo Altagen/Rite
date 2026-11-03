@@ -316,8 +316,8 @@
     "copyModeFile": "Kept in the workspace document, under [terminal] copyMode.",
     "copyModeDefault": "The document says nothing, so the shipped convention applies.",
     "copyModeChord": "Ctrl+Shift+C copies. Ctrl+Shift+V and the middle button paste.",
-    "copyModeSelect": "Selecting copies, as xterm does — but to the real clipboard, since a webview cannot reach the X11 primary selection. Every drag replaces what was copied. The chord keeps working.",
-    "copyModeSelectRightPaste": "Selecting copies and a right click pastes, as PuTTY does. The engine’s own context menu is given up to free the gesture.",
+    "copyModeSelect": "Selecting copies and releases the selection, to the real clipboard: a webview cannot reach the X11 primary selection. Every drag replaces the last. The chord keeps working.",
+    "copyModeSelectRightPaste": "Selecting copies and releases the selection, a right click pastes, as PuTTY does. The engine’s own context menu is given up to free the gesture.",
     "copyModeCtrlC": "Ctrl+C copies while something is selected, as Windows Terminal does — so it cannot interrupt a running command until the selection is cleared."
   },
   "sshKeepAlive": {

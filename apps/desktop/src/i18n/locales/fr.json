@@ -316,8 +316,8 @@
     "copyModeFile": "Conservé dans le document de travail, sous [terminal] copyMode.",
     "copyModeDefault": "Le document ne dit rien, la convention livrée s’applique donc.",
     "copyModeChord": "Ctrl+Maj+C copie. Ctrl+Maj+V et le bouton du milieu collent.",
-    "copyModeSelect": "Sélectionner copie, comme xterm — mais dans le vrai presse-papiers, un webview ne pouvant pas atteindre la sélection primaire X11. Chaque glisser remplace ce qui a été copié. Le raccourci continue de fonctionner.",
-    "copyModeSelectRightPaste": "La sélection copie et le clic droit colle, comme PuTTY. Le menu contextuel du moteur est abandonné pour libérer le geste.",
+    "copyModeSelect": "La sélection copie et se lève, dans le vrai presse-papiers : un webview n’atteint pas la sélection primaire X11. Chaque glisser remplace le précédent. Le raccourci continue de fonctionner.",
+    "copyModeSelectRightPaste": "La sélection copie et se lève, le clic droit colle, comme PuTTY. Le menu contextuel du moteur est abandonné pour libérer le geste.",
     "copyModeCtrlC": "Ctrl+C copie quand quelque chose est sélectionné, comme Windows Terminal — il ne peut donc plus interrompre une commande tant que la sélection n’est pas levée."
   },
   "sshKeepAlive": {

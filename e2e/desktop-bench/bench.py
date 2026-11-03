@@ -601,8 +601,13 @@ def scenario_second(wid):
     check("the first instance is untouched", js("1+1") == 2)
 
 
-def drag_over(wid, needle):
+def drag_over(wid, needle, mid_drag=False):
     """Drag the real mouse across the row carrying `needle`, and say if it selected.
+
+    `mid_drag` returns the rect count from BEFORE the button is released as well, as
+    `(mid, after)`. A mode that copies on selection releases it on that very mouseup, so
+    counting only afterwards cannot tell a drag that selected nothing from one that
+    selected and was released — two different bugs with the same reading.
 
     A real pointer, not a synthetic MouseEvent: dispatching mousedown/mousemove/mouseup
     with clientX/clientY reaches xterm's selection service in Chromium and reaches nothing
@@ -633,9 +638,11 @@ def drag_over(wid, needle):
     time.sleep(0.2)
     subprocess.run(["xdotool", "mousemove", str(ox + rect["right"] - 4), str(y)], check=False)
     time.sleep(0.2)
+    mid = js("document.querySelectorAll('.xterm-selection div').length") if mid_drag else None
     subprocess.run(["xdotool", "mouseup", "1"], check=False)
     time.sleep(0.5)
-    return js("document.querySelectorAll('.xterm-selection div').length")
+    after = js("document.querySelectorAll('.xterm-selection div').length")
+    return (mid, after) if mid_drag else after
 
 
 def clipboard_through_a_gesture(write=None):
@@ -748,6 +755,149 @@ def scenario_clipboard(wid):
     shot("clipboard")
 
 
+def right_click(wid):
+    """Right-click in the middle of the terminal, with the real pointer.
+
+    `drag_over` above says why a synthetic MouseEvent is not an option here either: it
+    reaches nothing in WebKitGTK.
+    """
+    rect = js(
+        "(() => { const b = document.querySelector('.xterm-screen').getBoundingClientRect();"
+        " return {x: Math.round(b.left + b.width/2), y: Math.round(b.top + b.height/2)}; })()"
+    )
+    geo = x("xdotool", "getwindowgeometry", "--shell", wid)
+    org = dict(l.split("=", 1) for l in geo.splitlines() if "=" in l)
+    subprocess.run(
+        ["xdotool", "mousemove",
+         str(int(org["X"]) + rect["x"]), str(int(org["Y"]) + rect["y"])],
+        check=False,
+    )
+    subprocess.run(["xdotool", "click", "3"], check=False)
+    time.sleep(1.0)
+
+
+def pick_copy_mode(name):
+    """Choose a copy convention in Settings, by test id, and close Settings.
+
+    Through the UI and not by writing the document: the document is not an editing
+    surface, and this is also the path a person takes.
+    """
+    js("document.querySelector('[data-testid=vault-pastille]')?.click(); 1")
+    time.sleep(0.4)
+    js("document.querySelector('[data-testid=pastille-settings]')?.click(); 1")
+    time.sleep(0.6)
+    js("document.querySelector('[data-testid=settings-nav-clipboard]')?.click(); 1")
+    time.sleep(0.4)
+    js("document.querySelector('[data-testid=copy-mode]')?.click(); 1")
+    time.sleep(0.4)
+    js(f"document.querySelector('[data-testid=copy-mode-{name}]')?.click(); 1")
+    time.sleep(0.5)
+    chosen = js("document.querySelector('[data-testid=copy-mode]')?.textContent")
+    # Escape is not enough here: the dropdown closed on it, not the screen. The close
+    # button is the one the person uses, and it is found by its label rather than its
+    # position so a rearranged header does not break this.
+    press("Escape")
+    time.sleep(0.3)
+    js(
+        "(() => { const b = Array.from(document.querySelectorAll('button'))"
+        "   .find(b => /settings|fermer|close/i.test(b.getAttribute('aria-label') || ''));"
+        " if (b) b.click(); return !!b; })()"
+    )
+    time.sleep(0.8)
+    return chosen
+
+
+def scenario_rightpaste(wid):
+    """`selectRightPaste`, the mode that reproduces PuTTY, on the engine that ships.
+
+    IT DID NOTHING AT ALL, and the reason is here rather than in the decision table. The
+    paste half has no native event to ride: a middle click is served by the engine itself,
+    a context menu carries nothing, so the client has to read the clipboard — and reading
+    is gated on transient activation. The right button grants it; the `contextmenu` WebKit
+    synthesises from that button does not. Measured below, both halves of it, because the
+    two have different fixes and only one of them is "move the paste to the mouseup".
+
+    The `clipboard` scenario above could never have caught it: every read it makes happens
+    inside a keydown.
+    """
+    print("\nright-click paste")
+    if not js("!!document.querySelector('.xterm-rows')"):
+        check("a local terminal opens", open_terminal())
+    focus(wid)
+    js("document.querySelector('.xterm-helper-textarea')?.focus()")
+    time.sleep(0.3)
+
+    # Something on the clipboard, put there the only way this engine allows: from inside a
+    # gesture. The page wrote it, which is the case the mode itself produces — a selection
+    # the client copied a moment earlier.
+    put = clipboard_through_a_gesture("BENCH-RIGHT")
+    check("the clipboard holds a known value", put == "ok:BENCH-RIGHT", f"got {put}")
+
+    # ONE right click, and every event it fires asks the same question.
+    js(
+        "window.__R = {};"
+        " window.__cm = (e) => { if (e.type === 'contextmenu') e.preventDefault();"
+        "   if (e.type !== 'contextmenu' && e.button !== 2) return;"
+        "   const k = e.type; window.__R[k] = 'pending';"
+        "   navigator.clipboard.readText().then(v => window.__R[k] = 'ok:' + v)"
+        "     .catch(err => window.__R[k] = 'ERR ' + err.name); };"
+        " for (const t of ['contextmenu', 'mousedown', 'mouseup'])"
+        "   window.addEventListener(t, window.__cm, true); 1"
+    )
+    right_click(wid)
+    time.sleep(1.5)
+    res = json.loads(js("JSON.stringify(window.__R)") or "{}")
+    js(
+        "for (const t of ['contextmenu', 'mousedown', 'mouseup'])"
+        " window.removeEventListener(t, window.__cm, true); 1"
+    )
+    press("Escape")
+    check("a right click reaches the page as contextmenu", "contextmenu" in res,
+          f"got {sorted(res)}")
+    # The one the fix rests on. If this ever breaks, the mode has no paste at all.
+    check("the clipboard can be read from the release of that click",
+          res.get("mouseup") == "ok:BENCH-RIGHT", f"got {res.get('mouseup')}")
+    # And the one that was the bug. A green here would mean WebKit changed and the paste
+    # could move back to the gesture it is named after — so it is asserted, not assumed.
+    check("but not from inside the context menu, on this engine",
+          res.get("contextmenu") == "ERR NotAllowedError", f"got {res.get('contextmenu')}")
+
+    # ── and now the client's own, end to end ─────────────────────────────────────
+    chosen = pick_copy_mode("selectRightPaste")
+    check("the mode is chosen in Settings",
+          chosen == "Select to copy, right click pastes", f"got {chosen}")
+    focus(wid)
+    js("document.querySelector('.xterm-helper-textarea')?.focus()")
+    time.sleep(0.3)
+
+    clipboard_through_a_gesture("BENCH-PUTTY")
+    before = len(sent_bytes())
+    right_click(wid)
+    time.sleep(1.2)
+    after = " ".join(sent_bytes(before))
+    hexed = "".join(f"{ord(c):02x} " for c in "BENCH-PUTTY").strip()
+    check("a right click pastes into the shell", hexed in after, f"sent={after}")
+    check("and pastes once", after.count(hexed) == 1, f"{after.count(hexed)} occurrences")
+
+    # The copy half, and the release that goes with it. A selection that stays highlighted
+    # after the drag that made it has nothing left to do: it was already copied.
+    press("ctrl+c")
+    time.sleep(0.3)
+    type_text("echo BENCH-RELEASE")
+    time.sleep(0.6)
+    mid, left = drag_over(wid, "BENCH-RELEASE", mid_drag=True)
+    check("dragging the mouse selects something", bool(mid), f"{mid} rects mid-drag")
+    got = clipboard_through_a_gesture()
+    check("the selection was copied without a chord",
+          isinstance(got, str) and "BENCH-RELEASE" in got, f"got {got}")
+    # The bug this half fixes: the highlight used to stay after the drag that made it,
+    # with nothing left to do about it — it had already been copied.
+    check("and the selection is released on the mouseup", left == 0, f"{left} rects left")
+
+    press("ctrl+c")
+    shot("rightpaste")
+
+
 SCENARIOS = {
     "probe": scenario_probe,
     "size": scenario_size,
@@ -757,6 +907,7 @@ SCENARIOS = {
     "picker": scenario_picker,
     "second": scenario_second,
     "clipboard": scenario_clipboard,
+    "rightpaste": scenario_rightpaste,
 }
 
 

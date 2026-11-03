@@ -72,6 +72,9 @@ const mouseup = (over = {}) => ({
 
 const rightClick = (mode) => ({ type: 'contextmenu', where: 'terminal', mode });
 
+/** The release of the right button, which is where the paste actually lives. */
+const rightUp = (mode) => ({ type: 'mouseup', where: 'terminal', mode, button: 2, text: '' });
+
 console.log('\nthe modes themselves:');
 
 check('the shipped default is the behaviour that came before them', () => {
@@ -152,17 +155,30 @@ check('Ctrl+Alt+C is not the interrupt and not the chord', () => {
 
 console.log('\ncopying by selection:');
 
-check('a left-button release over a selection copies in select', () => {
+check('a left-button release over a selection copies in select, and releases it', () => {
   assert.deepEqual(planClipboard(mouseup({ mode: 'select' })), {
-    kind: 'copy',
+    kind: 'copy-and-release',
     text: 'dragged text',
   });
 });
 
 check('and in selectRightPaste', () => {
   assert.deepEqual(planClipboard(mouseup({ mode: 'selectRightPaste' })), {
-    kind: 'copy',
+    kind: 'copy-and-release',
     text: 'dragged text',
+  });
+});
+
+check('a chord mode keeps the selection it copied, in every form', () => {
+  // The other half of the same rule, and the reason the release is its own action: the
+  // chord copies what is selected, so the selection has to survive the copy. A plain
+  // `copy` here is the assertion — `copy-and-release` would make the chord a one-shot.
+  for (const mode of CLIPBOARD_MODES) {
+    assert.deepEqual(planClipboard(key({ mode })), { kind: 'copy', text: 'selected text' });
+  }
+  assert.deepEqual(planClipboard(key({ mode: 'ctrlC', shiftKey: false })), {
+    kind: 'copy',
+    text: 'selected text',
   });
 });
 
@@ -177,19 +193,42 @@ check('a release that selected nothing copies nothing', () => {
   assert.deepEqual(planClipboard(mouseup({ mode: 'select', text: '' })), IGNORE);
 });
 
-check('a middle-button release is the engine’s paste, never a copy', () => {
-  // Claiming it would copy the selection at the moment of pasting over it.
-  assert.deepEqual(planClipboard(mouseup({ mode: 'select', button: 1 })), IGNORE);
+check('a middle-button release is the engine’s paste, in every mode', () => {
+  // Claiming it would copy the selection at the moment of pasting over it — and in
+  // `selectRightPaste`, which is the one mode that does claim a mouse button, claiming
+  // the wrong one would paste twice: ours, then the engine's.
+  for (const mode of CLIPBOARD_MODES) {
+    assert.deepEqual(planClipboard(mouseup({ mode, button: 1 })), IGNORE, mode);
+  }
 });
 
 check('a right-button release is not a copy either', () => {
-  assert.deepEqual(planClipboard(mouseup({ mode: 'selectRightPaste', button: 2 })), IGNORE);
+  // It is the paste, below. What it must never be is a copy: the selection is still there
+  // at the moment the paste replaces it.
+  assert.notEqual(planClipboard(mouseup({ mode: 'selectRightPaste', button: 2 })).kind, 'copy');
+  assert.notEqual(
+    planClipboard(mouseup({ mode: 'selectRightPaste', button: 2 })).kind,
+    'copy-and-release',
+  );
+  for (const mode of ['chord', 'select', 'ctrlC']) {
+    assert.deepEqual(planClipboard(mouseup({ mode, button: 2 })), IGNORE, mode);
+  }
 });
 
 console.log('\npasting by right click:');
 
-check('a right click pastes in selectRightPaste', () => {
-  assert.deepEqual(planClipboard(rightClick('selectRightPaste')), { kind: 'paste' });
+check('the paste is on the release of the right button, not on the context menu', () => {
+  // MEASURED, and the reason the mode did nothing at all before: on WebKitGTK a clipboard
+  // read from inside `contextmenu` is `NotAllowedError`, and the same read from the
+  // mouseup of that same click resolves (`e2e/desktop-bench`, scenario `rightpaste`).
+  // Asserting `paste` on the context menu is asserting the bug.
+  assert.deepEqual(planClipboard(rightUp('selectRightPaste')), { kind: 'paste' });
+  assert.deepEqual(planClipboard(rightClick('selectRightPaste')), { kind: 'suppress' });
+});
+
+check('the context menu is cancelled even though it does not paste', () => {
+  // Otherwise the engine's menu opens over the paste that the mouseup is about to do.
+  assert.equal(planClipboard(rightClick('selectRightPaste')).kind, 'suppress');
 });
 
 check('and opens the engine’s own menu in every other mode', () => {
@@ -197,6 +236,7 @@ check('and opens the engine’s own menu in every other mode', () => {
   // named for it pays it.
   for (const mode of ['chord', 'select', 'ctrlC']) {
     assert.deepEqual(planClipboard(rightClick(mode)), IGNORE, mode);
+    assert.deepEqual(planClipboard(rightUp(mode)), IGNORE, mode);
   }
 });
 
@@ -255,7 +295,7 @@ check('a selection release off the textarea IS ours, because mice never land the
   // The mirror of the rule above, and the reason `where` has three values rather than a
   // boolean: a mouseup lands on the screen, never on the textarea.
   assert.deepEqual(planClipboard(mouseup({ mode: 'select', where: 'terminal' })), {
-    kind: 'copy',
+    kind: 'copy-and-release',
     text: 'dragged text',
   });
 });

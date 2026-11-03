@@ -17,6 +17,13 @@
  *   - `navigator.clipboard` rejects `NotAllowedError` from an eval and resolves from a real
  *     gesture. It is transient activation, not a permission, so every read and write here
  *     happens inside the handler; an async hop before it would lose the gesture.
+ *   - and the activation does NOT survive the context menu: on WebKitGTK a read from
+ *     inside `contextmenu` is `NotAllowedError`, while the same read from the `mousedown`
+ *     or the `mouseup` of that very click resolves. The right button grants activation;
+ *     the event WebKit synthesises from it does not carry it. So `selectRightPaste`
+ *     pastes on the right `mouseup` and only cancels `contextmenu`, which is the whole
+ *     reason the mode did nothing at all before. The `rightpaste` scenario of
+ *     `e2e/desktop-bench` holds all three.
  *
  * WHAT THE MODES ARE FOR. Terminals disagree about which gesture copies, and the
  * disagreement is old enough that people have habits rather than preferences. Rite follows
@@ -49,7 +56,7 @@
  *                       middle click pastes. What Rite has always done, and the default.
  *   `select`            Selecting copies, as xterm and urxvt do with PRIMARY — except that
  *                       here it writes the clipboard, because PRIMARY is unreachable. The
- *                       chord keeps working.
+ *                       selection is released once copied. The chord keeps working.
  *   `selectRightPaste`  Selecting copies and a right click pastes, as PuTTY does. The
  *                       engine's own context menu is given up to free the gesture.
  *   `ctrlC`             Ctrl+C copies WHEN SOMETHING IS SELECTED, as Windows Terminal
@@ -79,12 +86,21 @@ export type ClipboardWhere = 'textarea' | 'terminal' | 'elsewhere';
  *
  * `paste` means Rite has to do it: the gesture carries no native paste, so the clipboard
  * is read and handed to the terminal. `drop-paste` is the opposite — a native paste that
- * carries nothing and must not reach the shell. `ignore` means: not ours, leave it alone.
+ * carries nothing and must not reach the shell. `suppress` cancels the event and does
+ * nothing else. `ignore` means: not ours, leave it alone.
+ *
+ * `copy-and-release` copies and then drops the selection. It is a kind of its own and not
+ * a flag on `copy` because the two are opposite rules rather than one with an option: a
+ * mode that copies on a chord MUST keep the selection, since that is what the next chord
+ * would copy, and a mode that copies on selection must not, or the highlight outlives the
+ * gesture that made it.
  */
 export type ClipboardAction =
   | { kind: 'copy'; text: string }
+  | { kind: 'copy-and-release'; text: string }
   | { kind: 'paste' }
   | { kind: 'drop-paste' }
+  | { kind: 'suppress' }
   | { kind: 'ignore' };
 
 /** The facts the decision needs, so it can be taken without a DOM. */
@@ -152,16 +168,25 @@ export function planClipboard(f: ClipboardEventFacts): ClipboardAction {
   }
 
   if (f.type === 'mouseup') {
-    // Only the button that selects, and only in a mode that copies on selection. A middle
-    // click is the engine's paste and a right click is handled below.
+    // The right button pastes, in the one mode that claims it. It is read here and not on
+    // `contextmenu` for a measured reason, in the header: the clipboard cannot be read
+    // from inside a context menu on WebKitGTK, and can be read from the mouseup of the
+    // same click.
+    if (f.mode === 'selectRightPaste' && f.button === 2) return { kind: 'paste' };
+    // Otherwise only the button that selects, and only in a mode that copies on
+    // selection. A middle click is the engine's own paste.
     if (!copiesOnSelect(f.mode) || f.button !== 0) return IGNORE;
-    return f.text ? { kind: 'copy', text: f.text } : IGNORE;
+    // Copied, so the selection has done its work: it goes. Keeping it would leave a
+    // terminal highlighted after every drag, with nothing left to do about it — the
+    // chord modes keep it because a chord is still to come.
+    return f.text ? { kind: 'copy-and-release', text: f.text } : IGNORE;
   }
 
   if (f.type === 'contextmenu') {
-    // Taking this gesture means giving up the engine's own menu, which is why only the
-    // mode named for it does so.
-    return f.mode === 'selectRightPaste' ? { kind: 'paste' } : IGNORE;
+    // Cancelled, and nothing more: the paste is on the mouseup of this same click. Taking
+    // the gesture still means giving up the engine's own menu, which is why only the mode
+    // named for it does so.
+    return f.mode === 'selectRightPaste' ? { kind: 'suppress' } : IGNORE;
   }
 
   return IGNORE;
@@ -179,6 +204,11 @@ export interface TerminalClipboardHost {
    * implementation of them here.
    */
   paste: (text: string) => void;
+  /**
+   * Drop the terminal's selection. xterm's own `clearSelection()`, so the highlight and
+   * the selection service agree about there being nothing selected.
+   */
+  release: () => void;
   /** Called when the guard acts, for diagnostics. */
   onTrace?: (what: string) => void;
 }
@@ -276,17 +306,32 @@ export function attachTerminalClipboard(
           : host.selection(),
     });
     if (action.kind === 'ignore') return;
-    // A mouseup that copies must not be cancelled: cancelling it would leave xterm's
-    // selection service mid-drag. Everything else is claimed before xterm sees it — a
-    // copy chord so it does not also reach `_keyDown`, a paste so `handlePasteEvent`
-    // never runs, a context menu so the engine's own does not open over the paste.
+    // No mouseup is cancelled: cancelling the one that copies would leave xterm's
+    // selection service mid-drag, and the one that pastes needs nothing cancelled —
+    // xterm has no use for the right button. Everything else is claimed before xterm
+    // sees it: a copy chord so it does not also reach `_keyDown`, a paste so
+    // `handlePasteEvent` never runs, a context menu so the engine's own menu does not
+    // open over the paste that is about to happen.
     if (e.type !== 'mouseup') {
       e.preventDefault();
       e.stopPropagation();
     }
-    if (action.kind === 'copy') writeClipboard(action.text, host.onTrace);
-    else if (action.kind === 'paste') readClipboardInto(host.paste, host.onTrace);
-    else host.onTrace?.('an empty paste was dropped');
+    if (action.kind === 'copy' || action.kind === 'copy-and-release') {
+      writeClipboard(action.text, host.onTrace);
+      if (action.kind === 'copy-and-release') {
+        // AFTER the task, not inside it. This handler runs in the capture phase, so
+        // xterm's own mouseup has not finished the drag yet, and clearing under it leaves
+        // its selection service holding a range the screen no longer shows. A microtask
+        // is not late enough either: the stack empties between two listeners.
+        //
+        // The cost is named: `writeClipboard`'s fallback fires xterm's `copy` handler,
+        // which reads the selection, so a rejection arriving after this timeout copies
+        // nothing. That path was already best-effort — by then the gesture is gone.
+        setTimeout(() => host.release(), 0);
+      }
+    } else if (action.kind === 'paste') readClipboardInto(host.paste, host.onTrace);
+    else if (action.kind === 'drop-paste') host.onTrace?.('an empty paste was dropped');
+    else host.onTrace?.('the context menu was cancelled; the paste is on the mouseup');
   };
 
   // Capture on an ancestor, traversed before the target: xterm registers its own

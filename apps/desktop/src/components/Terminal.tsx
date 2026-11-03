@@ -401,6 +401,9 @@ export function Terminal({
             // xterm's own paste, so the bracketing and the `bracketedPasteMode` it
             // depends on stay the library's business.
             paste: (text) => xtermRef.current?.paste(text),
+            // And xterm's own clearSelection, for the same reason: the highlight is
+            // drawn from its selection service, not from a DOM selection.
+            release: () => xtermRef.current?.clearSelection(),
           })
         : null;
 

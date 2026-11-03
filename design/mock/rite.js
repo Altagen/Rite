@@ -1259,12 +1259,12 @@ function setCopyMode(m) {
 const COPY_MODE_WHY = {
   chord: 'Ctrl+Shift+C copies. Ctrl+Shift+V and the middle button paste.',
   select:
-    'Selecting copies, as xterm does — except that it writes the clipboard, because a ' +
-    'webview cannot reach the X11 primary selection. Every drag replaces what was copied. ' +
+    'Selecting copies and releases the selection, to the real clipboard: a webview ' +
+    'cannot reach the X11 primary selection. Every drag replaces the last. ' +
     'The chord keeps working.',
   selectRightPaste:
-    'Selecting copies and a right click pastes, as PuTTY does. The engine’s own context ' +
-    'menu is given up to free the gesture.',
+    'Selecting copies and releases the selection, a right click pastes, as PuTTY does. ' +
+    'The engine’s own context menu is given up to free the gesture.',
   ctrlC:
     'Ctrl+C copies while something is selected, as Windows Terminal does — so it cannot ' +
     'interrupt a running command until the selection is cleared.',
