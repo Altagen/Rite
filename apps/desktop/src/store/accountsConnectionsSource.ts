@@ -506,7 +506,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
 
   const select = useCallback((id: string | null) => setSelectedConnectionId(id), []);
 
-  const connect = useCallback(async (conn: ConnectionInfo): Promise<string> => {
+  const connect = useCallback(async (conn: ConnectionInfo, command?: string): Promise<string> => {
     const entry = entries.current.get(conn.id);
     if (!entry) throw new Error('connection is not available');
     const { record } = entry;
@@ -536,6 +536,9 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       // No collection (a local-vault machine) means no claim to make: there the policy
       // does not apply, because there is no server to set it.
       entry.collectionId ? { collectionId: entry.collectionId, itemId: conn.id } : undefined,
+      // The program the channel runs, when there is one. This is the route a browser
+      // reaches a collection's machine by, so an agent's resume line travels here.
+      command,
     );
     // Record this user's own "last connected" locally (passive status, ADR 0017).
     recordLastUsed(conn.id);
@@ -682,6 +685,21 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     );
   }, []);
 
+  // Discovery on an accounts connection: the same client-execute shape as `execRemote`,
+  // on the agents route so the agent gate is the one that answers.
+  const probeAgents = useCallback(async (conn: ConnectionInfo, command: string) => {
+    const entry = entries.current.get(conn.id);
+    if (!entry) throw new Error('connection is not available');
+    const { record } = entry;
+    const auth = await authFor(conn.id, record, record.name || conn.name);
+    if (auth === null) throw new Error('cancelled');
+    return Backend.Terminal.agentProbeQuick(
+      { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
+      command,
+      entry.collectionId ? { collectionId: entry.collectionId, itemId: conn.id } : undefined,
+    );
+  }, []);
+
   // Port forwards on an accounts connection: same client-execute shape as connect —
   // the target and its hops are only readable here, so they travel on the request.
   const startForward = useCallback<NonNullable<ConnectionsSource['startForward']>>(
@@ -721,6 +739,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     readBoard,
     saveBoard,
     execRemote,
+    probeAgents,
     startForward,
     isServerContext: true,
   };

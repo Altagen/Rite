@@ -896,6 +896,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 />
                 {hasWorkspaceFile &&
                   toolbarRow('layouts', 'settings.toolbarLayouts', 'settings.toolbarLayoutsDesc')}
+                {toolbarRow('agents', 'settings.toolbarAgents', 'settings.toolbarAgentsDesc')}
               </div>
             </section>
 

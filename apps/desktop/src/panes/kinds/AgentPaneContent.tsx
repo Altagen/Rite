@@ -55,7 +55,7 @@ export function AgentPaneContent({ node, chrome }: PaneContentProps<AgentPaneNod
       connectionName={agent.project}
       sessionId={session.id}
       badge={agent.toolName}
-      subtitle={`${where} · ${agent.cwd}`}
+      subtitle={agent.cwd ? `${where} · ${agent.cwd}` : where}
       leadActions={
         <CopyIdButton
           id={agent.conversationId}

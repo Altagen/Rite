@@ -88,6 +88,17 @@ interface TerminalManagerProps {
    * dashboard it had nothing to do with.
    */
   viewTabs?: React.ReactNode;
+  /**
+   * A view rendered in place of the panes, BELOW the tab strip.
+   *
+   * The workspace's other overlays are `absolute inset-0` over this whole component,
+   * which puts their first rows under the strip — the strip paints later and wins. That
+   * is survivable for a dashboard whose first row is a card, and not for a view whose
+   * header carries its controls. So this one is handed in and rendered where it belongs,
+   * after the tabs. The other two are left as they are rather than moved in the same
+   * change.
+   */
+  viewOverlay?: React.ReactNode;
   onSaveQuickSSH?: (sessionId: string) => void;
   quickSSHSessions?: string[];
 }
@@ -116,6 +127,7 @@ export function TerminalManager({
   shellMenu,
   probeShells = false,
   viewTabs,
+  viewOverlay,
   onSaveQuickSSH,
   quickSSHSessions = [],
 }: TerminalManagerProps) {
@@ -418,28 +430,46 @@ export function TerminalManager({
 
   if (tabGroups.length === 0) {
     return (
-      <div className="flex flex-1 w-full flex-col items-center justify-center bg-background text-muted-foreground">
-        <svg className="mb-4 h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-          />
-        </svg>
-        <p className="text-lg">{t('tm.noSessions')}</p>
-        <p className="mt-2 text-sm">{t('tm.doubleClickHint')}</p>
-        {/* A layout opens its own tabs, so this is exactly when it is wanted: nothing
+      <div className="flex flex-1 w-full flex-col overflow-hidden">
+        {/* The view tabs survive having no terminals. They are not terminal tabs: a
+            machine dashboard or the agent manager is open or it is not, and the only
+            way to close one is its chip — which used to disappear with the strip, so a
+            view opened before the first terminal could not be left. */}
+        {viewTabs ? (
+          <div
+            className="flex items-center gap-1 border-b border-border bg-card px-2 py-1 pb-3 overflow-x-auto overflow-y-visible flex-shrink-0 relative z-10"
+            aria-label={t('tm.openTabs')}
+          >
+            {viewTabs}
+          </div>
+        ) : null}
+        {viewOverlay ? (
+          <div className="min-h-0 flex-1 overflow-hidden bg-background">{viewOverlay}</div>
+        ) : (
+          <div className="flex flex-1 w-full flex-col items-center justify-center bg-background text-muted-foreground">
+            <svg className="mb-4 h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
+            </svg>
+            <p className="text-lg">{t('tm.noSessions')}</p>
+            <p className="mt-2 text-sm">{t('tm.doubleClickHint')}</p>
+            {/* A layout opens its own tabs, so this is exactly when it is wanted: nothing
             is open, and the morning is one click away. It used to live only beside the
             tabs, which meant you had to open a terminal before you could open the
             arrangement that opens terminals. */}
-        {onApplyLayout && (
-          <div className="mt-6">
-            <LayoutsMenu
-              onApplyLayout={onApplyLayout}
-              connections={layoutConnections ?? []}
-              libraryReadable={layoutLibraryReadable ?? false}
-            />
+            {onApplyLayout && (
+              <div className="mt-6">
+                <LayoutsMenu
+                  onApplyLayout={onApplyLayout}
+                  connections={layoutConnections ?? []}
+                  libraryReadable={layoutLibraryReadable ?? false}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -761,6 +791,13 @@ export function TerminalManager({
         onDragLeave={handlePaneDragLeave}
         onDrop={handlePaneDrop}
       >
+        {/* Over the panes and under the tabs. The panes stay MOUNTED underneath, which
+            is the whole reason this is an overlay and not a branch: a terminal that
+            unmounted would lose its session, and one hidden with `display:none` comes
+            back with a grid it measured at zero. */}
+        {viewOverlay && (
+          <div className="absolute inset-0 z-10 overflow-hidden bg-background">{viewOverlay}</div>
+        )}
         {paneTree && (
           <PaneDragProvider>
             <PaneContainer

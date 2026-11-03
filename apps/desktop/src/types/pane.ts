@@ -98,8 +98,16 @@ export interface AgentConversation {
   conversationId: string;
   /** What the pane is called: the project the conversation is about. */
   project: string;
-  /** Where the agent works on that machine. */
-  cwd: string;
+  /**
+   * Where the agent works on that machine, when the listing says.
+   *
+   * Optional because discovery cannot always know it: Grok URL-encodes the working
+   * directory into its path, which decodes back exactly, while Claude slugs it by
+   * replacing every `/` with `-` — and `-srv-acme-linux-s7` is two different paths.
+   * Un-mangling that would put a wrong directory in the pane's header, so absent is
+   * what it is.
+   */
+  cwd?: string;
   /**
    * The machine, by name, as the library names it. Absent ⇒ this computer.
    *

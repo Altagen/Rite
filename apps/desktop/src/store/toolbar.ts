@@ -33,6 +33,14 @@ export interface ToolbarPrefs {
   quickSsh: boolean;
   /** The Layouts button in the tab strip. It still hides itself with no layouts. */
   layouts: boolean;
+  /**
+   * The Agents button, which opens the manager (ADR 0022 §4).
+   *
+   * Hiding it hides a VIEW, not a capability — the same rule as the rest of this file.
+   * What stops discovery is the server's `agent_policy`, and a person who has taken the
+   * button out of their row has not told the server anything.
+   */
+  agents: boolean;
 }
 
 export const TOOLBAR_DEFAULTS: ToolbarPrefs = {
@@ -41,6 +49,7 @@ export const TOOLBAR_DEFAULTS: ToolbarPrefs = {
   focusMode: true,
   quickSsh: true,
   layouts: true,
+  agents: true,
 };
 
 const KEY = 'rite-toolbar';
@@ -90,6 +99,7 @@ function pick(s: ToolbarPrefs): ToolbarPrefs {
     focusMode: s.focusMode,
     quickSsh: s.quickSsh,
     layouts: s.layouts,
+    agents: s.agents,
   };
 }
 

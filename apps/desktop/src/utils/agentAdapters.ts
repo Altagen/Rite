@@ -67,8 +67,15 @@ export const LIST_CAP = 200;
  */
 const RECENT = `2>/dev/null | head -n ${LIST_CAP}`;
 
-/** One conversation, as a listing can honestly describe it. */
-export interface AgentConversation {
+/**
+ * One conversation, as a listing can honestly describe it.
+ *
+ * Not `AgentConversation`, which is what a RESUMED pane carries (`types/pane.ts`) and
+ * holds things a listing never gives — the machine it is on, the directory it works in.
+ * Two different shapes under one name is the kind of collision that gets noticed by a
+ * compiler once and by a reader never.
+ */
+export interface DiscoveredConversation {
   /** What `resume` substitutes for `{id}`. */
   id: string;
   /**
@@ -98,7 +105,7 @@ export interface ShippedAdapter extends AgentAdapter {
   /** Where the two commands come from, and how far that goes. */
   from: { kind: 'measured' | 'vendor' | 'community'; seen: string };
   /** Pure: the listing's lines in, conversations out. Never throws. */
-  parse: (lines: string[]) => AgentConversation[];
+  parse: (lines: string[]) => DiscoveredConversation[];
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -119,7 +126,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
-      const out: AgentConversation[] = [];
+      const out: DiscoveredConversation[] = [];
       for (const line of lines) {
         const p = parts(line);
         const file = p[p.length - 1] ?? '';
@@ -143,7 +150,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
-      const out: AgentConversation[] = [];
+      const out: DiscoveredConversation[] = [];
       for (const line of lines) {
         const p = parts(line);
         const file = p[p.length - 1] ?? '';
@@ -176,7 +183,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     idKind: 'index',
     from: { kind: 'measured', seen: 'flags 2026-11-03; row shape unseen, none saved' },
     parse: (lines) => {
-      const out: AgentConversation[] = [];
+      const out: DiscoveredConversation[] = [];
       for (const line of lines) {
         const m = /^\s*(\d+)\s*[.):]?\s+(.*)$/.exec(line);
         if (!m) continue;
@@ -198,7 +205,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
-      const out: AgentConversation[] = [];
+      const out: DiscoveredConversation[] = [];
       for (const line of lines) {
         const p = parts(line);
         if (p[p.length - 1] !== 'chat_history.jsonl') continue;
@@ -230,7 +237,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     idKind: 'title',
     from: { kind: 'vendor', seen: 'documentation; not installed here' },
     parse: (lines) => {
-      const out: AgentConversation[] = [];
+      const out: DiscoveredConversation[] = [];
       for (const line of lines) {
         const cut = line.indexOf('|');
         const id = (cut < 0 ? line : line.slice(0, cut)).trim();
@@ -263,7 +270,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
         return [];
       }
       const rows = Array.isArray(doc) ? doc : [];
-      const out: AgentConversation[] = [];
+      const out: DiscoveredConversation[] = [];
       for (const row of rows) {
         if (!row || typeof row !== 'object') continue;
         const r = row as Record<string, unknown>;

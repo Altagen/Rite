@@ -86,6 +86,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { AnyPaneNode, SplitDirection, Tab, type SplitTarget } from '../types/pane';
 import {
   createTerminalPane,
+  createAgentPane,
   splitPane,
   closePane,
   setFocusedPane,
@@ -96,6 +97,12 @@ import {
   extractPane,
   reorganizePane,
 } from '../utils/paneTree';
+import { AgentManager } from './AgentManager';
+import {
+  agentResumeCmd,
+  type DiscoveredConversation,
+  type ShippedAdapter,
+} from '../utils/agentAdapters';
 import riteLandscape from '../assets/rite.png';
 
 /**
@@ -258,7 +265,17 @@ export function Workspace({
   // and the create-into-collection default for the machine form.
   const [openCollectionId, setOpenCollectionId] = useState<string | null>(null);
   const [openMachineId, setOpenMachineId] = useState<string | null>(null);
-  const [mainView, setMainView] = useState<'terminal' | 'collection' | 'machine'>('terminal');
+  const [mainView, setMainView] = useState<'terminal' | 'collection' | 'machine' | 'agents'>(
+    'terminal',
+  );
+  // Which machine the agent manager is looking at. Lifted out of the view so leaving it
+  // and coming back does not throw away a choice — and an answer that cost a round trip
+  // is kept by the view itself, keyed by the same id.
+  const [agentMachineId, setAgentMachineId] = useState<string | null>(null);
+  // The manager is OPENED, like the mock's: a toolbar button opens it and a closable tab
+  // appears in the strip. Not a tab that is always there — this view is somewhere people
+  // go, and a permanent chip for it would sit next to the terminals all day.
+  const [agentsOpen, setAgentsOpen] = useState(false);
   const [membersCollectionId, setMembersCollectionId] = useState<string | null>(null);
   const [boardCollectionId, setBoardCollectionId] = useState<string | null>(null);
   const [formDefaultCollectionId, setFormDefaultCollectionId] = useState<string | null>(null);
@@ -789,6 +806,56 @@ export function Workspace({
     // single-click (open dashboard) first — without this the new session would open
     // behind the dashboard and connecting would look like it did nothing.
     setMainView('terminal');
+  };
+
+  /**
+   * Resume a conversation: one session whose program IS the adapter's resume line.
+   *
+   * Not `handleRunInPane`. That one opens a shell and hands it a command once the pane
+   * can claim it, which is right for `docker logs` and wrong here: ADR 0022 §7.1 makes
+   * the resume line the program the channel runs, because a shell discards queued input
+   * while it sets the tty up. So the command travels with `connect`, and the pane that
+   * holds it is an agent pane — which is what gives it the tool's chip and the one
+   * action that belongs to an agent, its conversation id.
+   */
+  const handleResumeAgent = async (
+    connection: ConnectionInfo,
+    adapter: ShippedAdapter,
+    conv: DiscoveredConversation,
+  ) => {
+    try {
+      const sessionId = await conns.connect(connection, agentResumeCmd(adapter, conv.id));
+      const session: TerminalSession = {
+        id: sessionId,
+        connectionId: connection.id,
+        connectionName: connection.name,
+      };
+      const pane = createAgentPane(session, {
+        toolId: adapter.id,
+        toolName: adapter.name,
+        conversationId: conv.id,
+        // The project is what the tab is called, and a listing does not always give one.
+        project: conv.project ?? conv.label ?? conv.id,
+        // Only when the path says it: Grok's decodes exactly, Claude's slug does not.
+        cwd: conv.project?.startsWith('/') ? conv.project : undefined,
+        machine: connection.name,
+      });
+      const tab: Tab = { id: crypto.randomUUID(), name: adapter.name, paneTree: pane };
+      setTabGroups((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+      // The manager covers the workspace, so the pane it just opened would be behind it.
+      setMainView('terminal');
+    } catch (error) {
+      const msg =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : t('ws.errConnect');
+      if (msg === 'cancelled' || msg.includes('Disconnect')) return;
+      setToastType('error');
+      setToastMessage(msg);
+    }
   };
 
   /**
@@ -1650,7 +1717,7 @@ export function Workspace({
   // terminal one, `relative z-10` like the dashboard overlay and later in the DOM,
   // painted over the dashboard it has nothing to say about.
   const viewTabs =
-    openCollectionId || openMachine ? (
+    openCollectionId || openMachine || agentsOpen ? (
       <>
         {openCollectionId && (
           <div
@@ -1681,6 +1748,52 @@ export function Workspace({
               onClick={handleCloseCollection}
               className="rounded p-0.5 text-muted-foreground hover:bg-muted"
               aria-label={t('ws.closeCollection')}
+            >
+              <svg
+                className="h-3.5 w-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+        {agentsOpen && (
+          <div
+            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium ${
+              mainView === 'agents'
+                ? 'bg-background text-foreground'
+                : 'text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <button
+              onClick={() => setMainView('agents')}
+              className="flex items-center gap-1.5"
+              data-testid="nav-agents"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <rect x="4" y="7" width="16" height="12" rx="2" />
+                <path strokeLinecap="round" d="M12 7V4M9 13h.01M15 13h.01" />
+              </svg>
+              <span>{t('agent.title')}</span>
+            </button>
+            <button
+              onClick={() => {
+                setAgentsOpen(false);
+                if (mainView === 'agents') setMainView('terminal');
+              }}
+              className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+              aria-label={t('agent.close')}
+              data-testid="nav-agents-close"
             >
               <svg
                 className="h-3.5 w-3.5"
@@ -1833,6 +1946,33 @@ export function Workspace({
           >
             <IconBolt className="h-4 w-4" />
             <span className="hidden md:inline">{t('ws.quickSsh')}</span>
+          </button>
+        )}
+
+        {/* The agent manager (ADR 0022 §4). A view, so the button OPENS it and the tab
+            strip then carries a closable chip for it — the mock's arrangement, and the
+            reason the chip is not permanent. */}
+        {toolbarPrefs.agents && (
+          <button
+            onClick={() => {
+              setAgentsOpen(true);
+              setMainView('agents');
+            }}
+            className="m-btn m-btn-sm"
+            title={t('agent.open')}
+            data-testid="toolbar-agents"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <rect x="4" y="7" width="16" height="12" rx="2" />
+              <path strokeLinecap="round" d="M12 7V4M9 13h.01M15 13h.01" />
+            </svg>
+            <span className="hidden md:inline">{t('agent.title')}</span>
           </button>
         )}
 
@@ -2280,6 +2420,23 @@ export function Workspace({
             <ErrorBoundary level="feature" name="TerminalManager">
               <TerminalManager
                 viewTabs={viewTabs}
+                /* The manager goes through the pane area rather than over the whole
+                   component: its header carries its controls, and an `inset-0` overlay
+                   puts that header under the tab strip, which paints later and wins. */
+                viewOverlay={
+                  agentsOpen && mainView === 'agents' ? (
+                    <ErrorBoundary level="feature" name="AgentManager">
+                      <AgentManager
+                        connections={conns.connections}
+                        machineId={agentMachineId}
+                        onPickMachine={setAgentMachineId}
+                        probeAgents={conns.probeAgents}
+                        onResume={handleResumeAgent}
+                        mode={serverKeys.mode}
+                      />
+                    </ErrorBoundary>
+                  ) : undefined
+                }
                 tabGroups={tabGroups}
                 activeTabId={activeTabId}
                 onSplitPane={handleSplitPane}

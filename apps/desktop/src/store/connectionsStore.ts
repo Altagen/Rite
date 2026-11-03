@@ -196,7 +196,14 @@ export interface ConnectionsSource {
   refresh: () => Promise<void>;
   select: (id: string | null) => void;
   remove: (id: string) => Promise<void>;
-  connect: (conn: ConnectionInfo) => Promise<string>;
+  /**
+   * Open a session on a machine, and return its id.
+   *
+   * `command` is the program the CHANNEL runs, not something typed into a shell
+   * afterwards (ADR 0022 §7.1) — a shell discards queued input while it sets the tty up,
+   * so an agent's resume line has to be named here. Absent ⇒ the account's login shell.
+   */
+  connect: (conn: ConnectionInfo, command?: string) => Promise<string>;
   create: (input: CreateConnectionInput) => Promise<void>;
   update: (input: UpdateConnectionInput) => Promise<void>;
   /**
@@ -240,6 +247,14 @@ export interface ConnectionsSource {
   // detection (docker ps / systemctl). Routes to the right execute path per source
   // (vault by id, accounts by decrypted target).
   execRemote?: (
+    connection: ConnectionInfo,
+    command: string,
+  ) => Promise<import('../utils/backend').RemoteCommandOutput>;
+  // Agent discovery on a machine (ADR 0022 §4). Routes per source exactly as execRemote
+  // does — and it is a SEPARATE member rather than a flag on that one because the two
+  // reach different routes, which answer to different gates: an administrator may allow
+  // container listings while refusing to let the product enumerate home directories.
+  probeAgents?: (
     connection: ConnectionInfo,
     command: string,
   ) => Promise<import('../utils/backend').RemoteCommandOutput>;

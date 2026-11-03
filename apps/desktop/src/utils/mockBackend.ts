@@ -663,6 +663,45 @@ export async function mockInvoke(
         exitStatus: 0,
       };
     }
+    case 'agent_probe':
+    case 'agent_probe_quick': {
+      // Demo discovery output, so the manager renders under the dev mock with no host.
+      //
+      // The sections are built from the COMMAND rather than from a fixed order: a probe
+      // names a tool by its position in the adapter list, so answering positions 0 and 1
+      // blindly would label demo rows with whichever adapters happen to be enabled. The
+      // command carries `__tool__ <index>` followed by `command -v <bin>`, so the pair is
+      // read back out of it and each section answers for the binary it actually asked
+      // about. The marker is matched loosely on purpose: the script is wrapped in
+      // `sh -c '…'`, so every single quote inside it arrives as `'\''`.
+      const cmd = String(args?.command ?? '');
+      const demo: Record<string, string[]> = {
+        claude: [
+          '/home/demo/.claude/projects/-srv-acme-api/3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11.jsonl',
+          '/home/demo/.claude/projects/-srv-acme-api/b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77.jsonl',
+          '/home/demo/.claude/projects/-srv-acme-web/c0a51d93-2e77-4b06-91ff-5d4c8b7e3a20.jsonl',
+        ],
+        codex: [
+          '/home/demo/.codex/sessions/2026/11/02/rollout-2026-11-02T09-14-07-01a1a05b-31b7-7b11-b3b8-35333cf07b0b.jsonl',
+        ],
+        grok: [
+          '/home/demo/.grok/sessions/%2Fsrv%2Facme%2Fapi/019fdcfe-08ee-7ca3-aaae-02470f138ad1/chat_history.jsonl',
+        ],
+      };
+      const out: string[] = [];
+      for (const m of cmd.matchAll(/__tool__ (\d+)[^\n]*\n\s*if command -v (\S+) /g)) {
+        const [, index, bin] = m;
+        out.push(`__tool__ ${index}`);
+        const lines = demo[bin];
+        if (!lines) {
+          out.push('__missing__');
+          continue;
+        }
+        out.push(`__version__ ${bin} 1.0.0 (demo)`);
+        out.push(`__body__ 0 ${lines.length}`, ...lines);
+      }
+      return { stdout: out.join('\n'), stderr: '', exitStatus: 0 };
+    }
     case 'claim_session_output':
       return '';
     case 'send_terminal_input':

@@ -520,6 +520,36 @@ export const BackendTerminal = {
     }),
 
   /**
+   * Agent discovery on a saved connection (ADR 0022 §4). One command per machine, asked
+   * for explicitly — the same shape as `machineExec`, on its own route because it answers
+   * to its own gate: an administrator may allow container listings while refusing to let
+   * the product enumerate home directories.
+   */
+  agentProbe: (connectionId: string, command: string, sessionSecret?: string) =>
+    invokeWithValidation('agent_probe', RemoteCommandOutputSchema, {
+      connectionId,
+      command,
+      sessionSecret,
+    }),
+
+  /** The same discovery on an ad-hoc target. See `machineExecQuick` for the origin. */
+  agentProbeQuick: (
+    target: QuickExecTarget,
+    command: string,
+    origin?: { collectionId: string; itemId: string },
+  ) =>
+    invokeWithValidation('agent_probe_quick', RemoteCommandOutputSchema, {
+      host: target.host,
+      port: target.port,
+      username: target.username,
+      authMethod: target.authMethod,
+      jumps: target.jumps ?? [],
+      command,
+      collectionId: origin?.collectionId,
+      itemId: origin?.itemId,
+    }),
+
+  /**
    * Quick SSH connect (temporary connection)
    */
   quickSshConnect: (

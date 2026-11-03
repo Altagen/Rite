@@ -165,10 +165,10 @@ export function useLocalCollectionsSource(): ConnectionsSource {
   // Connecting is by id: the core resolves the machine, decrypts it and opens SSH,
   // so credentials never pass through here.
   const connect = useCallback(
-    async (c: ConnectionInfo) => {
+    async (c: ConnectionInfo, command?: string) => {
       const secret = await sessionSecretFor(c);
       if (secret === null) throw new Error('cancelled');
-      const id = await Backend.Terminal.connectTerminal(c.id, secret);
+      const id = await Backend.Terminal.connectTerminal(c.id, secret, command);
       void refresh(); // pick up the new "last used"
       return id;
     },
@@ -337,6 +337,12 @@ export function useLocalCollectionsSource(): ConnectionsSource {
       const secret = await sessionSecretFor(c);
       if (secret === null) throw new Error('cancelled');
       return Backend.Terminal.machineExec(c.id, command, secret);
+    },
+    // Discovery asks the same way, on the agents route: one gate per question.
+    probeAgents: async (c, command) => {
+      const secret = await sessionSecretFor(c);
+      if (secret === null) throw new Error('cancelled');
+      return Backend.Terminal.agentProbe(c.id, command, secret);
     },
     startForward: async (c, f) => {
       const secret = await sessionSecretFor(c);

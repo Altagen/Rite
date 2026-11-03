@@ -25,6 +25,7 @@ import {
   shippedAdapter,
 } from '../apps/desktop/src/utils/agentAdapters.ts';
 import { agentProbeCmd, parseAgentProbe } from '../apps/desktop/src/utils/agentProbe.ts';
+import { agentVerdict, agentBlockedReason } from '../apps/desktop/src/utils/agentPolicy.ts';
 
 let failed = 0;
 const check = (name, fn) => {
@@ -312,6 +313,46 @@ check('an adapter with no placeholder gets the id appended, not dropped', () => 
   // not silently resume whatever conversation the tool picks by itself.
   const odd = { ...A('claude'), resume: 'claude --resume' };
   assert.equal(agentResumeCmd(odd, 'x-1'), 'claude --resume x-1');
+});
+
+console.log('\nwho may ask (ADR 0022 §3):');
+
+const V = (over) => agentVerdict({ mode: null, native: false, ...over });
+
+check('a standalone vault has no authority to consult', () => {
+  // The user's vault, their network, their machines. There is no server to set a policy.
+  assert.deepEqual(V({ mode: null }), { allowed: true });
+  assert.deepEqual(
+    V({ mode: { accounts: false, agentPolicy: { webui: false, clients: false } } }),
+    {
+      allowed: true,
+    },
+  );
+});
+
+check('a server that has never been configured has not said no', () => {
+  // Reading silence as a refusal would turn a shipped feature off on upgrade, which is
+  // the one outcome nobody asked for (ADR 0019's argument, reused).
+  assert.deepEqual(V({ mode: { accounts: true } }), { allowed: true });
+  assert.deepEqual(V({ mode: { accounts: true }, native: true }), { allowed: true });
+});
+
+check('each half answers for its own shell, and only for it', () => {
+  const webuiOff = { accounts: true, agentPolicy: { webui: false, clients: true } };
+  assert.deepEqual(V({ mode: webuiOff }), { allowed: false, shell: 'webui' });
+  assert.deepEqual(V({ mode: webuiOff, native: true }), { allowed: true });
+  const clientsOff = { accounts: true, agentPolicy: { webui: true, clients: false } };
+  assert.deepEqual(V({ mode: clientsOff }), { allowed: true });
+  assert.deepEqual(V({ mode: clientsOff, native: true }), { allowed: false, shell: 'clients' });
+});
+
+check('the refusal names the shell, because the two are different statements', () => {
+  // In a browser nothing runs for anybody here; on a client the request is never made.
+  // One "disabled" would flatten the two, and they send an administrator to one switch
+  // or the other.
+  assert.equal(agentBlockedReason({ allowed: true }), null);
+  assert.equal(agentBlockedReason({ allowed: false, shell: 'webui' }), 'agent.offWebui');
+  assert.equal(agentBlockedReason({ allowed: false, shell: 'clients' }), 'agent.offClients');
 });
 
 console.log();

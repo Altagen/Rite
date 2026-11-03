@@ -715,6 +715,29 @@ const routes: Record<string, Route> = {
     (await json<{ sessionId: string }>('/api/terminal/preconnect', post({ command: a.command })))
       .sessionId,
 
+  agent_probe: (a) =>
+    json(
+      '/api/agents/probe',
+      post({
+        connectionId: a.connectionId,
+        command: a.command,
+        sessionSecret: a.sessionSecret,
+      }),
+    ),
+  agent_probe_quick: (a) =>
+    json(
+      '/api/agents/probe-quick',
+      post({
+        host: a.host,
+        port: a.port,
+        username: a.username,
+        authMethod: a.authMethod,
+        jumps: a.jumps,
+        command: a.command,
+        collectionId: a.collectionId,
+        itemId: a.itemId,
+      }),
+    ),
   machine_exec: (a) =>
     json(
       '/api/terminal/exec',
