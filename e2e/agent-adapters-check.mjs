@@ -173,9 +173,20 @@ check('a host whose stat answered neither syntax still gets its conversations', 
   assert.equal(c.project, '-srv-acme-api');
 });
 
-check('a path that begins with digits and a tab is a path, not a time', () => {
-  // The separator is a tab because a path can hold a space; the epoch is read only when
-  // the whole field is digits, so a directory called `2026` cannot become a clock.
+check('a path that CONTAINS a tab is still a path, not a time and a path', () => {
+  // The separator is a tab because a path can hold a space and rarely holds a tab — but
+  // "rarely" is not "never", so the epoch is read only when the whole leading field is
+  // digits. Without that test, the first tab in a directory name cuts the path in half
+  // and the conversation is lost. A directory called `2026` is the other half of the
+  // same rule: it is digits, but it is not alone before the first tab.
+  const [c] = parse('claude', [
+    '/home/u/.claude/pro\tjects/-srv-acme-api/3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11.jsonl',
+  ]);
+  assert.equal(c.writtenAt, undefined);
+  assert.equal(c.project, '-srv-acme-api');
+});
+
+check('and a bare path with no tab at all carries no time', () => {
   const [c] = parse('claude', [
     '/home/u/.claude/projects/2026-srv/3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11.jsonl',
   ]);
@@ -306,6 +317,30 @@ check('an encoding that will not decode is kept as printed', () => {
     '/home/u/.grok/sessions/%zz/019fdcfe-08ee-7ca3-aaae-02470f138ad1/chat_history.jsonl',
   ]);
   assert.equal(c.project, '%zz');
+});
+
+console.log('\nantigravity — a database per conversation:');
+
+check('a uuid database is a conversation, with its time', () => {
+  assert.deepEqual(
+    parse('antigravity', [
+      '1793700000\t/home/u/.gemini/antigravity-cli/conversations/37ef7294-637a-4270-ae67-43241917834e.db',
+    ]),
+    [{ id: '37ef7294-637a-4270-ae67-43241917834e', rank: 0, writtenAt: 1793700000 }],
+  );
+});
+
+check('and what sits beside them is not one', () => {
+  // Measured: `conversation_summaries.db` lives in that same folder, so the glob returns
+  // it. Only the uuid test tells the two apart — resuming a summaries file would ask the
+  // vendor's CLI for a conversation whose id is `conversation_summaries`.
+  assert.deepEqual(
+    parse('antigravity', [
+      '1793700000\t/home/u/.gemini/antigravity-cli/conversations/conversation_summaries.db',
+      '1793600000\t/home/u/.gemini/antigravity-cli/conversations/history.jsonl',
+    ]),
+    [],
+  );
 });
 
 console.log('\nhermes — rows out of SQLite:');
