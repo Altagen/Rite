@@ -121,6 +121,47 @@ check('a section that never arrived is absent, not absent-mindedly installed', (
   );
 });
 
+check('a status that is not a number leaves the tool answered by nothing', () => {
+  // It used to become `failure.status = NaN`, which a view that renders what it is
+  // given puts on screen as "exited NaN". Installed, and nothing claimed about the
+  // listing — the same state as a section that never arrived.
+  const [tool] = parseAgentProbe(
+    ['__tool__ 0', '__version__ 2.1.4', '__body__ oops 1', 'a line'].join('\n'),
+    SIX,
+  );
+  assert.deepEqual(tool, { id: 'claude', installed: true, version: '2.1.4' });
+});
+
+check('and a status that is not a whole number is not a status either', () => {
+  // `$?` is an integer. A fractional one is not a shell's answer, and the guard says
+  // integer rather than finite — this is the case that tells the two apart.
+  const [tool] = parseAgentProbe(['__tool__ 0', '__body__ 1.5 0'].join('\n'), SIX);
+  assert.deepEqual(tool, { id: 'claude', installed: true });
+});
+
+check('a count that is not a number takes no lines with it', () => {
+  // The other half of the same framing: `__body__ 0 x` has a readable status and an
+  // unreadable count, so the listing is empty rather than everything that follows.
+  // Held here even though `slice` coerces a NaN end to nothing by itself — the property
+  // is what matters, and the next edit to that line should not have to rediscover it.
+  const [tool] = parseAgentProbe(
+    ['__tool__ 0', '__body__ 0 x', 'not mine', '__tool__ 1', '__missing__'].join('\n'),
+    SIX,
+  );
+  assert.deepEqual(tool.lines, []);
+});
+
+check('a tool named twice is one tool, and the first section wins', () => {
+  // Two rows with one id is a list a view cannot key. And if the framing ever did slip,
+  // the second section is the one that could carry something a host chose.
+  const tools = parseAgentProbe(
+    ['__tool__ 0', '__body__ 0 1', 'first', '__tool__ 0', '__body__ 0 1', 'second'].join('\n'),
+    SIX,
+  );
+  assert.equal(tools.length, 1);
+  assert.deepEqual(tools[0].lines, ['first']);
+});
+
 check('a login shell that greets us is ignored', () => {
   // `Using Node v24.21.0` — measured, from a version manager in a shell profile.
   const tools = parseAgentProbe('Using Node v24.21.0\n\n__tool__ 0\n__missing__\n', SIX);

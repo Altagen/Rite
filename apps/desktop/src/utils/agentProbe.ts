@@ -101,16 +101,29 @@ export function agentProbeCmd(adapters: AgentAdapter[]): string {
  * Adapters whose section never arrived are left OUT of the result, which is how a
  * caller tells "not answered" from "not installed". Lines before the first marker are
  * dropped: a login shell that prints a banner is common and says nothing about a tool.
+ *
+ * TWO MALFORMED SHAPES ARE REFUSED HERE rather than passed on:
+ *
+ *   - a `__body__` whose status is not a number used to become `failure.status = NaN`,
+ *     and a view that renders what it is given would have put "exited NaN" on screen.
+ *     The section is unreadable, so the tool is reported installed and NOT ANSWERED —
+ *     the third state this parser already has, for a section that never arrived.
+ *   - a repeated `__tool__ <index>` used to produce two rows with the same id. The
+ *     first wins. A tool named twice is one tool, and if the framing ever did slip, the
+ *     second section is the one that could carry something a host chose.
  */
 export function parseAgentProbe(stdout: string, adapters: AgentAdapter[]): ProbedTool[] {
   const lines = stdout.split('\n');
   const tools: ProbedTool[] = [];
+  const seen = new Set<number>();
   let i = 0;
   while (i < lines.length) {
     const line = lines[i++];
     if (!line.startsWith(`${TOOL} `)) continue;
-    const adapter = adapters[Number(line.slice(TOOL.length + 1).trim())];
-    if (!adapter) continue;
+    const index = Number(line.slice(TOOL.length + 1).trim());
+    const adapter = adapters[index];
+    if (!adapter || seen.has(index)) continue;
+    seen.add(index);
     const tool: ProbedTool = { id: adapter.id, installed: false };
     tools.push(tool);
     // The section's own lines, read positionally — never searched for.
@@ -125,9 +138,17 @@ export function parseAgentProbe(stdout: string, adapters: AgentAdapter[]): Probe
       }
       if (l.startsWith(`${BODY} `)) {
         tool.installed = true;
-        const [status, count] = l.slice(BODY.length + 1).trim().split(/\s+/).map(Number);
+        const [status, count] = l
+          .slice(BODY.length + 1)
+          .trim()
+          .split(/\s+/)
+          .map(Number);
         const body = lines.slice(i, i + (Number.isFinite(count) ? count : 0));
         i += body.length;
+        // An unreadable status leaves the tool answered by nothing, which is a state the
+        // caller already has to render. Reporting `NaN` as a status would put it on
+        // screen.
+        if (!Number.isInteger(status)) continue;
         if (status === 0) tool.lines = body;
         else tool.failure = { status, output: body.join('\n') };
         continue;
