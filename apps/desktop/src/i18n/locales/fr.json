@@ -1253,7 +1253,12 @@
     "noneLeftHint": "{count} sur cette machine en tout.",
     "again": "Relire",
     "quiet": "{count} sessions sans question",
-    "quietHint": "Une exécution que l’outil s’est déléguée, ou laissée au prompt. Elles portent une date et un id."
+    "quietHint": "Une exécution que l’outil s’est déléguée, ou laissée au prompt. Elles portent une date et un id.",
+    "rename": "Renommer",
+    "renamePlaceholder": "Un nom à soi",
+    "renameClear": "Retirer le nom",
+    "renameCancel": "Annuler",
+    "renameSave": "Enregistrer"
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",

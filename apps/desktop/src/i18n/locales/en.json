@@ -1253,7 +1253,12 @@
     "noneLeftHint": "{count} on this machine in all.",
     "again": "Read again",
     "quiet": "{count} sessions with no question",
-    "quietHint": "A run delegated by the tool itself, or one left at the prompt. They carry a date and an id."
+    "quietHint": "A run delegated by the tool itself, or one left at the prompt. They carry a date and an id.",
+    "rename": "Rename",
+    "renamePlaceholder": "A name of this person's own",
+    "renameClear": "Remove the name",
+    "renameCancel": "Cancel",
+    "renameSave": "Save"
   },
   "connErr": {
     "retrying": "Retrying automatically…",

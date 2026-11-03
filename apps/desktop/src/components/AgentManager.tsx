@@ -37,6 +37,9 @@ import {
   type ShippedAdapter,
 } from '../utils/agentAdapters';
 import { agentBlockedReason, agentVerdict } from '../utils/agentPolicy';
+import { useLayouts } from '../store/layouts';
+import type { Mark } from '../store/layoutsFormat';
+import { MACHINE_SWATCHES } from '../theme/swatches';
 import { Backend } from '../utils/backend';
 import { isNativeShell } from '../utils/nativeShell';
 
@@ -65,7 +68,20 @@ interface Answer {
 interface Row {
   adapter: ShippedAdapter;
   conv: DiscoveredConversation;
+  /** The name this person gave it, when they gave it one (ADR 0022 §6). */
+  mark?: Mark;
 }
+
+/**
+ * The colours a mark can wear: the machine palette, not one of this screen's own.
+ *
+ * Eight components grew their own hex array for the same job once and nothing made them
+ * agree (#396); `e2e/swatch-palette-check.mjs` is what stops the ninth. A mark sits
+ * beside a machine's own swatch in the same window, so it is that palette — a list
+ * rather than a picker, because a mark is a way of finding a conversation again at a
+ * glance and nine colours told apart across a grid beat sixteen million that are not.
+ */
+const MARK_COLORS = MACHINE_SWATCHES;
 
 interface Props {
   /** Every machine this context can reach. */
@@ -147,17 +163,32 @@ export function AgentManager({
     }
   }, [machineId, onLocal, machine, probeAgents]);
 
+  const marks = useLayouts((st) => st.marks);
+  const setMark = useLayouts((st) => st.setMark);
+  /** The conversation a rename is open on, or null. */
+  const [renaming, setRenaming] = useState<Row | null>(null);
+
   /** Every conversation the answer holds, in the order each tool reported. */
   const rows: Row[] = useMemo(() => {
-    if (!answer) return [];
+    if (!answer || !machineId) return [];
     const out: Row[] = [];
     for (const tool of answer.tools) {
       const adapter = shippedAdapter(tool.id);
       if (!adapter || !tool.lines) continue;
-      for (const conv of adapter.parse(tool.lines)) out.push({ adapter, conv });
+      for (const conv of adapter.parse(tool.lines)) {
+        out.push({
+          adapter,
+          conv,
+          // Keyed by all three, because none of them is unique alone: two machines can
+          // hold the same tool, and two tools the same id shape.
+          mark: marks.find(
+            (m) => m.machine === machineId && m.tool === adapter.id && m.id === conv.id,
+          ),
+        });
+      }
     }
     return out;
-  }, [answer]);
+  }, [answer, machineId, marks]);
 
   /**
    * THREE FILTERS AND NO SECOND GROUPING, which is a decision rather than a shortcut.
@@ -177,7 +208,7 @@ export function AgentManager({
     return rows.filter((r) => {
       if (floor && r.conv.writtenAt !== undefined && r.conv.writtenAt < floor) return false;
       if (!q) return true;
-      return [r.conv.ask, r.conv.project, r.conv.label, r.conv.id, r.adapter.name]
+      return [r.mark?.name, r.conv.ask, r.conv.project, r.conv.label, r.conv.id, r.adapter.name]
         .filter(Boolean)
         .some((v) => v!.toLowerCase().includes(q));
     });
@@ -217,7 +248,37 @@ export function AgentManager({
   ];
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-background" data-testid="agent-manager">
+    <div
+      className="relative flex h-full flex-col overflow-hidden bg-background"
+      data-testid="agent-manager"
+    >
+      {renaming && machineId && (
+        <RenameDialog
+          row={renaming}
+          onClose={() => setRenaming(null)}
+          onSave={(name, color) => {
+            // An empty name takes the mark away rather than writing a block that says
+            // nothing — the same gesture as the Clear button, from the keyboard.
+            void setMark(
+              name
+                ? {
+                    machine: machineId,
+                    tool: renaming.adapter.id,
+                    id: renaming.conv.id,
+                    name,
+                    color,
+                  }
+                : {
+                    machine: machineId,
+                    tool: renaming.adapter.id,
+                    id: renaming.conv.id,
+                    name: null,
+                  },
+            );
+            setRenaming(null);
+          }}
+        />
+      )}
       {/* TWO ROWS, AND WHICH CONTROL SITS IN WHICH IS THE WHOLE POINT. The subject of the
           screen — the machine, and the button that reads it — is the first thing on the
           first row, because everything below depends on it; under a real load the header
@@ -365,6 +426,7 @@ export function AgentManager({
                     setFolded((p) => ({ ...p, [b.adapter.id]: !(p[b.adapter.id] === true) }))
                   }
                   onResume={(r) => onResume(machine, r.adapter, r.conv)}
+                  onRename={setRenaming}
                 />
               ))
             ) : (
@@ -373,6 +435,7 @@ export function AgentManager({
                 active={railTool ?? bands[0]?.adapter.id ?? null}
                 onPick={setRailTool}
                 onResume={(r) => onResume(machine, r.adapter, r.conv)}
+                onRename={setRenaming}
               />
             )}
 
@@ -467,25 +530,40 @@ function Note({ title, body, testId }: { title: string; body: string; testId: st
  * conversation begun in September and resumed today sorts first and reads last. It is
  * still there, under `title`, where it cannot be mistaken for the order.
  */
-function Card({ row, onResume }: { row: Row; onResume: () => void }) {
+function Card({
+  row,
+  onResume,
+  onRename,
+}: {
+  row: Row;
+  onResume: () => void;
+  onRename: () => void;
+}) {
   const { t } = useTranslation();
-  const { conv } = row;
+  const { conv, mark } = row;
   const written = conv.writtenAt ? new Date(conv.writtenAt * 1000) : null;
   const stamp = written ? written.toLocaleString(undefined, WHEN) : null;
   // What a conversation IS to someone looking for it: the thing they typed first. Then
   // the project, then the time it was last written — each one a fact the listing gave,
   // never a stand-in for the one above it.
-  const headline = conv.ask ?? conv.project ?? stamp ?? conv.label ?? null;
+  // A NAME THE PERSON GAVE IT WINS OVER EVERYTHING, which is the whole point of giving
+  // one: what the tool reported is still underneath, so a rename adds a handle rather
+  // than hiding what it is.
+  const headline = mark?.name ?? conv.ask ?? conv.project ?? stamp ?? conv.label ?? null;
   // Whatever is left to place under it, and ONLY what the headline has not already
   // said. Without the second test a Codex card printed its date twice, once as the
   // headline it fell back to and once underneath — which reads as a card with nothing
   // on it.
-  const under = [conv.ask ? conv.project : null, headline === stamp ? null : stamp]
+  const under = [
+    mark ? (conv.ask ?? conv.project) : conv.ask ? conv.project : null,
+    headline === stamp ? null : stamp,
+  ]
     .filter(Boolean)
     .join(' · ');
   return (
     <div
       className="flex flex-col gap-1.5 rounded-md border border-border bg-card p-3"
+      style={mark?.color ? { borderLeft: `3px solid ${mark.color}` } : undefined}
       data-testid={`agent-card-${conv.id}`}
     >
       <div
@@ -529,12 +607,127 @@ function Card({ row, onResume }: { row: Row; onResume: () => void }) {
         </button>
         <button
           type="button"
+          onClick={onRename}
+          title={t('agent.rename')}
+          className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+          data-testid={`agent-rename-${conv.id}`}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M7 7h-.01M3 7V4a1 1 0 011-1h3l10 10-4 4L3 7z"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
           onClick={onResume}
           className="rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted"
           data-testid={`agent-resume-${conv.id}`}
         >
           {t('agent.resume')}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Naming someone else's conversation.
+ *
+ * A name and a colour, both this person's, over a session they did not create here. The
+ * vendor's files are never touched (ADR 0022 §6): what is written is a `[[mark]]` in the
+ * workspace document, which is the same support a layout rides — a file on this machine,
+ * or a blob the account holds and the server cannot read.
+ *
+ * Clearing the name removes the mark entirely rather than leaving an empty one, so a
+ * document never carries a block that says nothing.
+ */
+function RenameDialog({
+  row,
+  onClose,
+  onSave,
+}: {
+  row: Row;
+  onClose: () => void;
+  onSave: (name: string, color?: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [name, setName] = useState(row.mark?.name ?? '');
+  const [color, setColor] = useState(row.mark?.color);
+  const what = row.conv.ask ?? row.conv.project ?? row.conv.id;
+  return (
+    <div
+      className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 p-4"
+      onClick={onClose}
+      data-testid="agent-rename-dialog"
+    >
+      <div
+        className="w-full max-w-sm rounded-md border border-border bg-card p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-sm font-medium">{t('agent.rename')}</div>
+        <div className="mt-1 truncate text-xs text-muted-foreground" title={what}>
+          {what}
+        </div>
+        <input
+          autoFocus
+          className="mt-3 h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+          placeholder={t('agent.renamePlaceholder')}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onSave(name.trim(), color);
+            if (e.key === 'Escape') onClose();
+          }}
+          data-testid="agent-rename-input"
+        />
+        <div className="mt-3 flex items-center gap-1.5">
+          {MARK_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setColor(color === c ? undefined : c)}
+              aria-label={c}
+              data-testid={`agent-color-${c.slice(1)}`}
+              className={`h-5 w-5 rounded-full border ${
+                color === c ? 'border-foreground' : 'border-transparent'
+              }`}
+              style={{ background: c }}
+            />
+          ))}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          {row.mark && (
+            // Taking the name away is the other half of giving one, and it belongs on
+            // this screen rather than in a document nobody edits by hand.
+            <button
+              type="button"
+              onClick={() => onSave('', undefined)}
+              className="rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
+              data-testid="agent-rename-clear"
+            >
+              {t('agent.renameClear')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-2.5 py-1 text-xs"
+          >
+            {t('agent.renameCancel')}
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave(name.trim(), color)}
+            className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
+            data-testid="agent-rename-save"
+          >
+            {t('agent.renameSave')}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -547,12 +740,14 @@ function Band({
   folded,
   onFold,
   onResume,
+  onRename,
 }: {
   adapter: ShippedAdapter;
   rows: Row[];
   folded: boolean;
   onFold: () => void;
   onResume: (row: Row) => void;
+  onRename: (row: Row) => void;
 }) {
   const { t } = useTranslation();
   const [tail, setTail] = useState(false);
@@ -574,7 +769,12 @@ function Band({
   const grid = (list: Row[]) => (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-2">
       {list.map((r) => (
-        <Card key={`${r.adapter.id}:${r.conv.id}`} row={r} onResume={() => onResume(r)} />
+        <Card
+          key={`${r.adapter.id}:${r.conv.id}`}
+          row={r}
+          onResume={() => onResume(r)}
+          onRename={() => onRename(r)}
+        />
       ))}
     </div>
   );
@@ -637,11 +837,13 @@ function Rail({
   active,
   onPick,
   onResume,
+  onRename,
 }: {
   bands: { adapter: ShippedAdapter; rows: Row[] }[];
   active: string | null;
   onPick: (id: string) => void;
   onResume: (row: Row) => void;
+  onRename: (row: Row) => void;
 }) {
   const { t } = useTranslation();
   const current = bands.find((b) => b.adapter.id === active) ?? bands[0];
@@ -671,6 +873,7 @@ function Rail({
             key={`${r.adapter.id}:${r.conv.id}`}
             row={r}
             onResume={() => onResume(r)}
+            onRename={() => onRename(r)}
             t={t}
           />
         ))}
@@ -683,22 +886,28 @@ function Rail({
 function RailRow({
   row,
   onResume,
+  onRename,
   t,
 }: {
   row: Row;
   onResume: () => void;
+  onRename: () => void;
   t: (key: string, vars?: Record<string, string>) => string;
 }) {
-  const { conv } = row;
+  const { conv, mark } = row;
   const written = conv.writtenAt ? new Date(conv.writtenAt * 1000) : null;
   const stamp = written ? written.toLocaleString(undefined, WHEN) : null;
   return (
     <div
       className="group flex items-center gap-3 border-b border-border/60 px-1 py-1.5 text-sm hover:bg-muted/40"
+      style={mark?.color ? { borderLeft: `3px solid ${mark.color}`, paddingLeft: 6 } : undefined}
       data-testid={`agent-card-${conv.id}`}
     >
-      <span className="min-w-0 flex-1 truncate" title={conv.ask ?? conv.project ?? conv.id}>
-        {conv.ask ?? conv.project ?? (
+      <span
+        className="min-w-0 flex-1 truncate"
+        title={mark?.name ?? conv.ask ?? conv.project ?? conv.id}
+      >
+        {mark?.name ?? conv.ask ?? conv.project ?? (
           <span className="text-muted-foreground">{t('agent.noProject')}</span>
         )}
       </span>
@@ -725,6 +934,22 @@ function RailRow({
             strokeLinejoin="round"
             strokeWidth={2}
             d="M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z"
+          />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={onRename}
+        title={t('agent.rename')}
+        className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted group-hover:opacity-100"
+        data-testid={`agent-rename-${conv.id}`}
+      >
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M7 7h-.01M3 7V4a1 1 0 011-1h3l10 10-4 4L3 7z"
           />
         </svg>
       </button>

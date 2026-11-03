@@ -29,11 +29,13 @@ import {
   parseLayoutFile,
   formatLayoutFile,
   replacePresetBlocks,
+  replaceMarkBlocks,
   setLayoutStartup,
   setTerminalValue,
   type Layout,
   type LayoutError,
   type Preset,
+  type Mark,
   type FileCopyMode,
 } from './layoutsFormat';
 import { parseStored, isPreset } from './splitsFormat';
@@ -214,6 +216,8 @@ interface LayoutsState {
    *  nothing at all. */
   presets: Preset[];
   layouts: Layout[];
+  /** The names this person gave to conversations (ADR 0022 §6). */
+  marks: Mark[];
   /**
    * The copy/paste convention the document asks for, or `null` when it says nothing.
    *
@@ -240,6 +244,14 @@ interface LayoutsState {
   save: (text: string) => Promise<LayoutError | null>;
   /** Rewrite just the `[[preset]]` blocks, leaving the rest of the file as typed. */
   savePresets: (presets: Preset[]) => Promise<void>;
+  /**
+   * Give a conversation a name, or take its name away by passing `null`.
+   *
+   * Through the document like everything else here, so a rename is exported with the
+   * rest of a person's setup and survives a machine. One mark per (machine, tool, id):
+   * renaming twice replaces, it does not stack.
+   */
+  setMark: (mark: Mark | (Omit<Mark, 'name' | 'color'> & { name: null })) => Promise<void>;
   /** Turn one layout's `startup` on or off, by its position in the file. */
   setStartup: (index: number, startup: boolean) => Promise<void>;
   /** Write `[terminal] newTabCwd`, or remove it with `null`. The document is the one
@@ -276,6 +288,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
   prefer: readSource(),
   presets: [],
   layouts: [],
+  marks: [],
   copyMode: null,
   newTabCwd: null,
   error: null,
@@ -299,6 +312,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
       updatedAt: null,
       presets: [],
       layouts: [],
+      marks: [],
       error: null,
       loaded: true,
       enabled,
@@ -330,6 +344,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
           updatedAt: row.updatedAt,
           presets: parse.error ? get().presets : resolvePresets(parse),
           layouts: parse.error ? get().layouts : parse.layouts,
+          marks: parse.error ? get().marks : parse.marks,
           copyMode: parse.error ? get().copyMode : (parse.terminal.copyMode ?? null),
           newTabCwd: parse.error ? get().newTabCwd : (parse.terminal.newTabCwd ?? null),
           error: parse.error,
@@ -371,6 +386,7 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
         // Same rule as save(): a file that does not parse does not empty the menu.
         presets: parse.error ? get().presets : resolvePresets(parse),
         layouts: parse.error ? get().layouts : parse.layouts,
+        marks: parse.error ? get().marks : parse.marks,
         copyMode: parse.error ? get().copyMode : (parse.terminal.copyMode ?? null),
         newTabCwd: parse.error ? get().newTabCwd : (parse.terminal.newTabCwd ?? null),
         error: parse.error,
@@ -401,6 +417,14 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
 
   savePresets: async (presets: Preset[]) => {
     await get().save(replacePresetBlocks(get().text, presets));
+  },
+
+  setMark: async (mark) => {
+    const same = (m: Mark) =>
+      m.machine === mark.machine && m.tool === mark.tool && m.id === mark.id;
+    const kept = get().marks.filter((m) => !same(m));
+    const next = mark.name === null ? kept : [...kept, mark as Mark];
+    await get().save(replaceMarkBlocks(get().text, next));
   },
 
   // By position, because that is what the file has: `Layout.id` is assigned by the
@@ -436,6 +460,10 @@ export const useLayouts = create<LayoutsState>((set, get) => ({
       text,
       presets: parse.error ? get().presets : resolvePresets(parse),
       layouts: parse.error ? get().layouts : parse.layouts,
+      // Every field of the parse, re-listed — which is why one of them went missing the
+      // first time: a rename wrote its block to the file and this set put the old marks
+      // back, so the name appeared and was gone by the next render.
+      marks: parse.error ? get().marks : parse.marks,
       copyMode: parse.error ? get().copyMode : (parse.terminal.copyMode ?? null),
       newTabCwd: parse.error ? get().newTabCwd : (parse.terminal.newTabCwd ?? null),
       error: parse.error,

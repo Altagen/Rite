@@ -1102,6 +1102,43 @@ def scenario_agentload(wid):
     )
     time.sleep(0.4)
 
+    # NAMING SOMEONE ELSE'S CONVERSATION (ADR 0022 §6). What it writes is a `[[mark]]`
+    # in the workspace document — the same support a layout rides — so the proof it
+    # worked is that the card reads differently after a reload would have cost nothing.
+    card = js(
+        "document.querySelector('[data-testid^=agent-rename-]')"
+        "?.getAttribute('data-testid') || ''"
+    )
+    check("a card offers a rename", card.startswith("agent-rename-"), f"got {card!r}")
+    js(f"document.querySelector('[data-testid=\"{card}\"]')?.click(); 1")
+    time.sleep(0.5)
+    check("and a dialog opens on it", js("!!document.querySelector('[data-testid=agent-rename-dialog]')"))
+    js(
+        "(() => { const i = document.querySelector('[data-testid=agent-rename-input]');"
+        " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;"
+        " set.call(i, 'le portage du worker');"
+        " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+    )
+    time.sleep(0.3)
+    js("document.querySelector('[data-testid=agent-color-7c5cff]')?.click(); 1")
+    time.sleep(0.3)
+    js("document.querySelector('[data-testid=agent-rename-save]')?.click(); 1")
+    time.sleep(1.2)
+    named = js(
+        "Array.from(document.querySelectorAll('[data-testid^=agent-card-]'))"
+        ".some(c => c.textContent.includes('le portage du worker'))"
+    )
+    check("the card wears the name", named is True)
+    # The question it replaced is still under it: a name adds a handle, it does not hide
+    # what the conversation is.
+    both = js(
+        "Array.from(document.querySelectorAll('[data-testid^=agent-card-]'))"
+        ".some(c => c.textContent.includes('le portage du worker')"
+        "        && c.textContent.includes('Question 1'))"
+    )
+    check("and what the tool reported is still under it", both is True)
+    shot("agentload-named")
+
     js("document.querySelector('[data-testid=agent-layout-rail]')?.click(); 1")
     time.sleep(0.6)
     shot("agentload-rail")

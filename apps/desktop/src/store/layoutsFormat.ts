@@ -49,6 +49,33 @@ export interface Preset {
   command: string;
 }
 
+/**
+ * A name a person gave to someone else's conversation (ADR 0022 §6).
+ *
+ * The vendor's files are never touched: a label that exists only in Rite is not their
+ * data, and §6's read-only rule is about not becoming a second source of truth for it.
+ *
+ * PERSONAL, not shared, and that is a decision. Access to an agent is already settled by
+ * the collection — hold its key, hold the SSH credential, see the machine's
+ * conversations — so nothing here needs a permission of its own. But a label is not
+ * access: one person's "spike, throw away" is another's "the queue work", and a shared
+ * rename takes someone's filing system away from them.
+ *
+ * Keyed by machine, tool and conversation, because none of the three is unique alone: two
+ * machines can hold the same tool, and two tools the same id shape.
+ */
+export interface Mark {
+  /** The machine as the library names it, or `@local` for this computer. */
+  machine: string;
+  /** The adapter's id: `claude`, `codex`, … */
+  tool: string;
+  /** The conversation, as that adapter reports it. */
+  id: string;
+  name: string;
+  /** A CSS colour the user picked, or absent. */
+  color?: string;
+}
+
 export interface Layout {
   /** Stable within one parse: the file has no ids, and the menu needs a key. */
   id: string;
@@ -117,6 +144,7 @@ export interface TerminalSection {
 export interface LayoutParse {
   presets: Preset[];
   layouts: Layout[];
+  marks: Mark[];
   /** Always present; its fields are absent when the file does not set them. */
   terminal: TerminalSection;
   error: LayoutError | null;
@@ -139,6 +167,8 @@ export function parseLayoutFile(text: string): LayoutParse {
   const terminal: TerminalSection = {};
   let inTerminal = false;
   const layouts: Layout[] = [];
+  const marks: Mark[] = [];
+  let mark: Mark | null = null;
   let preset: Preset | null = null;
   let current: Layout | null = null;
   let pane: LayoutPane | null = null;
@@ -154,6 +184,7 @@ export function parseLayoutFile(text: string): LayoutParse {
   const fail = (line: number, message: string): LayoutParse => ({
     presets: [],
     layouts: [],
+    marks: [],
     // Nothing from a file that does not parse, the mode included: half a file is worse
     // than no file, and a copy gesture quietly taken from a rejected file would be the
     // one surviving half.
@@ -172,6 +203,16 @@ export function parseLayoutFile(text: string): LayoutParse {
       presets.push(preset);
       current = null;
       pane = null;
+      mark = null;
+      continue;
+    }
+    if (line === '[[mark]]') {
+      mark = { machine: '', tool: '', id: '', name: '' };
+      inTerminal = false;
+      marks.push(mark);
+      preset = null;
+      current = null;
+      pane = null;
       continue;
     }
     if (line === '[[layout]]') {
@@ -180,6 +221,7 @@ export function parseLayoutFile(text: string): LayoutParse {
       layouts.push(current);
       preset = null;
       pane = null;
+      mark = null;
       continue;
     }
     if (line === '[terminal]') {
@@ -189,6 +231,7 @@ export function parseLayoutFile(text: string): LayoutParse {
       preset = null;
       current = null;
       pane = null;
+      mark = null;
       continue;
     }
     if (line === '[[layout.pane]]') {
@@ -196,13 +239,14 @@ export function parseLayoutFile(text: string): LayoutParse {
       pane = { command: '' };
       current.panes.push(pane);
       inTerminal = false;
+      mark = null;
       continue;
     }
     if (line.startsWith('[')) {
       return fail(
         i + 1,
-        `unknown table ${line} — only [terminal], [[preset]], [[layout]] and ` +
-          `[[layout.pane]] exist`,
+        `unknown table ${line} — only [terminal], [[preset]], [[layout]], ` +
+          `[[layout.pane]] and [[mark]] exist`,
       );
     }
 
@@ -255,6 +299,16 @@ export function parseLayoutFile(text: string): LayoutParse {
         return fail(i + 1, `copyMode is one of ${FILE_COPY_MODES.join(', ')} — not ${mode}`);
       }
       terminal.copyMode = mode as FileCopyMode;
+      continue;
+    }
+
+    if (mark) {
+      if (key === 'machine') mark.machine = String(parsed);
+      else if (key === 'tool') mark.tool = String(parsed);
+      else if (key === 'id') mark.id = String(parsed);
+      else if (key === 'name') mark.name = String(parsed);
+      else if (key === 'color') mark.color = String(parsed);
+      else return fail(i + 1, `[[mark]] takes machine, tool, id, name or color — not ${key}`);
       continue;
     }
 
@@ -331,10 +385,11 @@ export function parseLayoutFile(text: string): LayoutParse {
     // The planner needs the tabs and the anchors to hold; it is the same walk, so it
     // reports here rather than throwing later with no line to name.
     const planned = planTabs(layout, at);
-    if ('error' in planned) return { presets: [], layouts: [], terminal: {}, error: planned.error };
+    if ('error' in planned)
+      return { presets: [], layouts: [], marks: [], terminal: {}, error: planned.error };
   }
 
-  return { presets, layouts, terminal, error: null };
+  return { presets, layouts, marks, terminal, error: null };
 }
 
 /** One cut of the screen: which pane is added, out of which pane's area, and how. */
@@ -567,15 +622,22 @@ function stripComment(line: string): string {
  * dialog and the editor safe to use on the same file.
  */
 export function replacePresetBlocks(text: string, presets: Preset[]): string {
+  return replaceBlocks(
+    text,
+    '[[preset]]',
+    presets
+      .map((p) =>
+        [`[[preset]]`, `name = ${quote(p.name)}`, `command = ${quote(p.command)}`].join('\n'),
+      )
+      .join('\n\n'),
+  );
+}
+
+/** Every block of one kind, replaced by `block`, with the rest of the file left alone. */
+function replaceBlocks(text: string, header: string, block: string): string {
   const lines = (text ?? '').split('\n');
   const isHeader = (line: string) => stripComment(line).trim().startsWith('[');
-  const isPresetHeader = (line: string) => stripComment(line).trim() === '[[preset]]';
-
-  const block = presets
-    .map((p) =>
-      [`[[preset]]`, `name = ${quote(p.name)}`, `command = ${quote(p.command)}`].join('\n'),
-    )
-    .join('\n\n');
+  const isPresetHeader = (line: string) => stripComment(line).trim() === header;
 
   const out: string[] = [];
   let written = false;
@@ -610,6 +672,37 @@ export function replacePresetBlocks(text: string, presets: Preset[]): string {
   }
 
   return out.join('\n');
+}
+
+/**
+ * Rewrite every `[[mark]]` block, touching nothing else in the file.
+ *
+ * The same walk as `replacePresetBlocks` and for the same reason: the file is the
+ * person's, so a rename must not reformat their layouts, move their comments or reorder
+ * anything they wrote. One kind of block is replaced in place and the rest is copied
+ * through.
+ *
+ * Shared with that function rather than written twice — two walks over the same file
+ * shape would be two sets of edge cases, and the preamble rule is the fiddly one.
+ */
+export function replaceMarkBlocks(text: string, marks: Mark[]): string {
+  return replaceBlocks(
+    text,
+    '[[mark]]',
+    marks
+      .map((m) =>
+        [
+          `[[mark]]`,
+          `machine = ${quote(m.machine)}`,
+          `tool = ${quote(m.tool)}`,
+          `id = ${quote(m.id)}`,
+          `name = ${quote(m.name)}`,
+        ]
+          .concat(m.color ? [`color = ${quote(m.color)}`] : [])
+          .join('\n'),
+      )
+      .join('\n\n'),
+  );
 }
 
 /**
@@ -733,10 +826,29 @@ export function paneLabel(pane: LayoutPane): string {
 
 /** Write the file back out, in the documented shape. Used by the editor's formatter
  *  and by the one-time migration out of the release candidate's browser storage. */
-export function formatLayoutFile(layouts: Layout[], presets: Preset[] = []): string {
+export function formatLayoutFile(
+  layouts: Layout[],
+  presets: Preset[] = [],
+  marks: Mark[] = [],
+): string {
   const blocks = presets.map((p) =>
     [`[[preset]]`, `name = ${quote(p.name)}`, `command = ${quote(p.command)}`].join('\n'),
   );
+  // Before the layouts, because a mark is one short block and a layout is many: a file
+  // whose long blocks come first buries the short ones at the bottom.
+  for (const m of marks) {
+    blocks.push(
+      [
+        `[[mark]]`,
+        `machine = ${quote(m.machine)}`,
+        `tool = ${quote(m.tool)}`,
+        `id = ${quote(m.id)}`,
+        `name = ${quote(m.name)}`,
+      ]
+        .concat(m.color ? [`color = ${quote(m.color)}`] : [])
+        .join('\n'),
+    );
+  }
 
   for (const l of layouts) {
     const head = [`[[layout]]`, `name = ${quote(l.name)}`]
