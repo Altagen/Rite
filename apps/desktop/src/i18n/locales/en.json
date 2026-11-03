@@ -1249,10 +1249,11 @@
     "since1": "Last 24 hours",
     "since7": "Last 7 days",
     "since30": "Last 30 days",
-    "onlyAsked": "With a question",
-    "onlyAskedHint": "Hides {count} sessions no question was typed into — a delegated run, or one left at the prompt.",
     "noneLeft": "No conversation matches the filters",
-    "noneLeftHint": "{count} on this machine in all."
+    "noneLeftHint": "{count} on this machine in all.",
+    "again": "Read again",
+    "quiet": "{count} sessions with no question",
+    "quietHint": "A run delegated by the tool itself, or one left at the prompt. They carry a date and an id."
   },
   "connErr": {
     "retrying": "Retrying automatically…",

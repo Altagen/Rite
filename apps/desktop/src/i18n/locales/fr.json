@@ -1249,10 +1249,11 @@
     "since1": "24 dernières heures",
     "since7": "7 derniers jours",
     "since30": "30 derniers jours",
-    "onlyAsked": "Avec une question",
-    "onlyAskedHint": "Masque {count} sessions sans question saisie — une exécution déléguée, ou laissée au prompt.",
     "noneLeft": "Aucune conversation ne correspond aux filtres",
-    "noneLeftHint": "{count} sur cette machine en tout."
+    "noneLeftHint": "{count} sur cette machine en tout.",
+    "again": "Relire",
+    "quiet": "{count} sessions sans question",
+    "quietHint": "Une exécution que l’outil s’est déléguée, ou laissée au prompt. Elles portent une date et un id."
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",

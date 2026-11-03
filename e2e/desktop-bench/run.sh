@@ -55,6 +55,9 @@ cp "$BENCH/agent.js" "$DIST/agent.js"
 sed -i 's#</body>#<script src="/agent.js"></script></body>#' "$DIST/index.html"
 grep -q 'agent.js' "$DIST/index.html" || { echo "the agent was not injected" >&2; exit 1; }
 mkdir -p "$BENCH/.home" "$BENCH/out"
+# Agent sessions, shaped like real ones, for a manager that has to be LOOKED at rather
+# than asserted. Behind a flag because every other scenario wants an empty machine.
+[ -n "${RITE_BENCH_AGENTS:-}" ] && sh "$BENCH/seed-agents.sh" "$BENCH/.home"
 
 exec podman run --rm \
   -v "$REPO":/workspace:Z \
@@ -74,4 +77,4 @@ exec podman run --rm \
   -e SHELL="${RITE_BENCH_SHELL:-/usr/bin/bash}" \
   -e RITE_BENCH_PICK_SHELL="${RITE_BENCH_PICK_SHELL:-}" \
   "$IMAGE" \
-  bash -lc 'mkdir -p $XDG_DATA_HOME $XDG_CONFIG_HOME && python3 -I /bench.py '"$*"
+  bash -lc 'export PATH="$HOME/bin:$PATH"; mkdir -p $XDG_DATA_HOME $XDG_CONFIG_HOME && python3 -I /bench.py '"$*"

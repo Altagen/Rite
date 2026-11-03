@@ -1013,6 +1013,100 @@ def scenario_agents(wid):
     shot("agents")
 
 
+def scenario_agentload(wid):
+    """The manager under the load it actually meets. Run with RITE_BENCH_AGENTS=1.
+
+    Seventy-odd conversations, in the proportions measured on a real machine: six Claude
+    projects, sixty-one Codex rollouts of which exactly one was ever typed into, four
+    Grok projects and two Antigravity databases. A manager that reads well on four cards
+    says nothing about the one in front of a person.
+
+    It asserts the few things that are facts — the count, the order, that the one Codex
+    conversation with a question is first — and then takes a screenshot, because the rest
+    of what this scenario is for is a judgement nobody can make from a number.
+    """
+    print("\nagent manager, loaded")
+    focus(wid)
+    js("document.querySelector('[data-testid=toolbar-agents]')?.click(); 1")
+    time.sleep(0.8)
+    # Two calls, because the options are rendered by the click above: asking for them in
+    # the same tick asks before React has drawn them.
+    js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+    time.sleep(0.5)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'This machine'); if (o) o.click(); })()"
+    )
+    time.sleep(0.5)
+    js("document.querySelector('[data-testid=agent-probe]')?.click(); 1")
+    time.sleep(6.0)
+
+    sub = js("document.querySelector('[data-testid=agent-subtitle]')?.textContent || ''")
+    check("every conversation is counted", "73 conversations" in sub, f"got {sub!r}")
+    bands = js(
+        "Array.from(document.querySelectorAll('[data-testid^=agent-band-]'))"
+        ".map(b => b.getAttribute('data-testid').replace('agent-band-',''))"
+    )
+    check("one band per tool that answered", bands == ["claude", "codex", "grok", "antigravity"],
+          f"got {bands}")
+    first = js(
+        "document.querySelector('[data-testid=agent-band-codex] [data-testid^=agent-card-]')"
+        "?.textContent || ''"
+    )
+    # The whole reason the listing asks for a time: this one started in September.
+    check("the Codex conversation written last is first", "Reprendre le portage" in first,
+          f"got {first[:60]!r}")
+
+    # THE BAND SPLITS WHERE THE INFORMATION DOES. Seven conversations were typed into;
+    # the other sixty-six have a date and an id, and they sit behind one line per band
+    # rather than in front of the card being looked for.
+    count = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+    # Seven were typed into, and six more belong to adapters that do not read a
+    # transcript at all — those are drawn plainly, because "no question" would be a
+    # statement about Grok that is only true of this client.
+    check("only the conversations with a question are drawn", count == 13, f"{count} cards")
+    quiet = js(
+        "Array.from(document.querySelectorAll('[data-testid^=agent-quiet-]'))"
+        # The chevron is the first child and carries no words; the count is the line.
+        ".map(b => b.textContent.replace(/[^0-9a-zA-Z ]/g, '').trim())"
+    )
+    check("and the rest are one line per band, counted",
+          quiet == ["60 sessions with no question"],
+          f"got {quiet}")
+    shot("agentload-stacked")
+
+    js("document.querySelector('[data-testid=agent-quiet-codex]')?.click(); 1")
+    time.sleep(0.6)
+    opened = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+    check("opening one shows them, without hiding anything else", opened == 73, f"{opened} cards")
+    shot("agentload-opened")
+    js("document.querySelector('[data-testid=agent-quiet-codex]')?.click(); 1")
+    time.sleep(0.4)
+
+    # And the filter that answers "only November", on the load that needs it.
+    js("document.querySelector('[data-testid=agent-since]')?.click(); 1")
+    time.sleep(0.4)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => /24 hours/.test(o.textContent)); if (o) o.click(); })()"
+    )
+    time.sleep(0.6)
+    sub = js("document.querySelector('[data-testid=agent-subtitle]')?.textContent || ''")
+    check("the count still names what the machine holds", "73 conversations" in sub, f"got {sub!r}")
+    shot("agentload-since")
+    js("document.querySelector('[data-testid=agent-since]')?.click(); 1")
+    time.sleep(0.4)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => /Any time/.test(o.textContent)); if (o) o.click(); })()"
+    )
+    time.sleep(0.4)
+
+    js("document.querySelector('[data-testid=agent-layout-rail]')?.click(); 1")
+    time.sleep(0.6)
+    shot("agentload-rail")
+
+
 SCENARIOS = {
     "probe": scenario_probe,
     "size": scenario_size,
@@ -1025,6 +1119,7 @@ SCENARIOS = {
     "rightpaste": scenario_rightpaste,
     "rightcopy": scenario_rightcopy,
     "agents": scenario_agents,
+    "agentload": scenario_agentload,
 }
 
 

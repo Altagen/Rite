@@ -177,6 +177,16 @@ export interface ShippedAdapter extends AgentAdapter {
   idKind: 'uuid' | 'index' | 'title';
   /** Where the two commands come from, and how far that goes. */
   from: { kind: 'measured' | 'vendor' | 'community'; seen: string };
+  /**
+   * Whether this adapter's listing READS the person's first message.
+   *
+   * It has to be said rather than inferred from an empty `ask`, because the two mean
+   * opposite things: a conversation with no question is a session nobody typed into,
+   * and a conversation whose adapter never looked is one nobody has read. A view that
+   * confuses them tells someone their Grok sessions are empty when all that happened is
+   * that nothing opened them.
+   */
+  readsAsk?: boolean;
   /** Pure: the listing's lines in, conversations out. Never throws. */
   parse: (lines: string[]) => DiscoveredConversation[];
 }
@@ -275,6 +285,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     name: 'Claude Code',
     bin: 'claude',
     list: listing('~/.claude/projects/*/*.jsonl', { ask: true }),
+    readsAsk: true,
     resume: 'claude --resume {id}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
@@ -300,6 +311,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     name: 'Codex CLI',
     bin: 'codex',
     list: listing('~/.codex/sessions/*/*/*/*.jsonl', { ask: true }),
+    readsAsk: true,
     resume: 'codex resume {id}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },

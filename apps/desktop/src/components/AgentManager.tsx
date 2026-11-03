@@ -112,8 +112,6 @@ export function AgentManager({
   const [toolsOpen, setToolsOpen] = useState(false);
   /** How far back to look, in days. 0 is all of it. */
   const [since, setSince] = useState(0);
-  /** Hide the sessions nobody typed into. Off, because hiding by default is a surprise. */
-  const [asked, setAsked] = useState(false);
 
   const native = isNativeShell();
   const onLocal = machineId === LOCAL;
@@ -161,9 +159,6 @@ export function AgentManager({
     return out;
   }, [answer]);
 
-  /** How many conversations no question was ever typed into. */
-  const quiet = useMemo(() => rows.filter((r) => !r.conv.ask).length, [rows]);
-
   /**
    * THREE FILTERS AND NO SECOND GROUPING, which is a decision rather than a shortcut.
    *
@@ -180,14 +175,13 @@ export function AgentManager({
     const q = query.trim().toLowerCase();
     const floor = since ? Date.now() / 1000 - since * 86400 : 0;
     return rows.filter((r) => {
-      if (asked && !r.conv.ask) return false;
       if (floor && r.conv.writtenAt !== undefined && r.conv.writtenAt < floor) return false;
       if (!q) return true;
       return [r.conv.ask, r.conv.project, r.conv.label, r.conv.id, r.adapter.name]
         .filter(Boolean)
         .some((v) => v!.toLowerCase().includes(q));
     });
-  }, [rows, query, since, asked]);
+  }, [rows, query, since]);
 
   /** One band per tool that reported something, in the shipped order. */
   const bands = useMemo(() => {
@@ -224,102 +218,100 @@ export function AgentManager({
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background" data-testid="agent-manager">
-      <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold">{t('agent.title')}</div>
-          <div className="truncate text-xs text-muted-foreground" data-testid="agent-subtitle">
-            {picked
-              ? answer
-                ? t(rows.length === 1 ? 'agent.countOne' : 'agent.count', {
-                    count: String(rows.length),
-                    machine: where,
-                  })
-                : t('agent.notProbed', { machine: where })
-              : t('agent.pickFirst')}
+      {/* TWO ROWS, AND WHICH CONTROL SITS IN WHICH IS THE WHOLE POINT. The subject of the
+          screen — the machine, and the button that reads it — is the first thing on the
+          first row, because everything below depends on it; under a real load the header
+          wrapped and left the picker BELOW the filters that cannot work without it. The
+          second row is what narrows what came back, and it is not drawn at all until
+          something has. */}
+      <header className="flex flex-col gap-2 border-b border-border px-4 py-2.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold">{t('agent.title')}</div>
+            <div className="truncate text-xs text-muted-foreground" data-testid="agent-subtitle">
+              {picked
+                ? answer
+                  ? t(rows.length === 1 ? 'agent.countOne' : 'agent.count', {
+                      count: String(rows.length),
+                      machine: where,
+                    })
+                  : t('agent.notProbed', { machine: where })
+                : t('agent.pickFirst')}
+            </div>
           </div>
-        </div>
-        <span className="flex-1" />
-        {rows.length > 0 && (
-          <input
-            className="h-8 w-56 rounded-md border border-border bg-card px-2 text-sm"
-            placeholder={t('agent.search')}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            data-testid="agent-search"
-          />
-        )}
-        {rows.length > 0 && (
+          <span className="flex-1" />
           <Dropdown
-            value={since}
-            options={[
-              { value: 0, label: t('agent.sinceAll') },
-              { value: 1, label: t('agent.since1') },
-              { value: 7, label: t('agent.since7') },
-              { value: 30, label: t('agent.since30') },
-            ]}
-            onChange={setSince}
-            label={t('agent.since')}
-            testId="agent-since"
+            value={machineId ?? ''}
+            options={machineOptions}
+            onChange={(v) => onPickMachine(v === '' ? null : v)}
+            label={t('agent.pickMachine')}
+            testId="agent-machine"
           />
-        )}
-        {quiet > 0 && (
-          // Counted, so the switch says what it would take away. Measured on a real
-          // machine: sixty-one Codex rollouts, sixty of them never typed into.
+          {picked && !blocked && (
+            <button
+              type="button"
+              onClick={() => void probe()}
+              disabled={busy}
+              className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+              data-testid="agent-probe"
+            >
+              {busy
+                ? t('agent.probing')
+                : answer
+                  ? t('agent.again')
+                  : t('agent.probe', { machine: where })}
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setAsked((v) => !v)}
-            title={t('agent.onlyAskedHint', { count: String(quiet) })}
-            data-testid="agent-only-asked"
-            className={`rounded-md border border-border px-2.5 py-1 text-xs ${
-              asked ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'
-            }`}
+            onClick={() => setToolsOpen((v) => !v)}
+            className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
+            data-testid="agent-tools-toggle"
           >
-            {t('agent.onlyAsked')}
+            {t('agent.tools')}
           </button>
-        )}
+        </div>
         {rows.length > 0 && (
-          <div className="flex overflow-hidden rounded-md border border-border" role="group">
-            {(['stacked', 'rail'] as const).map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setLayout(k)}
-                title={t(k === 'stacked' ? 'agent.layoutStackedHint' : 'agent.layoutRailHint')}
-                data-testid={`agent-layout-${k}`}
-                className={`px-2.5 py-1 text-xs ${
-                  layout === k ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                {t(k === 'stacked' ? 'agent.layoutStacked' : 'agent.layoutRail')}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="h-7 w-56 rounded-md border border-border bg-card px-2 text-sm"
+              placeholder={t('agent.search')}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              data-testid="agent-search"
+            />
+            <Dropdown
+              value={since}
+              options={[
+                { value: 0, label: t('agent.sinceAll') },
+                { value: 1, label: t('agent.since1') },
+                { value: 7, label: t('agent.since7') },
+                { value: 30, label: t('agent.since30') },
+              ]}
+              onChange={setSince}
+              label={t('agent.since')}
+              testId="agent-since"
+            />
+            <span className="flex-1" />
+            {/* The two arrangements of one grouping, at the far end: a view preference,
+                not a filter, so it does not sit among the things that remove rows. */}
+            <div className="flex overflow-hidden rounded-md border border-border" role="group">
+              {(['stacked', 'rail'] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setLayout(k)}
+                  title={t(k === 'stacked' ? 'agent.layoutStackedHint' : 'agent.layoutRailHint')}
+                  data-testid={`agent-layout-${k}`}
+                  className={`px-2.5 py-1 text-xs ${
+                    layout === k ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground'
+                  }`}
+                >
+                  {t(k === 'stacked' ? 'agent.layoutStacked' : 'agent.layoutRail')}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
-        <Dropdown
-          value={machineId ?? ''}
-          options={machineOptions}
-          onChange={(v) => onPickMachine(v === '' ? null : v)}
-          label={t('agent.pickMachine')}
-          testId="agent-machine"
-        />
-        <button
-          type="button"
-          onClick={() => setToolsOpen((v) => !v)}
-          className="rounded-md border border-border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
-          data-testid="agent-tools-toggle"
-        >
-          {t('agent.tools')}
-        </button>
-        {picked && !blocked && (
-          <button
-            type="button"
-            onClick={() => void probe()}
-            disabled={busy || !probeAgents}
-            className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
-            data-testid="agent-probe"
-          >
-            {busy ? t('agent.probing') : t('agent.probe', { machine: where })}
-          </button>
         )}
       </header>
 
@@ -484,8 +476,13 @@ function Card({ row, onResume }: { row: Row; onResume: () => void }) {
   // the project, then the time it was last written — each one a fact the listing gave,
   // never a stand-in for the one above it.
   const headline = conv.ask ?? conv.project ?? stamp ?? conv.label ?? null;
-  // Whatever is left to place under it, and only what has not already been said.
-  const under = [conv.ask ? conv.project : null, stamp].filter(Boolean).join(' · ');
+  // Whatever is left to place under it, and ONLY what the headline has not already
+  // said. Without the second test a Codex card printed its date twice, once as the
+  // headline it fell back to and once underneath — which reads as a card with nothing
+  // on it.
+  const under = [conv.ask ? conv.project : null, headline === stamp ? null : stamp]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <div
       className="flex flex-col gap-1.5 rounded-md border border-border bg-card p-3"
@@ -558,6 +555,29 @@ function Band({
   onResume: (row: Row) => void;
 }) {
   const { t } = useTranslation();
+  const [tail, setTail] = useState(false);
+  // THE BAND SPLITS WHERE THE INFORMATION DOES. A session nobody typed into has a date
+  // and an id and nothing else; sixty of them in front of the one that was, which is
+  // what a real machine looks like, is a wall that hides the card being looked for.
+  //
+  // A fold rather than the global switch that was here before, for the reason this
+  // screen refuses a second grouping: one mechanism per question. The count is on the
+  // line, nothing is hidden without saying so, and a tool with none — Claude Code had
+  // none — never grows the control.
+  //
+  // AND ONLY FOR AN ADAPTER THAT LOOKED. A conversation with no question is a session
+  // nobody typed into; a conversation whose adapter never opened the transcript is one
+  // nobody has READ. Splitting on the second would put "4 sessions with no question"
+  // under Grok, which is not true of Grok — it is true of this client.
+  const asked = adapter.readsAsk ? rows.filter((r) => r.conv.ask) : rows;
+  const quiet = adapter.readsAsk ? rows.filter((r) => !r.conv.ask) : [];
+  const grid = (list: Row[]) => (
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-2">
+      {list.map((r) => (
+        <Card key={`${r.adapter.id}:${r.conv.id}`} row={r} onResume={() => onResume(r)} />
+      ))}
+    </div>
+  );
   return (
     <section data-testid={`agent-band-${adapter.id}`}>
       <button
@@ -571,21 +591,46 @@ function Band({
         <span className="text-xs text-muted-foreground">· {t('agent.newestFirst')}</span>
       </button>
       {!folded && (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-2">
-          {rows.map((r) => (
-            <Card key={`${r.adapter.id}:${r.conv.id}`} row={r} onResume={() => onResume(r)} />
-          ))}
-        </div>
+        <>
+          {asked.length > 0 && grid(asked)}
+          {quiet.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setTail((v) => !v)}
+                className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                data-testid={`agent-quiet-${adapter.id}`}
+                title={t('agent.quietHint')}
+              >
+                <span className={`transition-transform ${tail ? 'rotate-90' : ''}`}>›</span>
+                {t('agent.quiet', { count: String(quiet.length) })}
+              </button>
+              {tail && <div className="mt-2">{grid(quiet)}</div>}
+            </>
+          )}
+        </>
       )}
     </section>
   );
 }
 
 /**
- * One CLI at a time, chosen from a rail.
+ * One CLI at a time, chosen from a rail — and its conversations as a LIST.
  *
- * The argument for it, from the mock: a list holds more rows per screen than cards do,
- * and forty conversations is a long wall of cards and a short scroll in a sidebar.
+ * The mock's argument for this arrangement is density: forty conversations is a long
+ * wall of cards and a short scroll in a sidebar. The first version of it here did not
+ * deliver that — a narrower grid of the same cards, two across where Stacked fits three,
+ * so it was strictly worse than the thing it was offered beside. Looking at it under a
+ * real load is what said so.
+ *
+ * So a row is one line: what was asked, where, when, and the way in. Roughly three times
+ * as many fit, which is the whole reason to switch to it.
+ *
+ * AND NO FOLD HERE, unlike a band. The fold exists because a card costs a lot of height
+ * for a session that has only a date on it, so sixty of them bury the one that matters.
+ * A line costs almost nothing, and scrolling past sixty lines is what a list is for —
+ * adding the control anyway would be a second mechanism for a problem this arrangement
+ * does not have.
  */
 function Rail({
   bands,
@@ -598,6 +643,7 @@ function Rail({
   onPick: (id: string) => void;
   onResume: (row: Row) => void;
 }) {
+  const { t } = useTranslation();
   const current = bands.find((b) => b.adapter.id === active) ?? bands[0];
   return (
     <div className="flex gap-4" data-testid="agent-rail">
@@ -619,11 +665,77 @@ function Rail({
           </button>
         ))}
       </nav>
-      <div className="grid min-w-0 flex-1 grid-cols-[repeat(auto-fill,minmax(230px,1fr))] content-start gap-2">
+      <div className="min-w-0 flex-1">
         {(current?.rows ?? []).map((r) => (
-          <Card key={`${r.adapter.id}:${r.conv.id}`} row={r} onResume={() => onResume(r)} />
+          <RailRow
+            key={`${r.adapter.id}:${r.conv.id}`}
+            row={r}
+            onResume={() => onResume(r)}
+            t={t}
+          />
         ))}
       </div>
+    </div>
+  );
+}
+
+/** One conversation on one line. Same facts as a card, in a quarter of the height. */
+function RailRow({
+  row,
+  onResume,
+  t,
+}: {
+  row: Row;
+  onResume: () => void;
+  t: (key: string, vars?: Record<string, string>) => string;
+}) {
+  const { conv } = row;
+  const written = conv.writtenAt ? new Date(conv.writtenAt * 1000) : null;
+  const stamp = written ? written.toLocaleString(undefined, WHEN) : null;
+  return (
+    <div
+      className="group flex items-center gap-3 border-b border-border/60 px-1 py-1.5 text-sm hover:bg-muted/40"
+      data-testid={`agent-card-${conv.id}`}
+    >
+      <span className="min-w-0 flex-1 truncate" title={conv.ask ?? conv.project ?? conv.id}>
+        {conv.ask ?? conv.project ?? (
+          <span className="text-muted-foreground">{t('agent.noProject')}</span>
+        )}
+      </span>
+      {conv.ask && conv.project && (
+        <span className="hidden shrink-0 truncate text-xs text-muted-foreground sm:block sm:max-w-[14rem]">
+          {conv.project}
+        </span>
+      )}
+      {stamp && (
+        <span className="shrink-0 text-xs text-muted-foreground" title={written!.toString()}>
+          {stamp}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={() => void navigator.clipboard?.writeText(conv.id)}
+        title={t('agent.copyId', { id: conv.id })}
+        className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted group-hover:opacity-100"
+        data-testid={`agent-copy-${conv.id}`}
+      >
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z"
+          />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={onResume}
+        className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted"
+        data-testid={`agent-resume-${conv.id}`}
+      >
+        {t('agent.resume')}
+      </button>
     </div>
   );
 }
