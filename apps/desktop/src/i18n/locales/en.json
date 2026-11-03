@@ -1258,7 +1258,9 @@
     "renamePlaceholder": "A name of this person's own",
     "renameClear": "Remove the name",
     "renameCancel": "Cancel",
-    "renameSave": "Save"
+    "renameSave": "Save",
+    "allMachines": "All machines",
+    "countAll": "{count} conversations across {machines} machines already read"
   },
   "connErr": {
     "retrying": "Retrying automatically…",

@@ -58,6 +58,20 @@ import { isNativeShell } from '../utils/nativeShell';
  */
 const LOCAL = '@local';
 
+/**
+ * Every machine at once — and this is the entry no tool on the market has.
+ *
+ * Every one of them reads the home directory of the computer it runs on. Rite holds the
+ * fleet, so the question a person actually has is "where did I leave that conversation",
+ * not "which host shall I interrogate".
+ *
+ * IT AGGREGATES WHAT HAS ALREADY BEEN READ and never asks anything. Fanning a probe out
+ * across the library would be one SSH round trip per machine behind a view that opened
+ * by itself, which is the thing ADR 0022 §4 refuses — so this scope has no probe button
+ * and says how many machines it is speaking for.
+ */
+const ALL = '@all';
+
 /** One machine's answer, with when it was read. */
 interface Answer {
   at: number;
@@ -68,6 +82,8 @@ interface Answer {
 interface Row {
   adapter: ShippedAdapter;
   conv: DiscoveredConversation;
+  /** Which machine it was read on. Carried on the row because `@all` mixes them. */
+  on: string;
   /** The name this person gave it, when they gave it one (ADR 0022 §6). */
   mark?: Mark;
 }
@@ -131,11 +147,26 @@ export function AgentManager({
 
   const native = isNativeShell();
   const onLocal = machineId === LOCAL;
+  const onAll = machineId === ALL;
   const machine = connections.find((c) => c.id === machineId) ?? null;
+  /** What a machine is called on screen, by the id a row carries. */
+  const nameOf = useCallback(
+    (id: string) =>
+      id === LOCAL ? t('agent.thisMachine') : (connections.find((c) => c.id === id)?.name ?? id),
+    [connections, t],
+  );
   /** What the screen calls the thing being looked at: a name, or this computer. */
-  const where = onLocal ? t('agent.thisMachine') : (machine?.name ?? '');
-  const picked = onLocal || !!machine;
-  const answer = machineId ? answers[machineId] : undefined;
+  const where = onAll
+    ? t('agent.allMachines')
+    : onLocal
+      ? t('agent.thisMachine')
+      : (machine?.name ?? '');
+  const picked = onAll || onLocal || !!machine;
+  /** How many machines `@all` is speaking for, which is what makes its count readable. */
+  const readCount = Object.keys(answers).length;
+  // `@all` has no answer of its own: it is every answer already held, and it is empty
+  // until something has been read.
+  const answer = machineId && !onAll ? answers[machineId] : undefined;
   const verdict = agentVerdict({ mode, native });
   const blocked = agentBlockedReason(verdict);
 
@@ -165,30 +196,60 @@ export function AgentManager({
 
   const marks = useLayouts((st) => st.marks);
   const setMark = useLayouts((st) => st.setMark);
+  /**
+   * Open a conversation, on THE MACHINE IT WAS READ ON and not on the one being looked
+   * at. Under `@all` those are different, and resuming the wrong one would open a
+   * conversation id on a host that has never heard of it.
+   */
+  const resume = useCallback(
+    (r: Row) =>
+      onResume(
+        r.on === LOCAL ? null : (connections.find((c) => c.id === r.on) ?? null),
+        r.adapter,
+        r.conv,
+      ),
+    [connections, onResume],
+  );
+
   /** The conversation a rename is open on, or null. */
   const [renaming, setRenaming] = useState<Row | null>(null);
 
   /** Every conversation the answer holds, in the order each tool reported. */
   const rows: Row[] = useMemo(() => {
-    if (!answer || !machineId) return [];
+    if (!machineId) return [];
+    // One machine's answer, or every answer already held. Never a probe: see `ALL`.
+    const sources: [string, Answer][] = onAll
+      ? Object.entries(answers)
+      : answer
+        ? [[machineId, answer]]
+        : [];
     const out: Row[] = [];
-    for (const tool of answer.tools) {
-      const adapter = shippedAdapter(tool.id);
-      if (!adapter || !tool.lines) continue;
-      for (const conv of adapter.parse(tool.lines)) {
-        out.push({
-          adapter,
-          conv,
-          // Keyed by all three, because none of them is unique alone: two machines can
-          // hold the same tool, and two tools the same id shape.
-          mark: marks.find(
-            (m) => m.machine === machineId && m.tool === adapter.id && m.id === conv.id,
-          ),
-        });
+    for (const [on, held] of sources) {
+      for (const tool of held.tools) {
+        const adapter = shippedAdapter(tool.id);
+        if (!adapter || !tool.lines) continue;
+        for (const conv of adapter.parse(tool.lines)) {
+          out.push({
+            adapter,
+            conv,
+            on,
+            // Keyed by all three, because none of them is unique alone: two machines can
+            // hold the same tool, and two tools the same id shape.
+            mark: marks.find((m) => m.machine === on && m.tool === adapter.id && m.id === conv.id),
+          });
+        }
       }
     }
+    // Across machines the tools' own orderings are no longer one list, so the rows are
+    // put back in order by the only key they share. A row whose host could not say is
+    // left where it was rather than sorted to an end it did not earn.
+    if (onAll) {
+      out.sort((a, b) =>
+        a.conv.writtenAt && b.conv.writtenAt ? b.conv.writtenAt - a.conv.writtenAt : 0,
+      );
+    }
     return out;
-  }, [answer, machineId, marks]);
+  }, [answer, answers, onAll, machineId, marks]);
 
   /**
    * THREE FILTERS AND NO SECOND GROUPING, which is a decision rather than a shortcut.
@@ -243,6 +304,8 @@ export function AgentManager({
     { value: '', label: t('agent.pickNone') },
     // First, and only on a desktop. It needs no vault and no connection, so it is there
     // before anything else is — including before a vault has been opened at all.
+    // Every machine already read, first — the question people actually have.
+    ...(readCount > 0 ? [{ value: ALL, label: t('agent.allMachines') }] : []),
     ...(native ? [{ value: LOCAL, label: t('agent.thisMachine') }] : []),
     ...connections.map((c) => ({ value: c.id, label: c.name })),
   ];
@@ -252,29 +315,18 @@ export function AgentManager({
       className="relative flex h-full flex-col overflow-hidden bg-background"
       data-testid="agent-manager"
     >
-      {renaming && machineId && (
+      {renaming && (
         <RenameDialog
           row={renaming}
           onClose={() => setRenaming(null)}
           onSave={(name, color) => {
             // An empty name takes the mark away rather than writing a block that says
             // nothing — the same gesture as the Clear button, from the keyboard.
-            void setMark(
-              name
-                ? {
-                    machine: machineId,
-                    tool: renaming.adapter.id,
-                    id: renaming.conv.id,
-                    name,
-                    color,
-                  }
-                : {
-                    machine: machineId,
-                    tool: renaming.adapter.id,
-                    id: renaming.conv.id,
-                    name: null,
-                  },
-            );
+            // `renaming.on`, not the machine being looked at: under `@all` a row can come
+            // from any of them, and a mark keyed to the wrong one would name a
+            // conversation that machine does not hold.
+            const key = { machine: renaming.on, tool: renaming.adapter.id, id: renaming.conv.id };
+            void setMark(name ? { ...key, name, color } : { ...key, name: null });
             setRenaming(null);
           }}
         />
@@ -291,12 +343,19 @@ export function AgentManager({
             <div className="text-sm font-semibold">{t('agent.title')}</div>
             <div className="truncate text-xs text-muted-foreground" data-testid="agent-subtitle">
               {picked
-                ? answer
-                  ? t(rows.length === 1 ? 'agent.countOne' : 'agent.count', {
+                ? onAll
+                  ? // Every answer already held, and how many machines said them —
+                    // without that second number the count is a total of nothing nameable.
+                    t('agent.countAll', {
                       count: String(rows.length),
-                      machine: where,
+                      machines: String(readCount),
                     })
-                  : t('agent.notProbed', { machine: where })
+                  : answer
+                    ? t(rows.length === 1 ? 'agent.countOne' : 'agent.count', {
+                        count: String(rows.length),
+                        machine: where,
+                      })
+                    : t('agent.notProbed', { machine: where })
                 : t('agent.pickFirst')}
             </div>
           </div>
@@ -308,7 +367,7 @@ export function AgentManager({
             label={t('agent.pickMachine')}
             testId="agent-machine"
           />
-          {picked && !blocked && (
+          {picked && !onAll && !blocked && (
             <button
               type="button"
               onClick={() => void probe()}
@@ -393,7 +452,7 @@ export function AgentManager({
             title={t('agent.failedProbe', { machine: where })}
             body={error}
           />
-        ) : !answer ? (
+        ) : !answer && !onAll ? (
           <Note
             testId="agent-not-probed"
             title={t('agent.notProbed', { machine: where })}
@@ -405,7 +464,11 @@ export function AgentManager({
               <Note
                 testId="agent-empty"
                 title={t('agent.none', { machine: where })}
-                body={t('agent.readAt', { when: new Date(answer.at).toLocaleTimeString() })}
+                body={
+                  answer
+                    ? t('agent.readAt', { when: new Date(answer.at).toLocaleTimeString() })
+                    : ''
+                }
               />
             ) : shown.length === 0 ? (
               // Which filter emptied the screen, because three of them can and a blank
@@ -425,8 +488,9 @@ export function AgentManager({
                   onFold={() =>
                     setFolded((p) => ({ ...p, [b.adapter.id]: !(p[b.adapter.id] === true) }))
                   }
-                  onResume={(r) => onResume(machine, r.adapter, r.conv)}
+                  onResume={(r) => resume(r)}
                   onRename={setRenaming}
+                  nameOf={onAll ? nameOf : undefined}
                 />
               ))
             ) : (
@@ -434,8 +498,9 @@ export function AgentManager({
                 bands={bands}
                 active={railTool ?? bands[0]?.adapter.id ?? null}
                 onPick={setRailTool}
-                onResume={(r) => onResume(machine, r.adapter, r.conv)}
+                onResume={(r) => resume(r)}
                 onRename={setRenaming}
+                nameOf={onAll ? nameOf : undefined}
               />
             )}
 
@@ -534,10 +599,13 @@ function Card({
   row,
   onResume,
   onRename,
+  on,
 }: {
   row: Row;
   onResume: () => void;
   onRename: () => void;
+  /** The machine's name, when the list mixes machines. Absent on a single one. */
+  on?: string;
 }) {
   const { t } = useTranslation();
   const { conv, mark } = row;
@@ -555,6 +623,7 @@ function Card({
   // headline it fell back to and once underneath — which reads as a card with nothing
   // on it.
   const under = [
+    on,
     mark ? (conv.ask ?? conv.project) : conv.ask ? conv.project : null,
     headline === stamp ? null : stamp,
   ]
@@ -741,6 +810,7 @@ function Band({
   onFold,
   onResume,
   onRename,
+  nameOf,
 }: {
   adapter: ShippedAdapter;
   rows: Row[];
@@ -748,6 +818,8 @@ function Band({
   onFold: () => void;
   onResume: (row: Row) => void;
   onRename: (row: Row) => void;
+  /** Names a machine when the list mixes them; absent when it does not. */
+  nameOf?: (id: string) => string;
 }) {
   const { t } = useTranslation();
   const [tail, setTail] = useState(false);
@@ -770,10 +842,11 @@ function Band({
     <div className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-2">
       {list.map((r) => (
         <Card
-          key={`${r.adapter.id}:${r.conv.id}`}
+          key={`${r.on}:${r.adapter.id}:${r.conv.id}`}
           row={r}
           onResume={() => onResume(r)}
           onRename={() => onRename(r)}
+          on={nameOf?.(r.on)}
         />
       ))}
     </div>
@@ -838,12 +911,14 @@ function Rail({
   onPick,
   onResume,
   onRename,
+  nameOf,
 }: {
   bands: { adapter: ShippedAdapter; rows: Row[] }[];
   active: string | null;
   onPick: (id: string) => void;
   onResume: (row: Row) => void;
   onRename: (row: Row) => void;
+  nameOf?: (id: string) => string;
 }) {
   const { t } = useTranslation();
   const current = bands.find((b) => b.adapter.id === active) ?? bands[0];
@@ -870,10 +945,11 @@ function Rail({
       <div className="min-w-0 flex-1">
         {(current?.rows ?? []).map((r) => (
           <RailRow
-            key={`${r.adapter.id}:${r.conv.id}`}
+            key={`${r.on}:${r.adapter.id}:${r.conv.id}`}
             row={r}
             onResume={() => onResume(r)}
             onRename={() => onRename(r)}
+            on={nameOf?.(r.on)}
             t={t}
           />
         ))}
@@ -887,11 +963,13 @@ function RailRow({
   row,
   onResume,
   onRename,
+  on,
   t,
 }: {
   row: Row;
   onResume: () => void;
   onRename: () => void;
+  on?: string;
   t: (key: string, vars?: Record<string, string>) => string;
 }) {
   const { conv, mark } = row;
@@ -911,9 +989,9 @@ function RailRow({
           <span className="text-muted-foreground">{t('agent.noProject')}</span>
         )}
       </span>
-      {conv.ask && conv.project && (
+      {(on || (conv.ask && conv.project)) && (
         <span className="hidden shrink-0 truncate text-xs text-muted-foreground sm:block sm:max-w-[14rem]">
-          {conv.project}
+          {[on, conv.ask ? conv.project : null].filter(Boolean).join(' · ')}
         </span>
       )}
       {stamp && (

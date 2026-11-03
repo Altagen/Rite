@@ -1139,6 +1139,31 @@ def scenario_agentload(wid):
     check("and what the tool reported is still under it", both is True)
     shot("agentload-named")
 
+    # EVERY MACHINE AT ONCE, which is the entry no single-machine tool has. It never
+    # probes: it is every answer already held, so with one machine read it says one.
+    js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+    time.sleep(0.5)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'All machines'); if (o) o.click(); })()"
+    )
+    time.sleep(0.8)
+    sub = js("document.querySelector('[data-testid=agent-subtitle]')?.textContent || ''")
+    check("all machines speaks for what has been read",
+          "73 conversations across 1 machines" in sub, f"got {sub!r}")
+    # And it asks nothing: fanning a probe across the library would be one SSH round
+    # trip per machine behind a view that opened by itself.
+    check("and offers no probe of its own",
+          js("!document.querySelector('[data-testid=agent-probe]')"))
+    shot("agentload-all")
+    js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+    time.sleep(0.5)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'This machine'); if (o) o.click(); })()"
+    )
+    time.sleep(0.6)
+
     js("document.querySelector('[data-testid=agent-layout-rail]')?.click(); 1")
     time.sleep(0.6)
     shot("agentload-rail")
