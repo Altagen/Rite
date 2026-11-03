@@ -58,6 +58,45 @@ test('the manager is a view, names the machine, and says it has not looked yet',
   await expect(page.getByTestId('nav-agents')).toHaveCount(0);
 });
 
+test('a browser is offered no local machine, and the route refuses it nothing', async ({
+  page,
+  request,
+}) => {
+  // THE DESKTOP ALWAYS HAS A LOCAL MACHINE — a local vault, no vault at all, or a window
+  // signed into an instance — because the CLIs are on the computer in front of the
+  // person and reaching them asks for no credential. A BROWSER HAS NONE, and this suite
+  // drives one, so what it can hold is that half: the option is not offered and the
+  // screen says why, instead of listing a machine a browser cannot reach.
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('toolbar-agents').click();
+  await expect(page.getByTestId('agent-no-machine')).toContainText('A browser reaches no');
+
+  await page.getByTestId('agent-machine').click();
+  await expect(page.getByRole('option', { name: 'This machine' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+});
+
+test('the local probe answers on a local vault, framed for the parser', async ({ request }) => {
+  // The other half, through the route rather than the screen. This server is the same
+  // in-process shape a desktop window runs — a local vault, no accounts — so the answer
+  // here is the answer there. A deployed instance refuses this outright, which
+  // `e2e/server-authz-check.mjs` holds against a real accounts server.
+  //
+  // What is asserted is the FRAMING, because that is what the parser depends on: one
+  // section per adapter, announced by index, and a count before every body. The harness
+  // has no agent CLI installed, so each section says the tool is missing — which is an
+  // answer, and the shape of one.
+  const res = await request.post('/api/agents/probe-local', {
+    data: { command: "sh -c \"echo '__tool__ 0'; echo '__missing__'\"" },
+  });
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(body.exitStatus).toBe(0);
+  expect(body.stdout).toContain('__tool__ 0');
+  expect(body.stdout).toContain('__missing__');
+});
+
 test('the CLIs panel names the six adapters and the commands they will run', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });

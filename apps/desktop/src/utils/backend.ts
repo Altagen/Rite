@@ -428,6 +428,16 @@ export const BackendTerminal = {
     }),
 
   /**
+   * A local PTY running ONE PROGRAM rather than a shell (ADR 0022 §7.1).
+   *
+   * The resume line of an agent on this machine. argv and not a string: it reaches
+   * `execvp` as written, so a space or a quote in a project path is data rather than
+   * syntax — the same reason the SSH side names the program at the channel.
+   */
+  connectLocalProgram: (argv: string[]) =>
+    invokeWithValidation('connect_local_program', StringSchema, { argv }),
+
+  /**
    * Run a pre-connect hook: a one-shot local command in a PTY, before SSH.
    * The returned session streams output and emits `terminal-exit` with the
    * command's exit code (0 = proceed to open the SSH session).
@@ -531,6 +541,17 @@ export const BackendTerminal = {
       command,
       sessionSecret,
     }),
+
+  /**
+   * Agent discovery on THIS machine (ADR 0022 §4).
+   *
+   * No connection and no credential: the CLIs are on the computer in front of the
+   * person, so there is nothing to unlock and nothing to reach. A desktop window serves
+   * this itself in every context, including one signed into an instance; a deployed
+   * instance refuses it, because its "local" is the container the server runs in.
+   */
+  agentProbeLocal: (command: string) =>
+    invokeWithValidation('agent_probe_local', RemoteCommandOutputSchema, { command }),
 
   /** The same discovery on an ad-hoc target. See `machineExecQuick` for the origin. */
   agentProbeQuick: (

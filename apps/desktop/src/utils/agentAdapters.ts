@@ -300,6 +300,27 @@ export function agentResumeCmd(adapter: ShippedAdapter, id: string): string {
     : `${adapter.resume} ${quoted}`;
 }
 
+/**
+ * The same resume line as argv, for a conversation on THIS machine.
+ *
+ * Not the quoted string above, and not a parse of it. A local PTY runs one program
+ * through `execvp` with its arguments passed as written (ADR 0022 §7.1), so quoting
+ * would arrive as part of the id — `'3f1c9e7a'` with the quotes in it, which resumes
+ * nothing. The template is the adapter's own, written by whoever added it, so splitting
+ * it on spaces is reading what they wrote; only `{id}` carries a value from a file name,
+ * and it is one argument whatever is in it.
+ */
+export function agentResumeArgv(adapter: ShippedAdapter, id: string): string[] {
+  const parts = adapter.resume.split(/\s+/).filter(Boolean);
+  const out = parts.map((p) => (p === '{id}' ? id : p));
+  // A placeholder glued to something else (`-s{id}`) is substituted in place; one that
+  // is not there at all gets the id appended, rather than resuming whatever the tool
+  // picks by itself.
+  return out.some((p) => p === id || p.includes('{id}'))
+    ? out.map((p) => p.replace('{id}', id))
+    : [...out, id];
+}
+
 /** The adapter with this id, among the ones Rite ships. */
 export const shippedAdapter = (id: string): ShippedAdapter | undefined =>
   SHIPPED_ADAPTERS.find((a) => a.id === id);

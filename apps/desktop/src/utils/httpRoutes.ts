@@ -711,9 +711,14 @@ const routes: Record<string, Route> = {
       )
     ).sessionId,
 
+  connect_local_program: async (a) =>
+    (await json<{ sessionId: string }>('/api/terminal/local', post({ argv: a.argv }))).sessionId,
+
   run_preconnect: async (a) =>
     (await json<{ sessionId: string }>('/api/terminal/preconnect', post({ command: a.command })))
       .sessionId,
+
+  agent_probe_local: (a) => json('/api/agents/probe-local', post({ command: a.command })),
 
   agent_probe: (a) =>
     json(

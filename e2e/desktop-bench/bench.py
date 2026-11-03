@@ -964,6 +964,55 @@ def scenario_rightcopy(wid):
     shot("rightcopy")
 
 
+def scenario_agents(wid):
+    """The agent manager on a real desktop, which is the only place it has a local machine.
+
+    A browser is offered none — its "local" would be the instance's container, shared by
+    every member — so the browser suite can only hold the absence. THIS is the half that
+    cannot be tested anywhere else: a desktop window, in a context with no vault opened
+    at all, offering the machine it is running on and probing it.
+
+    The image has no agent CLI installed, so the honest answer is none. That is the
+    assertion: "none" has to read as an answer, with the time it was read, rather than as
+    an error or a blank panel.
+    """
+    print("\nagent manager")
+    focus(wid)
+    opened = js(
+        "(() => { const b = document.querySelector('[data-testid=toolbar-agents]');"
+        " if (!b) return false; b.click(); return true; })()"
+    )
+    check("the toolbar opens it", opened is True)
+    time.sleep(0.8)
+    check("and it is a view", js("!!document.querySelector('[data-testid=agent-manager]')"))
+
+    # The machine that is always there on a desktop, and only on a desktop.
+    js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+    time.sleep(0.4)
+    labels = js(
+        "Array.from(document.querySelectorAll('[role=option]')).map(o => o.textContent.trim())"
+    )
+    check("this machine is offered, with no vault open", "This machine" in (labels or []),
+          f"got {labels}")
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'This machine'); if (o) o.click(); })()"
+    )
+    time.sleep(0.5)
+    check("and picking it says it has not been looked at",
+          js("!!document.querySelector('[data-testid=agent-not-probed]')"))
+
+    js("document.querySelector('[data-testid=agent-probe]')?.click(); 1")
+    time.sleep(3.0)
+    err = js("document.querySelector('[data-testid=agent-error]')?.textContent || ''")
+    empty = js("document.querySelector('[data-testid=agent-empty]')?.textContent || ''")
+    check("probing answers rather than failing", err == "", f"error={err}")
+    # No CLI in this image, so none is the truth — and it is said with the time it was
+    # read, which is what makes it an answer.
+    check("and says none, dated", "This machine" in empty, f"got {empty!r}")
+    shot("agents")
+
+
 SCENARIOS = {
     "probe": scenario_probe,
     "size": scenario_size,
@@ -975,6 +1024,7 @@ SCENARIOS = {
     "clipboard": scenario_clipboard,
     "rightpaste": scenario_rightpaste,
     "rightcopy": scenario_rightcopy,
+    "agents": scenario_agents,
 }
 
 

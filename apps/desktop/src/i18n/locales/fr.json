@@ -1240,7 +1240,9 @@
     "listCmd": "liste",
     "resumeCmd": "reprise",
     "open": "Agents — les conversations que chaque CLI détient sur une machine",
-    "close": "Fermer le gestionnaire d’agents"
+    "close": "Fermer le gestionnaire d’agents",
+    "thisMachine": "Cette machine",
+    "noLocalInBrowser": "Un navigateur n’atteint aucune machine locale. Les agents viennent de machines en SSH."
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",

@@ -99,6 +99,7 @@ import {
 } from '../utils/paneTree';
 import { AgentManager } from './AgentManager';
 import {
+  agentResumeArgv,
   agentResumeCmd,
   type DiscoveredConversation,
   type ShippedAdapter,
@@ -819,16 +820,22 @@ export function Workspace({
    * action that belongs to an agent, its conversation id.
    */
   const handleResumeAgent = async (
-    connection: ConnectionInfo,
+    machine: ConnectionInfo | null,
     adapter: ShippedAdapter,
     conv: DiscoveredConversation,
   ) => {
     try {
-      const sessionId = await conns.connect(connection, agentResumeCmd(adapter, conv.id));
+      // A null machine is THIS computer, and its session is a local PTY running the
+      // program — argv rather than a command line, because `execvp` takes it as written
+      // and a project path with a space in it is data. The SSH half names the program at
+      // the channel for the same reason; only the transport differs.
+      const sessionId = machine
+        ? await conns.connect(machine, agentResumeCmd(adapter, conv.id))
+        : await Backend.Terminal.connectLocalProgram(agentResumeArgv(adapter, conv.id));
       const session: TerminalSession = {
         id: sessionId,
-        connectionId: connection.id,
-        connectionName: connection.name,
+        connectionId: machine?.id ?? 'local',
+        connectionName: machine?.name ?? adapter.name,
       };
       const pane = createAgentPane(session, {
         toolId: adapter.id,
@@ -838,7 +845,8 @@ export function Workspace({
         project: conv.project ?? conv.label ?? conv.id,
         // Only when the path says it: Grok's decodes exactly, Claude's slug does not.
         cwd: conv.project?.startsWith('/') ? conv.project : undefined,
-        machine: connection.name,
+        // Absent means this computer, which needs no name on screen.
+        machine: machine?.name,
       });
       const tab: Tab = { id: crypto.randomUUID(), name: adapter.name, paneTree: pane };
       setTabGroups((prev) => [...prev, tab]);

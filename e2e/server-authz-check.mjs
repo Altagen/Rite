@@ -273,6 +273,27 @@ try {
   }
   ok('a saved connection id is refused by the rule, not by the vault being locked');
 
+  step = 'a-deployed-instance-has-no-local-machine';
+  // The desktop always has one: the CLIs are on the computer in front of the person, and
+  // reaching them asks for no credential. An INSTANCE's "local" is the container the
+  // server runs in, shared by every member — so this route would hand any member a
+  // listing of the host's own home directory, from a request that carries no credential
+  // at all. A browser's agents come from machines reached over SSH, and nowhere else.
+  for (const token of [pleb, admin]) {
+    const res = await post('/api/agents/probe-local', { command: 'echo nope' }, token);
+    assert.equal(res.status, 410, `probe-local must be refused outright (got ${res.status})`);
+    const body = await res.text();
+    assert.ok(!body.includes('nope'), 'and nothing it was asked to run is echoed back');
+  }
+  // Not even to nobody: a route that answers an unauthenticated caller on a shared
+  // instance is the same hole with a shorter path to it.
+  assert.equal(
+    (await post('/api/agents/probe-local', { command: 'echo nope' })).status,
+    401,
+    'and an unauthenticated caller does not get past the door either',
+  );
+  ok('a deployed instance has no local machine to look on, for anybody');
+
   step = 'quick-ssh-policy';
   assert.equal((await mode(admin)).allowQuickSsh, false, 'ad-hoc Quick SSH is off by default');
   const adhoc = { host: '127.0.0.1', port: 65001, username: 'x', authMethod: { type: 'password', password: 'x' } };

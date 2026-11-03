@@ -900,6 +900,7 @@ pub fn build_router(state: ServerState) -> Router {
         // directory to be enumerated.
         .route("/api/agents/probe", post(agent_probe))
         .route("/api/agents/probe-quick", post(agent_probe_quick))
+        .route("/api/agents/probe-local", post(agent_probe_local))
         .route("/api/terminal/local", post(create_local))
         .route("/api/terminal/preconnect", post(run_preconnect))
         .route("/api/forwards", get(list_forwards).post(start_forward))
@@ -1222,7 +1223,10 @@ async fn served_locally(state: &ServerState, path: &str) -> bool {
     // its own network position, with its own vault, so this never reaches the instance.
     // Which is also why `agent_policy.clients` is policy the client obeys rather than
     // something this server could enforce.
-    if path == "/api/agents/probe" || path == "/api/agents/probe-quick" {
+    if path == "/api/agents/probe"
+        || path == "/api/agents/probe-quick"
+        || path == "/api/agents/probe-local"
+    {
         return true;
     }
     let Some(rest) = path.strip_prefix("/api/terminal") else {
@@ -4873,6 +4877,18 @@ struct LocalReq {
     /// every terminal it opens starts in the image's `WORKDIR`, which is the home of the
     /// user the server runs as. Only a split passes `inherit_cwd_from` there.
     cwd: Option<String>,
+    /// One program and its arguments, in place of a shell (ADR 0022 §7.1).
+    ///
+    /// An agent pane on THIS machine: the resume line is the program the PTY runs, not
+    /// something typed into a shell afterwards, because a shell discards queued input
+    /// while it sets the tty up. It reaches `execvp` as written, so a space or a quote in
+    /// a project path is data rather than syntax.
+    ///
+    /// REFUSED IN ACCOUNTS MODE, like `cwd` above and for a stronger version of the same
+    /// reason: there the machine is the instance's, shared by every member, and this
+    /// would be any member naming a program for the server to run on it. A browser's
+    /// agents come from machines reached over SSH.
+    argv: Option<Vec<String>>,
 }
 
 /// The instance's shell, as something a PTY can spawn.
@@ -5034,10 +5050,23 @@ async fn create_local(
         (None, Some(dir)) => LocalStart::In(dir),
         (None, None) => LocalStart::Wherever,
     };
-    let id = state
-        .sessions
-        .create_local_session(state.events_sink(), shell.clone(), start)
-        .await?;
+    // A named program and a shell are two answers to one question, so one of them wins
+    // here rather than in each caller. `argv` is the agent's; everything else is a pane.
+    let argv = req.argv.filter(|a| !state.accounts && !a.is_empty());
+    let id = match argv {
+        Some(argv) => {
+            state
+                .sessions
+                .create_local_program(state.events_sink(), argv, start)
+                .await?
+        }
+        None => {
+            state
+                .sessions
+                .create_local_session(state.events_sink(), shell.clone(), start)
+                .await?
+        }
+    };
     state.record_session_owner(&id, as_user(&user));
     // The shell the session was given, so a client (and a test) can see that on a server
     // the answer is the instance's and not whatever was asked for.
@@ -5903,6 +5932,53 @@ async fn agent_probe(
     Json(req): Json<MachineExecReq>,
 ) -> Result<Response, AppError> {
     exec_saved(state, user, req, ExecGate::Agents).await
+}
+
+/// Agent discovery on THIS machine.
+///
+/// THE DESKTOP ALWAYS HAS A LOCAL MACHINE, whatever context it is in: a local vault, a
+/// window with no vault open at all, or a window signed into an instance. The CLIs are
+/// installed on the computer in front of the person, and reaching them is not a question
+/// about any vault — which is why this route touches neither. `served_locally` keeps it
+/// here even in a server context, so a desktop client probes its own home directory and
+/// never the instance's.
+///
+/// A DEPLOYED INSTANCE HAS NO LOCAL MACHINE TO OFFER, and that is the whole refusal
+/// below. Its "local" is the container the server runs in, shared by every member; a
+/// browser's agents therefore only ever come from machines reached over SSH. Running
+/// this there would hand any member a listing of the host's own home directory, and then
+/// a shell on it — which is the one thing a multi-user instance must not do with a route
+/// that asks for no credential.
+///
+/// The discovery gate still applies: `agent_policy` is about whether RITE generates this
+/// traffic and reads those files on a user's behalf, and a desktop client obeys it too.
+async fn agent_probe_local(
+    State(state): State<ServerState>,
+    Json(req): Json<LocalProbeReq>,
+) -> Result<Response, AppError> {
+    if state.accounts {
+        return Ok((
+            StatusCode::GONE,
+            "a deployed instance has no local machine to look on: its host is not a \
+             member's computer (ADR 0022)",
+        )
+            .into_response());
+    }
+    if !ExecGate::Agents.allows(&state).await? {
+        return Ok(ExecGate::Agents.refusal());
+    }
+    let out = rite_core::local_terminal::LocalSession::run_captured(req.command).await?;
+    Ok(Json(json!({
+        "stdout": out.stdout,
+        "stderr": out.stderr,
+        "exitStatus": out.exit_status,
+    }))
+    .into_response())
+}
+
+#[derive(Deserialize)]
+struct LocalProbeReq {
+    command: String,
 }
 
 async fn exec_saved(

@@ -1226,6 +1226,10 @@ pub struct RemoteCommandOutput {
 /// probes are quick; a hang shouldn't wedge the UI).
 const REMOTE_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
+/// And a local one-shot has the same, for the same reason (`LocalSession::run_captured`).
+/// Named here beside its twin so the two cannot drift apart unnoticed.
+pub const LOCAL_COMMAND_TIMEOUT: std::time::Duration = REMOTE_COMMAND_TIMEOUT;
+
 /// Establish an authenticated handle, run one command over an exec channel (no PTY),
 /// and collect its output. The handle + any jump tunnel are dropped on return.
 async fn exec_remote_command(
@@ -1488,6 +1492,34 @@ impl SessionManager {
     /// Create a new local terminal session
     ///
     /// Spawns a local shell (bash/zsh/fish) based on $SHELL env variable
+    /// A local PTY running ONE PROGRAM rather than a shell (ADR 0022 §7.1).
+    ///
+    /// The same session, registered the same way, so it closes, resizes and streams like
+    /// any other — only the thing on the far end of the tty differs. `start` is shared
+    /// with `create_local_session` for the reason that one checks it: a project directory
+    /// can be gone by the time someone resumes a conversation about it, and failing the
+    /// spawn would lose the session instead of its starting point.
+    pub async fn create_local_program(
+        &self,
+        events: SharedEvents,
+        argv: Vec<String>,
+        start: LocalStart<'_>,
+    ) -> Result<SessionId> {
+        let cwd = match start {
+            LocalStart::Inherit(from) => self.local_cwd(from).await,
+            LocalStart::In(dir) => Some(dir),
+            LocalStart::Wherever => None,
+        };
+        let local_session =
+            crate::local_terminal::LocalSession::run_program(events, argv, cwd).await?;
+        let session_id = local_session.id.clone();
+        self.sessions
+            .lock()
+            .await
+            .insert(session_id.clone(), Session::Local(local_session));
+        Ok(session_id)
+    }
+
     pub async fn create_local_session(
         &self,
         events: SharedEvents,

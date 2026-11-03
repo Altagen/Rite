@@ -664,7 +664,8 @@ export async function mockInvoke(
       };
     }
     case 'agent_probe':
-    case 'agent_probe_quick': {
+    case 'agent_probe_quick':
+    case 'agent_probe_local': {
       // Demo discovery output, so the manager renders under the dev mock with no host.
       //
       // The sections are built from the COMMAND rather than from a fixed order: a probe
@@ -702,6 +703,11 @@ export async function mockInvoke(
       }
       return { stdout: out.join('\n'), stderr: '', exitStatus: 0 };
     }
+    case 'connect_local_program':
+      // The browser preview has no PTY, so resuming an agent on this machine returns an
+      // id and nothing streams — the same shape `connect_local_terminal` already has
+      // here, and the pane renders rather than throwing.
+      return crypto.randomUUID();
     case 'claim_session_output':
       return '';
     case 'send_terminal_input':

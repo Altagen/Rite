@@ -37,7 +37,23 @@ import {
   type ShippedAdapter,
 } from '../utils/agentAdapters';
 import { agentBlockedReason, agentVerdict } from '../utils/agentPolicy';
+import { Backend } from '../utils/backend';
 import { isNativeShell } from '../utils/nativeShell';
+
+/**
+ * The machine that is always there on a desktop: this one.
+ *
+ * A desktop window has a local machine in EVERY context — a local vault, a window with
+ * no vault open at all, a window signed into an instance — because the CLIs are
+ * installed on the computer in front of the person and reaching them asks for no
+ * credential and no connection. A browser has none: its "local" would be the container
+ * the instance runs in, shared by every member, so a browser's agents only ever come
+ * from machines reached over SSH. The server refuses that route too; this is the half
+ * that does not offer it.
+ *
+ * Prefixed, because a connection id is a uuid and this is deliberately not one.
+ */
+const LOCAL = '@local';
 
 /** One machine's answer, with when it was read. */
 interface Answer {
@@ -59,9 +75,9 @@ interface Props {
   onPickMachine: (id: string | null) => void;
   /** Runs the one discovery command on a machine. Routed per source by the store. */
   probeAgents?: (connection: ConnectionInfo, command: string) => Promise<RemoteCommandOutput>;
-  /** Open a pane on this conversation. */
+  /** Open a pane on this conversation. A null machine is this computer. */
   onResume: (
-    connection: ConnectionInfo,
+    machine: ConnectionInfo | null,
     adapter: ShippedAdapter,
     conv: DiscoveredConversation,
   ) => void;
@@ -95,29 +111,39 @@ export function AgentManager({
   const [railTool, setRailTool] = useState<string | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
 
+  const native = isNativeShell();
+  const onLocal = machineId === LOCAL;
   const machine = connections.find((c) => c.id === machineId) ?? null;
+  /** What the screen calls the thing being looked at: a name, or this computer. */
+  const where = onLocal ? t('agent.thisMachine') : (machine?.name ?? '');
+  const picked = onLocal || !!machine;
   const answer = machineId ? answers[machineId] : undefined;
-  const verdict = agentVerdict({ mode, native: isNativeShell() });
+  const verdict = agentVerdict({ mode, native });
   const blocked = agentBlockedReason(verdict);
 
   const probe = useCallback(async () => {
-    if (!machine || !probeAgents) return;
+    if (!machineId || (!onLocal && (!machine || !probeAgents))) return;
     setBusy(true);
     setError(null);
     try {
-      const out = await probeAgents(machine, agentProbeCmd(SHIPPED_ADAPTERS));
+      const cmd = agentProbeCmd(SHIPPED_ADAPTERS);
+      // Two routes, one answer shape. The local one asks for no connection and no
+      // credential, because the files are already here.
+      const out = onLocal
+        ? await Backend.Terminal.agentProbeLocal(cmd)
+        : await probeAgents!(machine!, cmd);
       // Stamped here. The answer is only as fresh as the moment this client read it,
       // and a host's own clock is not a fact about that.
       setAnswers((prev) => ({
         ...prev,
-        [machine.id]: { at: Date.now(), tools: parseAgentProbe(out.stdout, SHIPPED_ADAPTERS) },
+        [machineId]: { at: Date.now(), tools: parseAgentProbe(out.stdout, SHIPPED_ADAPTERS) },
       }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [machine, probeAgents]);
+  }, [machineId, onLocal, machine, probeAgents]);
 
   /** Every conversation the answer holds, in the order each tool reported. */
   const rows: Row[] = useMemo(() => {
@@ -168,6 +194,9 @@ export function AgentManager({
 
   const machineOptions = [
     { value: '', label: t('agent.pickNone') },
+    // First, and only on a desktop. It needs no vault and no connection, so it is there
+    // before anything else is — including before a vault has been opened at all.
+    ...(native ? [{ value: LOCAL, label: t('agent.thisMachine') }] : []),
     ...connections.map((c) => ({ value: c.id, label: c.name })),
   ];
 
@@ -177,13 +206,13 @@ export function AgentManager({
         <div className="min-w-0">
           <div className="text-sm font-semibold">{t('agent.title')}</div>
           <div className="truncate text-xs text-muted-foreground" data-testid="agent-subtitle">
-            {machine
+            {picked
               ? answer
                 ? t(rows.length === 1 ? 'agent.countOne' : 'agent.count', {
                     count: String(rows.length),
-                    machine: machine.name,
+                    machine: where,
                   })
-                : t('agent.notProbed', { machine: machine.name })
+                : t('agent.notProbed', { machine: where })
               : t('agent.pickFirst')}
           </div>
         </div>
@@ -230,7 +259,7 @@ export function AgentManager({
         >
           {t('agent.tools')}
         </button>
-        {machine && !blocked && (
+        {picked && !blocked && (
           <button
             type="button"
             onClick={() => void probe()}
@@ -238,7 +267,7 @@ export function AgentManager({
             className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
             data-testid="agent-probe"
           >
-            {busy ? t('agent.probing') : t('agent.probe', { machine: machine.name })}
+            {busy ? t('agent.probing') : t('agent.probe', { machine: where })}
           </button>
         )}
       </header>
@@ -248,22 +277,22 @@ export function AgentManager({
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {blocked ? (
           <Note testId="agent-blocked" title={t('agent.offTitle')} body={t(blocked)} />
-        ) : !machine ? (
+        ) : !picked ? (
           <Note
             testId="agent-no-machine"
             title={t('agent.pickFirst')}
-            body={t('agent.probeNote')}
+            body={native ? t('agent.probeNote') : t('agent.noLocalInBrowser')}
           />
         ) : error ? (
           <Note
             testId="agent-error"
-            title={t('agent.failedProbe', { machine: machine.name })}
+            title={t('agent.failedProbe', { machine: where })}
             body={error}
           />
         ) : !answer ? (
           <Note
             testId="agent-not-probed"
-            title={t('agent.notProbed', { machine: machine.name })}
+            title={t('agent.notProbed', { machine: where })}
             body={t('agent.probeNote')}
           />
         ) : (
@@ -271,7 +300,7 @@ export function AgentManager({
             {rows.length === 0 ? (
               <Note
                 testId="agent-empty"
-                title={t('agent.none', { machine: machine.name })}
+                title={t('agent.none', { machine: where })}
                 body={t('agent.readAt', { when: new Date(answer.at).toLocaleTimeString() })}
               />
             ) : shown.length === 0 ? (
@@ -286,7 +315,7 @@ export function AgentManager({
                   onFold={() =>
                     setFolded((p) => ({ ...p, [b.adapter.id]: !(p[b.adapter.id] === true) }))
                   }
-                  onResume={(r) => machine && onResume(machine, r.adapter, r.conv)}
+                  onResume={(r) => onResume(machine, r.adapter, r.conv)}
                 />
               ))
             ) : (
@@ -294,7 +323,7 @@ export function AgentManager({
                 bands={bands}
                 active={railTool ?? bands[0]?.adapter.id ?? null}
                 onPick={setRailTool}
-                onResume={(r) => machine && onResume(machine, r.adapter, r.conv)}
+                onResume={(r) => onResume(machine, r.adapter, r.conv)}
               />
             )}
 
