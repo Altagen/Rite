@@ -161,7 +161,7 @@ export function AgentManager({
     const q = query.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((r) =>
-      [r.conv.project, r.conv.label, r.conv.id, r.adapter.name]
+      [r.conv.ask, r.conv.project, r.conv.label, r.conv.id, r.adapter.name]
         .filter(Boolean)
         .some((v) => v!.toLowerCase().includes(q)),
     );
@@ -423,7 +423,12 @@ function Card({ row, onResume }: { row: Row; onResume: () => void }) {
   const { conv } = row;
   const written = conv.writtenAt ? new Date(conv.writtenAt * 1000) : null;
   const stamp = written ? written.toLocaleString(undefined, WHEN) : null;
-  const headline = conv.project ?? stamp ?? conv.label ?? null;
+  // What a conversation IS to someone looking for it: the thing they typed first. Then
+  // the project, then the time it was last written — each one a fact the listing gave,
+  // never a stand-in for the one above it.
+  const headline = conv.ask ?? conv.project ?? stamp ?? conv.label ?? null;
+  // Whatever is left to place under it, and only what has not already been said.
+  const under = [conv.ask ? conv.project : null, stamp].filter(Boolean).join(' · ');
   return (
     <div
       className="flex flex-col gap-1.5 rounded-md border border-border bg-card p-3"
@@ -431,18 +436,21 @@ function Card({ row, onResume }: { row: Row; onResume: () => void }) {
     >
       <div
         className="truncate text-sm font-medium"
-        title={[conv.project, conv.label && t('agent.started', { when: conv.label })]
+        title={[conv.ask, conv.project, conv.label && t('agent.started', { when: conv.label })]
           .filter(Boolean)
-          .join(' · ')}
+          .join('\n')}
       >
         {headline ?? <span className="text-muted-foreground">{t('agent.noProject')}</span>}
       </div>
-      {/* Under a project rather than replacing it, so a card never has to choose between
-          the two — and absent when the host's `stat` answered neither syntax, rather
-          than showing a time nobody measured. */}
-      {stamp && conv.project && (
-        <div className="truncate text-[11px] text-muted-foreground" title={written!.toString()}>
-          {stamp}
+      {/* Under the headline rather than replacing it, so a card never has to choose
+          between two true things — and a time is absent when the host's `stat` answered
+          neither syntax, rather than being one nobody measured. */}
+      {under && (
+        <div
+          className="truncate text-[11px] text-muted-foreground"
+          title={written ? written.toString() : undefined}
+        >
+          {under}
         </div>
       )}
       <div className="flex items-center gap-1.5">

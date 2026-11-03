@@ -76,19 +76,50 @@ export const LIST_CAP = 200;
 /** The field separator a listing line uses. A real tab; see `listing`. */
 const TAB = '\t';
 
-const listing = (glob: string): string =>
+/**
+ * The first line of a transcript that a PERSON wrote, as awk finds it.
+ *
+ * `"role":"user"` is how both Claude Code and Codex mark a human turn, and the first one
+ * is not always the person: Codex opens every session with an `<environment_context>`
+ * block under that same role, so the first match is a preamble and the second is the
+ * question. Dropping the preamble by name and taking the first that remains covers both
+ * vendors with one expression — and a session that never got a question keeps nothing,
+ * which is itself a fact worth having.
+ *
+ * `substr` rather than a second process, and the cap is there because a first message
+ * can be a pasted file.
+ */
+const ASK = `awk '/"role":"user"/ && !/environment_context/ { print substr($0,1,600); exit }' "$f" 2>/dev/null`;
+
+/**
+ * Every file-listing adapter's whole command: newest first, capped, and one line per
+ * conversation carrying its last-written time, its path, and — when the adapter asks for
+ * it — the raw transcript line the person's first message is in.
+ *
+ * A LOOP RATHER THAN A BATCHED `stat`, which is a deliberate step back. Batching through
+ * `xargs -0` was fewer processes, but the moment a second field had to come out of each
+ * FILE the batch could no longer carry it, and two passes joined by path is more
+ * machinery than this is worth. Measured on 61 Codex rollouts, one of them 40 000 lines:
+ * 0.26s for the whole loop, against a 15-second cap.
+ *
+ * `stat` is tried GNU-first and then BSD, because there is no portable spelling. A host
+ * with neither leaves the time empty and the parser reads the line without one: the
+ * order still holds, and a card shows no time rather than one nobody measured.
+ *
+ * THE EXIT STATUS IS THE EMPTY CASE. `ls` answers non-zero when a glob matches nothing —
+ * the shell hands it the pattern itself — and a tool with no conversations is not a tool
+ * that failed, so the pipeline ends on the loop and the status is the loop's.
+ */
+const listing = (glob: string, opts: { ask?: boolean } = {}): string =>
   [
-    `L=$(ls -1t ${glob} 2>/dev/null | head -n ${LIST_CAP}); [ -n "$L" ] || exit 0`,
-    // `String.raw`, so `\n` and `\0` reach the shell as the two characters `printf` and
-    // `tr` read themselves — a real newline here would end the command early.
-    //
-    // THE SEPARATOR IS A REAL TAB, interpolated, and that is not a style choice:
-    // measured, GNU `stat -c` does NOT interpret backslash escapes (only `--printf`
-    // does, which BSD has no spelling for), so `'%Y\t%n'` printed a literal `\t`
-    // between the time and the path and every line failed to parse.
-    String.raw`printf '%s\n' "$L" | tr '\n' '\0' | xargs -0 stat -c '%Y${TAB}%n' 2>/dev/null ||`,
-    String.raw`printf '%s\n' "$L" | tr '\n' '\0' | xargs -0 stat -f '%m${TAB}%N' 2>/dev/null ||`,
-    String.raw`printf '%s\n' "$L"`,
+    `ls -1t ${glob} 2>/dev/null | head -n ${LIST_CAP} | while IFS= read -r f; do`,
+    `t=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null)`,
+    opts.ask ? `a=$(${ASK})` : `a=`,
+    // A real tab, interpolated, because `printf` would read `\t` itself — and the two
+    // fields either side of it are a path and a JSON line, neither of which can hold a
+    // raw tab without having said so.
+    String.raw`printf '%s${TAB}%s${TAB}%s\n' "$t" "$f" "$a"`,
+    `done`,
   ].join('\n');
 
 /**
@@ -111,6 +142,15 @@ export interface DiscoveredConversation {
   project?: string;
   /** What the tool's own listing printed for it, when that is a title or a date. */
   label?: string;
+  /**
+   * The person's first message, when the transcript held one.
+   *
+   * What a conversation IS to someone looking for it, and the only field on this shape
+   * that required reading inside a file. Absent on a session nobody typed into — a
+   * delegated run, or one abandoned at the prompt — which the view says rather than
+   * filling in.
+   */
+  ask?: string;
   /** 0 is the most recent in the tool's own ordering. */
   rank: number;
   /**
@@ -150,12 +190,77 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * saying so — and the epoch is read only when it is all digits, so a path that happens to
  * start with a number and a tab is a path.
  */
-function fileLine(line: string): { path: string; writtenAt?: number } {
-  const tab = line.indexOf('\t');
-  if (tab < 0) return { path: line.trim() };
-  const head = line.slice(0, tab);
-  if (!/^\d+$/.test(head)) return { path: line.trim() };
-  return { path: line.slice(tab + 1).trim(), writtenAt: Number(head) };
+function fileLine(line: string): { path: string; writtenAt?: number; ask?: string } {
+  const first = line.indexOf('\t');
+  if (first < 0) return { path: line.trim() };
+  const last = line.lastIndexOf('\t');
+  // Split at the FIRST tab and the LAST one, which is what recovers a path that has a
+  // tab in it: the time is before the first and the transcript line after the last, so
+  // whatever lies between them is the path, tabs and all.
+  const head = line.slice(0, first);
+  const path = (last > first ? line.slice(first + 1, last) : line.slice(first + 1)).trim();
+  const raw = last > first ? line.slice(last + 1).trim() : '';
+  return {
+    path,
+    // Empty when the host's `stat` answered neither syntax. A field that is not all
+    // digits is not a time, so a path beginning with a tab cannot become one.
+    writtenAt: /^\d+$/.test(head) ? Number(head) : undefined,
+    ask: askOf(raw),
+  };
+}
+
+/**
+ * The person's first message, out of the raw transcript line the listing carried.
+ *
+ * NOT `JSON.parse`, and that is forced rather than chosen: the line arrives cut at 600
+ * characters, because a first message can be a pasted file and nobody wants that shipped
+ * back over SSH two hundred times. A truncated JSON document does not parse, so the
+ * first version of this read nothing at all on real data — six Claude transcripts, six
+ * blanks — while the same `awk` on the host was finding five of them.
+ *
+ * So it scans instead, and the cap is why that is honest: the value wanted is the FIRST
+ * text after the turn says it is the user's, and the first text is the part that
+ * survived the cut. A line that holds no such text yields nothing.
+ *
+ * ONE READER FOR TWO SHAPES. Claude Code writes `{message: {role, content: [{text}]}}`
+ * and Codex `{payload: {role, content: [{text}]}}`; either way the pair that matters is
+ * `"role":"user"` followed by the first `"text"` or `"content"` string, so neither
+ * vendor needs a reader of its own.
+ */
+function askOf(raw: string): string | undefined {
+  if (!raw) return undefined;
+  const turn = raw.indexOf('"role":"user"');
+  if (turn < 0) return undefined;
+  const m = /"(?:text|content)"\s*:\s*"/.exec(raw.slice(turn));
+  if (!m) return undefined;
+  let i = turn + m.index + m[0].length;
+  let out = '';
+  // Read to the closing quote, honouring the escape that would otherwise end the string
+  // early — and stopping at the end of what survived the cut rather than demanding one.
+  for (; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '\\') {
+      const next = raw[i + 1];
+      if (next === 'u') {
+        const hex = raw.slice(i + 2, i + 6);
+        if (/^[0-9a-f]{4}$/i.test(hex)) {
+          out += String.fromCharCode(parseInt(hex, 16));
+          i += 5;
+          continue;
+        }
+      }
+      out += next === 'n' || next === 't' || next === 'r' ? ' ' : (next ?? '');
+      i++;
+      continue;
+    }
+    if (ch === '"') break;
+    out += ch;
+  }
+  // One line, squeezed, and short enough to be a title rather than a paragraph. A turn
+  // that opens with a tag is a preamble the host's `awk` did not catch, not a question.
+  const text = out.replace(/\s+/g, ' ').trim();
+  if (!text || text.startsWith('<')) return undefined;
+  return text.length > 120 ? `${text.slice(0, 119)}…` : text;
 }
 
 /** Split a path the way the listings print it: forward slashes, no trailing one. */
@@ -169,21 +274,21 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     id: 'claude',
     name: 'Claude Code',
     bin: 'claude',
-    list: listing('~/.claude/projects/*/*.jsonl'),
+    list: listing('~/.claude/projects/*/*.jsonl', { ask: true }),
     resume: 'claude --resume {id}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
       const out: DiscoveredConversation[] = [];
       for (const line of lines) {
-        const { path, writtenAt } = fileLine(line);
+        const { path, writtenAt, ask } = fileLine(line);
         const p = parts(path);
         const file = p[p.length - 1] ?? '';
         if (!file.endsWith('.jsonl')) continue;
         const id = file.slice(0, -'.jsonl'.length);
         if (!UUID.test(id)) continue;
         const slug = p[p.length - 2];
-        out.push({ id, project: slug, label: slug, rank: out.length, writtenAt });
+        out.push({ id, project: slug, label: slug, ask, rank: out.length, writtenAt });
       }
       return out;
     },
@@ -194,14 +299,14 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     id: 'codex',
     name: 'Codex CLI',
     bin: 'codex',
-    list: listing('~/.codex/sessions/*/*/*/*.jsonl'),
+    list: listing('~/.codex/sessions/*/*/*/*.jsonl', { ask: true }),
     resume: 'codex resume {id}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
       const out: DiscoveredConversation[] = [];
       for (const line of lines) {
-        const { path, writtenAt } = fileLine(line);
+        const { path, writtenAt, ask } = fileLine(line);
         const p = parts(path);
         const file = p[p.length - 1] ?? '';
         if (!file.startsWith('rollout-') || !file.endsWith('.jsonl')) continue;
@@ -213,7 +318,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
         // to that morning, because `codex resume` appends to the file it reopens. The
         // card shows `writtenAt`, which is what the list is sorted by; the started-at is
         // kept as the label, where it cannot be read as the sort key.
-        out.push({ id, label: stem.slice(0, -37), rank: out.length, writtenAt });
+        out.push({ id, label: stem.slice(0, -37), ask, rank: out.length, writtenAt });
       }
       return out;
     },
@@ -260,7 +365,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     parse: (lines) => {
       const out: DiscoveredConversation[] = [];
       for (const raw of lines) {
-        const { path, writtenAt } = fileLine(raw);
+        const { path, writtenAt, ask } = fileLine(raw);
         const p = parts(path);
         if (p[p.length - 1] !== 'chat_history.jsonl') continue;
         const id = p[p.length - 2] ?? '';
@@ -274,7 +379,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
         } catch {
           /* keep it as printed */
         }
-        out.push({ id, project, label: project, rank: out.length, writtenAt });
+        out.push({ id, project, label: project, ask, rank: out.length, writtenAt });
       }
       return out;
     },
@@ -295,6 +400,9 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     parse: (lines) => {
       const out: DiscoveredConversation[] = [];
       for (const line of lines) {
+        // No `ask`: a conversation is a SQLite database here, and the listing does not
+        // open one. Reading it would need `sqlite3` on the host and a schema this has
+        // not been measured against.
         const { path, writtenAt } = fileLine(line);
         const p = parts(path);
         const file = p[p.length - 1] ?? '';

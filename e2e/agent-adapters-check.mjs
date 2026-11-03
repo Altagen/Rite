@@ -37,6 +37,9 @@ const check = (name, fn) => {
     failed++;
   }
 };
+const UUID_A = '3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11';
+const UUID_B = '01a1a05b-31b7-7b11-b3b8-35333cf07b0b';
+
 const A = (id) => {
   const a = shippedAdapter(id);
   assert.ok(a, `no adapter ${id}`);
@@ -67,23 +70,85 @@ check('the three commands the mock had wrong are the measured ones now', () => {
   assert.equal(A('gemini').idKind, 'index');
 });
 
+check('a file listing reads the first thing a person typed', () => {
+  // WHAT A CONVERSATION IS to someone looking for it, and the only field that needed
+  // reading inside a file. `"role":"user"` marks a human turn in both vendors, and the
+  // first match is not always the person: Codex opens every session with an
+  // `<environment_context>` block under that same role, so the preamble is dropped by
+  // name and the first that remains is the question.
+  for (const id of ['claude', 'codex']) {
+    assert.ok(A(id).list.includes('"role":"user"'), id);
+    assert.ok(A(id).list.includes('!/environment_context/'), id);
+    // Capped on the host, because a first message can be a pasted file and nobody wants
+    // that shipped back two hundred times.
+    assert.ok(A(id).list.includes('substr($0,1,600)'), id);
+  }
+  // And the two whose transcripts a listing does not open: Grok's shape was not
+  // measured, and an Antigravity conversation is a SQLite database.
+  for (const id of ['grok', 'antigravity']) {
+    assert.equal(A(id).list.includes('"role":"user"'), false, id);
+  }
+});
+
+check('the question survives the cut it arrives with', () => {
+  // The line is truncated at 600 characters ON THE HOST, so it is not a JSON document
+  // any more. A reader that insisted on parsing one found nothing on real data — six
+  // Claude transcripts, six blanks — while the same `awk` on the host found five.
+  const cut =
+    '{"parentUuid":null,"type":"user","message":{"role":"user","content":[{"type":"text",' +
+    '"text":"Peux-tu me trouver mon micro"';
+  const [c] = parse('claude', [
+    `1793700000\tsentinel/${UUID_A}.jsonl\t${cut}`.replace(
+      'sentinel',
+      '/home/u/.claude/projects/-srv',
+    ),
+  ]);
+  assert.equal(c.ask, 'Peux-tu me trouver mon micro');
+  // And the rest of the line still parsed into what it was carrying.
+  assert.equal(c.writtenAt, 1793700000);
+  assert.equal(c.project, '-srv');
+});
+
+check('and an escape inside it does not end it early', () => {
+  // A quote, a newline and a code point, all written as escapes in the transcript. A
+  // reader that stopped at the first `"` would cut the question at its first quotation.
+  const raw = String.raw`{"payload":{"role":"user","content":[{"text":"ligne\nune \"citation\" et \u00e9"}]}}`;
+  const [c] = parse('codex', [
+    `1793700000\t/home/u/.codex/sessions/2026/11/03/rollout-2026-11-03T08-41-33-${UUID_B}.jsonl\t${raw}`,
+  ]);
+  assert.equal(c.ask, 'ligne une "citation" et é');
+});
+
+check('a session nobody typed into has no question, and none is invented', () => {
+  // Measured: of sixty-one Codex rollouts on one machine, sixty held no human turn at
+  // all — they are runs Codex delegated to itself. A card says so rather than wearing a
+  // title taken from somewhere else.
+  const envOnly =
+    '{"payload":{"role":"user","content":[{"text":"<environment_context>  <cwd>/srv</cwd>"}]}}';
+  const path = `/home/u/.codex/sessions/2026/11/03/rollout-2026-11-03T08-41-33-${UUID_B}.jsonl`;
+  assert.equal(parse('codex', [`1793700000\t${path}\t${envOnly}`])[0].ask, undefined);
+  assert.equal(parse('codex', [`1793700000\t${path}\t`])[0].ask, undefined);
+  assert.equal(parse('codex', [`1793700000\t${path}\tnot json at all`])[0].ask, undefined);
+});
+
 check('a file listing asks for the time it is sorted by', () => {
   // THE CARD AND THE LIST HAVE TO AGREE. Ordered by last-written and labelled with the
   // date in the file name, sixty-one Codex cards read as a shuffle: a conversation
   // started in September and resumed today sorts first and reads last.
   //
-  // Three syntaxes, tried in order, because there is no portable one — `stat -c` is GNU,
-  // `stat -f` is BSD, and a host with neither still gets its conversations without a
-  // clock. `$L` holds the list because a pipeline would leave the second `stat` nothing
-  // left to read.
+  // Two syntaxes, tried in order, because there is no portable one — `stat -c` is GNU
+  // and `stat -f` is BSD. A host with neither leaves the field empty, and the order
+  // still holds without a clock.
   for (const id of ['claude', 'codex', 'grok', 'antigravity']) {
     const list = A(id).list;
-    assert.match(list, /^L=\$\(ls -1t /, id);
-    assert.ok(list.includes('[ -n "$L" ] || exit 0'), id);
-    assert.ok(list.includes("stat -c '%Y\tsentinel-n'".replace('sentinel-n', '%n')), id);
-    assert.ok(list.includes("stat -f '%m\tsentinel-N'".replace('sentinel-N', '%N')), id);
-    assert.ok(list.includes("tr '\\n' '\\0' | xargs -0"), id);
-    assert.ok(list.trimEnd().endsWith(`printf '%s\\n' "$L"`), id);
+    assert.match(list, /^ls -1t /, id);
+    assert.ok(list.includes('stat -c %Y "$f" 2>/dev/null || stat -f %m "$f"'), id);
+    assert.ok(list.trimEnd().endsWith('done'), id);
+    // A REAL TAB between the three fields. Written as `\t` it would reach `printf` as
+    // two characters, `printf` would read the escape itself, and the parser would split
+    // on a tab that is not there — measured once already on `stat -c`, which does not
+    // interpret escapes at all.
+    assert.ok(list.includes('printf \'%s\t%s\t%s\\n\' "$t" "$f" "$a"'), id);
   }
 });
 
@@ -109,7 +174,8 @@ check('every listing is capped, and an empty one is not a failure', () => {
     assert.ok(a.list.includes(`head -n ${LIST_CAP}`), a.id);
   }
   for (const id of ['claude', 'codex', 'grok', 'antigravity']) {
-    assert.ok(A(id).list.includes('|| exit 0'), id);
+    // The status is the loop's, and a loop over nothing exits 0.
+    assert.ok(A(id).list.includes('while IFS= read -r f; do'), id);
   }
   assert.equal(LIST_CAP, 200);
 });
@@ -150,6 +216,7 @@ check('a listing becomes conversations, newest first, with their times', () => {
       id: '3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11',
       project: '-srv-acme-api',
       label: '-srv-acme-api',
+      ask: undefined,
       rank: 0,
       writtenAt: 1793704737,
     },
@@ -157,6 +224,7 @@ check('a listing becomes conversations, newest first, with their times', () => {
       id: 'b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77',
       project: '-srv-acme-web',
       label: '-srv-acme-web',
+      ask: undefined,
       rank: 1,
       writtenAt: 1793377732,
     },
@@ -222,6 +290,7 @@ check('the uuid comes off the end and the start time becomes the label', () => {
     {
       id: '01a080a5-9ce0-7841-bec7-866f002c969b',
       label: '2026-09-08T12-52-12',
+      ask: undefined,
       rank: 0,
       writtenAt: 1793692980,
     },
@@ -293,6 +362,7 @@ check('the id is the conversation directory and the project is decoded', () => {
         id: '019fdcfe-08ee-7ca3-aaae-02470f138ad1',
         project: '/srv/acme/api',
         label: '/srv/acme/api',
+        ask: undefined,
         rank: 0,
         writtenAt: 1793300000,
       },
