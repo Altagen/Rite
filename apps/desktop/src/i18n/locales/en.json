@@ -1260,7 +1260,17 @@
     "renameCancel": "Cancel",
     "renameSave": "Save",
     "allMachines": "All machines",
-    "countAll": "{count} conversations across {machines} machines already read"
+    "countAll": "{count} conversations across {machines} machines already read",
+    "detailClose": "Close the detail",
+    "detailAsked": "Asked",
+    "detailProject": "Project",
+    "detailWritten": "Last written",
+    "detailId": "Conversation id",
+    "detailIndex": "Index",
+    "detailResumes": "Resumes with",
+    "detailCopyId": "Copy the id",
+    "detailCopyCmd": "Copy the command",
+    "detailRead": "Read, never written. The tool's own files are not Rite's to change."
   },
   "connErr": {
     "retrying": "Retrying automatically…",

@@ -32,6 +32,7 @@ import type { RemoteCommandOutput, ServerMode } from '../utils/backend';
 import { agentProbeCmd, parseAgentProbe, type ProbedTool } from '../utils/agentProbe';
 import {
   SHIPPED_ADAPTERS,
+  agentResumeCmd,
   shippedAdapter,
   type DiscoveredConversation,
   type ShippedAdapter,
@@ -210,6 +211,9 @@ export function AgentManager({
       ),
     [connections, onResume],
   );
+
+  /** The conversation whose detail is open, or null. */
+  const [open1, setOpen1] = useState<Row | null>(null);
 
   /** The conversation a rename is open on, or null. */
   const [renaming, setRenaming] = useState<Row | null>(null);
@@ -437,87 +441,106 @@ export function AgentManager({
 
       {toolsOpen && <ToolsPanel />}
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        {blocked ? (
-          <Note testId="agent-blocked" title={t('agent.offTitle')} body={t(blocked)} />
-        ) : !picked ? (
-          <Note
-            testId="agent-no-machine"
-            title={t('agent.pickFirst')}
-            body={native ? t('agent.probeNote') : t('agent.noLocalInBrowser')}
-          />
-        ) : error ? (
-          <Note
-            testId="agent-error"
-            title={t('agent.failedProbe', { machine: where })}
-            body={error}
-          />
-        ) : !answer && !onAll ? (
-          <Note
-            testId="agent-not-probed"
-            title={t('agent.notProbed', { machine: where })}
-            body={t('agent.probeNote')}
-          />
-        ) : (
-          <div className="space-y-4">
-            {rows.length === 0 ? (
-              <Note
-                testId="agent-empty"
-                title={t('agent.none', { machine: where })}
-                body={
-                  answer
-                    ? t('agent.readAt', { when: new Date(answer.at).toLocaleTimeString() })
-                    : ''
-                }
-              />
-            ) : shown.length === 0 ? (
-              // Which filter emptied the screen, because three of them can and a blank
-              // panel that does not say leaves the reader turning them off one by one.
-              <Note
-                testId="agent-no-match"
-                title={query ? t('agent.noMatch', { query }) : t('agent.noneLeft')}
-                body={t('agent.noneLeftHint', { count: String(rows.length) })}
-              />
-            ) : layout === 'stacked' ? (
-              bands.map((b) => (
-                <Band
-                  key={b.adapter.id}
-                  adapter={b.adapter}
-                  rows={b.rows}
-                  folded={folded[b.adapter.id] === true}
-                  onFold={() =>
-                    setFolded((p) => ({ ...p, [b.adapter.id]: !(p[b.adapter.id] === true) }))
+      {/* The list and the detail side by side, so opening one does not cover the other —
+          which is the whole argument for a panel over a modal: you keep looking at the
+          list you found it in. */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          {blocked ? (
+            <Note testId="agent-blocked" title={t('agent.offTitle')} body={t(blocked)} />
+          ) : !picked ? (
+            <Note
+              testId="agent-no-machine"
+              title={t('agent.pickFirst')}
+              body={native ? t('agent.probeNote') : t('agent.noLocalInBrowser')}
+            />
+          ) : error ? (
+            <Note
+              testId="agent-error"
+              title={t('agent.failedProbe', { machine: where })}
+              body={error}
+            />
+          ) : !answer && !onAll ? (
+            <Note
+              testId="agent-not-probed"
+              title={t('agent.notProbed', { machine: where })}
+              body={t('agent.probeNote')}
+            />
+          ) : (
+            <div className="space-y-4">
+              {rows.length === 0 ? (
+                <Note
+                  testId="agent-empty"
+                  title={t('agent.none', { machine: where })}
+                  body={
+                    answer
+                      ? t('agent.readAt', { when: new Date(answer.at).toLocaleTimeString() })
+                      : ''
                   }
+                />
+              ) : shown.length === 0 ? (
+                // Which filter emptied the screen, because three of them can and a blank
+                // panel that does not say leaves the reader turning them off one by one.
+                <Note
+                  testId="agent-no-match"
+                  title={query ? t('agent.noMatch', { query }) : t('agent.noneLeft')}
+                  body={t('agent.noneLeftHint', { count: String(rows.length) })}
+                />
+              ) : layout === 'stacked' ? (
+                bands.map((b) => (
+                  <Band
+                    key={b.adapter.id}
+                    adapter={b.adapter}
+                    rows={b.rows}
+                    folded={folded[b.adapter.id] === true}
+                    onFold={() =>
+                      setFolded((p) => ({ ...p, [b.adapter.id]: !(p[b.adapter.id] === true) }))
+                    }
+                    onResume={(r) => resume(r)}
+                    onRename={setRenaming}
+                    onOpen={setOpen1}
+                    nameOf={onAll ? nameOf : undefined}
+                  />
+                ))
+              ) : (
+                <Rail
+                  bands={bands}
+                  active={railTool ?? bands[0]?.adapter.id ?? null}
+                  onPick={setRailTool}
                   onResume={(r) => resume(r)}
                   onRename={setRenaming}
+                  onOpen={setOpen1}
                   nameOf={onAll ? nameOf : undefined}
                 />
-              ))
-            ) : (
-              <Rail
-                bands={bands}
-                active={railTool ?? bands[0]?.adapter.id ?? null}
-                onPick={setRailTool}
-                onResume={(r) => resume(r)}
-                onRename={setRenaming}
-                nameOf={onAll ? nameOf : undefined}
-              />
-            )}
+              )}
 
-            {broken.map((tl) => (
-              <Note
-                key={tl.id}
-                testId={`agent-broken-${tl.id}`}
-                title={t('agent.failed', { tool: shippedAdapter(tl.id)?.name ?? tl.id })}
-                body={`${t('agent.failedStatus', { status: String(tl.failure!.status) })} · ${tl.failure!.output}`}
-              />
-            ))}
-            {notLookedFor.length > 0 && (
-              <p className="font-mono text-xs text-muted-foreground" data-testid="agent-not-looked">
-                {t('agent.notLookedFor', { tools: notLookedFor.join(', ') })}
-              </p>
-            )}
-          </div>
+              {broken.map((tl) => (
+                <Note
+                  key={tl.id}
+                  testId={`agent-broken-${tl.id}`}
+                  title={t('agent.failed', { tool: shippedAdapter(tl.id)?.name ?? tl.id })}
+                  body={`${t('agent.failedStatus', { status: String(tl.failure!.status) })} · ${tl.failure!.output}`}
+                />
+              ))}
+              {notLookedFor.length > 0 && (
+                <p
+                  className="font-mono text-xs text-muted-foreground"
+                  data-testid="agent-not-looked"
+                >
+                  {t('agent.notLookedFor', { tools: notLookedFor.join(', ') })}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        {open1 && (
+          <Detail
+            row={open1}
+            on={nameOf(open1.on)}
+            onClose={() => setOpen1(null)}
+            onResume={() => resume(open1)}
+            onRename={() => setRenaming(open1)}
+          />
         )}
       </div>
     </div>
@@ -575,6 +598,138 @@ const WHEN: Intl.DateTimeFormatOptions = {
   minute: '2-digit',
 };
 
+/**
+ * What is known about one conversation, beside the list rather than over it.
+ *
+ * The mock calls this the seam every later integration arrives through, and that is why
+ * it exists before there is much to put in it. What it holds today is what a LISTING
+ * gave: the question, where it runs, when it was last written, the handle and the exact
+ * line that resumes it.
+ *
+ * WHAT IS NOT HERE IS NOT BLANK, IT IS ABSENT. The mock also draws the branch, the
+ * working directory, the turn count and the agent's last line — all of them inside a
+ * transcript, which is a second read per conversation that does not exist yet. A panel
+ * with four empty rows would say Rite looked and found nothing, which is not what
+ * happened.
+ */
+function Detail({
+  row,
+  on,
+  onClose,
+  onResume,
+  onRename,
+}: {
+  row: Row;
+  on: string;
+  onClose: () => void;
+  onResume: () => void;
+  onRename: () => void;
+}) {
+  const { t } = useTranslation();
+  const { conv, adapter, mark } = row;
+  const written = conv.writtenAt ? new Date(conv.writtenAt * 1000) : null;
+  const line = agentResumeCmd(adapter, conv.id);
+  const fact = (label: string, value: React.ReactNode, mono = false) => (
+    <>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={`min-w-0 break-words ${mono ? 'font-mono text-[11px]' : ''}`}>{value}</dd>
+    </>
+  );
+  return (
+    <aside
+      className="flex w-80 shrink-0 flex-col gap-3 overflow-auto border-l border-border bg-card p-4"
+      data-testid="agent-detail"
+    >
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium" data-testid="agent-detail-title">
+            {mark?.name ?? conv.ask ?? conv.project ?? conv.id}
+          </div>
+          <div className="truncate text-xs text-muted-foreground">
+            {on} · {adapter.name}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t('agent.detailClose')}
+          className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+          data-testid="agent-detail-close"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5 text-xs">
+        {mark?.name && conv.ask && fact(t('agent.detailAsked'), conv.ask)}
+        {conv.project && fact(t('agent.detailProject'), conv.project, true)}
+        {written && fact(t('agent.detailWritten'), written.toLocaleString())}
+        {/* The id, and WHAT KIND of id it is. Gemini's moves as the list changes, which
+            is a property of the handle and belongs beside it rather than in a footnote. */}
+        {fact(
+          adapter.idKind === 'index' ? t('agent.detailIndex') : t('agent.detailId'),
+          <>
+            <span className="break-all">{conv.id}</span>
+            {adapter.idKind !== 'uuid' && (
+              <div className="mt-0.5 text-amber-500">
+                {t(adapter.idKind === 'index' ? 'agent.idKindIndex' : 'agent.idKindTitle')}
+              </div>
+            )}
+          </>,
+          true,
+        )}
+        {fact(t('agent.detailResumes'), line, true)}
+      </dl>
+
+      {/* Read, never written. The vendor's files are not Rite's to change (ADR 0022 §6),
+          and saying so where a person is looking at one is cheaper than a document. */}
+      <p className="text-[11px] leading-relaxed text-muted-foreground">{t('agent.detailRead')}</p>
+
+      <div className="mt-auto flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onResume}
+          className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
+          data-testid="agent-detail-resume"
+        >
+          {t('agent.resume')}
+        </button>
+        <button
+          type="button"
+          onClick={onRename}
+          className="rounded-md border border-border px-2.5 py-1 text-xs"
+          data-testid="agent-detail-rename"
+        >
+          {t('agent.rename')}
+        </button>
+        <button
+          type="button"
+          onClick={() => void navigator.clipboard?.writeText(conv.id)}
+          className="rounded-md border border-border px-2.5 py-1 text-xs"
+          data-testid="agent-detail-copy-id"
+        >
+          {t('agent.detailCopyId')}
+        </button>
+        <button
+          type="button"
+          onClick={() => void navigator.clipboard?.writeText(line)}
+          className="rounded-md border border-border px-2.5 py-1 text-xs"
+          data-testid="agent-detail-copy-cmd"
+        >
+          {t('agent.detailCopyCmd')}
+        </button>
+      </div>
+    </aside>
+  );
+}
+
 /** A titled note. Every empty and every refusal on this screen is one of these. */
 function Note({ title, body, testId }: { title: string; body: string; testId: string }) {
   return (
@@ -599,11 +754,13 @@ function Card({
   row,
   onResume,
   onRename,
+  onOpen,
   on,
 }: {
   row: Row;
   onResume: () => void;
   onRename: () => void;
+  onOpen: () => void;
   /** The machine's name, when the list mixes machines. Absent on a single one. */
   on?: string;
 }) {
@@ -634,6 +791,10 @@ function Card({
       className="flex flex-col gap-1.5 rounded-md border border-border bg-card p-3"
       style={mark?.color ? { borderLeft: `3px solid ${mark.color}` } : undefined}
       data-testid={`agent-card-${conv.id}`}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => e.key === 'Enter' && onOpen()}
     >
       <div
         className="truncate text-sm font-medium"
@@ -660,7 +821,10 @@ function Card({
         </span>
         <button
           type="button"
-          onClick={() => void navigator.clipboard?.writeText(conv.id)}
+          onClick={(e) => {
+            e.stopPropagation();
+            void navigator.clipboard?.writeText(conv.id);
+          }}
           title={t('agent.copyId', { id: conv.id })}
           className="rounded p-0.5 text-muted-foreground hover:bg-muted"
           data-testid={`agent-copy-${conv.id}`}
@@ -676,7 +840,10 @@ function Card({
         </button>
         <button
           type="button"
-          onClick={onRename}
+          onClick={(e) => {
+            e.stopPropagation();
+            onRename();
+          }}
           title={t('agent.rename')}
           className="rounded p-0.5 text-muted-foreground hover:bg-muted"
           data-testid={`agent-rename-${conv.id}`}
@@ -692,7 +859,10 @@ function Card({
         </button>
         <button
           type="button"
-          onClick={onResume}
+          onClick={(e) => {
+            e.stopPropagation();
+            onResume();
+          }}
           className="rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted"
           data-testid={`agent-resume-${conv.id}`}
         >
@@ -810,6 +980,7 @@ function Band({
   onFold,
   onResume,
   onRename,
+  onOpen,
   nameOf,
 }: {
   adapter: ShippedAdapter;
@@ -818,6 +989,7 @@ function Band({
   onFold: () => void;
   onResume: (row: Row) => void;
   onRename: (row: Row) => void;
+  onOpen: (row: Row) => void;
   /** Names a machine when the list mixes them; absent when it does not. */
   nameOf?: (id: string) => string;
 }) {
@@ -846,6 +1018,7 @@ function Band({
           row={r}
           onResume={() => onResume(r)}
           onRename={() => onRename(r)}
+          onOpen={() => onOpen(r)}
           on={nameOf?.(r.on)}
         />
       ))}
@@ -911,6 +1084,7 @@ function Rail({
   onPick,
   onResume,
   onRename,
+  onOpen,
   nameOf,
 }: {
   bands: { adapter: ShippedAdapter; rows: Row[] }[];
@@ -918,6 +1092,7 @@ function Rail({
   onPick: (id: string) => void;
   onResume: (row: Row) => void;
   onRename: (row: Row) => void;
+  onOpen: (row: Row) => void;
   nameOf?: (id: string) => string;
 }) {
   const { t } = useTranslation();
@@ -949,6 +1124,7 @@ function Rail({
             row={r}
             onResume={() => onResume(r)}
             onRename={() => onRename(r)}
+            onOpen={() => onOpen(r)}
             on={nameOf?.(r.on)}
             t={t}
           />
@@ -963,12 +1139,14 @@ function RailRow({
   row,
   onResume,
   onRename,
+  onOpen,
   on,
   t,
 }: {
   row: Row;
   onResume: () => void;
   onRename: () => void;
+  onOpen: () => void;
   on?: string;
   t: (key: string, vars?: Record<string, string>) => string;
 }) {
@@ -980,6 +1158,10 @@ function RailRow({
       className="group flex items-center gap-3 border-b border-border/60 px-1 py-1.5 text-sm hover:bg-muted/40"
       style={mark?.color ? { borderLeft: `3px solid ${mark.color}`, paddingLeft: 6 } : undefined}
       data-testid={`agent-card-${conv.id}`}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => e.key === 'Enter' && onOpen()}
     >
       <span
         className="min-w-0 flex-1 truncate"
@@ -1001,7 +1183,10 @@ function RailRow({
       )}
       <button
         type="button"
-        onClick={() => void navigator.clipboard?.writeText(conv.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          void navigator.clipboard?.writeText(conv.id);
+        }}
         title={t('agent.copyId', { id: conv.id })}
         className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted group-hover:opacity-100"
         data-testid={`agent-copy-${conv.id}`}
@@ -1017,7 +1202,10 @@ function RailRow({
       </button>
       <button
         type="button"
-        onClick={onRename}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRename();
+        }}
         title={t('agent.rename')}
         className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted group-hover:opacity-100"
         data-testid={`agent-rename-${conv.id}`}
@@ -1033,7 +1221,10 @@ function RailRow({
       </button>
       <button
         type="button"
-        onClick={onResume}
+        onClick={(e) => {
+          e.stopPropagation();
+          onResume();
+        }}
         className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[11px] hover:bg-muted"
         data-testid={`agent-resume-${conv.id}`}
       >

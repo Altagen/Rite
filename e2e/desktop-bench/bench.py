@@ -1164,6 +1164,22 @@ def scenario_agentload(wid):
     )
     time.sleep(0.6)
 
+    # CLICKING A CARD OPENS WHAT IS KNOWN ABOUT IT, beside the list rather than over it.
+    js(
+        "(() => { const c = document.querySelector('[data-testid^=agent-card-]');"
+        " if (c) c.click(); })()"
+    )
+    time.sleep(0.6)
+    check("a card opens a detail", js("!!document.querySelector('[data-testid=agent-detail]')"))
+    facts = js("document.querySelector('[data-testid=agent-detail]')?.textContent || ''")
+    # What a listing gave, and nothing it did not: the resume line is the fact a person
+    # cannot get anywhere else, because the adapter built it.
+    check("and it carries the line that resumes it", "claude --resume" in facts, f"got {facts[:80]!r}")
+    check("and says the files are read, never written", "never written" in facts)
+    shot("agentload-detail")
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+
     js("document.querySelector('[data-testid=agent-layout-rail]')?.click(); 1")
     time.sleep(0.6)
     shot("agentload-rail")

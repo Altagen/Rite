@@ -1260,7 +1260,17 @@
     "renameCancel": "Annuler",
     "renameSave": "Enregistrer",
     "allMachines": "Toutes les machines",
-    "countAll": "{count} conversations sur {machines} machines déjà lues"
+    "countAll": "{count} conversations sur {machines} machines déjà lues",
+    "detailClose": "Fermer le détail",
+    "detailAsked": "Demandé",
+    "detailProject": "Projet",
+    "detailWritten": "Dernière écriture",
+    "detailId": "Id de conversation",
+    "detailIndex": "Index",
+    "detailResumes": "Reprend avec",
+    "detailCopyId": "Copier l’id",
+    "detailCopyCmd": "Copier la commande",
+    "detailRead": "Lu, jamais écrit. Les fichiers de l’outil ne sont pas à Rite de les changer."
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",
