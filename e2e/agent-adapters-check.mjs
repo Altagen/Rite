@@ -22,8 +22,12 @@ import {
   SHIPPED_ADAPTERS,
   LIST_CAP,
   ASK_CAP,
+  agentRemoveCmd,
   agentResumeCmd,
+  agentStartArgv,
+  agentStartCmd,
   shippedAdapter,
+  withoutConversation,
 } from '../apps/desktop/src/utils/agentAdapters.ts';
 import { agentProbeCmd, parseAgentProbe } from '../apps/desktop/src/utils/agentProbe.ts';
 import { agentVerdict, agentBlockedReason } from '../apps/desktop/src/utils/agentPolicy.ts';
@@ -219,6 +223,7 @@ check('a listing becomes conversations, newest first, with their times', () => {
   assert.deepEqual(got, [
     {
       id: '3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11',
+      path: '/home/u/.claude/projects/-srv-acme-api/3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11.jsonl',
       project: '-srv-acme-api',
       label: '-srv-acme-api',
       ask: undefined,
@@ -227,6 +232,7 @@ check('a listing becomes conversations, newest first, with their times', () => {
     },
     {
       id: 'b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77',
+      path: '/home/u/.claude/projects/-srv-acme-web/b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77.jsonl',
       project: '-srv-acme-web',
       label: '-srv-acme-web',
       ask: undefined,
@@ -294,6 +300,7 @@ check('the uuid comes off the end and the start time becomes the label', () => {
   assert.deepEqual(got, [
     {
       id: '01a080a5-9ce0-7841-bec7-866f002c969b',
+      path: '/home/u/.codex/sessions/2026/09/08/rollout-2026-09-08T12-52-12-01a080a5-9ce0-7841-bec7-866f002c969b.jsonl',
       label: '2026-09-08T12-52-12',
       ask: undefined,
       rank: 0,
@@ -365,6 +372,9 @@ check('the id is the conversation directory and the project is decoded', () => {
     [
       {
         id: '019fdcfe-08ee-7ca3-aaae-02470f138ad1',
+        // The conversation's own FOLDER, not the history file the glob matched: a Grok
+        // conversation is a directory, so that is what `remove` is given.
+        path: '/home/u/.grok/sessions/%2Fsrv%2Facme%2Fapi/019fdcfe-08ee-7ca3-aaae-02470f138ad1',
         project: '/srv/acme/api',
         label: '/srv/acme/api',
         ask: undefined,
@@ -401,7 +411,14 @@ check('a uuid database is a conversation, with its time', () => {
     parse('antigravity', [
       '1793700000\t/home/u/.gemini/antigravity-cli/conversations/37ef7294-637a-4270-ae67-43241917834e.db',
     ]),
-    [{ id: '37ef7294-637a-4270-ae67-43241917834e', rank: 0, writtenAt: 1793700000 }],
+    [
+      {
+        id: '37ef7294-637a-4270-ae67-43241917834e',
+        path: '/home/u/.gemini/antigravity-cli/conversations/37ef7294-637a-4270-ae67-43241917834e.db',
+        rank: 0,
+        writtenAt: 1793700000,
+      },
+    ],
   );
 });
 
@@ -477,6 +494,149 @@ check('an adapter with no placeholder gets the id appended, not dropped', () => 
   // not silently resume whatever conversation the tool picks by itself.
   const odd = { ...A('claude'), resume: 'claude --resume' };
   assert.equal(agentResumeCmd(odd, 'x-1'), 'claude --resume x-1');
+});
+
+console.log('\nremoving — the one command that cannot be taken back:');
+
+const CLAUDE_PATH =
+  '/home/u/.claude/projects/-srv-acme-api/3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11.jsonl';
+const CLAUDE_ID = '3f1c9e7a-58b4-4c21-9d0e-7a6b2c4f8e11';
+
+check('the path is quoted and the flags are the safe ones', () => {
+  assert.equal(
+    agentRemoveCmd(A('claude'), { id: CLAUDE_ID, path: CLAUDE_PATH, rank: 0 }),
+    `rm -f -- '${CLAUDE_PATH}'`,
+  );
+  // `--` so a path is never read as a flag, and the quoting is `shellArg`'s, for the same
+  // reason a resume line quotes an id: this is typed into a live shell on that host.
+  assert.equal(
+    agentRemoveCmd(A('claude'), {
+      id: CLAUDE_ID,
+      path: `/home/u/.claude/projects/-a b/${CLAUDE_ID}.jsonl`,
+      rank: 0,
+    }),
+    `rm -f -- '/home/u/.claude/projects/-a b/${CLAUDE_ID}.jsonl'`,
+  );
+});
+
+check('a grok conversation is a folder, so its removal is recursive', () => {
+  const id = '019fdcfe-08ee-7ca3-aaae-02470f138ad1';
+  assert.equal(
+    agentRemoveCmd(A('grok'), { id, path: `/home/u/.grok/sessions/%2Fsrv/${id}`, rank: 0 }),
+    `rm -rf -- '/home/u/.grok/sessions/%2Fsrv/${id}'`,
+  );
+});
+
+check('THE PATH HAS TO BE NAMED BY THE CONVERSATION', () => {
+  // The check that matters, because what comes back has `rm` at the front of it. A parser
+  // that drifted and reported another file can no longer produce a command at all,
+  // instead of producing one that removes somebody's project.
+  assert.equal(
+    agentRemoveCmd(A('claude'), {
+      id: CLAUDE_ID,
+      path: '/home/u/.claude/projects/-srv-acme-api/some-other-file.jsonl',
+      rank: 0,
+    }),
+    null,
+  );
+  // Codex's file name is `rollout-<date>-<uuid>`, so "contains" and not "equals".
+  const codexId = '01a080a5-9ce0-7841-bec7-866f002c969b';
+  assert.ok(
+    agentRemoveCmd(A('codex'), {
+      id: codexId,
+      path: `/home/u/.codex/sessions/2026/09/08/rollout-2026-09-08T12-52-12-${codexId}.jsonl`,
+      rank: 0,
+    }),
+  );
+});
+
+check('a shallow path, a relative one and a traversal are all refused', () => {
+  const at = (path) => agentRemoveCmd(A('claude'), { id: CLAUDE_ID, path, rank: 0 });
+  // Four segments deep is the floor: every removable layout here is at least
+  // `~/.<tool>/<something>/<file>` once the shell has expanded the tilde. A parser that
+  // one day yields a truncated path cannot become a command that removes a home.
+  assert.equal(at(`/home/${CLAUDE_ID}.jsonl`), null);
+  assert.equal(at(`/home/u/${CLAUDE_ID}.jsonl`), null);
+  assert.ok(at(`/home/u/x/${CLAUDE_ID}.jsonl`));
+  assert.equal(at(`u/.claude/projects/-a/${CLAUDE_ID}.jsonl`), null);
+  assert.equal(at(`/home/u/../../etc/${CLAUDE_ID}.jsonl`), null);
+  assert.equal(at(''), null);
+  assert.equal(at(undefined), null);
+});
+
+check('a tool whose listing names no file offers no removal', () => {
+  // Three of the seven: an index, a sqlite row, a vendor subcommand. A removal invented
+  // for them would be a guess carried out with `rm`, so the view shows no button.
+  for (const id of ['gemini', 'hermes', 'opencode']) {
+    assert.equal(A(id).remove, undefined, id);
+    assert.equal(agentRemoveCmd(A(id), { id: 'x', path: '/a/b/c/x', rank: 0 }), null, id);
+  }
+  // And the four that can, all of them through `{path}`.
+  for (const id of ['claude', 'codex', 'grok', 'antigravity']) {
+    assert.ok(A(id).remove.includes('{path}'), id);
+  }
+});
+
+check('a template that names the path twice substitutes both', () => {
+  // The Tools dialog lets a user write this command, and "remove the file, then the
+  // folder it was alone in" needs the path twice. One substitution would leave `{path}`
+  // standing in a line that still runs.
+  const twice = { ...A('claude'), remove: 'rm -f -- {path} && rmdir "$(dirname -- {path})"' };
+  const out = agentRemoveCmd(twice, { id: CLAUDE_ID, path: CLAUDE_PATH, rank: 0 });
+  assert.ok(!out.includes('{path}'), out);
+  assert.equal(out.split(CLAUDE_PATH).length - 1, 2, out);
+});
+
+check('a template with no placeholder removes nothing rather than something else', () => {
+  // The Tools dialog lets a user write these commands. `rm -rf --` with the path left out
+  // is a command that still runs, so it is refused instead of sent.
+  const odd = { ...A('claude'), remove: 'rm -rf --' };
+  assert.equal(agentRemoveCmd(odd, { id: CLAUDE_ID, path: CLAUDE_PATH, rank: 0 }), null);
+});
+
+check('the removed conversation leaves the held listing, and only it', () => {
+  // What a successful `rm` leaves behind: the answer is held per machine, so the line the
+  // file was on is still there. Re-probing to learn what Rite had just done would be an
+  // SSH round trip nobody asked for; showing the card until then would be showing a
+  // conversation that is gone.
+  const other = '/home/u/.claude/projects/-srv-acme-web/b7d2e4a1-90c6-4f38-8b15-3e9a0d6c2f77.jsonl';
+  const lines = [`1793704737\t${CLAUDE_PATH}`, `1793377732\t${other}`];
+  assert.deepEqual(withoutConversation(A('claude'), lines, CLAUDE_ID), [lines[1]]);
+  // An id the listing does not hold takes nothing away.
+  assert.deepEqual(withoutConversation(A('claude'), lines, 'nope'), lines);
+});
+
+check('a grok folder leaves by the id in its path, not by the file name', () => {
+  const id = '019fdcfe-08ee-7ca3-aaae-02470f138ad1';
+  const lines = [
+    `1793300000\t/home/u/.grok/sessions/%2Fsrv/${id}/chat_history.jsonl`,
+    '1793200000\t/home/u/.grok/sessions/%2Fsrv/019fdcfe-08ee-7ca3-aaae-02470f138ad2/chat_history.jsonl',
+  ];
+  assert.deepEqual(withoutConversation(A('grok'), lines, id), [lines[1]]);
+});
+
+console.log('\nstarting one, which is the tool with no arguments:');
+
+check('the directory is a cd and an exec, and it is quoted', () => {
+  // `exec` so the channel holds ONE process: the shell is replaced rather than left
+  // waiting on a child, and closing the pane ends the agent instead of orphaning it.
+  // A path always leaves `shellArg` quoted: it starts with a `/`, which is not a plain
+  // argument — the same rule that keeps a name from being read as a flag.
+  assert.equal(agentStartCmd(A('claude'), '/srv/acme/api'), "cd '/srv/acme/api' && exec claude");
+  assert.equal(agentStartCmd(A('claude'), '/srv/a b'), "cd '/srv/a b' && exec claude");
+  assert.equal(agentStartCmd(A('claude'), "/srv/it's"), "cd '/srv/it'\\''s' && exec claude");
+  assert.equal(agentStartCmd(A('antigravity'), '/srv/x'), "cd '/srv/x' && exec agy");
+});
+
+check('no directory is the account landing where it always does', () => {
+  // Its home, which only that machine can resolve — so nothing is named here.
+  assert.equal(agentStartCmd(A('claude'), ''), 'claude');
+  assert.equal(agentStartCmd(A('claude'), '   '), 'claude');
+});
+
+check('the local half is argv, because execvp takes it as written', () => {
+  assert.deepEqual(agentStartArgv(A('codex')), ['codex']);
+  assert.deepEqual(agentStartArgv(A('antigravity')), ['agy']);
 });
 
 console.log('\nwho may ask (ADR 0022 §3):');

@@ -24,7 +24,7 @@
  * machine in both rather than by arguing about it.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { Dropdown } from './Dropdown';
 import type { ConnectionInfo } from '../store/connectionsStore';
@@ -32,8 +32,10 @@ import type { RemoteCommandOutput, ServerMode } from '../utils/backend';
 import { agentProbeCmd, parseAgentProbe } from '../utils/agentProbe';
 import {
   SHIPPED_ADAPTERS,
+  agentRemoveCmd,
   agentResumeCmd,
   shippedAdapter,
+  withoutConversation,
   type DiscoveredConversation,
   type ShippedAdapter,
 } from '../utils/agentAdapters';
@@ -41,6 +43,8 @@ import { agentBlockedReason, agentVerdict } from '../utils/agentPolicy';
 import { useMarks, type Mark } from '../store/marks';
 import { keepAnswer, readAnswers, type Answer } from '../store/agentAnswers';
 import { MACHINE_SWATCHES } from '../theme/swatches';
+import { askConfirm } from '../utils/confirmPrompt';
+import { IconCopy, IconEdit, IconPlay, IconPlus, IconTerminal, IconTrash } from './icons';
 import { Backend } from '../utils/backend';
 import { isNativeShell } from '../utils/nativeShell';
 
@@ -102,12 +106,19 @@ interface Props {
   onPickMachine: (id: string | null) => void;
   /** Runs the one discovery command on a machine. Routed per source by the store. */
   probeAgents?: (connection: ConnectionInfo, command: string) => Promise<RemoteCommandOutput>;
+  /** Runs one management command — today, a removal. Same routing, same gate. */
+  manageAgents?: (connection: ConnectionInfo, command: string) => Promise<RemoteCommandOutput>;
   /** Open a pane on this conversation. A null machine is this computer. */
   onResume: (
     machine: ConnectionInfo | null,
     adapter: ShippedAdapter,
     conv: DiscoveredConversation,
   ) => void;
+  /**
+   * Start a conversation: the tool, and where it works. A null machine is this computer,
+   * and an empty `cwd` is that machine's home — which only that machine can resolve.
+   */
+  onNew: (machine: ConnectionInfo | null, adapter: ShippedAdapter, cwd: string) => void;
   /** This server's mode, for the gate. */
   mode: ServerMode | null;
 }
@@ -124,7 +135,9 @@ export function AgentManager({
   machineId,
   onPickMachine,
   probeAgents,
+  manageAgents,
   onResume,
+  onNew,
   mode,
 }: Props) {
   const { t } = useTranslation();
@@ -141,6 +154,27 @@ export function AgentManager({
   const [toolsOpen, setToolsOpen] = useState(false);
   /** How far back to look, in days. 0 is all of it. */
   const [since, setSince] = useState(0);
+  /**
+   * Which name narrows the list: `@any`, `@named` for any of them, or `n:<name>`.
+   *
+   * A FILTER AND NOT A SECOND GROUPING, for the reason the whole screen refuses one: the
+   * band per CLI is the structure of the page, and grouping by name instead would hide
+   * which tool a conversation belongs to — the Claude Code Desktop trap. The sentinels
+   * are prefixed so that a conversation actually named `@named` cannot become one.
+   */
+  const [named, setNamed] = useState('@any');
+  /** The conversation a removal is in flight on, so its buttons stop answering. */
+  const [removing, setRemoving] = useState<string | null>(null);
+  /**
+   * What a removal came back with, when it failed.
+   *
+   * ITS OWN STATE AND NOT `error`. A failed probe leaves nothing to show, so that one
+   * replaces the list; a failed removal leaves the list exactly as true as it was, and
+   * blanking it would throw away seventy conversations to report one `rm`.
+   */
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  /** The new-conversation dialog, with the tool already chosen when a band opened it. */
+  const [starting, setStarting] = useState<{ tool: ShippedAdapter | null } | null>(null);
 
   const native = isNativeShell();
   const onLocal = machineId === LOCAL;
@@ -207,6 +241,10 @@ export function AgentManager({
     }
   }, [machineId, onLocal, machine, probeAgents]);
 
+  // A failure note is about one machine and one file; switching machines makes it a
+  // sentence about something nobody is looking at any more.
+  useEffect(() => setRemoveError(null), [machineId]);
+
   const marks = useMarks((st) => st.marks);
   const setMark = useMarks((st) => st.set);
   const loadMarks = useMarks((st) => st.load);
@@ -236,6 +274,95 @@ export function AgentManager({
 
   /** The conversation a rename is open on, or null. */
   const [renaming, setRenaming] = useState<Row | null>(null);
+
+  /**
+   * Whether this conversation can be removed AT ALL, which is two questions.
+   *
+   * The tool has to name a file — three of the seven do not — and there has to be a way
+   * to reach the machine it is on. Asked here rather than inside the handler, because a
+   * button that is drawn and then does nothing on a click is worse than one that is not
+   * drawn: the first teaches that the screen is broken, the second says nothing.
+   */
+  const canRemove = useCallback(
+    (r: Row) =>
+      !!agentRemoveCmd(r.adapter, r.conv) &&
+      (r.on === LOCAL ? true : !!manageAgents && connections.some((c) => c.id === r.on)),
+    [connections, manageAgents],
+  );
+
+  /**
+   * Remove one conversation, ON THE MACHINE IT WAS READ ON — `resume`'s rule, for a
+   * command that cannot be taken back.
+   *
+   * THE ROW DISAPPEARS BECAUSE THE FILE DID, not because the screen assumed so. `rm`
+   * answers nothing on success and everything on failure, so a non-zero status is the
+   * whole of what there is to read, and a card left standing after one would be a
+   * conversation shown that is gone. The held answer is edited rather than re-read: a
+   * second probe to learn what Rite had just done would be an SSH round trip nobody
+   * asked for.
+   */
+  const remove = useCallback(
+    async (r: Row) => {
+      const cmd = agentRemoveCmd(r.adapter, r.conv);
+      if (!cmd) return;
+      const host = r.on === LOCAL ? null : (connections.find((c) => c.id === r.on) ?? null);
+      if (!host && r.on !== LOCAL) return;
+      if (host && !manageAgents) return;
+      // The path is in the question, because it is the fact that settles it: what this
+      // button removes is one file on one machine, and naming it is cheaper than any
+      // sentence about it.
+      const go = await askConfirm({
+        title: t('agent.deleteTitle'),
+        body: t('agent.deleteBody', { path: r.conv.path ?? '', machine: nameOf(r.on) }),
+        action: t('agent.delete'),
+        danger: true,
+      });
+      if (!go) return;
+      setRemoving(`${r.on}:${r.adapter.id}:${r.conv.id}`);
+      setRemoveError(null);
+      try {
+        const out = host
+          ? await manageAgents!(host, cmd)
+          : await Backend.Terminal.agentManageLocal(cmd);
+        if (out.exitStatus !== 0) {
+          throw new Error(
+            out.stderr.trim() || t('agent.failedStatus', { status: String(out.exitStatus) }),
+          );
+        }
+        setAnswers((prev) => {
+          const held = prev[r.on];
+          if (!held) return prev;
+          return keepAnswer(
+            r.on,
+            {
+              // The read is still from when it was read: one row is gone because Rite
+              // removed it, not because the machine was asked again.
+              ...held,
+              tools: held.tools.map((tl) =>
+                tl.id === r.adapter.id && tl.lines
+                  ? { ...tl, lines: withoutConversation(r.adapter, tl.lines, r.conv.id) }
+                  : tl,
+              ),
+            },
+            prev,
+          );
+        });
+        // AND THE NAME GOES WITH IT. A mark is keyed to a conversation id, so once the
+        // conversation is gone the name is a dead entry — which is the whole reason marks
+        // live in a document Rite owns rather than in the workspace file. This is the one
+        // moment Rite knows for certain that one has rotted, so it is taken then.
+        if (r.mark) {
+          void setMark({ machine: r.on, tool: r.adapter.id, id: r.conv.id, name: null });
+        }
+        setOpen1(null);
+      } catch (e) {
+        setRemoveError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setRemoving(null);
+      }
+    },
+    [connections, manageAgents, nameOf, setMark, t],
+  );
 
   /** Every conversation the answer holds, in the order each tool reported. */
   const rows: Row[] = useMemo(() => {
@@ -291,12 +418,26 @@ export function AgentManager({
     const floor = since ? Date.now() / 1000 - since * 86400 : 0;
     return rows.filter((r) => {
       if (floor && r.conv.writtenAt !== undefined && r.conv.writtenAt < floor) return false;
+      if (named === '@named' && !r.mark?.name) return false;
+      if (named.startsWith('n:') && r.mark?.name !== named.slice(2)) return false;
       if (!q) return true;
       return [r.mark?.name, r.conv.ask, r.conv.project, r.conv.label, r.conv.id, r.adapter.name]
         .filter(Boolean)
         .some((v) => v!.toLowerCase().includes(q));
     });
-  }, [rows, query, since]);
+  }, [rows, query, since, named]);
+
+  /**
+   * The names in use on this machine, which are the only ones worth offering.
+   *
+   * The control is not drawn until one exists: a filter for a thing nobody has done yet
+   * is how a row of controls teaches people to stop reading it.
+   */
+  const names = useMemo(() => {
+    const seen = new Set<string>();
+    for (const r of rows) if (r.mark?.name) seen.add(r.mark.name);
+    return Array.from(seen).sort((a, b) => a.localeCompare(b));
+  }, [rows]);
 
   /** One band per tool that reported something, in the shipped order. */
   const bands = useMemo(() => {
@@ -323,6 +464,19 @@ export function AgentManager({
     ? SHIPPED_ADAPTERS.filter((a) => !answer.tools.some((tl) => tl.id === a.id)).map((a) => a.name)
     : [];
 
+  /**
+   * The tools a conversation can be STARTED with here: the ones the last probe found
+   * installed.
+   *
+   * Which is why there is no New button before a probe and none under `@all`. A tool
+   * this machine does not have would open a pane that exits with `command not found`,
+   * and `@all` is every machine already read — a new conversation has to begin on one.
+   */
+  const installed = (answer?.tools ?? [])
+    .filter((tl) => tl.installed)
+    .map((tl) => shippedAdapter(tl.id))
+    .filter((a): a is ShippedAdapter => !!a);
+
   const machineOptions = [
     { value: '', label: t('agent.pickNone') },
     // First, and only on a desktop. It needs no vault and no connection, so it is there
@@ -338,6 +492,21 @@ export function AgentManager({
       className="relative flex h-full flex-col overflow-hidden bg-background"
       data-testid="agent-manager"
     >
+      {starting && (
+        <NewAgentDialog
+          tools={installed}
+          tool={starting.tool}
+          where={where}
+          onClose={() => setStarting(null)}
+          onStart={(adapter, cwd) => {
+            setStarting(null);
+            // `@all` is every answer already held and not a place to start anything. The
+            // button is not drawn there, and this is the second half of that sentence.
+            if (!onLocal && !machine) return;
+            onNew(onLocal ? null : machine, adapter, cwd);
+          }}
+        />
+      )}
       {renaming && (
         <RenameDialog
           row={renaming}
@@ -405,6 +574,17 @@ export function AgentManager({
                   : t('agent.probe', { machine: where })}
             </button>
           )}
+          {installed.length > 0 && !blocked && (
+            <button
+              type="button"
+              onClick={() => setStarting({ tool: null })}
+              className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted"
+              data-testid="agent-new"
+            >
+              <IconPlus className="h-3.5 w-3.5" />
+              {t('agent.new')}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setToolsOpen((v) => !v)}
@@ -435,6 +615,19 @@ export function AgentManager({
               label={t('agent.since')}
               testId="agent-since"
             />
+            {names.length > 0 && (
+              <Dropdown
+                value={named}
+                options={[
+                  { value: '@any', label: t('agent.nameAny') },
+                  { value: '@named', label: t('agent.nameGiven') },
+                  ...names.map((n) => ({ value: `n:${n}`, label: n })),
+                ]}
+                onChange={setNamed}
+                label={t('agent.byName')}
+                testId="agent-named"
+              />
+            )}
             <span className="flex-1" />
             {/* The two arrangements of one grouping, at the far end: a view preference,
                 not a filter, so it does not sit among the things that remove rows. */}
@@ -487,6 +680,13 @@ export function AgentManager({
             />
           ) : (
             <div className="space-y-4">
+              {removeError && (
+                <Note
+                  testId="agent-remove-failed"
+                  title={t('agent.deleteFailed')}
+                  body={removeError}
+                />
+              )}
               {rows.length === 0 ? (
                 <Note
                   testId="agent-empty"
@@ -518,6 +718,11 @@ export function AgentManager({
                     onResume={(r) => resume(r)}
                     onRename={setRenaming}
                     onOpen={setOpen1}
+                    onNew={
+                      installed.includes(b.adapter)
+                        ? () => setStarting({ tool: b.adapter })
+                        : undefined
+                    }
                     nameOf={onAll ? nameOf : undefined}
                     colorOf={colorOf}
                   />
@@ -530,6 +735,12 @@ export function AgentManager({
                   onResume={(r) => resume(r)}
                   onRename={setRenaming}
                   onOpen={setOpen1}
+                  onNew={
+                    installed.length > 0
+                      ? (adapter) =>
+                          setStarting({ tool: installed.includes(adapter) ? adapter : null })
+                      : undefined
+                  }
                   nameOf={onAll ? nameOf : undefined}
                   colorOf={colorOf}
                 />
@@ -556,11 +767,17 @@ export function AgentManager({
         </div>
         {open1 && (
           <Detail
+            // Keyed by the conversation, so opening a second one starts its panel over
+            // rather than carrying the first one's unfolded prompt into it.
+            key={`${open1.on}:${open1.adapter.id}:${open1.conv.id}`}
             row={open1}
             on={nameOf(open1.on)}
             onClose={() => setOpen1(null)}
             onResume={() => resume(open1)}
             onRename={() => setRenaming(open1)}
+            onDelete={canRemove(open1) ? () => void remove(open1) : undefined}
+            onNew={() => setStarting({ tool: open1.adapter })}
+            deleting={removing === `${open1.on}:${open1.adapter.id}:${open1.conv.id}`}
           />
         )}
       </div>
@@ -624,8 +841,16 @@ const WHEN: Intl.DateTimeFormatOptions = {
  *
  * The mock calls this the seam every later integration arrives through, and that is why
  * it exists before there is much to put in it. What it holds today is what a LISTING
- * gave: the question, where it runs, when it was last written, the handle and the exact
- * line that resumes it.
+ * gave: where it runs, when it was last written, the handle, the line that resumes it —
+ * and the first thing the person typed.
+ *
+ * THE FACTS AND THE ACTIONS COME FIRST, THE PROMPT LAST AND FOLDED. A first message can
+ * be a pasted file: four thousand characters at the top of the panel pushed the five
+ * buttons off the bottom of it, so opening a card meant scrolling to do anything. The
+ * prompt is the reason to open the panel and not the reason to scroll it, so it sits
+ * under the actions, clamped, with a control that appears only when there is more — and
+ * the control is measured rather than guessed from the length, because a "see more" that
+ * reveals nothing is worse than no control at all.
  *
  * WHAT IS NOT HERE IS NOT BLANK, IT IS ABSENT. The mock also draws the branch, the
  * working directory, the turn count and the agent's last line — all of them inside a
@@ -639,22 +864,59 @@ function Detail({
   onClose,
   onResume,
   onRename,
+  onDelete,
+  onNew,
+  deleting,
 }: {
   row: Row;
   on: string;
   onClose: () => void;
   onResume: () => void;
   onRename: () => void;
+  /** Absent when this tool's listing names no file to remove. */
+  onDelete?: () => void;
+  onNew: () => void;
+  deleting: boolean;
 }) {
   const { t } = useTranslation();
   const { conv, adapter, mark } = row;
   const written = conv.writtenAt ? new Date(conv.writtenAt * 1000) : null;
   const line = agentResumeCmd(adapter, conv.id);
+  const ask = useRef<HTMLParagraphElement>(null);
+  /** Whether the prompt is taller than the clamp — measured, see the note above. */
+  const [more, setMore] = useState(false);
+  const [whole, setWhole] = useState(false);
+  useEffect(() => {
+    const el = ask.current;
+    setMore(!!el && el.scrollHeight > el.clientHeight + 1);
+  }, [conv.ask]);
   const fact = (label: string, value: React.ReactNode, mono = false) => (
     <>
       <dt className="text-muted-foreground">{label}</dt>
       <dd className={`min-w-0 break-words ${mono ? 'font-mono text-[11px]' : ''}`}>{value}</dd>
     </>
+  );
+  /** One action, as an icon with its name under the cursor. */
+  const act = (
+    key: string,
+    Icon: (p: { className?: string }) => React.JSX.Element,
+    onClick: () => void,
+    testId: string,
+    danger = false,
+  ) => (
+    <button
+      type="button"
+      onClick={onClick}
+      title={t(key)}
+      aria-label={t(key)}
+      disabled={deleting}
+      className={`rounded-md border border-border p-1.5 disabled:opacity-50 ${
+        danger ? 'text-red-500 hover:bg-red-500/10' : 'hover:bg-muted'
+      }`}
+      data-testid={testId}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
   );
   return (
     <aside
@@ -663,7 +925,9 @@ function Detail({
     >
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium" data-testid="agent-detail-title">
+          {/* Clamped, because with no name of its own this falls back to the first
+              message — which is the thing that can be a page long. */}
+          <div className="line-clamp-2 text-sm font-medium" data-testid="agent-detail-title">
             {mark?.name ?? conv.ask ?? conv.project ?? conv.id}
           </div>
           <div className="truncate text-xs text-muted-foreground">
@@ -689,9 +953,12 @@ function Detail({
       </div>
 
       <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5 text-xs">
-        {mark?.name && conv.ask && fact(t('agent.detailAsked'), conv.ask)}
         {conv.project && fact(t('agent.detailProject'), conv.project, true)}
         {written && fact(t('agent.detailWritten'), written.toLocaleString())}
+        {/* Where it lives, when the listing named a file — which is also what Delete
+            removes, so the panel shows it rather than leaving the confirmation to
+            introduce a path nobody had seen. */}
+        {conv.path && fact(t('agent.detailFile'), conv.path, true)}
         {/* The id, and WHAT KIND of id it is. Gemini's moves as the list changes, which
             is a property of the handle and belongs beside it rather than in a footnote. */}
         {fact(
@@ -709,44 +976,66 @@ function Detail({
         {fact(t('agent.detailResumes'), line, true)}
       </dl>
 
-      {/* Read, never written. The vendor's files are not Rite's to change (ADR 0022 §6),
-          and saying so where a person is looking at one is cheaper than a document. */}
-      <p className="text-[11px] leading-relaxed text-muted-foreground">{t('agent.detailRead')}</p>
-
-      <div className="mt-auto flex flex-wrap gap-2">
+      {/* Resume keeps its word on it: it is what the panel is for, and the four beside it
+          are variations on getting hold of the thing. Delete is last and apart, in the
+          one colour on this screen that means a file goes away. */}
+      <div className="flex flex-wrap items-center gap-1.5">
         <button
           type="button"
           onClick={onResume}
-          className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
+          disabled={deleting}
+          className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
           data-testid="agent-detail-resume"
         >
+          <IconPlay className="h-3.5 w-3.5" />
           {t('agent.resume')}
         </button>
-        <button
-          type="button"
-          onClick={onRename}
-          className="rounded-md border border-border px-2.5 py-1 text-xs"
-          data-testid="agent-detail-rename"
-        >
-          {t('agent.rename')}
-        </button>
-        <button
-          type="button"
-          onClick={() => void navigator.clipboard?.writeText(conv.id)}
-          className="rounded-md border border-border px-2.5 py-1 text-xs"
-          data-testid="agent-detail-copy-id"
-        >
-          {t('agent.detailCopyId')}
-        </button>
-        <button
-          type="button"
-          onClick={() => void navigator.clipboard?.writeText(line)}
-          className="rounded-md border border-border px-2.5 py-1 text-xs"
-          data-testid="agent-detail-copy-cmd"
-        >
-          {t('agent.detailCopyCmd')}
-        </button>
+        {act('agent.rename', IconEdit, onRename, 'agent-detail-rename')}
+        {act(
+          'agent.detailCopyId',
+          IconCopy,
+          () => void navigator.clipboard?.writeText(conv.id),
+          'agent-detail-copy-id',
+        )}
+        {act(
+          'agent.detailCopyCmd',
+          IconTerminal,
+          () => void navigator.clipboard?.writeText(line),
+          'agent-detail-copy-cmd',
+        )}
+        {act('agent.new', IconPlus, onNew, 'agent-detail-new')}
+        <span className="flex-1" />
+        {/* Absent rather than disabled: three of the seven listings name no file, and a
+            greyed button invites the question "why not" where there is nothing to do
+            about it. The tools that can remove are the ones that showed a path. */}
+        {onDelete && act('agent.delete', IconTrash, onDelete, 'agent-detail-delete', true)}
       </div>
+
+      {/* Last, and the only thing on the panel that is quoted rather than stated. */}
+      {conv.ask && (
+        <div className="min-w-0">
+          <div className="text-xs text-muted-foreground">{t('agent.detailAsked')}</div>
+          <p
+            ref={ask}
+            className={`mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed ${
+              whole ? '' : 'line-clamp-6'
+            }`}
+            data-testid="agent-detail-ask"
+          >
+            {conv.ask}
+          </p>
+          {more && (
+            <button
+              type="button"
+              onClick={() => setWhole((v) => !v)}
+              className="mt-1 text-[11px] text-muted-foreground hover:text-foreground"
+              data-testid="agent-detail-ask-more"
+            >
+              {t(whole ? 'agent.askLess' : 'agent.askMore')}
+            </button>
+          )}
+        </div>
+      )}
     </aside>
   );
 }
@@ -1004,6 +1293,111 @@ function RenameDialog({
   );
 }
 
+/**
+ * Starting a conversation, which asks for the one thing it cannot be told.
+ *
+ * THE WORKING DIRECTORY, AND NOTHING ELSE — the mock's dialog, and the right shape. A new
+ * agent needs a tool, a machine and somewhere to stand; the machine is the one being
+ * looked at and the tool is usually the band the button was pressed in, so one field is
+ * left. BLANK IS THE HOME DIRECTORY, named as a word rather than filled in, because this
+ * client cannot know the home directory of a machine it has not asked.
+ *
+ * NO PRE-PROMPT BOX. ADR 0022 §8 leaves the management layer out deliberately — stored
+ * pre-prompts, per-project conventions — and a text area here would be the first half of
+ * it, shipped before the thing it is meant to improve has been argued.
+ */
+function NewAgentDialog({
+  tools,
+  tool,
+  where,
+  onClose,
+  onStart,
+}: {
+  /** The tools this machine was found to have. Never empty: the button is not drawn. */
+  tools: ShippedAdapter[];
+  /** Already chosen, when a band asked. Null when the header did. */
+  tool: ShippedAdapter | null;
+  where: string;
+  onClose: () => void;
+  onStart: (adapter: ShippedAdapter, cwd: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [pick, setPick] = useState(tool?.id ?? tools[0]?.id ?? '');
+  const [cwd, setCwd] = useState('');
+  const chosen = tools.find((a) => a.id === pick) ?? tools[0];
+  // ABSOLUTE OR BLANK, refused here rather than on the machine. A relative path would be
+  // resolved against whatever directory the process happens to stand in — the server
+  // refuses one outright (`named_start_dir`), and the agent would then open somewhere
+  // nobody named. `~` is not accepted either: a remote shell expands it and a local spawn
+  // does not, so the two supports would answer differently to the same word.
+  const ok = !cwd.trim() || cwd.trim().startsWith('/');
+  const start = () => ok && chosen && onStart(chosen, cwd.trim());
+  return (
+    <div
+      className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 p-4"
+      onClick={onClose}
+      data-testid="agent-new-dialog"
+    >
+      <div
+        className="w-full max-w-sm rounded-md border border-border bg-card p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-sm font-medium">{t('agent.new')}</div>
+        <div className="mt-1 truncate text-xs text-muted-foreground">{where}</div>
+        {/* Fixed when a band asked: the heading it was pressed under already answered
+            this, and a picker that reopens the question reads as a second one. */}
+        {tool ? (
+          <div className="mt-3 text-xs">{tool.name}</div>
+        ) : (
+          <div className="mt-3">
+            <Dropdown
+              value={pick}
+              options={tools.map((a) => ({ value: a.id, label: a.name }))}
+              onChange={setPick}
+              label={t('agent.newTool')}
+              testId="agent-new-tool"
+            />
+          </div>
+        )}
+        <label className="mt-3 block text-xs text-muted-foreground" htmlFor="agent-new-cwd">
+          {t('agent.newCwd')}
+        </label>
+        <input
+          id="agent-new-cwd"
+          autoFocus
+          className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 font-mono text-sm"
+          placeholder={t('agent.newCwdPlaceholder')}
+          value={cwd}
+          onChange={(e) => setCwd(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') start();
+            if (e.key === 'Escape') onClose();
+          }}
+          data-testid="agent-new-cwd"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-border px-2.5 py-1 text-xs"
+          >
+            {t('agent.renameCancel')}
+          </button>
+          <button
+            type="button"
+            onClick={start}
+            disabled={!chosen || !ok}
+            className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+            data-testid="agent-new-start"
+          >
+            {t('agent.newStart')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Every CLI at once: a heading per tool, its conversations in a grid under it. */
 function Band({
   adapter,
@@ -1013,6 +1407,7 @@ function Band({
   onResume,
   onRename,
   onOpen,
+  onNew,
   nameOf,
   colorOf,
 }: {
@@ -1023,6 +1418,8 @@ function Band({
   onResume: (row: Row) => void;
   onRename: (row: Row) => void;
   onOpen: (row: Row) => void;
+  /** Start one with this tool. Absent when the machine does not have it. */
+  onNew?: () => void;
   /** Names a machine when the list mixes them; absent when it does not. */
   nameOf?: (id: string) => string;
   /** The machine's own colour from the Library, by row. */
@@ -1062,16 +1459,32 @@ function Band({
   );
   return (
     <section data-testid={`agent-band-${adapter.id}`}>
-      <button
-        type="button"
-        onClick={onFold}
-        className="mb-2 flex w-full items-center gap-2 text-left"
-        data-testid={`agent-fold-${adapter.id}`}
-      >
-        <span className="text-sm font-semibold">{adapter.name}</span>
-        <span className="text-xs text-muted-foreground">{rows.length}</span>
-        <span className="text-xs text-muted-foreground">· {t('agent.newestFirst')}</span>
-      </button>
+      <div className="mb-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onFold}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          data-testid={`agent-fold-${adapter.id}`}
+        >
+          <span className="text-sm font-semibold">{adapter.name}</span>
+          <span className="text-xs text-muted-foreground">{rows.length}</span>
+          <span className="text-xs text-muted-foreground">· {t('agent.newestFirst')}</span>
+        </button>
+        {/* Where the mock puts it: the tool is the heading, so a New under that heading
+            needs no picker — it is already answered by which band was pressed. */}
+        {onNew && (
+          <button
+            type="button"
+            onClick={onNew}
+            title={t('agent.newWith', { tool: adapter.name })}
+            aria-label={t('agent.newWith', { tool: adapter.name })}
+            className="shrink-0 rounded-md border border-border p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            data-testid={`agent-new-${adapter.id}`}
+          >
+            <IconPlus className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
       {!folded && (
         <>
           {asked.length > 0 && grid(asked)}
@@ -1121,6 +1534,7 @@ function Rail({
   onResume,
   onRename,
   onOpen,
+  onNew,
   nameOf,
   colorOf,
 }: {
@@ -1130,6 +1544,8 @@ function Rail({
   onResume: (row: Row) => void;
   onRename: (row: Row) => void;
   onOpen: (row: Row) => void;
+  /** Start one with the tool the rail is on. Absent when the machine lacks it. */
+  onNew?: (adapter: ShippedAdapter) => void;
   nameOf?: (id: string) => string;
   /** The machine's own colour from the Library, by row. */
   colorOf: (id: string) => string | undefined;
@@ -1157,6 +1573,19 @@ function Rail({
         ))}
       </nav>
       <div className="min-w-0 flex-1">
+        {current && onNew && (
+          <div className="mb-1.5 flex justify-end">
+            <button
+              type="button"
+              onClick={() => onNew(current.adapter)}
+              className="flex items-center gap-1.5 rounded-md border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+              data-testid={`agent-new-${current.adapter.id}`}
+            >
+              <IconPlus className="h-3.5 w-3.5" />
+              {t('agent.newWith', { tool: current.adapter.name })}
+            </button>
+          </div>
+        )}
         {(current?.rows ?? []).map((r) => (
           <RailRow
             key={`${r.on}:${r.adapter.id}:${r.conv.id}`}

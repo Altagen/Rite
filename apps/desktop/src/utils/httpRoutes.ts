@@ -731,13 +731,46 @@ const routes: Record<string, Route> = {
     ).sessionId,
 
   connect_local_program: async (a) =>
-    (await json<{ sessionId: string }>('/api/terminal/local', post({ argv: a.argv }))).sessionId,
+    (
+      await json<{ sessionId: string }>(
+        '/api/terminal/local',
+        // `cwd` is where a NEW conversation starts; a resumed one names none and the
+        // tool reopens wherever it was.
+        post({ argv: a.argv, cwd: a.cwd }),
+      )
+    ).sessionId,
 
   run_preconnect: async (a) =>
     (await json<{ sessionId: string }>('/api/terminal/preconnect', post({ command: a.command })))
       .sessionId,
 
   agent_probe_local: (a) => json('/api/agents/probe-local', post({ command: a.command })),
+
+  agent_manage_local: (a) => json('/api/agents/manage-local', post({ command: a.command })),
+
+  agent_manage: (a) =>
+    json(
+      '/api/agents/manage',
+      post({
+        connectionId: a.connectionId,
+        command: a.command,
+        sessionSecret: a.sessionSecret,
+      }),
+    ),
+  agent_manage_quick: (a) =>
+    json(
+      '/api/agents/manage-quick',
+      post({
+        host: a.host,
+        port: a.port,
+        username: a.username,
+        authMethod: a.authMethod,
+        jumps: a.jumps,
+        command: a.command,
+        collectionId: a.collectionId,
+        itemId: a.itemId,
+      }),
+    ),
 
   agent_probe: (a) =>
     json(

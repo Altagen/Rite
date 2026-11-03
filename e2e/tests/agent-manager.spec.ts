@@ -97,6 +97,31 @@ test('the local probe answers on a local vault, framed for the parser', async ({
   expect(body.stdout).toContain('__missing__');
 });
 
+test('the manage route is served and gated open on a local vault', async ({ request }) => {
+  // The other half of the manager, through the route. A removal is the SAME transport and
+  // the SAME gate as a listing — a gate decides whether Rite generates the traffic, never
+  // what a person may do on a host — and it carries a name of its own so that a route
+  // running `rm` is not called `probe` in a log.
+  //
+  // What is run here is harmless on purpose: the command is the client's (`agentRemoveCmd`
+  // builds it, and refuses any path not named by the conversation's own id), so what this
+  // holds is that the route exists, answers, and reports the status the view reads.
+  const ok = await request.post('/api/agents/manage-local', {
+    data: { command: "sh -c 'exit 0'" },
+  });
+  expect(ok.status()).toBe(200);
+  expect((await ok.json()).exitStatus).toBe(0);
+
+  // And a failure comes back AS a failure: the view drops a card only on a zero status,
+  // so a non-zero one that arrived as a 200 with no status would delete a row whose file
+  // is still there.
+  const bad = await request.post('/api/agents/manage-local', {
+    data: { command: "sh -c 'exit 3'" },
+  });
+  expect(bad.status()).toBe(200);
+  expect((await bad.json()).exitStatus).toBe(3);
+});
+
 test('the filters are offered without a second grouping to fight the first', async ({ page }) => {
   // ONE GROUPING, THREE FILTERS. The band per CLI is the structure of the page; Claude
   // Code Desktop offers "group by date" beside "group by project" and its open tickets
@@ -113,6 +138,10 @@ test('the filters are offered without a second grouping to fight the first', asy
 
   await expect(page.getByTestId('agent-since')).toHaveCount(0);
   await expect(page.getByTestId('agent-search')).toHaveCount(0);
+  // The name filter has a second condition on top of that: it is not drawn until a
+  // conversation has been given a name, because a filter for something nobody has done
+  // is how a row of controls teaches people to stop reading it.
+  await expect(page.getByTestId('agent-named')).toHaveCount(0);
   await expect(page.getByTestId('agent-only-asked')).toHaveCount(0);
   // And no grouping control at all, in either layout — the two layouts arrange one
   // grouping, they do not offer a second.

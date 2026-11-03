@@ -903,6 +903,12 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/agents/probe", post(agent_probe))
         .route("/api/agents/probe-quick", post(agent_probe_quick))
         .route("/api/agents/probe-local", post(agent_probe_local))
+        // The other half of the manager: a conversation REMOVED rather than listed. Same
+        // transport, same gate, a name of its own — a route called `probe` that runs `rm`
+        // is a lie to whoever reads a log or this router.
+        .route("/api/agents/manage", post(agent_manage))
+        .route("/api/agents/manage-quick", post(agent_manage_quick))
+        .route("/api/agents/manage-local", post(agent_manage_local))
         .route("/api/terminal/local", post(create_local))
         .route("/api/terminal/preconnect", post(run_preconnect))
         .route("/api/forwards", get(list_forwards).post(start_forward))
@@ -1228,6 +1234,9 @@ async fn served_locally(state: &ServerState, path: &str) -> bool {
     if path == "/api/agents/probe"
         || path == "/api/agents/probe-quick"
         || path == "/api/agents/probe-local"
+        || path == "/api/agents/manage"
+        || path == "/api/agents/manage-quick"
+        || path == "/api/agents/manage-local"
     {
         return true;
     }
@@ -6012,6 +6021,25 @@ async fn agent_probe(
     exec_saved(state, user, req, ExecGate::Agents).await
 }
 
+/// Removing one conversation on a saved machine.
+///
+/// SAME GATE AS LOOKING, AND NO SECOND SWITCH, which is the decision rather than the
+/// shortcut. `ExecGate`'s own note holds the rule: these gates decide whether RITE
+/// generates the traffic, never what the user may do on a host. Anyone who can open a
+/// terminal pane on that machine can type `rm` into it, so a delete adds no right — and a
+/// `manage` switch beside `discovery` would be read as a confinement while being none.
+///
+/// The command is the adapter's `remove`, built on the client (`agentRemoveCmd`), which
+/// is where the one check that matters lives: the path has to be named by the
+/// conversation's own id.
+async fn agent_manage(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<MachineExecReq>,
+) -> Result<Response, AppError> {
+    exec_saved(state, user, req, ExecGate::Agents).await
+}
+
 /// Agent discovery on THIS machine.
 ///
 /// THE DESKTOP ALWAYS HAS A LOCAL MACHINE, whatever context it is in: a local vault, a
@@ -6034,6 +6062,24 @@ async fn agent_probe_local(
     State(state): State<ServerState>,
     Json(req): Json<LocalProbeReq>,
 ) -> Result<Response, AppError> {
+    agent_local_exec(state, req).await
+}
+
+/// Removing one conversation on THIS machine. See `agent_manage` for the gate and
+/// `agent_probe_local` for why a deployed instance has no local machine at all.
+async fn agent_manage_local(
+    State(state): State<ServerState>,
+    Json(req): Json<LocalProbeReq>,
+) -> Result<Response, AppError> {
+    agent_local_exec(state, req).await
+}
+
+/// One agent command on this machine, gated and captured.
+///
+/// One body for both local routes, so the accounts refusal and the discovery gate cannot
+/// be present on one and forgotten on the other — which is the whole reason this is a
+/// function and not a copy.
+async fn agent_local_exec(state: ServerState, req: LocalProbeReq) -> Result<Response, AppError> {
     if state.accounts {
         return Ok((
             StatusCode::GONE,
@@ -6130,6 +6176,15 @@ async fn machine_exec_quick(
 
 /// Agent discovery on an ad-hoc target: the browser already decrypted it (ADR 0011).
 async fn agent_probe_quick(
+    State(state): State<ServerState>,
+    user: Option<Extension<Arc<User>>>,
+    Json(req): Json<MachineExecQuickReq>,
+) -> Result<Response, AppError> {
+    exec_quick(state, user, req, ExecGate::Agents).await
+}
+
+/// Removing one conversation on an ad-hoc target. See `agent_manage`.
+async fn agent_manage_quick(
     State(state): State<ServerState>,
     user: Option<Extension<Arc<User>>>,
     Json(req): Json<MachineExecQuickReq>,
@@ -6712,6 +6767,9 @@ mod tests {
         // is policy the client obeys and not something a remote could enforce.
         assert!(local("/api/agents/probe").await);
         assert!(local("/api/agents/probe-quick").await);
+        assert!(local("/api/agents/manage").await);
+        assert!(local("/api/agents/manage-quick").await);
+        assert!(local("/api/agents/manage-local").await);
 
         // Proxied: the session list is the instance's roster, not ours.
         assert!(

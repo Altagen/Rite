@@ -456,8 +456,8 @@ export const BackendTerminal = {
    * `execvp` as written, so a space or a quote in a project path is data rather than
    * syntax — the same reason the SSH side names the program at the channel.
    */
-  connectLocalProgram: (argv: string[]) =>
-    invokeWithValidation('connect_local_program', StringSchema, { argv }),
+  connectLocalProgram: (argv: string[], cwd?: string) =>
+    invokeWithValidation('connect_local_program', StringSchema, { argv, cwd }),
 
   /**
    * Run a pre-connect hook: a one-shot local command in a PTY, before SSH.
@@ -574,6 +574,43 @@ export const BackendTerminal = {
    */
   agentProbeLocal: (command: string) =>
     invokeWithValidation('agent_probe_local', RemoteCommandOutputSchema, { command }),
+
+  /**
+   * Removing one conversation, on the three routes discovery already takes.
+   *
+   * SAME GATE, NO SECOND SWITCH (see `agent_manage` in rite-server): a gate decides
+   * whether Rite generates the traffic, never what a person may do on a host — anyone
+   * who can open a terminal pane there can type `rm`. Named apart from `probe` all the
+   * same, because a route that runs `rm` under a name that means "look" is a lie to
+   * whoever reads a log.
+   */
+  agentManage: (connectionId: string, command: string, sessionSecret?: string) =>
+    invokeWithValidation('agent_manage', RemoteCommandOutputSchema, {
+      connectionId,
+      command,
+      sessionSecret,
+    }),
+
+  /** Removing one conversation on THIS machine. See `agentProbeLocal`. */
+  agentManageLocal: (command: string) =>
+    invokeWithValidation('agent_manage_local', RemoteCommandOutputSchema, { command }),
+
+  /** Removing one conversation on an ad-hoc target. See `machineExecQuick`. */
+  agentManageQuick: (
+    target: QuickExecTarget,
+    command: string,
+    origin?: { collectionId: string; itemId: string },
+  ) =>
+    invokeWithValidation('agent_manage_quick', RemoteCommandOutputSchema, {
+      host: target.host,
+      port: target.port,
+      username: target.username,
+      authMethod: target.authMethod,
+      jumps: target.jumps ?? [],
+      command,
+      collectionId: origin?.collectionId,
+      itemId: origin?.itemId,
+    }),
 
   /** The same discovery on an ad-hoc target. See `machineExecQuick` for the origin. */
   agentProbeQuick: (

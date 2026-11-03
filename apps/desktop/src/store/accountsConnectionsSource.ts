@@ -700,6 +700,21 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     );
   }, []);
 
+  // Removing one conversation on an accounts connection: the same client-execute shape
+  // again, on the manage route.
+  const manageAgents = useCallback(async (conn: ConnectionInfo, command: string) => {
+    const entry = entries.current.get(conn.id);
+    if (!entry) throw new Error('connection is not available');
+    const { record } = entry;
+    const auth = await authFor(conn.id, record, record.name || conn.name);
+    if (auth === null) throw new Error('cancelled');
+    return Backend.Terminal.agentManageQuick(
+      { ...endpointOf(record, auth), jumps: resolveJumpChain(entries.current, record) },
+      command,
+      entry.collectionId ? { collectionId: entry.collectionId, itemId: conn.id } : undefined,
+    );
+  }, []);
+
   // Port forwards on an accounts connection: same client-execute shape as connect —
   // the target and its hops are only readable here, so they travel on the request.
   const startForward = useCallback<NonNullable<ConnectionsSource['startForward']>>(
@@ -740,6 +755,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     saveBoard,
     execRemote,
     probeAgents,
+    manageAgents,
     startForward,
     isServerContext: true,
   };

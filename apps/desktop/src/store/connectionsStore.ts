@@ -258,6 +258,13 @@ export interface ConnectionsSource {
     connection: ConnectionInfo,
     command: string,
   ) => Promise<import('../utils/backend').RemoteCommandOutput>;
+  // Removing one conversation on a machine (ADR 0022 §6 addendum). Routes per source
+  // like the two above, on the manage route — the same gate as discovery, and a name of
+  // its own because what it runs is `rm` and not `ls`.
+  manageAgents?: (
+    connection: ConnectionInfo,
+    command: string,
+  ) => Promise<import('../utils/backend').RemoteCommandOutput>;
   // Start a local port forward on a machine. Routes per source like execRemote: the
   // vault path names the connection by id (the core decrypts it), the accounts path
   // sends the decrypted target and its jump chain, since the server can't read them.

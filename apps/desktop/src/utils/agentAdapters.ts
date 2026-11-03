@@ -140,6 +140,14 @@ export interface DiscoveredConversation {
   /** What `resume` substitutes for `{id}`. */
   id: string;
   /**
+   * The file or directory this conversation IS, when the listing named one.
+   *
+   * What `remove` acts on, and nothing else reads it. Absent on a tool whose listing is
+   * not files — a `sqlite3` query, a vendor subcommand — which is why removing one is
+   * optional per adapter rather than a right the manager assumes it has.
+   */
+  path?: string;
+  /**
    * The project the tool filed it under, verbatim or decoded — never un-mangled.
    * Claude slugs a path by replacing every `/` with `-`, which `linux-s7` makes
    * ambiguous, so that slug is shown as it is rather than turned back into a wrong
@@ -175,6 +183,15 @@ export interface ShippedAdapter extends AgentAdapter {
   name: string;
   /** `{id}` is substituted, quoted. */
   resume: string;
+  /**
+   * How one conversation is removed, when this tool's layout allows it. `{path}` is
+   * substituted, quoted.
+   *
+   * ABSENT IS THE DEFAULT and it is not a gap: three of the seven listings do not name a
+   * file (an index, a `sqlite3` row, a vendor subcommand), and a removal invented for
+   * them would be a guess carried out with `rm`. A tool with no `remove` shows no delete.
+   */
+  remove?: string;
   /**
    * What `{id}` is. `index` means the number moves as conversations accumulate, and the
    * view warns about it; step 6 checks a sealed mark's id against this before it ever
@@ -296,6 +313,9 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     list: listing('~/.claude/projects/*/*.jsonl', { ask: true }),
     readsAsk: true,
     resume: 'claude --resume {id}',
+    // One file is one conversation, so removing it is removing the conversation. `-f` so
+    // a file already gone is not an error, `--` so a path is never read as a flag.
+    remove: 'rm -f -- {path}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
@@ -308,7 +328,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
         const id = file.slice(0, -'.jsonl'.length);
         if (!UUID.test(id)) continue;
         const slug = p[p.length - 2];
-        out.push({ id, project: slug, label: slug, ask, rank: out.length, writtenAt });
+        out.push({ id, path, project: slug, label: slug, ask, rank: out.length, writtenAt });
       }
       return out;
     },
@@ -322,6 +342,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     list: listing('~/.codex/sessions/*/*/*/*.jsonl', { ask: true }),
     readsAsk: true,
     resume: 'codex resume {id}',
+    remove: 'rm -f -- {path}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
@@ -339,7 +360,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
         // to that morning, because `codex resume` appends to the file it reopens. The
         // card shows `writtenAt`, which is what the list is sorted by; the started-at is
         // kept as the label, where it cannot be read as the sort key.
-        out.push({ id, label: stem.slice(0, -37), ask, rank: out.length, writtenAt });
+        out.push({ id, path, label: stem.slice(0, -37), ask, rank: out.length, writtenAt });
       }
       return out;
     },
@@ -381,6 +402,11 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     bin: 'grok',
     list: listing('~/.grok/sessions/*/*/chat_history.jsonl'),
     resume: 'grok --resume {id}',
+    // THE DIRECTORY, not the history file — which is why `path` is what an adapter says
+    // it is rather than what its glob matched. A Grok conversation is a folder holding a
+    // history, a lock and a search index; deleting the history alone would leave the tool
+    // listing a conversation with nothing in it.
+    remove: 'rm -rf -- {path}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
@@ -400,7 +426,16 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
         } catch {
           /* keep it as printed */
         }
-        out.push({ id, project, label: project, ask, rank: out.length, writtenAt });
+        out.push({
+          id,
+          // The conversation's own folder: everything in `path` up to the file name.
+          path: path.slice(0, path.length - '/chat_history.jsonl'.length),
+          project,
+          label: project,
+          ask,
+          rank: out.length,
+          writtenAt,
+        });
       }
       return out;
     },
@@ -416,6 +451,10 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
     bin: 'agy',
     list: listing('~/.gemini/antigravity-cli/conversations/*.db'),
     resume: 'agy --conversation {id}',
+    // `conversation_summaries.db` beside them keeps a row per conversation, which this
+    // does not touch: it is the vendor's index, rebuilt by the vendor, and editing
+    // someone else's SQLite from a delete button is a larger claim than the button makes.
+    remove: 'rm -f -- {path}',
     idKind: 'uuid',
     from: { kind: 'measured', seen: 'binary and files, 2026-11-03' },
     parse: (lines) => {
@@ -432,7 +471,7 @@ export const SHIPPED_ADAPTERS: ShippedAdapter[] = [
         // `conversation_summaries.db` sits beside them and is not one, which the uuid
         // test is enough to say.
         if (!UUID.test(id)) continue;
-        out.push({ id, rank: out.length, writtenAt });
+        out.push({ id, path, rank: out.length, writtenAt });
       }
       return out;
     },
@@ -536,3 +575,96 @@ export function agentResumeArgv(adapter: ShippedAdapter, id: string): string[] {
 /** The adapter with this id, among the ones Rite ships. */
 export const shippedAdapter = (id: string): ShippedAdapter | undefined =>
   SHIPPED_ADAPTERS.find((a) => a.id === id);
+
+/**
+ * How deep a path has to be before Rite will remove it.
+ *
+ * Every removable layout here is at least `~/.<tool>/<something>/<file>`, which is four
+ * segments once the shell has expanded the tilde. The number is a floor on a mistake:
+ * a parser that one day yields a truncated path cannot turn into a command that removes
+ * a home directory.
+ */
+const REMOVE_MIN_DEPTH = 4;
+
+/**
+ * The command that removes one conversation, or null when it cannot be built.
+ *
+ * NULL IS A REAL ANSWER and the view reads it as one: a tool whose listing names no file
+ * offers no delete, rather than offering a button that runs a guess.
+ *
+ * THE PATH MUST BE NAMED BY THE CONVERSATION'S OWN ID. That is the check that matters,
+ * because what this returns is typed into a live shell with `rm` at the front of it: the
+ * last segment of the path has to carry the id the card shows — `<uuid>.jsonl`,
+ * `rollout-<date>-<uuid>.jsonl`, `<uuid>.db`, `<uuid>/`. A parser that drifted and
+ * reported the wrong path can then no longer produce a command at all, instead of
+ * producing one that removes somebody's project.
+ *
+ * `{path}` is quoted, like `{id}` in a resume line and for the same reason: the value
+ * was read off a remote host's file system, where a space is ordinary.
+ */
+export function agentRemoveCmd(
+  adapter: ShippedAdapter,
+  conv: DiscoveredConversation,
+): string | null {
+  const template = adapter.remove;
+  const path = conv.path?.trim();
+  if (!template || !path) return null;
+  if (!path.startsWith('/')) return null;
+  const segments = parts(path);
+  if (segments.length < REMOVE_MIN_DEPTH) return null;
+  // A traversal cannot arrive from a listing, and a listing is the only caller. It is
+  // refused here because the cost of the check is one comparison and the cost of being
+  // wrong is a command with `rm -rf` in it.
+  if (segments.includes('..')) return null;
+  const last = segments[segments.length - 1];
+  if (!conv.id || !last.includes(conv.id)) return null;
+  const quoted = shellArg(path);
+  // `split`/`join` rather than `replaceAll`, which this target's lib does not carry, and
+  // rather than `replace`, which would substitute the first of two.
+  return template.includes('{path}') ? template.split('{path}').join(quoted) : null;
+}
+
+/**
+ * A tool's listing lines with one conversation taken out.
+ *
+ * What a successful removal leaves behind: the probe's answer is held per machine so
+ * switching back does not cost a round trip, and after an `rm` that answer still carries
+ * the line the file was on. Re-probing to learn what Rite just did would be an SSH round
+ * trip nobody asked for; showing the card until then would be showing a conversation
+ * that is gone.
+ *
+ * The adapter's own parser decides which line that is, so this holds no second idea of
+ * what a line means — the one place that reads a listing stays the one place. Every
+ * adapter that can remove is one line per conversation; a parser that needs the whole
+ * document (opencode's JSON) has no `remove`, so it never arrives here.
+ */
+export function withoutConversation(
+  adapter: ShippedAdapter,
+  lines: string[],
+  id: string,
+): string[] {
+  return lines.filter((line) => !adapter.parse([line]).some((c) => c.id === id));
+}
+
+/**
+ * The command that STARTS a conversation on a machine reached over SSH.
+ *
+ * `cd` and then `exec`, which is two decisions. `cd` because the one thing a new agent
+ * needs that cannot be guessed is where it works, and SSH runs this through the account's
+ * own shell, so the directory is the shell's business and not a channel option. `exec` so
+ * the shell is REPLACED rather than left waiting on a child: the channel then holds one
+ * process, and closing the pane ends the agent instead of orphaning it under a shell.
+ *
+ * A blank directory names nothing and the account lands where it always does — its home,
+ * which only that machine can resolve.
+ *
+ * No arguments beyond that: every tool here opens a new conversation when run with none.
+ * `{id}` has no counterpart, which is why this is not a third adapter command.
+ */
+export function agentStartCmd(adapter: ShippedAdapter, cwd: string): string {
+  const dir = cwd.trim();
+  return dir ? `cd ${shellArg(dir)} && exec ${adapter.bin}` : adapter.bin;
+}
+
+/** The same start as argv, for a conversation on THIS machine. See `agentResumeArgv`. */
+export const agentStartArgv = (adapter: ShippedAdapter): string[] => [adapter.bin];

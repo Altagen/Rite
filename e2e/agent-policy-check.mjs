@@ -89,6 +89,22 @@ try {
   assert.notEqual((await probeSaved(bob)).status, 403, 'and gets past the gate once allowed');
   ok('webui:false is enforced on both agent routes, not just hidden in the UI');
 
+  // AND THE MANAGE ROUTES ANSWER TO THE SAME KEY. Removing a conversation is not a second
+  // decision an administrator makes: a gate decides whether Rite generates the traffic,
+  // never what a person may do on a host — anyone who can open a terminal pane there can
+  // type `rm`. A manage route that passed while discovery was refused would be a hole
+  // behind a switch an operator believes in, and these are the four lines that say so.
+  const manageQuick = (token) => post('/api/agents/manage-quick', target, token);
+  const manageSaved = (token) =>
+    post('/api/agents/manage', { connectionId: 'no-such-connection', command: 'echo x' }, token);
+  assert.equal((await setAgents({ webui: false, clients: true }, admin)).status, 204, 'webui off');
+  assert.equal((await manageQuick(bob)).status, 403, 'a removal on an ad-hoc target is refused');
+  assert.equal((await manageSaved(bob)).status, 403, 'and so is one on a saved machine');
+  assert.equal((await setAgents(BOTH, admin)).status, 204, 'webui on');
+  assert.notEqual((await manageQuick(bob)).status, 403, 'and both are served once allowed');
+  assert.notEqual((await manageSaved(bob)).status, 403, 'the saved one too');
+  ok('removing a conversation answers to the discovery key, with no second switch');
+
   step = 'two-gates';
   // THE REASON THERE ARE TWO KEYS. Each gate governs its own route and neither moves the
   // other: allowing `docker ps` is not the same decision as allowing a home directory to

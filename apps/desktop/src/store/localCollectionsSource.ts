@@ -344,6 +344,12 @@ export function useLocalCollectionsSource(): ConnectionsSource {
       if (secret === null) throw new Error('cancelled');
       return Backend.Terminal.agentProbe(c.id, command, secret);
     },
+    // And removing one asks the same way, on the manage route.
+    manageAgents: async (c, command) => {
+      const secret = await sessionSecretFor(c);
+      if (secret === null) throw new Error('cancelled');
+      return Backend.Terminal.agentManage(c.id, command, secret);
+    },
     startForward: async (c, f) => {
       const secret = await sessionSecretFor(c);
       if (secret === null) throw new Error('cancelled');

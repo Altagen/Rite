@@ -731,6 +731,12 @@ its agents the way you come at its containers.
   which decides only one thing: whether your own machine can answer, or needs an attached
   client. Everything else — the machine → tool → conversation selector, the refusal on the
   server's own host, what a broken adapter says — is identical in both, on purpose.
+  **Two things the code has settled since, and this file owes them**: the **detail panel**
+  beside the list (the mock has a row menu and a mark dialog, no panel — and its order,
+  facts and actions above a folded prompt, was decided on a machine holding seventy-three
+  conversations), and **delete**, which the mock has nowhere. The rule runs both ways: the
+  mock leads when it is ahead, and it is corrected from the code when the code has
+  measured something the mock had not.
 - `rite.css` — shared design tokens + components (dark, terminal-forward).
 - `rite.js` — shared helpers (toast, modal, mini-terminal) + generic dialogs.
 - `full-data.js` — mock data (org directory, teams, collections), extra icons, and

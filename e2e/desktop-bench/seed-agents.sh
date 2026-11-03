@@ -26,7 +26,20 @@ for slug in -srv-acme-api -srv-acme-web -home-dev-notes; do
     i=$((i + 1))
     f="$H/.claude/projects/$slug/$(uuid $i).jsonl"
     printf '{"type":"mode","mode":"normal"}\n' > "$f"
-    ask "$(printf 'Question %d sur %s, assez longue pour que la carte ait à la couper quelque part' $i "$slug")" >> "$f"
+    if [ $i -eq 6 ]; then
+      # ONE OF THEM IS A PASTED FILE, because that is the case the detail panel is built
+      # around: a first message of a few thousand characters, which used to push every
+      # action off the bottom of the panel.
+      long='Voici le diff complet à relire ligne par ligne :'
+      k=0
+      while [ $k -lt 40 ]; do
+        long="$long reprendre le worker de file et vérifier le chemin $k ;"
+        k=$((k + 1))
+      done
+      ask "$long" >> "$f"
+    else
+      ask "$(printf 'Question %d sur %s, assez longue pour que la carte ait à la couper quelque part' $i "$slug")" >> "$f"
+    fi
     touch -d "@$(( $(date +%s) - i * 7200 ))" "$f"
   done
 done
@@ -73,8 +86,11 @@ done
 
 # ── and the binaries the probe looks for, so each tool reports installed ────────
 mkdir -p "$H/bin"
+# With an argument it answers `--version`, which is all the probe asks of it. With NONE
+# it is a new conversation: it prints the directory it was started in and stays up, so
+# the bench can read back the one thing a new conversation is given.
 for b in claude codex grok agy; do
-  printf '#!/bin/sh\necho "%s 1.0.0 (bench)"\n' "$b" > "$H/bin/$b"
+  printf '#!/bin/sh\nif [ $# -eq 0 ]; then echo "%s (bench) cwd=$PWD"; exec sleep 300; fi\necho "%s 1.0.0 (bench)"\n' "$b" "$b" > "$H/bin/$b"
   chmod +x "$H/bin/$b"
 done
 

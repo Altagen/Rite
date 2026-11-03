@@ -290,7 +290,7 @@ webui   = true            # a browser reads the account's sealed copy
 clients = true            # a desktop window reads that copy, or a local file
 
 [agent_policy]            # ADR 0022
-webui   = true            # a browser may discover agents on a machine
+webui   = true            # a browser may discover and remove agent conversations
 clients = true            # so may an attached desktop client
 ```
 

@@ -1137,7 +1137,29 @@ def scenario_agentload(wid):
         "        && c.textContent.includes('Question 1'))"
     )
     check("and what the tool reported is still under it", both is True)
+
+    # AND THE NAME IS SOMETHING TO FILTER BY, which is what a name is for on a list of
+    # seventy-three. A FILTER and not a second grouping: the band per CLI stays the
+    # structure of the page, so narrowing by name does not cost the tool a card is under.
+    js("document.querySelector('[data-testid=agent-named]')?.click(); 1")
+    time.sleep(0.4)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'le portage du worker'); if (o) o.click(); })()"
+    )
+    time.sleep(0.6)
+    only = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+    check("filtering by the name leaves that one conversation", only == 1, f"{only} cards")
+    bands_left = js("document.querySelectorAll('[data-testid^=agent-band-]').length")
+    check("and it is still under its own tool", bands_left == 1, f"{bands_left} bands")
     shot("agentload-named")
+    js("document.querySelector('[data-testid=agent-named]')?.click(); 1")
+    time.sleep(0.4)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'Any'); if (o) o.click(); })()"
+    )
+    time.sleep(0.5)
 
     # EVERY MACHINE AT ONCE, which is the entry no single-machine tool has. It never
     # probes: it is every answer already held, so with one machine read it says one.
@@ -1175,11 +1197,130 @@ def scenario_agentload(wid):
     # What a listing gave, and nothing it did not: the resume line is the fact a person
     # cannot get anywhere else, because the adapter built it.
     check("and it carries the line that resumes it", "claude --resume" in facts, f"got {facts[:80]!r}")
-    check("and says the files are read, never written", "never written" in facts)
+
+    # THE FACTS AND THE ACTIONS FIRST, THE PROMPT LAST. A first message can be a pasted
+    # file, and four thousand characters at the top of the panel pushed all five buttons
+    # off the bottom of it — so opening a card meant scrolling before anything could be
+    # done. Asserted as an ORDER in the document rather than as a pixel, because that is
+    # the decision; the screenshot beside it is for the rest.
+    order = js(
+        "(() => { const d = document.querySelector('[data-testid=agent-detail]');"
+        " const a = d.querySelector('[data-testid=agent-detail-resume]');"
+        " const p = d.querySelector('[data-testid=agent-detail-ask]');"
+        " if (!a || !p) return 'missing';"
+        " return (a.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING)"
+        "   ? 'actions first' : 'prompt first'; })()"
+    )
+    check("the actions come before the prompt", order == "actions first", f"got {order!r}")
     shot("agentload-detail")
     js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
     time.sleep(0.4)
 
+    # AND THE FOLD IS MEASURED, NOT GUESSED. One of the seeded conversations opens with a
+    # pasted file; the short ones must not grow a "see more" that reveals nothing.
+    def open_card_with(needle):
+        return js(
+            "(() => { const c = Array.from(document.querySelectorAll('[data-testid^=agent-card-]'))"
+            f"   .find(c => c.textContent.includes({needle!r})); if (!c) return false;"
+            " c.click(); return true; })()"
+        )
+
+    check("the pasted-file conversation is on screen", open_card_with("Voici le diff complet") is True)
+    time.sleep(0.6)
+    folded = js(
+        "(() => { const p = document.querySelector('[data-testid=agent-detail-ask]');"
+        " return p ? p.scrollHeight > p.clientHeight + 1 : null; })()"
+    )
+    check("a long prompt arrives folded", folded is True, f"got {folded}")
+    check("and offers to unfold it", js("!!document.querySelector('[data-testid=agent-detail-ask-more]')"))
+    js("document.querySelector('[data-testid=agent-detail-ask-more]')?.click(); 1")
+    time.sleep(0.4)
+    whole = js(
+        "(() => { const p = document.querySelector('[data-testid=agent-detail-ask]');"
+        " return p ? p.scrollHeight <= p.clientHeight + 1 : null; })()"
+    )
+    check("unfolded, the whole prompt is there", whole is True, f"got {whole}")
+    shot("agentload-prompt")
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
+
+    check("a short conversation is on screen", open_card_with("Question 1 sur") is True)
+    time.sleep(0.6)
+    check("a short prompt grows no control",
+          js("!document.querySelector('[data-testid=agent-detail-ask-more]')"))
+
+    # DELETING ONE, which is a vendor's file going away on a real machine. The card is
+    # expected to go with it, and the file is read back off the disk — a screen that
+    # dropped the row without the `rm` landing would pass every assertion but one.
+    path = js(
+        "(() => { const d = document.querySelector('[data-testid=agent-detail]');"
+        " const m = d.textContent.match(/\\/[^\\s]*\\.jsonl/); return m ? m[0] : ''; })()"
+    )
+    check("the panel names the file it would remove", path.endswith(".jsonl"), f"got {path!r}")
+    before = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+    # The name given earlier landed on this same card, so the document Rite owns holds it
+    # now and must not hold it afterwards: a mark is keyed to a conversation id, and this
+    # is the one moment Rite knows for certain that one has rotted.
+    cid = os.path.basename(path)[: -len(".jsonl")]
+    marks_file = os.path.join(os.environ.get("HOME", ""), ".config/rite/marks.json")
+    marks_before = open(marks_file).read() if os.path.exists(marks_file) else ""
+    check("the name is in the document Rite owns", cid in marks_before, f"got {marks_before[:120]!r}")
+    js("document.querySelector('[data-testid=agent-detail-delete]')?.click(); 1")
+    time.sleep(0.6)
+    asked = js("document.querySelector('[data-testid=confirm-dialog]')?.textContent || ''")
+    # The path is IN the question, because it is the fact that settles it: one file, on
+    # one machine, named rather than described.
+    check("delete asks first, and names the file", path in asked, f"got {asked[:120]!r}")
+    js("document.querySelector('[data-testid=confirm-cancel]')?.click(); 1")
+    time.sleep(0.6)
+    check("and a cancel removes nothing", os.path.exists(path) and
+          js("document.querySelectorAll('[data-testid^=agent-card-]').length") == before)
+
+    js("document.querySelector('[data-testid=agent-detail-delete]')?.click(); 1")
+    time.sleep(0.6)
+    js("document.querySelector('[data-testid=confirm-accept]')?.click(); 1")
+    time.sleep(2.0)
+    check("the file is gone", not os.path.exists(path), path)
+    after = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+    check("and the card went with it", after == before - 1, f"{before} -> {after}")
+    check("and the panel closed on what no longer exists",
+          js("!document.querySelector('[data-testid=agent-detail]')"))
+    marks_after = open(marks_file).read() if os.path.exists(marks_file) else ""
+    check("and the name went with it", cid not in marks_after, f"got {marks_after[:160]!r}")
+    shot("agentload-deleted")
+
+    # STARTING ONE, which is the other half: the tool run with no arguments, in the
+    # directory that was named. The seeded fake binary prints its own `$PWD` and stays
+    # up, so the pane itself says whether the directory arrived.
+    js("document.querySelector('[data-testid=agent-new-claude]')?.click(); 1")
+    time.sleep(0.6)
+    check("a band offers to start one", js("!!document.querySelector('[data-testid=agent-new-dialog]')"))
+    js(
+        "(() => { const i = document.querySelector('[data-testid=agent-new-cwd]');"
+        " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;"
+        " set.call(i, 'relative/path');"
+        " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+    )
+    time.sleep(0.4)
+    check("a relative directory is refused before the machine sees it",
+          js("!!document.querySelector('[data-testid=agent-new-start]')?.disabled"))
+    js(
+        "(() => { const i = document.querySelector('[data-testid=agent-new-cwd]');"
+        " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;"
+        f" set.call(i, {os.environ.get('HOME', '/root') + '/.codex'!r});"
+        " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+    )
+    time.sleep(0.4)
+    shot("agentload-new")
+    js("document.querySelector('[data-testid=agent-new-start]')?.click(); 1")
+    time.sleep(3.0)
+    pane = "\n".join(screen_text())
+    check("the agent started where it was told",
+          "cwd=" in pane and "/.codex" in pane, f"got {pane[-200:]!r}")
+    shot("agentload-started")
+
+    js("document.querySelector('[data-testid=toolbar-agents]')?.click(); 1")
+    time.sleep(0.8)
     js("document.querySelector('[data-testid=agent-layout-rail]')?.click(); 1")
     time.sleep(0.6)
     shot("agentload-rail")

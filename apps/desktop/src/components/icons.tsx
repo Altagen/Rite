@@ -121,6 +121,11 @@ export const IconSignOut = (p: IconProps) => (
     <path d="M16 17l5-5-5-5M21 12H9M12 3H6a2 2 0 00-2 2v14a2 2 0 002 2h6" />
   </Svg>
 );
+export const IconCopy = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M8 4h10a2 2 0 012 2v10M6 8h10a2 2 0 012 2v8a2 2 0 01-2 2H6a2 2 0 01-2-2v-8a2 2 0 012-2z" />
+  </Svg>
+);
 export const IconEdit = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4z" />

@@ -13,7 +13,7 @@ import { askConfirm } from '../utils/confirmPrompt';
 import { createPortal } from 'react-dom';
 import { Backend } from '../utils/backend';
 import { disposeAllPanes, paneKind } from '../panes/registry';
-import { planLayout, type Layout, type TabPlan } from '../store/layoutsFormat';
+import { planLayout, NEW_TAB_CWD_HOME, type Layout, type TabPlan } from '../store/layoutsFormat';
 // Reading a live pane tree back into a plan, so a duplicate goes through the same
 // opener a layout does rather than a second tree-walker.
 import { planFromTree } from '../store/tabPlan';
@@ -101,6 +101,8 @@ import { AgentManager } from './AgentManager';
 import {
   agentResumeArgv,
   agentResumeCmd,
+  agentStartArgv,
+  agentStartCmd,
   type DiscoveredConversation,
   type ShippedAdapter,
 } from '../utils/agentAdapters';
@@ -852,6 +854,63 @@ export function Workspace({
       setTabGroups((prev) => [...prev, tab]);
       setActiveTabId(tab.id);
       // The manager covers the workspace, so the pane it just opened would be behind it.
+      setMainView('terminal');
+    } catch (error) {
+      const msg =
+        typeof error === 'string'
+          ? error
+          : error instanceof Error
+            ? error.message
+            : t('ws.errConnect');
+      if (msg === 'cancelled' || msg.includes('Disconnect')) return;
+      setToastType('error');
+      setToastMessage(msg);
+    }
+  };
+
+  /**
+   * Start a conversation: the same pane as a resumed one, with nothing to resume.
+   *
+   * ONE PATH FOR BOTH, which is why this is forty lines and not a second feature. A new
+   * conversation is the tool run with no arguments in a directory — the pane, the chip,
+   * the tab and the local-versus-SSH split are all the resume path's, so only the command
+   * differs. What a listing cannot give it gives here instead: the working directory is
+   * the one thing the person named, so the pane header carries it rather than guessing.
+   */
+  const handleNewAgent = async (
+    machine: ConnectionInfo | null,
+    adapter: ShippedAdapter,
+    cwd: string,
+  ) => {
+    try {
+      const sessionId = machine
+        ? await conns.connect(machine, agentStartCmd(adapter, cwd))
+        : // `home` and not an empty string: the word is resolved on the machine the shell
+          // starts on, which is the only side that knows where that is.
+          await Backend.Terminal.connectLocalProgram(
+            agentStartArgv(adapter),
+            cwd || NEW_TAB_CWD_HOME,
+          );
+      const session: TerminalSession = {
+        id: sessionId,
+        connectionId: machine?.id ?? 'local',
+        connectionName: machine?.name ?? adapter.name,
+      };
+      const pane = createAgentPane(session, {
+        toolId: adapter.id,
+        toolName: adapter.name,
+        // No conversation id, because the tool has not written one yet: it is minted
+        // inside the session, and a handle invented here would name nothing. The pane
+        // shows the tool and the directory until the next probe finds the transcript.
+        conversationId: '',
+        // The directory is what this is about, so it is what the tab is called.
+        project: cwd || adapter.name,
+        cwd: cwd || undefined,
+        machine: machine?.name,
+      });
+      const tab: Tab = { id: crypto.randomUUID(), name: adapter.name, paneTree: pane };
+      setTabGroups((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
       setMainView('terminal');
     } catch (error) {
       const msg =
@@ -2439,7 +2498,11 @@ export function Workspace({
                         machineId={agentMachineId}
                         onPickMachine={setAgentMachineId}
                         probeAgents={conns.probeAgents}
+                        manageAgents={conns.manageAgents}
                         onResume={handleResumeAgent}
+                        onNew={(machine, adapter, cwd) =>
+                          void handleNewAgent(machine, adapter, cwd)
+                        }
                         mode={serverKeys.mode}
                       />
                     </ErrorBoundary>

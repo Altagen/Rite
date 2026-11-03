@@ -212,6 +212,18 @@ Board touch no host and are never gated.
 effect on a machine. Same two halves, same strengths as above, and no `minInterval` — the
 user picks a machine and asks, so there is no automatic refresh to floor.
 
+**Removing a conversation answers to the same key, and there is no second switch.** The
+manager can delete one — the tool's own transcript, on the machine it was read on — and
+that is not a separate decision for an administrator: anyone who can open a terminal pane
+on a machine can type `rm` into it, so a `manage` half would hide a button and change
+nothing. What it would do is read as a confinement while being none. The three `manage`
+routes therefore sit behind `agent_policy` exactly as the three `probe` routes do, and
+`e2e/agent-policy-check.mjs` holds both pairs.
+
+The command is built on the client, where the one check that matters lives: the path has
+to be named by the conversation's own id (`agentRemoveCmd`), so a parser that drifted
+produces no command rather than a command that removes something else.
+
 Its own key rather than `dashboard_policy`, because allowing `docker ps` is not the same
 decision as allowing a home directory to be enumerated, and an administrator must be able
 to make them separately.

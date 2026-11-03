@@ -358,7 +358,7 @@ than waiting, not because anything is unresolved.
 
 ---
 
-## 🤖 Agent Manager (next major feature — ahead of Phase 2)
+## 🤖 Agent Manager (in progress — ahead of Phase 2)
 
 **Goal:** Stop hunting for AI coding agents. See the ones that exist, resume one
 where it stopped, and start a new one already carrying its context — without
@@ -374,30 +374,55 @@ already runs a command on the *local* machine from either shell.
 `design/mock/`, as the dashboard was, so the shape is argued over on screen
 rather than in a pull request. An ADR follows the mock, and code follows the ADR.
 
-- [ ] **PTY + exec in `rite-core`** — there is PTY+shell (interactive) and exec
-      without a PTY (one-shot); an agent wants both. Not the typed-after-a-delay
-      shortcut: a shell discards queued input while it sets the tty up, so an early
-      send is *gone*, which the split-preset work already proved and fixed once.
+Two things the code has since settled that the mock has not caught up with, and it owes
+them: the **detail panel** (the mock has a row menu and a mark dialog, no panel — and the
+panel's order, facts and actions above a folded prompt, is a decision taken on a real
+machine), and **delete**. The rule holds in both directions: the mock leads when it is
+ahead, and it is corrected from the code when the code has measured something it had not.
+
+- [x] **PTY + exec in `rite-core`** — **done.** An agent pane runs a *named program*, not
+      a command typed into a shell: over SSH the resume line travels with the channel, and
+      on this machine it is argv through `execvp`. Not the typed-after-a-delay shortcut: a
+      shell discards queued input while it sets the tty up, so an early send is *gone*,
+      which the split-preset work already proved and fixed once.
 - [x] **`local_terminal.rs`** — **done**, both halves. `cwd` arrived in 0.2.6 for splits;
       the argv-direct spawn is `LocalProgram::{Shell, Script, Argv}` with
       `LocalSession::run_program(events, argv, cwd)`, so a resume command reaches `execvp`
       as written instead of being re-parsed by `sh -c`. An argv does not borrow the
       shell's fallback resolution, which would have answered a missing CLI with an
-      anonymous `/bin/sh` prompt. Nothing reaches it from the UI yet — it is groundwork,
-      and six tests are its only caller. ADR 0022 §7.2 and its addendum.
-- [ ] **Agent pane**, not a menu: an agent has a context of its own — a working
-      directory, a transcript, a lifetime — and belongs to no machine (see *Pane
-      or menu* above). **Pane kinds** in Phase 1 are done, so this is a registration
-      under `apps/desktop/src/panes/kinds/` rather than a change to the split tree.
-- [ ] Discover existing sessions — list them with their project, their last
-      activity and whether they are still running
-- [ ] **Resume** a session in a pane, without the user ever seeing its id
-- [ ] **Seed** a new agent with its context automatically, rather than pasting it
-- [ ] Per-tool adapter, isolated on purpose — `--resume <uuid>`, the paths under a
-      vendor's home directory and the transcript format are **not a stable API**
-      and will change without notice. One adapter per tool, written expecting to
-      break, with the breakage contained to it. (ADR 0003's lesson, learned the
+      anonymous `/bin/sh` prompt. ADR 0022 §7.2 and its addendum.
+- [x] **Agent pane**, not a menu — **done.** A registered kind under
+      `apps/desktop/src/panes/kinds/`, so an agent splits with plain terminals in the same
+      tab and the split tree learned nothing new.
+- [x] **Discover existing sessions** — **done**, with their project and the time they were
+      last written, newest first. **Not whether one is still running**, and that is a
+      refusal rather than a gap: a transcript written twenty seconds ago by a session that
+      has since exited is byte-for-byte one written by a session mid-answer.
+- [x] **Resume** a session in a pane, without the user ever seeing its id — **done.**
+- [x] **Per-tool adapter, isolated on purpose** — **done**, seven of them, five measured
+      against installed binaries. Three of the four commands the mock carried could not
+      work, which is the whole argument for the boundary. (ADR 0003's lesson, learned the
       hard way: pin the constraint, never the incidental shape.)
+- [x] **A name and a colour of one's own** — **done.** A conversation a vendor filed under
+      a uuid gets a name the person gave it, in a document Rite owns
+      (`~/.config/rite/marks.json`, or a blob sealed under the account key). A mark rots
+      and a layout does not, which is why it is not in the workspace file.
+- [x] **Remove one, and start one** — **done.** A removal is the tool's own transcript
+      going away on the machine it was read on, behind a confirmation that names the file;
+      a start is the tool with no arguments in a directory that was asked for. Four of the
+      seven can remove — three listings name no file, and those show no button.
+- [ ] **Seed** a new agent with its context automatically, rather than pasting it — the
+      directory is passed; the rest is the management layer below.
+- [ ] **What is in effect — skills, commands and hooks** (ADR 0022 §6): the account's
+      layer under the project's, resolved on that host under that account, every row
+      carrying its path, a shadowed copy shown *losing*. Read-only on purpose, and mocked
+      already (`dlgAgentContext`).
+- [ ] **A card that says more than a listing can** — the branch, the working directory and
+      the turn count live *inside* a transcript, which is a second read per conversation.
+      Until it exists those lines are absent rather than filled in.
+- [ ] **The Tools dialog, writable** — the adapter set is the user's (ADR 0022 §4
+      addendum): editing the two commands, turning a tool off, adding a CLI that is not one
+      of the seven. Read-only today.
 - [ ] **Compare what is in effect across machines** — "this project loads three skills
       on web-01 and two on my laptop" is the same read, answered twice. Still
       read-only, and the natural next step once the single-machine view is real.
