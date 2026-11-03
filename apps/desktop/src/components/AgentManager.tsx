@@ -29,7 +29,7 @@ import { useTranslation } from '../i18n/i18n';
 import { Dropdown } from './Dropdown';
 import type { ConnectionInfo } from '../store/connectionsStore';
 import type { RemoteCommandOutput, ServerMode } from '../utils/backend';
-import { agentProbeCmd, parseAgentProbe, type ProbedTool } from '../utils/agentProbe';
+import { agentProbeCmd, parseAgentProbe } from '../utils/agentProbe';
 import {
   SHIPPED_ADAPTERS,
   agentResumeCmd,
@@ -39,6 +39,7 @@ import {
 } from '../utils/agentAdapters';
 import { agentBlockedReason, agentVerdict } from '../utils/agentPolicy';
 import { useLayouts } from '../store/layouts';
+import { keepAnswer, readAnswers, type Answer } from '../store/agentAnswers';
 import type { Mark } from '../store/layoutsFormat';
 import { MACHINE_SWATCHES } from '../theme/swatches';
 import { Backend } from '../utils/backend';
@@ -72,12 +73,6 @@ const LOCAL = '@local';
  * and says how many machines it is speaking for.
  */
 const ALL = '@all';
-
-/** One machine's answer, with when it was read. */
-interface Answer {
-  at: number;
-  tools: ProbedTool[];
-}
 
 /** A conversation plus the adapter that reported it — what a row needs. */
 interface Row {
@@ -134,8 +129,10 @@ export function AgentManager({
   mode,
 }: Props) {
   const { t } = useTranslation();
-  // Per machine, so switching back does not throw away an answer that cost a round trip.
-  const [answers, setAnswers] = useState<Record<string, Answer>>({});
+  // Per machine, so switching back does not throw away an answer that cost a round trip
+  // — and read from the device at mount, so neither does closing the window. Lazy, so
+  // storage is touched once per manager rather than on every render.
+  const [answers, setAnswers] = useState<Record<string, Answer>>(readAnswers);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -150,6 +147,19 @@ export function AgentManager({
   const onLocal = machineId === LOCAL;
   const onAll = machineId === ALL;
   const machine = connections.find((c) => c.id === machineId) ?? null;
+  /**
+   * The colour a machine already wears in the Library, by the id a row carries.
+   *
+   * THE CARD'S EDGE IS THE MACHINE'S, not a palette invented here. That colour was
+   * chosen once, in the Library, and "the green ones are the home lab" is a fact the
+   * person established — a second language for the same thing would compete with it.
+   * A mark's own colour rides on the mark instead.
+   */
+  const colorOf = useCallback(
+    (id: string) => connections.find((c) => c.id === id)?.color ?? undefined,
+    [connections],
+  );
+
   /** What a machine is called on screen, by the id a row carries. */
   const nameOf = useCallback(
     (id: string) =>
@@ -184,10 +194,13 @@ export function AgentManager({
         : await probeAgents!(machine!, cmd);
       // Stamped here. The answer is only as fresh as the moment this client read it,
       // and a host's own clock is not a fact about that.
-      setAnswers((prev) => ({
-        ...prev,
-        [machineId]: { at: Date.now(), tools: parseAgentProbe(out.stdout, SHIPPED_ADAPTERS) },
-      }));
+      setAnswers((prev) =>
+        keepAnswer(
+          machineId,
+          { at: Date.now(), tools: parseAgentProbe(out.stdout, SHIPPED_ADAPTERS) },
+          prev,
+        ),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -500,6 +513,7 @@ export function AgentManager({
                     onRename={setRenaming}
                     onOpen={setOpen1}
                     nameOf={onAll ? nameOf : undefined}
+                    colorOf={colorOf}
                   />
                 ))
               ) : (
@@ -511,6 +525,7 @@ export function AgentManager({
                   onRename={setRenaming}
                   onOpen={setOpen1}
                   nameOf={onAll ? nameOf : undefined}
+                  colorOf={colorOf}
                 />
               )}
 
@@ -756,6 +771,7 @@ function Card({
   onRename,
   onOpen,
   on,
+  edge,
 }: {
   row: Row;
   onResume: () => void;
@@ -763,6 +779,8 @@ function Card({
   onOpen: () => void;
   /** The machine's name, when the list mixes machines. Absent on a single one. */
   on?: string;
+  /** The machine's colour from the Library, when it has one. */
+  edge?: string;
 }) {
   const { t } = useTranslation();
   const { conv, mark } = row;
@@ -789,7 +807,9 @@ function Card({
   return (
     <div
       className="flex flex-col gap-1.5 rounded-md border border-border bg-card p-3"
-      style={mark?.color ? { borderLeft: `3px solid ${mark.color}` } : undefined}
+      // The machine's colour, always — a card says where it runs before it says anything
+      // else. A mark's colour is on the mark, beside its name.
+      style={edge ? { borderLeft: `3px solid ${edge}` } : undefined}
       data-testid={`agent-card-${conv.id}`}
       role="button"
       tabIndex={0}
@@ -802,6 +822,12 @@ function Card({
           .filter(Boolean)
           .join('\n')}
       >
+        {mark?.color && (
+          <span
+            className="mr-1.5 inline-block h-2 w-2 shrink-0 rounded-full align-middle"
+            style={{ background: mark.color }}
+          />
+        )}
         {headline ?? <span className="text-muted-foreground">{t('agent.noProject')}</span>}
       </div>
       {/* Under the headline rather than replacing it, so a card never has to choose
@@ -982,6 +1008,7 @@ function Band({
   onRename,
   onOpen,
   nameOf,
+  colorOf,
 }: {
   adapter: ShippedAdapter;
   rows: Row[];
@@ -992,6 +1019,8 @@ function Band({
   onOpen: (row: Row) => void;
   /** Names a machine when the list mixes them; absent when it does not. */
   nameOf?: (id: string) => string;
+  /** The machine's own colour from the Library, by row. */
+  colorOf: (id: string) => string | undefined;
 }) {
   const { t } = useTranslation();
   const [tail, setTail] = useState(false);
@@ -1020,6 +1049,7 @@ function Band({
           onRename={() => onRename(r)}
           onOpen={() => onOpen(r)}
           on={nameOf?.(r.on)}
+          edge={colorOf(r.on)}
         />
       ))}
     </div>
@@ -1086,6 +1116,7 @@ function Rail({
   onRename,
   onOpen,
   nameOf,
+  colorOf,
 }: {
   bands: { adapter: ShippedAdapter; rows: Row[] }[];
   active: string | null;
@@ -1094,6 +1125,8 @@ function Rail({
   onRename: (row: Row) => void;
   onOpen: (row: Row) => void;
   nameOf?: (id: string) => string;
+  /** The machine's own colour from the Library, by row. */
+  colorOf: (id: string) => string | undefined;
 }) {
   const { t } = useTranslation();
   const current = bands.find((b) => b.adapter.id === active) ?? bands[0];
@@ -1126,6 +1159,7 @@ function Rail({
             onRename={() => onRename(r)}
             onOpen={() => onOpen(r)}
             on={nameOf?.(r.on)}
+            edge={colorOf(r.on)}
             t={t}
           />
         ))}
@@ -1141,6 +1175,7 @@ function RailRow({
   onRename,
   onOpen,
   on,
+  edge,
   t,
 }: {
   row: Row;
@@ -1148,6 +1183,7 @@ function RailRow({
   onRename: () => void;
   onOpen: () => void;
   on?: string;
+  edge?: string;
   t: (key: string, vars?: Record<string, string>) => string;
 }) {
   const { conv, mark } = row;
@@ -1156,7 +1192,7 @@ function RailRow({
   return (
     <div
       className="group flex items-center gap-3 border-b border-border/60 px-1 py-1.5 text-sm hover:bg-muted/40"
-      style={mark?.color ? { borderLeft: `3px solid ${mark.color}`, paddingLeft: 6 } : undefined}
+      style={edge ? { borderLeft: `3px solid ${edge}`, paddingLeft: 6 } : undefined}
       data-testid={`agent-card-${conv.id}`}
       role="button"
       tabIndex={0}
@@ -1167,6 +1203,12 @@ function RailRow({
         className="min-w-0 flex-1 truncate"
         title={mark?.name ?? conv.ask ?? conv.project ?? conv.id}
       >
+        {mark?.color && (
+          <span
+            className="mr-1.5 inline-block h-2 w-2 shrink-0 rounded-full align-middle"
+            style={{ background: mark.color }}
+          />
+        )}
         {mark?.name ?? conv.ask ?? conv.project ?? (
           <span className="text-muted-foreground">{t('agent.noProject')}</span>
         )}

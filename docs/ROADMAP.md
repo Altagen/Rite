@@ -259,7 +259,7 @@ token-versus-geometry, it is *what could ever live in a stylesheet*:
 |---|---|---|
 | Runtime geometry | 14 | a split's percentage, a popup's coordinates, `paddingLeft` from a tree depth, `pointerEvents` during a drag |
 | Static CSS, inline for no reason | 13 | `padding: '4px'`, `resize: 'vertical'`, `userSelect: 'none'`, `rotate(90deg)` |
-| A colour the user chose | 15 | a collection's, a machine's, a member's avatar, the swatch grids, an agent mark's |
+| A colour the user chose | 17 | a collection's, a machine's, a member's avatar, the swatch grids, an agent mark's dot in both arrangements |
 | A context's badge | 1 | `backgroundImage` from a hash |
 | **A design token, written as a hex** | **1** | `LibrarySidebar.tsx:841` |
 
@@ -272,8 +272,14 @@ The fifteenth arrived with the agent manager (ADR 0022 §6): a mark's swatch gri
 the colour being drawn is the one about to be stored. It is the third group exactly — a
 name and a colour a person gave to someone else's conversation — so it is inventoried
 rather than argued with, and it takes the shared `MACHINE_SWATCHES` rather than growing a
-palette of its own. The two places the mark is then USED read it from the stored value
-through `style={expr}`, which no stylesheet can hold either.
+palette of its own.
+
+The sixteenth and seventeenth are that same stored colour, drawn as a dot beside the name
+in each of the manager's two arrangements. The card's left edge is a third reading of a
+stored colour — the MACHINE's, from the Library — and it stays out of this count only
+because it is written `style={expr}` rather than `style={{…}}`, which the counter does not
+see. Said here rather than left as a gap: it is the same kind, and no stylesheet can hold
+it either.
 
 The fifth is one site and it is the whole argument for doing this before a theme exists.
 A folder's Delete button carries `color: '#f7768e'`, which is `--destructive`

@@ -68,7 +68,7 @@ function sites(re) {
 /* A JSX style prop. 30 after the 2026-10-28 sort: 14 runtime geometry, 14 a colour the
    user chose, 1 a context's badge, 1 the overflow button whose display a layout effect
    drives imperatively — a class there would lose to `el.style.display = ''`. */
-const STYLE_PROP_CEILING = 31;
+const STYLE_PROP_CEILING = 33;
 
 /* Imperative writes: a textarea growing to its content, a drag image built off-screen,
    and the overflow nav collapsing its items. All three measure first and then write, so

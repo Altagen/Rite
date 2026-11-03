@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 import {
   SHIPPED_ADAPTERS,
   LIST_CAP,
+  ASK_CAP,
   agentResumeCmd,
   shippedAdapter,
 } from '../apps/desktop/src/utils/agentAdapters.ts';
@@ -81,7 +82,11 @@ check('a file listing reads the first thing a person typed', () => {
     assert.ok(A(id).list.includes('!/environment_context/'), id);
     // Capped on the host, because a first message can be a pasted file and nobody wants
     // that shipped back two hundred times.
-    assert.ok(A(id).list.includes('substr($0,1,600)'), id);
+    assert.ok(A(id).list.includes(`substr($0,1,${ASK_CAP})`), id);
+    // Four thousand, not a hundred and twenty: what the cap decides is what is shipped
+    // back two hundred times, not what a card shows. The card truncates with CSS, at the
+    // width it actually has, and the detail panel shows the whole of it.
+    assert.equal(ASK_CAP, 4000);
   }
   // And the two whose transcripts a listing does not open: Grok's shape was not
   // measured, and an Antigravity conversation is a SQLite database.

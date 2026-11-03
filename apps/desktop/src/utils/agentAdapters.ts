@@ -58,6 +58,9 @@ import { shellArg } from './machineProbe.ts';
  */
 export const LIST_CAP = 200;
 
+/** How much of a first message is worth carrying back. See `ASK`. */
+export const ASK_CAP = 4000;
+
 /**
  * Every file-listing adapter's whole command: newest first, capped, each line its
  * last-written time and its path.
@@ -87,9 +90,12 @@ const TAB = '\t';
  * which is itself a fact worth having.
  *
  * `substr` rather than a second process, and the cap is there because a first message
- * can be a pasted file.
+ * can be a pasted file — four thousand characters is a long paragraph and a short file,
+ * which is where the line between "the question" and "an attachment" falls. The reader
+ * shows the whole of what arrives; what the cap decides is what is shipped back, two
+ * hundred times.
  */
-const ASK = `awk '/"role":"user"/ && !/environment_context/ { print substr($0,1,600); exit }' "$f" 2>/dev/null`;
+const ASK = `awk '/"role":"user"/ && !/environment_context/ { print substr($0,1,${ASK_CAP}); exit }' "$f" 2>/dev/null`;
 
 /**
  * Every file-listing adapter's whole command: newest first, capped, and one line per
@@ -268,9 +274,12 @@ function askOf(raw: string): string | undefined {
   }
   // One line, squeezed, and short enough to be a title rather than a paragraph. A turn
   // that opens with a tag is a preamble the host's `awk` did not catch, not a question.
+  // Squeezed to one line, and kept WHOLE: a card truncates with CSS, which keeps the
+  // ellipsis at the width the card actually has, and the detail panel shows all of it.
+  // Cutting here would have thrown away what the panel exists to show.
   const text = out.replace(/\s+/g, ' ').trim();
   if (!text || text.startsWith('<')) return undefined;
-  return text.length > 120 ? `${text.slice(0, 119)}…` : text;
+  return text;
 }
 
 /** Split a path the way the listings print it: forward slashes, no trailing one. */
