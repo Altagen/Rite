@@ -76,6 +76,25 @@ const routes: Record<string, Route> = {
     return null;
   },
 
+  get_marks: () => json('/api/marks'),
+  set_marks: async (a) => {
+    await json('/api/marks', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ value: a.text }),
+    });
+    return null;
+  },
+  user_marks_get: () => json('/api/user/marks'),
+  user_marks_set: async (a) => {
+    await json('/api/user/marks', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ blob: a.blob }),
+    });
+    return null;
+  },
+
   get_layouts: () => json('/api/layouts'),
   set_layouts: async (a) => {
     await json('/api/layouts', {

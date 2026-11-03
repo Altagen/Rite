@@ -19,6 +19,7 @@ pub mod library_store;
 pub mod local_collections;
 pub mod local_terminal;
 pub mod local_user;
+pub mod marks_store;
 pub mod server_auth;
 pub mod ssh_config;
 pub mod teams;

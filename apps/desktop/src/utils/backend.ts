@@ -267,6 +267,28 @@ export const BackendLayouts = {
   put: (text: string) => invokeWithValidation('set_layouts', z.null(), { text }),
 } as const;
 
+/**
+ * The names a person gave to conversations (ADR 0022 §6), on the machine.
+ *
+ * A document of its own and not a table in the workspace file: a mark is keyed to a
+ * conversation a vendor's tool can rotate away, and Rite may prune what it owns while it
+ * must not prune a person's config. JSON, because nobody edits this one by hand.
+ */
+export const BackendMarks = {
+  get: () => invokeWithValidation('get_marks', LayoutsFileSchema),
+  put: (text: string) => invokeWithValidation('set_marks', z.null(), { text }),
+} as const;
+
+/** The account's copy of the same, sealed client-side. See `BackendUserLayouts`. */
+export const BackendUserMarks = {
+  get: () =>
+    invokeWithValidation(
+      'user_marks_get',
+      z.object({ blob: z.string().nullable(), updatedAt: z.number().nullable() }),
+    ),
+  set: (blob: string) => invokeWithValidation('user_marks_set', z.null(), { blob }),
+} as const;
+
 // Settings Commands
 export const BackendSettings = {
   /**
@@ -1450,6 +1472,8 @@ export const Backend = {
   Auth: BackendAuth,
   Settings: BackendSettings,
   Layouts: BackendLayouts,
+  Marks: BackendMarks,
+  UserMarks: BackendUserMarks,
   Connections: BackendConnections,
   Terminal: BackendTerminal,
   Ssh: BackendSsh,

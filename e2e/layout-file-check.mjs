@@ -22,7 +22,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  replaceMarkBlocks,
   parseLayoutFile,
   formatLayoutFile,
   replacePresetBlocks,
@@ -105,7 +104,7 @@ check('an empty file is not an error either', () => {
   // `terminal: {}` and not an absent field: the section is always present and its keys are
   // what is absent, so a reader never has to ask whether the document had the table
   // before asking what it said (ADR 0023, addendum).
-  const fresh = { presets: [], layouts: [], marks: [], terminal: {}, error: null };
+  const fresh = { presets: [], layouts: [], terminal: {}, error: null };
   assert.deepEqual(parseLayoutFile(''), fresh);
   assert.deepEqual(parseLayoutFile('   \n\n'), fresh);
 });
@@ -801,56 +800,6 @@ check('indentation follows the line the key is written under', () => {
 check('an empty file is not a crash', () => {
   assert.equal(setLayoutStartup('', 0, true), '');
   assert.equal(setLayoutStartup(null, 0, true), '');
-});
-
-check('a mark round-trips through the document', () => {
-  // A name a person gave to someone else's conversation (ADR 0022 §6). Keyed by all
-  // three, because none of them is unique alone: two machines can hold the same tool,
-  // and two tools the same id shape.
-  const text = replaceMarkBlocks('', [
-    { machine: '@local', tool: 'codex', id: 'x1', name: 'le portage', color: '#7c5cff' },
-    { machine: 'web-01', tool: 'claude', id: 'x2', name: 'spike, à jeter' },
-  ]);
-  assert.deepEqual(parseLayoutFile(text).marks, [
-    { machine: '@local', tool: 'codex', id: 'x1', name: 'le portage', color: '#7c5cff' },
-    { machine: 'web-01', tool: 'claude', id: 'x2', name: 'spike, à jeter' },
-  ]);
-});
-
-check('writing marks leaves the rest of the document alone', () => {
-  // The file is the person's: a rename must not reformat their layouts, move their
-  // comments or reorder anything they wrote.
-  const before = '# mine\n\n[[preset]]\nname = "top"\ncommand = "top"\n';
-  const after = replaceMarkBlocks(before, [
-    { machine: '@local', tool: 'codex', id: 'x1', name: 'n' },
-  ]);
-  assert.match(after, /^# mine/);
-  assert.equal(parseLayoutFile(after).presets.length, 1);
-  assert.equal(parseLayoutFile(after).marks.length, 1);
-  // And taking the name away takes the block with it, rather than leaving one that says
-  // nothing.
-  const cleared = replaceMarkBlocks(after, []);
-  assert.deepEqual(parseLayoutFile(cleared).marks, []);
-  assert.equal(parseLayoutFile(cleared).presets.length, 1);
-});
-
-check('a mark with no colour writes no colour', () => {
-  const text = replaceMarkBlocks('', [{ machine: '@local', tool: 'codex', id: 'x', name: 'n' }]);
-  assert.equal(text.includes('color'), false, text);
-  assert.equal(parseLayoutFile(text).marks[0].color, undefined);
-});
-
-check('an unknown key in a mark is refused by name', () => {
-  // The same rule the rest of this subset follows: a typo must not be stored and
-  // silently ignored, because nothing on screen would ever say why it did nothing.
-  const bad = parseLayoutFile('[[mark]]\nmachine = "@local"\nlabel = "n"\n');
-  assert.match(bad.error.message, /\[\[mark\]\] takes machine, tool, id, name or color/);
-  assert.deepEqual(bad.marks, []);
-});
-
-check('and the list of tables names it', () => {
-  const bad = parseLayoutFile('[[marks]]\n');
-  assert.match(bad.error.message, /\[\[mark\]\]/);
 });
 
 console.log(`\n${passed} checks passed`);

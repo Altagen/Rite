@@ -824,6 +824,7 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/settings/{key}", get(get_setting).put(set_setting))
         // Layouts (docs/LAYOUTS.md): what opens when you sit down.
         .route("/api/layouts", get(get_layouts).put(put_layouts))
+        .route("/api/marks", get(get_marks).put(put_marks))
         // Local-vault collections (ADR 0018): collections, their machines and their
         // boards, all decrypted in rite-core with the master key. Plaintext over
         // loopback to the local webview, which never receives credentials — the
@@ -876,6 +877,7 @@ pub fn build_router(state: ServerState) -> Router {
             "/api/user/layouts",
             get(get_user_layouts).put(set_user_layouts),
         )
+        .route("/api/user/marks", get(get_user_marks).put(set_user_marks))
         .route("/api/ssh-config/default-path", get(default_ssh_config_path))
         .route("/api/ssh-config/parse", post(parse_ssh_config))
         .route("/api/ssh/host-key/accept", post(accept_host_key))
@@ -4019,6 +4021,82 @@ fn layouts_path_from(custom: Option<std::ffi::OsString>) -> Option<std::path::Pa
 /// client reads that route instead — two supports, two honest contracts.
 fn layouts_file(accounts: bool) -> Option<std::path::PathBuf> {
     if accounts { None } else { layouts_path() }
+}
+
+/// Where the names a person gave to conversations live, beside the workspace document.
+///
+/// A FILE OF ITS OWN AND NOT A TABLE IN THAT ONE (ADR 0022 §6). A mark is keyed to a
+/// conversation id on a machine, and a vendor's tool rotates those away; a layout is
+/// durable configuration a person writes and reads. Rite may prune what it owns and must
+/// not prune a config file, so the two cannot share a document — and fifty marks in a
+/// file whose useful content is thirty lines buries the part that is edited.
+///
+/// JSON, because nobody edits this one by hand: that removes a parser, a block walk and
+/// every syntax error they can produce.
+fn marks_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("rite").join("marks.json"))
+}
+
+fn marks_file(accounts: bool) -> Option<std::path::PathBuf> {
+    if accounts { None } else { marks_path() }
+}
+
+async fn get_marks(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
+    if let Some(path) = marks_file(state.accounts) {
+        let text = match tokio::fs::read_to_string(&path).await {
+            Ok(t) => t,
+            // Nothing named yet is the normal state of a fresh install, not a failure.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display()).into()),
+        };
+        return Ok(Json(
+            json!({ "text": text, "path": path.display().to_string() }),
+        ));
+    }
+    Ok(Json(json!({ "text": null, "path": null })))
+}
+
+async fn put_marks(
+    State(state): State<ServerState>,
+    Json(req): Json<ValueReq>,
+) -> Result<StatusCode, AppError> {
+    if let Some(path) = marks_file(state.accounts) {
+        if let Some(dir) = path.parent() {
+            tokio::fs::create_dir_all(dir)
+                .await
+                .map_err(|e| anyhow::anyhow!("creating {}: {e}", dir.display()))?;
+        }
+        tokio::fs::write(&path, &req.value)
+            .await
+            .map_err(|e| anyhow::anyhow!("writing {}: {e}", path.display()))?;
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    // A shared instance has no file to write and must not put this in a table it can
+    // read: there the marks ride as a sealed blob at `/api/user/marks`.
+    Ok(StatusCode::NOT_FOUND)
+}
+
+/// The account's copy, sealed. See `get_user_layouts` — the same arrangement, because a
+/// mark holds a machine name and a first message, which this server may not read.
+async fn get_user_marks(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+) -> Result<Json<Value>, AppError> {
+    let row = rite_core::marks_store::get(state.db.pool(), &user.id).await?;
+    let (blob, updated_at) = match row {
+        Some((blob, at)) => (Some(blob), Some(at)),
+        None => (None, None),
+    };
+    Ok(Json(json!({ "blob": blob, "updatedAt": updated_at })))
+}
+
+async fn set_user_marks(
+    State(state): State<ServerState>,
+    Extension(user): Extension<Arc<User>>,
+    Json(req): Json<VaultBlobReq>,
+) -> Result<StatusCode, AppError> {
+    rite_core::marks_store::set(state.db.pool(), &user.id, &req.blob).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// What a new installation sees instead of an empty box: the shape of the file, as

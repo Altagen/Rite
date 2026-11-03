@@ -24,7 +24,7 @@
  * machine in both rather than by arguing about it.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { Dropdown } from './Dropdown';
 import type { ConnectionInfo } from '../store/connectionsStore';
@@ -38,9 +38,8 @@ import {
   type ShippedAdapter,
 } from '../utils/agentAdapters';
 import { agentBlockedReason, agentVerdict } from '../utils/agentPolicy';
-import { useLayouts } from '../store/layouts';
+import { useMarks, type Mark } from '../store/marks';
 import { keepAnswer, readAnswers, type Answer } from '../store/agentAnswers';
-import type { Mark } from '../store/layoutsFormat';
 import { MACHINE_SWATCHES } from '../theme/swatches';
 import { Backend } from '../utils/backend';
 import { isNativeShell } from '../utils/nativeShell';
@@ -208,8 +207,15 @@ export function AgentManager({
     }
   }, [machineId, onLocal, machine, probeAgents]);
 
-  const marks = useLayouts((st) => st.marks);
-  const setMark = useLayouts((st) => st.setMark);
+  const marks = useMarks((st) => st.marks);
+  const setMark = useMarks((st) => st.set);
+  const loadMarks = useMarks((st) => st.load);
+  const marksLoaded = useMarks((st) => st.loaded);
+  // Read once, when the manager is first opened: nothing else in the app needs them, so
+  // loading them at startup would be a request for a screen most sessions never visit.
+  useEffect(() => {
+    if (!marksLoaded) void loadMarks();
+  }, [marksLoaded, loadMarks]);
   /**
    * Open a conversation, on THE MACHINE IT WAS READ ON and not on the one being looked
    * at. Under `@all` those are different, and resuming the wrong one would open a
