@@ -2110,9 +2110,15 @@ for (const shell of ['web', 'desktop'] as const) {
     await expect(pane).toContainText(/every drag replaces/i);
 
     // Every convention is offered, and picking one changes what the row explains.
-    await expect(picker.locator('option')).toHaveCount(4);
+    await expect(picker.locator('option')).toHaveCount(5);
     await picker.selectOption('selectRightPaste');
     await expect(pane).toContainText(/PuTTY/);
+    await expect(pane).not.toContainText(/every drag replaces/i);
+
+    // The fifth is the one where a drag costs nothing: selecting writes no clipboard at
+    // all, so the warning above must not follow it either.
+    await picker.selectOption('rightCopyPaste');
+    await expect(pane).toContainText(/Selecting does nothing on its own/i);
     await expect(pane).not.toContainText(/every drag replaces/i);
 
     // Back to the shipped convention ⇒ the document holds nothing, rather than pinning

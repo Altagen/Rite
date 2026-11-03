@@ -78,7 +78,13 @@ export interface LayoutError {
  * already uses between the mock and the app — and it beats a parser that accepts any
  * string and leaves a typo to be ignored in silence, with no line number.
  */
-export const FILE_COPY_MODES = ['chord', 'select', 'selectRightPaste', 'ctrlC'] as const;
+export const FILE_COPY_MODES = [
+  'chord',
+  'select',
+  'selectRightPaste',
+  'rightCopyPaste',
+  'ctrlC',
+] as const;
 export type FileCopyMode = (typeof FILE_COPY_MODES)[number];
 
 /**

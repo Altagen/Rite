@@ -72,8 +72,28 @@ const mouseup = (over = {}) => ({
 
 const rightClick = (mode) => ({ type: 'contextmenu', where: 'terminal', mode });
 
-/** The release of the right button, which is where the paste actually lives. */
-const rightUp = (mode) => ({ type: 'mouseup', where: 'terminal', mode, button: 2, text: '' });
+/** The press of the right button, which no mode acts on. */
+const rightDown = (mode, text = '') => ({
+  type: 'mousedown',
+  where: 'terminal',
+  mode,
+  button: 2,
+  text,
+});
+/**
+ * The RELEASE of the right button, which is where that gesture is served.
+ *
+ * Not the context menu — the clipboard cannot be read from inside one on WebKitGTK — and
+ * not the press, because there is no reason to take it: the selection is still readable
+ * here, measured on the same engine. `text` is what is selected at that moment.
+ */
+const rightUp = (mode, text = '') => ({
+  type: 'mouseup',
+  where: 'terminal',
+  mode,
+  button: 2,
+  text,
+});
 
 console.log('\nthe modes themselves:');
 
@@ -82,7 +102,13 @@ check('the shipped default is the behaviour that came before them', () => {
 });
 
 check('every mode is named, and nothing else is', () => {
-  assert.deepEqual(CLIPBOARD_MODES, ['chord', 'select', 'selectRightPaste', 'ctrlC']);
+  assert.deepEqual(CLIPBOARD_MODES, [
+    'chord',
+    'select',
+    'selectRightPaste',
+    'rightCopyPaste',
+    'ctrlC',
+  ]);
   for (const m of CLIPBOARD_MODES) assert.equal(isClipboardMode(m), true, m);
   // What a configuration file must be refused for, so a typo is not a silent default.
   for (const bad of ['Chord', 'CHORD', 'xterm', '', ' chord', null, 3, {}, undefined]) {
@@ -182,8 +208,11 @@ check('a chord mode keeps the selection it copied, in every form', () => {
   });
 });
 
-check('but never in chord or ctrlC, where only a chord copies', () => {
-  for (const mode of ['chord', 'ctrlC']) {
+check('but never in chord, ctrlC or rightCopyPaste', () => {
+  // The first two copy on a chord. The third is the distinction that mode exists for:
+  // dragging only selects, so a stray drag cannot replace what is on the clipboard, and
+  // nothing leaves the terminal until the right button says so.
+  for (const mode of ['chord', 'ctrlC', 'rightCopyPaste']) {
     assert.deepEqual(planClipboard(mouseup({ mode })), IGNORE, mode);
   }
 });
@@ -202,9 +231,9 @@ check('a middle-button release is the engine’s paste, in every mode', () => {
   }
 });
 
-check('a right-button release is not a copy either', () => {
-  // It is the paste, below. What it must never be is a copy: the selection is still there
-  // at the moment the paste replaces it.
+check('a right-button release is not a copy in selectRightPaste', () => {
+  // It is the paste, below. What it must never be there is a copy: the selection is
+  // still on screen at the moment the paste replaces it.
   assert.notEqual(planClipboard(mouseup({ mode: 'selectRightPaste', button: 2 })).kind, 'copy');
   assert.notEqual(
     planClipboard(mouseup({ mode: 'selectRightPaste', button: 2 })).kind,
@@ -215,15 +244,57 @@ check('a right-button release is not a copy either', () => {
   }
 });
 
+console.log('\none gesture, two meanings (rightCopyPaste):');
+
+check('a right click over a selection copies it and lets it go', () => {
+  assert.deepEqual(planClipboard(rightUp('rightCopyPaste', 'dragged text')), {
+    kind: 'copy-and-release',
+    text: 'dragged text',
+  });
+});
+
+check('and a right click with nothing selected pastes', () => {
+  assert.deepEqual(planClipboard(rightUp('rightCopyPaste')), { kind: 'paste' });
+});
+
+check('the release is what makes the second click reachable', () => {
+  // The two halves are one rule. A copy that kept the selection would meet the same
+  // selection on the next click, copy it again, and paste would never be reached — so
+  // asserting the copy without asserting the release asserts half a mode.
+  assert.equal(planClipboard(rightUp('rightCopyPaste', 'x')).kind, 'copy-and-release');
+  assert.equal(planClipboard(rightUp('rightCopyPaste', '')).kind, 'paste');
+});
+
+check('and the press of that same click does nothing at all', () => {
+  // Both halves would otherwise happen twice: a copy then a paste of what was just
+  // copied, from one press of one button.
+  assert.deepEqual(planClipboard(rightDown('rightCopyPaste', 'dragged text')), IGNORE);
+  assert.deepEqual(planClipboard(rightDown('rightCopyPaste')), IGNORE);
+});
+
+check('its context menu is given up too, or the menu opens over both', () => {
+  assert.deepEqual(planClipboard(rightClick('rightCopyPaste')), { kind: 'suppress' });
+});
+
+check('and its left button is still only a selection', () => {
+  assert.deepEqual(
+    planClipboard(mouseup({ mode: 'rightCopyPaste', text: 'dragged text' })),
+    IGNORE,
+  );
+  assert.deepEqual(planClipboard(mouseup({ mode: 'rightCopyPaste', button: 1 })), IGNORE);
+});
+
 console.log('\npasting by right click:');
 
 check('the paste is on the release of the right button, not on the context menu', () => {
   // MEASURED, and the reason the mode did nothing at all before: on WebKitGTK a clipboard
-  // read from inside `contextmenu` is `NotAllowedError`, and the same read from the
-  // mouseup of that same click resolves (`e2e/desktop-bench`, scenario `rightpaste`).
-  // Asserting `paste` on the context menu is asserting the bug.
+  // read from inside `contextmenu` is `NotAllowedError`, and the same read from a mouse
+  // event of that click resolves (`e2e/desktop-bench`, scenario `rightpaste`). Asserting
+  // `paste` on the context menu is asserting the bug.
   assert.deepEqual(planClipboard(rightUp('selectRightPaste')), { kind: 'paste' });
   assert.deepEqual(planClipboard(rightClick('selectRightPaste')), { kind: 'suppress' });
+  // And the press does nothing, or the gesture would happen twice per click.
+  assert.deepEqual(planClipboard(rightDown('selectRightPaste')), IGNORE);
 });
 
 check('the context menu is cancelled even though it does not paste', () => {
@@ -231,11 +302,12 @@ check('the context menu is cancelled even though it does not paste', () => {
   assert.equal(planClipboard(rightClick('selectRightPaste')).kind, 'suppress');
 });
 
-check('and opens the engine’s own menu in every other mode', () => {
-  // Giving up the native context menu is the price of that one gesture, so only the mode
-  // named for it pays it.
+check('and opens the engine’s own menu in every mode that does not claim it', () => {
+  // Giving up the native context menu is the price of taking the gesture, so only the
+  // two modes that take it pay.
   for (const mode of ['chord', 'select', 'ctrlC']) {
     assert.deepEqual(planClipboard(rightClick(mode)), IGNORE, mode);
+    assert.deepEqual(planClipboard(rightDown(mode)), IGNORE, mode);
     assert.deepEqual(planClipboard(rightUp(mode)), IGNORE, mode);
   }
 });
@@ -305,7 +377,12 @@ console.log('\nanything else:');
 check('an event type the guard does not handle is ignored', () => {
   for (const mode of CLIPBOARD_MODES) {
     assert.deepEqual(planClipboard({ type: 'input', where: 'textarea', mode, text: 'x' }), IGNORE);
-    assert.deepEqual(planClipboard({ type: 'mousedown', where: 'terminal', mode, text: 'x' }), IGNORE);
+    // A LEFT press, which no mode claims — the right one is served above.
+    assert.deepEqual(
+      planClipboard({ type: 'mousedown', where: 'terminal', mode, button: 0, text: 'x' }),
+      IGNORE,
+      mode,
+    );
     assert.deepEqual(planClipboard({ type: 'copy', where: 'terminal', mode, text: 'x' }), IGNORE);
   }
 });

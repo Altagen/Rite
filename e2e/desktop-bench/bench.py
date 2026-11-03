@@ -898,6 +898,72 @@ def scenario_rightpaste(wid):
     shot("rightpaste")
 
 
+def scenario_rightcopy(wid):
+    """`rightCopyPaste`: one gesture, two meanings, on the engine that ships.
+
+    Selecting does nothing on its own; a right click copies the selection and lets it go;
+    a right click with nothing selected pastes. The decision is a table
+    (`e2e/clipboard-decision-check.mjs`); what only a real engine can answer is whether
+    the selection is STILL THERE when the right mouseup arrives. If xterm cleared it on
+    the mousedown, every right click would read an empty selection and paste — the mode
+    would have exactly one of its two meanings, and the table would still be green.
+    """
+    print("\nright click copies, then pastes")
+    if not js("!!document.querySelector('.xterm-rows')"):
+        check("a local terminal opens", open_terminal())
+    chosen = pick_copy_mode("rightCopyPaste")
+    check("the mode is chosen in Settings", chosen == "Right click copies, then pastes",
+          f"got {chosen}")
+    focus(wid)
+    js("document.querySelector('.xterm-helper-textarea')?.focus()")
+    time.sleep(0.3)
+
+    press("ctrl+c")
+    time.sleep(0.3)
+    type_text("echo BENCH-RIGHTCOPY")
+    time.sleep(0.6)
+
+    # Something else on the clipboard first, so "the selection was copied" cannot pass on
+    # what was already there.
+    clipboard_through_a_gesture("BENCH-STALE")
+
+    # READING THE CLIPBOARD COSTS THE SELECTION. The probe presses a key to get a gesture,
+    # and a keystroke clears xterm's selection — which is correct of xterm and fatal to a
+    # scenario that reads the clipboard between selecting and right-clicking. So each half
+    # gets its own drag, and nothing is read between a drag and the click under test.
+    mid, left = drag_over(wid, "BENCH-RIGHTCOPY", mid_drag=True)
+    check("dragging selects", bool(mid), f"{mid} rects mid-drag")
+    check("and leaves the selection on screen", left > 0, f"{left} rects left")
+    got = clipboard_through_a_gesture()
+    check("a drag copies nothing by itself", got == "ok:BENCH-STALE", f"got {got}")
+
+    drag_over(wid, "BENCH-RIGHTCOPY")
+    before = len(sent_bytes())
+    right_click(wid)
+    time.sleep(0.8)
+    # The selection first, because reading the clipboard would clear it either way.
+    gone = js("document.querySelectorAll('.xterm-selection div').length")
+    after = " ".join(sent_bytes(before))
+    check("the first right click sends nothing to the shell", after == "", f"sent={after}")
+    # THE MEASUREMENT THIS SCENARIO EXISTS FOR. Without the release the next right click
+    # meets the same selection, copies it again, and the paste is unreachable for ever.
+    check("and lets the selection go", gone == 0, f"{gone} rects left")
+    got = clipboard_through_a_gesture()
+    check("and copied the selection", isinstance(got, str) and "BENCH-RIGHTCOPY" in got,
+          f"got {got}")
+
+    before = len(sent_bytes())
+    right_click(wid)
+    time.sleep(1.2)
+    after = " ".join(sent_bytes(before))
+    hexed = "".join(f"{ord(c):02x} " for c in "BENCH-RIGHTCOPY").strip()
+    check("the second right click pastes what the first copied", hexed in after, f"sent={after}")
+    check("and pastes it once", after.count(hexed) == 1, f"{after.count(hexed)} occurrences")
+
+    press("ctrl+c")
+    shot("rightcopy")
+
+
 SCENARIOS = {
     "probe": scenario_probe,
     "size": scenario_size,
@@ -908,6 +974,7 @@ SCENARIOS = {
     "second": scenario_second,
     "clipboard": scenario_clipboard,
     "rightpaste": scenario_rightpaste,
+    "rightcopy": scenario_rightcopy,
 }
 
 

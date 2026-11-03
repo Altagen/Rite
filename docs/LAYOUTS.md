@@ -267,7 +267,7 @@ copyMode = "select"                   # how copy and paste behave
 newTabCwd = "/srv/work"               # where a new tab starts
 ```
 
-`copyMode` is one of `chord`, `select`, `selectRightPaste`, `ctrlC`. Absent means the
+`copyMode` is one of `chord`, `select`, `selectRightPaste`, `rightCopyPaste`, `ctrlC`. Absent means the
 shipped default.
 
 `newTabCwd` is an absolute path, or absent. One value and two states:

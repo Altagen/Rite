@@ -1242,6 +1242,7 @@ const COPY_MODE_NAME = {
   chord: 'Chord',
   select: 'Select to copy',
   selectRightPaste: 'Select to copy, right click pastes',
+  rightCopyPaste: 'Right click copies, then pastes',
   ctrlC: 'Ctrl+C copies a selection',
 };
 /* Choosing the shipped convention REMOVES the key rather than writing out the value that
@@ -1265,6 +1266,9 @@ const COPY_MODE_WHY = {
   selectRightPaste:
     'Selecting copies and releases the selection, a right click pastes, as PuTTY does. ' +
     'The engine’s own context menu is given up to free the gesture.',
+  rightCopyPaste:
+    'Selecting does nothing on its own. A right click copies the selection and lets it ' +
+    'go; with nothing selected it pastes. Windows Terminal and mintty.',
   ctrlC:
     'Ctrl+C copies while something is selected, as Windows Terminal does — so it cannot ' +
     'interrupt a running command until the selection is cleared.',

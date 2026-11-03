@@ -320,7 +320,9 @@
     "copyModeSelectRightPaste": "La sélection copie et se lève, le clic droit colle, comme PuTTY. Le menu contextuel du moteur est abandonné pour libérer le geste.",
     "copyModeCtrlC": "Ctrl+C copie quand quelque chose est sélectionné, comme Windows Terminal — il ne peut donc plus interrompre une commande tant que la sélection n’est pas levée.",
     "toolbarAgents": "Agents",
-    "toolbarAgentsDesc": "Ouvre le gestionnaire d’agents. Masquer le bouton masque une vue, pas une capacité."
+    "toolbarAgentsDesc": "Ouvre le gestionnaire d’agents. Masquer le bouton masque une vue, pas une capacité.",
+    "copyModeNameRightCopyPaste": "Le clic droit copie, puis colle",
+    "copyModeRightCopyPaste": "Sélectionner ne fait rien en soi. Le clic droit copie la sélection et la lève ; sans sélection, il colle. Windows Terminal et mintty."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",

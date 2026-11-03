@@ -320,7 +320,9 @@
     "copyModeSelectRightPaste": "Selecting copies and releases the selection, a right click pastes, as PuTTY does. The engine’s own context menu is given up to free the gesture.",
     "copyModeCtrlC": "Ctrl+C copies while something is selected, as Windows Terminal does — so it cannot interrupt a running command until the selection is cleared.",
     "toolbarAgents": "Agents",
-    "toolbarAgentsDesc": "Opens the agent manager. Hiding the button hides a view, not a capability."
+    "toolbarAgentsDesc": "Opens the agent manager. Hiding the button hides a view, not a capability.",
+    "copyModeNameRightCopyPaste": "Right click copies, then pastes",
+    "copyModeRightCopyPaste": "Selecting does nothing on its own. A right click copies the selection and lets it go; with nothing selected it pastes. Windows Terminal and mintty."
   },
   "sshKeepAlive": {
     "label": "SSH Keep-Alive",

@@ -20,10 +20,14 @@
  *   - and the activation does NOT survive the context menu: on WebKitGTK a read from
  *     inside `contextmenu` is `NotAllowedError`, while the same read from the `mousedown`
  *     or the `mouseup` of that very click resolves. The right button grants activation;
- *     the event WebKit synthesises from it does not carry it. So `selectRightPaste`
- *     pastes on the right `mouseup` and only cancels `contextmenu`, which is the whole
- *     reason the mode did nothing at all before. The `rightpaste` scenario of
- *     `e2e/desktop-bench` holds all three.
+ *     the event WebKit synthesises from it does not carry it. That is why the right
+ *     button is served from a mouse event and `contextmenu` is only cancelled — without
+ *     it, `selectRightPaste` did nothing at all.
+ *   - and xterm LEAVES THE SELECTION ALONE for the right button: it is still readable at
+ *     the mouseup of that click, which is what lets `rightCopyPaste` decide between
+ *     copying and pasting by looking at it. Measured, after a scenario that said
+ *     otherwise and was wrong about why — the probe that reads the clipboard presses a
+ *     key to get its gesture, and a keystroke is what clears a selection.
  *
  * WHAT THE MODES ARE FOR. Terminals disagree about which gesture copies, and the
  * disagreement is old enough that people have habits rather than preferences. Rite follows
@@ -59,15 +63,20 @@
  *                       selection is released once copied. The chord keeps working.
  *   `selectRightPaste`  Selecting copies and a right click pastes, as PuTTY does. The
  *                       engine's own context menu is given up to free the gesture.
+ *   `rightCopyPaste`    Selecting does nothing on its own; a right click copies the
+ *                       selection and lets it go, and a right click with nothing
+ *                       selected pastes. Windows Terminal, mintty and ConEmu. One
+ *                       gesture, two meanings, decided by whether anything is selected.
  *   `ctrlC`             Ctrl+C copies WHEN SOMETHING IS SELECTED, as Windows Terminal
  *                       does, and interrupts otherwise.
  */
-export type ClipboardMode = 'chord' | 'select' | 'selectRightPaste' | 'ctrlC';
+export type ClipboardMode = 'chord' | 'select' | 'selectRightPaste' | 'rightCopyPaste' | 'ctrlC';
 
 export const CLIPBOARD_MODES: ClipboardMode[] = [
   'chord',
   'select',
   'selectRightPaste',
+  'rightCopyPaste',
   'ctrlC',
 ];
 
@@ -122,9 +131,20 @@ export interface ClipboardEventFacts {
 
 const IGNORE: ClipboardAction = { kind: 'ignore' };
 
-/** True when a mode copies on selection rather than on a chord. */
+/**
+ * True when a mode copies on selection rather than on a chord.
+ *
+ * `rightCopyPaste` is NOT one of them, and that is the whole difference between it and
+ * the two above: there, selecting writes the clipboard, so a stray drag replaces what
+ * was on it. Here a drag only selects, and nothing leaves the terminal until the right
+ * button is pressed.
+ */
 const copiesOnSelect = (mode: ClipboardMode): boolean =>
   mode === 'select' || mode === 'selectRightPaste';
+
+/** True when a mode takes the right button, and so gives up the engine's own menu. */
+const claimsRightButton = (mode: ClipboardMode): boolean =>
+  mode === 'selectRightPaste' || mode === 'rightCopyPaste';
 
 /**
  * The explicit copy chord, available in every mode. `Ctrl+Shift+C` everywhere, because
@@ -168,11 +188,17 @@ export function planClipboard(f: ClipboardEventFacts): ClipboardAction {
   }
 
   if (f.type === 'mouseup') {
-    // The right button pastes, in the one mode that claims it. It is read here and not on
+    // The right button, in the two modes that claim it. It is read here and not on
     // `contextmenu` for a measured reason, in the header: the clipboard cannot be read
-    // from inside a context menu on WebKitGTK, and can be read from the mouseup of the
-    // same click.
-    if (f.mode === 'selectRightPaste' && f.button === 2) return { kind: 'paste' };
+    // from inside a context menu on WebKitGTK, and can be read from this event of the
+    // same click — where the selection is also still readable.
+    if (f.button === 2 && claimsRightButton(f.mode)) {
+      if (f.mode === 'selectRightPaste') return { kind: 'paste' };
+      // One gesture, two meanings, and the selection decides which. Copying releases it,
+      // which is what makes the next click a paste — otherwise the same click would copy
+      // the same text for ever and pasting would be unreachable.
+      return f.text ? { kind: 'copy-and-release', text: f.text } : { kind: 'paste' };
+    }
     // Otherwise only the button that selects, and only in a mode that copies on
     // selection. A middle click is the engine's own paste.
     if (!copiesOnSelect(f.mode) || f.button !== 0) return IGNORE;
@@ -183,10 +209,10 @@ export function planClipboard(f: ClipboardEventFacts): ClipboardAction {
   }
 
   if (f.type === 'contextmenu') {
-    // Cancelled, and nothing more: the paste is on the mouseup of this same click. Taking
-    // the gesture still means giving up the engine's own menu, which is why only the mode
-    // named for it does so.
-    return f.mode === 'selectRightPaste' ? { kind: 'suppress' } : IGNORE;
+    // Cancelled, and nothing more: the gesture is served on the mouseup of this same
+    // click. Taking it still means giving up the engine's own menu, which is why only
+    // the modes that claim the button pay for it.
+    return claimsRightButton(f.mode) ? { kind: 'suppress' } : IGNORE;
   }
 
   return IGNORE;
@@ -307,11 +333,11 @@ export function attachTerminalClipboard(
     });
     if (action.kind === 'ignore') return;
     // No mouseup is cancelled: cancelling the one that copies would leave xterm's
-    // selection service mid-drag, and the one that pastes needs nothing cancelled —
-    // xterm has no use for the right button. Everything else is claimed before xterm
-    // sees it: a copy chord so it does not also reach `_keyDown`, a paste so
+    // selection service mid-drag, and the one that serves the right button needs nothing
+    // cancelled — xterm has no use for that button. Everything else is claimed before
+    // xterm sees it: a copy chord so it does not also reach `_keyDown`, a paste so
     // `handlePasteEvent` never runs, a context menu so the engine's own menu does not
-    // open over the paste that is about to happen.
+    // open over the gesture that is about to happen.
     if (e.type !== 'mouseup') {
       e.preventDefault();
       e.stopPropagation();
