@@ -70,32 +70,50 @@
        current directory, and fail as ambiguous on duplicates. Fine for a human,
        wrong for an adapter, so the uuid is what Rite keeps.
 
-   Measured on 2026-10-31 against the four binaries installed on this machine. */
+   Measured again on 2026-11-03, against the four of six installed on this machine, and
+   three of the six list commands turned out not to work — they are corrected below, with
+   what each one got wrong. */
+/* The six commands, as the code now ships them (`utils/agentAdapters.ts`).
+
+   THREE OF THEM WERE WRONG HERE and said `measured`. Read off the installed binaries on
+   2026-11-03: `sh` has no recursive glob, so Codex's `**` was one `*` over a layout that
+   is three levels deep; `ls ~/.grok/sessions` listed one directory per working directory,
+   not one per conversation; and Gemini's listing answers for the CURRENT DIRECTORY, which
+   is kept because `--resume` takes an index and nothing else produces one.
+
+   `| head -n 200` is both the cap and the exit status: `ls` answers non-zero when a glob
+   matches nothing, and a tool with no conversations is not a tool that failed. */
+const AGENT_LIST_CAP = 200;
+const RECENT = `2>/dev/null | head -n ${AGENT_LIST_CAP}`;
 const AGENT_TOOLS = [
   { id: 'claude', name: 'Claude Code', bin: 'claude', on: true, idKind: 'uuid',
-    from: 'measured', seen: '2026-10-31',
-    list: 'ls ~/.claude/projects/*/*.jsonl', resumeFmt: 'claude --resume {id}' },
+    from: 'measured', seen: '2026-11-03',
+    list: `ls -1t ~/.claude/projects/*/*.jsonl ${RECENT}`, resumeFmt: 'claude --resume {id}' },
   // No machine-readable listing: `codex resume` with no argument opens an interactive
   // picker, which an adapter cannot read. So the list is the rollout files, and the
-  // resume takes the uuid the picker would have shown.
+  // resume takes the uuid the picker would have shown — the tail of the file name.
   { id: 'codex', name: 'Codex CLI', bin: 'codex', on: true, idKind: 'uuid',
-    from: 'measured', seen: '2026-10-31',
-    list: 'ls ~/.codex/sessions/**/*.jsonl', resumeFmt: 'codex resume {id}' },
+    from: 'measured', seen: '2026-11-03',
+    list: `ls -1t ~/.codex/sessions/*/*/*/*.jsonl ${RECENT}`, resumeFmt: 'codex resume {id}' },
+  // Scoped to a directory, not to a machine, and that is the vendor's doing.
   { id: 'gemini', name: 'Gemini CLI', bin: 'gemini', on: true, idKind: 'index',
-    from: 'measured', seen: '2026-10-31',
-    list: 'gemini --list-sessions', resumeFmt: 'gemini --resume {id}' },
+    from: 'measured', seen: '2026-11-03, flags only',
+    list: 'gemini --list-sessions 2>&1', resumeFmt: 'gemini --resume {id}' },
+  // The history file, not the folder: it skips `prompt_history.jsonl` and
+  // `session_search.sqlite`, and it orders by when the conversation was last written.
   { id: 'grok', name: 'Grok', bin: 'grok', on: true, idKind: 'uuid',
-    from: 'measured', seen: '2026-10-31',
-    list: 'ls ~/.grok/sessions', resumeFmt: 'grok --resume {id}' },
+    from: 'measured', seen: '2026-11-03',
+    list: `ls -1t ~/.grok/sessions/*/*/chat_history.jsonl ${RECENT}`,
+    resumeFmt: 'grok --resume {id}' },
   // Sessions in SQLite rather than files — which is why the adapter is two COMMANDS
   // and not two paths. A contract that assumed `ls` would already have broken here.
   { id: 'hermes', name: 'Hermes', bin: 'hermes', on: true, idKind: 'title',
     from: 'vendor', seen: 'docs, not verified here',
-    list: 'sqlite3 ~/.hermes/state.db "select id,title from sessions"',
+    list: `sqlite3 ~/.hermes/state.db 'select id,title from sessions order by rowid desc' ${RECENT}`,
     resumeFmt: 'hermes --resume {id}' },
   { id: 'opencode', name: 'opencode', bin: 'opencode', on: true, idKind: 'uuid',
     from: 'community', seen: 'third-party write-up',
-    list: 'opencode session list --format json', resumeFmt: 'opencode -s {id}' },
+    list: 'opencode session list --format json 2>/dev/null', resumeFmt: 'opencode -s {id}' },
 ];
 const agentTool = (id) => AGENT_TOOLS.find((t) => t.id === id);
 const agentResume = (tool, id) => (tool.resumeFmt || '{id}').replace('{id}', id);
@@ -103,7 +121,7 @@ const agentResume = (tool, id) => (tool.resumeFmt || '{id}').replace('{id}', id)
 /* How sure we are of an adapter's two commands, said in the fewest words that still
    mean something. Not a quality score — a provenance. */
 const AGENT_FROM = {
-  measured: { label: 'measured', hint: 'read off the installed binary on 2026-10-31' },
+  measured: { label: 'measured', hint: 'read off the installed binary on 2026-11-03' },
   vendor: { label: 'vendor docs', hint: "the vendor's documentation, not verified here" },
   community: { label: 'community', hint: 'a third-party write-up — expect drift' },
   added: { label: 'added here', hint: 'added on this machine, and tested against the tool in hand' },
@@ -186,10 +204,22 @@ function agentToggleTool(id, el) {
    A session's folder gives three of the five facts a card carries, with one listing:
    the file name is the id, the path encodes the project (Claude slugs it, Grok
    URL-encodes it), and the modification time is when the agent last wrote. Measured on
-   this machine — 125 files under `~/.claude/projects`, 55 under `~/.codex/sessions`,
-   3821 under `~/.grok/sessions`, 567 under `~/.gemini/tmp`. Hermes is the exception and
+   this machine — 130 files under `~/.claude/projects`, 61 under `~/.codex/sessions`,
+   3821 under `~/.grok/sessions`, 568 under `~/.gemini/tmp`. Hermes is the exception and
    keeps its sessions in SQLite, which is why an adapter can still name a command instead
    of a folder.
+
+   RECENCY ARRIVES AS AN ORDER, NOT AS A CLOCK, and the shipped adapters stop there. The
+   listing is `ls -t`, so the tool's own ordering is the signal; a portable timestamp is
+   not one line of shell — `find -printf` is GNU and answers an error on macOS, `stat`
+   takes `-c` here and `-f` there, and batching either over paths that may hold a space
+   needs `tr`, `xargs -0` and a fallback chain. So the absolute "last written" below is a
+   LAZY ENRICHMENT, fetched when a card is opened, the way the machine dashboard already
+   fetches a container's stats. Until it is wired, a card has the order and not the time.
+
+   And the name is not the time: on the machine that was read, the oldest-NAMED Codex
+   rollout — `2026-09-08` — had been written to that morning. The date in a file name is
+   when a conversation started, so nothing sorts by it.
 
    WHAT A FOLDER CANNOT TELL YOU IS WHETHER ANYTHING IS RUNNING, and an earlier pass
    claimed it did. `state: 'running' | 'idle'` came from nothing: a transcript written

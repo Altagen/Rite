@@ -245,6 +245,13 @@ const ALLOWED = new Map([
   // A bounds comparison: `clientX > rect.right || clientY < rect.top` is a `>`, words
   // and a `<`, which is what the jsx-tail pattern is looking for.
   ['components/TerminalManager.tsx: [jsx-tail] rect.right || clientY', 'source code, not text'],
+  // The agent CLIs' own names, in the shipped adapters. A vendor's product name is not
+  // translated, and these six are also what the user types to run them.
+  ['utils/agentAdapters.ts: [ternary-else] Claude Code', "a vendor's product name"],
+  ['utils/agentAdapters.ts: [ternary-else] Codex CLI', "a vendor's product name"],
+  ['utils/agentAdapters.ts: [ternary-else] Gemini CLI', "a vendor's product name"],
+  ['utils/agentAdapters.ts: [ternary-else] Grok', "a vendor's product name"],
+  ['utils/agentAdapters.ts: [ternary-else] Hermes', "a vendor's product name"],
   // A CSS font-family stack. Font names are not translated.
   ['utils/terminalPool.ts: [ternary-else] JetBrains Mono, Fira Code, monospace', 'CSS font stack'],
   // A key name is not a word: `Cmd` on a Mac, `Ctrl` elsewhere, and the chords the
