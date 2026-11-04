@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
+import type { VocabEntry } from './labelsFormat';
 import { Backend, type LocalCollection } from '../utils/backend';
 import {
   type ConnectionInfo,
@@ -194,7 +195,7 @@ export function useLocalCollectionsSource(): ConnectionsSource {
       name: string,
       color: string | null,
       hc: boolean | null,
-      labels?: (string | { label: string; color?: string })[],
+      labels?: VocabEntry[],
     ) => {
       await Backend.Local.updateCollection({ id, name, color, hc, labels });
       await refresh();

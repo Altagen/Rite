@@ -8,6 +8,7 @@
  */
 
 import { create } from 'zustand';
+import type { VocabEntry } from './labelsFormat';
 import { Backend } from '../utils/backend';
 import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandler';
 
@@ -250,7 +251,7 @@ export interface ConnectionsSource {
     // A word is a bare string when nobody chose a colour for it and an object when
     // somebody did — the two shapes a stored list holds, so a list written before colours
     // existed keeps working untouched.
-    labels?: (string | { label: string; color?: string })[];
+    labels?: VocabEntry[];
     // Whether this collection has a Board (an itemsKey-encrypted blob of cards). The
     // blob itself is read via readBoard; this flag lets the UI show an indicator.
     hasBoard?: boolean;
@@ -307,7 +308,7 @@ export interface ConnectionsSource {
     color: string | null,
     hc: boolean | null,
     /** The declared vocabulary, in the two stored shapes. A list replaces; absent keeps. */
-    labels?: (string | { label: string; color?: string })[],
+    labels?: VocabEntry[],
   ) => Promise<void>;
   /** Add or rename a folder inside a collection. `from` absent ⇒ create. */
   saveFolder?: (args: {

@@ -99,6 +99,7 @@ import {
 } from '../utils/paneTree';
 import { AgentManager } from './AgentManager';
 import { offersFrom } from './Labels';
+import { formatVocab } from '../store/labelsFormat';
 import { useInstanceLabels } from '../store/instanceLabels';
 import {
   agentResumeArgv,
@@ -2840,17 +2841,14 @@ export function Workspace({
           initialName={collectionEdit.name}
           initialColor={collectionEdit.color}
           initialHc={collectionEdit.hc}
-          initialLabels={conns.collections?.find((c) => c.id === collectionEdit.id)?.labels ?? []}
-          // What else is on offer, each word marked with where it comes from: every
-          // collection's declared vocabulary and every word already in use. The
-          // instance's public list joins this when it exists.
-          labelOffers={labelOffers}
           onClose={() => setCollectionEdit(null)}
           onSaved={fetchConnections}
+          // No vocabulary on this path, so nothing is sent for it and the stored words
+          // are kept — the words are declared in the label manager (Settings → Labels),
+          // where a scope selector replaces what used to be a second editor here.
           onPersist={
             conns.renameCollection && collectionEdit.id
-              ? (name, color, hc, labels) =>
-                  conns.renameCollection!(collectionEdit.id!, name, color, hc, labels)
+              ? (name, color, hc) => conns.renameCollection!(collectionEdit.id!, name, color, hc)
               : undefined
           }
         />
@@ -2928,6 +2926,32 @@ export function Workspace({
           onClose={() => setShowSettings(false)}
           connections={conns.connections ?? []}
           libraryReadable={!isLocked}
+          // The label manager's other scopes. Only the writable ones get a writer; the
+          // rest are shown read-only, because knowing a word exists is half of why the
+          // list is there.
+          collections={(conns.collections ?? []).map((c) => ({
+            id: c.id,
+            name: c.name,
+            labels: c.labels,
+          }))}
+          saveCollectionWords={
+            conns.renameCollection
+              ? async (collection, words) => {
+                  const held = (conns.collections ?? []).find((c) => c.id === collection.id);
+                  // A vocabulary write is a header write, so the name, the colour and the
+                  // opt-out have to be sent back as they stand — the core merges what it
+                  // is given and keeps what it is not, and sending a stale name would
+                  // rename the collection.
+                  await conns.renameCollection!(
+                    collection.id,
+                    held?.name ?? collection.name,
+                    held?.color ?? null,
+                    held?.hc ?? null,
+                    formatVocab(words),
+                  );
+                }
+              : undefined
+          }
         />
       )}
 

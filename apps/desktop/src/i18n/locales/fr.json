@@ -1315,7 +1315,19 @@
     "instanceSave": "Enregistrer la liste",
     "instanceCap": "{count} mots au maximum",
     "anyLabel": "Tous les labels",
-    "instanceLocked": "Ce vault est verrouillé. La liste est gardée scellée avec sa clé."
+    "instanceLocked": "Ce vault est verrouillé. La liste est gardée scellée avec sa clé.",
+    "scope": "Portée",
+    "search": "Mot ou description",
+    "newLabel": "Nouveau label",
+    "edit": "Modifier",
+    "remove": "Retirer",
+    "none": "Aucun label déclaré ici",
+    "noMatch": "Rien ne correspond à {query}",
+    "count": "{count} labels · {left} restants",
+    "wordPlaceholder": "Un ou deux mots",
+    "descriptionPlaceholder": "Ce que ça veut dire",
+    "clash": "{word} est déjà dans cette liste",
+    "readOnly": "Lecture seule : cette collection est partagée en lecture."
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",

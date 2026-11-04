@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import type { VocabEntry } from '../store/labelsFormat';
 import { errorHandler, ErrorSeverity, ErrorCategory } from './errorHandler';
 import { transport } from './transport';
 // Type-only, so it is erased at build time and the store ↔ backend cycle stays a
@@ -1420,6 +1421,23 @@ export const BackendUserLayouts = {
 } as const;
 
 /** A collection in a local vault (ADR 0018) — no members, no roles, no sharing. */
+/**
+ * A vocabulary entry on the wire: a bare word, or a word with what was chosen for it.
+ *
+ * ONE SCHEMA, because Zod STRIPS what it does not declare. Two inline copies of this union
+ * carried the colour and not the description, so a description reached the server, was
+ * stored, came back — and was removed on the way into the page, in silence. The shape it
+ * mirrors is `VocabEntry` in `store/labelsFormat.ts`.
+ */
+const VocabEntrySchema = z.union([
+  z.string(),
+  z.object({
+    label: z.string(),
+    color: z.string().optional(),
+    description: z.string().optional(),
+  }),
+]);
+
 const LocalCollectionSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -1431,9 +1449,7 @@ const LocalCollectionSchema = z.object({
   hc: z.boolean().nullable().optional(),
   // The vocabulary this collection declares (ADR 0016's sealed header). A word is bare
   // when nobody coloured it, an object when somebody did.
-  labels: z
-    .array(z.union([z.string(), z.object({ label: z.string(), color: z.string().optional() })]))
-    .default([]),
+  labels: z.array(VocabEntrySchema).default([]),
   hasBoard: z.boolean().default(false),
 });
 export type LocalCollection = z.infer<typeof LocalCollectionSchema>;
@@ -1481,16 +1497,13 @@ export const BackendLabels = {
         // A word is a bare string when nobody chose a colour for it, and an object when
         // somebody did. Both shapes, because a list written before colours existed holds
         // strings and must keep working — `acceptedVocab` normalises what comes back.
-        labels: z.array(
-          z.union([z.string(), z.object({ label: z.string(), color: z.string().optional() })]),
-        ),
+        labels: z.array(VocabEntrySchema),
         /** Which support answered. `locked` means a write will be refused. */
         support: z.enum(['instance', 'vault', 'file', 'locked']).default('file'),
       }),
       {},
     ),
-  set: (labels: (string | { label: string; color?: string })[]) =>
-    invokeWithValidation('labels_set', z.null(), { labels }),
+  set: (labels: VocabEntry[]) => invokeWithValidation('labels_set', z.null(), { labels }),
 };
 
 export const BackendLocal = {
@@ -1504,7 +1517,7 @@ export const BackendLocal = {
     folders?: { name: string; color: string | null }[];
     hc?: boolean | null;
     /** Absent keeps what is stored; a list replaces it. Two shapes — see `formatVocab`. */
-    labels?: (string | { label: string; color?: string })[];
+    labels?: VocabEntry[];
   }) => invokeWithValidation('local_update_collection', z.object({ ok: z.boolean() }), args),
   deleteCollection: (id: string) =>
     invokeWithValidation('local_delete_collection', z.object({ ok: z.boolean() }), { id }),

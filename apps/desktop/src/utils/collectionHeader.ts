@@ -7,6 +7,7 @@
  */
 
 import { Backend } from './backend';
+import type { VocabEntry } from '../store/labelsFormat';
 import {
   unwrapCollectionKeys,
   encryptCollectionField,
@@ -42,7 +43,7 @@ export interface CollectionHeader {
    * Declared rather than derived, so a word can be agreed on before anything wears it.
    * What the words are PUT ON lives in the items, under a different key.
    */
-  labels?: (string | { label: string; color?: string })[];
+  labels?: VocabEntry[];
 }
 
 /**

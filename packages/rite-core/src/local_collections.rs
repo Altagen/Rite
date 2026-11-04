@@ -82,6 +82,13 @@ pub struct VocabWord {
     pub label: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// What the word means, for whoever did not choose it.
+    ///
+    /// It inherits the WORD's scope and needs no decision of its own: a description on an
+    /// instance word is as public as the word, one on a collection's is sealed with it.
+    /// That is the reason it lives beside the word rather than in a document of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// A vocabulary entry on disk: a bare word, or a word with its colour.

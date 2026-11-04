@@ -4171,6 +4171,9 @@ const INSTANCE_LABELS_MAX: usize = 200;
 /// How long one word may be. See `LABEL_MAX` in `store/labelsFormat.ts`.
 const LABEL_MAX: usize = 24;
 
+/// How long a description may be. See `DESCRIPTION_MAX` in `store/labelsFormat.ts`.
+const DESCRIPTION_MAX: usize = 120;
+
 /// Where the instance vocabulary lives, which is decided by WHO READS IT.
 ///
 /// FOUR CASES, and the fourth was missing — which showed up as a 409 on a window that had
@@ -4224,14 +4227,19 @@ async fn labels_support(state: &ServerState) -> LabelsSupport {
     }
 }
 
-/// One word, as it is kept: squeezed to a line, trimmed, capped. See `cleanLabel`.
-fn clean_label(raw: &str) -> String {
+/// Text as it is kept: squeezed to a line, trimmed, capped. See `cleanLabel`.
+fn squeeze(raw: &str, cap: usize) -> String {
     raw.split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
         .chars()
-        .take(LABEL_MAX)
+        .take(cap)
         .collect()
+}
+
+/// One word, capped at `LABEL_MAX`.
+fn clean_label(raw: &str) -> String {
+    squeeze(raw, LABEL_MAX)
 }
 
 use rite_core::local_collections::{VocabEntry, VocabWord};
@@ -4261,20 +4269,29 @@ fn accepted_vocabulary(raw: Vec<VocabEntry>) -> Vec<VocabEntry> {
     let mut out: Vec<VocabEntry> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for value in raw {
-        let (text, color) = match value {
-            VocabEntry::Word(w) => (w, None),
-            VocabEntry::Full(f) => (f.label, f.color),
+        let (text, color, description) = match value {
+            VocabEntry::Word(w) => (w, None, None),
+            VocabEntry::Full(f) => (f.label, f.color, f.description),
         };
         let label = clean_label(&text);
         if label.is_empty() || !seen.insert(label.to_lowercase()) {
             continue;
         }
-        out.push(match accepted_color(color) {
-            Some(color) => VocabEntry::Full(VocabWord {
+        let color = accepted_color(color);
+        let description = description
+            .map(|d| squeeze(&d, DESCRIPTION_MAX))
+            .filter(|d| !d.is_empty());
+        // A word with neither goes back out BARE, which is what keeps the shape additive:
+        // a list nobody has coloured or described is written exactly as it was before
+        // either existed, and the browser writes the same two shapes (`formatVocab`).
+        out.push(if color.is_none() && description.is_none() {
+            VocabEntry::Word(label)
+        } else {
+            VocabEntry::Full(VocabWord {
                 label,
-                color: Some(color),
-            }),
-            None => VocabEntry::Word(label),
+                color,
+                description,
+            })
         });
         if out.len() == INSTANCE_LABELS_MAX {
             break;

@@ -4,7 +4,7 @@
  * Modal for application settings configuration
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RESET_PHRASE } from '../utils/resetPhrase';
 import { RevealToggle } from './RevealToggle';
 import { useSettingsStore } from '../store/settingsStore';
@@ -41,9 +41,9 @@ import { newTabCwdApplies } from '../utils/newTabCwd';
 import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
-import { LabelField } from './Labels';
 import { useInstanceLabels } from '../store/instanceLabels';
-import { INSTANCE_LABELS_MAX, type VocabWord } from '../store/labelsFormat';
+import { acceptedVocab, type VocabWord } from '../store/labelsFormat';
+import { LabelManager, type LabelTarget } from './LabelManager';
 
 /**
  * The two chords that are not in the bindings table, and why.
@@ -79,6 +79,24 @@ interface SettingsProps {
   connections?: { name: string }[];
   /** False when the vault is locked: the names are encrypted and cannot be read. */
   libraryReadable?: boolean;
+  /**
+   * The collections whose vocabularies this screen can show, for the label manager.
+   *
+   * Passed in for the reason `connections` is: which collections exist is a property of
+   * the context, and the accounts shell has none to offer. Absent ⇒ the manager writes the
+   * instance list only, which is the whole of what a window with no library has.
+   */
+  collections?: { id: string; name: string; labels?: (string | VocabWord)[] }[];
+  /**
+   * Write one collection's vocabulary. Absent ⇒ every collection is shown read-only.
+   *
+   * One callback rather than a target per collection, because the crypto locus differs by
+   * context and this screen must not know which (ADR 0016, ADR 0018).
+   */
+  saveCollectionWords?: (
+    collection: { id: string; name: string },
+    words: VocabWord[],
+  ) => Promise<void>;
 }
 
 /**
@@ -153,7 +171,13 @@ const RAIL: {
   { id: 'danger', i18n: 'settings.sec.danger', local: true, vault: true, danger: true },
 ];
 
-export function Settings({ onClose, connections, libraryReadable }: SettingsProps) {
+export function Settings({
+  onClose,
+  connections,
+  libraryReadable,
+  collections,
+  saveCollectionWords,
+}: SettingsProps) {
   const { t, locale, setLocale } = useTranslation();
   const { settings, fetchSettings, updateSettings } = useSettingsStore();
   const native = isNativeShell();
@@ -288,20 +312,39 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   // The instance vocabulary. `null` draft ⇒ nothing typed yet, so Save is not offered —
   // a button that writes what is already stored invites a round trip that changes nothing.
   const instanceWords = useInstanceLabels((st) => st.words);
-  const instanceError = useInstanceLabels((st) => st.error);
   const instanceSupport = useInstanceLabels((st) => st.support);
   const instanceLoaded = useInstanceLabels((st) => st.loaded);
   const loadInstanceWords = useInstanceLabels((st) => st.load);
   const saveWords = useInstanceLabels((st) => st.save);
-  const [instanceDraft, setInstanceDraft] = useState<VocabWord[] | null>(null);
   useEffect(() => {
     if (!instanceLoaded) void loadInstanceWords();
   }, [instanceLoaded, loadInstanceWords]);
-  const saveInstanceWords = async (words: VocabWord[] | null) => {
-    if (!words) return;
-    await saveWords(words).catch(() => {});
-    setInstanceDraft(null);
-  };
+
+  /**
+   * The scopes this screen can write, in the order the manager offers them.
+   *
+   * THE INSTANCE FIRST, because it is the one every context has — the collections under it
+   * are what a vault or a server adds. A collection with no `save` is one this reader can
+   * see and not write, and the manager draws it read-only rather than hiding it: knowing a
+   * word exists is half of why the list is there.
+   */
+  const labelTargets: LabelTarget[] = useMemo(
+    () => [
+      {
+        id: '@instance',
+        name: t('labels.scopeInstance'),
+        words: instanceWords,
+        save: saveWords,
+      },
+      ...(collections ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        words: acceptedVocab(c.labels ?? []),
+        save: saveCollectionWords ? (w: VocabWord[]) => saveCollectionWords(c, w) : undefined,
+      })),
+    ],
+    [instanceWords, collections, saveWords, saveCollectionWords, t],
+  );
   // Change master password (local vault): re-keys all connections server-side.
   const [pwReveal, setPwReveal] = useState(false);
   const [pwCurrent, setPwCurrent] = useState('');
@@ -526,71 +569,15 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 {t('labels.instanceHint')}
               </p>
               {/* A LOCKED VAULT IS SAID, NOT DRAWN OVER. The list lives behind its key, so
-                  an empty field here would read as "nothing declared" and a Save would be
+                  an empty table here would read as "nothing declared" and a Save would be
                   refused — which is exactly what shipped once. */}
               {instanceSupport === 'locked' ? (
                 <p className="text-xs text-amber-500" data-testid="instance-labels-locked">
                   {t('labels.instanceLocked')}
                 </p>
               ) : (
-                <LabelField
-                  labels={(instanceDraft ?? instanceWords).map((w) => w.label)}
-                  // The field speaks in words; the colours are kept here, keyed by word,
-                  // so editing the text does not drop a colour somebody chose.
-                  onChange={(next) =>
-                    setInstanceDraft(
-                      next.map((label) => {
-                        const had = (instanceDraft ?? instanceWords).find(
-                          (w) => w.label.toLowerCase() === label.toLowerCase(),
-                        );
-                        return had?.color ? { label, color: had.color } : { label };
-                      }),
-                    )
-                  }
-                  // THE WORDS ARE DECLARED HERE, so this is the one field that offers a
-                  // colour. Choosing one on a machine would make it that machine's colour
-                  // for the word, and then the word has several.
-                  onColor={(label, color) =>
-                    setInstanceDraft(
-                      (instanceDraft ?? instanceWords).map((w) =>
-                        w.label.toLowerCase() === label.toLowerCase()
-                          ? color
-                            ? { label: w.label, color }
-                            : { label: w.label }
-                          : w,
-                      ),
-                    )
-                  }
-                  vocabulary={(instanceDraft ?? instanceWords).map((w) => ({
-                    ...w,
-                    scope: 'instance' as const,
-                  }))}
-                  // A vocabulary, so the bigger cap: this is the list to choose FROM.
-                  cap={INSTANCE_LABELS_MAX}
-                  inputId="instance-labels-input"
-                  testPrefix="instance-labels"
-                />
+                <LabelManager targets={labelTargets} />
               )}
-              {instanceError && (
-                <p className="mt-2 text-xs text-amber-500" data-testid="instance-labels-error">
-                  {instanceError}
-                </p>
-              )}
-              <div className="mt-3 flex items-center gap-2" hidden={instanceSupport === 'locked'}>
-                <button
-                  type="button"
-                  onClick={() => void saveInstanceWords(instanceDraft)}
-                  disabled={instanceDraft === null}
-                  className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
-                  data-testid="instance-labels-save"
-                >
-                  {t('labels.instanceSave')}
-                </button>
-                {/* The cap is said rather than discovered by a list that stops growing. */}
-                <span className="text-[11px] text-muted-foreground">
-                  {t('labels.instanceCap', { count: String(INSTANCE_LABELS_MAX) })}
-                </span>
-              </div>
             </section>
 
             {/* Machine status (ADR 0017) — a client-side narrowing of the server's health policy. */}

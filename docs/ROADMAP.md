@@ -259,7 +259,7 @@ token-versus-geometry, it is *what could ever live in a stylesheet*:
 |---|---|---|
 | Runtime geometry | 14 | a split's percentage, a popup's coordinates, `paddingLeft` from a tree depth, `pointerEvents` during a drag |
 | Static CSS, inline for no reason | 13 | `padding: '4px'`, `resize: 'vertical'`, `userSelect: 'none'`, `rotate(90deg)` |
-| A colour the user chose | 19 | a collection's, a machine's, a member's avatar, the swatch grids, an agent mark's dot in both arrangements, a label's chip, a label's own swatch grid |
+| A colour the user chose | 20 | a collection's, a machine's, a member's avatar, the swatch grids, an agent mark's dot in both arrangements, a label's chip, a label's swatch grid in the field and in the manager |
 | A context's badge | 1 | `backgroundImage` from a hash |
 | **A design token, written as a hex** | **1** | `LibrarySidebar.tsx:841` |
 
@@ -292,6 +292,11 @@ The nineteenth is the swatch grid in a vocabulary editor — the palette offered
 choosing a colour FOR A WORD, drawn in the colour it is about to store. The same site the
 fifteenth was, one screen over, and the same reason: the value being drawn is the one about
 to be written, so no stylesheet has it until it exists.
+
+The twentieth is the label manager's own swatch row, which is the nineteenth one screen
+over: the row being edited draws the palette in the colours it is about to store. Both stay
+because the field and the manager are two surfaces — one applies a word, the other declares
+it — and neither can read a colour out of a stylesheet that does not have it yet.
 
 The fifth is one site and it is the whole argument for doing this before a theme exists.
 A folder's Delete button carries `color: '#f7768e'`, which is `--destructive`

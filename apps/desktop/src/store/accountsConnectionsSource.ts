@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
+import type { VocabEntry } from './labelsFormat';
 import { Backend } from '../utils/backend';
 import { useServerSession } from './serverSessionStore';
 import {
@@ -415,7 +416,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       hc: boolean | null;
       // The vocabulary this collection declares (ADR 0016's header). Sealed with the rest.
       // Two shapes: a bare word, or a word with the colour somebody chose for it.
-      labels: (string | { label: string; color?: string })[];
+      labels: VocabEntry[];
       hasBoard: boolean;
     }[]
   >([]);
@@ -454,7 +455,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       hc: boolean | null;
       // The vocabulary this collection declares (ADR 0016's header). Sealed with the rest.
       // Two shapes: a bare word, or a word with the colour somebody chose for it.
-      labels: (string | { label: string; color?: string })[];
+      labels: VocabEntry[];
       hasBoard: boolean;
     }[] = [];
     for (const col of cols) {

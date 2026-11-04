@@ -30,6 +30,7 @@ const check = (name, fn) => {
 };
 
 import {
+  DESCRIPTION_MAX,
   INSTANCE_LABELS_MAX,
   LABELS_MAX,
   LABEL_MAX,
@@ -52,6 +53,10 @@ check('and the instance list the same size', () => {
   assert.equal(constOf('INSTANCE_LABELS_MAX'), INSTANCE_LABELS_MAX);
 });
 
+check('and a description the same length', () => {
+  assert.equal(constOf('DESCRIPTION_MAX'), DESCRIPTION_MAX);
+});
+
 check('the values themselves, pinned', () => {
   // Pinned at literals as well as to each other: two assertions that only compare the
   // sides would both pass while somebody moved both at once, which is the thing a review
@@ -59,6 +64,13 @@ check('the values themselves, pinned', () => {
   assert.equal(LABEL_MAX, 24, 'a word or two — a sentence belongs in the name');
   assert.equal(LABELS_MAX, 8, 'eight chips fit on a card');
   assert.equal(INSTANCE_LABELS_MAX, 200, 'a list to choose from, not a list on one thing');
+  assert.equal(DESCRIPTION_MAX, 120, 'a line beside the word, not a paragraph');
+});
+
+check('a description has more room than a word', () => {
+  // The relationship, not just the numbers: a description explains a word, so whatever
+  // they become it has to be able to say more than the word does.
+  assert.ok(DESCRIPTION_MAX > LABEL_MAX, `${DESCRIPTION_MAX} vs ${LABEL_MAX}`);
 });
 
 check('a list to choose from is bigger than a list on one thing', () => {

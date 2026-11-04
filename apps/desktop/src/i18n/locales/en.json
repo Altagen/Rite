@@ -1315,7 +1315,19 @@
     "instanceSave": "Save the list",
     "instanceCap": "{count} words at most",
     "anyLabel": "Any label",
-    "instanceLocked": "This vault is locked. The list is kept sealed with its key."
+    "instanceLocked": "This vault is locked. The list is kept sealed with its key.",
+    "scope": "Scope",
+    "search": "Word or description",
+    "newLabel": "New label",
+    "edit": "Edit",
+    "remove": "Remove",
+    "none": "No label declared here",
+    "noMatch": "Nothing matches {query}",
+    "count": "{count} labels · {left} left",
+    "wordPlaceholder": "One or two words",
+    "descriptionPlaceholder": "What it means",
+    "clash": "{word} is already in this list",
+    "readOnly": "Read-only: this collection is shared for reading."
   },
   "connErr": {
     "retrying": "Retrying automatically…",

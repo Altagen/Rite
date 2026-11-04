@@ -63,11 +63,44 @@ export interface LabelOffer {
 export interface VocabWord {
   label: string;
   color?: string;
+  /**
+   * What the word means, for whoever did not choose it.
+   *
+   * READABLE BY WHOEVER READS THE WORD, which is worth saying because the scopes differ: a
+   * description on an instance word is as public as the word, and one on a collection's is
+   * sealed with it. Nothing new to decide — it simply inherits the word's scope, which is
+   * the reason it lives beside the word rather than in a document of its own.
+   *
+   * Absent rather than empty: a word nobody described writes exactly what it wrote
+   * before descriptions existed.
+   */
+  description?: string;
 }
 
 /** How long a label may be, and how many one thing may carry. */
 export const LABEL_MAX = 24;
 export const LABELS_MAX = 8;
+
+/**
+ * A vocabulary entry AS IT IS STORED: a bare word, or a word with what was chosen for it.
+ *
+ * ONE NAME FOR THE TEN PLACES THAT CARRY IT. This shape was written inline in ten files —
+ * two sources, two stores, the header helper, the backend schema twice — and when the
+ * description was added, one of the ten did not learn about it: the Zod schema on the wire,
+ * which strips what it does not declare. The description round-tripped through the server
+ * and was dropped on the way back into the page, in silence. A shape repeated ten times is
+ * a shape that will disagree with itself.
+ */
+export type VocabEntry = string | VocabWord;
+
+/**
+ * How long a description may be.
+ *
+ * A line, not a paragraph: it sits in a table row beside the word and in a tooltip on a
+ * chip, and a description that needs scrolling is documentation that belongs elsewhere.
+ * Duplicated in `rite-server`; `e2e/label-caps-check.mjs` holds the two together.
+ */
+export const DESCRIPTION_MAX = 120;
 
 /**
  * How many words the instance vocabulary may declare.
@@ -130,9 +163,13 @@ export const acceptedLabels = (raw: unknown): string[] => cleaned(raw, LABELS_MA
  */
 export const acceptedUpTo = (raw: unknown, cap: number): string[] => cleaned(raw, cap);
 
+/** A description as it is kept: one line, trimmed, capped. */
+export const cleanDescription = (raw: string): string =>
+  raw.replace(/\s+/g, ' ').trim().slice(0, DESCRIPTION_MAX);
+
 /**
- * A vocabulary, cleaned: words through the same walk, each with its colour when it
- * declared one.
+ * A vocabulary, cleaned: words through the same walk, each with its colour and its
+ * description when it declared them.
  *
  * ACCEPTS BOTH SHAPES ON THE WAY IN — a bare string, or `{label, color}` — because a
  * document written before colours could be chosen holds strings, and rejecting it would
@@ -154,7 +191,10 @@ export function acceptedVocab(raw: unknown): VocabWord[] {
     seen.add(key);
     const chosen = typeof entry === 'string' ? undefined : (entry as VocabWord)?.color;
     const color = typeof chosen === 'string' && /^#[0-9a-f]{6}$/i.test(chosen) ? chosen : undefined;
-    out.push(color ? { label, color } : { label });
+    const said = typeof entry === 'string' ? undefined : (entry as VocabWord)?.description;
+    const description =
+      typeof said === 'string' && cleanDescription(said) ? cleanDescription(said) : undefined;
+    out.push({ label, ...(color ? { color } : {}), ...(description ? { description } : {}) });
     if (out.length === INSTANCE_LABELS_MAX) break;
   }
   return out;
@@ -175,7 +215,15 @@ export const acceptedVocabulary = (raw: unknown): string[] =>
  * (`VocabEntry` in `local_collections.rs`), which is what the parity tests hold.
  */
 export const formatVocab = (words: readonly VocabWord[]): (string | VocabWord)[] =>
-  words.map((w) => (w.color ? { label: w.label, color: w.color } : w.label));
+  words.map((w) =>
+    w.color || w.description
+      ? {
+          label: w.label,
+          ...(w.color ? { color: w.color } : {}),
+          ...(w.description ? { description: w.description } : {}),
+        }
+      : w.label,
+  );
 
 /**
  * A label's colour, derived from its own text rather than stored.

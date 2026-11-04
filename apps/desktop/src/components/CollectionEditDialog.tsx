@@ -18,13 +18,6 @@ import {
 } from '../utils/collectionCrypto';
 import { escrowForCreate } from '../utils/adminGroup';
 import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
-import { LabelField, type LabelOffer } from './Labels';
-import {
-  INSTANCE_LABELS_MAX,
-  acceptedVocab,
-  formatVocab,
-  type VocabWord,
-} from '../store/labelsFormat';
 import { useTranslation } from '../i18n/i18n';
 import { COLLECTION_SWATCHES } from '../theme/swatches';
 
@@ -33,8 +26,6 @@ export function CollectionEditDialog({
   initialName,
   initialColor,
   initialHc,
-  initialLabels,
-  labelOffers,
   onClose,
   onSaved,
   onPersist,
@@ -43,10 +34,6 @@ export function CollectionEditDialog({
   initialName?: string;
   initialColor?: string | null;
   initialHc?: boolean | null; // false ⇒ this collection opts out of active health-checks (ADR 0017)
-  /** The vocabulary this collection declares, sealed in its header. */
-  initialLabels?: (string | VocabWord)[];
-  /** What else is on offer — the instance's words, and the ones already in use. */
-  labelOffers?: LabelOffer[];
   onClose: () => void;
   onSaved: () => void;
   /**
@@ -55,12 +42,18 @@ export function CollectionEditDialog({
    * sealed to me with the session keypair. Same form, different crypto locus.
    * `hc` is the health-check opt-out as it is stored: `false` ⇒ opted out.
    */
-  onPersist?: (
-    name: string,
-    color: string | null,
-    hc: boolean | null,
-    labels: (string | VocabWord)[],
-  ) => Promise<void>;
+  /**
+   * How to persist. A local vault passes this and the core wraps the collection keys with
+   * the master key; a server context leaves it out and the keys are sealed to me with the
+   * session keypair. Same form, different crypto locus.
+   *
+   * NO VOCABULARY HERE. The words this collection declares are edited in the label manager
+   * (Settings → Labels, with a scope selector), because a list of two hundred does not
+   * belong in a modal and because managing words and applying one are two gestures. What
+   * matters on this path is that a rename KEEPS them: nothing is sent, so the core merges
+   * onto the stored header and the accounts path spreads it.
+   */
+  onPersist?: (name: string, color: string | null, hc: boolean | null) => Promise<void>;
 }) {
   const { publicKey, privateKey } = useServerSession();
   const { t } = useTranslation();
@@ -68,9 +61,6 @@ export function CollectionEditDialog({
   const [color, setColor] = useState(initialColor ?? COLLECTION_SWATCHES[0]);
   // Active health-check for this collection (owner setting). Off ⇒ hc=false in the sealed header.
   const [hcOn, setHcOn] = useState(initialHc !== false);
-  // Normalised on the way in, because a header written before colours existed holds bare
-  // words — and the editor works in one shape.
-  const [labels, setLabels] = useState<VocabWord[]>(() => acceptedVocab(initialLabels ?? []));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const editing = !!collectionId;
@@ -82,9 +72,7 @@ export function CollectionEditDialog({
     setError(null);
     try {
       if (onPersist) {
-        // Written in the two shapes: a word with no colour goes out bare, so a list
-        // nobody has coloured round-trips exactly as it was stored.
-        await onPersist(name.trim(), color, hcOn ? null : false, formatVocab(labels));
+        await onPersist(name.trim(), color, hcOn ? null : false);
       } else if (editing) {
         // Rename: re-encrypt the header (metaKey), preserving the collection's folders.
         if (!publicKey || !privateKey) throw new Error('session keys unavailable');
@@ -98,7 +86,6 @@ export function CollectionEditDialog({
           name: name.trim(),
           color,
           hc: hcOn ? null : false,
-          labels: formatVocab(labels),
         });
       } else {
         // Create: fresh split keys sealed to myself (first owner). The name/colour is
@@ -109,7 +96,6 @@ export function CollectionEditDialog({
           name: name.trim(),
           color,
           hc: hcOn ? null : false,
-          ...(labels.length !== 0 && { labels: formatVocab(labels) }),
         });
         await Backend.Collections.create(
           nameEnc,
@@ -173,50 +159,6 @@ export function CollectionEditDialog({
               aria-label={t('dlg.colourAria', { hex: c })}
             />
           ))}
-        </div>
-
-        {/* THE VOCABULARY THIS COLLECTION DECLARES, which is not the same thing as the
-            words on its machines. Declared here, a word can be agreed on before anything
-            wears it; sealed in this header, it is read by this collection's members and
-            nobody else, and it never travels up to the instance. */}
-        <div className="mb-5">
-          <LabelField
-            labels={labels.map((w) => w.label)}
-            // The field speaks in words; the colours are kept here, keyed by word, so
-            // editing the text does not drop a colour somebody chose.
-            onChange={(next) =>
-              setLabels(
-                next.map((label) => {
-                  const had = labels.find((w) => w.label.toLowerCase() === label.toLowerCase());
-                  return had?.color ? { label, color: had.color } : { label };
-                }),
-              )
-            }
-            // THE WORDS ARE DECLARED HERE, so this field offers a colour — and a colour
-            // chosen here is this collection's statement about the word, which beats the
-            // instance's because the narrower scope is the more specific one.
-            onColor={(label, color) =>
-              setLabels(
-                labels.map((w) =>
-                  w.label.toLowerCase() === label.toLowerCase()
-                    ? color
-                      ? { label: w.label, color }
-                      : { label: w.label }
-                    : w,
-                ),
-              )
-            }
-            vocabulary={[
-              ...labels.map((w) => ({ ...w, scope: 'collection' as const })),
-              ...(labelOffers ?? []).filter(
-                (o) => !labels.some((w) => w.label.toLowerCase() === o.label.toLowerCase()),
-              ),
-            ]}
-            // A vocabulary, so the bigger cap: this is the list to choose FROM.
-            cap={INSTANCE_LABELS_MAX}
-            inputId="collection-labels-input"
-            testPrefix="collection-labels"
-          />
         </div>
 
         {/* Active health-check opt-out for the whole collection (ADR 0017). Passive "last seen" is
