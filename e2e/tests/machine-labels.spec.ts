@@ -127,7 +127,12 @@ test('a local vault declares words above its collections, sealed', async ({ requ
   const read = async () =>
     ((await (await request.get('/api/labels')).json()) as { labels: string[] }).labels;
 
-  // Nothing declared is the normal state of a fresh vault, not a failure.
+  // FROM A KNOWN STATE, NOT FROM A FRESH ONE. This spec shares one server and one vault
+  // with every other, so "nothing declared yet" is an assertion about which file ran
+  // first — it passed alone and failed beside `instance-labels.spec.ts`, which declares
+  // words through the screen. Clearing and reading back is the same claim without the
+  // dependency: an empty list is a real state the route can be put into.
+  await request.put('/api/admin/labels', { data: { labels: [] } });
   expect(await read()).toEqual([]);
 
   const put = await request.put('/api/admin/labels', {

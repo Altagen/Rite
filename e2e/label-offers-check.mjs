@@ -23,6 +23,9 @@ const check = (name, fn) => {
 // Loaded directly, like every other format check here: `store/labelsFormat.ts` imports
 // nothing, which is why the label logic lives there and not in the component that draws it.
 import {
+  INSTANCE_LABELS_MAX,
+  LABELS_MAX,
+  acceptedUpTo,
   acceptedVocab,
   formatVocab,
   labelColor,
@@ -150,6 +153,18 @@ check('the offers carry a declared colour through', () => {
     { label: 'pci', color: '#ff0000', scope: 'instance' },
     { label: 'web', scope: 'instance' },
   ]);
+});
+
+check("THE CAP IS THE CALLER'S, because the two lists are not the same list", () => {
+  // The shared field applied the per-thing cap to every list it drew, so a vocabulary
+  // editor refused its ninth word while the screen beside it promised two hundred. A cap
+  // is a property of the list being edited, not of the walk.
+  const twelve = Array.from({ length: 12 }, (_, i) => `w${i}`);
+  assert.equal(acceptedUpTo(twelve, LABELS_MAX).length, LABELS_MAX);
+  assert.equal(acceptedUpTo(twelve, INSTANCE_LABELS_MAX).length, 12);
+  // And the cap is honoured as given, not clamped to something this module prefers.
+  assert.equal(acceptedUpTo(twelve, 3).length, 3);
+  assert.deepEqual(acceptedUpTo(twelve, 3), ['w0', 'w1', 'w2']);
 });
 
 console.log();

@@ -120,6 +120,17 @@ function cleaned(raw: unknown, cap: number): string[] {
 export const acceptedLabels = (raw: unknown): string[] => cleaned(raw, LABELS_MAX);
 
 /**
+ * The same walk, to a cap the caller names.
+ *
+ * TWO CAPS EXIST AND A FIELD HAS TO KNOW WHICH IT IS EDITING. The shared field applied
+ * `LABELS_MAX` everywhere, so a vocabulary editor silently refused its ninth word while
+ * the screen beside it promised two hundred — and the only visible sign was a message
+ * naming a number that did not match. A cap is not a property of the walk; it is a
+ * property of the list being edited.
+ */
+export const acceptedUpTo = (raw: unknown, cap: number): string[] => cleaned(raw, cap);
+
+/**
  * A vocabulary, cleaned: words through the same walk, each with its colour when it
  * declared one.
  *

@@ -19,7 +19,12 @@ import {
 import { escrowForCreate } from '../utils/adminGroup';
 import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
 import { LabelField, type LabelOffer } from './Labels';
-import { acceptedVocab, formatVocab, type VocabWord } from '../store/labelsFormat';
+import {
+  INSTANCE_LABELS_MAX,
+  acceptedVocab,
+  formatVocab,
+  type VocabWord,
+} from '../store/labelsFormat';
 import { useTranslation } from '../i18n/i18n';
 import { COLLECTION_SWATCHES } from '../theme/swatches';
 
@@ -207,6 +212,8 @@ export function CollectionEditDialog({
                 (o) => !labels.some((w) => w.label.toLowerCase() === o.label.toLowerCase()),
               ),
             ]}
+            // A vocabulary, so the bigger cap: this is the list to choose FROM.
+            cap={INSTANCE_LABELS_MAX}
             inputId="collection-labels-input"
             testPrefix="collection-labels"
           />

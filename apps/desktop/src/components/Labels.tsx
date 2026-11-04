@@ -31,7 +31,7 @@ import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import {
   LABELS_MAX,
-  acceptedLabels,
+  acceptedUpTo,
   cleanLabel,
   labelColor,
   type LabelOffer,
@@ -117,6 +117,7 @@ export function LabelField({
   inputId,
   testPrefix,
   onColor,
+  cap = LABELS_MAX,
 }: {
   /** The labels currently on the thing. */
   labels: string[];
@@ -126,6 +127,14 @@ export function LabelField({
   inputId: string;
   /** Prefixes every `data-testid` here, so two screens' fields are told apart. */
   testPrefix: string;
+  /**
+   * How many words this list may hold.
+   *
+   * NAMED BY THE CALLER, because the two lists differ: eight on a machine or a
+   * conversation, two hundred in a vocabulary. The field used `LABELS_MAX` for both, so a
+   * vocabulary editor dropped its ninth word while the screen promised two hundred.
+   */
+  cap?: number;
   /**
    * Declare a colour for one word. Absent ⇒ the field does not offer to.
    *
@@ -138,7 +147,7 @@ export function LabelField({
   const { t } = useTranslation();
   const [typed, setTyped] = useState(labels.join(', '));
   // Through the shipped cleaner, so the preview and the document cannot disagree.
-  const parsed = acceptedLabels(typed.split(',').map(cleanLabel));
+  const parsed = acceptedUpTo(typed.split(',').map(cleanLabel), cap);
   const capped = typed.split(',').filter((p) => cleanLabel(p)).length !== parsed.length;
   // What is offered is what is not already on: a chip that does nothing when clicked is a
   // chip somebody clicks twice before reading the field above it.
@@ -154,7 +163,7 @@ export function LabelField({
   );
   const write = (next: string) => {
     setTyped(next);
-    onChange(acceptedLabels(next.split(',').map(cleanLabel)));
+    onChange(acceptedUpTo(next.split(',').map(cleanLabel), cap));
   };
   return (
     <>
@@ -210,8 +219,8 @@ export function LabelField({
               <button
                 key={`${v.scope}:${v.label.toLowerCase()}`}
                 type="button"
-                disabled={parsed.length >= LABELS_MAX}
-                onClick={() => write(acceptedLabels([...parsed, v.label]).join(', '))}
+                disabled={parsed.length >= cap}
+                onClick={() => write(acceptedUpTo([...parsed, v.label], cap).join(', '))}
                 className="rounded-full disabled:opacity-40"
                 data-testid={`${testPrefix}-add-${v.label.toLowerCase()}`}
               >
@@ -228,7 +237,7 @@ export function LabelField({
       )}
       {capped && (
         <div className="mt-1 text-[11px] text-amber-500" data-testid={`${testPrefix}-dropped`}>
-          {t('labels.capped', { count: String(LABELS_MAX) })}
+          {t('labels.capped', { count: String(cap) })}
         </div>
       )}
     </>

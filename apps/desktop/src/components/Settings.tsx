@@ -565,6 +565,8 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     ...w,
                     scope: 'instance' as const,
                   }))}
+                  // A vocabulary, so the bigger cap: this is the list to choose FROM.
+                  cap={INSTANCE_LABELS_MAX}
                   inputId="instance-labels-input"
                   testPrefix="instance-labels"
                 />
