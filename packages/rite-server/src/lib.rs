@@ -4050,7 +4050,63 @@ fn marks_file(accounts: bool) -> Option<std::path::PathBuf> {
     if accounts { None } else { marks_path() }
 }
 
+/// Where this context keeps the marks document, which is decided by WHERE THE KEY IS.
+///
+/// Three supports and no preference between them (ADR 0022 §6):
+///
+///   - a server account seals it client-side under the reader's own key, at
+///     `/api/user/marks`. This route has nothing to offer there.
+///   - A LOCAL VAULT IS A VAULT. The master key exists and this process is holding it, so
+///     the document is sealed with it and kept in the vault's own database. It was a JSON
+///     file in the clear for one release, which is the gap this closes: a labelled
+///     conversation names a project and a customer.
+///   - no vault open at all has nothing to seal with, so the file stays the answer. That
+///     is not a weaker choice, it is the only one — and it is a file on the person's own
+///     machine.
+///
+/// The two are different documents on purpose, not two views of one. A conversation
+/// labelled inside the vault is not readable with the vault closed, which is the same rule
+/// the library already follows, and the alternative — reading both forever — would make the
+/// plaintext file a live support again and undo the sealing.
+enum MarksSupport {
+    Account,
+    Vault([u8; 32]),
+    File(std::path::PathBuf),
+}
+
+async fn marks_support(state: &ServerState) -> MarksSupport {
+    if state.accounts {
+        return MarksSupport::Account;
+    }
+    // `get_master_key` answers only while the vault is unlocked, which is exactly the
+    // question being asked — so its error is the "no vault" branch and not a failure.
+    if let Ok(key) = state.auth.get_master_key().await {
+        return MarksSupport::Vault(*key.as_bytes());
+    }
+    match marks_path() {
+        Some(path) => MarksSupport::File(path),
+        None => MarksSupport::Account,
+    }
+}
+
 async fn get_marks(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
+    match marks_support(&state).await {
+        MarksSupport::Account => return Ok(Json(json!({ "text": null, "path": null }))),
+        MarksSupport::Vault(key) => {
+            let text = rite_core::vault_documents::get(
+                state.db.pool(),
+                &key,
+                rite_core::vault_documents::MARKS,
+            )
+            .await?;
+            // Nothing written yet is the normal state of a fresh vault; `null` is reserved
+            // for "there is no support here", which the client reads as a refusal.
+            return Ok(Json(
+                json!({ "text": text.unwrap_or_default(), "path": null }),
+            ));
+        }
+        MarksSupport::File(_) => {}
+    }
     if let Some(path) = marks_file(state.accounts) {
         let text = match tokio::fs::read_to_string(&path).await {
             Ok(t) => t,
@@ -4069,6 +4125,20 @@ async fn put_marks(
     State(state): State<ServerState>,
     Json(req): Json<ValueReq>,
 ) -> Result<StatusCode, AppError> {
+    match marks_support(&state).await {
+        MarksSupport::Account => return Ok(StatusCode::NOT_FOUND),
+        MarksSupport::Vault(key) => {
+            rite_core::vault_documents::set(
+                state.db.pool(),
+                &key,
+                rite_core::vault_documents::MARKS,
+                &req.value,
+            )
+            .await?;
+            return Ok(StatusCode::NO_CONTENT);
+        }
+        MarksSupport::File(_) => {}
+    }
     if let Some(path) = marks_file(state.accounts) {
         if let Some(dir) = path.parent() {
             tokio::fs::create_dir_all(dir)

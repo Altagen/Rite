@@ -158,8 +158,10 @@ impl Database {
                 25,
                 include_str!("../migrations/025_known_hosts_per_member.sql"),
             ),
+            (26, include_str!("../migrations/026_user_marks.sql")),
+            (27, include_str!("../migrations/027_vault_documents.sql")),
             // Future migrations go here:
-            // (19, include_str!("../migrations/019_another_feature.sql")),
+            // (28, include_str!("../migrations/028_another_feature.sql")),
         ];
 
         // Expected latest version

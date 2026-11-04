@@ -2,18 +2,28 @@
 
 ## Migration Strategy
 
-### Alpha/Beta Phase (Current)
-**DO NOT create new migration files during alpha/beta.**
+**Add a numbered file, and register it.** This repository has done that since `002`, and
+the advice that used to stand here — edit `001` and let people reset their database —
+stopped being true the moment anyone else had one. Editing `001` now changes nothing on a
+database that has already applied it.
 
-Instead, modify `001_initial_schema.sql` directly. Users are expected to reset their databases during active development.
+### The two steps, and the second is the one that gets forgotten
 
-To reset database:
+1. `NNN_what_it_does.sql`, where `NNN` is the next number with no gap.
+2. **An entry in the `migrations` vector in `src/db.rs`.** The list is an explicit
+   `vec![]`, not a scan of this folder: it is ordered, versioned and auditable, and a
+   migration must not start applying itself because a file appeared in a directory.
+
+Step 2 was missed once. `026_user_marks.sql` sat here unregistered for a release, so the
+table existed in this folder and on no instance, and `/api/user/marks` answered
+`no such table` to every account. `e2e/migrations-registered-check.mjs` now holds the two
+steps together — every file is in the list, every entry is a file, and a version is the
+number its file name carries.
+
+To reset a local database during development:
 ```bash
 rm ~/.local/share/rite/vault.db*
 ```
-
-### Post-Release (v1.0+)
-After the first stable release, create numbered migrations starting from `002_*.sql`.
 
 ## How the Migration System Works
 

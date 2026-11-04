@@ -24,4 +24,5 @@ pub mod server_auth;
 pub mod ssh_config;
 pub mod teams;
 pub mod terminal;
+pub mod vault_documents;
 pub mod vault_store;
