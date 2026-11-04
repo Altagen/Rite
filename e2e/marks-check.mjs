@@ -28,8 +28,13 @@ const check = (name, fn) => {
 
 import { readFileSync } from 'node:fs';
 import {
+  LABELS_MAX,
+  LABEL_MAX,
+  acceptedLabels,
   acceptedMarks as accepted,
+  cleanLabel,
   formatMarks,
+  labelColor,
   withMark,
 } from '../apps/desktop/src/store/marksFormat.ts';
 
@@ -147,6 +152,109 @@ check('and a blob that will not open leaves what is held alone', () => {
     !load.slice(katch, load.indexOf('}', katch + 12)).includes('marks: []'),
     'a failed unseal empties the marks',
   );
+});
+
+console.log('\nlabels — the other question a mark answers:');
+
+const KEY = { machine: '@local', tool: 'claude', id: 'c-1' };
+
+check('a label is trimmed, squeezed to one line and capped in length', () => {
+  assert.equal(cleanLabel('  the   api  '), 'the api');
+  assert.equal(cleanLabel('a\nb'), 'a b');
+  // PINNED AT 24, not at `LABEL_MAX`: an assertion that reads the constant it is meant
+  // to hold agrees with whatever the constant becomes, which is no assertion at all.
+  // Twenty-four characters is a word or two, which is what a label is for — a sentence
+  // belongs in the name.
+  assert.equal(LABEL_MAX, 24);
+  assert.equal(cleanLabel('x'.repeat(34)).length, 24);
+  assert.equal(cleanLabel('x'.repeat(24)).length, 24);
+  assert.equal(cleanLabel('x'.repeat(12)).length, 12);
+  assert.equal(cleanLabel('   '), '');
+});
+
+check('the same label twice is one, whatever case it was typed in', () => {
+  // `API` and `api` are ONE label — the comparison folds, and what is STORED is what was
+  // typed. Lower-casing on the way in would rewrite somebody's `API` on an edit they did
+  // not make, which is the kind of quiet correction nobody asked for.
+  assert.deepEqual(acceptedLabels(['API', 'api', 'Api']), ['API']);
+  assert.deepEqual(acceptedLabels(['api', 'API']), ['api']);
+});
+
+check('what is not a label is dropped, and the list is capped', () => {
+  assert.deepEqual(acceptedLabels(['ok', 42, null, {}, '', '  ']), ['ok']);
+  assert.deepEqual(acceptedLabels('urgent'), []);
+  assert.deepEqual(acceptedLabels(undefined), []);
+  // Pinned at 8, for the same reason as above. Eight chips fit on a card; a conversation
+  // in thirty groups is in none.
+  assert.equal(LABELS_MAX, 8);
+  const many = Array.from({ length: 13 }, (_, i) => `l${i}`);
+  assert.equal(acceptedLabels(many).length, 8);
+  // The cap keeps the FIRST of them, which is the order the person typed.
+  assert.deepEqual(acceptedLabels(many), ['l0', 'l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7']);
+});
+
+check('a colour comes out of the label text, so nothing has to be kept in step', () => {
+  const palette = ['#a', '#b', '#c', '#d', '#e'];
+  // Case-folded: one label, one colour, however it was typed.
+  assert.equal(labelColor('urgent', palette), labelColor('URGENT', palette));
+  assert.equal(labelColor('  urgent  ', palette), labelColor('urgent', palette));
+  // In the palette, always — a derived index that fell outside it would be no colour.
+  for (const word of ['a', 'api', 'urgent', 'the long one', 'déjà']) {
+    assert.ok(palette.includes(labelColor(word, palette)), word);
+  }
+  // AND IT READS THE TEXT, NOT ITS LENGTH — which is a property of the HASH, so it is
+  // asked of a palette wide enough that a collision would be a coincidence rather than
+  // arithmetic. `hash = key.length` passed the first version of this check: seven words
+  // of assorted lengths landed on four of five colours and looked like a spread.
+  const wide = Array.from({ length: 256 }, (_, i) => `#${i}`);
+  const same = ['api', 'web', 'doc'].map((w) => labelColor(w, wide));
+  assert.equal(new Set(same).size, 3, `${same.join(' ')} — same length, same colour`);
+
+  // How many colours nine real labels actually get out of the shipped palette is a
+  // property of the PALETTE's size, not of the hash, so it is a separate claim and a
+  // modest one: a handful of labels must not all look alike.
+  const nine = ['#1', '#2', '#3', '#4', '#5', '#6', '#7', '#8', '#9'];
+  const seen = new Set(
+    ['api', 'web', 'doc', 'urgent', 'later', 'spike', 'infra', 'docs', 'ops'].map((w) =>
+      labelColor(w, nine),
+    ),
+  );
+  assert.ok(seen.size >= 4, `${seen.size} distinct colours for nine words`);
+});
+
+check('a conversation can be labelled without being named, and the other way round', () => {
+  // Two answers to two questions: a name is "which one is this", a label is "which group
+  // is this in". Either alone is a mark.
+  assert.deepEqual(accepted({ marks: [{ ...KEY, labels: ['api'] }] }), [
+    { ...KEY, name: '', labels: ['api'] },
+  ]);
+  assert.deepEqual(accepted({ marks: [{ ...KEY, name: 'the port' }] }), [
+    { ...KEY, name: 'the port' },
+  ]);
+});
+
+check('and a row with neither marks nothing, so it is not a mark', () => {
+  assert.deepEqual(accepted({ marks: [{ ...KEY }] }), []);
+  assert.deepEqual(accepted({ marks: [{ ...KEY, name: '', labels: [] }] }), []);
+  assert.deepEqual(accepted({ marks: [{ ...KEY, labels: [7] }] }), []);
+});
+
+check('an edit writes the labels, and emptying both removes the row', () => {
+  const one = withMark([], { ...KEY, name: 'the port', labels: ['api', 'api', 'URGENT'] });
+  assert.deepEqual(one, [{ ...KEY, name: 'the port', labels: ['api', 'URGENT'] }]);
+  // Editing twice replaces rather than stacking.
+  assert.deepEqual(withMark(one, { ...KEY, name: '', labels: ['web'] }), [
+    { ...KEY, name: '', labels: ['web'] },
+  ]);
+  // Nothing left to say ⇒ the row goes, which is what the Clear button does too: the two
+  // gestures cannot leave the document in different states.
+  assert.deepEqual(withMark(one, { ...KEY, name: '', labels: [] }), []);
+  assert.deepEqual(withMark(one, { ...KEY, name: null }), []);
+});
+
+check('labels survive a write and a read of the document', () => {
+  const marks = [{ ...KEY, name: 'the port', color: '#7c5cff', labels: ['api', 'urgent'] }];
+  assert.deepEqual(accepted(JSON.parse(formatMarks(marks))), marks);
 });
 
 console.log();

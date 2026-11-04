@@ -1138,6 +1138,88 @@ def scenario_agentload(wid):
     )
     check("and what the tool reported is still under it", both is True)
 
+    # LABELS, which answer the other question: a name is "which one is this", a label is
+    # "which group is this in", and there can be several. Typed comma-separated, because
+    # there is no list to pick from until somebody has typed one.
+    js(f"document.querySelector('[data-testid=\"{card}\"]')?.click(); 1")
+    time.sleep(0.5)
+    js(
+        "(() => { const i = document.querySelector('[data-testid=agent-labels-input]');"
+        " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;"
+        " set.call(i, 'api, URGENT, api');"
+        " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+    )
+    time.sleep(0.4)
+    chips = js(
+        "Array.from(document.querySelectorAll('[data-testid=agent-labels-preview] span'))"
+        ".map(s => s.textContent.trim())"
+    )
+    # `api` twice is one label, and the case that was TYPED is what is kept.
+    check("the preview is what the document will hold", chips == ["api", "URGENT"], f"got {chips}")
+    js("document.querySelector('[data-testid=agent-rename-save]')?.click(); 1")
+    time.sleep(1.2)
+    worn = js(
+        "Array.from(document.querySelectorAll('[data-testid^=agent-card-]'))"
+        ".filter(c => c.querySelector('[data-testid=agent-label-api]')).length"
+    )
+    check("the card wears its labels", worn == 1, f"{worn} cards")
+
+    # The colour is DERIVED from the label's own text, so it is the same word that decides
+    # it on every machine — nothing stored, nothing to keep in step.
+    two = js(
+        "(() => { const c = document.querySelector('[data-testid=agent-label-api]');"
+        " const u = document.querySelector('[data-testid=agent-label-urgent]');"
+        " return c && u ? [getComputedStyle(c).color, getComputedStyle(u).color] : []; })()"
+    )
+    check("two labels are two colours", len(two) == 2 and two[0] != two[1], f"got {two}")
+
+    # And a label is something to filter by, like a name.
+    js("document.querySelector('[data-testid=agent-label]')?.click(); 1")
+    time.sleep(0.4)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'URGENT'); if (o) o.click(); })()"
+    )
+    time.sleep(0.6)
+    only = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+    check("filtering by a label leaves that one conversation", only == 1, f"{only} cards")
+    js("document.querySelector('[data-testid=agent-label]')?.click(); 1")
+    time.sleep(0.4)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'Any'); if (o) o.click(); })()"
+    )
+    time.sleep(0.5)
+
+    # A LABEL ALREADY USED IS CLICKED, NOT RETYPED — which is the whole point of a long
+    # one. The vocabulary is derived from the marks, so `api` is on offer everywhere the
+    # moment it has been used once.
+    second = js(
+        "(() => { const rs = Array.from(document.querySelectorAll('[data-testid^=agent-rename-]'));"
+        " const b = rs[1]; if (!b) return ''; b.click(); return b.getAttribute('data-testid'); })()"
+    )
+    check("a second conversation opens its dialog", second.startswith("agent-rename-"), f"got {second!r}")
+    time.sleep(0.5)
+    offered = js(
+        "Array.from(document.querySelectorAll('[data-testid^=agent-labels-add-]'))"
+        ".map(b => b.textContent.trim())"
+    )
+    check("the labels already used are offered", sorted(offered) == ["URGENT", "api"], f"got {offered}")
+    js("document.querySelector('[data-testid=agent-labels-add-api]')?.click(); 1")
+    time.sleep(0.4)
+    chips = js(
+        "Array.from(document.querySelectorAll('[data-testid=agent-labels-preview] span'))"
+        ".map(s => s.textContent.trim())"
+    )
+    check("clicking one adds it without typing", chips == ["api"], f"got {chips}")
+    # And it is no longer offered, because a chip that does nothing is one somebody clicks
+    # twice before reading the field above it.
+    check("and it stops being offered",
+          js("!document.querySelector('[data-testid=agent-labels-add-api]')"))
+    shot("agentload-labels")
+    js("document.querySelector('[data-testid=agent-rename-cancel]')?.click(); 1")
+    time.sleep(0.4)
+
     # AND THE NAME IS SOMETHING TO FILTER BY, which is what a name is for on a list of
     # seventy-three. A FILTER and not a second grouping: the band per CLI stays the
     # structure of the page, so narrowing by name does not cost the tool a card is under.

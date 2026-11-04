@@ -259,7 +259,7 @@ token-versus-geometry, it is *what could ever live in a stylesheet*:
 |---|---|---|
 | Runtime geometry | 14 | a split's percentage, a popup's coordinates, `paddingLeft` from a tree depth, `pointerEvents` during a drag |
 | Static CSS, inline for no reason | 13 | `padding: '4px'`, `resize: 'vertical'`, `userSelect: 'none'`, `rotate(90deg)` |
-| A colour the user chose | 17 | a collection's, a machine's, a member's avatar, the swatch grids, an agent mark's dot in both arrangements |
+| A colour the user chose | 18 | a collection's, a machine's, a member's avatar, the swatch grids, an agent mark's dot in both arrangements, a label's chip |
 | A context's badge | 1 | `backgroundImage` from a hash |
 | **A design token, written as a hex** | **1** | `LibrarySidebar.tsx:841` |
 
@@ -280,6 +280,13 @@ stored colour — the MACHINE's, from the Library — and it stays out of this c
 because it is written `style={expr}` rather than `style={{…}}`, which the counter does not
 see. Said here rather than left as a gap: it is the same kind, and no stylesheet can hold
 it either.
+
+The eighteenth is a label's chip, and it is the third group with the argument taken one
+step further: that colour is not even *stored*, it is **derived from the label's own text**
+(`labelColor`). `urgent` is the same colour on every machine and in every vault with
+nothing kept in step, and an exported document carries no palette that could disagree with
+itself. A stylesheet cannot hold it for a stronger reason than the others — labels are an
+open vocabulary, so there is no finite set of classes to write.
 
 The fifth is one site and it is the whole argument for doing this before a theme exists.
 A folder's Delete button carries `color: '#f7768e'`, which is `--destructive`

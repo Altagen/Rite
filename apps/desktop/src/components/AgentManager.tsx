@@ -44,6 +44,7 @@ import {
 } from '../utils/agentAdapters';
 import { agentBlockedReason, agentVerdict } from '../utils/agentPolicy';
 import { useMarks, type Mark } from '../store/marks';
+import { LABELS_MAX, acceptedLabels, cleanLabel, labelColor } from '../store/marksFormat';
 import { keepAnswer, readAnswers, type Answer } from '../store/agentAnswers';
 import { MACHINE_SWATCHES } from '../theme/swatches';
 import { askConfirm } from '../utils/confirmPrompt';
@@ -174,6 +175,8 @@ export function AgentManager({
    * are prefixed so that a conversation actually named `@named` cannot become one.
    */
   const [named, setNamed] = useState('@any');
+  /** Which label narrows the list: `@any`, or the label itself, folded for comparison. */
+  const [label, setLabel] = useState('@any');
   /** The conversation a removal is in flight on, so its buttons stop answering. */
   const [removing, setRemoving] = useState<string | null>(null);
   /**
@@ -456,12 +459,31 @@ export function AgentManager({
       if (floor && r.conv.writtenAt !== undefined && r.conv.writtenAt < floor) return false;
       if (named === '@named' && !r.mark?.name) return false;
       if (named.startsWith('n:') && r.mark?.name !== named.slice(2)) return false;
+      // Case-folded, because `API` and `api` are one label — what is STORED is what was
+      // typed, and what is COMPARED is folded.
+      if (
+        label !== '@any' &&
+        !(r.mark?.labels ?? []).some((l) => l.toLowerCase() === label.toLowerCase())
+      ) {
+        return false;
+      }
       if (!q) return true;
-      return [r.mark?.name, r.conv.ask, r.conv.project, r.conv.label, r.conv.id, r.adapter.name]
+      // Labels are searched like everything else a person typed, because the point of a
+      // short word is that it is the thing you reach for — a label you have to open a
+      // dropdown to use is a label you stop using.
+      return [
+        r.mark?.name,
+        ...(r.mark?.labels ?? []),
+        r.conv.ask,
+        r.conv.project,
+        r.conv.label,
+        r.conv.id,
+        r.adapter.name,
+      ]
         .filter(Boolean)
         .some((v) => v!.toLowerCase().includes(q));
     });
-  }, [rows, query, since, named]);
+  }, [rows, query, since, named, label]);
 
   /**
    * The names in use on this machine, which are the only ones worth offering.
@@ -474,6 +496,25 @@ export function AgentManager({
     for (const r of rows) if (r.mark?.name) seen.add(r.mark.name);
     return Array.from(seen).sort((a, b) => a.localeCompare(b));
   }, [rows]);
+
+  /**
+   * EVERY LABEL THIS PERSON HAS USED, which is the vocabulary and is not stored anywhere.
+   *
+   * Derived from the marks document rather than kept beside it: a list of labels that
+   * exist but are on nothing is a list of labels that do nothing, and a stored one is a
+   * second collection to keep in step with the first. Used once, anywhere, and the word
+   * is offered everywhere — which is the whole of what a picker is for.
+   *
+   * From `marks` and not from `rows`: the rows are one machine's, and a label typed on a
+   * machine that has not been probed in this window is still a label this person uses.
+   */
+  const vocabulary = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const m of marks) {
+      for (const l of m.labels ?? []) if (!seen.has(l.toLowerCase())) seen.set(l.toLowerCase(), l);
+    }
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+  }, [marks]);
 
   /** One band per tool that reported something, in the shipped order. */
   const bands = useMemo(() => {
@@ -546,15 +587,18 @@ export function AgentManager({
       {renaming && (
         <RenameDialog
           row={renaming}
+          vocabulary={vocabulary}
           onClose={() => setRenaming(null)}
-          onSave={(name, color) => {
-            // An empty name takes the mark away rather than writing a block that says
-            // nothing — the same gesture as the Clear button, from the keyboard.
+          onSave={(name, color, labels) => {
+            // Neither a name nor a label takes the mark away rather than writing an entry
+            // that says nothing — the same gesture as the Clear button, from the keyboard.
             // `renaming.on`, not the machine being looked at: under `@all` a row can come
             // from any of them, and a mark keyed to the wrong one would name a
             // conversation that machine does not hold.
             const key = { machine: renaming.on, tool: renaming.adapter.id, id: renaming.conv.id };
-            void setMark(name ? { ...key, name, color } : { ...key, name: null });
+            void setMark(
+              name || labels.length ? { ...key, name, color, labels } : { ...key, name: null },
+            );
             setRenaming(null);
           }}
         />
@@ -662,6 +706,18 @@ export function AgentManager({
                 onChange={setNamed}
                 label={t('agent.byName')}
                 testId="agent-named"
+              />
+            )}
+            {vocabulary.length > 0 && (
+              <Dropdown
+                value={label}
+                options={[
+                  { value: '@any', label: t('agent.labelAny') },
+                  ...vocabulary.map((l) => ({ value: l, label: l })),
+                ]}
+                onChange={setLabel}
+                label={t('agent.byLabel')}
+                testId="agent-label"
               />
             )}
             <span className="flex-1" />
@@ -929,6 +985,7 @@ function Detail({
 }) {
   const { t } = useTranslation();
   const { conv, adapter, mark } = row;
+  const tags = mark?.labels ?? [];
   const written = conv.writtenAt ? new Date(conv.writtenAt * 1000) : null;
   const line = agentResumeCmd(adapter, conv.id);
   const ask = useRef<HTMLParagraphElement>(null);
@@ -1030,7 +1087,14 @@ function Detail({
       </div>
 
       <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5 text-xs">
-        {conv.project && fact(t('agent.detailProject'), conv.project, true)}
+        {/* ONLY WHEN IT IS A REAL PATH, which is what `/` says. Claude files a
+            conversation under the working directory with every `/` replaced by `-`, and
+            that slug cannot be turned back into a path — so in a panel that now reads the
+            TRUE directory off the machine, printing the slug beside it is two answers to
+            one question, one of them mangled. Grok's decodes exactly and stands on its
+            own; Codex has none. The card still shows the slug: at list time nothing has
+            been asked of any machine. */}
+        {conv.project?.startsWith('/') && fact(t('agent.detailProject'), conv.project, true)}
         {written && fact(t('agent.detailWritten'), written.toLocaleString())}
         {/* Where it lives, when the listing named a file — which is also what Delete
             removes, so the panel shows it rather than leaving the confirmation to
@@ -1051,6 +1115,15 @@ function Detail({
           true,
         )}
         {fact(t('agent.detailResumes'), line, true)}
+        {tags.length !== 0 &&
+          fact(
+            t('agent.labels'),
+            <span className="flex flex-wrap gap-1">
+              {tags.map((l) => (
+                <LabelChip key={l.toLowerCase()} label={l} />
+              ))}
+            </span>,
+          )}
       </dl>
 
       {/* WHAT THE MACHINE SAYS NOW, and it is a block of its own rather than two more
@@ -1220,6 +1293,7 @@ function Card({
 }) {
   const { t } = useTranslation();
   const { conv, mark } = row;
+  const tags = mark?.labels ?? [];
   const written = conv.writtenAt ? new Date(conv.writtenAt * 1000) : null;
   const stamp = written ? written.toLocaleString(undefined, WHEN) : null;
   // What a conversation IS to someone looking for it: the thing they typed first. Then
@@ -1266,6 +1340,16 @@ function Card({
         )}
         {headline ?? <span className="text-muted-foreground">{t('agent.noProject')}</span>}
       </div>
+      {/* The labels, under the headline and above everything the tool said — they are the
+          person's own filing and the reason they are on the card at all is to be seen
+          without reading. */}
+      {tags.length !== 0 && (
+        <div className="flex flex-wrap gap-1">
+          {tags.map((l) => (
+            <LabelChip key={l.toLowerCase()} label={l} small />
+          ))}
+        </div>
+      )}
       {/* Under the headline rather than replacing it, so a card never has to choose
           between two true things — and a time is absent when the host's `stat` answered
           neither syntax, rather than being one nobody measured. */}
@@ -1336,28 +1420,74 @@ function Card({
 }
 
 /**
- * Naming someone else's conversation.
+ * One label, in the colour its own text gives it.
  *
- * A name and a colour, both this person's, over a session they did not create here. The
- * vendor's files are never touched (ADR 0022 §6): what is written is a `[[mark]]` in the
- * workspace document, which is the same support a layout rides — a file on this machine,
- * or a blob the account holds and the server cannot read.
+ * The colour is derived and never stored (`labelColor`), so `urgent` looks the same on
+ * every machine and in every vault with nothing kept in step — and a label typed on one
+ * host is recognisable on the next.
+ */
+function LabelChip({ label, small = false }: { label: string; small?: boolean }) {
+  const color = labelColor(label, MARK_COLORS);
+  return (
+    <span
+      className={`inline-flex max-w-full items-center gap-1 truncate rounded-full border px-1.5 ${
+        small ? 'text-[10px]' : 'text-[11px]'
+      }`}
+      style={{ borderColor: color, color }}
+      title={label}
+      data-testid={`agent-label-${label.toLowerCase()}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+/**
+ * Naming and filing someone else's conversation.
  *
- * Clearing the name removes the mark entirely rather than leaving an empty one, so a
- * document never carries a block that says nothing.
+ * A name, a colour and any number of labels, all this person's, over a session they did
+ * not create here. The vendor's files are never touched (ADR 0022 §6): what is written is
+ * a row in the marks document Rite owns — a file on this machine, or a blob the account
+ * holds and the server cannot read.
+ *
+ * A NAME AND LABELS ARE TWO ANSWERS TO TWO QUESTIONS, in one dialog because they are one
+ * gesture. The name is "which one is this" and there is one of it: it becomes the card's
+ * headline. A label is "which group is this in" and there can be several: they drive the
+ * filter. One field doing both would make a headline out of a list.
+ *
+ * Labels are typed as text, comma-separated, and not picked from a list — there is no
+ * list until somebody has typed one, and a picker that starts empty is a dialog asking a
+ * question it has not been given the means to answer.
+ *
+ * Clearing both removes the mark entirely rather than leaving an empty one, so the
+ * document never carries a row that says nothing.
  */
 function RenameDialog({
   row,
+  vocabulary,
   onClose,
   onSave,
 }: {
   row: Row;
+  /** Every label this person has used. Offered, never required. */
+  vocabulary: string[];
   onClose: () => void;
-  onSave: (name: string, color?: string) => void;
+  onSave: (name: string, color: string | undefined, labels: string[]) => void;
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState(row.mark?.name ?? '');
   const [color, setColor] = useState(row.mark?.color);
+  const [typed, setTyped] = useState((row.mark?.labels ?? []).join(', '));
+  // Through the shipped cleaner, so what the preview shows is what the document will
+  // hold — including the cap and the case-insensitive de-duplication.
+  const labels = acceptedLabels(typed.split(',').map(cleanLabel));
+  // What is offered is what is not already on: a chip that does nothing when clicked is
+  // a chip somebody clicks twice before reading the field above it.
+  const unused = vocabulary.filter((v) => !labels.some((l) => l.toLowerCase() === v.toLowerCase()));
+  // Hoisted out of the JSX because `e2e/i18n-check.mjs` reads whatever follows a `>`
+  // inside a brace as text on screen — which is the right default, and this was the one
+  // place it was a comparison.
+  const capped = typed.split(',').filter((p) => cleanLabel(p)).length !== labels.length;
   const what = row.conv.ask ?? row.conv.project ?? row.conv.id;
   return (
     <div
@@ -1380,7 +1510,7 @@ function RenameDialog({
           value={name}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') onSave(name.trim(), color);
+            if (e.key === 'Enter') onSave(name.trim(), color, labels);
             if (e.key === 'Escape') onClose();
           }}
           data-testid="agent-rename-input"
@@ -1400,13 +1530,66 @@ function RenameDialog({
             />
           ))}
         </div>
+        <label className="mt-3 block text-xs text-muted-foreground" htmlFor="agent-labels-input">
+          {t('agent.labels')}
+        </label>
+        <input
+          id="agent-labels-input"
+          className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
+          placeholder={t('agent.labelsPlaceholder')}
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') onSave(name.trim(), color, labels);
+            if (e.key === 'Escape') onClose();
+          }}
+          data-testid="agent-labels-input"
+        />
+        {/* What the document will hold, in the colours the cards will wear — because a
+            comma-separated field is a guess until it is read back, and the cap and the
+            de-duplication happen on the way in. */}
+        {labels.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1" data-testid="agent-labels-preview">
+            {labels.map((l) => (
+              <LabelChip key={l.toLowerCase()} label={l} />
+            ))}
+          </div>
+        )}
+        {/* ALREADY USED, which is the vocabulary and is derived rather than stored (see
+            `vocabulary`). A long label is typed once and clicked ever after; a new one is
+            still just typed, because a picker that is the only way in is a picker that
+            decides what a person may call things. */}
+        {unused.length > 0 && (
+          <>
+            <div className="mt-2 text-[11px] text-muted-foreground">{t('agent.labelsKnown')}</div>
+            <div className="mt-1 flex flex-wrap gap-1" data-testid="agent-labels-known">
+              {unused.map((l) => (
+                <button
+                  key={l.toLowerCase()}
+                  type="button"
+                  disabled={labels.length >= LABELS_MAX}
+                  onClick={() => setTyped(acceptedLabels([...labels, l]).join(', '))}
+                  className="rounded-full disabled:opacity-40"
+                  data-testid={`agent-labels-add-${l.toLowerCase()}`}
+                >
+                  <LabelChip label={l} small />
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {capped && (
+          <div className="mt-1 text-[11px] text-amber-500" data-testid="agent-labels-dropped">
+            {t('agent.labelsCapped', { count: String(LABELS_MAX) })}
+          </div>
+        )}
         <div className="mt-4 flex justify-end gap-2">
           {row.mark && (
             // Taking the name away is the other half of giving one, and it belongs on
             // this screen rather than in a document nobody edits by hand.
             <button
               type="button"
-              onClick={() => onSave('', undefined)}
+              onClick={() => onSave('', undefined, [])}
               className="rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
               data-testid="agent-rename-clear"
             >
@@ -1417,12 +1600,13 @@ function RenameDialog({
             type="button"
             onClick={onClose}
             className="rounded-md border border-border px-2.5 py-1 text-xs"
+            data-testid="agent-rename-cancel"
           >
             {t('agent.renameCancel')}
           </button>
           <button
             type="button"
-            onClick={() => onSave(name.trim(), color)}
+            onClick={() => onSave(name.trim(), color, labels)}
             className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground"
             data-testid="agent-rename-save"
           >
@@ -1763,6 +1947,7 @@ function RailRow({
   t: (key: string, vars?: Record<string, string>) => string;
 }) {
   const { conv, mark } = row;
+  const tags = mark?.labels ?? [];
   const written = conv.writtenAt ? new Date(conv.writtenAt * 1000) : null;
   const stamp = written ? written.toLocaleString(undefined, WHEN) : null;
   return (
@@ -1789,6 +1974,13 @@ function RailRow({
           <span className="text-muted-foreground">{t('agent.noProject')}</span>
         )}
       </span>
+      {tags.length !== 0 && (
+        <span className="hidden shrink-0 gap-1 sm:flex">
+          {tags.map((l) => (
+            <LabelChip key={l.toLowerCase()} label={l} small />
+          ))}
+        </span>
+      )}
       {(on || (conv.ask && conv.project)) && (
         <span className="hidden shrink-0 truncate text-xs text-muted-foreground sm:block sm:max-w-[14rem]">
           {[on, conv.ask ? conv.project : null].filter(Boolean).join(' · ')}
