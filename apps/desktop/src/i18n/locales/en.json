@@ -1314,7 +1314,8 @@
     "instanceHint": "Declared once, offered inside every collection. A collection can declare words of its own; those stay in it.",
     "instanceSave": "Save the list",
     "instanceCap": "{count} words at most",
-    "anyLabel": "Any label"
+    "anyLabel": "Any label",
+    "instanceLocked": "This vault is locked. The list is kept sealed with its key."
   },
   "connErr": {
     "retrying": "Retrying automatically…",

@@ -20,8 +20,19 @@ import { create } from 'zustand';
 import { Backend } from '../utils/backend';
 import { acceptedVocabulary } from './labelsFormat';
 
+/** Where the list is kept, as the server reported it. `locked` ⇒ a write will be refused. */
+export type LabelsSupport = 'instance' | 'vault' | 'file' | 'locked';
+
 interface InstanceLabelsState {
   words: string[];
+  /**
+   * Which support answered.
+   *
+   * SAID BY THE SERVER RATHER THAN INFERRED, because `locked` and `nothing declared yet`
+   * both arrive as an empty list — and a Save button drawn over the first can only fail.
+   * That shipped once, as a 409 in a window with no master password.
+   */
+  support: LabelsSupport | null;
   loaded: boolean;
   /** Set when the last read or write failed, so a screen can say so rather than show none. */
   error: string | null;
@@ -32,13 +43,14 @@ interface InstanceLabelsState {
 
 export const useInstanceLabels = create<InstanceLabelsState>((set) => ({
   words: [],
+  support: null,
   loaded: false,
   error: null,
 
   load: async () => {
     try {
-      const { labels } = await Backend.Labels.get();
-      set({ words: acceptedVocabulary(labels), loaded: true, error: null });
+      const { labels, support } = await Backend.Labels.get();
+      set({ words: acceptedVocabulary(labels), support, loaded: true, error: null });
     } catch (e) {
       // Loaded, with nothing: a vocabulary that could not be read is not an empty one, but
       // the screens that offer words must still draw. The error is kept so the editor can

@@ -289,6 +289,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   // a button that writes what is already stored invites a round trip that changes nothing.
   const instanceWords = useInstanceLabels((st) => st.words);
   const instanceError = useInstanceLabels((st) => st.error);
+  const instanceSupport = useInstanceLabels((st) => st.support);
   const instanceLoaded = useInstanceLabels((st) => st.loaded);
   const loadInstanceWords = useInstanceLabels((st) => st.load);
   const saveWords = useInstanceLabels((st) => st.save);
@@ -524,19 +525,28 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
               <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
                 {t('labels.instanceHint')}
               </p>
-              <LabelField
-                labels={instanceWords}
-                onChange={setInstanceDraft}
-                vocabulary={[]}
-                inputId="instance-labels-input"
-                testPrefix="instance-labels"
-              />
+              {/* A LOCKED VAULT IS SAID, NOT DRAWN OVER. The list lives behind its key, so
+                  an empty field here would read as "nothing declared" and a Save would be
+                  refused — which is exactly what shipped once. */}
+              {instanceSupport === 'locked' ? (
+                <p className="text-xs text-amber-500" data-testid="instance-labels-locked">
+                  {t('labels.instanceLocked')}
+                </p>
+              ) : (
+                <LabelField
+                  labels={instanceWords}
+                  onChange={setInstanceDraft}
+                  vocabulary={[]}
+                  inputId="instance-labels-input"
+                  testPrefix="instance-labels"
+                />
+              )}
               {instanceError && (
                 <p className="mt-2 text-xs text-amber-500" data-testid="instance-labels-error">
                   {instanceError}
                 </p>
               )}
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-3 flex items-center gap-2" hidden={instanceSupport === 'locked'}>
                 <button
                   type="button"
                   onClick={() => void saveInstanceWords(instanceDraft)}
@@ -766,7 +776,10 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     {fixedStart &&
                       newTabCwdDraft.trim() !== '' &&
                       !newTabCwdDraft.trim().startsWith('/') && (
-                        <p className="mt-1 text-xs text-amber-500" data-testid="new-tab-cwd-refused">
+                        <p
+                          className="mt-1 text-xs text-amber-500"
+                          data-testid="new-tab-cwd-refused"
+                        >
                           {t('settings.newTabCwdAbsolute')}
                         </p>
                       )}

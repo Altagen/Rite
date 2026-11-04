@@ -1314,7 +1314,8 @@
     "instanceHint": "Déclarés une fois, proposés dans chaque collection. Une collection peut déclarer ses propres mots ; ceux-là y restent.",
     "instanceSave": "Enregistrer la liste",
     "instanceCap": "{count} mots au maximum",
-    "anyLabel": "Tous les labels"
+    "anyLabel": "Tous les labels",
+    "instanceLocked": "Ce vault est verrouillé. La liste est gardée scellée avec sa clé."
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",

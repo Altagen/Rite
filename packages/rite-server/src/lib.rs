@@ -4173,32 +4173,54 @@ const LABEL_MAX: usize = 24;
 
 /// Where the instance vocabulary lives, which is decided by WHO READS IT.
 ///
-/// On a server every member reads it, so it is a plaintext row: a word everyone may read
-/// and use has nothing to hide from this process, and sealing it under a key they all hold
-/// would buy a key rotation path and no secrecy. What IS secret is which machine wears a
-/// word, and that stays in the collection's sealed item.
+/// FOUR CASES, and the fourth was missing — which showed up as a 409 on a window that had
+/// never set a master password, under a Save button the screen had drawn anyway. The
+/// reasoning that produced it was wrong twice: "no vault means no collections means
+/// nothing to label" forgets that a CONVERSATION is labelled in that context too (its
+/// marks go to a file on the device, ADR 0022 §6), and a screen must not offer a button
+/// that can only fail.
 ///
-/// ON A LOCAL VAULT THE SCOPE STILL EXISTS, which is the thing worth saying: a local vault
-/// has no organisation and no administrator, but it is an instance of Rite with
-/// collections under it, so a word declared once must not have to be redeclared in each
-/// one. The only reader there is the owner, so it is sealed under the master key like
-/// their marks.
+/// The three real supports are the ones marks already have, for the same reasons:
 ///
-/// With no vault open there is nothing: no vault means no collections, which means no
-/// machine to put a word on.
+///   - `Instance` — a server. Every member reads the list, so it is a plaintext row: a
+///     word everyone may read and use has nothing to hide from this process, and sealing
+///     it under a key they all hold would buy a key rotation path and no secrecy. What IS
+///     secret is which machine wears a word, and that stays in the collection's item.
+///   - `Vault` — a local vault, which is an instance of Rite with collections under it.
+///     The only reader is the owner, so it is sealed under the master key.
+///   - `File` — no master password has ever been set. Nothing exists to seal with, so it
+///     is a file on this person's own machine, beside their marks. Not a weaker choice:
+///     the only one.
+///
+/// And `Locked` is not a support but an answer: a vault EXISTS and is closed, so writing
+/// to a file would split one person's vocabulary across two places depending on whether
+/// they had unlocked. Refused, with a sentence that says which.
 enum LabelsSupport {
     Instance,
     Vault([u8; 32]),
-    None,
+    File(std::path::PathBuf),
+    Locked,
+}
+
+fn labels_path() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("rite").join("labels.json"))
 }
 
 async fn labels_support(state: &ServerState) -> LabelsSupport {
     if state.accounts {
         return LabelsSupport::Instance;
     }
-    match state.auth.get_master_key().await {
-        Ok(key) => LabelsSupport::Vault(*key.as_bytes()),
-        Err(_) => LabelsSupport::None,
+    if let Ok(key) = state.auth.get_master_key().await {
+        return LabelsSupport::Vault(*key.as_bytes());
+    }
+    // A vault that exists and is shut is not a vault that is absent. Told apart here
+    // because the answers differ: one is a file, the other is "unlock first".
+    match state.auth.is_first_run().await {
+        Ok(true) => match labels_path() {
+            Some(path) => LabelsSupport::File(path),
+            None => LabelsSupport::Locked,
+        },
+        _ => LabelsSupport::Locked,
     }
 }
 
@@ -4238,8 +4260,27 @@ struct LabelsReq {
     labels: Vec<String>,
 }
 
+impl LabelsSupport {
+    /// Which support answered, for a screen that has to say whether a write will land.
+    ///
+    /// SAID RATHER THAN GUESSED, because `locked` and `nothing declared yet` both read as
+    /// an empty list, and a Save button over the first one can only fail. That exact
+    /// mistake shipped once: the section was drawn in a window with no master password and
+    /// answered 409 to every press.
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Instance => "instance",
+            Self::Vault(_) => "vault",
+            Self::File(_) => "file",
+            Self::Locked => "locked",
+        }
+    }
+}
+
 async fn get_labels(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
-    let labels = match labels_support(&state).await {
+    let support = labels_support(&state).await;
+    let name = support.name();
+    let labels = match support {
         LabelsSupport::Instance => rite_core::vault_documents::instance::get(state.db.pool())
             .await?
             .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
@@ -4254,11 +4295,17 @@ async fn get_labels(State(state): State<ServerState>) -> Result<Json<Value>, App
             text.and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
                 .unwrap_or_default()
         }
-        // Nothing declared, rather than an error: a window with no vault open has no
-        // collections to declare words for, and the screen says so by offering none.
-        LabelsSupport::None => Vec::new(),
+        LabelsSupport::File(path) => match tokio::fs::read_to_string(&path).await {
+            Ok(text) => serde_json::from_str::<Vec<String>>(&text).unwrap_or_default(),
+            // Nothing declared yet is the normal state of a fresh install.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display()).into()),
+        },
+        // Nothing to read rather than an error: the vocabulary is behind a vault that is
+        // shut, and the screen says so instead of showing an empty list as if it were one.
+        LabelsSupport::Locked => Vec::new(),
     };
-    Ok(Json(json!({ "labels": labels })))
+    Ok(Json(json!({ "labels": labels, "support": name })))
 }
 
 async fn set_labels(
@@ -4281,10 +4328,20 @@ async fn set_labels(
             )
             .await?
         }
-        LabelsSupport::None => {
+        LabelsSupport::File(path) => {
+            if let Some(dir) = path.parent() {
+                tokio::fs::create_dir_all(dir)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("creating {}: {e}", dir.display()))?;
+            }
+            tokio::fs::write(&path, &text)
+                .await
+                .map_err(|e| anyhow::anyhow!("writing {}: {e}", path.display()))?;
+        }
+        LabelsSupport::Locked => {
             return Ok((
                 StatusCode::CONFLICT,
-                "no vault is open, so there are no collections to declare words for",
+                "this vault is locked: open it and the list is kept sealed with its key",
             )
                 .into_response());
         }

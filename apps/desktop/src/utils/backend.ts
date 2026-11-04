@@ -1471,7 +1471,16 @@ export type LocalMachine = z.infer<typeof LocalMachineSchema>;
  * role check lives and which a local vault passes by construction (ADR 0009, ADR 0018).
  */
 export const BackendLabels = {
-  get: () => invokeWithValidation('labels_get', z.object({ labels: z.array(z.string()) }), {}),
+  get: () =>
+    invokeWithValidation(
+      'labels_get',
+      z.object({
+        labels: z.array(z.string()),
+        /** Which support answered. `locked` means a write will be refused. */
+        support: z.enum(['instance', 'vault', 'file', 'locked']).default('file'),
+      }),
+      {},
+    ),
   set: (labels: string[]) => invokeWithValidation('labels_set', z.null(), { labels }),
 };
 

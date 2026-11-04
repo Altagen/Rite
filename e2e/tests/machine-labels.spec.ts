@@ -148,3 +148,31 @@ test('a local vault declares words above its collections, sealed', async ({ requ
   await request.put('/api/admin/labels', { data: { labels: [] } });
   expect(await read()).toEqual([]);
 });
+
+/**
+ * The support the route picks when no master password has ever been set.
+ *
+ * THE CASE THAT SHIPPED BROKEN. The reasoning behind its absence was wrong twice: "no
+ * vault means no collections, which means nothing to label" forgets that a CONVERSATION
+ * is labelled in that context too — its marks go to a file on the device (ADR 0022 §6) —
+ * and a screen must not draw a Save button that can only answer 409.
+ *
+ * So the three supports are the three marks already have, and this is the third: a file
+ * on the person's own machine, because nothing exists to seal with. Not a weaker choice,
+ * the only one.
+ *
+ * This suite runs with a vault set up, so what it holds is the other half — that the route
+ * SAYS which support answered, which is what lets the screen tell a locked vault from a
+ * list nobody has filled in. Both arrive as an empty list, and a Save over the first can
+ * only fail.
+ */
+test('the route says which support answered, so a screen can tell empty from locked', async ({
+  request,
+}) => {
+  const got = await request.get('/api/labels');
+  expect(got.status()).toBe(200);
+  const body = (await got.json()) as { labels: string[]; support: string };
+  // This suite has a vault and it is unlocked, so the list is sealed under its master key.
+  expect(body.support).toBe('vault');
+  expect(Array.isArray(body.labels)).toBe(true);
+});
