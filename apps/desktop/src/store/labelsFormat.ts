@@ -92,7 +92,6 @@ export function labelColor(label: string, palette: readonly string[]): string {
   return palette[hash % palette.length];
 }
 
-
 /**
  * The words already in use, as offers.
  *

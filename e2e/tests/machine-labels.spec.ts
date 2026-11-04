@@ -60,3 +60,52 @@ test('a machine carries labels, sealed with the rest of its record', async ({ re
   });
   expect((await listed()).find((m) => m.id === bare)?.labels).toEqual([]);
 });
+
+/**
+ * The vocabulary a collection DECLARES, which is not the same thing as the words its
+ * machines wear.
+ *
+ * Declared, so a word can be agreed on before anything carries it — and sealed in the
+ * collection's header under its meta key, which is a different key from the one the
+ * machines ride. So this is the scope a sensitive word goes in: read by this collection's
+ * members and nobody else, and it never travels up to the instance.
+ */
+test('a collection declares a vocabulary, in the same sealed header as its name', async ({
+  request,
+}) => {
+  const collection = await ensureCollection(request, 'e2e-vocab');
+  const read = async () =>
+    (
+      (await (await request.get('/api/local/collections')).json()) as {
+        id: string;
+        name: string;
+        folders: unknown[];
+        labels: string[];
+      }[]
+    ).find((c) => c.id === collection)!;
+
+  // Additive: a header written before the field reads as declaring nothing.
+  expect((await read()).labels).toEqual([]);
+
+  const put = await request.put(`/api/local/collections/${collection}`, {
+    data: { name: 'e2e-vocab', color: null, labels: ['pci', 'prod'] },
+  });
+  expect(put.status()).toBe(200);
+  expect((await read()).labels).toEqual(['pci', 'prod']);
+
+  // A RENAME MUST NOT DROP THEM. They share one blob with the name, the colour and the
+  // folders, so the read-modify-write has to keep what the caller did not send — which is
+  // exactly the bug that this shape invites.
+  await request.put(`/api/local/collections/${collection}`, {
+    data: { name: 'e2e-vocab-renamed', color: null },
+  });
+  const after = await read();
+  expect(after.name).toBe('e2e-vocab-renamed');
+  expect(after.labels).toEqual(['pci', 'prod']);
+
+  // And a list replaces, down to empty.
+  await request.put(`/api/local/collections/${collection}`, {
+    data: { name: 'e2e-vocab-renamed', color: null, labels: [] },
+  });
+  expect((await read()).labels).toEqual([]);
+});

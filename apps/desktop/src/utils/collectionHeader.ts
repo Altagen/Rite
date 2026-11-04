@@ -31,6 +31,18 @@ export interface CollectionHeader {
   // collection, ADR 0016). The marker lives in the encrypted header so it stays
   // zero-knowledge; the client finds Personal by decrypting headers.
   personal?: boolean;
+  /**
+   * The vocabulary this collection declares, beyond the words already in use.
+   *
+   * COLLECTION-WIDE AND SEALED — in this header, under the meta key, so it is read by this
+   * collection's members and by nobody else. It NEVER TRAVELS UPWARD: a collection's own
+   * vocabulary cannot become instance-wide. The organisation's list is the other scope,
+   * public and in the clear, inherited by every collection rather than fed by one.
+   *
+   * Declared rather than derived, so a word can be agreed on before anything wears it.
+   * What the words are PUT ON lives in the items, under a different key.
+   */
+  labels?: string[];
 }
 
 /**

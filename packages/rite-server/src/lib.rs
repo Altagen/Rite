@@ -5503,6 +5503,9 @@ struct LocalCollectionReq {
     /// Collection-wide health-check opt-out. Absent ⇒ keep what is stored.
     #[serde(default)]
     hc: Option<Option<bool>>,
+    /// The declared vocabulary. Absent ⇒ keep what is stored, like `folders` and `hc`.
+    #[serde(default)]
+    labels: Option<Vec<String>>,
 }
 
 async fn local_list_collections(
@@ -5544,6 +5547,7 @@ async fn local_update_collection(
         req.color.as_deref(),
         req.folders,
         req.hc,
+        req.labels,
     )
     .await?;
     Ok(Json(json!({ "ok": ok })))

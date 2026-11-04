@@ -1429,6 +1429,8 @@ const LocalCollectionSchema = z.object({
     .array(z.object({ name: z.string(), color: z.string().nullable().optional() }))
     .default([]),
   hc: z.boolean().nullable().optional(),
+  // The vocabulary this collection declares (ADR 0016's sealed header).
+  labels: z.array(z.string()).default([]),
   hasBoard: z.boolean().default(false),
 });
 export type LocalCollection = z.infer<typeof LocalCollectionSchema>;
@@ -1466,6 +1468,8 @@ export const BackendLocal = {
     color?: string | null;
     folders?: { name: string; color: string | null }[];
     hc?: boolean | null;
+    /** Absent keeps what is stored; a list replaces it. */
+    labels?: string[];
   }) => invokeWithValidation('local_update_collection', z.object({ ok: z.boolean() }), args),
   deleteCollection: (id: string) =>
     invokeWithValidation('local_delete_collection', z.object({ ok: z.boolean() }), { id }),

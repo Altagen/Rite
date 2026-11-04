@@ -57,6 +57,18 @@ struct Header {
     /// the browser survives a round-trip here unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     personal: Option<bool>,
+    /// The vocabulary this collection declares, beyond the words already in use.
+    ///
+    /// COLLECTION-WIDE AND SEALED, which is the scope a sensitive word goes in: it is read
+    /// by this collection's members and by nobody else, and it NEVER TRAVELS UPWARD — a
+    /// collection's own vocabulary cannot become instance-wide. The organisation's list is
+    /// the other scope, public and in the clear, and it is inherited by every collection
+    /// rather than fed by one.
+    ///
+    /// Declared rather than derived, so a word can be agreed on before anything wears it.
+    /// What the words are PUT ON stays in the items, sealed under a different key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    labels: Option<Vec<String>>,
 }
 
 /// A machine as it is stored inside a collection item.
@@ -140,6 +152,8 @@ pub struct LocalCollection {
     pub folders: Vec<CollectionFolder>,
     /// Collection-wide active health-check opt-out (ADR 0017).
     pub hc: Option<bool>,
+    /// The vocabulary this collection declares. See `Header::labels`.
+    pub labels: Vec<String>,
     /// Whether this collection has a board stored (the blob itself is read separately).
     pub has_board: bool,
 }
@@ -161,6 +175,7 @@ pub async fn create(
         folders: None,
         hc: None,
         personal: None,
+        labels: None,
     };
     let id = collection_store::create_collection(
         db,
@@ -178,6 +193,7 @@ pub async fn create(
         created_at: chrono::Utc::now().timestamp(),
         folders: Vec::new(),
         hc: None,
+        labels: Vec::new(),
         has_board: false,
     })
 }
@@ -196,6 +212,7 @@ pub async fn list(db: &SqlitePool, master_key: &[u8; KEY_LEN]) -> Result<Vec<Loc
             created_at: row.created_at,
             folders: header.folders.unwrap_or_default(),
             hc: header.hc,
+            labels: header.labels.unwrap_or_default(),
             has_board: row.board_enc.is_some(),
         });
     }
@@ -212,6 +229,9 @@ pub async fn update(
     color: Option<&str>,
     folders: Option<Vec<CollectionFolder>>,
     hc: Option<Option<bool>>,
+    // The declared vocabulary. `None` keeps what is stored, like every field here; a
+    // list REPLACES it, because a merge cannot express "take that word out of the list".
+    labels: Option<Vec<String>>,
 ) -> Result<bool> {
     let meta_key = meta_key_of(db, master_key, id).await?;
     // Read-modify-write: a rename must not silently drop folders or the
@@ -226,6 +246,7 @@ pub async fn update(
             None => current.hc,
         },
         personal: current.personal,
+        labels: labels.or(current.labels),
     };
     collection_store::set_name_enc(db, id, &encrypt_field(&meta_key, &header)?).await
 }
@@ -674,9 +695,18 @@ mod tests {
         let (_d, db, mk) = vault_db().await;
         let c = create(db.pool(), &mk, "Old", None).await.unwrap();
         assert!(
-            update(db.pool(), &mk, &c.id, "New", Some("#f7768e"), None, None)
-                .await
-                .unwrap()
+            update(
+                db.pool(),
+                &mk,
+                &c.id,
+                "New",
+                Some("#f7768e"),
+                None,
+                None,
+                None
+            )
+            .await
+            .unwrap()
         );
         let all = list(db.pool(), &mk).await.unwrap();
         assert_eq!(all[0].name, "New");
@@ -717,6 +747,7 @@ mod tests {
                 remote_port: 80,
             }],
             hc: None,
+            labels: vec!["pci".into()],
             needs_passphrase: false,
             needs_password: false,
         }
@@ -727,7 +758,7 @@ mod tests {
     /// Captured from `StoredRecord` in accountsConnectionsSource.ts.
     #[test]
     fn machine_record_matches_the_browser() {
-        const FROM_BROWSER: &str = r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,"username":"deploy","authMethod":{"type":"publicKey","keyPath":"/home/u/.ssh/id_ed25519"},"color":null,"icon":null,"folder":"Web servers","notes":null,"sshKeepAliveOverride":null,"sshKeepAliveInterval":null,"preconnect":null,"jump":"bastion","forwards":[{"forwardType":"local","bindHost":null,"localPort":8080,"remoteHost":"10.0.0.9","remotePort":80}],"hc":null,"needsPassphrase":false,"needsPassword":false}"#;
+        const FROM_BROWSER: &str = r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,"username":"deploy","authMethod":{"type":"publicKey","keyPath":"/home/u/.ssh/id_ed25519"},"color":null,"icon":null,"folder":"Web servers","notes":null,"sshKeepAliveOverride":null,"sshKeepAliveInterval":null,"preconnect":null,"jump":"bastion","forwards":[{"forwardType":"local","bindHost":null,"localPort":8080,"remoteHost":"10.0.0.9","remotePort":80}],"hc":null,"needsPassphrase":false,"needsPassword":false,"labels":["pci"]}"#;
         let parsed: MachineRecord =
             serde_json::from_str(FROM_BROWSER).expect("a browser record must load");
         assert_eq!(parsed, a_machine());
@@ -735,6 +766,16 @@ mod tests {
         let ours = serde_json::to_value(&parsed).unwrap();
         let theirs: serde_json::Value = serde_json::from_str(FROM_BROWSER).unwrap();
         assert_eq!(ours, theirs, "core and browser must agree field for field");
+    }
+
+    /// A record written before labels existed still loads, and writing it back does not
+    /// invent the field — which is what `#[serde(default)]` buys and what makes the shape
+    /// additive rather than a new version of it.
+    #[test]
+    fn a_record_without_labels_carries_none() {
+        const OLD: &str = r#"{"name":"web-01","protocol":"ssh","hostname":"10.0.0.5","port":22,"username":"deploy","authMethod":{"type":"password"}}"#;
+        let parsed: MachineRecord = serde_json::from_str(OLD).expect("an older record must load");
+        assert!(parsed.labels.is_empty());
     }
 
     #[tokio::test]
@@ -838,14 +879,35 @@ mod tests {
     #[test]
     fn header_matches_the_browser() {
         // r##"…"## because a hex colour contains `"#`, which would end an r#"…"# literal.
-        const FROM_BROWSER: &str = r##"{"name":"Production","color":"#f7768e","folders":[{"name":"Web servers","color":"#7c9cf5"},{"name":"Cache","color":null}],"hc":false}"##;
+        const FROM_BROWSER: &str = r##"{"name":"Production","color":"#f7768e","folders":[{"name":"Web servers","color":"#7c9cf5"},{"name":"Cache","color":null}],"hc":false,"labels":["pci","prod"]}"##;
         let parsed: Header = serde_json::from_str(FROM_BROWSER).expect("browser header must load");
         assert_eq!(parsed.name, "Production");
         assert_eq!(parsed.folders.as_ref().unwrap().len(), 2);
         assert_eq!(parsed.hc, Some(false));
+        // The collection's declared vocabulary rides the same blob, so it is part of the
+        // same contract: a header the browser wrote must come back field for field.
+        assert_eq!(
+            parsed.labels.as_deref(),
+            Some(&["pci".to_string(), "prod".to_string()][..])
+        );
         let ours = serde_json::to_value(&parsed).unwrap();
         let theirs: serde_json::Value = serde_json::from_str(FROM_BROWSER).unwrap();
         assert_eq!(ours, theirs, "header must round-trip field for field");
+    }
+
+    /// A header written before labels existed still loads: every field on it is
+    /// `#[serde(default)]`, which is what makes the shape additive rather than a version.
+    #[test]
+    fn a_header_without_labels_declares_none() {
+        const OLD: &str = r#"{"name":"Home lab","color":null}"#;
+        let parsed: Header = serde_json::from_str(OLD).expect("an older header must load");
+        assert_eq!(parsed.labels, None);
+        // And writing it back does not invent an empty list, which would rewrite every
+        // stored header the first time anything touched it.
+        assert_eq!(
+            serde_json::to_string(&parsed).unwrap(),
+            r#"{"name":"Home lab","color":null}"#
+        );
     }
 
     /// A rename must not quietly discard the folders stored in the same blob.
@@ -871,12 +933,13 @@ mod tests {
             None,
             Some(folders.clone()),
             Some(Some(false)),
+            Some(vec!["pci".into(), "prod".into()]),
         )
         .await
         .unwrap();
 
         // Rename only — folders and hc are untouched.
-        update(db.pool(), &mk, &c.id, "Lab", None, None, None)
+        update(db.pool(), &mk, &c.id, "Lab", None, None, None, None)
             .await
             .unwrap();
         let got = &list(db.pool(), &mk).await.unwrap()[0];
@@ -886,6 +949,41 @@ mod tests {
             "an empty folder must survive a rename"
         );
         assert_eq!(got.hc, Some(false));
+        // The declared vocabulary is in that same blob, so a rename must not drop it
+        // either — and the test above would have passed while it did.
+        assert_eq!(got.labels, vec!["pci".to_string(), "prod".to_string()]);
+
+        // A list REPLACES, because a merge cannot express "take that word out".
+        update(
+            db.pool(),
+            &mk,
+            &c.id,
+            "Lab",
+            None,
+            None,
+            None,
+            Some(vec!["prod".into()]),
+        )
+        .await
+        .unwrap();
+        let got = &list(db.pool(), &mk).await.unwrap()[0];
+        assert_eq!(got.labels, vec!["prod".to_string()]);
+        assert_eq!(got.folders, folders, "and the folders are still there");
+
+        // An empty list is a real state and not "keep what is stored".
+        update(
+            db.pool(),
+            &mk,
+            &c.id,
+            "Lab",
+            None,
+            None,
+            None,
+            Some(Vec::new()),
+        )
+        .await
+        .unwrap();
+        assert!(list(db.pool(), &mk).await.unwrap()[0].labels.is_empty());
     }
 
     #[tokio::test]

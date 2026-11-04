@@ -243,6 +243,10 @@ export interface ConnectionsSource {
     isPersonal: boolean;
     // Collection-wide active-probe opt-out (ADR 0017): false ⇒ never probe its machines.
     hc?: boolean | null;
+    // The vocabulary this collection declares (see CollectionHeader.labels). Sealed in the
+    // header, so it is this collection's members' and nobody else's — and it never travels
+    // up to the instance.
+    labels?: string[];
     // Whether this collection has a Board (an itemsKey-encrypted blob of cards). The
     // blob itself is read via readBoard; this flag lets the UI show an indicator.
     hasBoard?: boolean;
@@ -298,6 +302,8 @@ export interface ConnectionsSource {
     name: string,
     color: string | null,
     hc: boolean | null,
+    /** The declared vocabulary. A list replaces what is stored; absent keeps it. */
+    labels?: string[],
   ) => Promise<void>;
   /** Add or rename a folder inside a collection. `from` absent ⇒ create. */
   saveFolder?: (args: {

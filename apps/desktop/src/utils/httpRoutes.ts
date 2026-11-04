@@ -840,7 +840,13 @@ const routes: Record<string, Route> = {
     json(`/api/local/collections/${a.id}`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: a.name, color: a.color ?? null, folders: a.folders, hc: a.hc }),
+      body: JSON.stringify({
+        name: a.name,
+        color: a.color ?? null,
+        folders: a.folders,
+        hc: a.hc,
+        labels: a.labels,
+      }),
     }),
   local_delete_collection: async (a) =>
     json(`/api/local/collections/${a.id}`, { method: 'DELETE' }),

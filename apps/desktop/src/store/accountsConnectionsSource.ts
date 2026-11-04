@@ -413,6 +413,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       memberCount: number;
       isPersonal: boolean;
       hc: boolean | null;
+      // The vocabulary this collection declares (ADR 0016's header). Sealed with the rest.
+      labels: string[];
       hasBoard: boolean;
     }[]
   >([]);
@@ -449,6 +451,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       memberCount: number;
       isPersonal: boolean;
       hc: boolean | null;
+      // The vocabulary this collection declares (ADR 0016's header). Sealed with the rest.
+      labels: string[];
       hasBoard: boolean;
     }[] = [];
     for (const col of cols) {
@@ -474,6 +478,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
           memberCount,
           isPersonal,
           hc: header.hc ?? null,
+          labels: header.labels ?? [],
           hasBoard: !!col.boardEnc,
         });
         if (canWrite(col.role))

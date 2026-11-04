@@ -7,7 +7,7 @@
  * serves the local master-password vault and the accounts session (ADR 0014).
  */
 
-import { useEffect, useState, useRef, useCallback, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode } from 'react';
 import { useShortcut } from '../shortcuts/useShortcut';
 import { askConfirm } from '../utils/confirmPrompt';
 import { createPortal } from 'react-dom';
@@ -878,6 +878,30 @@ export function Workspace({
    * differs. What a listing cannot give it gives here instead: the working directory is
    * the one thing the person named, so the pane header carries it rather than guessing.
    */
+  /**
+   * Every label word on offer, each marked with where it comes from.
+   *
+   * ONE COMPUTATION FOR BOTH DIALOGS, so a word offered on a machine and a word offered on
+   * a collection cannot come from two different unions. Two sources today — what the
+   * collections DECLARE, and what is already in use — and the instance's public list joins
+   * them when it exists, without either dialog changing.
+   *
+   * `offersFrom` keeps the first spelling it sees, so the declared list is read first: a
+   * word a collection agreed on is offered the way the collection wrote it, not the way
+   * somebody happened to type it on a machine afterwards.
+   */
+  const labelOffers = useMemo(
+    () =>
+      offersFrom(
+        [
+          ...(conns.collections ?? []).map((c) => c.labels),
+          ...conns.connections.map((c) => c.labels),
+        ],
+        'collection',
+      ),
+    [conns.collections, conns.connections],
+  );
+
   const handleNewAgent = async (
     machine: ConnectionInfo | null,
     adapter: ShippedAdapter,
@@ -2544,13 +2568,7 @@ export function Workspace({
       {/* Connection Form Modal */}
       {showForm && (
         <ConnectionForm
-          // The vocabulary's first source: the words already on the machines this context
-          // can see. The collection's own list and the instance's join it later; the
-          // field does not change when they do.
-          labelOffers={offersFrom(
-            conns.connections.map((c) => c.labels),
-            'collection',
-          )}
+          labelOffers={labelOffers}
           connection={editingConnection}
           prefillData={connectionFormPrefill}
           create={conns.create}
@@ -2785,11 +2803,17 @@ export function Workspace({
           initialName={collectionEdit.name}
           initialColor={collectionEdit.color}
           initialHc={collectionEdit.hc}
+          initialLabels={conns.collections?.find((c) => c.id === collectionEdit.id)?.labels ?? []}
+          // What else is on offer, each word marked with where it comes from: every
+          // collection's declared vocabulary and every word already in use. The
+          // instance's public list joins this when it exists.
+          labelOffers={labelOffers}
           onClose={() => setCollectionEdit(null)}
           onSaved={fetchConnections}
           onPersist={
             conns.renameCollection && collectionEdit.id
-              ? (name, color, hc) => conns.renameCollection!(collectionEdit.id!, name, color, hc)
+              ? (name, color, hc, labels) =>
+                  conns.renameCollection!(collectionEdit.id!, name, color, hc, labels)
               : undefined
           }
         />

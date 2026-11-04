@@ -189,8 +189,14 @@ export function useLocalCollectionsSource(): ConnectionsSource {
   );
 
   const renameCollection = useCallback(
-    async (id: string, name: string, color: string | null, hc: boolean | null) => {
-      await Backend.Local.updateCollection({ id, name, color, hc });
+    async (
+      id: string,
+      name: string,
+      color: string | null,
+      hc: boolean | null,
+      labels?: string[],
+    ) => {
+      await Backend.Local.updateCollection({ id, name, color, hc, labels });
       await refresh();
     },
     [refresh],
@@ -323,6 +329,7 @@ export function useLocalCollectionsSource(): ConnectionsSource {
       // No Personal in a local vault (ADR 0018) — every collection is equal.
       isPersonal: false,
       hc: c.hc ?? null,
+      labels: c.labels ?? [],
       hasBoard: c.hasBoard,
     })),
     createCollection,
