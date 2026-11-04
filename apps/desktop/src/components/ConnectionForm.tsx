@@ -15,6 +15,7 @@ import {
 } from '../store/connectionsStore';
 import type { QuickSSHConnectionInfo } from './QuickSSHModal';
 import { AuthSection } from './AuthSection';
+import { LabelField, type LabelOffer } from './Labels';
 import { MACHINE_SWATCHES } from '../theme/swatches';
 import {
   makeAuthState,
@@ -44,8 +45,16 @@ interface ConnectionFormProps {
   defaultCollectionId?: string | null;
   // Preselect this sub-folder path (e.g. opening the form from a folder's ＋).
   defaultFolder?: string | null;
+  /**
+   * Every label on offer, with its scope (`components/Labels.tsx`).
+   *
+   * Passed in rather than read here, because what is on offer depends on which collection
+   * is being saved into and on the instance's own list — neither of which is this form's
+   * to know. Absent ⇒ the field still works and offers nothing, which is the state of a
+   * vault where nobody has labelled anything yet.
+   */
+  labelOffers?: LabelOffer[];
 }
-
 
 export function ConnectionForm({
   connection,
@@ -59,6 +68,7 @@ export function ConnectionForm({
   collectionTargets,
   defaultCollectionId,
   defaultFolder,
+  labelOffers,
 }: ConnectionFormProps) {
   const { t } = useTranslation();
 
@@ -108,6 +118,7 @@ export function ConnectionForm({
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   const [hcOptOut, setHcOptOut] = useState(connection?.hc === false);
   const [notes, setNotes] = useState(connection?.notes || '');
+  const [labels, setLabels] = useState(connection?.labels ?? []);
   const [preconnect, setPreconnect] = useState(connection?.preconnect || '');
   const [jump, setJump] = useState(connection?.jump || '');
   const [sshKeepAliveOverride, setSshKeepAliveOverride] = useState<string | null>(
@@ -289,6 +300,9 @@ export function ConnectionForm({
           ...(color && { color }),
           ...(icon && { icon }),
           ...(notes && { notes }),
+          // Always sent, because a list replaces rather than merges — so an edit that
+          // takes the last label off has to say so.
+          labels,
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
           preconnect: preconnect.trim() || null, // always send so clearing it works
@@ -351,6 +365,7 @@ export function ConnectionForm({
           ...(color && { color }),
           ...(icon && { icon }),
           ...(notes && { notes }),
+          ...(labels.length !== 0 && { labels }),
           sshKeepAliveOverride: sshKeepAliveOverride,
           sshKeepAliveInterval: sshKeepAliveInterval,
           ...(preconnect.trim() && { preconnect: preconnect.trim() }),
@@ -666,6 +681,19 @@ export function ConnectionForm({
                   placeholder={t('connections.notesPlaceholder')}
                   rows={3}
                   className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
+                />
+              </div>
+
+              {/* Labels — the same field the agent manager uses, so the chip, the cap and
+                  the picker cannot drift between two screens. What is labelled is sealed
+                  with the rest of this record whatever the word's scope. */}
+              <div>
+                <LabelField
+                  labels={labels}
+                  onChange={setLabels}
+                  vocabulary={labelOffers ?? []}
+                  inputId="machine-labels-input"
+                  testPrefix="machine-labels"
                 />
               </div>
 

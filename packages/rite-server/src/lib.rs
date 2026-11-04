@@ -5433,6 +5433,8 @@ struct LocalMachine {
     jump: Option<String>,
     forwards: Vec<rite_core::connection::PortForwardConfig>,
     hc: Option<bool>,
+    /// The labels this machine carries. Out of the sealed item, like everything above it.
+    labels: Vec<String>,
     /// Passive "last seen" (ADR 0017), from the side table — never inside the blob.
     last_used_at: Option<i64>,
     created_at: i64,
@@ -5474,6 +5476,7 @@ impl LocalMachine {
             jump: r.jump,
             forwards: r.forwards,
             hc: r.hc,
+            labels: r.labels,
             last_used_at,
             created_at,
             updated_at,

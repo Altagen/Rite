@@ -29,17 +29,20 @@
 
 import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
-import { LABELS_MAX, acceptedLabels, cleanLabel, labelColor } from '../store/marksFormat';
+import {
+  LABELS_MAX,
+  acceptedLabels,
+  cleanLabel,
+  labelColor,
+  type LabelOffer,
+  type LabelScope,
+} from '../store/labelsFormat';
 import { MACHINE_SWATCHES } from '../theme/swatches';
 
-/** Where a word in the vocabulary comes from, and therefore who can read it. */
-export type LabelScope = 'personal' | 'collection' | 'org';
-
-/** One word on offer, and its scope. */
-export interface LabelOffer {
-  label: string;
-  scope: LabelScope;
-}
+// The scopes and the vocabulary live in `store/labelsFormat.ts`: two documents share
+// them, and a check can load a module that imports no React.
+export type { LabelOffer, LabelScope } from '../store/labelsFormat';
+export { offersFrom } from '../store/labelsFormat';
 
 /** How a scope reads, as a key. */
 const SCOPE_KEY: Record<LabelScope, string> = {
@@ -175,3 +178,4 @@ export function LabelField({
     </>
   );
 }
+

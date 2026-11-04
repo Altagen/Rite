@@ -28,15 +28,19 @@ const check = (name, fn) => {
 
 import { readFileSync } from 'node:fs';
 import {
+  acceptedMarks as accepted,
+  formatMarks,
+  withMark,
+} from '../apps/desktop/src/store/marksFormat.ts';
+// The label half lives next door, because a machine carries labels too and neither
+// document's format module should import the other's.
+import {
   LABELS_MAX,
   LABEL_MAX,
   acceptedLabels,
-  acceptedMarks as accepted,
   cleanLabel,
-  formatMarks,
   labelColor,
-  withMark,
-} from '../apps/desktop/src/store/marksFormat.ts';
+} from '../apps/desktop/src/store/labelsFormat.ts';
 
 /** The store itself is read as text: what is held there is an ORDER, not a value. */
 const src = readFileSync(new URL('../apps/desktop/src/store/marks.ts', import.meta.url), 'utf8');

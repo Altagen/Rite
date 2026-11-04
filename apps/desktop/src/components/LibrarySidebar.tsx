@@ -1017,7 +1017,15 @@ export function LibrarySidebar({
     );
   };
 
-  // Client-side search across name / target / folder / collection.
+  // Client-side search across name / target / folder / collection / labels.
+  //
+  // CLIENT-SIDE IS FORCED, NOT CHOSEN. A label names a project, a customer, a person, and
+  // it is sealed inside the machine's record (ADR 0011) — so an index the server could
+  // search would be the one thing this model does not allow. The list here is already
+  // decrypted, which is why the search works at all.
+  //
+  // In the box rather than behind a dropdown: a label you have to open a menu to use is a
+  // label you stop using.
   const q = query.trim().toLowerCase();
   const matches = (c: ConnectionInfo) =>
     !q ||
@@ -1025,7 +1033,8 @@ export function LibrarySidebar({
     c.hostname.toLowerCase().includes(q) ||
     c.username.toLowerCase().includes(q) ||
     (c.folder ?? '').toLowerCase().includes(q) ||
-    (c.collectionName ?? '').toLowerCase().includes(q);
+    (c.collectionName ?? '').toLowerCase().includes(q) ||
+    (c.labels ?? []).some((l) => l.toLowerCase().includes(q));
   const shown = connections.filter(matches);
 
   // Personal machines (no collection) vs collection-scoped machines (ADR 0016).

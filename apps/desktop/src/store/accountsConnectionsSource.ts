@@ -88,6 +88,14 @@ export interface StoredRecord {
   // Health-check opt-out (ADR 0017): false ⇒ never actively probe this machine.
   // Sealed inside the blob, so the opt-out is zero-knowledge like everything else.
   hc?: boolean | null;
+  /**
+   * The labels this machine carries.
+   *
+   * INSIDE THE BLOB, which is what makes a PUBLIC vocabulary safe: a word may be shared by
+   * the whole instance while WHICH machine wears it is sealed to this collection's members
+   * and unreadable by the server (`components/Labels.tsx` holds the three scopes).
+   */
+  labels?: string[];
 }
 
 /** A decrypted connection kept in RAM: its record plus, if shared, its scope. */
@@ -217,6 +225,7 @@ async function toInfo(
     jump: r.jump ?? null,
     forwards: r.forwards ?? [],
     hc: r.hc ?? null,
+    labels: r.labels ?? [],
     createdAt,
     updatedAt,
     // Passive "last seen" is this user's own local record (ADR 0017) — never server-side.
@@ -242,6 +251,7 @@ function recordFromCreate(input: CreateConnectionInput): StoredRecord {
     jump: input.jump ?? null,
     forwards: input.forwards ?? [],
     hc: input.hc ?? null,
+    labels: input.labels ?? [],
     needsPassphrase: input.needsPassphrase ?? false,
     needsPassword: input.needsPassword ?? false,
   };
@@ -268,6 +278,9 @@ function applyUpdate(base: StoredRecord, input: UpdateConnectionInput): StoredRe
   if (input.jump !== undefined) merged.jump = input.jump;
   if (input.forwards !== undefined) merged.forwards = input.forwards;
   if (input.hc !== undefined) merged.hc = input.hc;
+  // A list REPLACES rather than merges: a merge would have no way to say "take that one
+  // off", which is half of what editing labels is.
+  if (input.labels !== undefined) merged.labels = input.labels;
   if (input.needsPassphrase !== undefined) merged.needsPassphrase = input.needsPassphrase;
   if (input.needsPassword !== undefined) merged.needsPassword = input.needsPassword;
   // After `authMethod` above, so replacing the key and dropping its passphrase in one edit

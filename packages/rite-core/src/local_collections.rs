@@ -103,6 +103,18 @@ pub struct MachineRecord {
     pub needs_passphrase: bool,
     #[serde(default)]
     pub needs_password: bool,
+    /// The labels this machine carries.
+    ///
+    /// INSIDE THE ITEM, which is already sealed under the collection's items key — so the
+    /// words are readable by this collection's members and by nobody else, and the server
+    /// holding the row learns nothing. That is what makes a PUBLIC vocabulary safe: `pci`
+    /// may be a word the whole instance shares while which machine wears it is known only
+    /// here (`components/Labels.tsx` holds the three scopes).
+    ///
+    /// `default`, so every record written before labels existed reads as carrying none —
+    /// which is what was true when it was written.
+    #[serde(default)]
+    pub labels: Vec<String>,
 }
 
 /// A machine read back out of a collection, with the item id that addresses it.
@@ -337,6 +349,9 @@ pub struct MachinePatch {
     /// (ADR 0024 §4). `None` keeps what is stored, as every field here does.
     pub needs_passphrase: Option<bool>,
     pub needs_password: Option<bool>,
+    /// The labels, whole. `None` keeps what is stored; a list REPLACES it, because a
+    /// patch that merged them would have no way to express "take that one off".
+    pub labels: Option<Vec<String>>,
     /// Drop the stored key passphrase and keep the key (ADR 0024 §4). A client editing a
     /// machine does not hold its secrets, so it cannot send an `auth_method` with the
     /// passphrase removed — it never had the key.
@@ -433,6 +448,9 @@ pub async fn patch_machine(
     }
     if let Some(v) = patch.hc {
         record.hc = v;
+    }
+    if let Some(v) = patch.labels {
+        record.labels = v;
     }
 
     update_machine(db, master_key, collection_id, item_id, &record).await

@@ -1,9 +1,13 @@
+import { acceptedLabels } from './labelsFormat.ts';
+
 /**
  * The marks document: what a name a person gave to a conversation looks like on disk.
  *
- * Imports NOTHING, so `e2e/marks-check.mjs` loads the shipped shape rather than a copy —
- * the same arrangement `layoutsFormat.ts` has, and the reason both are separate from the
- * stores that fetch them.
+ * Imports nothing but its sibling `labelsFormat` — no React, no store, no backend — so
+ * `e2e/marks-check.mjs` loads the shipped shape rather than a copy. That is the same
+ * arrangement `layoutsFormat.ts` has, and the reason both are separate from the stores
+ * that fetch them. The labels live next door because a machine carries them too, and
+ * neither document's format module should have to import the other's.
  *
  * JSON, because nobody edits this one by hand. The workspace document is TOML because
  * people read and write it; this one is Rite's own, so it has no parser to get wrong and
@@ -41,62 +45,6 @@ export interface Mark {
    * next without the document carrying a palette that could disagree with itself.
    */
   labels?: string[];
-}
-
-/** How long a label may be, and how many a conversation may carry. */
-export const LABEL_MAX = 24;
-export const LABELS_MAX = 8;
-
-/**
- * One label's text, as it is kept: trimmed, squeezed to one line, case left alone.
- *
- * Case is the person's — `API` and `api` are the same label, so the comparison folds it,
- * but what is STORED is what was typed. Lower-casing on the way in would quietly rewrite
- * someone's `API` into `api` on an edit they did not make.
- */
-export const cleanLabel = (raw: string): string =>
-  raw.replace(/\s+/g, ' ').trim().slice(0, LABEL_MAX);
-
-/** The labels of one mark, cleaned, de-duplicated case-insensitively, capped. */
-export function acceptedLabels(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const value of raw) {
-    if (typeof value !== 'string') continue;
-    const label = cleanLabel(value);
-    const key = label.toLowerCase();
-    if (!label || seen.has(key)) continue;
-    seen.add(key);
-    out.push(label);
-    if (out.length === LABELS_MAX) break;
-  }
-  return out;
-}
-
-/**
- * A label's colour, derived from its own text rather than stored.
- *
- * NOTHING TO KEEP IN STEP. A stored palette is a second collection in the document, an
- * editor for it, and two machines that can disagree about what `urgent` looks like. A
- * derived colour is the same everywhere by construction, survives an export and an
- * import, and costs no bytes.
- *
- * Case-folded, so `API` and `api` are one label and wear one colour. The palette is the
- * machine palette, like a mark's own — `e2e/swatch-palette-check.mjs` is what stops a
- * ninth hand-written array.
- *
- * `palette` is passed in rather than imported because this module imports nothing: the
- * check loads the shipped function and the component supplies the shipped swatches.
- */
-export function labelColor(label: string, palette: readonly string[]): string {
-  const key = cleanLabel(label).toLowerCase();
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    // djb2, which spreads short words — and short words is all a label is.
-    hash = (hash * 33 + key.charCodeAt(i)) % 0xffffffff;
-  }
-  return palette[hash % palette.length];
 }
 
 /**

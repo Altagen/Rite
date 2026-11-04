@@ -8,6 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
+import { LabelChip } from './Labels';
 import { relTime } from '../utils/relTime';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { useServerSession } from '../store/serverSessionStore';
@@ -130,7 +131,9 @@ export function CollectionView({
           (m) =>
             m.name.toLowerCase().includes(q) ||
             m.hostname.toLowerCase().includes(q) ||
-            m.username.toLowerCase().includes(q),
+            m.username.toLowerCase().includes(q) ||
+            // Labels too, and client-side because they are sealed — see LibrarySidebar.
+            (m.labels ?? []).some((l) => l.toLowerCase().includes(q)),
         )
       : machines;
     return [...filtered].sort((a, b) => {
@@ -307,6 +310,16 @@ export function CollectionView({
         </svg>
         <span>{relTime(c.lastUsedAt, t, { never: '—' })} · ssh</span>
       </div>
+      {/* The labels, last, because they are the person's own filing rather than something
+          the machine told us — and the reason they are on the card at all is to be seen
+          without reading. The colour comes from each word's own text. */}
+      {(c.labels ?? []).length !== 0 && (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {c.labels!.map((l) => (
+            <LabelChip key={l.toLowerCase()} label={l} small />
+          ))}
+        </div>
+      )}
     </div>
   );
 

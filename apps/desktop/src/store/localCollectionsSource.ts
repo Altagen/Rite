@@ -48,6 +48,7 @@ function recordFromInput(input: CreateConnectionInput) {
     jump: input.jump ?? null,
     forwards: input.forwards ?? [],
     hc: input.hc ?? null,
+    labels: input.labels ?? [],
     // What this machine does NOT keep, so opening it knows to ask (ADR 0024 §4). The
     // accounts path records the same two on its own StoredRecord.
     needsPassphrase: input.needsPassphrase ?? false,

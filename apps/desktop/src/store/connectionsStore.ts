@@ -100,6 +100,14 @@ export interface ConnectionInfo {
   // even where the server policy allows it. Absent/true ⇒ follow the policy. A machine
   // can opt out of probing but can't opt into more than the server permits.
   hc?: boolean | null;
+  /**
+   * The labels this machine carries.
+   *
+   * Sealed with the rest of the record, whatever the vocabulary's scope: a word may be
+   * shared by the whole instance while WHICH machine wears it is readable only by this
+   * collection's members (`components/Labels.tsx` holds the three scopes).
+   */
+  labels?: string[];
   createdAt: number;
   updatedAt: number;
   lastUsedAt?: number | null;
@@ -130,6 +138,7 @@ export interface CreateConnectionInput {
   jump?: string | null; // jump-host connection id (see ConnectionInfo.jump)
   forwards?: PortForwardConfig[]; // saved port forwards (see ConnectionInfo.forwards)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
+  labels?: string[]; // see ConnectionInfo.labels. A list replaces rather than merges.
   /**
    * This key's passphrase is not being stored, so connecting must ask for it (ADR 0024
    * §4). Not a secret — it records what the person said when they saved the machine, so a
@@ -164,6 +173,7 @@ export interface UpdateConnectionInput {
   jump?: string | null; // jump-host connection id (see ConnectionInfo.jump)
   forwards?: PortForwardConfig[]; // saved port forwards (Some ⇒ replace the whole list)
   hc?: boolean | null; // health-check opt-out (false ⇒ never probe; see ConnectionInfo.hc)
+  labels?: string[]; // see ConnectionInfo.labels. A list replaces rather than merges.
   needsPassphrase?: boolean; // see CreateConnectionInput
   needsPassword?: boolean; // see CreateConnectionInput
   /**

@@ -98,6 +98,7 @@ import {
   reorganizePane,
 } from '../utils/paneTree';
 import { AgentManager } from './AgentManager';
+import { offersFrom } from './Labels';
 import {
   agentResumeArgv,
   agentResumeCmd,
@@ -2543,6 +2544,13 @@ export function Workspace({
       {/* Connection Form Modal */}
       {showForm && (
         <ConnectionForm
+          // The vocabulary's first source: the words already on the machines this context
+          // can see. The collection's own list and the instance's join it later; the
+          // field does not change when they do.
+          labelOffers={offersFrom(
+            conns.connections.map((c) => c.labels),
+            'collection',
+          )}
           connection={editingConnection}
           prefillData={connectionFormPrefill}
           create={conns.create}
