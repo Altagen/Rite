@@ -4234,20 +4234,48 @@ fn clean_label(raw: &str) -> String {
         .collect()
 }
 
+use rite_core::local_collections::{VocabEntry, VocabWord};
+
+/// A colour somebody chose for a word, when it is one.
+///
+/// SHAPE ONLY, and not membership of the palette. The nine swatches are the client's
+/// (`theme/swatches.ts`), and copying them here would be a tenth hand-written list of the
+/// same hexes — the thing `e2e/swatch-palette-check.mjs` exists to stop. A colour is not a
+/// boundary either: the worst a strange one does is look wrong to the person who typed it.
+fn accepted_color(raw: Option<String>) -> Option<String> {
+    let value = raw?;
+    let hex = value.strip_prefix('#')?;
+    (hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit())).then_some(value)
+}
+
 /// The vocabulary as it is stored: cleaned, de-duplicated case-insensitively, capped.
 ///
 /// VALIDATED HERE AS WELL AS IN THE CLIENT, because the client is not the boundary: this
 /// route takes a list from whoever reached it, and an uncapped one would put a megabyte in
 /// a row every member reads on every open. The FIRST spelling is kept, like the client's.
-fn accepted_vocabulary(raw: Vec<String>) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
+///
+/// A word with no colour goes back out as a BARE STRING, which is what keeps the shape
+/// additive: a list nobody has coloured is written exactly as it was before colours
+/// existed, and the browser writes the same two shapes (`formatVocab`).
+fn accepted_vocabulary(raw: Vec<VocabEntry>) -> Vec<VocabEntry> {
+    let mut out: Vec<VocabEntry> = Vec::new();
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for value in raw {
-        let label = clean_label(&value);
+        let (text, color) = match value {
+            VocabEntry::Word(w) => (w, None),
+            VocabEntry::Full(f) => (f.label, f.color),
+        };
+        let label = clean_label(&text);
         if label.is_empty() || !seen.insert(label.to_lowercase()) {
             continue;
         }
-        out.push(label);
+        out.push(match accepted_color(color) {
+            Some(color) => VocabEntry::Full(VocabWord {
+                label,
+                color: Some(color),
+            }),
+            None => VocabEntry::Word(label),
+        });
         if out.len() == INSTANCE_LABELS_MAX {
             break;
         }
@@ -4257,7 +4285,7 @@ fn accepted_vocabulary(raw: Vec<String>) -> Vec<String> {
 
 #[derive(Deserialize)]
 struct LabelsReq {
-    labels: Vec<String>,
+    labels: Vec<VocabEntry>,
 }
 
 impl LabelsSupport {
@@ -4283,7 +4311,7 @@ async fn get_labels(State(state): State<ServerState>) -> Result<Json<Value>, App
     let labels = match support {
         LabelsSupport::Instance => rite_core::vault_documents::instance::get(state.db.pool())
             .await?
-            .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+            .and_then(|raw| serde_json::from_str::<Vec<VocabEntry>>(&raw).ok())
             .unwrap_or_default(),
         LabelsSupport::Vault(key) => {
             let text = rite_core::vault_documents::get(
@@ -4292,11 +4320,11 @@ async fn get_labels(State(state): State<ServerState>) -> Result<Json<Value>, App
                 rite_core::vault_documents::LABELS,
             )
             .await?;
-            text.and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
+            text.and_then(|t| serde_json::from_str::<Vec<VocabEntry>>(&t).ok())
                 .unwrap_or_default()
         }
         LabelsSupport::File(path) => match tokio::fs::read_to_string(&path).await {
-            Ok(text) => serde_json::from_str::<Vec<String>>(&text).unwrap_or_default(),
+            Ok(text) => serde_json::from_str::<Vec<VocabEntry>>(&text).unwrap_or_default(),
             // Nothing declared yet is the normal state of a fresh install.
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display()).into()),
@@ -5698,8 +5726,11 @@ struct LocalCollectionReq {
     #[serde(default)]
     hc: Option<Option<bool>>,
     /// The declared vocabulary. Absent ⇒ keep what is stored, like `folders` and `hc`.
+    ///
+    /// A word may arrive bare or with its colour; both are accepted and the one with no
+    /// colour is written back bare — see `VocabEntry` and `accepted_vocabulary`.
     #[serde(default)]
-    labels: Option<Vec<String>>,
+    labels: Option<Vec<VocabEntry>>,
 }
 
 async fn local_list_collections(
@@ -5741,7 +5772,10 @@ async fn local_update_collection(
         req.color.as_deref(),
         req.folders,
         req.hc,
-        req.labels,
+        // Through the same cleaner as the instance list: one route must not accept what
+        // the other refuses, or a word declared in a collection could carry a colour the
+        // instance list would have dropped.
+        req.labels.map(accepted_vocabulary),
     )
     .await?;
     Ok(Json(json!({ "ok": ok })))

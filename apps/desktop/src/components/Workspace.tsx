@@ -899,6 +899,26 @@ export function Workspace({
     if (!instanceWordsLoaded) void loadInstanceWords();
   }, [instanceWordsLoaded, loadInstanceWords]);
 
+  /**
+   * Every word that has been DECLARED with a colour, nearest scope first.
+   *
+   * What a chip resolves its colour against, anywhere a label is drawn. Without it `pci`
+   * would be the chosen red in the editor that declared it and the derived colour on every
+   * card — which is the one thing choosing a colour is for.
+   *
+   * The collections come first, because the narrower scope is the more specific statement:
+   * a collection that declared `pci` green means it for its own machines.
+   */
+  const declaredWords = useMemo(
+    () => [
+      ...(conns.collections ?? []).flatMap((c) =>
+        (c.labels ?? []).map((w) => (typeof w === 'string' ? { label: w } : w)),
+      ),
+      ...instanceWords,
+    ],
+    [conns.collections, instanceWords],
+  );
+
   const labelOffers = useMemo(
     () => [
       // INHERITANCE RUNS ONE WAY: the instance's words are offered inside every
@@ -912,7 +932,7 @@ export function Workspace({
           ...conns.connections.map((c) => c.labels),
         ],
         'collection',
-      ).filter((o) => !instanceWords.some((w) => w.toLowerCase() === o.label.toLowerCase())),
+      ).filter((o) => !instanceWords.some((w) => w.label.toLowerCase() === o.label.toLowerCase())),
     ],
     [instanceWords, conns.collections, conns.connections],
   );
@@ -2466,6 +2486,7 @@ export function Workspace({
                   hc={openCol?.hc}
                   machines={openCollectionMachines}
                   folders={openCol?.folders}
+                  declared={declaredWords}
                   canWrite={openCollectionWritable}
                   onConnect={handleConnect}
                   onEdit={handleEditConnection}
@@ -2539,6 +2560,7 @@ export function Workspace({
                         onPickMachine={setAgentMachineId}
                         probeAgents={conns.probeAgents}
                         manageAgents={conns.manageAgents}
+                        declared={declaredWords}
                         onResume={handleResumeAgent}
                         onNew={(machine, adapter, cwd) =>
                           void handleNewAgent(machine, adapter, cwd)

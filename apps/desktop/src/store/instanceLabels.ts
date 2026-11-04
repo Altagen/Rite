@@ -18,13 +18,14 @@
 
 import { create } from 'zustand';
 import { Backend } from '../utils/backend';
-import { acceptedVocabulary } from './labelsFormat';
+import { acceptedVocab, formatVocab, type VocabWord } from './labelsFormat';
 
 /** Where the list is kept, as the server reported it. `locked` ⇒ a write will be refused. */
 export type LabelsSupport = 'instance' | 'vault' | 'file' | 'locked';
 
 interface InstanceLabelsState {
-  words: string[];
+  /** The declared words, each with the colour somebody chose for it when there is one. */
+  words: VocabWord[];
   /**
    * Which support answered.
    *
@@ -38,7 +39,7 @@ interface InstanceLabelsState {
   error: string | null;
   load: () => Promise<void>;
   /** Declare the whole list. A list replaces; writing is refused to a non-admin instance-side. */
-  save: (words: string[]) => Promise<void>;
+  save: (words: VocabWord[]) => Promise<void>;
 }
 
 export const useInstanceLabels = create<InstanceLabelsState>((set) => ({
@@ -50,7 +51,7 @@ export const useInstanceLabels = create<InstanceLabelsState>((set) => ({
   load: async () => {
     try {
       const { labels, support } = await Backend.Labels.get();
-      set({ words: acceptedVocabulary(labels), support, loaded: true, error: null });
+      set({ words: acceptedVocab(labels), support, loaded: true, error: null });
     } catch (e) {
       // Loaded, with nothing: a vocabulary that could not be read is not an empty one, but
       // the screens that offer words must still draw. The error is kept so the editor can
@@ -60,9 +61,11 @@ export const useInstanceLabels = create<InstanceLabelsState>((set) => ({
   },
 
   save: async (words) => {
-    const next = acceptedVocabulary(words);
+    const next = acceptedVocab(words);
     try {
-      await Backend.Labels.set(next);
+      // Written in the two shapes: a word with no colour goes out bare, so a list nobody
+      // has coloured round-trips exactly as it was stored.
+      await Backend.Labels.set(formatVocab(next));
     } catch (e) {
       set({ error: e instanceof Error ? e.message : String(e) });
       throw e;

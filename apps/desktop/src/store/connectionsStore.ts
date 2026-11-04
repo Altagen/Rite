@@ -246,7 +246,11 @@ export interface ConnectionsSource {
     // The vocabulary this collection declares (see CollectionHeader.labels). Sealed in the
     // header, so it is this collection's members' and nobody else's — and it never travels
     // up to the instance.
-    labels?: string[];
+    //
+    // A word is a bare string when nobody chose a colour for it and an object when
+    // somebody did — the two shapes a stored list holds, so a list written before colours
+    // existed keeps working untouched.
+    labels?: (string | { label: string; color?: string })[];
     // Whether this collection has a Board (an itemsKey-encrypted blob of cards). The
     // blob itself is read via readBoard; this flag lets the UI show an indicator.
     hasBoard?: boolean;
@@ -302,8 +306,8 @@ export interface ConnectionsSource {
     name: string,
     color: string | null,
     hc: boolean | null,
-    /** The declared vocabulary. A list replaces what is stored; absent keeps it. */
-    labels?: string[],
+    /** The declared vocabulary, in the two stored shapes. A list replaces; absent keeps. */
+    labels?: (string | { label: string; color?: string })[],
   ) => Promise<void>;
   /** Add or rename a folder inside a collection. `from` absent ⇒ create. */
   saveFolder?: (args: {

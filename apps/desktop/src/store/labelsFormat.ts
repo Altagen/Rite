@@ -36,10 +36,33 @@
  */
 export type LabelScope = 'personal' | 'collection' | 'instance';
 
-/** One word on offer, and its scope. */
+/** One word on offer, its scope, and the colour it was declared with when it has one. */
 export interface LabelOffer {
   label: string;
   scope: LabelScope;
+  color?: string;
+}
+
+/**
+ * One word as a vocabulary DECLARES it: the text, and a colour when somebody chose one.
+ *
+ * THE COLOUR BELONGS TO THE WORD, NOT TO THE USE. `pci` is the same colour on every
+ * machine, in every collection, for every member who can see the word — otherwise a
+ * colour stops being something you can scan a grid for, which is the only reason it is
+ * there. So it is declared beside the word in a vocabulary, and a machine's own `labels`
+ * stay plain strings: no migration, and nothing to keep in step per item.
+ *
+ * It lives in the SAME vocabulary as the word it describes, and not in one shared store.
+ * A collection's word is readable only by its members; a map of colours in the instance
+ * list would carry `client-acme` into a document every member reads, which is the scope
+ * model undone by a convenience.
+ *
+ * Absent ⇒ the colour is derived from the text (`labelColor`), which is what every word
+ * had before anybody could choose, and what an undeclared word still has.
+ */
+export interface VocabWord {
+  label: string;
+  color?: string;
 }
 
 /** How long a label may be, and how many one thing may carry. */
@@ -96,8 +119,52 @@ function cleaned(raw: unknown, cap: number): string[] {
 /** The labels one thing carries, cleaned and capped at `LABELS_MAX`. */
 export const acceptedLabels = (raw: unknown): string[] => cleaned(raw, LABELS_MAX);
 
-/** The instance vocabulary, cleaned and capped at `INSTANCE_LABELS_MAX`. */
-export const acceptedVocabulary = (raw: unknown): string[] => cleaned(raw, INSTANCE_LABELS_MAX);
+/**
+ * A vocabulary, cleaned: words through the same walk, each with its colour when it
+ * declared one.
+ *
+ * ACCEPTS BOTH SHAPES ON THE WAY IN — a bare string, or `{label, color}` — because a
+ * document written before colours could be chosen holds strings, and rejecting it would
+ * lose a list somebody typed. One shape goes OUT, which is what the callers read.
+ *
+ * A colour that is not a `#rrggbb` is dropped and the word kept: the word is the
+ * declaration and the colour is a decoration on it.
+ */
+export function acceptedVocab(raw: unknown): VocabWord[] {
+  if (!Array.isArray(raw)) return [];
+  const out: VocabWord[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    const text = typeof entry === 'string' ? entry : (entry as VocabWord)?.label;
+    if (typeof text !== 'string') continue;
+    const label = cleanLabel(text);
+    const key = label.toLowerCase();
+    if (!label || seen.has(key)) continue;
+    seen.add(key);
+    const chosen = typeof entry === 'string' ? undefined : (entry as VocabWord)?.color;
+    const color = typeof chosen === 'string' && /^#[0-9a-f]{6}$/i.test(chosen) ? chosen : undefined;
+    out.push(color ? { label, color } : { label });
+    if (out.length === INSTANCE_LABELS_MAX) break;
+  }
+  return out;
+}
+
+/** The same vocabulary as bare words, for a caller that only needs the text. */
+export const acceptedVocabulary = (raw: unknown): string[] =>
+  acceptedVocab(raw).map((w) => w.label);
+
+/**
+ * A vocabulary as it is WRITTEN: a bare string when no colour was chosen, an object when
+ * one was.
+ *
+ * TWO SHAPES OUT, ON PURPOSE. A word with no colour writes exactly what it wrote before
+ * colours existed, so a document nobody has coloured round-trips byte for byte and an
+ * older reader still understands all of it. A word that gains a colour becomes an object;
+ * clearing the colour turns it back into a string. The core writes the same two shapes
+ * (`VocabEntry` in `local_collections.rs`), which is what the parity tests hold.
+ */
+export const formatVocab = (words: readonly VocabWord[]): (string | VocabWord)[] =>
+  words.map((w) => (w.color ? { label: w.label, color: w.color } : w.label));
 
 /**
  * A label's colour, derived from its own text rather than stored.
@@ -114,8 +181,20 @@ export const acceptedVocabulary = (raw: unknown): string[] => cleaned(raw, INSTA
  * `palette` is passed in rather than imported because this module imports nothing: the
  * check loads the shipped function and the component supplies the shipped swatches.
  */
-export function labelColor(label: string, palette: readonly string[]): string {
+export function labelColor(
+  label: string,
+  palette: readonly string[],
+  /**
+   * The vocabularies that might have declared this word. A DECLARED colour wins, which is
+   * the whole point: `pci` is red because somebody said so, everywhere the word appears.
+   * Searched in order, so the collection's own declaration beats the instance's — the
+   * narrower scope is the more specific statement.
+   */
+  declared?: readonly VocabWord[],
+): string {
   const key = cleanLabel(label).toLowerCase();
+  const chosen = declared?.find((w) => w.label.toLowerCase() === key)?.color;
+  if (chosen) return chosen;
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
     // djb2, which spreads short words — and short words is all a label is.
@@ -139,17 +218,21 @@ export function labelColor(label: string, palette: readonly string[]): string {
  * rename somebody's word on a screen they did not open.
  */
 export function offersFrom(
-  lists: readonly (readonly string[] | undefined)[],
+  lists: readonly (readonly (string | VocabWord)[] | undefined)[],
   scope: LabelScope,
 ): LabelOffer[] {
-  const seen = new Map<string, string>();
+  const seen = new Map<string, VocabWord>();
   for (const list of lists) {
-    for (const raw of list ?? []) {
-      const label = cleanLabel(raw);
-      if (label && !seen.has(label.toLowerCase())) seen.set(label.toLowerCase(), label);
+    for (const entry of list ?? []) {
+      const text = typeof entry === 'string' ? entry : entry?.label;
+      if (typeof text !== 'string') continue;
+      const label = cleanLabel(text);
+      if (!label || seen.has(label.toLowerCase())) continue;
+      const color = typeof entry === 'string' ? undefined : entry?.color;
+      seen.set(label.toLowerCase(), color ? { label, color } : { label });
     }
   }
   return Array.from(seen.values())
-    .sort((a, b) => a.localeCompare(b))
-    .map((label) => ({ label, scope }));
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map((w) => ({ ...w, scope }));
 }

@@ -176,3 +176,81 @@ test('the route says which support answered, so a screen can tell empty from loc
   expect(body.support).toBe('vault');
   expect(Array.isArray(body.labels)).toBe(true);
 });
+
+/**
+ * A colour belongs to the WORD, and the server keeps the two stored shapes.
+ *
+ * `pci` is red on every machine and in every collection that can see the word, which is
+ * the only reason a colour is worth scanning a grid for. So it is declared beside the word
+ * in a vocabulary — never per use, which would give one word several colours — and a
+ * machine's own `labels` stay plain strings, with no migration.
+ *
+ * A word nobody coloured is written as a BARE STRING, exactly as it was before colours
+ * existed. That is what keeps the shape additive and what this test holds on the wire: an
+ * uncoloured list round-trips byte for byte, and only a coloured word becomes an object.
+ */
+test('a vocabulary declares a colour per word, and writes the two shapes', async ({ request }) => {
+  const read = async () =>
+    (
+      (await (await request.get('/api/labels')).json()) as {
+        labels: (string | { label: string; color?: string })[];
+      }
+    ).labels;
+
+  await request.put('/api/admin/labels', {
+    data: { labels: ['pci', { label: 'prod', color: '#7c9cf5' }] },
+  });
+  // The uncoloured word came back bare; only the coloured one is an object.
+  expect(await read()).toEqual(['pci', { label: 'prod', color: '#7c9cf5' }]);
+
+  // THE SERVER VALIDATES THE COLOUR'S SHAPE, not the palette: the nine swatches are the
+  // client's, and a tenth copy of those hexes here is what the swatch check exists to
+  // stop. A colour that is not `#rrggbb` is dropped and the word kept — the word is the
+  // declaration, the colour is a decoration on it.
+  await request.put('/api/admin/labels', {
+    data: {
+      labels: [
+        { label: 'a', color: 'red' },
+        { label: 'b', color: '#abc' },
+        { label: 'c', color: '#AbCdEf' },
+      ],
+    },
+  });
+  expect(await read()).toEqual(['a', 'b', { label: 'c', color: '#AbCdEf' }]);
+
+  // And clearing a colour turns the word back into a string, rather than leaving an object
+  // with nothing in it.
+  await request.put('/api/admin/labels', { data: { labels: [{ label: 'c' }] } });
+  expect(await read()).toEqual(['c']);
+});
+
+/**
+ * The same two shapes in a collection's own header, through the same cleaner.
+ *
+ * One route must not accept what the other refuses: a word declared in a collection could
+ * otherwise carry a colour the instance list would have dropped, and the same word would
+ * then look different depending on which list a reader found it in.
+ */
+test('a collection declares colours too, validated the same way', async ({ request }) => {
+  const collection = await ensureCollection(request, 'e2e-vocab-colour');
+  const read = async () =>
+    (
+      (await (await request.get('/api/local/collections')).json()) as {
+        id: string;
+        labels: (string | { label: string; color?: string })[];
+      }[]
+    ).find((c) => c.id === collection)!.labels;
+
+  await request.put(`/api/local/collections/${collection}`, {
+    data: {
+      name: 'e2e-vocab-colour',
+      color: null,
+      labels: [
+        { label: 'client-acme', color: '#f7768e' },
+        'internal',
+        { label: 'x', color: 'nope' },
+      ],
+    },
+  });
+  expect(await read()).toEqual([{ label: 'client-acme', color: '#f7768e' }, 'internal', 'x']);
+});

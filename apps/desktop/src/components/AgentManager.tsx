@@ -45,6 +45,7 @@ import {
 import { agentBlockedReason, agentVerdict } from '../utils/agentPolicy';
 import { useMarks, type Mark } from '../store/marks';
 import { LabelChip, LabelField } from './Labels';
+import type { VocabWord } from '../store/labelsFormat';
 import { keepAnswer, readAnswers, type Answer } from '../store/agentAnswers';
 import { MACHINE_SWATCHES } from '../theme/swatches';
 import { askConfirm } from '../utils/confirmPrompt';
@@ -120,6 +121,14 @@ interface Props {
   probeAgents?: (connection: ConnectionInfo, command: string) => Promise<RemoteCommandOutput>;
   /** Runs one management command — today, a removal. Same routing, same gate. */
   manageAgents?: (connection: ConnectionInfo, command: string) => Promise<RemoteCommandOutput>;
+  /**
+   * The words declared with a colour, so a label here wears the colour it wears elsewhere.
+   *
+   * A conversation's own labels are personal (ADR 0022 §6) and carry no colour of their
+   * own — but `pci` was declared somewhere, and the point of declaring it is that it looks
+   * the same everywhere the word appears.
+   */
+  declared?: readonly VocabWord[];
   /** Open a pane on this conversation. A null machine is this computer. */
   onResume: (
     machine: ConnectionInfo | null,
@@ -148,6 +157,7 @@ export function AgentManager({
   onPickMachine,
   probeAgents,
   manageAgents,
+  declared,
   onResume,
   onNew,
   mode,
@@ -810,6 +820,7 @@ export function AgentManager({
                     onResume={(r) => resume(r)}
                     onRename={setRenaming}
                     onOpen={setOpen1}
+                    declared={declared}
                     onNew={
                       installed.includes(b.adapter)
                         ? () => setStarting({ tool: b.adapter })
@@ -827,6 +838,7 @@ export function AgentManager({
                   onResume={(r) => resume(r)}
                   onRename={setRenaming}
                   onOpen={setOpen1}
+                  declared={declared}
                   onNew={
                     installed.length > 0
                       ? (adapter) =>
@@ -870,6 +882,7 @@ export function AgentManager({
             onDelete={canRemove(open1) ? () => void remove(open1) : undefined}
             onNew={() => setStarting({ tool: open1.adapter })}
             readFacts={() => readFacts(open1)}
+            declared={declared}
             deleting={removing === `${open1.on}:${open1.adapter.id}:${open1.conv.id}`}
           />
         )}
@@ -969,10 +982,14 @@ function Detail({
   onDelete,
   onNew,
   readFacts,
+  declared,
   deleting,
 }: {
   row: Row;
   on: string;
+  /** The words declared with a colour, so a chip here matches a chip anywhere else. */
+  declared?: readonly VocabWord[];
+
   onClose: () => void;
   onResume: () => void;
   onRename: () => void;
@@ -1120,7 +1137,7 @@ function Detail({
             t('labels.field'),
             <span className="flex flex-wrap gap-1">
               {tags.map((l) => (
-                <LabelChip key={l.toLowerCase()} label={l} />
+                <LabelChip key={l.toLowerCase()} label={l} declared={declared} />
               ))}
             </span>,
           )}
@@ -1279,6 +1296,7 @@ function Card({
   onResume,
   onRename,
   onOpen,
+  declared,
   on,
   edge,
 }: {
@@ -1286,6 +1304,8 @@ function Card({
   onResume: () => void;
   onRename: () => void;
   onOpen: () => void;
+  /** The words declared with a colour, so a chip here matches a chip anywhere else. */
+  declared?: readonly VocabWord[];
   /** The machine's name, when the list mixes machines. Absent on a single one. */
   on?: string;
   /** The machine's colour from the Library, when it has one. */
@@ -1346,7 +1366,7 @@ function Card({
       {tags.length !== 0 && (
         <div className="flex flex-wrap gap-1">
           {tags.map((l) => (
-            <LabelChip key={l.toLowerCase()} label={l} small />
+            <LabelChip key={l.toLowerCase()} label={l} small declared={declared} />
           ))}
         </div>
       )}
@@ -1657,11 +1677,14 @@ function Band({
   onRename,
   onOpen,
   onNew,
+  declared,
   nameOf,
   colorOf,
 }: {
   adapter: ShippedAdapter;
   rows: Row[];
+  /** The words declared with a colour, so a chip here matches a chip anywhere else. */
+  declared?: readonly VocabWord[];
   folded: boolean;
   onFold: () => void;
   onResume: (row: Row) => void;
@@ -1700,6 +1723,7 @@ function Band({
           onResume={() => onResume(r)}
           onRename={() => onRename(r)}
           onOpen={() => onOpen(r)}
+          declared={declared}
           on={nameOf?.(r.on)}
           edge={colorOf(r.on)}
         />
@@ -1784,10 +1808,14 @@ function Rail({
   onRename,
   onOpen,
   onNew,
+  declared,
   nameOf,
   colorOf,
 }: {
   bands: { adapter: ShippedAdapter; rows: Row[] }[];
+  /** The words declared with a colour, so a chip here matches a chip anywhere else. */
+  declared?: readonly VocabWord[];
+
   active: string | null;
   onPick: (id: string) => void;
   onResume: (row: Row) => void;
@@ -1842,6 +1870,7 @@ function Rail({
             onResume={() => onResume(r)}
             onRename={() => onRename(r)}
             onOpen={() => onOpen(r)}
+            declared={declared}
             on={nameOf?.(r.on)}
             edge={colorOf(r.on)}
             t={t}
@@ -1858,6 +1887,7 @@ function RailRow({
   onResume,
   onRename,
   onOpen,
+  declared,
   on,
   edge,
   t,
@@ -1866,6 +1896,8 @@ function RailRow({
   onResume: () => void;
   onRename: () => void;
   onOpen: () => void;
+  /** The words declared with a colour, so a chip here matches a chip anywhere else. */
+  declared?: readonly VocabWord[];
   on?: string;
   edge?: string;
   t: (key: string, vars?: Record<string, string>) => string;
@@ -1901,7 +1933,7 @@ function RailRow({
       {tags.length !== 0 && (
         <span className="hidden shrink-0 gap-1 sm:flex">
           {tags.map((l) => (
-            <LabelChip key={l.toLowerCase()} label={l} small />
+            <LabelChip key={l.toLowerCase()} label={l} small declared={declared} />
           ))}
         </span>
       )}

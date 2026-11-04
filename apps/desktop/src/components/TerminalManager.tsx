@@ -905,9 +905,7 @@ export function TerminalManager({
                   </div>
                   <div className="flex-1">
                     <h3 className="text-lg font-semibold text-foreground mb-2">
-                      {tabToClose.kind === 'others'
-                        ? t('tm.closeOthersTitle')
-                        : t('tm.closeMany')}
+                      {tabToClose.kind === 'others' ? t('tm.closeOthersTitle') : t('tm.closeMany')}
                     </h3>
                     <p className="text-sm text-muted-foreground">
                       {tabToClose.kind === 'others'

@@ -68,7 +68,50 @@ struct Header {
     /// Declared rather than derived, so a word can be agreed on before anything wears it.
     /// What the words are PUT ON stays in the items, sealed under a different key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    labels: Option<Vec<String>>,
+    labels: Option<Vec<VocabEntry>>,
+}
+
+/// One word a vocabulary declares, and the colour somebody chose for it.
+///
+/// THE COLOUR BELONGS TO THE WORD. `pci` is the same colour on every machine and in every
+/// collection that can see the word, which is the only reason a colour is worth scanning
+/// for. So it is declared beside the word here, and a machine's own `labels` stay plain
+/// strings — no migration, and nothing to keep in step per item.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VocabWord {
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+/// A vocabulary entry on disk: a bare word, or a word with its colour.
+///
+/// TWO SHAPES, AND THAT IS WHAT KEEPS IT ADDITIVE. A word nobody coloured is written
+/// exactly as it was written before colours existed, so a list that has never been
+/// coloured round-trips byte for byte and an older build still reads all of it. A word
+/// that gains a colour becomes an object; clearing it turns it back into a string. The
+/// browser writes the same two shapes (`formatVocab` in `store/labelsFormat.ts`), which is
+/// what `header_matches_the_browser` holds.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum VocabEntry {
+    Word(String),
+    Full(VocabWord),
+}
+
+impl From<&str> for VocabEntry {
+    fn from(label: &str) -> Self {
+        Self::Word(label.to_string())
+    }
+}
+
+impl VocabEntry {
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Word(w) => w,
+            Self::Full(f) => &f.label,
+        }
+    }
 }
 
 /// A machine as it is stored inside a collection item.
@@ -153,7 +196,7 @@ pub struct LocalCollection {
     /// Collection-wide active health-check opt-out (ADR 0017).
     pub hc: Option<bool>,
     /// The vocabulary this collection declares. See `Header::labels`.
-    pub labels: Vec<String>,
+    pub labels: Vec<VocabEntry>,
     /// Whether this collection has a board stored (the blob itself is read separately).
     pub has_board: bool,
 }
@@ -231,7 +274,7 @@ pub async fn update(
     hc: Option<Option<bool>>,
     // The declared vocabulary. `None` keeps what is stored, like every field here; a
     // list REPLACES it, because a merge cannot express "take that word out of the list".
-    labels: Option<Vec<String>>,
+    labels: Option<Vec<VocabEntry>>,
 ) -> Result<bool> {
     let meta_key = meta_key_of(db, master_key, id).await?;
     // Read-modify-write: a rename must not silently drop folders or the
@@ -879,16 +922,28 @@ mod tests {
     #[test]
     fn header_matches_the_browser() {
         // r##"…"## because a hex colour contains `"#`, which would end an r#"…"# literal.
-        const FROM_BROWSER: &str = r##"{"name":"Production","color":"#f7768e","folders":[{"name":"Web servers","color":"#7c9cf5"},{"name":"Cache","color":null}],"hc":false,"labels":["pci","prod"]}"##;
+        const FROM_BROWSER: &str = r##"{"name":"Production","color":"#f7768e","folders":[{"name":"Web servers","color":"#7c9cf5"},{"name":"Cache","color":null}],"hc":false,"labels":["pci",{"label":"prod","color":"#7c9cf5"}]}"##;
         let parsed: Header = serde_json::from_str(FROM_BROWSER).expect("browser header must load");
         assert_eq!(parsed.name, "Production");
         assert_eq!(parsed.folders.as_ref().unwrap().len(), 2);
         assert_eq!(parsed.hc, Some(false));
         // The collection's declared vocabulary rides the same blob, so it is part of the
-        // same contract: a header the browser wrote must come back field for field.
+        // same contract — and BOTH SHAPES are in the fixture on purpose. A word with no
+        // colour is a bare string, exactly as it was written before colours existed; one
+        // that has a colour is an object. A build that normalised them to one shape would
+        // rewrite every stored header the first time anything touched it, and the
+        // `assert_eq!(ours, theirs)` below is what catches that.
         assert_eq!(
             parsed.labels.as_deref(),
-            Some(&["pci".to_string(), "prod".to_string()][..])
+            Some(
+                &[
+                    VocabEntry::from("pci"),
+                    VocabEntry::Full(VocabWord {
+                        label: "prod".into(),
+                        color: Some("#7c9cf5".into()),
+                    }),
+                ][..]
+            )
         );
         let ours = serde_json::to_value(&parsed).unwrap();
         let theirs: serde_json::Value = serde_json::from_str(FROM_BROWSER).unwrap();
@@ -951,7 +1006,10 @@ mod tests {
         assert_eq!(got.hc, Some(false));
         // The declared vocabulary is in that same blob, so a rename must not drop it
         // either — and the test above would have passed while it did.
-        assert_eq!(got.labels, vec!["pci".to_string(), "prod".to_string()]);
+        assert_eq!(
+            got.labels,
+            vec![VocabEntry::from("pci"), VocabEntry::from("prod")]
+        );
 
         // A list REPLACES, because a merge cannot express "take that word out".
         update(
@@ -967,7 +1025,7 @@ mod tests {
         .await
         .unwrap();
         let got = &list(db.pool(), &mk).await.unwrap()[0];
-        assert_eq!(got.labels, vec!["prod".to_string()]);
+        assert_eq!(got.labels, vec![VocabEntry::from("prod")]);
         assert_eq!(got.folders, folders, "and the folders are still there");
 
         // An empty list is a real state and not "keep what is stored".

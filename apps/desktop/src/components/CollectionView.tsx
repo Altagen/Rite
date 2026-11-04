@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { LabelChip } from './Labels';
+import type { VocabWord } from '../store/labelsFormat';
 import { relTime } from '../utils/relTime';
 import { type ConnectionInfo } from '../store/connectionsStore';
 import { useServerSession } from '../store/serverSessionStore';
@@ -69,6 +70,7 @@ export function CollectionView({
   hc,
   machines,
   folders,
+  declared,
   canWrite,
   isPersonal,
   onConnect,
@@ -86,6 +88,13 @@ export function CollectionView({
   hc?: boolean | null; // collection-wide active-probe opt-out (ADR 0017): false ⇒ never probe here
   machines: ConnectionInfo[];
   folders?: { name: string; color: string | null }[]; // declared sub-folders (show empty)
+  /**
+   * The words declared with a colour, nearest scope first — what a chip resolves against.
+   *
+   * Passed in rather than read here: which scopes a word can come from depends on the
+   * context, and this view is handed one collection's machines.
+   */
+  declared?: readonly VocabWord[];
   canWrite: boolean;
   isPersonal?: boolean; // the personal collection can't be shared
   onConnect: (c: ConnectionInfo) => void;
@@ -341,7 +350,7 @@ export function CollectionView({
       {(c.labels ?? []).length !== 0 && (
         <div className="mt-1 flex flex-wrap gap-1">
           {c.labels!.map((l) => (
-            <LabelChip key={l.toLowerCase()} label={l} small />
+            <LabelChip key={l.toLowerCase()} label={l} small declared={declared} />
           ))}
         </div>
       )}

@@ -43,7 +43,7 @@ import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
 import { LabelField } from './Labels';
 import { useInstanceLabels } from '../store/instanceLabels';
-import { INSTANCE_LABELS_MAX } from '../store/labelsFormat';
+import { INSTANCE_LABELS_MAX, type VocabWord } from '../store/labelsFormat';
 
 /**
  * The two chords that are not in the bindings table, and why.
@@ -293,11 +293,11 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const instanceLoaded = useInstanceLabels((st) => st.loaded);
   const loadInstanceWords = useInstanceLabels((st) => st.load);
   const saveWords = useInstanceLabels((st) => st.save);
-  const [instanceDraft, setInstanceDraft] = useState<string[] | null>(null);
+  const [instanceDraft, setInstanceDraft] = useState<VocabWord[] | null>(null);
   useEffect(() => {
     if (!instanceLoaded) void loadInstanceWords();
   }, [instanceLoaded, loadInstanceWords]);
-  const saveInstanceWords = async (words: string[] | null) => {
+  const saveInstanceWords = async (words: VocabWord[] | null) => {
     if (!words) return;
     await saveWords(words).catch(() => {});
     setInstanceDraft(null);
@@ -534,9 +534,37 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 </p>
               ) : (
                 <LabelField
-                  labels={instanceWords}
-                  onChange={setInstanceDraft}
-                  vocabulary={[]}
+                  labels={(instanceDraft ?? instanceWords).map((w) => w.label)}
+                  // The field speaks in words; the colours are kept here, keyed by word,
+                  // so editing the text does not drop a colour somebody chose.
+                  onChange={(next) =>
+                    setInstanceDraft(
+                      next.map((label) => {
+                        const had = (instanceDraft ?? instanceWords).find(
+                          (w) => w.label.toLowerCase() === label.toLowerCase(),
+                        );
+                        return had?.color ? { label, color: had.color } : { label };
+                      }),
+                    )
+                  }
+                  // THE WORDS ARE DECLARED HERE, so this is the one field that offers a
+                  // colour. Choosing one on a machine would make it that machine's colour
+                  // for the word, and then the word has several.
+                  onColor={(label, color) =>
+                    setInstanceDraft(
+                      (instanceDraft ?? instanceWords).map((w) =>
+                        w.label.toLowerCase() === label.toLowerCase()
+                          ? color
+                            ? { label: w.label, color }
+                            : { label: w.label }
+                          : w,
+                      ),
+                    )
+                  }
+                  vocabulary={(instanceDraft ?? instanceWords).map((w) => ({
+                    ...w,
+                    scope: 'instance' as const,
+                  }))}
                   inputId="instance-labels-input"
                   testPrefix="instance-labels"
                 />

@@ -17,10 +17,7 @@ import { errorHandler, ErrorSeverity, ErrorCategory } from '../utils/errorHandle
 import { useLayouts } from '../store/layouts';
 import { broadcastTargets } from '../store/broadcast';
 import { attachImeGuard } from '../utils/imeGuard';
-import {
-  attachTerminalClipboard,
-  DEFAULT_CLIPBOARD_MODE,
-} from '../utils/terminalClipboard';
+import { attachTerminalClipboard, DEFAULT_CLIPBOARD_MODE } from '../utils/terminalClipboard';
 import { useAutoReconnect } from '../store/autoReconnect';
 import { useTranslation } from '../i18n/i18n';
 import { useShortcut, useBindingText } from '../shortcuts/useShortcut';
@@ -769,9 +766,7 @@ export function Terminal({
       onDrop={onDrop}
     >
       {/* Terminal Header - keep pointer events enabled for grip dots */}
-      <div
-        className="pointer-events-auto flex w-full items-center justify-between border-b border-border bg-card px-4 py-2 flex-shrink-0"
-      >
+      <div className="pointer-events-auto flex w-full items-center justify-between border-b border-border bg-card px-4 py-2 flex-shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             {/* Only show connection status for remote terminals */}

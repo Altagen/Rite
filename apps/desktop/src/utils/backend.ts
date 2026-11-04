@@ -1429,8 +1429,11 @@ const LocalCollectionSchema = z.object({
     .array(z.object({ name: z.string(), color: z.string().nullable().optional() }))
     .default([]),
   hc: z.boolean().nullable().optional(),
-  // The vocabulary this collection declares (ADR 0016's sealed header).
-  labels: z.array(z.string()).default([]),
+  // The vocabulary this collection declares (ADR 0016's sealed header). A word is bare
+  // when nobody coloured it, an object when somebody did.
+  labels: z
+    .array(z.union([z.string(), z.object({ label: z.string(), color: z.string().optional() })]))
+    .default([]),
   hasBoard: z.boolean().default(false),
 });
 export type LocalCollection = z.infer<typeof LocalCollectionSchema>;
@@ -1475,13 +1478,19 @@ export const BackendLabels = {
     invokeWithValidation(
       'labels_get',
       z.object({
-        labels: z.array(z.string()),
+        // A word is a bare string when nobody chose a colour for it, and an object when
+        // somebody did. Both shapes, because a list written before colours existed holds
+        // strings and must keep working — `acceptedVocab` normalises what comes back.
+        labels: z.array(
+          z.union([z.string(), z.object({ label: z.string(), color: z.string().optional() })]),
+        ),
         /** Which support answered. `locked` means a write will be refused. */
         support: z.enum(['instance', 'vault', 'file', 'locked']).default('file'),
       }),
       {},
     ),
-  set: (labels: string[]) => invokeWithValidation('labels_set', z.null(), { labels }),
+  set: (labels: (string | { label: string; color?: string })[]) =>
+    invokeWithValidation('labels_set', z.null(), { labels }),
 };
 
 export const BackendLocal = {
@@ -1494,8 +1503,8 @@ export const BackendLocal = {
     color?: string | null;
     folders?: { name: string; color: string | null }[];
     hc?: boolean | null;
-    /** Absent keeps what is stored; a list replaces it. */
-    labels?: string[];
+    /** Absent keeps what is stored; a list replaces it. Two shapes — see `formatVocab`. */
+    labels?: (string | { label: string; color?: string })[];
   }) => invokeWithValidation('local_update_collection', z.object({ ok: z.boolean() }), args),
   deleteCollection: (id: string) =>
     invokeWithValidation('local_delete_collection', z.object({ ok: z.boolean() }), { id }),

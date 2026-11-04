@@ -414,7 +414,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       isPersonal: boolean;
       hc: boolean | null;
       // The vocabulary this collection declares (ADR 0016's header). Sealed with the rest.
-      labels: string[];
+      // Two shapes: a bare word, or a word with the colour somebody chose for it.
+      labels: (string | { label: string; color?: string })[];
       hasBoard: boolean;
     }[]
   >([]);
@@ -452,7 +453,8 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
       isPersonal: boolean;
       hc: boolean | null;
       // The vocabulary this collection declares (ADR 0016's header). Sealed with the rest.
-      labels: string[];
+      // Two shapes: a bare word, or a word with the colour somebody chose for it.
+      labels: (string | { label: string; color?: string })[];
       hasBoard: boolean;
     }[] = [];
     for (const col of cols) {

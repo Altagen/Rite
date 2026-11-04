@@ -194,7 +194,7 @@ export function useLocalCollectionsSource(): ConnectionsSource {
       name: string,
       color: string | null,
       hc: boolean | null,
-      labels?: string[],
+      labels?: (string | { label: string; color?: string })[],
     ) => {
       await Backend.Local.updateCollection({ id, name, color, hc, labels });
       await refresh();

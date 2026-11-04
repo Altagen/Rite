@@ -85,9 +85,7 @@ export function KnownHostsList() {
   return (
     <div className="border-b border-border px-0.5 py-3" data-testid="known-hosts">
       <div className="text-sm font-medium">{t('settings.knownHosts')}</div>
-      <p className="mt-0.5 mb-2 text-xs text-muted-foreground">
-        {t('settings.knownHostsDesc')}
-      </p>
+      <p className="mt-0.5 mb-2 text-xs text-muted-foreground">{t('settings.knownHostsDesc')}</p>
 
       {error && (
         <p className="mb-2 text-sm text-red-500" data-testid="known-hosts-error">

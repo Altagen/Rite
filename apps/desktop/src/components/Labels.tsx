@@ -36,6 +36,7 @@ import {
   labelColor,
   type LabelOffer,
   type LabelScope,
+  type VocabWord,
 } from '../store/labelsFormat';
 import { MACHINE_SWATCHES } from '../theme/swatches';
 
@@ -62,13 +63,23 @@ export function LabelChip({
   label,
   small = false,
   scope,
+  declared,
 }: {
   label: string;
   small?: boolean;
   scope?: LabelScope;
+  /**
+   * The vocabularies that might have declared this word, nearest scope first.
+   *
+   * A DECLARED COLOUR WINS, which is what makes a colour worth scanning for: `pci` is red
+   * everywhere the word appears, because somebody said so once. A word nobody declared
+   * keeps the colour derived from its own text, which is what every word had before
+   * choosing was possible.
+   */
+  declared?: readonly VocabWord[];
 }) {
   const { t } = useTranslation();
-  const color = labelColor(label, MACHINE_SWATCHES);
+  const color = labelColor(label, MACHINE_SWATCHES, declared);
   // Joined rather than interpolated: `e2e/i18n-check.mjs` reads text that FOLLOWS an
   // expression as something on screen — the right default, and right everywhere on this
   // component but here, where it is a handle for a test.
@@ -105,6 +116,7 @@ export function LabelField({
   vocabulary,
   inputId,
   testPrefix,
+  onColor,
 }: {
   /** The labels currently on the thing. */
   labels: string[];
@@ -114,6 +126,14 @@ export function LabelField({
   inputId: string;
   /** Prefixes every `data-testid` here, so two screens' fields are told apart. */
   testPrefix: string;
+  /**
+   * Declare a colour for one word. Absent ⇒ the field does not offer to.
+   *
+   * ONLY WHERE THE WORDS ARE DECLARED, which is a vocabulary editor and not a machine
+   * form. Choosing a colour on a machine would make it that machine's colour for the
+   * word, and then the word has several — the thing this shape exists to prevent.
+   */
+  onColor?: (label: string, color: string | undefined) => void;
 }) {
   const { t } = useTranslation();
   const [typed, setTyped] = useState(labels.join(', '));
@@ -127,6 +147,11 @@ export function LabelField({
   );
   // Only when there is more than one, for the reason on `LabelChip`.
   const scopes = new Set(vocabulary.map((v) => v.scope));
+  // What the offers declare, so a chip in this field wears the colour it will wear
+  // everywhere else rather than one derived here and nowhere else.
+  const declaredWords: VocabWord[] = vocabulary.map((v) =>
+    v.color ? { label: v.label, color: v.color } : { label: v.label },
+  );
   const write = (next: string) => {
     setTyped(next);
     onChange(acceptedLabels(next.split(',').map(cleanLabel)));
@@ -145,9 +170,35 @@ export function LabelField({
         data-testid={`${testPrefix}-input`}
       />
       {parsed.length !== 0 && (
-        <div className="mt-1.5 flex flex-wrap gap-1" data-testid={`${testPrefix}-preview`}>
+        <div className="mt-1.5 flex flex-col gap-1" data-testid={`${testPrefix}-preview`}>
           {parsed.map((l) => (
-            <LabelChip key={l.toLowerCase()} label={l} />
+            <span key={l.toLowerCase()} className="flex items-center gap-1.5">
+              <LabelChip label={l} declared={declaredWords} />
+              {/* The palette, only in an editor of the words themselves — see `onColor`.
+                  The swatch that is currently in force is ringed, whether it was chosen or
+                  derived, so "no choice" is a visible state rather than an empty row. */}
+              {onColor &&
+                MACHINE_SWATCHES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() =>
+                      onColor(
+                        l,
+                        labelColor(l, MACHINE_SWATCHES, declaredWords) === c ? undefined : c,
+                      )
+                    }
+                    aria-label={c}
+                    data-testid={`${testPrefix}-colour-${l.toLowerCase()}-${c.slice(1)}`}
+                    className={`h-4 w-4 rounded-full border ${
+                      labelColor(l, MACHINE_SWATCHES, declaredWords) === c
+                        ? 'border-foreground'
+                        : 'border-transparent'
+                    }`}
+                    style={{ background: c }}
+                  />
+                ))}
+            </span>
           ))}
         </div>
       )}
@@ -164,7 +215,12 @@ export function LabelField({
                 className="rounded-full disabled:opacity-40"
                 data-testid={`${testPrefix}-add-${v.label.toLowerCase()}`}
               >
-                <LabelChip label={v.label} small scope={scopes.size === 1 ? undefined : v.scope} />
+                <LabelChip
+                  label={v.label}
+                  small
+                  scope={scopes.size === 1 ? undefined : v.scope}
+                  declared={declaredWords}
+                />
               </button>
             ))}
           </div>
@@ -178,4 +234,3 @@ export function LabelField({
     </>
   );
 }
-
