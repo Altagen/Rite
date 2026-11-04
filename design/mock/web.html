@@ -697,6 +697,20 @@ const PREFS=[
     + prefRow('Health-check','',`<select class="inp" style="width:auto" onchange="STATE.hcMode=this.value;renderAll()"><option value="off" ${STATE.hcMode==='off'?'selected':''}>Off — no status</option><option value="passive" ${STATE.hcMode==='passive'?'selected':''}>Passive — last seen</option><option value="on-demand" ${STATE.hcMode==='on-demand'?'selected':''}>On-demand check</option><option value="full" ${STATE.hcMode==='full'?'selected':''}>Background polling</option></select>`)
     + prefRow('Container &amp; service cards on the machine dashboard',`These two cards ask the server to run a command on the host each time they refresh.${STATE.dashPolicy.webui===false?' <span style="color:var(--amber)">The server turns them off for the web UI</span> — nobody can run them here, and this switch changes nothing.':' Off leaves the rest of the dashboard — address, port forwarding, the Board — untouched.'}`,prefToggle('machineProbes','renderAll()')) },
 
+
+  /* The words declared ABOVE the collections, so one does not have to be redeclared in
+     each. One section in both shells, because a local vault has this scope too: it is an
+     instance of Rite with collections under it. Its SUPPORT differs by who reads it — a
+     plaintext row on a server where every member does, a sealed document on a vault where
+     only the owner does — and the client never learns which.
+
+     Inheritance runs ONE WAY: these words are offered inside every collection, and a
+     collection's own never travel up. That is why a sensitive word belongs in the
+     collection and not here. */
+  { id:'labels', label:'Labels', body:()=>
+      `<h4>Words for every collection</h4><p class="lede">Declared once, offered inside every collection. A collection can declare words of its own; those stay in it.${' <span style=\"color:var(--amber)\">An administrator writes this list</span>; every member reads it.'}</p>`
+    + prefRow('Words','Comma-separated. The colour of a word comes from the word itself, so it looks the same everywhere.',`<input class="inp mono" style="width:260px" value="pci, prod, eu-west">`) },
+
   { id:'security', label:'Security', body:()=>
       `<h4>Security</h4>`
     + prefRow('Auto-lock session','Clear the in-memory vault key after inactivity (re-login to resume)',`<select class="inp" style="width:auto"><option>Disabled</option><option>1 min</option><option>3 min</option><option selected>5 min</option><option>Custom…</option></select>`)

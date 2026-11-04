@@ -15,10 +15,16 @@
  *
  * THE SCOPE IS THE CONFIDENTIALITY DECISION rather than a setting beside it:
  *
- *   - `org` — published for the whole instance. PUBLIC, in the clear, inherited by every
- *     collection. Not a compromise: a word everyone may read and use has nothing to hide
- *     from the server, and sealing it under a key every member holds would buy a key
- *     rotation path and no secrecy.
+ *   - `instance` — declared once above the collections, so it does not have to be
+ *     redeclared in each one. BOTH CONTEXTS HAVE THIS, which is why it is not called
+ *     `org`: a local vault has no organisation and no administrator, but it is still an
+ *     instance of Rite with collections under it.
+ *
+ *     Its support differs because its READERS do. On a server every member reads it, so
+ *     it is a plaintext table: a word everyone may read and use has nothing to hide from
+ *     the server, and sealing it under a key every member holds would buy a key rotation
+ *     path and no secrecy. On a local vault the only reader is the owner, so it is a
+ *     document sealed under the master key like their marks.
  *   - `collection` — in the collection's sealed blob, read by its members and nobody else.
  *     Where a word that IS sensitive goes, and it never travels upward.
  *   - `personal` — one person's own filing, in the document Rite keeps for them.
@@ -28,7 +34,7 @@
  * shares while WHICH machine wears it is known only to that collection's members. The
  * scope governs the vocabulary; it never governs the assignment.
  */
-export type LabelScope = 'personal' | 'collection' | 'org';
+export type LabelScope = 'personal' | 'collection' | 'instance';
 
 /** One word on offer, and its scope. */
 export interface LabelOffer {
@@ -36,9 +42,19 @@ export interface LabelOffer {
   scope: LabelScope;
 }
 
-/** How long a label may be, and how many a conversation may carry. */
+/** How long a label may be, and how many one thing may carry. */
 export const LABEL_MAX = 24;
 export const LABELS_MAX = 8;
+
+/**
+ * How many words the instance vocabulary may declare.
+ *
+ * Bigger than `LABELS_MAX`, because this is the list to choose FROM rather than the list
+ * on one thing. Duplicated in `rite-server` (`INSTANCE_LABELS_MAX`), because there is
+ * nothing to import across the two languages — `e2e/label-caps-check.mjs` asserts the
+ * three numbers agree, so neither side can move one alone.
+ */
+export const INSTANCE_LABELS_MAX = 200;
 
 /**
  * One label's text, as it is kept: trimmed, squeezed to one line, case left alone.
@@ -50,8 +66,18 @@ export const LABELS_MAX = 8;
 export const cleanLabel = (raw: string): string =>
   raw.replace(/\s+/g, ' ').trim().slice(0, LABEL_MAX);
 
-/** The labels of one mark, cleaned, de-duplicated case-insensitively, capped. */
-export function acceptedLabels(raw: unknown): string[] {
+/**
+ * A list of labels, cleaned: trimmed, de-duplicated case-insensitively, capped.
+ *
+ * ONE WALK FOR BOTH CALLERS, because they differ only in the cap — and a second copy of
+ * this loop is how the field and the vocabulary come to disagree about whether `API` and
+ * `api` are one word.
+ *
+ * The FIRST spelling seen is kept: `API` typed first stays `API` rather than being
+ * rewritten by a later `api`, which would rename somebody's word on an edit they did not
+ * make.
+ */
+function cleaned(raw: unknown, cap: number): string[] {
   if (!Array.isArray(raw)) return [];
   const out: string[] = [];
   const seen = new Set<string>();
@@ -62,10 +88,16 @@ export function acceptedLabels(raw: unknown): string[] {
     if (!label || seen.has(key)) continue;
     seen.add(key);
     out.push(label);
-    if (out.length === LABELS_MAX) break;
+    if (out.length === cap) break;
   }
   return out;
 }
+
+/** The labels one thing carries, cleaned and capped at `LABELS_MAX`. */
+export const acceptedLabels = (raw: unknown): string[] => cleaned(raw, LABELS_MAX);
+
+/** The instance vocabulary, cleaned and capped at `INSTANCE_LABELS_MAX`. */
+export const acceptedVocabulary = (raw: unknown): string[] => cleaned(raw, INSTANCE_LABELS_MAX);
 
 /**
  * A label's colour, derived from its own text rather than stored.

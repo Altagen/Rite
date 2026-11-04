@@ -209,15 +209,26 @@ impl AuthManager {
         )
         .await
         .context("re-wrap collection keys")?;
+        // And the documents sealed directly with the master key (ADR 0022 §6's middle
+        // row): a conversation's name, the instance vocabulary. The sentence above
+        // applies to them word for word.
+        let documents = crate::vault_documents::resealed(
+            self.db.pool(),
+            old_key.as_bytes(),
+            new_key.as_bytes(),
+        )
+        .await
+        .context("re-seal vault documents")?;
 
         self.db
-            .rekey_vault(&updates, &collection_keys, &new_hash, &new_salt)
+            .rekey_vault(&updates, &collection_keys, &documents, &new_hash, &new_salt)
             .await?;
         *self.master_key.write().await = Some(Arc::new(new_key));
         info!(
-            "Master password changed ({} connections re-keyed, {} collections re-wrapped)",
+            "Master password changed ({} connections re-keyed, {} collections re-wrapped, {} documents re-sealed)",
             updates.len(),
-            collection_keys.len()
+            collection_keys.len(),
+            documents.len()
         );
         Ok(ChangeMasterOutcome::Success)
     }
@@ -345,6 +356,71 @@ mod tests {
     async fn test_first_run() {
         let (auth, _temp) = create_test_auth().await;
         assert!(auth.is_first_run().await.unwrap());
+    }
+
+    /// A password change must carry the DOCUMENTS with it too, and this test exists
+    /// because it did not. `vault_documents` rows — a name somebody put on a conversation,
+    /// the instance vocabulary — are sealed directly with the master key, so the change
+    /// succeeded and left them unreadable forever, in silence. The same failure the
+    /// collection test below describes, one table over, found in a server log rather than
+    /// by anybody looking.
+    #[tokio::test]
+    async fn change_master_password_reseals_documents() {
+        let (auth, db, _tmp) = create_test_auth_with_db().await;
+        auth.setup_master_password("Old-Str0ng!P@ss1")
+            .await
+            .unwrap();
+        auth.unlock("Old-Str0ng!P@ss1").await.unwrap();
+
+        let key = *auth.get_master_key().await.unwrap().as_bytes();
+        // Two documents, because one would pass while a loop wrote only the first.
+        crate::vault_documents::set(
+            db.pool(),
+            &key,
+            crate::vault_documents::MARKS,
+            "{\"marks\":[]}",
+        )
+        .await
+        .unwrap();
+        crate::vault_documents::set(db.pool(), &key, crate::vault_documents::LABELS, "[\"pci\"]")
+            .await
+            .unwrap();
+
+        assert!(matches!(
+            auth.change_master_password("Old-Str0ng!P@ss1", "New-Str0ng!P@ss2")
+                .await
+                .unwrap(),
+            ChangeMasterOutcome::Success
+        ));
+
+        auth.lock().await.unwrap();
+        auth.unlock("New-Str0ng!P@ss2").await.unwrap();
+        let new_key = *auth.get_master_key().await.unwrap().as_bytes();
+        assert_eq!(
+            crate::vault_documents::get(db.pool(), &new_key, crate::vault_documents::MARKS)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("{\"marks\":[]}"),
+            "a name on a conversation must survive a password change"
+        );
+        assert_eq!(
+            crate::vault_documents::get(db.pool(), &new_key, crate::vault_documents::LABELS)
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("[\"pci\"]"),
+            "and so must the vocabulary"
+        );
+
+        // And the OLD key must no longer open them — otherwise they were copied rather
+        // than re-sealed, and the old password would still read them.
+        assert!(
+            crate::vault_documents::get(db.pool(), &key, crate::vault_documents::MARKS)
+                .await
+                .is_err(),
+            "the old key must not open a re-sealed document"
+        );
     }
 
     /// A password change must carry local collections with it. Without re-wrapping

@@ -99,6 +99,7 @@ import {
 } from '../utils/paneTree';
 import { AgentManager } from './AgentManager';
 import { offersFrom } from './Labels';
+import { useInstanceLabels } from '../store/instanceLabels';
 import {
   agentResumeArgv,
   agentResumeCmd,
@@ -890,16 +891,30 @@ export function Workspace({
    * word a collection agreed on is offered the way the collection wrote it, not the way
    * somebody happened to type it on a machine afterwards.
    */
+  const instanceWords = useInstanceLabels((st) => st.words);
+  const loadInstanceWords = useInstanceLabels((st) => st.load);
+  const instanceWordsLoaded = useInstanceLabels((st) => st.loaded);
+  // Read once, when a screen first needs words. Nothing else in the app does.
+  useEffect(() => {
+    if (!instanceWordsLoaded) void loadInstanceWords();
+  }, [instanceWordsLoaded, loadInstanceWords]);
+
   const labelOffers = useMemo(
-    () =>
-      offersFrom(
+    () => [
+      // INHERITANCE RUNS ONE WAY: the instance's words are offered inside every
+      // collection, and a collection's own never travel up. Offered first, because
+      // `offersFrom` keeps the first spelling it sees — a word declared for the whole
+      // instance is offered the way it was declared.
+      ...offersFrom([instanceWords], 'instance'),
+      ...offersFrom(
         [
           ...(conns.collections ?? []).map((c) => c.labels),
           ...conns.connections.map((c) => c.labels),
         ],
         'collection',
-      ),
-    [conns.collections, conns.connections],
+      ).filter((o) => !instanceWords.some((w) => w.toLowerCase() === o.label.toLowerCase())),
+    ],
+    [instanceWords, conns.collections, conns.connections],
   );
 
   const handleNewAgent = async (
@@ -1122,8 +1137,7 @@ export function Workspace({
     // another computer, so there is nothing here to follow and the home directory answers
     // instead — the same as no pane at all. Passing its id would have the server find no
     // local session and start the shell wherever Rite stands, which is nobody's directory.
-    const following =
-      standing?.session.connectionId === 'local' ? standing.session.id : undefined;
+    const following = standing?.session.connectionId === 'local' ? standing.session.id : undefined;
     const start = newTabCwdStart({
       asked: newTabCwd,
       runsHere: isNativeShell(),
@@ -1268,8 +1282,9 @@ export function Workspace({
       // The pane being cut, so its shell's directory is where the new one opens. A
       // terminal multiplexer does this and it is the whole of the "working directory per
       // tab" item: splitting leaves you where you were.
-      const cutPane = getAllPanes(tabGroups.find((t) => t.id === activeTabId)?.paneTree ?? null)
-        .find((pane) => pane.id === paneId);
+      const cutPane = getAllPanes(
+        tabGroups.find((t) => t.id === activeTabId)?.paneTree ?? null,
+      ).find((pane) => pane.id === paneId);
       // The session is named whatever it is, local or SSH, and the SERVER decides whether
       // it can answer: `local_cwd` matches on a local session and returns nothing for
       // anything else. A matching check here would be the same rule in two places — and

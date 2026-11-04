@@ -116,6 +116,8 @@ export function CollectionView({
   const activeFor = (id: string) => (checking[id] ? ('checking' as const) : results[id]?.status);
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState<'name' | 'host' | 'lastUsed'>('name');
+  /** Which label narrows the list. `@any` is all of them, folded for comparison. */
+  const [label, setLabel] = useState('@any');
   const [layout, setLayout] = useState<'grid' | 'list'>('grid');
   const [path, setPath] = useState(''); // the folder currently being browsed ('' = root)
   const folderColor = useMemo(() => {
@@ -136,12 +138,35 @@ export function CollectionView({
             (m.labels ?? []).some((l) => l.toLowerCase().includes(q)),
         )
       : machines;
-    return [...filtered].sort((a, b) => {
+    // THE FILTER COMPOSES WITH THE SEARCH rather than replacing it: one narrows by a word
+    // chosen from a list, the other by anything typed, and a screen that made them
+    // exclusive would be answering a question nobody asked.
+    const byLabel =
+      label === '@any'
+        ? filtered
+        : filtered.filter((m) =>
+            (m.labels ?? []).some((l) => l.toLowerCase() === label.toLowerCase()),
+          );
+    return [...byLabel].sort((a, b) => {
       if (sort === 'host') return a.hostname.localeCompare(b.hostname);
       if (sort === 'lastUsed') return (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0);
       return a.name.localeCompare(b.name);
     });
-  }, [machines, filter, sort]);
+  }, [machines, filter, sort, label]);
+
+  /**
+   * The words machines HERE actually wear, which is what this filter can narrow by.
+   *
+   * Not the declared vocabulary: offering a word no machine in this collection carries
+   * would be a filter guaranteed to empty the screen.
+   */
+  const inUse = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const m of machines) {
+      for (const l of m.labels ?? []) if (!seen.has(l.toLowerCase())) seen.set(l.toLowerCase(), l);
+    }
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+  }, [machines]);
 
   const filtering = filter.trim() !== '';
 
@@ -562,6 +587,24 @@ export function CollectionView({
             className="min-w-0 flex-1 bg-transparent text-sm outline-none"
           />
         </div>
+        {/* Only once a machine here wears one: a filter for something nobody has done is
+            how a row of controls teaches people to stop reading it. */}
+        {inUse.length !== 0 && (
+          <select
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            aria-label={t('labels.field')}
+            className="rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
+            data-testid="cview-label"
+          >
+            <option value="@any">{t('labels.anyLabel')}</option>
+            {inUse.map((l) => (
+              <option key={l.toLowerCase()} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as 'name' | 'host' | 'lastUsed')}

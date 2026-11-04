@@ -909,6 +909,12 @@ pub fn build_router(state: ServerState) -> Router {
         .route("/api/agents/manage", post(agent_manage))
         .route("/api/agents/manage-quick", post(agent_manage_quick))
         .route("/api/agents/manage-local", post(agent_manage_local))
+        // The instance vocabulary (ADR 0016's label scopes). READ by anyone who got this
+        // far, because every member needs the words; WRITTEN under `/api/admin`, which is
+        // where the role check lives — and which passes on a local vault, because there
+        // the caller past the loopback token IS the owner (ADR 0009, ADR 0018).
+        .route("/api/labels", get(get_labels))
+        .route("/api/admin/labels", put(set_labels))
         .route("/api/terminal/local", post(create_local))
         .route("/api/terminal/preconnect", post(run_preconnect))
         .route("/api/forwards", get(list_forwards).post(start_forward))
@@ -4153,6 +4159,137 @@ async fn put_marks(
     // A shared instance has no file to write and must not put this in a table it can
     // read: there the marks ride as a sealed blob at `/api/user/marks`.
     Ok(StatusCode::NOT_FOUND)
+}
+
+/// How many words the instance vocabulary may declare.
+///
+/// Duplicated from `INSTANCE_LABELS_MAX` in `store/labelsFormat.ts` — across two languages
+/// there is nothing to import — and `e2e/label-caps-check.mjs` asserts the two agree, so
+/// neither side can move it alone. The same arrangement `NEW_TAB_CWD_HOME` has.
+const INSTANCE_LABELS_MAX: usize = 200;
+
+/// How long one word may be. See `LABEL_MAX` in `store/labelsFormat.ts`.
+const LABEL_MAX: usize = 24;
+
+/// Where the instance vocabulary lives, which is decided by WHO READS IT.
+///
+/// On a server every member reads it, so it is a plaintext row: a word everyone may read
+/// and use has nothing to hide from this process, and sealing it under a key they all hold
+/// would buy a key rotation path and no secrecy. What IS secret is which machine wears a
+/// word, and that stays in the collection's sealed item.
+///
+/// ON A LOCAL VAULT THE SCOPE STILL EXISTS, which is the thing worth saying: a local vault
+/// has no organisation and no administrator, but it is an instance of Rite with
+/// collections under it, so a word declared once must not have to be redeclared in each
+/// one. The only reader there is the owner, so it is sealed under the master key like
+/// their marks.
+///
+/// With no vault open there is nothing: no vault means no collections, which means no
+/// machine to put a word on.
+enum LabelsSupport {
+    Instance,
+    Vault([u8; 32]),
+    None,
+}
+
+async fn labels_support(state: &ServerState) -> LabelsSupport {
+    if state.accounts {
+        return LabelsSupport::Instance;
+    }
+    match state.auth.get_master_key().await {
+        Ok(key) => LabelsSupport::Vault(*key.as_bytes()),
+        Err(_) => LabelsSupport::None,
+    }
+}
+
+/// One word, as it is kept: squeezed to a line, trimmed, capped. See `cleanLabel`.
+fn clean_label(raw: &str) -> String {
+    raw.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(LABEL_MAX)
+        .collect()
+}
+
+/// The vocabulary as it is stored: cleaned, de-duplicated case-insensitively, capped.
+///
+/// VALIDATED HERE AS WELL AS IN THE CLIENT, because the client is not the boundary: this
+/// route takes a list from whoever reached it, and an uncapped one would put a megabyte in
+/// a row every member reads on every open. The FIRST spelling is kept, like the client's.
+fn accepted_vocabulary(raw: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for value in raw {
+        let label = clean_label(&value);
+        if label.is_empty() || !seen.insert(label.to_lowercase()) {
+            continue;
+        }
+        out.push(label);
+        if out.len() == INSTANCE_LABELS_MAX {
+            break;
+        }
+    }
+    out
+}
+
+#[derive(Deserialize)]
+struct LabelsReq {
+    labels: Vec<String>,
+}
+
+async fn get_labels(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
+    let labels = match labels_support(&state).await {
+        LabelsSupport::Instance => rite_core::vault_documents::instance::get(state.db.pool())
+            .await?
+            .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+            .unwrap_or_default(),
+        LabelsSupport::Vault(key) => {
+            let text = rite_core::vault_documents::get(
+                state.db.pool(),
+                &key,
+                rite_core::vault_documents::LABELS,
+            )
+            .await?;
+            text.and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok())
+                .unwrap_or_default()
+        }
+        // Nothing declared, rather than an error: a window with no vault open has no
+        // collections to declare words for, and the screen says so by offering none.
+        LabelsSupport::None => Vec::new(),
+    };
+    Ok(Json(json!({ "labels": labels })))
+}
+
+async fn set_labels(
+    State(state): State<ServerState>,
+    Json(req): Json<LabelsReq>,
+) -> Result<Response, AppError> {
+    let labels = accepted_vocabulary(req.labels);
+    // `anyhow`, because `AppError` converts from that and not from serde's own error.
+    let text = serde_json::to_string(&labels).map_err(anyhow::Error::from)?;
+    match labels_support(&state).await {
+        LabelsSupport::Instance => {
+            rite_core::vault_documents::instance::set(state.db.pool(), &text).await?
+        }
+        LabelsSupport::Vault(key) => {
+            rite_core::vault_documents::set(
+                state.db.pool(),
+                &key,
+                rite_core::vault_documents::LABELS,
+                &text,
+            )
+            .await?
+        }
+        LabelsSupport::None => {
+            return Ok((
+                StatusCode::CONFLICT,
+                "no vault is open, so there are no collections to declare words for",
+            )
+                .into_response());
+        }
+    }
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 /// The account's copy, sealed. See `get_user_layouts` — the same arrangement, because a

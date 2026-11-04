@@ -109,3 +109,42 @@ test('a collection declares a vocabulary, in the same sealed header as its name'
   });
   expect((await read()).labels).toEqual([]);
 });
+
+/**
+ * The vocabulary declared ABOVE the collections, on the support a local vault gives it.
+ *
+ * A LOCAL VAULT HAS THIS SCOPE, which is the whole point of the row: it has no
+ * organisation and no administrator, but it is an instance of Rite with collections under
+ * it — so a word declared once must not have to be redeclared in each one. The only reader
+ * there is the owner, so it is sealed under the master key like their marks. On a server
+ * the same pair of routes answers from a plaintext row, because there every member reads
+ * it and sealing it under a key they all hold would buy a rotation path and no secrecy.
+ *
+ * `e2e/layouts-policy-check.mjs` holds the server's half against a real accounts server;
+ * this is the vault's.
+ */
+test('a local vault declares words above its collections, sealed', async ({ request }) => {
+  const read = async () =>
+    ((await (await request.get('/api/labels')).json()) as { labels: string[] }).labels;
+
+  // Nothing declared is the normal state of a fresh vault, not a failure.
+  expect(await read()).toEqual([]);
+
+  const put = await request.put('/api/admin/labels', {
+    data: { labels: ['pci', 'prod', 'eu-west'] },
+  });
+  expect(put.status()).toBe(204);
+  expect(await read()).toEqual(['pci', 'prod', 'eu-west']);
+
+  // THE SERVER VALIDATES TOO, because the client is not the boundary: this route takes a
+  // list from whoever reached it. The first spelling is kept, blanks go, and a word longer
+  // than the cap is cut — the same rules the field applies, in the other language.
+  await request.put('/api/admin/labels', {
+    data: { labels: ['API', '  api  ', '', '   ', 'x'.repeat(40), 'a  b'] },
+  });
+  expect(await read()).toEqual(['API', 'x'.repeat(24), 'a b']);
+
+  // A list replaces, down to empty.
+  await request.put('/api/admin/labels', { data: { labels: [] } });
+  expect(await read()).toEqual([]);
+});

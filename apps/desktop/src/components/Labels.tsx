@@ -48,7 +48,7 @@ export { offersFrom } from '../store/labelsFormat';
 const SCOPE_KEY: Record<LabelScope, string> = {
   personal: 'labels.scopePersonal',
   collection: 'labels.scopeCollection',
-  org: 'labels.scopeOrg',
+  instance: 'labels.scopeInstance',
 };
 
 /**

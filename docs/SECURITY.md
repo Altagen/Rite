@@ -238,6 +238,33 @@ Neither exec gate is a confinement either. Both routes take the command from the
 and so does the one that opens a session. What they decide is whether Rite generates that
 traffic and reads those files on the user's behalf.
 
+### Labels: the scope is the confidentiality decision (ADR 0016)
+
+A label is a word somebody puts on a machine or a conversation. Three scopes, and which one
+a word is in decides who may read it:
+
+- **instance** — a plaintext row, read by every member, written by an administrator
+  (`PUT /api/admin/labels`; `GET /api/labels` is open to any authenticated caller). In the
+  clear deliberately: a word everyone may read and use has nothing to hide from the server,
+  and sealing it under a key every member holds would buy a key rotation path on every
+  member removal and no secrecy. On a **local vault** the same scope exists — a vault is an
+  instance of Rite with collections under it — and is sealed under the master key instead,
+  because there the only reader is the owner.
+- **collection** — in the collection's own header, under its meta key. Read by its members
+  and nobody else, and it **never travels upward**: a collection's vocabulary cannot become
+  instance-wide. This is where a sensitive word belongs.
+- **personal** — the marks document, on the supports ADR 0022 §6 names.
+
+**What is labelled is always sealed, whatever the word's scope.** A machine lives in a
+collection and a collection is encrypted, so `pci` may be a word the whole instance shares
+while *which machine wears it* is readable only by that collection's members. The scope
+governs the vocabulary; it never governs the assignment.
+
+**The search is therefore client-side, by necessity.** A label names a project, a customer,
+a person, and it is sealed inside the record it is on. An index the server could query is
+the one thing this model does not allow, so the box searches the already-decrypted list on
+screen.
+
 ### A host the caller named (`allow_quick_ssh`)
 
 What **is** a boundary. A request may name a host instead of a saved connection, and on a

@@ -748,6 +748,14 @@ const routes: Record<string, Route> = {
 
   agent_manage_local: (a) => json('/api/agents/manage-local', post({ command: a.command })),
 
+  labels_get: () => json('/api/labels'),
+  labels_set: (a) =>
+    json('/api/admin/labels', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ labels: a.labels }),
+    }),
+
   agent_manage: (a) =>
     json(
       '/api/agents/manage',

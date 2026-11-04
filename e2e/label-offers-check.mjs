@@ -36,10 +36,10 @@ check('one word per spelling seen, sorted', () => {
 check('THE FIRST SPELLING WINS', () => {
   // `API` typed first stays `API` rather than being rewritten by a later `api`. The
   // alternative quietly renames somebody's word on a screen they did not open.
-  assert.deepEqual(offersFrom([['API'], ['api'], ['Api']], 'org'), [
-    { label: 'API', scope: 'org' },
+  assert.deepEqual(offersFrom([['API'], ['api'], ['Api']], 'instance'), [
+    { label: 'API', scope: 'instance' },
   ]);
-  assert.deepEqual(offersFrom([['api'], ['API']], 'org'), [{ label: 'api', scope: 'org' }]);
+  assert.deepEqual(offersFrom([['api'], ['API']], 'instance'), [{ label: 'api', scope: 'instance' }]);
 });
 
 check('an absent list is not an empty word', () => {
@@ -60,7 +60,7 @@ check('what is not a word is dropped, through the shipped cleaner', () => {
 check('the scope is carried, not guessed', () => {
   // The scope IS the confidentiality decision, so it comes from the caller — the screen
   // knows which list it is reading and this function cannot.
-  for (const scope of ['personal', 'collection', 'org']) {
+  for (const scope of ['personal', 'collection', 'instance']) {
     assert.equal(offersFrom([['x']], scope)[0].scope, scope);
   }
 });

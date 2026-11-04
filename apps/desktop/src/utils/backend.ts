@@ -1458,6 +1458,23 @@ export type LocalMachine = z.infer<typeof LocalMachineSchema>;
  * carries credentials and no key ever reaches this process. The zero-knowledge
  * endpoints are the other ones — there the client holds the keys.
  */
+/**
+ * The instance vocabulary: the label words declared above the collections.
+ *
+ * ONE PAIR, TWO SUPPORTS, chosen by the server because the key is on its side. On an
+ * instance it is a plaintext row every member reads; on a local vault it is a document
+ * sealed under the master key, because the only reader there is the owner. A local vault
+ * HAS this scope — it is an instance of Rite with collections under it, so a word declared
+ * once does not have to be redeclared in each one.
+ *
+ * Reading is open to whoever got this far; writing goes through `/api/admin`, where the
+ * role check lives and which a local vault passes by construction (ADR 0009, ADR 0018).
+ */
+export const BackendLabels = {
+  get: () => invokeWithValidation('labels_get', z.object({ labels: z.array(z.string()) }), {}),
+  set: (labels: string[]) => invokeWithValidation('labels_set', z.null(), { labels }),
+};
+
 export const BackendLocal = {
   collections: () => invokeWithValidation('local_collections', z.array(LocalCollectionSchema), {}),
   createCollection: (name: string, color?: string | null) =>
@@ -1515,6 +1532,7 @@ export const Backend = {
   Layouts: BackendLayouts,
   Marks: BackendMarks,
   UserMarks: BackendUserMarks,
+  Labels: BackendLabels,
   Connections: BackendConnections,
   Terminal: BackendTerminal,
   Ssh: BackendSsh,

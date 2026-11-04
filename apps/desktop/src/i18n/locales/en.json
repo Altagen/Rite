@@ -1309,7 +1309,12 @@
     "capped": "At most {count} labels",
     "scopePersonal": "Personal",
     "scopeCollection": "This collection",
-    "scopeOrg": "Everyone"
+    "scopeInstance": "All collections",
+    "instanceTitle": "Words for every collection",
+    "instanceHint": "Declared once, offered inside every collection. A collection can declare words of its own; those stay in it.",
+    "instanceSave": "Save the list",
+    "instanceCap": "{count} words at most",
+    "anyLabel": "Any label"
   },
   "connErr": {
     "retrying": "Retrying automatically…",

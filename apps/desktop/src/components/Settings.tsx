@@ -41,6 +41,9 @@ import { newTabCwdApplies } from '../utils/newTabCwd';
 import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
+import { LabelField } from './Labels';
+import { useInstanceLabels } from '../store/instanceLabels';
+import { INSTANCE_LABELS_MAX } from '../store/labelsFormat';
 
 /**
  * The two chords that are not in the bindings table, and why.
@@ -103,6 +106,7 @@ type SectionId =
   | 'layouts'
   | 'shell'
   | 'machines'
+  | 'labels'
   | 'security'
   | 'ssh'
   | 'clipboard'
@@ -135,6 +139,10 @@ const RAIL: {
   // the New-terminal button.
   { id: 'shell', i18n: 'settings.sec.shell' },
   { id: 'machines', i18n: 'settings.sec.machines' },
+  // The words declared above the collections. One section in both contexts, because a
+  // local vault has this scope too — it is an instance of Rite with collections under it.
+  // On a server the write is refused to anyone but an administrator, by the route.
+  { id: 'labels', i18n: 'labels.field' },
   { id: 'security', i18n: 'settings.security' },
   { id: 'ssh', i18n: 'settings.sec.ssh' },
   { id: 'clipboard', i18n: 'settings.clipboard' },
@@ -277,6 +285,22 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
    * in view, so the sections themselves did not have to move.
    */
   const [active, setActive] = useState<SectionId>('appearance');
+  // The instance vocabulary. `null` draft ⇒ nothing typed yet, so Save is not offered —
+  // a button that writes what is already stored invites a round trip that changes nothing.
+  const instanceWords = useInstanceLabels((st) => st.words);
+  const instanceError = useInstanceLabels((st) => st.error);
+  const instanceLoaded = useInstanceLabels((st) => st.loaded);
+  const loadInstanceWords = useInstanceLabels((st) => st.load);
+  const saveWords = useInstanceLabels((st) => st.save);
+  const [instanceDraft, setInstanceDraft] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (!instanceLoaded) void loadInstanceWords();
+  }, [instanceLoaded, loadInstanceWords]);
+  const saveInstanceWords = async (words: string[] | null) => {
+    if (!words) return;
+    await saveWords(words).catch(() => {});
+    setInstanceDraft(null);
+  };
   // Change master password (local vault): re-keys all connections server-side.
   const [pwReveal, setPwReveal] = useState(false);
   const [pwCurrent, setPwCurrent] = useState('');
@@ -484,6 +508,49 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 checked={showMemberCount}
                 onChange={setShowMemberCount}
               />
+            </section>
+
+            {/* THE WORDS DECLARED ABOVE THE COLLECTIONS, so one does not have to be
+                redeclared in each. One section in both contexts: an instance keeps a
+                plaintext row every member reads, a local vault a document sealed under its
+                master key — and the client never learns which, because that decision
+                belongs to the side holding the key.
+
+                Inheritance runs ONE WAY. These words are offered inside every collection;
+                a collection's own never travel up, which is why a sensitive word belongs
+                in the collection and not here. */}
+            <section hidden={shown !== 'labels'} className="pb-2">
+              <SettingsHead title={t('labels.instanceTitle')} />
+              <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+                {t('labels.instanceHint')}
+              </p>
+              <LabelField
+                labels={instanceWords}
+                onChange={setInstanceDraft}
+                vocabulary={[]}
+                inputId="instance-labels-input"
+                testPrefix="instance-labels"
+              />
+              {instanceError && (
+                <p className="mt-2 text-xs text-amber-500" data-testid="instance-labels-error">
+                  {instanceError}
+                </p>
+              )}
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveInstanceWords(instanceDraft)}
+                  disabled={instanceDraft === null}
+                  className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                  data-testid="instance-labels-save"
+                >
+                  {t('labels.instanceSave')}
+                </button>
+                {/* The cap is said rather than discovered by a list that stops growing. */}
+                <span className="text-[11px] text-muted-foreground">
+                  {t('labels.instanceCap', { count: String(INSTANCE_LABELS_MAX) })}
+                </span>
+              </div>
             </section>
 
             {/* Machine status (ADR 0017) — a client-side narrowing of the server's health policy. */}
@@ -944,7 +1011,6 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                     />
                   </SettingsRow>
                 )}
-
               </div>
             </section>
 

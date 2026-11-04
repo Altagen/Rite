@@ -1309,7 +1309,12 @@
     "capped": "{count} labels au maximum",
     "scopePersonal": "Personnel",
     "scopeCollection": "Cette collection",
-    "scopeOrg": "Tout le monde"
+    "scopeInstance": "Toutes les collections",
+    "instanceTitle": "Mots pour toutes les collections",
+    "instanceHint": "Déclarés une fois, proposés dans chaque collection. Une collection peut déclarer ses propres mots ; ceux-là y restent.",
+    "instanceSave": "Enregistrer la liste",
+    "instanceCap": "{count} mots au maximum",
+    "anyLabel": "Tous les labels"
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",
