@@ -1252,10 +1252,6 @@
     "byName": "Nom",
     "nameAny": "Tous",
     "nameGiven": "Nommées",
-    "labels": "Labels",
-    "labelsPlaceholder": "Séparés par des virgules",
-    "labelsKnown": "Déjà utilisés",
-    "labelsCapped": "{count} labels au maximum",
     "byLabel": "Label",
     "labelAny": "Tous",
     "noneLeft": "Aucune conversation ne correspond aux filtres",
@@ -1305,6 +1301,15 @@
     "newStart": "Démarrer",
     "askMore": "Voir plus",
     "askLess": "Voir moins"
+  },
+  "labels": {
+    "field": "Labels",
+    "placeholder": "Séparés par des virgules",
+    "known": "Déjà utilisés",
+    "capped": "{count} labels au maximum",
+    "scopePersonal": "Personnel",
+    "scopeCollection": "Cette collection",
+    "scopeOrg": "Tout le monde"
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",

@@ -1160,15 +1160,15 @@ def scenario_agentload(wid):
     time.sleep(1.2)
     worn = js(
         "Array.from(document.querySelectorAll('[data-testid^=agent-card-]'))"
-        ".filter(c => c.querySelector('[data-testid=agent-label-api]')).length"
+        ".filter(c => c.querySelector('[data-testid=label-api]')).length"
     )
     check("the card wears its labels", worn == 1, f"{worn} cards")
 
     # The colour is DERIVED from the label's own text, so it is the same word that decides
     # it on every machine — nothing stored, nothing to keep in step.
     two = js(
-        "(() => { const c = document.querySelector('[data-testid=agent-label-api]');"
-        " const u = document.querySelector('[data-testid=agent-label-urgent]');"
+        "(() => { const c = document.querySelector('[data-testid=label-api]');"
+        " const u = document.querySelector('[data-testid=label-urgent]');"
         " return c && u ? [getComputedStyle(c).color, getComputedStyle(u).color] : []; })()"
     )
     check("two labels are two colours", len(two) == 2 and two[0] != two[1], f"got {two}")

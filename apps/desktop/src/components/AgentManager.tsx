@@ -44,7 +44,7 @@ import {
 } from '../utils/agentAdapters';
 import { agentBlockedReason, agentVerdict } from '../utils/agentPolicy';
 import { useMarks, type Mark } from '../store/marks';
-import { LABELS_MAX, acceptedLabels, cleanLabel, labelColor } from '../store/marksFormat';
+import { LabelChip, LabelField } from './Labels';
 import { keepAnswer, readAnswers, type Answer } from '../store/agentAnswers';
 import { MACHINE_SWATCHES } from '../theme/swatches';
 import { askConfirm } from '../utils/confirmPrompt';
@@ -1117,7 +1117,7 @@ function Detail({
         {fact(t('agent.detailResumes'), line, true)}
         {tags.length !== 0 &&
           fact(
-            t('agent.labels'),
+            t('labels.field'),
             <span className="flex flex-wrap gap-1">
               {tags.map((l) => (
                 <LabelChip key={l.toLowerCase()} label={l} />
@@ -1420,29 +1420,6 @@ function Card({
 }
 
 /**
- * One label, in the colour its own text gives it.
- *
- * The colour is derived and never stored (`labelColor`), so `urgent` looks the same on
- * every machine and in every vault with nothing kept in step — and a label typed on one
- * host is recognisable on the next.
- */
-function LabelChip({ label, small = false }: { label: string; small?: boolean }) {
-  const color = labelColor(label, MARK_COLORS);
-  return (
-    <span
-      className={`inline-flex max-w-full items-center gap-1 truncate rounded-full border px-1.5 ${
-        small ? 'text-[10px]' : 'text-[11px]'
-      }`}
-      style={{ borderColor: color, color }}
-      title={label}
-      data-testid={`agent-label-${label.toLowerCase()}`}
-    >
-      {label}
-    </span>
-  );
-}
-
-/**
  * Naming and filing someone else's conversation.
  *
  * A name, a colour and any number of labels, all this person's, over a session they did
@@ -1477,17 +1454,7 @@ function RenameDialog({
   const { t } = useTranslation();
   const [name, setName] = useState(row.mark?.name ?? '');
   const [color, setColor] = useState(row.mark?.color);
-  const [typed, setTyped] = useState((row.mark?.labels ?? []).join(', '));
-  // Through the shipped cleaner, so what the preview shows is what the document will
-  // hold — including the cap and the case-insensitive de-duplication.
-  const labels = acceptedLabels(typed.split(',').map(cleanLabel));
-  // What is offered is what is not already on: a chip that does nothing when clicked is
-  // a chip somebody clicks twice before reading the field above it.
-  const unused = vocabulary.filter((v) => !labels.some((l) => l.toLowerCase() === v.toLowerCase()));
-  // Hoisted out of the JSX because `e2e/i18n-check.mjs` reads whatever follows a `>`
-  // inside a brace as text on screen — which is the right default, and this was the one
-  // place it was a comparison.
-  const capped = typed.split(',').filter((p) => cleanLabel(p)).length !== labels.length;
+  const [labels, setLabels] = useState(row.mark?.labels ?? []);
   const what = row.conv.ask ?? row.conv.project ?? row.conv.id;
   return (
     <div
@@ -1530,59 +1497,16 @@ function RenameDialog({
             />
           ))}
         </div>
-        <label className="mt-3 block text-xs text-muted-foreground" htmlFor="agent-labels-input">
-          {t('agent.labels')}
-        </label>
-        <input
-          id="agent-labels-input"
-          className="mt-1 h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
-          placeholder={t('agent.labelsPlaceholder')}
-          value={typed}
-          onChange={(e) => setTyped(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onSave(name.trim(), color, labels);
-            if (e.key === 'Escape') onClose();
-          }}
-          data-testid="agent-labels-input"
+        {/* The shared field (`components/Labels.tsx`): the library's machines get the same
+            one, so the chip, the cap and the picker cannot drift between two screens. The
+            prefix keeps this screen's test ids. */}
+        <LabelField
+          labels={labels}
+          onChange={setLabels}
+          vocabulary={vocabulary.map((l) => ({ label: l, scope: 'personal' as const }))}
+          inputId="agent-labels-input"
+          testPrefix="agent-labels"
         />
-        {/* What the document will hold, in the colours the cards will wear — because a
-            comma-separated field is a guess until it is read back, and the cap and the
-            de-duplication happen on the way in. */}
-        {labels.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1" data-testid="agent-labels-preview">
-            {labels.map((l) => (
-              <LabelChip key={l.toLowerCase()} label={l} />
-            ))}
-          </div>
-        )}
-        {/* ALREADY USED, which is the vocabulary and is derived rather than stored (see
-            `vocabulary`). A long label is typed once and clicked ever after; a new one is
-            still just typed, because a picker that is the only way in is a picker that
-            decides what a person may call things. */}
-        {unused.length > 0 && (
-          <>
-            <div className="mt-2 text-[11px] text-muted-foreground">{t('agent.labelsKnown')}</div>
-            <div className="mt-1 flex flex-wrap gap-1" data-testid="agent-labels-known">
-              {unused.map((l) => (
-                <button
-                  key={l.toLowerCase()}
-                  type="button"
-                  disabled={labels.length >= LABELS_MAX}
-                  onClick={() => setTyped(acceptedLabels([...labels, l]).join(', '))}
-                  className="rounded-full disabled:opacity-40"
-                  data-testid={`agent-labels-add-${l.toLowerCase()}`}
-                >
-                  <LabelChip label={l} small />
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        {capped && (
-          <div className="mt-1 text-[11px] text-amber-500" data-testid="agent-labels-dropped">
-            {t('agent.labelsCapped', { count: String(LABELS_MAX) })}
-          </div>
-        )}
         <div className="mt-4 flex justify-end gap-2">
           {row.mark && (
             // Taking the name away is the other half of giving one, and it belongs on

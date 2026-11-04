@@ -1252,10 +1252,6 @@
     "byName": "Name",
     "nameAny": "Any",
     "nameGiven": "Named",
-    "labels": "Labels",
-    "labelsPlaceholder": "Comma-separated",
-    "labelsKnown": "Already used",
-    "labelsCapped": "At most {count} labels",
     "byLabel": "Label",
     "labelAny": "Any",
     "noneLeft": "No conversation matches the filters",
@@ -1305,6 +1301,15 @@
     "newStart": "Start",
     "askMore": "See more",
     "askLess": "See less"
+  },
+  "labels": {
+    "field": "Labels",
+    "placeholder": "Comma-separated",
+    "known": "Already used",
+    "capped": "At most {count} labels",
+    "scopePersonal": "Personal",
+    "scopeCollection": "This collection",
+    "scopeOrg": "Everyone"
   },
   "connErr": {
     "retrying": "Retrying automatically…",
