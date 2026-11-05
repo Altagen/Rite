@@ -564,10 +564,10 @@ export function Settings({
                 a collection's own never travel up, which is why a sensitive word belongs
                 in the collection and not here. */}
             <section hidden={shown !== 'labels'} className="pb-2">
+              {/* No lede. The scope selector's first entry says "All collections", the
+                  table says what is in it and the count says what is left — a paragraph
+                  above them would be repeating all three. */}
               <SettingsHead title={t('labels.instanceTitle')} />
-              <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-                {t('labels.instanceHint')}
-              </p>
               {/* A LOCKED VAULT IS SAID, NOT DRAWN OVER. The list lives behind its key, so
                   an empty table here would read as "nothing declared" and a Save would be
                   refused — which is exactly what shipped once. */}

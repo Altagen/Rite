@@ -33,7 +33,7 @@ import {
   labelColor,
   type VocabWord,
 } from '../store/labelsFormat';
-import { IconPlus, IconTrash } from './icons';
+import { IconPlus, IconSearch, IconTrash } from './icons';
 
 /** One scope the manager can write, and where its words are kept. */
 export interface LabelTarget {
@@ -117,20 +117,28 @@ export function LabelManager({ targets }: { targets: LabelTarget[] }) {
             ))}
           </select>
         )}
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('labels.search')}
-          className="h-8 w-48 rounded-md border border-border bg-background px-2 text-sm"
-          data-testid="label-manager-search"
-        />
+        {/* A MAGNIFIER AND THE WORD "SEARCH", because a bare text box beside a New button
+            reads as a compose row — type here, press that, configure after. It was read
+            that way on the first look, which is the box's fault and not the reader's. */}
+        <div className="flex h-8 w-56 items-center gap-1.5 rounded-md border border-border bg-background px-2">
+          <IconSearch className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('labels.search')}
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+            data-testid="label-manager-search"
+          />
+        </div>
         <span className="flex-1" />
+        {/* FILLED, NOT OUTLINED. The inputs on this row are bordered boxes; the one thing
+            that is not an input must not look like one. */}
         {!readOnly && (
           <button
             type="button"
             disabled={full || open === '@new'}
             onClick={() => setOpen('@new')}
-            className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
             data-testid="label-manager-new"
           >
             <IconPlus className="h-3.5 w-3.5" />
@@ -143,6 +151,9 @@ export function LabelManager({ targets }: { targets: LabelTarget[] }) {
         <Row
           word={{ label: '' }}
           words={words}
+          // Headed, so the row that appears is obviously the one being ADDED rather than
+          // a row of the table that happened to open.
+          heading={t('labels.newLabel')}
           onDone={(w) => {
             setOpen(null);
             if (w) edit([...words, w]);
@@ -152,9 +163,24 @@ export function LabelManager({ targets }: { targets: LabelTarget[] }) {
 
       <div className="divide-y divide-border rounded-md border border-border">
         {shown.length === 0 ? (
-          <p className="p-3 text-xs text-muted-foreground" data-testid="label-manager-empty">
-            {query ? t('labels.noMatch', { query }) : t('labels.none')}
-          </p>
+          <div className="p-3" data-testid="label-manager-empty">
+            <p className="text-xs text-muted-foreground">
+              {query ? t('labels.noMatch', { query }) : t('labels.none')}
+            </p>
+            {/* The one thing to do, where the eye already is. A toolbar button is easy to
+                miss on a screen whose middle is empty. */}
+            {!query && !readOnly && (
+              <button
+                type="button"
+                onClick={() => setOpen('@new')}
+                className="mt-2 flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground"
+                data-testid="label-manager-new-empty"
+              >
+                <IconPlus className="h-3.5 w-3.5" />
+                {t('labels.newLabel')}
+              </button>
+            )}
+          </div>
         ) : (
           shown.map((w) =>
             open === w.label.toLowerCase() ? (
@@ -252,11 +278,14 @@ export function LabelManager({ targets }: { targets: LabelTarget[] }) {
 function Row({
   word,
   words,
+  heading,
   onDone,
 }: {
   word: VocabWord;
   /** The rest of the list, to refuse a word that is already in it. */
   words: readonly VocabWord[];
+  /** Shown above the fields when this row is an ADDITION rather than an edit. */
+  heading?: string;
   onDone: (word: VocabWord | null) => void;
 }) {
   const { t } = useTranslation();
@@ -271,73 +300,78 @@ function Row({
     words.some((w) => w.label.toLowerCase() === clean.toLowerCase());
   const ok = clean !== '' && !clash;
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/30 px-3 py-2">
-      <input
-        autoFocus
-        value={label}
-        maxLength={LABEL_MAX}
-        onChange={(e) => setLabel(e.target.value)}
-        placeholder={t('labels.wordPlaceholder')}
-        className="h-8 w-40 rounded-md border border-border bg-background px-2 text-sm"
-        data-testid="label-row-word"
-      />
-      <input
-        value={description}
-        maxLength={DESCRIPTION_MAX}
-        onChange={(e) => setDescription(e.target.value)}
-        placeholder={t('labels.descriptionPlaceholder')}
-        className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm"
-        data-testid="label-row-description"
-      />
-      <div className="flex items-center gap-1">
-        {MACHINE_SWATCHES.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => setColor(color === c ? undefined : c)}
-            aria-label={c}
-            data-testid={`label-row-colour-${c.slice(1)}`}
-            className={`h-4 w-4 rounded-full border ${
-              (color ?? labelColor(clean || word.label, MACHINE_SWATCHES)) === c
-                ? 'border-foreground'
-                : 'border-transparent'
-            }`}
-            style={{ background: c }}
-          />
-        ))}
-      </div>
-      <button
-        type="button"
-        onClick={() => onDone(null)}
-        className="rounded-md border border-border px-2.5 py-1 text-xs"
-        data-testid="label-row-cancel"
-      >
-        {t('agent.renameCancel')}
-      </button>
-      <button
-        type="button"
-        disabled={!ok}
-        onClick={() =>
-          onDone({
-            label: clean,
-            ...(color ? { color } : {}),
-            ...(cleanDescription(description)
-              ? { description: cleanDescription(description) }
-              : {}),
-          })
-        }
-        className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
-        data-testid="label-row-done"
-      >
-        {t('agent.renameSave')}
-      </button>
-      {/* Said where it happens: a clash is refused, and a refusal with no reason reads as
-          a button that does not work. */}
-      {clash && (
-        <span className="text-[11px] text-amber-500" data-testid="label-row-clash">
-          {t('labels.clash', { word: clean })}
-        </span>
+    <div className="border-b border-border bg-muted/30 px-3 py-2">
+      {heading && (
+        <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">{heading}</div>
       )}
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          autoFocus
+          value={label}
+          maxLength={LABEL_MAX}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder={t('labels.wordPlaceholder')}
+          className="h-8 w-40 rounded-md border border-border bg-background px-2 text-sm"
+          data-testid="label-row-word"
+        />
+        <input
+          value={description}
+          maxLength={DESCRIPTION_MAX}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={t('labels.descriptionPlaceholder')}
+          className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm"
+          data-testid="label-row-description"
+        />
+        <div className="flex items-center gap-1">
+          {MACHINE_SWATCHES.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setColor(color === c ? undefined : c)}
+              aria-label={c}
+              data-testid={`label-row-colour-${c.slice(1)}`}
+              className={`h-4 w-4 rounded-full border ${
+                (color ?? labelColor(clean || word.label, MACHINE_SWATCHES)) === c
+                  ? 'border-foreground'
+                  : 'border-transparent'
+              }`}
+              style={{ background: c }}
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => onDone(null)}
+          className="rounded-md border border-border px-2.5 py-1 text-xs"
+          data-testid="label-row-cancel"
+        >
+          {t('agent.renameCancel')}
+        </button>
+        <button
+          type="button"
+          disabled={!ok}
+          onClick={() =>
+            onDone({
+              label: clean,
+              ...(color ? { color } : {}),
+              ...(cleanDescription(description)
+                ? { description: cleanDescription(description) }
+                : {}),
+            })
+          }
+          className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+          data-testid="label-row-done"
+        >
+          {t('agent.renameSave')}
+        </button>
+        {/* Said where it happens: a clash is refused, and a refusal with no reason reads as
+          a button that does not work. */}
+        {clash && (
+          <span className="text-[11px] text-amber-500" data-testid="label-row-clash">
+            {t('labels.clash', { word: clean })}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

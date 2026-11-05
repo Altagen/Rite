@@ -16,7 +16,11 @@ import { ensureCollection } from './support/localVault';
  */
 test('a label is declared with a colour and a description, and survives a reload', async ({
   page,
+  request,
 }) => {
+  // From a known state: these specs share one vault, so an empty-list assertion is
+  // otherwise a claim about which file ran first.
+  await request.put('/api/admin/labels', { data: { labels: [] } });
   await page.goto('/');
   await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
   await openSettings(page);
@@ -25,6 +29,15 @@ test('a label is declared with a colour and a description, and survives a reload
 
   // Nothing touched, so there is nothing to write.
   await expect(page.getByTestId('label-manager-save')).toBeDisabled();
+
+  // THE TWO CONTROLS MUST NOT READ AS ONE. A bare text box beside a New button was read
+  // as a compose row — type here, press that — so the search says "Search" and carries a
+  // magnifier, and New is the only filled button on the row. Held as a test because the
+  // mistake was invisible to every assertion that already existed.
+  await expect(page.getByTestId('label-manager-search')).toHaveAttribute('placeholder', /^Search/);
+  // An empty list offers the one thing to do where the eye already is, rather than only
+  // in a toolbar on a screen whose middle is blank.
+  await expect(page.getByTestId('label-manager-new-empty')).toBeVisible();
 
   await page.getByTestId('label-manager-new').click();
   await page.getByTestId('label-row-word').fill('pci');
