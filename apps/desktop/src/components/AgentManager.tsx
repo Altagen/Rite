@@ -1050,9 +1050,12 @@ function Detail({
   const [factsError, setFactsError] = useState<string | null>(null);
   const [turn, setTurn] = useState(0);
   useEffect(() => {
+    // LIVE, AND DROPPED ON THE WAY OUT. The flag was here from the first version with
+    // nothing to flip it, so the guard was inert: an answer about the conversation that
+    // was open a second ago would have landed in the panel of the next one — the one
+    // thing a panel that keeps nothing must not do. `prefer-const` on a `let` nobody
+    // reassigns is what pointed at it.
     let live = true;
-    setFacts(undefined);
-    setFactsError(null);
     readFacts()
       .then((f) => live && setFacts(f))
       .catch((e) => {
@@ -1060,6 +1063,9 @@ function Detail({
         setFacts(null);
         setFactsError(e instanceof Error ? e.message : String(e));
       });
+    return () => {
+      live = false;
+    };
     // Not `readFacts` in the dependencies: it is a closure the parent rebuilds on every
     // render, and asking the machine again on each of those is the one thing this must
     // not do. The conversation is keyed by the panel; `turn` is the reload button.
@@ -1179,7 +1185,11 @@ function Detail({
             <span className="flex-1" />
             <button
               type="button"
-              onClick={() => setTurn((v) => v + 1)}
+              onClick={() => {
+                setFacts(undefined);
+                setFactsError(null);
+                setTurn((v) => v + 1);
+              }}
               disabled={facts === undefined}
               title={t('agent.again')}
               aria-label={t('agent.again')}
