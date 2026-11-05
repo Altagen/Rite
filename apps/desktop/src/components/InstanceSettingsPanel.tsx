@@ -4,7 +4,9 @@
  * server-side as a setting and surfaced publicly on the login screen + header.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { LabelManager, type LabelTarget } from './LabelManager';
+import { useInstanceLabels } from '../store/instanceLabels';
 import { useTranslation } from '../i18n/i18n';
 import {
   Backend,
@@ -51,6 +53,28 @@ function ManagedBy({ origin }: { origin: string }) {
 
 export function InstanceSettingsPanel() {
   const { t } = useTranslation();
+  // The same store the local section uses: the route picks the support, so neither
+  // surface learns whether the list is a plaintext row or a sealed document.
+  const instanceWords = useInstanceLabels((st) => st.words);
+  const instanceLoaded = useInstanceLabels((st) => st.loaded);
+  const loadInstanceWords = useInstanceLabels((st) => st.load);
+  const saveInstanceWords = useInstanceLabels((st) => st.save);
+  useEffect(() => {
+    if (!instanceLoaded) void loadInstanceWords();
+  }, [instanceLoaded, loadInstanceWords]);
+  // ONE TARGET, so the manager draws no scope selector: a collection's own words are
+  // managed on the collection, by its members, and are none of this panel's business.
+  const labelTargets: LabelTarget[] = useMemo(
+    () => [
+      {
+        id: '@instance',
+        name: t('labels.scopeInstance'),
+        words: instanceWords,
+        save: saveInstanceWords,
+      },
+    ],
+    [instanceWords, saveInstanceWords, t],
+  );
   const [name, setName] = useState('');
   const [saved, setSaved] = useState<string | null>(null);
   const [persistence, setPersistence] = useState(true);
@@ -858,6 +882,23 @@ export function InstanceSettingsPanel() {
             onChange={() => saveAgents({ ...agents, clients: !agents.clients })}
             testId="instance-agents-clients"
           />
+        </div>
+
+        {/* THE WORDS EVERY MEMBER CAN USE, and the reason they are HERE rather than in a
+            member's own settings: on a server this list is the instance's, so it is
+            administered where the instance is. On a local vault the same list is the
+            person's own and sits with their settings — the surface follows the owner, which
+            is what ADR 0025 does for everything else on this panel.
+
+            NOT AN INSTANCE SETTING in the `settings` sense, though: it has its own table and
+            its own route, because nothing in this list changes how a client behaves and
+            `e2e/mode-nudge-check.mjs` refuses a settings write that does not nudge. */}
+        <div className="border-t border-border p-4">
+          <div className="font-medium">{t('labels.field')}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{t('admin.inst.labelsDesc')}</p>
+          <div className="mt-3">
+            <LabelManager targets={labelTargets} />
+          </div>
         </div>
       </div>
     </div>

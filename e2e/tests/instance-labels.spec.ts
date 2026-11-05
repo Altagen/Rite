@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { openSettings } from './support/headerBar';
-import { ensureCollection } from './support/localVault';
+import { ensureCollection, createMachine } from './support/localVault';
 
 /**
  * The label manager, DRIVEN THROUGH THE SCREEN.
@@ -130,71 +130,95 @@ test('a word already in the list is refused, and says why', async ({ page }) => 
 });
 
 /**
- * The scope selector is what lets one screen replace two editors.
+ * A COLLECTION'S OWN WORDS ARE MANAGED ON THE COLLECTION, in both shells.
  *
- * Switching it switches which document is written — and a draft belongs to the scope it
- * was typed in, so it does not travel.
+ * The scope selector used to do this and it was the wrong answer: it did the job the
+ * SURFACE should do, and it put an instance-level list and a per-collection one on one
+ * screen. THE SURFACE FOLLOWS THE OWNER — a collection belongs to its members whether a
+ * server is in the picture or not, so this half does not move; the instance's list is the
+ * half that does (a person's settings locally, the admin console on a server).
  */
-test('a collection is a scope of its own, and a draft does not cross', async ({
+test("a collection declares its own words, and sees the instance's as inherited", async ({
   page,
   request,
 }) => {
-  await ensureCollection(request, 'e2e-label-scope');
+  const collection = await ensureCollection(request, 'e2e-label-surface');
+  // A name that does not CONTAIN the collection's: sharing a prefix made one `getByText`
+  // match two nodes, which is the test being ambiguous rather than the screen.
+  await createMachine(request, collection, { name: 'e2e-vocab-box' });
+  // A word owned above this collection, so the inherited half has something to show.
+  await request.put('/api/admin/labels', { data: { labels: ['pci'] } });
 
   await page.goto('/');
   await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
-  await openSettings(page);
-  await page.getByTestId('settings-nav-labels').click();
+  // The node that opens the collection, by its own handle: clicking the name text lands
+  // on whatever child is under the cursor and can toggle instead of open.
+  await page.getByTestId('lib-collection-e2e-label-surface').click();
 
-  const scope = page.getByTestId('label-manager-scope');
-  await expect(scope).toBeVisible();
-  await page.getByTestId('label-manager-new').click();
-  await page.getByTestId('label-row-word').fill('instance-only');
-  await page.getByTestId('label-row-done').click();
-  await expect(page.getByTestId('label-manager-save')).toBeEnabled();
+  await page.getByTestId('cview-labels').click();
+  const dialog = page.getByTestId('collection-labels-dialog');
+  await expect(dialog).toBeVisible();
+  // No scope selector: the surface already said which collection, which is the whole
+  // reason one screen can serve every scope.
+  await expect(dialog.getByTestId('label-manager-scope')).toHaveCount(0);
 
-  // Switching scope drops the draft rather than carrying it into another document.
-  await scope.selectOption({ label: 'e2e-label-scope' });
-  await expect(page.getByTestId('label-manager-save')).toBeDisabled();
-  await expect(page.getByTestId('label-row-instance-only')).toHaveCount(0);
+  // THE INSTANCE'S WORD IS VISIBLE AND NOT EDITABLE HERE — the answer to "where is `pci`
+  // declared". Without it somebody declares it a second time, and every lookup folds and
+  // takes the first, so the second would do nothing.
+  await expect(dialog.getByTestId('label-manager-inherited')).toContainText('pci');
+  await expect(dialog.getByTestId('label-row-pci')).toHaveCount(0);
 
-  // A word declared here is this collection's, and it is kept.
-  await page.getByTestId('label-manager-new').click();
-  await page.getByTestId('label-row-word').fill('client-acme');
-  await page.getByTestId('label-row-done').click();
-  await page.getByTestId('label-manager-save').click();
-  await expect(page.getByTestId('label-manager-error')).toHaveCount(0);
+  // And declaring it again is refused, with the reason.
+  await dialog.getByTestId('label-manager-new').click();
+  await dialog.getByTestId('label-row-word').fill('PCI');
+  await expect(dialog.getByTestId('label-row-clash')).toBeVisible();
+  await expect(dialog.getByTestId('label-row-done')).toBeDisabled();
+  await dialog.getByTestId('label-row-word').fill('client-acme');
+  await dialog.getByTestId('label-row-done').click();
+  await dialog.getByTestId('label-manager-save').click();
+  await expect(dialog.getByTestId('label-manager-error')).toHaveCount(0);
+
+  // Kept, and kept IN the collection: reopening reads it back from the sealed header.
+  await dialog.getByTestId('collection-labels-close').click();
+  await page.getByTestId('cview-labels').click();
   await expect(page.getByTestId('label-row-client-acme')).toBeVisible();
 });
 
 /**
- * A collection this reader cannot write is shown, and shown as read-only.
+ * THE COLLECTION VIEW'S ACTION ROW HAS TO BE CLICKABLE, which it was not.
  *
- * SHOWN RATHER THAN HIDDEN, because knowing a word exists is half of why the list is
- * there: a viewer needs to know `client-acme` is the word before applying it. And
- * READ-ONLY rather than refused on the click, which is the mistake this screen made twice
- * — a Save that cannot work is the same false promise as a search box that looks like a
- * compose field.
+ * Found while the labels button refused to open its dialog: a normal click hung and a
+ * forced one landed on something else. `elementFromPoint` at each button's centre answered
+ * the TERMINAL's tab strip — `relative z-10` with `pb-3 overflow-y-visible` — painting over
+ * the top band of a `z-10` overlay. At every window width, and for every button in that
+ * row: Board, Members, Check now, and the new one. Pre-existing, and nothing could see it,
+ * because no test had ever clicked that row.
  *
- * A local vault has one owner and no roles (ADR 0018), so what this suite can hold is the
- * other half: every collection here IS writable, which is what `writable` must say when
- * there is nobody to be a viewer. The server's half is the role check, and
- * `e2e/collection-policy-check.mjs` holds roles against a real accounts server.
+ * Held with `elementFromPoint` rather than with a click, because a click that happens to
+ * work tomorrow would not say WHY — and what broke was hit-testing, which is the thing
+ * this reads directly.
  */
-test('on a local vault every collection is writable, because there are no roles', async ({
-  page,
-  request,
-}) => {
-  await ensureCollection(request, 'e2e-label-writable');
-
+test('every button in a collection header receives its own clicks', async ({ page, request }) => {
+  await ensureCollection(request, 'e2e-hit-test');
   await page.goto('/');
   await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
-  await openSettings(page);
-  await page.getByTestId('settings-nav-labels').click();
+  await page.getByTestId('lib-collection-e2e-hit-test').click();
+  await expect(page.getByTestId('cview-labels')).toBeVisible();
 
-  await page.getByTestId('label-manager-scope').selectOption({ label: 'e2e-label-writable' });
-  // Writable, so the manager offers to add and to save — and says nothing about being
-  // read-only, which is the state a viewer would see.
-  await expect(page.getByTestId('label-manager-readonly')).toHaveCount(0);
-  await expect(page.getByTestId('label-manager-new')).toBeVisible();
+  // Scoped to the row the buttons are in, found from the one button that has a handle:
+  // a sweep over every button on screen also catches the sidebar's nested ones, where a
+  // hit on a child is normal and not a defect.
+  const covered = await page.evaluate(() => {
+    const row = document.querySelector('[data-testid="cview-labels"]')?.parentElement;
+    if (!row) return ['no row'];
+    const out: string[] = [];
+    for (const b of Array.from(row.querySelectorAll('button'))) {
+      const r = b.getBoundingClientRect();
+      if (r.width === 0) continue;
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (hit !== b && !b.contains(hit)) out.push((b.textContent || '').trim().slice(0, 20));
+    }
+    return out;
+  });
+  expect(covered).toEqual([]);
 });

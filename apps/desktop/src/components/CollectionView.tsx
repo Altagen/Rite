@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { LabelChip } from './Labels';
+import { IconTag } from './icons';
 import type { VocabWord } from '../store/labelsFormat';
 import { relTime } from '../utils/relTime';
 import { type ConnectionInfo } from '../store/connectionsStore';
@@ -79,6 +80,7 @@ export function CollectionView({
   onNewMachine,
   onNewFolder,
   onImport,
+  onOpenLabels,
   onOpenMembers,
   onOpenBoard,
 }: {
@@ -103,6 +105,8 @@ export function CollectionView({
   onNewMachine: (folderPath?: string) => void; // creates in the folder you're browsing
   onNewFolder?: (parentPath?: string) => void; // creates a sub-folder of the current path
   onImport: () => void;
+  /** Open this collection's own vocabulary. Absent ⇒ there is no writer for it here. */
+  onOpenLabels?: () => void;
   onOpenMembers?: () => void; // absent when membership isn't editable from here
   onOpenBoard?: () => void; // open the collection Board (members-only card space)
 }) {
@@ -555,6 +559,20 @@ export function CollectionView({
               />
             </svg>
             {t('cview.members')}
+          </button>
+        )}
+        {/* THE WORDS THIS COLLECTION DECLARES, on the collection — in both shells, because
+            a collection is owned by its members whether a server is in the picture or not.
+            The instance's list is the half that moves: a person's own settings locally, the
+            admin console on a server. */}
+        {onOpenLabels && (
+          <button
+            onClick={onOpenLabels}
+            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+            data-testid="cview-labels"
+          >
+            <IconTag className="h-4 w-4" />
+            {t('labels.field')}
           </button>
         )}
       </div>

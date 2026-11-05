@@ -42,7 +42,6 @@ import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
 import { useInstanceLabels } from '../store/instanceLabels';
-import { acceptedVocab, type VocabEntry, type VocabWord } from '../store/labelsFormat';
 import { LabelManager, type LabelTarget } from './LabelManager';
 
 /**
@@ -86,30 +85,6 @@ interface SettingsProps {
    * the context, and the accounts shell has none to offer. Absent ⇒ the manager writes the
    * instance list only, which is the whole of what a window with no library has.
    */
-  collections?: {
-    id: string;
-    name: string;
-    labels?: VocabEntry[];
-    /**
-     * Whether this reader may write this collection.
-     *
-     * PER COLLECTION AND NOT PER CONTEXT, which is the distinction that was missing: a
-     * member can own one collection and be a viewer of the next, so a writer supplied for
-     * the context would have drawn a Save on both and refused on one — the same false
-     * affordance as a search box that looks like a compose field.
-     */
-    writable?: boolean;
-  }[];
-  /**
-   * Write one collection's vocabulary. Absent ⇒ every collection is shown read-only.
-   *
-   * One callback rather than a target per collection, because the crypto locus differs by
-   * context and this screen must not know which (ADR 0016, ADR 0018).
-   */
-  saveCollectionWords?: (
-    collection: { id: string; name: string },
-    words: VocabWord[],
-  ) => Promise<void>;
 }
 
 /**
@@ -173,7 +148,12 @@ const RAIL: {
   // The words declared above the collections. One section in both contexts, because a
   // local vault has this scope too — it is an instance of Rite with collections under it.
   // On a server the write is refused to anyone but an administrator, by the route.
-  { id: 'labels', i18n: 'labels.field' },
+  // `local`, because THE SURFACE FOLLOWS THE OWNER. On a local vault this list is the
+  // person's own, so it belongs with their settings; on a server it is the instance's, so
+  // it belongs in the admin console — which is what ADR 0025 already does for every other
+  // instance setting. A collection's own words are edited on the collection, in both
+  // shells, and that half does not move.
+  { id: 'labels', i18n: 'labels.field', local: true },
   { id: 'security', i18n: 'settings.security' },
   { id: 'ssh', i18n: 'settings.sec.ssh' },
   { id: 'clipboard', i18n: 'settings.clipboard' },
@@ -184,13 +164,7 @@ const RAIL: {
   { id: 'danger', i18n: 'settings.sec.danger', local: true, vault: true, danger: true },
 ];
 
-export function Settings({
-  onClose,
-  connections,
-  libraryReadable,
-  collections,
-  saveCollectionWords,
-}: SettingsProps) {
+export function Settings({ onClose, connections, libraryReadable }: SettingsProps) {
   const { t, locale, setLocale } = useTranslation();
   const { settings, fetchSettings, updateSettings } = useSettingsStore();
   const native = isNativeShell();
@@ -334,12 +308,15 @@ export function Settings({
   }, [instanceLoaded, loadInstanceWords]);
 
   /**
-   * The scopes this screen can write, in the order the manager offers them.
+   * ONE TARGET, because a collection's words are managed on the collection.
    *
-   * THE INSTANCE FIRST, because it is the one every context has — the collections under it
-   * are what a vault or a server adds. A collection with no `save` is one this reader can
-   * see and not write, and the manager draws it read-only rather than hiding it: knowing a
-   * word exists is half of why the list is there.
+   * The scope selector used to live here and it was the wrong answer: it did the job the
+   * SURFACE should do, and it put an instance-level list and a per-collection one on one
+   * screen. With a single target the manager draws no selector at all — which is how it
+   * was written, and the reason this needs no change to the component.
+   *
+   * This section is `local` in the rail, so on a server it is not here: there the list is
+   * the instance's and an administrator writes it in the console (ADR 0025).
    */
   const labelTargets: LabelTarget[] = useMemo(
     () => [
@@ -349,17 +326,8 @@ export function Settings({
         words: instanceWords,
         save: saveWords,
       },
-      ...(collections ?? []).map((c) => ({
-        id: c.id,
-        name: c.name,
-        words: acceptedVocab(c.labels ?? []),
-        save:
-          saveCollectionWords && c.writable !== false
-            ? (w: VocabWord[]) => saveCollectionWords(c, w)
-            : undefined,
-      })),
     ],
-    [instanceWords, collections, saveWords, saveCollectionWords, t],
+    [instanceWords, saveWords, t],
   );
   // Change master password (local vault): re-keys all connections server-side.
   const [pwReveal, setPwReveal] = useState(false);

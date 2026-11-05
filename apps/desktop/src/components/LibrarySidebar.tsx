@@ -286,9 +286,13 @@ function CollectionNode({
 
   return (
     <div>
+      {/* The node that OPENS the collection, with a handle of its own: a test clicking the
+          name text lands on whatever child is under the cursor — the chevron on an empty
+          collection — and toggles instead of opening. */}
       <div
         onClick={onOpen}
         className={`m-tnode pl-1.5 ${active ? 'sel' : ''}`}
+        data-testid={`lib-collection-${name}`}
       >
         <button
           onClick={(e) => {

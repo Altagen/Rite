@@ -99,7 +99,8 @@ import {
 } from '../utils/paneTree';
 import { AgentManager } from './AgentManager';
 import { offersFrom } from './Labels';
-import { formatVocab } from '../store/labelsFormat';
+import { LabelManager, type LabelTarget } from './LabelManager';
+import { acceptedVocab, formatVocab, type VocabWord } from '../store/labelsFormat';
 import { useInstanceLabels } from '../store/instanceLabels';
 import {
   agentResumeArgv,
@@ -919,6 +920,42 @@ export function Workspace({
     ],
     [conns.collections, instanceWords],
   );
+
+  /** The collection whose own vocabulary is open, or null. */
+  const [labelsCollection, setLabelsCollection] = useState<string | null>(null);
+
+  /**
+   * The one scope the collection dialog writes: that collection's own words.
+   *
+   * One target, so the manager draws no selector — the surface already said which
+   * collection, which is the job a selector was doing badly.
+   */
+  const collectionLabelTargets: LabelTarget[] = useMemo(() => {
+    const col = (conns.collections ?? []).find((c) => c.id === labelsCollection);
+    if (!col) return [];
+    return [
+      {
+        id: col.id,
+        name: col.name,
+        words: acceptedVocab(col.labels ?? []),
+        save: conns.renameCollection
+          ? async (words: VocabWord[]) => {
+              // A vocabulary write is a HEADER write, so the name, the colour and the
+              // opt-out go back as they stand: the core merges what it is given and keeps
+              // what it is not, and a stale name here would rename the collection.
+              await conns.renameCollection!(
+                col.id,
+                col.name,
+                col.color ?? null,
+                col.hc ?? null,
+                formatVocab(words),
+              );
+              await fetchConnections();
+            }
+          : undefined,
+      },
+    ];
+  }, [conns, labelsCollection, fetchConnections]);
 
   const labelOffers = useMemo(
     () => [
@@ -2476,9 +2513,17 @@ export function Workspace({
             with the collection view overlaid when its tab is active. */}
         <div className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative flex min-h-0 flex-1 flex-col">
-            {/* Collection view overlay (kept above the terminal when its tab is active) */}
+            {/* Collection view overlay (kept above the terminal when its tab is active).
+                `z-20` AND NOT `z-10`, which is a defect this found rather than a
+                preference: the terminal's own tab strip is `relative z-10` with `pb-3
+                overflow-y-visible`, so at equal z it painted over the top band of this
+                overlay — and the whole action row underneath (Board, Members, Check now)
+                could not be clicked while a collection was open. `elementFromPoint` at
+                each button's centre answered the tab strip, at every window width.
+                Nothing covers the Terminal/Collection switch: that one lives outside this
+                container. */}
             {openCollectionId && mainView === 'collection' && (
-              <div className="absolute inset-0 z-10 overflow-hidden bg-background">
+              <div className="absolute inset-0 z-20 overflow-hidden bg-background">
                 <CollectionView
                   key={openCollectionId}
                   name={openCollectionName}
@@ -2488,6 +2533,13 @@ export function Workspace({
                   machines={openCollectionMachines}
                   folders={openCol?.folders}
                   declared={declaredWords}
+                  // Only for a collection this reader may write: a viewer sees the words on
+                  // the machines and has nothing to declare.
+                  onOpenLabels={
+                    conns.renameCollection && openCollectionWritable
+                      ? () => setLabelsCollection(openCollectionId)
+                      : undefined
+                  }
                   canWrite={openCollectionWritable}
                   onConnect={handleConnect}
                   onEdit={handleEditConnection}
@@ -2526,7 +2578,7 @@ export function Workspace({
 
             {/* Machine dashboard overlay (its own view when a machine tab is active) */}
             {openMachine && mainView === 'machine' && (
-              <div className="absolute inset-0 z-10 overflow-hidden bg-background">
+              <div className="absolute inset-0 z-20 overflow-hidden bg-background">
                 <MachineDashboard
                   key={openMachine.id}
                   connection={openMachine}
@@ -2926,37 +2978,45 @@ export function Workspace({
           onClose={() => setShowSettings(false)}
           connections={conns.connections ?? []}
           libraryReadable={!isLocked}
-          // The label manager's other scopes. Only the writable ones get a writer; the
-          // rest are shown read-only, because knowing a word exists is half of why the
-          // list is there.
-          collections={(conns.collections ?? []).map((c) => ({
-            id: c.id,
-            name: c.name,
-            labels: c.labels,
-            // A local vault has one owner and no roles (ADR 0018), so every collection
-            // there is writable; on a server the role is the answer, and `viewer` is the
-            // case that must not be offered a Save it cannot use.
-            writable: !isServerContext || c.role === 'owner' || c.role === 'editor',
-          }))}
-          saveCollectionWords={
-            conns.renameCollection
-              ? async (collection, words) => {
-                  const held = (conns.collections ?? []).find((c) => c.id === collection.id);
-                  // A vocabulary write is a header write, so the name, the colour and the
-                  // opt-out have to be sent back as they stand — the core merges what it
-                  // is given and keeps what it is not, and sending a stale name would
-                  // rename the collection.
-                  await conns.renameCollection!(
-                    collection.id,
-                    held?.name ?? collection.name,
-                    held?.color ?? null,
-                    held?.hc ?? null,
-                    formatVocab(words),
-                  );
-                }
-              : undefined
-          }
         />
+      )}
+
+      {/* A COLLECTION'S OWN WORDS, on the collection — in both shells, because a
+          collection belongs to its members whether a server is in the picture or not. The
+          instance's list is the half that moves (Settings locally, the admin console on a
+          server), and it shows here as inherited: visible, not editable, so nobody
+          declares `pci` a second time. */}
+      {labelsCollection && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setLabelsCollection(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('labels.field')}
+            className="max-h-[80vh] w-full max-w-3xl overflow-auto rounded-lg border border-border bg-card p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="collection-labels-dialog"
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <h3 className="text-lg font-semibold">{t('labels.field')}</h3>
+              <span className="truncate text-sm text-muted-foreground">
+                {(conns.collections ?? []).find((c) => c.id === labelsCollection)?.name ?? ''}
+              </span>
+              <span className="flex-1" />
+              <button
+                type="button"
+                onClick={() => setLabelsCollection(null)}
+                className="rounded-md border border-border px-2.5 py-1 text-xs"
+                data-testid="collection-labels-close"
+              >
+                {t('dlg.close')}
+              </button>
+            </div>
+            <LabelManager targets={collectionLabelTargets} inherited={instanceWords} />
+          </div>
+        </div>
       )}
 
       {/* Quick SSH Modal */}

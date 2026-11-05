@@ -44,7 +44,21 @@ export interface LabelTarget {
   save?: (words: VocabWord[]) => Promise<void>;
 }
 
-export function LabelManager({ targets }: { targets: LabelTarget[] }) {
+export function LabelManager({
+  targets,
+  inherited,
+}: {
+  targets: LabelTarget[];
+  /**
+   * Words this scope can USE but not change — the instance's, seen from a collection.
+   *
+   * SHOWN AND NOT EDITABLE HERE, which is the answer to "where is `pci` declared". GitLab
+   * draws the same thing on a project's label page, and the reason is the same: a word
+   * that applies here but is owned elsewhere has to be visible or somebody declares it a
+   * second time. It never travels the other way — a collection's own words stay in it.
+   */
+  inherited?: readonly VocabWord[];
+}) {
   const { t } = useTranslation();
   const [scope, setScope] = useState(targets[0]?.id ?? '');
   const target = targets.find((x) => x.id === scope) ?? targets[0];
@@ -151,6 +165,7 @@ export function LabelManager({ targets }: { targets: LabelTarget[] }) {
         <Row
           word={{ label: '' }}
           words={words}
+          inherited={inherited}
           // Headed, so the row that appears is obviously the one being ADDED rather than
           // a row of the table that happened to open.
           heading={t('labels.newLabel')}
@@ -188,6 +203,7 @@ export function LabelManager({ targets }: { targets: LabelTarget[] }) {
                 key={w.label.toLowerCase()}
                 word={w}
                 words={words}
+                inherited={inherited}
                 onDone={(next) => {
                   setOpen(null);
                   if (next) {
@@ -232,6 +248,20 @@ export function LabelManager({ targets }: { targets: LabelTarget[] }) {
           )
         )}
       </div>
+
+      {/* THE WORDS THAT APPLY HERE AND ARE OWNED ELSEWHERE. Last, because they are not
+          what this screen is for — and listed rather than merged into the table above, so
+          there is no row carrying an Edit that would write the wrong document. */}
+      {inherited && inherited.length !== 0 && (
+        <div className="mt-3">
+          <div className="text-[11px] text-muted-foreground">{t('labels.inherited')}</div>
+          <div className="mt-1 flex flex-wrap gap-1" data-testid="label-manager-inherited">
+            {inherited.map((w) => (
+              <LabelChip key={w.label.toLowerCase()} label={w.label} declared={inherited} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* WHAT IS LEFT, SAID RATHER THAN DISCOVERED by a New button that stops working. */}
       <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -278,12 +308,21 @@ export function LabelManager({ targets }: { targets: LabelTarget[] }) {
 function Row({
   word,
   words,
+  inherited,
   heading,
   onDone,
 }: {
   word: VocabWord;
   /** The rest of the list, to refuse a word that is already in it. */
   words: readonly VocabWord[];
+  /**
+   * The words owned elsewhere that apply here, which are also a clash.
+   *
+   * Declaring `pci` in a collection when the instance already declares it would give one
+   * word two declarations, and every lookup folds and takes the first — so the second is
+   * unreachable and whoever wrote it would wonder why their colour did nothing.
+   */
+  inherited?: readonly VocabWord[];
   /** Shown above the fields when this row is an ADDITION rather than an edit. */
   heading?: string;
   onDone: (word: VocabWord | null) => void;
@@ -297,7 +336,7 @@ function Row({
   // make the second unreachable, since every lookup folds and takes the first.
   const clash =
     clean.toLowerCase() !== word.label.toLowerCase() &&
-    words.some((w) => w.label.toLowerCase() === clean.toLowerCase());
+    [...words, ...(inherited ?? [])].some((w) => w.label.toLowerCase() === clean.toLowerCase());
   const ok = clean !== '' && !clash;
   return (
     <div className="border-b border-border bg-muted/30 px-3 py-2">

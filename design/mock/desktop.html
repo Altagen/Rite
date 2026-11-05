@@ -1130,10 +1130,17 @@ const PREFS=[
 
 
   /* The words declared ABOVE the collections, so one does not have to be redeclared in
-     each. One section in both shells, because a local vault has this scope too: it is an
-     instance of Rite with collections under it. Its SUPPORT differs by who reads it — a
-     plaintext row on a server where every member does, a sealed document on a vault where
-     only the owner does — and the client never learns which.
+     each.
+
+     ONLY WHERE THERE IS NO SERVER, which is why the web mock has no such section. THE
+     SURFACE FOLLOWS THE OWNER: on a local vault this list is the person's own, so it sits
+     with their settings; the moment a server is in the picture the list is the INSTANCE's
+     and an administrator writes it in the console — the same rule ADR 0025 already applies
+     to every other instance setting. A desktop signed into an instance is a server context
+     too, so it does not show this either.
+
+     A collection's own words are edited ON the collection, in both shells, and that half
+     does not move.
 
      Inheritance runs ONE WAY: these words are offered inside every collection, and a
      collection's own never travel up. That is why a sensitive word belongs in the

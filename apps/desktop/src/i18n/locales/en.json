@@ -947,7 +947,8 @@
       "agentsWebuiLabel": "Allow agent discovery in the web UI",
       "agentsClients": "Allow in attached clients",
       "agentsClientsDesc": "Each client probes from its own network, so the endpoints pay. Off removes discovery, not the terminal.",
-      "agentsClientsLabel": "Allow agent discovery in attached clients"
+      "agentsClientsLabel": "Allow agent discovery in attached clients",
+      "labelsDesc": "Words every member can use. A collection can add words of its own."
     },
     "teams": {
       "title": "Teams",
@@ -1326,7 +1327,8 @@
     "wordPlaceholder": "One or two words",
     "descriptionPlaceholder": "What it means",
     "clash": "{word} is already in this list",
-    "readOnly": "Read-only: this collection is shared for reading."
+    "readOnly": "Read-only: this collection is shared for reading.",
+    "inherited": "Also available here, declared elsewhere"
   },
   "connErr": {
     "retrying": "Retrying automatically…",

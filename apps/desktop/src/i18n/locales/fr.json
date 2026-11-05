@@ -947,7 +947,8 @@
       "agentsWebuiLabel": "Autoriser la découverte des agents dans la web UI",
       "agentsClients": "Autoriser dans les clients attachés",
       "agentsClientsDesc": "Chaque client sonde depuis son propre réseau, donc les postes paient. Désactivé retire la découverte, pas le terminal.",
-      "agentsClientsLabel": "Autoriser la découverte des agents dans les clients attachés"
+      "agentsClientsLabel": "Autoriser la découverte des agents dans les clients attachés",
+      "labelsDesc": "Mots utilisables par tous les membres. Une collection peut ajouter les siens."
     },
     "teams": {
       "title": "Équipes",
@@ -1326,7 +1327,8 @@
     "wordPlaceholder": "Un ou deux mots",
     "descriptionPlaceholder": "Ce que ça veut dire",
     "clash": "{word} est déjà dans cette liste",
-    "readOnly": "Lecture seule : cette collection est partagée en lecture."
+    "readOnly": "Lecture seule : cette collection est partagée en lecture.",
+    "inherited": "Disponibles ici aussi, déclarés ailleurs"
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",

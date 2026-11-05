@@ -59,7 +59,11 @@ const rail = appRail();
 
 check('every rail entry resolves to a label', () => {
   const nameless = rail.filter((r) => typeof r.label !== 'string');
-  assert.deepEqual(nameless.map((r) => r.id), [], 'a rail entry points at a missing key');
+  assert.deepEqual(
+    nameless.map((r) => r.id),
+    [],
+    'a rail entry points at a missing key',
+  );
 });
 
 console.log('\nthe desktop mock has every section the desktop app can show:');
@@ -84,7 +88,24 @@ check('web', () => {
     .filter((r) => r.native || r.local || r.vault)
     .filter((r) => have.includes(r.label))
     .map((r) => r.label);
-  assert.deepEqual(forbidden, [], `a browser cannot show these, so the mock must not: ${forbidden.join(', ')}`);
+  assert.deepEqual(
+    forbidden,
+    [],
+    `a browser cannot show these, so the mock must not: ${forbidden.join(', ')}`,
+  );
+});
+
+console.log('\nand the sections a server context must not offer:');
+
+check('Labels is local-only, so a server never shows it in user settings', () => {
+  // THE SURFACE FOLLOWS THE OWNER. On a local vault the instance vocabulary is the
+  // person's own and belongs with their settings; the moment a server is in the picture it
+  // is the INSTANCE's, and an administrator writes it in the console (ADR 0025). A DESKTOP
+  // SIGNED INTO AN INSTANCE is a server context too — `isLocalContext` reads the server's
+  // own mode, not the shell — so it must not show it either, which is the case this pins.
+  const labels = rail.find((r) => r.label === 'Labels');
+  assert.ok(labels, 'the rail no longer has a Labels section');
+  assert.equal(labels.local, true, 'Labels must be marked `local` or a server will show it');
 });
 
 /* And a section existing in both mocks was not enough either. Clipboard was its own rail
@@ -142,10 +163,7 @@ function mockRows(page) {
   const heads = [...src.matchAll(/\{ id:'([a-z]+)', label:'([^']+)', body:\(\)=>/g)];
   heads.forEach((h, i) => {
     const body = src.slice(h.index, i + 1 < heads.length ? heads[i + 1].index : src.length);
-    out.set(
-      h[2],
-      [...body.matchAll(/prefRow\(\s*'([^']+)'/g)].map((m) => m[1]).sort(),
-    );
+    out.set(h[2], [...body.matchAll(/prefRow\(\s*'([^']+)'/g)].map((m) => m[1]).sort());
   });
   return out;
 }

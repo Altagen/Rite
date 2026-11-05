@@ -116,6 +116,11 @@ export const IconKey = (p: IconProps) => (
     <path d="M10.8 12.2L20 3M17 6l2 2M14 9l2 2" />
   </Svg>
 );
+export const IconTag = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0l-7.2-7.2a2 2 0 01-.6-1.4V5a2 2 0 012-2h7a2 2 0 011.4.6l7.4 7.4a2 2 0 010 2.4M7.5 7.5h.01" />
+  </Svg>
+);
 export const IconTrash = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 7h16M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" />
