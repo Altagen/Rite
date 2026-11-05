@@ -44,7 +44,7 @@ import {
 } from '../utils/agentAdapters';
 import { agentBlockedReason, agentVerdict } from '../utils/agentPolicy';
 import { useMarks, type Mark } from '../store/marks';
-import { LabelChip, LabelField } from './Labels';
+import { LabelChip, LabelField, type LabelOffer } from './Labels';
 import type { VocabWord } from '../store/labelsFormat';
 import { keepAnswer, readAnswers, type Answer } from '../store/agentAnswers';
 import { MACHINE_SWATCHES } from '../theme/swatches';
@@ -526,6 +526,30 @@ export function AgentManager({
     return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
   }, [marks]);
 
+  /**
+   * What the rename dialog OFFERS: the declared words, then this person's own.
+   *
+   * THE DECLARED ONES BELONG HERE TOO, which is the whole reason a vocabulary is declared
+   * — once, so it is not retyped. They were offered on a machine's form and not on a
+   * conversation's dialog, so `pci` was a click on one screen and a retype on the other
+   * while both already resolved its COLOUR from the same declaration. That is the
+   * inconsistency, not a missing feature.
+   *
+   * Declared first, because `offersFrom` keeps the first spelling it sees: a word declared
+   * for the instance is offered the way it was declared, not the way somebody typed it on
+   * a conversation afterwards. A personal word is marked `personal`, so the chip says
+   * which are this person's own once there is more than one scope to tell apart.
+   */
+  const offers = useMemo(
+    () => [
+      ...(declared ?? []).map((w) => ({ ...w, scope: 'instance' as const })),
+      ...vocabulary
+        .filter((l) => !(declared ?? []).some((w) => w.label.toLowerCase() === l.toLowerCase()))
+        .map((label) => ({ label, scope: 'personal' as const })),
+    ],
+    [declared, vocabulary],
+  );
+
   /** One band per tool that reported something, in the shipped order. */
   const bands = useMemo(() => {
     const byTool = new Map<string, Row[]>();
@@ -597,7 +621,7 @@ export function AgentManager({
       {renaming && (
         <RenameDialog
           row={renaming}
-          vocabulary={vocabulary}
+          vocabulary={offers}
           onClose={() => setRenaming(null)}
           onSave={(name, color, labels) => {
             // Neither a name nor a label takes the mark away rather than writing an entry
@@ -1466,8 +1490,8 @@ function RenameDialog({
   onSave,
 }: {
   row: Row;
-  /** Every label this person has used. Offered, never required. */
-  vocabulary: string[];
+  /** Every word on offer — declared above, or used by this person. Never required. */
+  vocabulary: LabelOffer[];
   onClose: () => void;
   onSave: (name: string, color: string | undefined, labels: string[]) => void;
 }) {
@@ -1523,7 +1547,7 @@ function RenameDialog({
         <LabelField
           labels={labels}
           onChange={setLabels}
-          vocabulary={vocabulary.map((l) => ({ label: l, scope: 'personal' as const }))}
+          vocabulary={vocabulary}
           inputId="agent-labels-input"
           testPrefix="agent-labels"
         />

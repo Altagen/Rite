@@ -1204,6 +1204,9 @@ def scenario_agentload(wid):
         "Array.from(document.querySelectorAll('[data-testid^=agent-labels-add-]'))"
         ".map(b => b.textContent.trim())"
     )
+    # This home has no declared vocabulary, so what is offered is exactly this person's own
+    # words. The declared ones join them on a machine that has any — they were offered on a
+    # machine's form and not here, which was an inconsistency rather than a missing feature.
     check("the labels already used are offered", sorted(offered) == ["URGENT", "api"], f"got {offered}")
     js("document.querySelector('[data-testid=agent-labels-add-api]')?.click(); 1")
     time.sleep(0.4)
