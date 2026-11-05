@@ -178,24 +178,12 @@ export function LabelManager({
 
       <div className="divide-y divide-border rounded-md border border-border">
         {shown.length === 0 ? (
-          <div className="p-3" data-testid="label-manager-empty">
-            <p className="text-xs text-muted-foreground">
-              {query ? t('labels.noMatch', { query }) : t('labels.none')}
-            </p>
-            {/* The one thing to do, where the eye already is. A toolbar button is easy to
-                miss on a screen whose middle is empty. */}
-            {!query && !readOnly && (
-              <button
-                type="button"
-                onClick={() => setOpen('@new')}
-                className="mt-2 flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-primary-foreground"
-                data-testid="label-manager-new-empty"
-              >
-                <IconPlus className="h-3.5 w-3.5" />
-                {t('labels.newLabel')}
-              </button>
-            )}
-          </div>
+          /* ONE New BUTTON, the one above. A second here was two controls for one
+             action — and the toolbar one carries its own weight now that it is the only
+             filled thing on that row rather than another bordered box. */
+          <p className="p-3 text-xs text-muted-foreground" data-testid="label-manager-empty">
+            {query ? t('labels.noMatch', { query }) : t('labels.none')}
+          </p>
         ) : (
           shown.map((w) =>
             open === w.label.toLowerCase() ? (

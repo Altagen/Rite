@@ -35,9 +35,11 @@ test('a label is declared with a colour and a description, and survives a reload
   // magnifier, and New is the only filled button on the row. Held as a test because the
   // mistake was invisible to every assertion that already existed.
   await expect(page.getByTestId('label-manager-search')).toHaveAttribute('placeholder', /^Search/);
-  // An empty list offers the one thing to do where the eye already is, rather than only
-  // in a toolbar on a screen whose middle is blank.
-  await expect(page.getByTestId('label-manager-new-empty')).toBeVisible();
+  // ONE New button, in the toolbar. A second in the empty state was two controls for one
+  // action; what stops the search reading as a compose field is the magnifier, the word
+  // "Search", and New being the only filled thing on that row.
+  await expect(page.getByTestId('label-manager-new-empty')).toHaveCount(0);
+  await expect(page.getByTestId('label-manager-new')).toBeVisible();
 
   await page.getByTestId('label-manager-new').click();
   await page.getByTestId('label-row-word').fill('pci');
