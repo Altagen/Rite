@@ -5785,14 +5785,16 @@ async fn local_update_collection(
         state.db.pool(),
         &key,
         &id,
-        &req.name,
-        req.color.as_deref(),
-        req.folders,
-        req.hc,
-        // Through the same cleaner as the instance list: one route must not accept what
-        // the other refuses, or a word declared in a collection could carry a colour the
-        // instance list would have dropped.
-        req.labels.map(accepted_vocabulary),
+        rite_core::local_collections::CollectionPatch {
+            name: req.name,
+            color: req.color,
+            folders: req.folders,
+            hc: req.hc,
+            // Through the same cleaner as the instance list: one route must not accept
+            // what the other refuses, or a word declared in a collection could carry a
+            // colour the instance list would have dropped.
+            labels: req.labels.map(accepted_vocabulary),
+        },
     )
     .await?;
     Ok(Json(json!({ "ok": ok })))

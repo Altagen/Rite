@@ -270,33 +270,52 @@ pub async fn list(db: &SqlitePool, master_key: &[u8; KEY_LEN]) -> Result<Vec<Loc
     Ok(out)
 }
 
+/// What an edit to a collection's header carries.
+///
+/// A STRUCT AND NOT EIGHT ARGUMENTS. It was eight once `labels` arrived, which clippy
+/// refuses — rightly: four of them were `Option`s of the same shape, so a call site that
+/// swapped two was a silent bug the compiler could not see. `MachinePatch` below already
+/// does it this way for the same reason.
+///
+/// `Default` is what makes a rename-only edit readable: `CollectionPatch { name, ..d() }`
+/// states that nothing else is being touched, instead of a row of `None`s whose meaning
+/// depends on counting.
+#[derive(Debug, Default)]
+pub struct CollectionPatch {
+    /// Always written. A collection with no name is not a state this vault has.
+    pub name: String,
+    /// Always written too, `None` included — which CLEARS it rather than keeping it. The
+    /// odd one out here, and deliberately: the colour picker has an "none" entry, so the
+    /// absence of a colour is a choice a person can make.
+    pub color: Option<String>,
+    pub folders: Option<Vec<CollectionFolder>>,
+    pub hc: Option<Option<bool>>,
+    /// The declared vocabulary. `None` keeps what is stored; a list REPLACES it, because
+    /// a merge cannot express "take that word out of the list".
+    pub labels: Option<Vec<VocabEntry>>,
+}
+
 /// Rename / recolour a collection by rewriting its encrypted header.
 pub async fn update(
     db: &SqlitePool,
     master_key: &[u8; KEY_LEN],
     id: &str,
-    name: &str,
-    color: Option<&str>,
-    folders: Option<Vec<CollectionFolder>>,
-    hc: Option<Option<bool>>,
-    // The declared vocabulary. `None` keeps what is stored, like every field here; a
-    // list REPLACES it, because a merge cannot express "take that word out of the list".
-    labels: Option<Vec<VocabEntry>>,
+    patch: CollectionPatch,
 ) -> Result<bool> {
     let meta_key = meta_key_of(db, master_key, id).await?;
     // Read-modify-write: a rename must not silently drop folders or the
     // health-check opt-out, which live in the same header blob.
     let current: Header = decrypt_field(&meta_key, &row_of(db, id).await?.name_enc)?;
     let header = Header {
-        name: name.to_string(),
-        color: color.map(str::to_string),
-        folders: folders.or(current.folders),
-        hc: match hc {
+        name: patch.name,
+        color: patch.color,
+        folders: patch.folders.or(current.folders),
+        hc: match patch.hc {
             Some(v) => v,
             None => current.hc,
         },
         personal: current.personal,
-        labels: labels.or(current.labels),
+        labels: patch.labels.or(current.labels),
     };
     collection_store::set_name_enc(db, id, &encrypt_field(&meta_key, &header)?).await
 }
@@ -749,11 +768,11 @@ mod tests {
                 db.pool(),
                 &mk,
                 &c.id,
-                "New",
-                Some("#f7768e"),
-                None,
-                None,
-                None
+                CollectionPatch {
+                    name: "New".into(),
+                    color: Some("#f7768e".into()),
+                    ..Default::default()
+                }
             )
             .await
             .unwrap()
@@ -1003,19 +1022,29 @@ mod tests {
             db.pool(),
             &mk,
             &c.id,
-            "Home lab",
-            None,
-            Some(folders.clone()),
-            Some(Some(false)),
-            Some(vec!["pci".into(), "prod".into()]),
+            CollectionPatch {
+                name: "Home lab".into(),
+                folders: Some(folders.clone()),
+                hc: Some(Some(false)),
+                labels: Some(vec!["pci".into(), "prod".into()]),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
 
         // Rename only — folders and hc are untouched.
-        update(db.pool(), &mk, &c.id, "Lab", None, None, None, None)
-            .await
-            .unwrap();
+        update(
+            db.pool(),
+            &mk,
+            &c.id,
+            CollectionPatch {
+                name: "Lab".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
         let got = &list(db.pool(), &mk).await.unwrap()[0];
         assert_eq!(got.name, "Lab");
         assert_eq!(
@@ -1035,11 +1064,11 @@ mod tests {
             db.pool(),
             &mk,
             &c.id,
-            "Lab",
-            None,
-            None,
-            None,
-            Some(vec!["prod".into()]),
+            CollectionPatch {
+                name: "Lab".into(),
+                labels: Some(vec!["prod".into()]),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
@@ -1052,11 +1081,11 @@ mod tests {
             db.pool(),
             &mk,
             &c.id,
-            "Lab",
-            None,
-            None,
-            None,
-            Some(Vec::new()),
+            CollectionPatch {
+                name: "Lab".into(),
+                labels: Some(Vec::new()),
+                ..Default::default()
+            },
         )
         .await
         .unwrap();
