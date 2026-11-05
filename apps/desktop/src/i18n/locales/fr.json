@@ -1324,8 +1324,8 @@
     "none": "Aucun label déclaré ici",
     "noMatch": "Rien ne correspond à {query}",
     "count": "{count} labels · {left} restants",
-    "wordPlaceholder": "Un ou deux mots",
-    "descriptionPlaceholder": "Ce que ça veut dire",
+    "wordPlaceholder": "Label",
+    "descriptionPlaceholder": "Description",
     "clash": "{word} est déjà dans cette liste",
     "readOnly": "Lecture seule : cette collection est partagée en lecture.",
     "inherited": "Disponibles ici aussi, déclarés ailleurs"
