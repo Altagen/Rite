@@ -4052,10 +4052,6 @@ fn marks_path() -> Option<std::path::PathBuf> {
     dirs::config_dir().map(|d| d.join("rite").join("marks.json"))
 }
 
-fn marks_file(accounts: bool) -> Option<std::path::PathBuf> {
-    if accounts { None } else { marks_path() }
-}
-
 /// Where this context keeps the marks document, which is decided by WHERE THE KEY IS.
 ///
 /// Three supports and no preference between them (ADR 0022 §6):
@@ -4097,7 +4093,7 @@ async fn marks_support(state: &ServerState) -> MarksSupport {
 
 async fn get_marks(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
     match marks_support(&state).await {
-        MarksSupport::Account => return Ok(Json(json!({ "text": null, "path": null }))),
+        MarksSupport::Account => Ok(Json(json!({ "text": null, "path": null }))),
         MarksSupport::Vault(key) => {
             let text = rite_core::vault_documents::get(
                 state.db.pool(),
@@ -4107,24 +4103,27 @@ async fn get_marks(State(state): State<ServerState>) -> Result<Json<Value>, AppE
             .await?;
             // Nothing written yet is the normal state of a fresh vault; `null` is reserved
             // for "there is no support here", which the client reads as a refusal.
-            return Ok(Json(
+            Ok(Json(
                 json!({ "text": text.unwrap_or_default(), "path": null }),
-            ));
+            ))
         }
-        MarksSupport::File(_) => {}
+        // THE PATH THE SUPPORT DECIDED, and not one computed again here. It was
+        // `File(_)` and then a second call to `marks_file(state.accounts)`, so the file
+        // reported and the file read were two answers from two functions that happened to
+        // agree — `dead_code` on an unread field is what pointed at it. `LabelsSupport`
+        // below already does it this way.
+        MarksSupport::File(path) => {
+            let text = match tokio::fs::read_to_string(&path).await {
+                Ok(t) => t,
+                // Nothing named yet is the normal state of a fresh install, not a failure.
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display()).into()),
+            };
+            Ok(Json(
+                json!({ "text": text, "path": path.display().to_string() }),
+            ))
+        }
     }
-    if let Some(path) = marks_file(state.accounts) {
-        let text = match tokio::fs::read_to_string(&path).await {
-            Ok(t) => t,
-            // Nothing named yet is the normal state of a fresh install, not a failure.
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-            Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display()).into()),
-        };
-        return Ok(Json(
-            json!({ "text": text, "path": path.display().to_string() }),
-        ));
-    }
-    Ok(Json(json!({ "text": null, "path": null })))
 }
 
 async fn put_marks(
@@ -4132,7 +4131,9 @@ async fn put_marks(
     Json(req): Json<ValueReq>,
 ) -> Result<StatusCode, AppError> {
     match marks_support(&state).await {
-        MarksSupport::Account => return Ok(StatusCode::NOT_FOUND),
+        // A shared instance has no file to write and must not put this in a table it can
+        // read: there the marks ride as a sealed blob at `/api/user/marks`.
+        MarksSupport::Account => Ok(StatusCode::NOT_FOUND),
         MarksSupport::Vault(key) => {
             rite_core::vault_documents::set(
                 state.db.pool(),
@@ -4141,24 +4142,21 @@ async fn put_marks(
                 &req.value,
             )
             .await?;
-            return Ok(StatusCode::NO_CONTENT);
+            Ok(StatusCode::NO_CONTENT)
         }
-        MarksSupport::File(_) => {}
-    }
-    if let Some(path) = marks_file(state.accounts) {
-        if let Some(dir) = path.parent() {
-            tokio::fs::create_dir_all(dir)
+        // The same path the read used, for the same reason.
+        MarksSupport::File(path) => {
+            if let Some(dir) = path.parent() {
+                tokio::fs::create_dir_all(dir)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("creating {}: {e}", dir.display()))?;
+            }
+            tokio::fs::write(&path, &req.value)
                 .await
-                .map_err(|e| anyhow::anyhow!("creating {}: {e}", dir.display()))?;
+                .map_err(|e| anyhow::anyhow!("writing {}: {e}", path.display()))?;
+            Ok(StatusCode::NO_CONTENT)
         }
-        tokio::fs::write(&path, &req.value)
-            .await
-            .map_err(|e| anyhow::anyhow!("writing {}: {e}", path.display()))?;
-        return Ok(StatusCode::NO_CONTENT);
     }
-    // A shared instance has no file to write and must not put this in a table it can
-    // read: there the marks ride as a sealed blob at `/api/user/marks`.
-    Ok(StatusCode::NOT_FOUND)
 }
 
 /// How many words the instance vocabulary may declare.
