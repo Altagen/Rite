@@ -2021,6 +2021,7 @@ export function Workspace({
           scrollWidth measurement is meaningful and the pastille stays pinned right. */}
       <header
         ref={appbarRef}
+        data-testid="app-bar"
         className={`m-appbar${navActions?.length ? ' m-appbar-fit' : ''}${
           focusActive
             ? ` fixed left-0 right-0 top-0 z-[55] shadow-lg transition-transform duration-200 ${

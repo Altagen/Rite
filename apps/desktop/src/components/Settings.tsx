@@ -459,7 +459,10 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50">
-      <div className="mx-4 flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl">
+      <div
+        className="mx-4 flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-border bg-background shadow-xl"
+        data-testid="settings-dialog"
+      >
         {/* Header */}
         <div className="flex flex-none items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-xl font-bold">{t('settings.title')}</h2>
