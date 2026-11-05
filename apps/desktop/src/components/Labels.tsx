@@ -116,8 +116,6 @@ export function LabelField({
   vocabulary,
   inputId,
   testPrefix,
-  onColor,
-  cap = LABELS_MAX,
 }: {
   /** The labels currently on the thing. */
   labels: string[];
@@ -127,27 +125,11 @@ export function LabelField({
   inputId: string;
   /** Prefixes every `data-testid` here, so two screens' fields are told apart. */
   testPrefix: string;
-  /**
-   * How many words this list may hold.
-   *
-   * NAMED BY THE CALLER, because the two lists differ: eight on a machine or a
-   * conversation, two hundred in a vocabulary. The field used `LABELS_MAX` for both, so a
-   * vocabulary editor dropped its ninth word while the screen promised two hundred.
-   */
-  cap?: number;
-  /**
-   * Declare a colour for one word. Absent ⇒ the field does not offer to.
-   *
-   * ONLY WHERE THE WORDS ARE DECLARED, which is a vocabulary editor and not a machine
-   * form. Choosing a colour on a machine would make it that machine's colour for the
-   * word, and then the word has several — the thing this shape exists to prevent.
-   */
-  onColor?: (label: string, color: string | undefined) => void;
 }) {
   const { t } = useTranslation();
   const [typed, setTyped] = useState(labels.join(', '));
   // Through the shipped cleaner, so the preview and the document cannot disagree.
-  const parsed = acceptedUpTo(typed.split(',').map(cleanLabel), cap);
+  const parsed = acceptedUpTo(typed.split(',').map(cleanLabel), LABELS_MAX);
   const capped = typed.split(',').filter((p) => cleanLabel(p)).length !== parsed.length;
   // What is offered is what is not already on: a chip that does nothing when clicked is a
   // chip somebody clicks twice before reading the field above it.
@@ -163,7 +145,7 @@ export function LabelField({
   );
   const write = (next: string) => {
     setTyped(next);
-    onChange(acceptedUpTo(next.split(',').map(cleanLabel), cap));
+    onChange(acceptedUpTo(next.split(',').map(cleanLabel), LABELS_MAX));
   };
   return (
     <>
@@ -183,30 +165,6 @@ export function LabelField({
           {parsed.map((l) => (
             <span key={l.toLowerCase()} className="flex items-center gap-1.5">
               <LabelChip label={l} declared={declaredWords} />
-              {/* The palette, only in an editor of the words themselves — see `onColor`.
-                  The swatch that is currently in force is ringed, whether it was chosen or
-                  derived, so "no choice" is a visible state rather than an empty row. */}
-              {onColor &&
-                MACHINE_SWATCHES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() =>
-                      onColor(
-                        l,
-                        labelColor(l, MACHINE_SWATCHES, declaredWords) === c ? undefined : c,
-                      )
-                    }
-                    aria-label={c}
-                    data-testid={`${testPrefix}-colour-${l.toLowerCase()}-${c.slice(1)}`}
-                    className={`h-4 w-4 rounded-full border ${
-                      labelColor(l, MACHINE_SWATCHES, declaredWords) === c
-                        ? 'border-foreground'
-                        : 'border-transparent'
-                    }`}
-                    style={{ background: c }}
-                  />
-                ))}
             </span>
           ))}
         </div>
@@ -219,8 +177,8 @@ export function LabelField({
               <button
                 key={`${v.scope}:${v.label.toLowerCase()}`}
                 type="button"
-                disabled={parsed.length >= cap}
-                onClick={() => write(acceptedUpTo([...parsed, v.label], cap).join(', '))}
+                disabled={parsed.length >= LABELS_MAX}
+                onClick={() => write(acceptedUpTo([...parsed, v.label], LABELS_MAX).join(', '))}
                 className="rounded-full disabled:opacity-40"
                 data-testid={`${testPrefix}-add-${v.label.toLowerCase()}`}
               >
@@ -237,7 +195,7 @@ export function LabelField({
       )}
       {capped && (
         <div className="mt-1 text-[11px] text-amber-500" data-testid={`${testPrefix}-dropped`}>
-          {t('labels.capped', { count: String(cap) })}
+          {t('labels.capped', { count: String(LABELS_MAX) })}
         </div>
       )}
     </>
