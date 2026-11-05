@@ -929,7 +929,7 @@ mod tests {
     #[test]
     fn header_matches_the_browser() {
         // r##"…"## because a hex colour contains `"#`, which would end an r#"…"# literal.
-        const FROM_BROWSER: &str = r##"{"name":"Production","color":"#f7768e","folders":[{"name":"Web servers","color":"#7c9cf5"},{"name":"Cache","color":null}],"hc":false,"labels":["pci",{"label":"prod","color":"#7c9cf5"}]}"##;
+        const FROM_BROWSER: &str = r##"{"name":"Production","color":"#f7768e","folders":[{"name":"Web servers","color":"#7c9cf5"},{"name":"Cache","color":null}],"hc":false,"labels":["pci",{"label":"prod","color":"#7c9cf5"},{"label":"client-acme","description":"Under the ACME contract"}]}"##;
         let parsed: Header = serde_json::from_str(FROM_BROWSER).expect("browser header must load");
         assert_eq!(parsed.name, "Production");
         assert_eq!(parsed.folders.as_ref().unwrap().len(), 2);
@@ -940,6 +940,12 @@ mod tests {
         // that has a colour is an object. A build that normalised them to one shape would
         // rewrite every stored header the first time anything touched it, and the
         // `assert_eq!(ours, theirs)` below is what catches that.
+        //
+        // A DESCRIPTION IS IN THE FIXTURE, AND IT IS THE THIRD ENTRY FOR A REASON: the
+        // field was added after this test was written, so for a while the round trip
+        // proved a shape that no longer existed. A carrier that forgets the field drops
+        // it in silence — a Zod schema did exactly that — and the fixture is the only
+        // thing here that notices. `e2e/vocab-parity-check.mjs` holds the declarations.
         assert_eq!(
             parsed.labels.as_deref(),
             Some(
@@ -948,6 +954,12 @@ mod tests {
                     VocabEntry::Full(VocabWord {
                         label: "prod".into(),
                         color: Some("#7c9cf5".into()),
+                        description: None,
+                    }),
+                    VocabEntry::Full(VocabWord {
+                        label: "client-acme".into(),
+                        color: None,
+                        description: Some("Under the ACME contract".into()),
                     }),
                 ][..]
             )
