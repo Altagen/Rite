@@ -42,7 +42,7 @@ import { probeVerdict } from '../utils/dashboardProbes';
 import { Backend, type Capabilities } from '../utils/backend';
 import { RiteHttpError } from '../utils/httpError';
 import { useInstanceLabels } from '../store/instanceLabels';
-import { acceptedVocab, type VocabWord } from '../store/labelsFormat';
+import { acceptedVocab, type VocabEntry, type VocabWord } from '../store/labelsFormat';
 import { LabelManager, type LabelTarget } from './LabelManager';
 
 /**
@@ -86,7 +86,20 @@ interface SettingsProps {
    * the context, and the accounts shell has none to offer. Absent ⇒ the manager writes the
    * instance list only, which is the whole of what a window with no library has.
    */
-  collections?: { id: string; name: string; labels?: (string | VocabWord)[] }[];
+  collections?: {
+    id: string;
+    name: string;
+    labels?: VocabEntry[];
+    /**
+     * Whether this reader may write this collection.
+     *
+     * PER COLLECTION AND NOT PER CONTEXT, which is the distinction that was missing: a
+     * member can own one collection and be a viewer of the next, so a writer supplied for
+     * the context would have drawn a Save on both and refused on one — the same false
+     * affordance as a search box that looks like a compose field.
+     */
+    writable?: boolean;
+  }[];
   /**
    * Write one collection's vocabulary. Absent ⇒ every collection is shown read-only.
    *
@@ -340,7 +353,10 @@ export function Settings({
         id: c.id,
         name: c.name,
         words: acceptedVocab(c.labels ?? []),
-        save: saveCollectionWords ? (w: VocabWord[]) => saveCollectionWords(c, w) : undefined,
+        save:
+          saveCollectionWords && c.writable !== false
+            ? (w: VocabWord[]) => saveCollectionWords(c, w)
+            : undefined,
       })),
     ],
     [instanceWords, collections, saveWords, saveCollectionWords, t],

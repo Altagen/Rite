@@ -2933,6 +2933,10 @@ export function Workspace({
             id: c.id,
             name: c.name,
             labels: c.labels,
+            // A local vault has one owner and no roles (ADR 0018), so every collection
+            // there is writable; on a server the role is the answer, and `viewer` is the
+            // case that must not be offered a Save it cannot use.
+            writable: !isServerContext || c.role === 'owner' || c.role === 'editor',
           }))}
           saveCollectionWords={
             conns.renameCollection

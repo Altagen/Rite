@@ -166,3 +166,35 @@ test('a collection is a scope of its own, and a draft does not cross', async ({
   await expect(page.getByTestId('label-manager-error')).toHaveCount(0);
   await expect(page.getByTestId('label-row-client-acme')).toBeVisible();
 });
+
+/**
+ * A collection this reader cannot write is shown, and shown as read-only.
+ *
+ * SHOWN RATHER THAN HIDDEN, because knowing a word exists is half of why the list is
+ * there: a viewer needs to know `client-acme` is the word before applying it. And
+ * READ-ONLY rather than refused on the click, which is the mistake this screen made twice
+ * — a Save that cannot work is the same false promise as a search box that looks like a
+ * compose field.
+ *
+ * A local vault has one owner and no roles (ADR 0018), so what this suite can hold is the
+ * other half: every collection here IS writable, which is what `writable` must say when
+ * there is nobody to be a viewer. The server's half is the role check, and
+ * `e2e/collection-policy-check.mjs` holds roles against a real accounts server.
+ */
+test('on a local vault every collection is writable, because there are no roles', async ({
+  page,
+  request,
+}) => {
+  await ensureCollection(request, 'e2e-label-writable');
+
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await openSettings(page);
+  await page.getByTestId('settings-nav-labels').click();
+
+  await page.getByTestId('label-manager-scope').selectOption({ label: 'e2e-label-writable' });
+  // Writable, so the manager offers to add and to save — and says nothing about being
+  // read-only, which is the state a viewer would see.
+  await expect(page.getByTestId('label-manager-readonly')).toHaveCount(0);
+  await expect(page.getByTestId('label-manager-new')).toBeVisible();
+});
