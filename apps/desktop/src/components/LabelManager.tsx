@@ -70,7 +70,9 @@ export function LabelManager({
   /** Which row is open for editing, by its word folded — or `@new` for the row being added. */
   const [open, setOpen] = useState<string | null>(null);
 
-  const words = draft ?? target?.words ?? [];
+  // Memoised although it is one `??` chain: it is a dependency of the filter below, and a
+  // fresh `[]` on every render makes that filter run on every render.
+  const words = useMemo(() => draft ?? target?.words ?? [], [draft, target?.words]);
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return words;

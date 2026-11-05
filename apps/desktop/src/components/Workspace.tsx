@@ -98,7 +98,7 @@ import {
   reorganizePane,
 } from '../utils/paneTree';
 import { AgentManager } from './AgentManager';
-import { offersFrom } from './Labels';
+import { offersFrom } from '../store/labelsFormat';
 import { LabelManager, type LabelTarget } from './LabelManager';
 import { acceptedVocab, formatVocab, type VocabWord } from '../store/labelsFormat';
 import { useInstanceLabels } from '../store/instanceLabels';

@@ -41,9 +41,11 @@ import {
 import { MACHINE_SWATCHES } from '../theme/swatches';
 
 // The scopes and the vocabulary live in `store/labelsFormat.ts`: two documents share
-// them, and a check can load a module that imports no React.
+// them, and a check can load a module that imports no React. The TYPES are re-exported
+// here as a convenience, since a component importing the field usually wants them too;
+// `offersFrom` is not, because a module that exports a component and a function cannot be
+// hot-reloaded — its callers import it from the store directly.
 export type { LabelOffer, LabelScope } from '../store/labelsFormat';
-export { offersFrom } from '../store/labelsFormat';
 
 /** How a scope reads, as a key. */
 const SCOPE_KEY: Record<LabelScope, string> = {
