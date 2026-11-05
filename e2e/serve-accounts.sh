@@ -7,6 +7,9 @@ export HOME="${RITE_E2E_ACCOUNTS_HOME:-/tmp/rite-e2e-accounts-home}"
 rm -rf "$HOME/.local/share/rite"
 mkdir -p "$HOME"
 
+# The dist on disk is what gets tested, so it has to be newer than the source.
+"$PWD/e2e/dist-fresh.sh"
+
 export RITE_ADDR="127.0.0.1:1422"
 export RITE_ACCOUNTS=1
 export RITE_WEB_DIR="$PWD/apps/desktop/dist"

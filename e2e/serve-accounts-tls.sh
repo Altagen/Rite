@@ -30,6 +30,9 @@ fi
 
 export RITE_TLS_CERT="$CERTS/remote.crt"
 export RITE_TLS_KEY="$CERTS/remote.key"
+# The dist on disk is what gets tested, so it has to be newer than the source.
+"$PWD/e2e/dist-fresh.sh"
+
 export RITE_WEB_DIR="$PWD/apps/desktop/dist"
 
 exec "$PWD/target/debug/rite-server"

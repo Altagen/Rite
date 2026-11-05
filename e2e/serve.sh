@@ -14,6 +14,9 @@ export XDG_CONFIG_HOME="$HOME/.config"
 rm -rf "$HOME/.local/share/rite" "$XDG_CONFIG_HOME/rite"
 mkdir -p "$HOME"
 
+# The dist on disk is what gets tested, so it has to be newer than the source.
+"$PWD/e2e/dist-fresh.sh"
+
 export RITE_ADDR="127.0.0.1:${RITE_E2E_PORT:-1421}"
 export RITE_WEB_DIR="$PWD/apps/desktop/dist"
 

@@ -12,6 +12,9 @@ export RITE_ADDR="127.0.0.1:1423"
 export RITE_ACCOUNTS=1
 export RITE_ADMIN_USER="envadmin"
 export RITE_ADMIN_PASSWORD="EnvPass123!"
+# The dist on disk is what gets tested, so it has to be newer than the source.
+"$PWD/e2e/dist-fresh.sh"
+
 export RITE_WEB_DIR="$PWD/apps/desktop/dist"
 
 exec "$PWD/target/debug/rite-server"

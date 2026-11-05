@@ -11,6 +11,9 @@ export HOME="${RITE_E2E_CONFIG_HOME:-/tmp/rite-e2e-config-home}"
 rm -rf "$HOME/.local/share/rite"
 mkdir -p "$HOME"
 
+# The dist on disk is what gets tested, so it has to be newer than the source.
+"$PWD/e2e/dist-fresh.sh"
+
 cat > "$HOME/rite.toml" <<'TOML'
 instance_name     = "Configured by file"
 open_registration = true    # NOT the default: the check can only discriminate on a flip
