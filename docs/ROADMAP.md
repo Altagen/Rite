@@ -438,10 +438,16 @@ ahead, and it is corrected from the code when the code has measured something it
       seven can remove — three listings name no file, and those show no button.
 - [ ] **Seed** a new agent with its context automatically, rather than pasting it — the
       directory is passed; the rest is the management layer below.
-- [ ] **What is in effect — skills, commands and hooks** (ADR 0022 §6): the account's
-      layer under the project's, resolved on that host under that account, every row
-      carrying its path, a shadowed copy shown *losing*. Read-only on purpose, and mocked
-      already (`dlgAgentContext`).
+- [x] **What is in effect — skills, commands and hooks** (ADR 0022 §6) — **done.** The
+      account's layer under the project's, resolved on that host under that account, every
+      row carrying its path, and a copy that lost to the project layer shown *losing*
+      rather than hidden. Read-only on purpose: a hook is a command that runs later,
+      unattended, and the editing story is **Open** — the file in a terminal pane on that
+      machine under the account already in use there. Nothing read is kept.
+      **One refusal:** the mock warned about a *shared account* and Rite cannot ask a
+      machine whether an account is shared, so what is shown is the account the read was
+      resolved under. The shared account stays an argument for read-only, which is what it
+      already is in the ADR.
 - [x] **What only the machine can say** — **done**, and not on a card: the working
       directory, the branch it stands on now and whether that tree is clean are read when
       the detail panel opens, and kept nowhere. A branch on a card is read as current and
