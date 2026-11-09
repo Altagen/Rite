@@ -1272,7 +1272,17 @@ async fn exec_remote_command(
                     }
                 }
                 ChannelMsg::ExitStatus { exit_status: code } => exit_status = Some(code),
-                ChannelMsg::Eof | ChannelMsg::Close => break,
+                // CLOSE ENDS THIS, AND `EOF` DOES NOT.
+                //
+                // `Eof` means "no more data on this channel"; the exit status is a
+                // separate message and arrives before `Close`. Breaking on `Eof` was a
+                // race whose outcome depended on whether the command had PRINTED
+                // anything: with output the data and the status landed first, with none
+                // the `Eof` came first and the status was never read — so a command that
+                // succeeded reported `exit_status: None`, and a caller comparing against
+                // 0 called it a failure. `rm -f` prints nothing, which is how a removal
+                // that had actually happened came back as "Removal failed, exit null".
+                ChannelMsg::Close => break,
                 _ => {}
             }
         }

@@ -165,6 +165,21 @@ impl Handler for TestHandler {
             session.data(channel, format!("started:{command}").into_bytes())?;
             return Ok(());
         }
+        // A SILENT COMMAND, AND `EOF` BEFORE THE STATUS — the order a real sshd uses for
+        // something that prints nothing, and the order this server never used.
+        //
+        // The reader broke out of its loop on `Eof`, so with no data to arrive first the
+        // status was never read and a command that SUCCEEDED came back as
+        // `exit_status: None`. Every test here printed something, so every test got the
+        // lucky order; `rm -f` prints nothing, and a removal that had happened was
+        // reported as "Removal failed, exit null". Pinned deliberately rather than left
+        // to whichever order a server happens to pick.
+        if command == "silent" {
+            session.eof(channel)?;
+            session.exit_status_request(channel, 0)?;
+            session.close(channel)?;
+            return Ok(());
+        }
         session.data(channel, format!("ran:{command}").into_bytes())?;
         session.extended_data(channel, 1, b"on-stderr".to_vec())?;
         let code = if command == "fail" { 3 } else { 0 };
@@ -1474,6 +1489,49 @@ async fn quick_remote_command_captures_output_and_exit_status() {
         .await
         .expect("a failing command is still a successful exec");
     assert_eq!(failed.exit_status, Some(3));
+}
+
+/// A COMMAND THAT PRINTS NOTHING STILL REPORTS ITS STATUS.
+///
+/// The read broke out of its loop on `Eof`, and `Eof` arrives before the exit status for
+/// a command with no output — so the status was never read and a command that SUCCEEDED
+/// came back as `None`. Every other test here prints something and therefore got the
+/// lucky order, which is why this went unseen until the agent manager removed a
+/// conversation: `rm -f` says nothing, and a removal that had happened was reported on
+/// screen as "Removal failed, exit null".
+///
+/// The test server sends `eof` and then the status for `silent`, which is the order a
+/// real sshd uses, so this fails on the old reader rather than depending on timing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_silent_command_still_reports_that_it_succeeded() {
+    let port = spawn_test_server().await;
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::new(&dir.path().join("t.db")).await.unwrap();
+    let auth = AuthManager::new(db.clone());
+    let mgr = SessionManager::new(db.clone(), auth);
+    let events: SharedEvents = Arc::new(Spy::default());
+
+    let out = mgr
+        .run_quick_remote_command(
+            test_connection(port),
+            AuthMethod::Password {
+                password: Some(PASS.into()),
+            },
+            events,
+            "silent",
+            &[],
+            known_hosts::LOCAL_OWNER,
+        )
+        .await
+        .expect("exec should succeed");
+
+    assert_eq!(out.stdout, "", "a silent command prints nothing");
+    // THE POINT. `None` here is what made a caller comparing against 0 report a failure.
+    assert_eq!(
+        out.exit_status,
+        Some(0),
+        "the status must survive an early Eof"
+    );
 }
 
 /// The same exec, reached through a bastion: the hops the caller resolved are used.
