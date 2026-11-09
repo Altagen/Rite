@@ -141,8 +141,10 @@ test('desktop mock: stacked and rail arrange the same rows, CLI for CLI', async 
 
   await page.evaluate(() => agentSetLayout('cards'));
   const stacked = await asks();
-  expect(stacked.length, 'the fleet is big enough for the comparison to mean something')
-    .toBeGreaterThan(15);
+  expect(
+    stacked.length,
+    'the fleet is big enough for the comparison to mean something',
+  ).toBeGreaterThan(15);
 
   // Per band, so the grouping is compared and not just the total.
   const perBand = await page.locator('.aband').evaluateAll((bs) =>
@@ -207,10 +209,16 @@ test('desktop mock: a band folds, and one CLI can be shown alone', async ({ page
   await expect(page.locator('.mdash-hd')).toContainText('1 of 4 CLIs');
 
   // And the filter menu puts them back, one at a time or all at once.
-  await page.locator('.mdash-hd').getByRole('button', { name: /1 of 4 CLIs/ }).click();
+  await page
+    .locator('.mdash-hd')
+    .getByRole('button', { name: /1 of 4 CLIs/ })
+    .click();
   await page.locator('.menu .row', { hasText: 'Codex CLI' }).click();
   await expect(page.locator('.aband')).toHaveCount(2);
-  await page.locator('.mdash-hd').getByRole('button', { name: /2 of 4 CLIs/ }).click();
+  await page
+    .locator('.mdash-hd')
+    .getByRole('button', { name: /2 of 4 CLIs/ })
+    .click();
   await page.locator('.menu .row', { hasText: 'Every CLI' }).click();
   await expect(page.locator('.mdash-hd')).toContainText('All CLIs');
   await expect(page.locator('.acard')).toHaveCount(all);
@@ -253,7 +261,9 @@ test('desktop mock: no conversation is claimed to be running', async ({ page }) 
 
   // What IS said is said plainly, and it is the fact the listing carries.
   await expect(page.locator('.mdash-foot')).toContainText(/transcript was last written/i);
-  await expect(page.locator('.mdash-foot')).toContainText(/nothing here says a conversation is running/i);
+  await expect(page.locator('.mdash-foot')).toContainText(
+    /nothing here says a conversation is running/i,
+  );
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
@@ -277,9 +287,15 @@ test('desktop mock: a conversation can be named and coloured, without losing the
 
   const card = page.locator('.acard', { hasText: 'Fix the flaky migration test' });
   await card.getByRole('button', { name: 'More' }).click();
-  await page.locator('.menu .row', { hasText: /Name and colour/ }).click();
+  // NOT "Name and colour" any more: the dialog sets a name, a colour AND the labels, so
+  // naming it after one of the three sent a reader looking for the other two elsewhere.
+  await page.locator('.menu .row', { hasText: /Modify/ }).click();
   await page.locator('#am-label').fill('The queue work');
   await page.locator('.swatches .sw').nth(2).click();
+  // A label, through the picker that replaced the comma-separated box: typing filters and
+  // CREATING IS A NAMED ACTION, never a side effect of the text.
+  await page.locator('#am-words').fill('queue');
+  await page.locator('.apick-new').click();
   await page.locator('.backdrop [data-ok]').click();
 
   // The label is the headline AND the ask stays underneath: renaming must not lose
@@ -288,6 +304,9 @@ test('desktop mock: a conversation can be named and coloured, without losing the
   await expect(named).toHaveCount(1);
   await expect(named.locator('.acard-label')).toHaveText('The queue work');
   await expect(named.locator('.acard-ask.under')).toHaveText('Fix the flaky migration test');
+  // And the label rides under both, as a chip rather than a heading: a name answers
+  // "which one is this" and a label answers "which group is this in".
+  await expect(named.locator('.alabel')).toHaveText(['queue']);
   const mark = await named
     .locator('.acard-label')
     .evaluate((el) => getComputedStyle(el).getPropertyValue('--mark').trim());
@@ -324,13 +343,25 @@ test('desktop mock: a conversation can be named and coloured, without losing the
   await page.evaluate(() => agentPickScope('web-01'));
   await expect(page.locator('.acard-label')).toHaveCount(1);
 
-  // Clearing both removes the record rather than storing an empty one.
+  // Clearing ALL THREE removes the record rather than storing an empty one — and there
+  // are three now, so clearing two is not enough. Taking the name and the colour off
+  // first proves it: a conversation with only a label still has something to keep.
   await named.getByRole('button', { name: 'More' }).click();
-  await page.locator('.menu .row', { hasText: /Name and colour/ }).click();
+  await page.locator('.menu .row', { hasText: /Modify/ }).click();
   await page.locator('#am-label').fill('');
   await page.locator('.swatches .sw.none').click();
   await page.locator('.backdrop [data-ok]').click();
   await expect(page.locator('.acard-label')).toHaveCount(0);
+  await expect(page.locator('.alabel', { hasText: 'queue' })).toHaveCount(1);
+  expect(await page.evaluate(() => Object.keys(AGENT_MARKS).length)).toBe(1);
+
+  // And once the label goes too, the entry does.
+  const labelled = page.locator('.acard').filter({ has: page.locator('.alabel') });
+  await labelled.getByRole('button', { name: 'More' }).click();
+  await page.locator('.menu .row', { hasText: /Modify/ }).click();
+  await page.locator('.arow-pick', { hasText: 'queue' }).click();
+  await page.locator('.backdrop [data-ok]').click();
+  await expect(page.locator('.alabel')).toHaveCount(0);
   expect(await page.evaluate(() => Object.keys(AGENT_MARKS).length)).toBe(0);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
@@ -462,7 +493,9 @@ for (const shell of ['web', 'desktop'] as const) {
     expect(word('edge-01'), 'the host refused the key').toBe('error');
     expect(word('Rite server host'), 'a non-goal, not a missing key').toBe('never');
     if (shell === 'web') {
-      expect(word('This machine'), 'a browser cannot reach it — not a missing key').toBe('no client');
+      expect(word('This machine'), 'a browser cannot reach it — not a missing key').toBe(
+        'no client',
+      );
     }
     // And nothing is marked for a reason Rite cannot know: holding a collection's key is
     // holding its machines' credentials, so no machine in the library is barred up front.
@@ -472,7 +505,9 @@ for (const shell of ['web', 'desktop'] as const) {
     // collection — a machine listed twice would mean the walk counted a folder as one.
     const inPicker = await pick.locator('.apick-n').allTextContents();
     const inLibrary = await page.evaluate(() =>
-      agentScopes().filter((s: { kind: string }) => s.kind === 'ssh').map((s: { name: string }) => s.name),
+      agentScopes()
+        .filter((s: { kind: string }) => s.kind === 'ssh')
+        .map((s: { name: string }) => s.name),
     );
     for (const m of inLibrary) expect(inPicker.filter((n) => n === m)).toHaveLength(1);
 
@@ -531,19 +566,32 @@ test('desktop mock: all machines aggregates what was read, and probes nothing', 
   await expect(page.locator('.mdash-hd').getByRole('button', { name: /Probe/ })).toHaveCount(0);
 
   // Nothing was read as a side effect of opening it.
-  const before = await page.evaluate(() => JSON.stringify(Object.keys(AGENT_PROBES).map((k) => AGENT_PROBES[k].at)));
+  const before = await page.evaluate(() =>
+    JSON.stringify(Object.keys(AGENT_PROBES).map((k) => AGENT_PROBES[k].at)),
+  );
   await page.evaluate(() => agentProbeNow());
-  const after = await page.evaluate(() => JSON.stringify(Object.keys(AGENT_PROBES).map((k) => AGENT_PROBES[k].at)));
+  const after = await page.evaluate(() =>
+    JSON.stringify(Object.keys(AGENT_PROBES).map((k) => AGENT_PROBES[k].at)),
+  );
   expect(after).toBe(before);
 
   expect(errs, 'the mock must not log errors').toEqual([]);
 });
 
 /**
- * What identifies a conversation, since its name alone does not. The four facts
- * chosen for the card: the opening ask, the project and its BRANCH, the machine —
- * carried as a coloured edge taken from the Library, not from a palette invented
- * here — and how deep and how recent it is.
+ * What identifies a conversation, since its name alone does not — and what a card
+ * DELIBERATELY DOES NOT CARRY, which the code settled by measuring.
+ *
+ * The facts on it: the opening ask, the project, the directory, and the machine as a
+ * coloured edge taken from the Library rather than from a palette invented here.
+ *
+ * NOT A BRANCH, because a branch is only true at the moment it is read: on a card it is
+ * read as current and goes stale at the next `git switch`, which is how somebody resumes
+ * against the wrong tree. It is read live when the detail panel opens and kept nowhere.
+ *
+ * NOT A TURN COUNT, which is a refusal rather than a gap: it needs the whole transcript,
+ * and `"type":"user"` is not a turn — on a real 1.1 GB transcript it appears 14 091
+ * times, because a tool result carries the same type. There is no cheap honest count.
  */
 test('desktop mock: a card says which conversation it is, beyond its name', async ({ page }) => {
   const errs = watchErrors(page);
@@ -555,20 +603,23 @@ test('desktop mock: a card says which conversation it is, beyond its name', asyn
 
   const card = page.locator('.acard', { hasText: 'Fix the flaky migration test' });
   await expect(card.locator('.acard-proj')).toHaveText('acme/api');
-  await expect(card.locator('.acard-br')).toHaveText('fix/flaky-migration');
   await expect(card.locator('.acard-cwd')).toHaveText('/srv/acme/api');
   await expect(card.locator('.acard-f')).toContainText('web-01');
-  await expect(card.locator('.acard-f')).toContainText('42 turns');
   await expect(card.locator('.acard-f')).toContainText('12 min ago');
 
-  // Two conversations on ONE project are told apart by the branch, which is the
-  // whole reason it is on the card.
+  // THE TWO REFUSALS, held as assertions so the card cannot quietly grow them back.
+  await expect(card.locator('.acard-br')).toHaveCount(0);
+  await expect(card.locator('.acard-f')).not.toContainText(/turns?/i);
+
+  // Two conversations on ONE project are still told apart, and on the card it is the ASK
+  // that does it — the thing actually typed, which is also the thing nobody can
+  // reconstruct. The branch answers the same question in the panel, where it is true.
   const sameProject = page.locator('.acard', { hasText: 'acme/api' });
   expect(await sameProject.count()).toBeGreaterThan(1);
-  const branches = await sameProject
-    .locator('.acard-br')
+  const asks = await sameProject
+    .locator('.acard-ask')
     .evaluateAll((els) => els.map((e) => e.textContent));
-  expect(new Set(branches).size).toBe(branches.length);
+  expect(new Set(asks).size).toBe(asks.length);
 
   // The edge is the colour the Library already holds for that machine's collection,
   // so the manager reads a decision the user made rather than making its own. Asserted
@@ -576,14 +627,12 @@ test('desktop mock: a card says which conversation it is, beyond its name', asyn
   // at computed-value time — a single card's edge looks like a real colour even when
   // every card is painted the same fallback, and that assertion passed a mutation.
   await page.evaluate(() => agentPickScope('@all'));
-  const edges = await page
-    .locator('.acard')
-    .evaluateAll((els) =>
-      els.map((e) => ({
-        machine: (e.querySelector('.acard-f')?.textContent || '').split(' · ')[0],
-        edge: getComputedStyle(e).getPropertyValue('--edge').trim(),
-      })),
-    );
+  const edges = await page.locator('.acard').evaluateAll((els) =>
+    els.map((e) => ({
+      machine: (e.querySelector('.acard-f')?.textContent || '').split(' · ')[0],
+      edge: getComputedStyle(e).getPropertyValue('--edge').trim(),
+    })),
+  );
   const byMachine = new Map(edges.map((e) => [e.machine, e.edge]));
   expect(byMachine.size, 'the fleet spans several machines').toBeGreaterThan(2);
   expect(
@@ -775,10 +824,7 @@ test('desktop mock: a handle that is not durable says so', async ({ page }) => {
   await expect(page.locator('.toast')).toContainText(/resumes by position/);
 
   // Claude's offers the id plainly, because for that tool the promise holds.
-  const claude = page
-    .locator('.aband', { hasText: 'Claude Code' })
-    .locator('.acard')
-    .first();
+  const claude = page.locator('.aband', { hasText: 'Claude Code' }).locator('.acard').first();
   await claude.getByRole('button', { name: 'More' }).click();
   await expect(page.locator('.menu .row', { hasText: /Copy conversation id/ })).toHaveCount(1);
   await expect(page.locator('.menu .row', { hasText: /Copy the index/ })).toHaveCount(0);
@@ -974,9 +1020,9 @@ test('desktop mock: another agent CLI can be registered, and is looked for', asy
 
   // An added adapter is marked as added, where the provenance of the built-in six is.
   await page.evaluate(() => dlgAgentTools());
-  await expect(
-    page.locator('.backdrop .mrow', { hasText: 'Aider' }).locator('.afrom'),
-  ).toHaveText('added here');
+  await expect(page.locator('.backdrop .mrow', { hasText: 'Aider' }).locator('.afrom')).toHaveText(
+    'added here',
+  );
   await page.locator('.backdrop [data-ok]').click();
 
   // Switching an adapter off stops Rite looking for it at all.
@@ -2019,9 +2065,9 @@ test('desktop mock: the cheatsheet lists every command with the chord that fires
   // answer. Asserted on an exact chord rather than on "a kbd exists", because a wrong
   // chord in a cheatsheet is worse than no cheatsheet.
   await expect(rows.filter({ hasText: 'Close pane' }).locator('kbd')).toHaveText('Ctrl+W');
-  await expect(
-    rows.filter({ hasText: 'Split pane horizontally' }).locator('kbd'),
-  ).toHaveText('Ctrl+Shift+H');
+  await expect(rows.filter({ hasText: 'Split pane horizontally' }).locator('kbd')).toHaveText(
+    'Ctrl+Shift+H',
+  );
 
   // And it says where to change them, so the reader is also the way to the editor.
   await expect(page.locator('.modal')).toContainText(/Settings/i);

@@ -348,3 +348,16 @@ body.near-left .side-rail button,.side-rail button:focus{opacity:1}
   background:rgba(229,181,103,.14);color:var(--amber);font-size:12px;font-weight:600;
   cursor:pointer}
 .bcast-badge:hover{background:rgba(229,181,103,.24)}
+
+/* ── A LABEL LIST, which is what the comma-separated box became ───────────────────
+   Each row is the word, what it means and the colour somebody chose for it — and a
+   word nobody coloured says so rather than showing an empty cell, because "from the
+   word" is a real answer and a blank is not. The toolbar carries the filter, the
+   count and ONE New button: a second one in the list was two controls for one action. */
+.lbltools{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+.lbllist{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;
+  overflow:hidden}
+.lblrow{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--border)}
+.lblrow:last-child{border-bottom:0}
+.lbldesc{flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lblpath{font-size:11px;color:var(--muted);flex:none}

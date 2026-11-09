@@ -286,3 +286,28 @@
   .split-more{padding:2px 0 !important;width:14px;margin-left:-4px;opacity:.7}
   .split-more:hover{opacity:1}
   .split-more .icon{width:13px;height:13px}
+
+  /* ── LABELS, and the picker that puts them on ────────────────────────────────
+     A name answers "which one is this", a label answers "which group is this
+     in", and there can be several — so a chip rather than a heading, and the
+     colour comes from the word's own text so one word looks the same wherever
+     it appears. */
+  .alabels{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .alabel{display:inline-flex;align-items:center;border:1px solid var(--lc,var(--border));
+    color:var(--lc,var(--muted));border-radius:999px;padding:0 6px;font-size:10.5px;
+    line-height:1.6;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* THE LIST IS THE INTERFACE. Every word on offer is a row, the rows that are
+     ON carry a tick, and a row toggles — so "what is on this" and "what else
+     could be" are one list read once rather than two groups the reader has to
+     diff. The box above filters; creating is the named button below, never a
+     side effect of typing. */
+  .apick{display:flex;flex-direction:column;gap:6px}
+  .apick-list{display:flex;flex-direction:column;border:1px solid var(--border);
+    border-radius:8px;max-height:168px;overflow-y:auto}
+  .arow-pick{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;
+    background:none;border:0;cursor:pointer;text-align:left;color:inherit;font:inherit}
+  .arow-pick:hover{background:var(--card2)}
+  .arow-pick[hidden]{display:none}
+  .atick{width:11px;flex:none;font-size:11px;color:var(--fg)}
+  .apick-new{align-self:flex-start}

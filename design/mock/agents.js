@@ -88,27 +88,48 @@ const RECENT = `2>/dev/null | head -n ${AGENT_LIST_CAP}`;
 const AGENT_TOOLS = [
   { id: 'claude', name: 'Claude Code', bin: 'claude', on: true, idKind: 'uuid',
     from: 'measured', seen: '2026-11-03',
-    list: `ls -1t ~/.claude/projects/*/*.jsonl ${RECENT}`, resumeFmt: 'claude --resume {id}' },
+    list: `ls -1t ~/.claude/projects/*/*.jsonl ${RECENT}`, resumeFmt: 'claude --resume {id}',
+    // `removes` AND `home` are a property of the LISTING, not a feature per vendor: a
+    // listing that names a file can have that file removed, one that does not cannot.
+    // Four of the seven can — claude, codex, grok and antigravity; the other three show
+    // no Delete at all, because a button that cannot act is worse than no button.
+    removes: true, home: '~/.claude/projects/rite' },
   // No machine-readable listing: `codex resume` with no argument opens an interactive
   // picker, which an adapter cannot read. So the list is the rollout files, and the
   // resume takes the uuid the picker would have shown — the tail of the file name.
   { id: 'codex', name: 'Codex CLI', bin: 'codex', on: true, idKind: 'uuid',
     from: 'measured', seen: '2026-11-03',
-    list: `ls -1t ~/.codex/sessions/*/*/*/*.jsonl ${RECENT}`, resumeFmt: 'codex resume {id}' },
+    list: `ls -1t ~/.codex/sessions/*/*/*/*.jsonl ${RECENT}`, resumeFmt: 'codex resume {id}',
+    removes: true, home: '~/.codex/sessions/2026/11/09' },
   // Scoped to a directory, not to a machine, and that is the vendor's doing.
   { id: 'gemini', name: 'Gemini CLI', bin: 'gemini', on: true, idKind: 'index',
     from: 'measured', seen: '2026-11-03, flags only',
+    // No file in the listing — it is the tool's own output — so nothing to remove.
     list: 'gemini --list-sessions 2>&1', resumeFmt: 'gemini --resume {id}' },
   // The history file, not the folder: it skips `prompt_history.jsonl` and
   // `session_search.sqlite`, and it orders by when the conversation was last written.
   { id: 'grok', name: 'Grok', bin: 'grok', on: true, idKind: 'uuid',
     from: 'measured', seen: '2026-11-03',
     list: `ls -1t ~/.grok/sessions/*/*/chat_history.jsonl ${RECENT}`,
-    resumeFmt: 'grok --resume {id}' },
+    resumeFmt: 'grok --resume {id}', removes: true, home: '~/.grok/sessions/rite' },
   // Sessions in SQLite rather than files — which is why the adapter is two COMMANDS
   // and not two paths. A contract that assumed `ls` would already have broken here.
+  // Google's OTHER one, and it is a folder of databases: one `<uuid>.db` per conversation,
+  // which is why the listing is `ls` and no file is opened. `--conversation <id>` resumes
+  // one — a durable id, unlike `gemini --resume` from the same vendor, which takes a
+  // position. No `ask` on a card here: a conversation is a SQLite file and reading it
+  // would need `sqlite3` on the host and a schema nobody has measured.
+  { id: 'antigravity', name: 'Antigravity', bin: 'agy', on: true, idKind: 'uuid',
+    from: 'measured', seen: '2026-11-03',
+    list: `ls -1t ~/.gemini/antigravity-cli/conversations/*.db ${RECENT}`,
+    resumeFmt: 'agy --conversation {id}',
+    // `conversation_summaries.db` sits beside them and is NOT touched: it is the vendor's
+    // index, rebuilt by the vendor, and editing someone else's SQLite from a delete
+    // button is a larger claim than the button makes.
+    removes: true, home: '~/.gemini/antigravity-cli/conversations' },
   { id: 'hermes', name: 'Hermes', bin: 'hermes', on: true, idKind: 'title',
     from: 'vendor', seen: 'docs, not verified here',
+    // A SQLite query names no file either, so no Delete.
     list: `sqlite3 ~/.hermes/state.db 'select id,title from sessions order by rowid desc' ${RECENT}`,
     resumeFmt: 'hermes --resume {id}' },
   { id: 'opencode', name: 'opencode', bin: 'opencode', on: true, idKind: 'uuid',
@@ -196,9 +217,19 @@ function agentToggleTool(id, el) {
    read, an adapter wrong for the installed build, and a host that answers nothing.
 
    `branch` is on every session because it is what separates two conversations about
-   one project, and `ask` is the opening message — the thing actually typed, which is
-   what a conversation IS to the person looking for it. `last` is the agent's most
-   recent line; it is in the data for the preview panel, and off the card on purpose. */
+   one project — but it is OFF THE CARD and only in the panel, which the code settled by
+   measuring: a branch is true at the moment it is read, so one on a card is read as
+   current and goes stale at the next `git switch`. The panel reads it when it opens and
+   keeps none of it. `ask` is the opening message — the thing actually typed, which is
+   what a conversation IS to the person looking for it. `last` is the agent's most recent
+   line; it is in the data for the preview panel, and off the card on purpose.
+
+   A TURN COUNT IS NOT HERE, AND THAT IS A REFUSAL RATHER THAN A GAP. The card and the
+   panel both carried one until the code tried to produce it: it needs the whole
+   transcript, and `"type":"user"` is not a turn — on a real 1.1 GB transcript it appears
+   14 091 times, because a tool result carries the same type. There is no cheap honest
+   count to show, so nothing is shown. `seen` stays, because a listing already carries
+   it. */
 /* RECENCY IS THE ONLY TIME SIGNAL, and it is the one that is always true.
 
    A session's folder gives three of the five facts a card carries, with one listing:
@@ -246,6 +277,10 @@ function agentToggleTool(id, el) {
 
    `seen` is the transcript's modification time, which is a fact the listing already
    carries — "last written", never "last used". */
+// `turns` is still taken and still carried, and NOTHING RENDERS IT — see the refusal
+// above. The fixtures were measured against real transcripts, so the field stays rather
+// than twenty call sites being rewritten to lose a measurement; what changed is that no
+// screen claims it.
 const S = (id, project, branch, cwd, ask, seen, turns, last) =>
   ({ id, project, branch, cwd, ask, title: ask, last: seen, turns, tail: last });
 
@@ -281,6 +316,7 @@ const AGENT_PROBES = {
         error: "opencode: unknown flag --format (the adapter's listing predates this build)" },
       { id: 'codex', installed: false },
       { id: 'grok', installed: false },
+      { id: 'antigravity', installed: false },
       { id: 'hermes', installed: false },
     ],
   },
@@ -311,6 +347,7 @@ const AGENT_PROBES = {
       },
       { id: 'gemini', installed: false },
       { id: 'grok', installed: false },
+      { id: 'antigravity', installed: false },
       { id: 'hermes', installed: false },
       { id: 'opencode', installed: false },
     ],
@@ -342,6 +379,7 @@ const AGENT_PROBES = {
       },
       { id: 'codex', installed: false },
       { id: 'grok', installed: false },
+      { id: 'antigravity', installed: false },
       { id: 'hermes', installed: false },
       { id: 'opencode', installed: false },
     ],
@@ -357,7 +395,7 @@ const AGENT_PROBES = {
   // Answers the probe and has nothing — different from never having been asked.
   'lb-01': {
     at: '5 min ago',
-    tools: ['claude', 'codex', 'gemini', 'grok', 'hermes', 'opencode'].map((id) => ({ id, installed: false })),
+    tools: ['claude', 'codex', 'gemini', 'grok', 'antigravity', 'hermes', 'opencode'].map((id) => ({ id, installed: false })),
   },
 };
 
@@ -419,6 +457,7 @@ const AGENT_LOCAL = {
           'Runs in the container; the threshold is named once.'),
       ],
     },
+    { id: 'antigravity', installed: false },
     { id: 'hermes', installed: false },
     { id: 'opencode', installed: false },
   ],
@@ -799,10 +838,47 @@ function agentRowMenu(scopeId, toolId, sessionId, e) {
     { icon: ICON.play, label: 'Resume here', onclick: () => resumeAgent(scopeId, toolId, sessionId) },
     { icon: EXICON.split, label: 'Resume in a new window', onclick: () => { resumeAgent(scopeId, toolId, sessionId); openInNewWindow(tool.name); } },
     { icon: EXICON.shield, label: 'What is in effect — skills, commands, hooks', onclick: () => dlgAgentContext(scopeId, toolId, sessionId) },
-    { icon: M.edit, label: 'Name and colour…', onclick: () => dlgAgentMark(scopeId, toolId, sessionId) },
+    { icon: M.edit, label: 'Modify — name, colour, labels…', onclick: () => dlgAgentMark(scopeId, toolId, sessionId) },
     { icon: IC_COPY, label: durable ? 'Copy conversation id' : 'Copy the index — it moves', onclick: () => agentCopyId(sessionId, tool) },
     { icon: ICON.term, label: 'Copy the resume command', onclick: () => agentCopyCmd(tool, sessionId) },
+    // REMOVE IS LAST AND APART, and only for a tool whose listing names a file: three of
+    // the seven name none, and a button that cannot act is worse than no button. What it
+    // removes is the vendor's own transcript on the machine it was read on, which is why
+    // the confirmation names the file rather than asking about "this conversation".
+    ...(tool.removes
+      ? [{ icon: M.trash, danger: true, label: 'Delete this conversation…',
+           onclick: () => dlgAgentDelete(scopeId, toolId, sessionId) }]
+      : []),
   ]);
+}
+
+/* A removal cannot be taken back, so the question names the file. "Are you sure" about an
+   unnamed thing is not a question anybody can answer — and the file is the fact that
+   settles it: one file, on one machine. */
+function dlgAgentDelete(scopeId, toolId, sessionId) {
+  const sc = agentScope(scopeId);
+  const tool = agentTool(toolId);
+  const probe = agentProbeOf(scopeId);
+  const pt = probe && probe.tools.find((t) => t.id === toolId);
+  const s = pt && (pt.sessions || []).find((x) => x.id === sessionId);
+  if (!s) return;
+  const file = `${tool.home}/${s.id}.jsonl`;
+  showModal({
+    title: 'Delete this conversation', subtitle: `${tool.name} · on ${sc.name}`, danger: true,
+    confirm: 'Delete', body: `<p style="font-size:13px;line-height:1.6;margin:0">This removes
+      <span class="mono">${esc(file)}</span> on <b>${esc(sc.name)}</b>. The conversation is the
+      file, so there is nothing left to resume and nothing to undo.</p>
+      <p class="muted" style="font-size:12px;margin:8px 0 0;line-height:1.55">The name and labels
+      Rite kept for it go too — a mark keyed to a conversation that no longer exists is a dead
+      entry, and this is the one moment Rite knows for certain that one has rotted.</p>`,
+    onConfirm: () => {
+      pt.sessions = (pt.sessions || []).filter((x) => x.id !== sessionId);
+      delete AGENT_MARKS[agentMarkKey(scopeId, toolId, sessionId)];
+      if (STATE.agentPick === sessionId) STATE.agentPick = null;
+      renderMain();
+      toast(`Deleted — <span class="mono">${esc(file)}</span>`);
+    },
+  });
 }
 function agentCopyId(id, tool) {
   toast(tool && tool.idKind === 'index'
@@ -927,20 +1003,22 @@ function agentCardHTML(r, i) {
       title="${esc(s.ask)} — double-click to resume">
     <div class="acard-h">
       <span class="acard-proj">${esc(s.project)}</span>
-      <span class="acard-br mono" title="git branch">${esc(s.branch)}</span>
       <span style="flex:1"></span>
       <button class="acard-more" title="More"
         onclick="event.stopPropagation();agentRowMenu('${scope.id}','${tool.id}','${s.id}',event)">${EXICON.more}</button>
     </div>
     ${(() => {
       const mk = agentMark(scope.id, tool.id, s.id);
-      return mk.label
+      const chips = (mk.labels || []).length
+        ? `<div class="alabels">${mk.labels.map(agentLabelChip).join('')}</div>`
+        : '';
+      return (mk.label
         ? `<div class="acard-label"${mk.color ? ` style="--mark:${mk.color}"` : ''}>${esc(mk.label)}</div>
            <div class="acard-ask under">${esc(s.ask)}</div>`
-        : `<div class="acard-ask">${esc(s.ask)}</div>`;
+        : `<div class="acard-ask">${esc(s.ask)}</div>`) + chips;
     })()}
     <div class="acard-cwd mono" title="${esc(s.cwd)}" dir="rtl">${esc(s.cwd)}</div>
-    <div class="acard-f mono">${esc(scope.name)} · ${s.turns} turns · ${esc(s.last)}</div>
+    <div class="acard-f mono">${esc(scope.name)} · ${esc(s.last)}</div>
   </div>`;
 }
 /* ---- a conversation, as the person filing it sees it ----
@@ -969,6 +1047,26 @@ const AGENT_MARKS = {};
 const agentMarkKey = (scopeId, toolId, id) =>
   `${(agentScopes().find((s) => s.id === scopeId) || {}).ref || scopeId}|${toolId}|${id}`;
 const agentMark = (scopeId, toolId, id) => AGENT_MARKS[agentMarkKey(scopeId, toolId, id)] || {};
+
+/* LABELS ON A CONVERSATION (ADR 0016's addendum). A name answers "which one is this",
+   a label answers "which group is this in", and there can be several — so they are a
+   list on the same mark, in the same document, personal to the person filing them.
+
+   THE VOCABULARY IS WHAT IS ALREADY IN USE, plus whatever the instance declared. Nothing
+   has to be set up before a label can be put on something, and a long word is clicked
+   rather than retyped the second time. */
+const agentLabels = (scopeId, toolId, id) => agentMark(scopeId, toolId, id).labels || [];
+const agentVocabulary = () => {
+  const seen = new Map();
+  for (const m of Object.values(AGENT_MARKS)) {
+    for (const w of m.labels || []) if (!seen.has(w.toLowerCase())) seen.set(w.toLowerCase(), w);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
+};
+const agentLabelChip = (w) =>
+  `<span class="alabel" style="--lc:${AGENT_COLORS[
+    [...w.toLowerCase()].reduce((h, c) => (h * 33 + c.charCodeAt(0)) % 997, 5381) % AGENT_COLORS.length
+  ]}">${esc(w)}</span>`;
 /* "This machine" has no record in any library, so its marks have nowhere to hang and no
    key to be sealed with. They ride on the device, in the clear, which is what the rest
    of the per-machine state already does on the reader's own disk. */
@@ -988,8 +1086,25 @@ function dlgAgentMark(scopeId, toolId, id) {
   const m = agentMark(scopeId, toolId, id);
   const sw = (c) => `<button type="button" class="sw ${m.color === c ? 'sel' : ''}" style="background:${c}"
     onclick="this.parentNode.querySelectorAll('.sw').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');this.parentNode.dataset.c='${c}'"></button>`;
+  // THE LIST IS THE INTERFACE, not a comma-separated box. Every word on offer is a row,
+  // the rows that are ON are marked, and a row toggles — so "what is on this" and "what
+  // else could be" are one list read once. The box above it filters and only creates when
+  // asked: a text field could not say which words were already on the conversation, had
+  // no way to take one off, and made a long word something to retype. That is the bill
+  // the first shape came with, and it arrived as a question from the person who asked for
+  // the feature: "how do I add a label to a conversation?"
+  const on = new Set(agentLabels(scopeId, toolId, id).map((w) => w.toLowerCase()));
+  const rows = [...new Set([...agentVocabulary(), ...agentLabels(scopeId, toolId, id)])]
+    .sort((a, b) => a.localeCompare(b))
+    .map((w) => `<button type="button" class="arow-pick ${on.has(w.toLowerCase()) ? 'on' : ''}"
+        data-w="${esc(w)}" onclick="agentPickLabel(this)">
+        <span class="atick">${on.has(w.toLowerCase()) ? '✓' : ''}</span>${agentLabelChip(w)}</button>`)
+    .join('');
+
   showModal({
-    title: 'Name this conversation', subtitle: 'Kept by Rite — the tool’s own files are not touched',
+    // NOT "Rename". It sets a name, a colour AND the labels, so naming it after one of
+    // the three sent a reader looking for the other two somewhere else.
+    title: 'Modify this conversation', subtitle: 'Kept by Rite — the tool’s own files are not touched',
     confirm: 'Save',
     body: `<label class="field"><span>Name</span><input class="inp" id="am-label" value="${esc(m.label || '')}"
         placeholder="The ask stays on the card underneath"></label>
@@ -997,19 +1112,70 @@ function dlgAgentMark(scopeId, toolId, id) {
         <button type="button" class="sw none ${!m.color ? 'sel' : ''}" title="No colour"
           onclick="this.parentNode.querySelectorAll('.sw').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');this.parentNode.dataset.c=''"></button>
         ${AGENT_COLORS.map(sw).join('')}</div></label>
+      <label class="field"><span>Labels</span>
+        <div class="apick" data-on="${esc(agentLabels(scopeId, toolId, id).join(','))}">
+          <input class="inp inp-sm" id="am-words" placeholder="Search or add a label"
+            oninput="agentFilterLabels(this)">
+          <div class="apick-list">${rows || '<p class="muted" style="font-size:12px;margin:6px 2px">No label yet — type one and add it.</p>'}</div>
+          <button type="button" class="btn btn-ghost btn-sm apick-new" hidden
+            onclick="agentAddLabel(this)"></button>
+        </div></label>
       <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55">Kept in
       <b>${AGENT_MARK_HOME[agentMarkHomeOf(scopeId)]}</b>, where this machine’s own record lives. Personal,
       not shared.</p>`,
     onConfirm: (mo) => {
       const label = (mo.querySelector('#am-label').value || '').trim();
       const color = mo.querySelector('.swatches').dataset.c || '';
+      const labels = (mo.querySelector('.apick').dataset.on || '').split(',').filter(Boolean);
       const key = agentMarkKey(scopeId, toolId, id);
-      if (!label && !color) delete AGENT_MARKS[key];
-      else AGENT_MARKS[key] = { label, color };
+      if (!label && !color && !labels.length) delete AGENT_MARKS[key];
+      else AGENT_MARKS[key] = { label, color, labels };
       renderMain();
-      toast(label ? `Named <span class="accent">${esc(label)}</span>` : 'Name cleared');
+      toast(label ? `Named <span class="accent">${esc(label)}</span>` : 'Saved');
     },
   });
+}
+
+/* The picker's three gestures. A row toggles, the box filters, and creating is a NAMED
+   action under the list rather than a side effect of typing — which is how `api` and
+   `api,` became two words in the shape this replaced. */
+function agentPickLabel(btn) {
+  const box = btn.closest('.apick');
+  const word = btn.dataset.w;
+  const on = new Set((box.dataset.on || '').split(',').filter(Boolean));
+  const folded = [...on].find((w) => w.toLowerCase() === word.toLowerCase());
+  if (folded) on.delete(folded);
+  else on.add(word);
+  box.dataset.on = [...on].join(',');
+  btn.classList.toggle('on', !folded);
+  btn.querySelector('.atick').textContent = folded ? '' : '✓';
+}
+function agentFilterLabels(input) {
+  const box = input.closest('.apick');
+  const q = (input.value || '').trim().toLowerCase();
+  let seen = false;
+  box.querySelectorAll('.arow-pick').forEach((r) => {
+    const match = !q || r.dataset.w.toLowerCase().includes(q);
+    r.hidden = !match;
+    if (r.dataset.w.toLowerCase() === q) seen = true;
+  });
+  const add = box.querySelector('.apick-new');
+  add.hidden = !q || seen;
+  add.textContent = `+ Add “${input.value.trim()}”`;
+  add.dataset.w = input.value.trim();
+}
+function agentAddLabel(btn) {
+  const box = btn.closest('.apick');
+  const word = btn.dataset.w;
+  const on = (box.dataset.on || '').split(',').filter(Boolean);
+  if (!on.some((w) => w.toLowerCase() === word.toLowerCase())) on.push(word);
+  box.dataset.on = on.join(',');
+  const list = box.querySelector('.apick-list');
+  list.insertAdjacentHTML('afterbegin',
+    `<button type="button" class="arow-pick on" data-w="${esc(word)}" onclick="agentPickLabel(this)">
+      <span class="atick">✓</span>${agentLabelChip(word)}</button>`);
+  box.querySelector('input').value = '';
+  agentFilterLabels(box.querySelector('input'));
 }
 
 function agentPick(id) {
@@ -1090,8 +1256,8 @@ function agentPanelHTML(r) {
         <dl class="afacts">
           <dt>Runs on</dt><dd class="mono">${esc(scope.name)} · ${esc(scope.sub)}</dd>
           <dt>Directory</dt><dd class="mono">${esc(s.cwd)}</dd>
-          <dt>Branch</dt><dd class="mono">${esc(s.branch)}</dd>
-          <dt>Depth</dt><dd>${s.turns} turns · last active ${esc(s.last)}</dd>
+          <dt>Branch</dt><dd class="mono">${esc(s.branch)} <span class="aidkind">read now</span></dd>
+          <dt>Last written</dt><dd>${esc(s.last)}</dd>
           <dt>${tool.idKind === 'index' ? 'Index' : 'Conversation id'}</dt><dd class="mono">${esc(s.id)}${
             tool.idKind === 'index'
               ? ' <span class="aidkind warn">moves as the list changes</span>'
@@ -1302,7 +1468,7 @@ function agentPaneHTML(p, i) {
     </div>
     <div class="term-body scroll">
       <div class="ln di"># ${agentResume(tool, session.id)}</div>
-      <div class="ln di">${tool.name} · resumed · ${session.turns} turns · ${session.cwd}</div>
+      <div class="ln di">${tool.name} · resumed · ${session.cwd}</div>
       <div class="ln"><span class="pr">▸</span> ${session.title}</div>
       <div class="ln di">  Reading src/queue/worker.ts…</div>
       <div class="ln di">  Edited 2 files, ran the suite — 41 passed, 1 failed.</div>

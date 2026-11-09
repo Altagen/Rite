@@ -1145,9 +1145,38 @@ const PREFS=[
      Inheritance runs ONE WAY: these words are offered inside every collection, and a
      collection's own never travel up. That is why a sensitive word belongs in the
      collection and not here. */
-  { id:'labels', label:'Labels', body:()=>
-      `<h4>Words for every collection</h4><p class="lede">Declared once, offered inside every collection. A collection can declare words of its own; those stay in it.${STATE.ctx.type==='server'?' <span style=\"color:var(--amber)\">An administrator writes this list</span>; every member reads it.':' This vault keeps the list sealed with its own key.'}</p>`
-    + prefRow('Words','Comma-separated. The colour of a word comes from the word itself, so it looks the same everywhere.',`<input class="inp mono" style="width:260px" value="pci, prod, eu-west">`) },
+  /* A LIST, NOT A COMMA-SEPARATED BOX, and no lede above it. The box could not show a
+     word's colour or say what it meant, and the lede repeated three things the screen
+     already named — a filter, a New button and the rows themselves. Each row is the word,
+     what it means, and the colour somebody chose for it; a word nobody coloured keeps the
+     one its own text gives it, which is why the swatch is a choice and not a requirement.
+     The count says how much room is left before it bites. */
+  { id:'labels', label:'Labels', body:()=>{
+      const words = [
+        ['pci','Card data in scope','#f7768e'],
+        ['prod','Serving real traffic','#e5b567'],
+        ['eu-west','Frankfurt and Dublin',''],
+        ['client-acme','Under the ACME contract','#7c9cf5'],
+      ];
+      const row = ([w,d,c])=>`<div class="lblrow">
+        <span class="alabel" style="--lc:${c||'var(--muted)'}">${w}</span>
+        <span class="lbldesc">${d}</span>
+        <span class="lblpath mono">${c||'from the word'}</span>
+        <button class="btn btn-ghost btn-sm">Edit</button></div>`;
+      return `<h4>Labels</h4>
+        <div class="lbltools">
+          <input class="inp inp-sm" style="flex:1;max-width:280px" placeholder="Search label or description">
+          <span style="flex:1"></span>
+          <span class="muted" style="font-size:11.5px">${words.length} labels · ${200-words.length} left</span>
+          <button class="btn btn-primary btn-sm">New label</button>
+        </div>
+        <div class="lbllist">${words.map(row).join('')}</div>
+        <p class="muted" style="font-size:12px;margin:10px 0 0;line-height:1.55">${
+          STATE.ctx.type==='server'
+            ? 'On a server this list is the <b>instance\'s</b>, so an administrator writes it in the console and this section is not here at all — the surface follows the owner.'
+            : 'Offered inside every collection. A collection can declare words of its own, and those stay in it: inheritance runs one way, which is why a sensitive word belongs in the collection. This vault keeps the list sealed with its own key.'
+        }</p>`;
+    } },
 
   { id:'security', label:'Security', body:()=>
       `<h4>Security</h4><p class="lede">Applies on change.</p>`
