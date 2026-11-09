@@ -19,10 +19,12 @@
  * russh's client API does not let us construct — and a test that looked like it covered
  * that without covering it would be worse than this file, because it would be believed.
  *
- * The behavioural coverage of those bumps is the 14 transport tests in
+ * The behavioural coverage of those bumps is the 19 transport tests in
  * `ssh_transport.rs`, which drive the real client against an in-process russh server
  * across password, RSA key, keyboard-interactive, public-key + second factor, two jump
- * hops, local port forwarding, and host-key rejection.
+ * hops, local port forwarding, and host-key rejection — and, since the 0.65 bump, a
+ * command that prints nothing, which is how the exec reader's lost exit status was
+ * found.
  *
  * Run: node e2e/advisory-floor-check.mjs
  */
@@ -88,10 +90,30 @@ const FLOORS = [
   ],
   [
     'russh',
-    '0.64.1',
-    'GHSA-4wc5-f2rc-q74m (unbounded allocation in the agent-protocol server) and ' +
-      'GHSA-j7h2-66j4-ghjf (a server accepting a public-key auth whose signature does ' +
-      'not hold) (#313)',
+    '0.65.1',
+    'Six advisories across two bumps. 0.64.1 answered GHSA-4wc5-f2rc-q74m (unbounded ' +
+      'allocation in the agent-protocol server) and GHSA-j7h2-66j4-ghjf (a server ' +
+      'accepting a public-key auth whose signature does not hold) (#313). 0.65 answered ' +
+      'four more: GHSA-vp5q-ff62-jwqv, the high one — an agent server never calling ' +
+      '`Agent::confirm`, so a key added with `ssh-add -c` signs without asking; ' +
+      'GHSA-4p9f-7p9m-5vfg, unbounded allocation in the CLIENT via EXT_INFO packets, ' +
+      'which is the one that reaches shipped code on every connection; ' +
+      'GHSA-fw5c-8223-6h42, a peer declaring a zero maximum packet size stalling ' +
+      'channel writes for good; and GHSA-9wfm-jcj8-jfv9, unbounded allocation from ' +
+      'repeated SSH_AGENT_CONSTRAIN_CONFIRM. The floor is 0.65.1 rather than the 0.65 ' +
+      'the advisories name because that is the version in the lock. ' +
+      'THE BREAK IS THE FIX MADE INTO A TYPE: `Handler::auth_publickey` takes a ' +
+      '`VerifiedPublicKey` where it took a `&PublicKey`, so a handler can no longer ' +
+      'accept an unverified key by forgetting to ask',
+  ],
+  [
+    'pageant',
+    '0.2.5',
+    'GHSA-662x-8wvj-2276 — unbounded frame buffering on a peer-controlled 4-byte ' +
+      'length prefix. TRANSITIVE, under russh, and it DID NOT ARRIVE WITH IT: russh ' +
+      '0.65.1 still accepts 0.2.4, so the parent was bumped and the advisory stayed ' +
+      'until the lock was moved for this crate on purpose. That is the whole reason it ' +
+      'has a line of its own here rather than being covered by russh\'s',
   ],
 ];
 
