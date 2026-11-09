@@ -904,7 +904,6 @@ export function AgentManager({
             onResume={() => resume(open1)}
             onRename={() => setRenaming(open1)}
             onDelete={canRemove(open1) ? () => void remove(open1) : undefined}
-            onNew={() => setStarting({ tool: open1.adapter })}
             readFacts={() => readFacts(open1)}
             declared={declared}
             deleting={removing === `${open1.on}:${open1.adapter.id}:${open1.conv.id}`}
@@ -1004,7 +1003,6 @@ function Detail({
   onResume,
   onRename,
   onDelete,
-  onNew,
   readFacts,
   declared,
   deleting,
@@ -1019,7 +1017,6 @@ function Detail({
   onRename: () => void;
   /** Absent when this tool's listing names no file to remove. */
   onDelete?: () => void;
-  onNew: () => void;
   /** Asks the machine what has changed. Resolves null when there is nothing to ask. */
   readFacts: () => Promise<AgentFacts | null>;
   deleting: boolean;
@@ -1255,7 +1252,7 @@ function Detail({
           <IconPlay className="h-3.5 w-3.5" />
           {t('agent.resume')}
         </button>
-        {act('agent.rename', IconEdit, onRename, 'agent-detail-rename')}
+        {act('agent.modify', IconEdit, onRename, 'agent-detail-rename')}
         {act(
           'agent.detailCopyId',
           IconCopy,
@@ -1268,7 +1265,6 @@ function Detail({
           () => void navigator.clipboard?.writeText(line),
           'agent-detail-copy-cmd',
         )}
-        {act('agent.new', IconPlus, onNew, 'agent-detail-new')}
         <span className="flex-1" />
         {/* Absent rather than disabled: three of the seven listings name no file, and a
             greyed button invites the question "why not" where there is nothing to do
@@ -1444,7 +1440,7 @@ function Card({
             e.stopPropagation();
             onRename();
           }}
-          title={t('agent.rename')}
+          title={t('agent.modify')}
           className="rounded p-0.5 text-muted-foreground hover:bg-muted"
           data-testid={`agent-rename-${conv.id}`}
         >
@@ -1520,7 +1516,7 @@ function RenameDialog({
         className="w-full max-w-sm rounded-md border border-border bg-card p-4"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="text-sm font-medium">{t('agent.rename')}</div>
+        <div className="text-sm font-medium">{t('agent.modify')}</div>
         <div className="mt-1 truncate text-xs text-muted-foreground" title={what}>
           {what}
         </div>
@@ -2006,7 +2002,7 @@ function RailRow({
           e.stopPropagation();
           onRename();
         }}
-        title={t('agent.rename')}
+        title={t('agent.modify')}
         className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted group-hover:opacity-100"
         data-testid={`agent-rename-${conv.id}`}
       >

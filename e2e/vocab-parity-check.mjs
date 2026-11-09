@@ -126,13 +126,32 @@ const scanned = [];
   }
 })('packages');
 
+/**
+ * Does this file WRITE a word's fields down, as opposed to reading one?
+ *
+ * The first version asked whether the file said `description` anywhere, and that flagged
+ * the picker — which reads `v.description` to search on it and to show it, and rebuilds
+ * nothing. Reading a field is not the defect. The defect is a shape assembled field by
+ * field, where one field can be left out.
+ *
+ * So the rule is `description` NOT reached through a dot, which a declaration
+ * (`description?: string`, `pub description:`), an object key (`description:`) and a Rust
+ * struct shorthand (`description,`) all have in common and `v.description` does not.
+ * Comment lines go first — this very comment would otherwise trip it.
+ */
+const writesTheShape = (text) =>
+  text
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\*|\/\*|#)/.test(line))
+    .some((line) => /(^|[^.\w])description\b/.test(line));
+
 for (const file of scanned) {
   if (listed.has(file)) continue;
   const text = read(file);
   if (!/\bVocabWord\b|\bVocabEntry\b/.test(text)) continue;
-  if (!/\bdescription\b/.test(text)) continue;
+  if (!writesTheShape(text)) continue;
   fail(
-    `${file} names a word's fields and is not a listed carrier — add it or pass the shape whole`,
+    `${file} writes a word's fields and is not a listed carrier — add it or pass the shape whole`,
   );
 }
 

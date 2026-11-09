@@ -1139,23 +1139,60 @@ def scenario_agentload(wid):
     check("and what the tool reported is still under it", both is True)
 
     # LABELS, which answer the other question: a name is "which one is this", a label is
-    # "which group is this in", and there can be several. Typed comma-separated, because
-    # there is no list to pick from until somebody has typed one.
+    # "which group is this in", and there can be several.
+    #
+    # DRIVEN AS A LIST, NOT AS A STRING. The field was a comma-separated box and the person
+    # who asked for the feature could not find it, could not tell which words were already
+    # on the conversation, and had no way to take one off. It is a filter, a list of rows
+    # that toggle, and a named create action now — so this drives the gestures a reader has
+    # rather than the parser a string needed.
     js(f"document.querySelector('[data-testid=\"{card}\"]')?.click(); 1")
     time.sleep(0.5)
-    js(
-        "(() => { const i = document.querySelector('[data-testid=agent-labels-input]');"
-        " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;"
-        " set.call(i, 'api, URGENT, api');"
-        " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+
+    def type_into(testid, text):
+        js(
+            "(() => { const i = document.querySelector('[data-testid=" + testid + "]');"
+            " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;"
+            " set.call(i, " + repr(text) + ");"
+            " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+        )
+
+    on_now = (
+        "Array.from(document.querySelectorAll('[data-testid=agent-labels-on] span"
+        "[data-testid^=label-]')).map(s => s.textContent.trim())"
     )
+
+    # This home has no declared vocabulary and this conversation has no mark, so there is
+    # nothing to pick from — the create action is the only way in, and it has to be there.
+    type_into("agent-labels-input", "api")
     time.sleep(0.4)
-    chips = js(
-        "Array.from(document.querySelectorAll('[data-testid=agent-labels-preview] span'))"
-        ".map(s => s.textContent.trim())"
-    )
-    # `api` twice is one label, and the case that was TYPED is what is kept.
-    check("the preview is what the document will hold", chips == ["api", "URGENT"], f"got {chips}")
+    check("a word in no vocabulary is still reachable",
+          js("!!document.querySelector('[data-testid=agent-labels-create]')"))
+    js("document.querySelector('[data-testid=agent-labels-create]')?.click(); 1")
+    time.sleep(0.4)
+    # The case that was TYPED is what is kept, here and all the way to the document.
+    type_into("agent-labels-input", "URGENT")
+    time.sleep(0.4)
+    js("document.querySelector('[data-testid=agent-labels-create]')?.click(); 1")
+    time.sleep(0.4)
+    chips = js(on_now)
+    check("what is on the conversation is on screen as chips", chips == ["api", "URGENT"], f"got {chips}")
+    # The cap is a count that can be read BEFORE it bites, which "at most 8" never was.
+    count = js("document.querySelector('[data-testid=agent-labels-count]')?.textContent.trim()")
+    check("the cap is a count", count == "2 of 8", f"got {count!r}")
+
+    # AND A WORD ON IT CAN COME OFF, which the comma box could not do at all.
+    js("document.querySelector('[data-testid=agent-labels-off-urgent]')?.click(); 1")
+    time.sleep(0.4)
+    check("the chip's × takes it off", js(on_now) == ["api"], f"got {js(on_now)}")
+    # Back on through its row, which is the other half of the same list: a row that is on
+    # is marked, so "what is on" and "what is left" are one list read once.
+    js("document.querySelector('[data-testid=agent-labels-row-urgent]')?.click(); 1")
+    time.sleep(0.4)
+    check("and its row puts it back", js(on_now) == ["api", "URGENT"], f"got {js(on_now)}")
+    check("a row that is on is marked",
+          js("!!document.querySelector('[data-testid=agent-labels-on-urgent]')"))
+
     js("document.querySelector('[data-testid=agent-rename-save]')?.click(); 1")
     time.sleep(1.2)
     worn = js(
@@ -1191,7 +1228,7 @@ def scenario_agentload(wid):
     )
     time.sleep(0.5)
 
-    # A LABEL ALREADY USED IS CLICKED, NOT RETYPED — which is the whole point of a long
+    # A LABEL ALREADY USED IS PICKED, NOT RETYPED — which is the whole point of a long
     # one. The vocabulary is derived from the marks, so `api` is on offer everywhere the
     # moment it has been used once.
     second = js(
@@ -1201,24 +1238,29 @@ def scenario_agentload(wid):
     check("a second conversation opens its dialog", second.startswith("agent-rename-"), f"got {second!r}")
     time.sleep(0.5)
     offered = js(
-        "Array.from(document.querySelectorAll('[data-testid^=agent-labels-add-]'))"
+        "Array.from(document.querySelectorAll('[data-testid^=agent-labels-word-]'))"
         ".map(b => b.textContent.trim())"
     )
     # This home has no declared vocabulary, so what is offered is exactly this person's own
     # words. The declared ones join them on a machine that has any — they were offered on a
     # machine's form and not here, which was an inconsistency rather than a missing feature.
-    check("the labels already used are offered", sorted(offered) == ["URGENT", "api"], f"got {offered}")
-    js("document.querySelector('[data-testid=agent-labels-add-api]')?.click(); 1")
+    check("the labels already used are offered as rows", sorted(offered) == ["URGENT", "api"], f"got {offered}")
+    # NONE OF THEM IS MARKED, because this conversation carries none — the thing the
+    # comma-separated box could not say.
+    check("and none is marked on a conversation that carries none",
+          js("!document.querySelector('[data-testid^=agent-labels-on-]')"))
+    js("document.querySelector('[data-testid=agent-labels-row-api]')?.click(); 1")
     time.sleep(0.4)
-    chips = js(
-        "Array.from(document.querySelectorAll('[data-testid=agent-labels-preview] span'))"
-        ".map(s => s.textContent.trim())"
-    )
-    check("clicking one adds it without typing", chips == ["api"], f"got {chips}")
-    # And it is no longer offered, because a chip that does nothing is one somebody clicks
-    # twice before reading the field above it.
-    check("and it stops being offered",
-          js("!document.querySelector('[data-testid=agent-labels-add-api]')"))
+    chips = js(on_now)
+    check("picking one adds it without typing", chips == ["api"], f"got {chips}")
+    check("and its row is now the marked one",
+          js("!!document.querySelector('[data-testid=agent-labels-on-api]')"
+             " && !document.querySelector('[data-testid=agent-labels-on-urgent]')"))
+    # The search filters on the word, so a vocabulary of two hundred is still navigable.
+    type_into("agent-labels-input", "urg")
+    time.sleep(0.4)
+    rows = js("document.querySelectorAll('[data-testid^=agent-labels-row-]').length")
+    check("the search narrows the list", rows == 1, f"{rows} rows")
     shot("agentload-labels")
     js("document.querySelector('[data-testid=agent-rename-cancel]')?.click(); 1")
     time.sleep(0.4)

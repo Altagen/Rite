@@ -41,6 +41,15 @@ export interface LabelOffer {
   label: string;
   scope: LabelScope;
   color?: string;
+  /**
+   * What the word means, when the vocabulary that declared it said so.
+   *
+   * CARRIED TO THE PICKER, which is the only place it can do its job: a word is chosen
+   * from a list by somebody who did not declare it, and `client-acme` is the kind of word
+   * whose meaning is not in its letters. Absent for a word that is merely in use
+   * somewhere — nobody declared it, so there is nothing to say about it.
+   */
+  description?: string;
 }
 
 /**
@@ -288,7 +297,12 @@ export function offersFrom(
       const label = cleanLabel(text);
       if (!label || seen.has(label.toLowerCase())) continue;
       const color = typeof entry === 'string' ? undefined : entry?.color;
-      seen.set(label.toLowerCase(), color ? { label, color } : { label });
+      const description = typeof entry === 'string' ? undefined : entry?.description;
+      seen.set(label.toLowerCase(), {
+        label,
+        ...(color ? { color } : {}),
+        ...(description ? { description } : {}),
+      });
     }
   }
   return Array.from(seen.values())

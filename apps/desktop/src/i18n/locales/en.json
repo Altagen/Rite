@@ -1260,7 +1260,7 @@
     "again": "Read again",
     "quiet": "{count} sessions with no question",
     "quietHint": "A run delegated by the tool itself, or one left at the prompt. They carry a date and an id.",
-    "rename": "Rename",
+    "modify": "Modify",
     "renamePlaceholder": "A name of this person's own",
     "renameClear": "Remove the name",
     "renameCancel": "Cancel",
@@ -1305,9 +1305,6 @@
   },
   "labels": {
     "field": "Labels",
-    "placeholder": "Comma-separated",
-    "known": "Already used",
-    "capped": "At most {count} labels",
     "scopePersonal": "Personal",
     "scopeCollection": "This collection",
     "scopeInstance": "All collections",
@@ -1328,7 +1325,11 @@
     "descriptionPlaceholder": "Description",
     "clash": "{word} is already in this list",
     "readOnly": "Read-only: this collection is shared for reading.",
-    "inherited": "Also available here, declared elsewhere"
+    "inherited": "Also available here, declared elsewhere",
+    "pick": "Search or add a label",
+    "ofMax": "{count} of {max}",
+    "addWord": "+ Add \"{word}\"",
+    "removeOne": "Take {word} off"
   },
   "connErr": {
     "retrying": "Retrying automatically…",

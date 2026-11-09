@@ -1260,7 +1260,7 @@
     "again": "Relire",
     "quiet": "{count} sessions sans question",
     "quietHint": "Une exécution que l’outil s’est déléguée, ou laissée au prompt. Elles portent une date et un id.",
-    "rename": "Renommer",
+    "modify": "Modifier",
     "renamePlaceholder": "Un nom à soi",
     "renameClear": "Retirer le nom",
     "renameCancel": "Annuler",
@@ -1305,9 +1305,6 @@
   },
   "labels": {
     "field": "Labels",
-    "placeholder": "Séparés par des virgules",
-    "known": "Déjà utilisés",
-    "capped": "{count} labels au maximum",
     "scopePersonal": "Personnel",
     "scopeCollection": "Cette collection",
     "scopeInstance": "Toutes les collections",
@@ -1328,7 +1325,11 @@
     "descriptionPlaceholder": "Description",
     "clash": "{word} est déjà dans cette liste",
     "readOnly": "Lecture seule : cette collection est partagée en lecture.",
-    "inherited": "Disponibles ici aussi, déclarés ailleurs"
+    "inherited": "Disponibles ici aussi, déclarés ailleurs",
+    "pick": "Chercher ou ajouter un label",
+    "ofMax": "{count} sur {max}",
+    "addWord": "+ Ajouter « {word} »",
+    "removeOne": "Retirer {word}"
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",
