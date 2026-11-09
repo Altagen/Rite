@@ -70,12 +70,18 @@ impl Handler for TestHandler {
         }
     }
 
-    // Accept any key whose signature verifies (russh checks the signature before
-    // calling this). Lets the RSA-hash-negotiation path be exercised end-to-end.
+    // Accept any key whose signature verifies. Lets the RSA-hash-negotiation path be
+    // exercised end-to-end.
+    //
+    // `VerifiedPublicKey` RATHER THAN `&PublicKey` SINCE russh 0.65, and the type is the
+    // point: the old signature handed a handler a key with nothing saying whether its
+    // signature had been checked, which is the shape of the advisory this bump carries
+    // (the agent server never called `Agent::confirm`). A handler can no longer accept an
+    // unverified key by forgetting to ask.
     async fn auth_publickey(
         &mut self,
         _user: &str,
-        _key: &russh::keys::PublicKey,
+        _key: russh::server::VerifiedPublicKey<'_>,
     ) -> Result<Auth, Self::Error> {
         Ok(Auth::Accept)
     }
@@ -1054,7 +1060,7 @@ impl Handler for Pubkey2faHandler {
     async fn auth_publickey(
         &mut self,
         _user: &str,
-        _key: &russh::keys::PublicKey,
+        _key: russh::server::VerifiedPublicKey<'_>,
     ) -> Result<Auth, Self::Error> {
         Ok(Auth::Reject {
             proceed_with_methods: None,
