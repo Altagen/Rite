@@ -37,22 +37,30 @@ test('a word in no vocabulary is still reachable, and only when asked for', asyn
   await ensureCollection(request, 'e2e-field');
   await open(page, 'e2e-field');
 
-  // Nothing on it, nothing declared: the list says so rather than being an empty box.
+  // Nothing is ON it. The LIST may well have rows — the instance vocabulary is offered
+  // inside every collection — so what is asserted is the count and the absence of chips,
+  // not an empty list, which would be a claim about which spec ran first.
   await expect(page.getByTestId('machine-labels-count')).toHaveText('0 of 8');
   await expect(page.getByTestId('machine-labels-on')).toHaveCount(0);
 
   // TYPING ALONE ADDS NOTHING. The box filters; creating is a named action under the
   // list, because a picker that creates as a side effect of typing is how `api` and
   // `api,` became two words.
-  await page.getByTestId('machine-labels-input').fill('pci');
+  //
+  // A WORD NOTHING ELSE IN THE SUITE DECLARES. These specs share one vault, and
+  // `instance-labels.spec.ts` declares `pci` INSTANCE-wide — which is offered inside
+  // every collection, so a word that looked creatable when this spec ran alone already
+  // had a row when the suite ran in order. The test was right about the field and wrong
+  // about the fixture.
+  await page.getByTestId('machine-labels-input').fill('fieldonly-one');
   await expect(page.getByTestId('machine-labels-on')).toHaveCount(0);
   await expect(page.getByTestId('machine-labels-create')).toBeVisible();
   await page.getByTestId('machine-labels-create').click();
 
-  await expect(page.getByTestId('machine-labels-on')).toContainText('pci');
+  await expect(page.getByTestId('machine-labels-on')).toContainText('fieldonly-one');
   await expect(page.getByTestId('machine-labels-count')).toHaveText('1 of 8');
   // The word it created is a row now, and the row is the marked one.
-  await expect(page.getByTestId('machine-labels-on-pci')).toBeVisible();
+  await expect(page.getByTestId('machine-labels-on-fieldonly-one')).toBeVisible();
   // And it is no longer offered as something to create, which would be a second control
   // for what the row above already does.
   await expect(page.getByTestId('machine-labels-create')).toHaveCount(0);
@@ -95,42 +103,47 @@ test('the search narrows the list, over the word and over what it means', async 
   await request.put(`/api/local/collections/${collection}`, {
     data: {
       name: 'e2e-field-search',
+      // PREFIXED, because `labelOffers` gathers the instance's words FIRST and keeps the
+      // first spelling it sees — so a collection word whose name an instance word already
+      // has is offered without this description, and the assertion below would be reading
+      // the other spec's `pci`. Inheritance running one way is the documented behaviour;
+      // the fixture has to stop colliding with it.
       labels: [
-        { label: 'pci', description: 'Card data in scope' },
-        { label: 'prod', description: 'Serving real traffic' },
-        'staging',
+        { label: 'fs-pci', description: 'Card data in scope' },
+        { label: 'fs-prod', description: 'Serving real traffic' },
+        'fs-staging',
       ],
     },
   });
   await open(page, 'e2e-field-search');
 
-  await expect(page.getByTestId('machine-labels-row-pci')).toBeVisible();
-  await expect(page.getByTestId('machine-labels-row-prod')).toBeVisible();
-  await expect(page.getByTestId('machine-labels-row-staging')).toBeVisible();
+  await expect(page.getByTestId('machine-labels-row-fs-pci')).toBeVisible();
+  await expect(page.getByTestId('machine-labels-row-fs-prod')).toBeVisible();
+  await expect(page.getByTestId('machine-labels-row-fs-staging')).toBeVisible();
 
   // The description is ON the row, which is the only place it can do its job: the word is
   // picked by somebody who did not declare it.
-  await expect(page.getByTestId('machine-labels-row-pci')).toContainText('Card data in scope');
+  await expect(page.getByTestId('machine-labels-row-fs-pci')).toContainText('Card data in scope');
 
-  await page.getByTestId('machine-labels-input').fill('pro');
-  await expect(page.getByTestId('machine-labels-row-prod')).toBeVisible();
-  await expect(page.getByTestId('machine-labels-row-pci')).toHaveCount(0);
+  await page.getByTestId('machine-labels-input').fill('fs-pro');
+  await expect(page.getByTestId('machine-labels-row-fs-prod')).toBeVisible();
+  await expect(page.getByTestId('machine-labels-row-fs-pci')).toHaveCount(0);
 
   // MATCHED ON THE DESCRIPTION TOO, because a description is why somebody searches for a
   // word they cannot remember the spelling of. "card" is in no label here.
   await page.getByTestId('machine-labels-input').fill('card');
-  await expect(page.getByTestId('machine-labels-row-pci')).toBeVisible();
-  await expect(page.getByTestId('machine-labels-row-prod')).toHaveCount(0);
+  await expect(page.getByTestId('machine-labels-row-fs-pci')).toBeVisible();
+  await expect(page.getByTestId('machine-labels-row-fs-prod')).toHaveCount(0);
   // `card` is still offered as a word to create, and that is right: it matched a
   // DESCRIPTION, so nothing is called `card` yet. What must not be offered twice is a
   // word that already has a row, which the next lines hold.
   await expect(page.getByTestId('machine-labels-create')).toBeVisible();
-  await page.getByTestId('machine-labels-input').fill('pci');
+  await page.getByTestId('machine-labels-input').fill('fs-pci');
   await expect(page.getByTestId('machine-labels-create')).toHaveCount(0);
-  // AND FOLDED: a word is one word whatever case it is typed in, so a declared `pci` is
-  // picked rather than created when `PCI` is typed.
-  await page.getByTestId('machine-labels-input').fill('PCI');
-  await expect(page.getByTestId('machine-labels-row-pci')).toBeVisible();
+  // AND FOLDED: a word is one word whatever case it is typed in, so a declared `fs-pci`
+  // is picked rather than created when `FS-PCI` is typed.
+  await page.getByTestId('machine-labels-input').fill('FS-PCI');
+  await expect(page.getByTestId('machine-labels-row-fs-pci')).toBeVisible();
   await expect(page.getByTestId('machine-labels-create')).toHaveCount(0);
 
   await page.getByTestId('machine-labels-input').fill('nothing-is-called-this');

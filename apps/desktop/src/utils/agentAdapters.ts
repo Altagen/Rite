@@ -1004,3 +1004,27 @@ export function parseAgentContext(stdout: string): AgentContext {
   }
   return ctx;
 }
+
+/**
+ * OPEN ONE OF THOSE FILES, which is the whole editing story (ADR 0022 §6).
+ *
+ * Rite shows what is in effect and never writes it. The way a person changes any of it is
+ * the way they already would: an editor on that machine, under the account they already
+ * use there. So this is a terminal pane running `$EDITOR`, and nothing else — no new
+ * right, no second source of truth, nothing for Rite to keep in sync. Rite navigates;
+ * the editor edits.
+ *
+ * `$EDITOR` AND NOT A NAMED EDITOR, with `vi` behind it because POSIX requires it. Which
+ * editor a person uses on their own machine is their decision and Rite has no business
+ * holding an opinion; a machine with no `EDITOR` set still has `vi`.
+ *
+ * The path is vetted the way a removal's is: absolute, no climbing. It comes from a
+ * listing Rite itself produced, so this is a belt on a brace — the brace being that the
+ * script that found it only ever looked in two directories.
+ */
+export function agentOpenFileCmd(path: string): string | null {
+  const file = path.trim();
+  if (!file.startsWith('/') && !file.startsWith('~/')) return null;
+  if (parts(file).includes('..')) return null;
+  return `\${EDITOR:-vi} ${shellArg(file)}`;
+}

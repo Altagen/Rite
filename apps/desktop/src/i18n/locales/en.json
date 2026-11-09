@@ -1318,7 +1318,8 @@
     "contextUnreadable": "Could not be read, so its hooks are not listed: {path}",
     "contextReadOnly": "Read and shown, never written and never stored. A hook is a command that runs unattended.",
     "contextFailed": "The read failed",
-    "contextNoCwd": "There is no directory to resolve this against."
+    "contextNoCwd": "There is no directory to resolve this against.",
+    "contextOpenFile": "Open {path} in a terminal pane on that machine"
   },
   "labels": {
     "field": "Labels",

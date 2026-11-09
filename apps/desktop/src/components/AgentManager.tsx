@@ -146,6 +146,14 @@ interface Props {
    * and an empty `cwd` is that machine's home — which only that machine can resolve.
    */
   onNew: (machine: ConnectionInfo | null, adapter: ShippedAdapter, cwd: string) => void;
+  /**
+   * Open one of the files the context panel named, in a pane on that machine.
+   *
+   * The whole editing story (ADR 0022 §6): Rite reads those files and never writes them,
+   * so changing one happens in the person's own editor under the account they already use
+   * there. The manager does not do it itself — opening a pane is the shell's business.
+   */
+  onOpenFile: (machine: ConnectionInfo | null, path: string) => void;
   /** This server's mode, for the gate. */
   mode: ServerMode | null;
 }
@@ -166,6 +174,7 @@ export function AgentManager({
   declared,
   onResume,
   onNew,
+  onOpenFile,
   mode,
 }: Props) {
   const { t } = useTranslation();
@@ -935,6 +944,12 @@ export function AgentManager({
             onDelete={canRemove(open1) ? () => void remove(open1) : undefined}
             readFacts={() => readFacts(open1)}
             readContext={(cwd) => readContext(open1, cwd)}
+            openFile={(path) =>
+              onOpenFile(
+                open1.on === LOCAL ? null : (connections.find((c) => c.id === open1.on) ?? null),
+                path,
+              )
+            }
             declared={declared}
             deleting={removing === `${open1.on}:${open1.adapter.id}:${open1.conv.id}`}
           />
@@ -943,7 +958,7 @@ export function AgentManager({
     </div>
   );
 
-  /** The six adapters, as the probe will run them. Read-only until Tools can edit. */
+  /** The seven adapters, as the probe will run them. Read-only until Tools can edit. */
   function ToolsPanel() {
     return (
       <div className="border-b border-border bg-card px-4 py-3" data-testid="agent-tools">
@@ -1035,6 +1050,7 @@ function Detail({
   onDelete,
   readFacts,
   readContext,
+  openFile,
   declared,
   deleting,
 }: {
@@ -1052,6 +1068,8 @@ function Detail({
   readFacts: () => Promise<AgentFacts | null>;
   /** Asks the machine what is in effect for a directory. Null when it cannot be asked. */
   readContext: (cwd: string) => Promise<AgentContext | null>;
+  /** Opens one of the files that read named, in a pane on the machine it is on. */
+  openFile: (path: string) => void;
   deleting: boolean;
 }) {
   const { t } = useTranslation();
@@ -1364,14 +1382,16 @@ function Detail({
                 empty={t('agent.contextNoSkills')}
                 items={context.skills}
                 kind="skill"
+                openFile={openFile}
               />
               <ContextList
                 title={t('agent.contextCommands')}
                 empty={t('agent.contextNoCommands')}
                 items={context.commands}
                 kind="command"
+                openFile={openFile}
               />
-              <HookList hooks={context.hooks} />
+              <HookList hooks={context.hooks} openFile={openFile} />
               {context.unreadable.map((path) => (
                 <div
                   key={path}
@@ -2155,6 +2175,34 @@ function RailRow({
 }
 
 /**
+ * OPEN THIS FILE, which is the only thing this panel offers beyond reading.
+ *
+ * ADR 0022 §6: editing stays where it already was. The button puts the file in a terminal
+ * pane on that machine, running `$EDITOR` under the account already in use there — so
+ * there is no new right to grant, nothing for Rite to keep in sync, and no second source
+ * of truth for files that usually live in git or somebody's dotfiles. Rite navigates;
+ * the editor edits.
+ *
+ * On every row rather than on the interesting ones, because which row is interesting is
+ * the reader's question and not this panel's.
+ */
+function OpenFile({ path, openFile }: { path: string; openFile: (path: string) => void }) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={() => openFile(path)}
+      title={t('agent.contextOpenFile', { path })}
+      aria-label={t('agent.contextOpenFile', { path })}
+      className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+      data-testid={`agent-context-edit-${path.split('/').filter(Boolean).pop()}`}
+    >
+      <IconEdit className="h-3 w-3" />
+    </button>
+  );
+}
+
+/**
  * One layer's name, as a marker on a row.
  *
  * `project` or `account`, and it is on EVERY row rather than only the interesting ones: a
@@ -2186,11 +2234,13 @@ function ContextList({
   empty,
   items,
   kind,
+  openFile,
 }: {
   title: string;
   empty: string;
   items: ContextItem[];
   kind: 'skill' | 'command';
+  openFile: (path: string) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -2218,6 +2268,7 @@ function ContextList({
                   {x.path}
                 </span>
               </span>
+              <OpenFile path={x.path} openFile={openFile} />
             </div>
           ))}
         </div>
@@ -2234,7 +2285,7 @@ function ContextList({
  * shared account one person's hook runs for everyone who signs in, and the only thing
  * that makes that answerable is seeing it.
  */
-function HookList({ hooks }: { hooks: ContextHook[] }) {
+function HookList({ hooks, openFile }: { hooks: ContextHook[]; openFile: (path: string) => void }) {
   const { t } = useTranslation();
   return (
     <div className="mt-2">
@@ -2264,6 +2315,7 @@ function HookList({ hooks }: { hooks: ContextHook[] }) {
                   {h.path}
                 </span>
               </span>
+              <OpenFile path={h.path} openFile={openFile} />
             </div>
           ))}
         </div>

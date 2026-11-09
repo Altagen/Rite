@@ -148,7 +148,7 @@ test('the filters are offered without a second grouping to fight the first', asy
   await expect(page.getByTestId('agent-layout-stacked')).toHaveCount(0);
 });
 
-test('the CLIs panel names the six adapters and the commands they will run', async ({ page }) => {
+test('the CLIs panel names the seven adapters and the commands they will run', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
   await page.getByTestId('toolbar-agents').click();
@@ -156,9 +156,19 @@ test('the CLIs panel names the six adapters and the commands they will run', asy
 
   const tools = page.getByTestId('agent-tools');
   await expect(tools).toBeVisible();
-  // The six, by name. This panel is the only place a person can read what Rite is about
-  // to run on their machines before it runs it.
-  for (const name of ['Claude Code', 'Codex CLI', 'Gemini CLI', 'Grok', 'Hermes', 'opencode']) {
+  // ALL SEVEN, by name. This panel is the only place a person can read what Rite is about
+  // to run on their machines before it runs it, so the list here is the whole shipped set
+  // — it was six for a while after Antigravity joined them, which meant the panel could
+  // have dropped that one and nothing would have said so.
+  for (const name of [
+    'Claude Code',
+    'Codex CLI',
+    'Gemini CLI',
+    'Grok',
+    'Antigravity',
+    'Hermes',
+    'opencode',
+  ]) {
     await expect(tools).toContainText(name);
   }
   // And the commands themselves, including the two corrections that are invisible unless

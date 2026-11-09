@@ -1318,7 +1318,8 @@
     "contextUnreadable": "Illisible, donc ses hooks ne sont pas listés : {path}",
     "contextReadOnly": "Lu et affiché, jamais écrit et jamais conservé. Un hook est une commande qui part sans surveillance.",
     "contextFailed": "La lecture a échoué",
-    "contextNoCwd": "Aucun répertoire contre lequel résoudre."
+    "contextNoCwd": "Aucun répertoire contre lequel résoudre.",
+    "contextOpenFile": "Ouvrir {path} dans un terminal sur cette machine"
   },
   "labels": {
     "field": "Labels",

@@ -105,6 +105,7 @@ import { useInstanceLabels } from '../store/instanceLabels';
 import {
   agentResumeArgv,
   agentResumeCmd,
+  agentOpenFileCmd,
   agentStartArgv,
   agentStartCmd,
   type DiscoveredConversation,
@@ -974,6 +975,47 @@ export function Workspace({
     ],
     [instanceWords, conns.collections, conns.connections],
   );
+
+  /** The last segment of a path, which is what a tab holding one file should be called. */
+  const fileName = (path: string) => path.split('/').filter(Boolean).pop() ?? path;
+
+  /**
+   * Open one of the files the context panel named, in a pane on that machine.
+   *
+   * THE WHOLE EDITING STORY (ADR 0022 §6). Rite reads skills, commands and hooks and
+   * never writes them; a person who wants to change one does it the way they already
+   * would, in their own editor, under the account they already use there. A plain
+   * terminal pane, not an agent pane: what runs in it is an editor and the pane should
+   * not claim a conversation it does not have.
+   */
+  const handleOpenAgentFile = async (machine: ConnectionInfo | null, path: string) => {
+    const cmd = agentOpenFileCmd(path);
+    if (!cmd) return;
+    try {
+      const sessionId = machine
+        ? await conns.connect(machine, cmd)
+        : // Through a shell, because `$EDITOR` is the shell's to expand and only that
+          // machine knows what it is set to.
+          await Backend.Terminal.connectLocalProgram(['sh', '-lc', cmd], NEW_TAB_CWD_HOME);
+      const session: TerminalSession = {
+        id: sessionId,
+        connectionId: machine?.id ?? 'local',
+        connectionName: machine?.name ?? fileName(path),
+      };
+      const tab: Tab = {
+        id: crypto.randomUUID(),
+        // Named by the FILE, since that is what the pane is for.
+        name: fileName(path),
+        paneTree: createTerminalPane(session, true),
+      };
+      setTabGroups((prev) => [...prev, tab]);
+      setActiveTabId(tab.id);
+      setMainView('terminal');
+    } catch (error) {
+      setToastType('error');
+      setToastMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const handleNewAgent = async (
     machine: ConnectionInfo | null,
@@ -2616,6 +2658,7 @@ export function Workspace({
                         manageAgents={conns.manageAgents}
                         declared={declaredWords}
                         onResume={handleResumeAgent}
+                        onOpenFile={handleOpenAgentFile}
                         onNew={(machine, adapter, cwd) =>
                           void handleNewAgent(machine, adapter, cwd)
                         }
