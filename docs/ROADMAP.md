@@ -231,8 +231,16 @@ inside the server container. What is left is the code.
 - [ ] Export connections (encrypted backup)
 - [ ] Import connections — an ssh_config import exists; this is about reading back a
       Rite export, which has no object until `Export connections` above exists
-- [ ] Host tags (in addition to collections)
-- [ ] Advanced search and filter
+- [x] **Host tags (in addition to collections)** — **done**, as labels (ADR 0016's
+      addendum). Three scopes, and the scope IS the confidentiality decision rather than a
+      setting beside it: instance-wide words are public and in the clear, a collection's
+      own stay in its sealed header, a person's own ride in the marks document. What is
+      LABELLED is always sealed whatever the word's scope, because a machine lives in a
+      collection. Search matches them, a word can carry a colour and a description, and
+      the picker is a list rather than a comma-separated box — the box could not say which
+      words were already on a thing.
+- [ ] Advanced search and filter — the label filter and the search over labels ship; this
+      is the rest of it (ranges, negation, saved searches)
 
 ### 🎨 UI/UX Polish (Priority: MEDIUM)
 - [ ] Setup wizard — the shell choice and the master password are already in the main

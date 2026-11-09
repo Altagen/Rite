@@ -89,10 +89,17 @@ sh scripts/embed-ui.sh
 # not: the version bump for 0.2.7 left `capabilities_reports_version` pinned to the old
 # number — a deliberate tripwire — and the gate had no way to trip it. It passed locally
 # and failed in CI, which is the one thing this script exists to prevent. ~45s.
+# `--locked` ON EVERY COMMAND THAT RESOLVES, which is what buys the cache below.
+#
+# A cold registry proved one thing worth keeping: that `Cargo.lock` resolves from
+# nothing, the way CI does. `--locked` proves the same thing directly — it REFUSES to
+# touch the lockfile — and it goes on proving it with a warm cache, where a cold download
+# only proved it as a side effect of being slow. So the guarantee is now stated instead
+# of implied, and the fourteen minutes it cost are gone.
 RUST_GATE='cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code
-cargo test --workspace --all-features
-cargo build -p rite-server'
+cargo clippy --locked --workspace --all-targets --all-features -- -D warnings -A dead_code
+cargo test --locked --workspace --all-features
+cargo build --locked -p rite-server'
 if command -v cargo >/dev/null 2>&1; then
   printf '%s\n' "$RUST_GATE" | sh -e
 else
@@ -100,7 +107,15 @@ else
   # checks expect — and so fmt and clippy agree with CI, which pins the toolchain the
   # same way. A different rustfmt is a different opinion about where to break a line.
   echo "[gate] no local cargo — fmt, clippy and build in rite-ci:local"
-  podman run --rm -v "$PWD":/workspace:Z -w /workspace rite-ci:local \
+  # A NAMED REGISTRY VOLUME, which took this step from ~14 minutes to seconds. The crates
+  # downloaded are the ones `Cargo.lock` names and `--locked` above refuses to change, so
+  # a warm cache cannot hide a resolution the lockfile did not sanction — which was the
+  # one argument for starting cold. `scripts/audit.sh` has mounted its own for the same
+  # reason since the yanked-crate check needed one to run at all.
+  podman volume create rite-cargo-registry >/dev/null 2>&1 || true
+  podman run --rm -v "$PWD":/workspace:Z \
+    -v rite-cargo-registry:/usr/local/cargo/registry \
+    -w /workspace rite-ci:local \
     bash -lc "set -e; $RUST_GATE"
 fi
 
