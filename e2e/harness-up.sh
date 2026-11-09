@@ -78,3 +78,8 @@ fi
 # tables, row actions and wide mode go untested. wave1.spec.ts's dashboard test stays
 # valid either way — it asserts a definite answer, not which answer.
 podman exec "$NAME" sh -c 'cd /workspace && sh e2e/dashboard-stubs.sh'
+
+# The agent probe is gated on `command -v claude`, so a machine with transcripts and no
+# CLI reports the tool absent and reads nothing — which is why the detail panel had no
+# end-to-end coverage at all. Same deal as the stubs above.
+podman exec "$NAME" sh -c 'cd /workspace && sh e2e/agent-stubs.sh'

@@ -808,3 +808,199 @@ export function parseAgentFacts(stdout: string): AgentFacts {
   }
   return facts;
 }
+
+/**
+ * How much of a settings file is read.
+ *
+ * A `settings.json` is configuration a person typed, so it is small — the largest here is
+ * under 4 KB. The bound exists for the same reason the transcript window does: the file
+ * is named by whoever owns the account, not by Rite, and a read with no ceiling is a read
+ * somebody else decides the cost of.
+ */
+const SETTINGS_WINDOW = 65536;
+
+/**
+ * WHAT IS IN EFFECT for one working directory: skills, commands and hooks, as one command.
+ *
+ * ADR 0022 §6, and read-only there by decision rather than by omission. A hook is not
+ * configuration, it is a command that runs later, unattended — installing one from a
+ * convenience panel is the wrong blast radius for a convenience, and on a shared account
+ * a hook one person adds runs for everyone who signs in. A tool that makes that EASY is a
+ * lateral-movement vector; a tool that makes it VISIBLE is the opposite, and this is the
+ * second one.
+ *
+ * TWO LAYERS, AND WHICH ONE WON IS THE WHOLE POINT. The project's `.claude` under the
+ * account's `~/.claude`, resolved on that host under that account, every row carrying the
+ * path it came from — because the answer to "why did that happen?" is a file path. A copy
+ * that lost to the project layer is shown LOSING rather than hidden, which is the
+ * difference between a list of what is loaded and a list that explains itself.
+ *
+ * NOTHING READ IS STORED. It is displayed and dropped, which keeps the feature out of the
+ * zero-knowledge path entirely instead of asking it for an exception.
+ */
+export function agentContextCmd(cwd: string): string | null {
+  const dir = cwd.trim();
+  if (!dir.startsWith('/')) return null;
+  if (parts(dir).includes('..')) return null;
+  return posixScript(
+    [
+      `printf '__account__ %s@%s\\n' "$(id -un 2>/dev/null)" "$(hostname 2>/dev/null || echo '?')"`,
+      // The project layer first, so a reader of the raw output sees what wins first too.
+      `for base in ${shellArg(`${dir}/.claude`)} "$HOME/.claude"; do`,
+      `  if [ "$base" = ${shellArg(`${dir}/.claude`)} ]; then layer=project; else layer=user; fi`,
+      '  [ -d "$base" ] || continue',
+      // A glob that matches nothing expands to itself, which is why every loop below
+      // tests the thing it was handed rather than trusting the expansion.
+      '  for s in "$base"/skills/*/SKILL.md; do',
+      `    [ -f "$s" ] && printf '__skill__ %s %s\\n' "$layer" "$s"`,
+      '  done',
+      '  for c in "$base"/commands/*.md; do',
+      `    [ -f "$c" ] && printf '__cmd__ %s %s\\n' "$layer" "$c"`,
+      '  done',
+      // The hooks live INSIDE a JSON file, so the file comes back whole and is parsed on
+      // this side. Parsing JSON in shell is how a quoted command with a brace in it turns
+      // into a hook nobody declared.
+      '  for f in "$base"/settings.json "$base"/settings.local.json; do',
+      '    if [ -f "$f" ]; then',
+      `      printf '__settings__ %s %s\\n' "$layer" "$f"`,
+      `      head -c ${SETTINGS_WINDOW} "$f" 2>/dev/null`,
+      `      printf '\\n__endsettings__\\n'`,
+      '    fi',
+      '  done',
+      'done',
+      'exit 0',
+    ].join('\n'),
+  );
+}
+
+/** Which layer a row came from. `project` beats `user`, and that is the only ordering. */
+export type ContextLayer = 'project' | 'user';
+
+/** One skill or one slash command, as a file on that machine. */
+export interface ContextItem {
+  name: string;
+  path: string;
+  from: ContextLayer;
+  /** A `user` copy the project layer overrides. Shown losing rather than hidden. */
+  shadowed?: boolean;
+}
+
+/** One hook: an event, what it matches, and the command it will run unattended. */
+export interface ContextHook {
+  event: string;
+  matcher?: string;
+  command: string;
+  path: string;
+  from: ContextLayer;
+}
+
+/** What one machine says is in effect for one directory. */
+export interface AgentContext {
+  /** `user@host`, as the machine reported it — the account this was resolved under. */
+  account?: string;
+  skills: ContextItem[];
+  commands: ContextItem[];
+  hooks: ContextHook[];
+  /** A settings file that was read and could not be parsed, by path. */
+  unreadable: string[];
+}
+
+/** The name a skill goes by: the directory that holds its `SKILL.md`. */
+const skillName = (path: string): string => {
+  const p = parts(path);
+  return p[p.length - 2] ?? path;
+};
+
+/** The name a command goes by, as it is typed. */
+const commandName = (path: string): string => {
+  const file = parts(path).pop() ?? path;
+  return `/${file.replace(/\.md$/, '')}`;
+};
+
+/**
+ * Every hook a settings file declares.
+ *
+ * Claude Code's shape: `hooks` maps an event to a list of matchers, each holding its own
+ * list of commands. Anything that is not that shape is skipped rather than guessed at — a
+ * hook invented by a lenient parser is a command this panel claims will run and will not.
+ */
+function hooksFrom(json: unknown, path: string, from: ContextLayer): ContextHook[] {
+  const out: ContextHook[] = [];
+  const root = (json as { hooks?: unknown } | null)?.hooks;
+  if (!root || typeof root !== 'object') return out;
+  for (const [event, groups] of Object.entries(root as Record<string, unknown>)) {
+    if (!Array.isArray(groups)) continue;
+    for (const group of groups) {
+      const matcher = typeof group?.matcher === 'string' ? group.matcher : undefined;
+      const list = Array.isArray(group?.hooks) ? group.hooks : [];
+      for (const hook of list) {
+        const command = typeof hook?.command === 'string' ? hook.command.trim() : '';
+        if (!command) continue;
+        out.push({ event, command, path, from, ...(matcher ? { matcher } : {}) });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The read's answer. Pure, never throws, and ignores anything it did not write.
+ *
+ * Same rule as `parseAgentFacts`: the script runs through the account's own shell, which
+ * prints its own warnings on login, so an unrecognised line is dropped. A `.bashrc` that
+ * echoes is not a skill.
+ */
+export function parseAgentContext(stdout: string): AgentContext {
+  const ctx: AgentContext = { skills: [], commands: [], hooks: [], unreadable: [] };
+  const lines = stdout.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('__account__ ')) {
+      ctx.account = line.slice('__account__ '.length).trim() || undefined;
+      continue;
+    }
+    const two = (marker: string): [ContextLayer, string] | null => {
+      if (!line.startsWith(`${marker} `)) return null;
+      const rest = line.slice(marker.length + 1);
+      const gap = rest.indexOf(' ');
+      if (gap < 1) return null;
+      const layer = rest.slice(0, gap);
+      const path = rest.slice(gap + 1).trim();
+      if ((layer !== 'project' && layer !== 'user') || !path) return null;
+      return [layer, path];
+    };
+    const skill = two('__skill__');
+    if (skill) {
+      ctx.skills.push({ name: skillName(skill[1]), path: skill[1], from: skill[0] });
+      continue;
+    }
+    const cmd = two('__cmd__');
+    if (cmd) {
+      ctx.commands.push({ name: commandName(cmd[1]), path: cmd[1], from: cmd[0] });
+      continue;
+    }
+    const settings = two('__settings__');
+    if (!settings) continue;
+    // The file's own text, up to the marker the script printed after it.
+    const body: string[] = [];
+    while (++i < lines.length && lines[i].trim() !== '__endsettings__') body.push(lines[i]);
+    try {
+      ctx.hooks.push(...hooksFrom(JSON.parse(body.join('\n')), settings[1], settings[0]));
+    } catch {
+      // SAID, NOT SWALLOWED. A settings file Rite could not parse is a file whose hooks
+      // this panel cannot account for, and a panel that silently shows fewer hooks than
+      // will fire is worse than one that says it could not read something.
+      ctx.unreadable.push(settings[1]);
+    }
+  }
+
+  // WHAT LOST, MARKED. A `user` copy of a name the project layer also defines does not
+  // load, and hiding it would leave the reader wondering why their own skill did nothing.
+  for (const list of [ctx.skills, ctx.commands]) {
+    const won = new Set(list.filter((x) => x.from === 'project').map((x) => x.name.toLowerCase()));
+    for (const item of list) {
+      if (item.from === 'user' && won.has(item.name.toLowerCase())) item.shadowed = true;
+    }
+  }
+  return ctx;
+}

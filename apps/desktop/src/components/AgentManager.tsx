@@ -32,13 +32,18 @@ import type { RemoteCommandOutput, ServerMode } from '../utils/backend';
 import { agentProbeCmd, parseAgentProbe } from '../utils/agentProbe';
 import {
   SHIPPED_ADAPTERS,
+  agentContextCmd,
   agentFactsCmd,
   agentRemoveCmd,
   agentResumeCmd,
+  parseAgentContext,
   parseAgentFacts,
   shippedAdapter,
   withoutConversation,
+  type AgentContext,
   type AgentFacts,
+  type ContextHook,
+  type ContextItem,
   type DiscoveredConversation,
   type ShippedAdapter,
 } from '../utils/agentAdapters';
@@ -56,6 +61,7 @@ import {
   IconPlus,
   IconRefresh,
   IconTerminal,
+  IconShield,
   IconTrash,
 } from './icons';
 import { Backend } from '../utils/backend';
@@ -320,6 +326,29 @@ export function AgentManager({
         ? await probeAgents!(host, cmd)
         : await Backend.Terminal.agentProbeLocal(cmd);
       return parseAgentFacts(out.stdout);
+    },
+    [connections, probeAgents],
+  );
+
+  /**
+   * WHAT IS IN EFFECT on that machine for that directory — skills, commands and hooks.
+   *
+   * The same round trip `readFacts` makes and on the same gesture: explicit, one machine,
+   * one directory, nothing kept. It needs a directory, so it is asked only once the live
+   * read has reported one — the context is a property of the DIRECTORY, not of the
+   * conversation, and a conversation whose directory is gone has no context to resolve.
+   */
+  const readContext = useCallback(
+    async (r: Row, cwd: string): Promise<AgentContext | null> => {
+      const cmd = agentContextCmd(cwd);
+      if (!cmd) return null;
+      const host = r.on === LOCAL ? null : (connections.find((c) => c.id === r.on) ?? null);
+      if (!host && r.on !== LOCAL) return null;
+      if (host && !probeAgents) return null;
+      const out = host
+        ? await probeAgents!(host, cmd)
+        : await Backend.Terminal.agentProbeLocal(cmd);
+      return parseAgentContext(out.stdout);
     },
     [connections, probeAgents],
   );
@@ -905,6 +934,7 @@ export function AgentManager({
             onRename={() => setRenaming(open1)}
             onDelete={canRemove(open1) ? () => void remove(open1) : undefined}
             readFacts={() => readFacts(open1)}
+            readContext={(cwd) => readContext(open1, cwd)}
             declared={declared}
             deleting={removing === `${open1.on}:${open1.adapter.id}:${open1.conv.id}`}
           />
@@ -1004,6 +1034,7 @@ function Detail({
   onRename,
   onDelete,
   readFacts,
+  readContext,
   declared,
   deleting,
 }: {
@@ -1019,6 +1050,8 @@ function Detail({
   onDelete?: () => void;
   /** Asks the machine what has changed. Resolves null when there is nothing to ask. */
   readFacts: () => Promise<AgentFacts | null>;
+  /** Asks the machine what is in effect for a directory. Null when it cannot be asked. */
+  readContext: (cwd: string) => Promise<AgentContext | null>;
   deleting: boolean;
 }) {
   const { t } = useTranslation();
@@ -1068,6 +1101,25 @@ function Detail({
     // not do. The conversation is keyed by the panel; `turn` is the reload button.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turn]);
+  /**
+   * `undefined` until asked, `null` while reading, the answer once it comes.
+   *
+   * Asked on a click, never on open: it is a second SSH round trip and most opens of this
+   * panel are to resume something. Dropped with the panel, like the facts above.
+   */
+  const [context, setContext] = useState<AgentContext | null | undefined>(undefined);
+  const [contextError, setContextError] = useState<string | null>(null);
+  const loadContext = async (cwd: string) => {
+    setContext(null);
+    setContextError(null);
+    try {
+      setContext(await readContext(cwd));
+    } catch (e) {
+      setContext(undefined);
+      setContextError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const fact = (label: string, value: React.ReactNode, mono = false) => (
     <>
       <dt className="text-muted-foreground">{label}</dt>
@@ -1271,6 +1323,78 @@ function Detail({
             about it. The tools that can remove are the ones that showed a path. */}
         {onDelete && act('agent.delete', IconTrash, onDelete, 'agent-detail-delete', true)}
       </div>
+
+      {/* WHAT IS IN EFFECT (ADR 0022 §6). Behind a button and not read with the facts:
+          it is a second round trip, it answers about the DIRECTORY rather than the
+          conversation, and most opens of this panel are to resume something. */}
+      {facts?.cwd && (
+        <div className="min-w-0 border-t border-border pt-3">
+          {context === undefined ? (
+            <button
+              type="button"
+              onClick={() => void loadContext(facts.cwd!)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              data-testid="agent-context-open"
+            >
+              <IconShield className="h-3.5 w-3.5" />
+              {t('agent.contextOpen')}
+            </button>
+          ) : context === null ? (
+            <div className="text-xs text-muted-foreground" data-testid="agent-context">
+              {t('agent.contextReading')}
+            </div>
+          ) : (
+            <div data-testid="agent-context">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-xs font-medium">{t('agent.context')}</span>
+                {/* The account it was resolved under, which is a fact. Whether that
+                    account is SHARED is not something this machine can be asked, so it
+                    is not claimed — see the note in the ADR. */}
+                {context.account && (
+                  <span
+                    className="truncate font-mono text-[11px] text-muted-foreground"
+                    data-testid="agent-context-account"
+                  >
+                    {t('agent.contextAccount', { account: context.account })}
+                  </span>
+                )}
+              </div>
+              <ContextList
+                title={t('agent.contextSkills')}
+                empty={t('agent.contextNoSkills')}
+                items={context.skills}
+                kind="skill"
+              />
+              <ContextList
+                title={t('agent.contextCommands')}
+                empty={t('agent.contextNoCommands')}
+                items={context.commands}
+                kind="command"
+              />
+              <HookList hooks={context.hooks} />
+              {context.unreadable.map((path) => (
+                <div
+                  key={path}
+                  className="mt-1.5 text-[11px] text-amber-500"
+                  data-testid="agent-context-unreadable"
+                >
+                  {t('agent.contextUnreadable', { path })}
+                </div>
+              ))}
+              {/* Said on the panel and not only in a doc: a reader deciding whether to
+                  trust what is above needs to know Rite never wrote any of it. */}
+              <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                {t('agent.contextReadOnly')}
+              </p>
+            </div>
+          )}
+          {contextError && (
+            <div className="mt-1 text-[11px] text-amber-500" data-testid="agent-context-failed">
+              {t('agent.contextFailed')} — {contextError}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Last, and the only thing on the panel that is quoted rather than stated. */}
       {conv.ask && (
@@ -2026,6 +2150,124 @@ function RailRow({
       >
         {t('agent.resume')}
       </button>
+    </div>
+  );
+}
+
+/**
+ * One layer's name, as a marker on a row.
+ *
+ * `project` or `account`, and it is on EVERY row rather than only the interesting ones: a
+ * marker that is the same everywhere is a marker nobody reads, but a marker that is
+ * absent on the common case makes the reader work out which case they are looking at.
+ */
+function Layer({ from }: { from: ContextItem['from'] }) {
+  const { t } = useTranslation();
+  return (
+    <span
+      className={`shrink-0 rounded px-1 text-[10px] ${
+        from === 'project' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+      }`}
+    >
+      {t(from === 'project' ? 'agent.contextLayerProject' : 'agent.contextLayerUser')}
+    </span>
+  );
+}
+
+/**
+ * Skills or commands, one row each, with the path they came from.
+ *
+ * THE ANSWER TO "WHY DID THAT HAPPEN?" IS A FILE PATH, so every row carries one. A row
+ * the project layer overrode is struck through rather than dropped — a reader whose own
+ * skill did nothing needs to see it losing, not wonder where it went.
+ */
+function ContextList({
+  title,
+  empty,
+  items,
+  kind,
+}: {
+  title: string;
+  empty: string;
+  items: ContextItem[];
+  kind: 'skill' | 'command';
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="mt-2">
+      <div className="text-[11px] font-medium text-muted-foreground">{title}</div>
+      {items.length === 0 ? (
+        <p className="mt-0.5 text-[11px] text-muted-foreground">{empty}</p>
+      ) : (
+        <div className="mt-0.5 flex flex-col gap-1">
+          {items.map((x) => (
+            <div
+              key={`${x.from}:${x.path}`}
+              className="flex items-start gap-1.5 text-[11px]"
+              data-testid={`agent-context-${kind}-${x.from}-${x.name.toLowerCase().replace(/^\//, '')}`}
+            >
+              <Layer from={x.from} />
+              <span className="min-w-0 flex-1">
+                <span className={x.shadowed ? 'text-muted-foreground line-through' : ''}>
+                  {x.name}
+                </span>
+                {x.shadowed && (
+                  <span className="ml-1 text-muted-foreground">— {t('agent.contextShadowed')}</span>
+                )}
+                <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                  {x.path}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The hooks, which are the reason this panel exists.
+ *
+ * A hook is not a setting, it is A COMMAND THAT RUNS LATER, UNATTENDED — so the command
+ * is the row's own line in the foreground colour, not a detail under the event. On a
+ * shared account one person's hook runs for everyone who signs in, and the only thing
+ * that makes that answerable is seeing it.
+ */
+function HookList({ hooks }: { hooks: ContextHook[] }) {
+  const { t } = useTranslation();
+  return (
+    <div className="mt-2">
+      <div className="text-[11px] font-medium text-muted-foreground">{t('agent.contextHooks')}</div>
+      {hooks.length === 0 ? (
+        <p className="mt-0.5 text-[11px] text-muted-foreground">{t('agent.contextNoHooks')}</p>
+      ) : (
+        <div className="mt-0.5 flex flex-col gap-1.5">
+          {hooks.map((h, i) => (
+            <div
+              key={`${h.from}:${h.path}:${h.event}:${i}`}
+              className="flex items-start gap-1.5 text-[11px]"
+              data-testid={`agent-context-hook-${h.event.toLowerCase()}`}
+            >
+              <Layer from={h.from} />
+              <span className="min-w-0 flex-1">
+                <span className="font-medium">{h.event}</span>
+                {h.matcher && (
+                  <span className="ml-1 font-mono text-[10px] text-muted-foreground">
+                    {h.matcher}
+                  </span>
+                )}
+                <span className="block break-all font-mono text-[10px] text-foreground">
+                  {h.command}
+                </span>
+                <span className="block truncate font-mono text-[10px] text-muted-foreground">
+                  {h.path}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
