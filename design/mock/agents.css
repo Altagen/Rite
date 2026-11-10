@@ -236,12 +236,11 @@
   .apanel-sub{font-size:11px;color:var(--muted);margin-top:2px}
   /* The seam left open on purpose: a later integration is another tab here, not a
      redesign of the panel. */
-  .apanel-tabs{display:flex;gap:2px;padding:8px 12px 0;border-bottom:1px solid var(--border)}
-  .apanel-tab{background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);
-    font:inherit;font-size:12px;font-weight:600;padding:5px 9px 7px;cursor:pointer}
-  .apanel-tab.on{color:var(--fg);border-bottom-color:var(--accent)}
+  /* No tabs any more: what is in effect is behind a button, because a tab implies the
+     content is already there and that one is a second round trip. The rules they used
+     are gone with them rather than left to be found by somebody styling a tab that is
+     not there. */
   .apanel-body{flex:1;overflow:auto;padding:14px 16px;font-size:12.5px;line-height:1.7}
-  .apanel-acts{display:flex;gap:7px;padding:11px 16px;border-top:1px solid var(--border);flex-wrap:wrap}
   .aeff{display:flex;align-items:center;gap:8px;padding:5px 0;min-width:0}
   .aeff.shadowed{opacity:.5;text-decoration:line-through}
   .aeff-p{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%}
@@ -303,11 +302,45 @@
      diff. The box above filters; creating is the named button below, never a
      side effect of typing. */
   .apick{display:flex;flex-direction:column;gap:6px}
-  .apick-list{display:flex;flex-direction:column;border:1px solid var(--border);
-    border-radius:8px;max-height:168px;overflow-y:auto}
+  /* IN FLOW, NOT FLOATING, and that is not a preference — it is the only thing that works
+     here. This field sits inside a dialog whose body SCROLLS, and a scrolling box clips an
+     absolutely-positioned child: the list opened and was cut off after one row, with the
+     paragraph underneath showing through beside it. No z-index reaches that, because the
+     clip is the overflow and not the stacking order. Unfolding pushes what follows down,
+     which is also what "unfold" means to whoever is using it.
+
+     SIX ROWS AND THEN IT SCROLLS: a list that grows with the vocabulary pushes Save off
+     the bottom of the dialog on the two-hundredth word. */
+  .apick-box{position:relative}
+  .apick-caret{position:absolute;right:4px;top:4px;width:22px;height:22px;background:none;
+    border:0;color:var(--muted);font-size:10px;cursor:pointer;border-radius:4px}
+  .apick-caret:hover{background:var(--card2);color:var(--fg)}
+  .apick-box .inp{width:100%;padding-right:28px}
+  .apick-list{margin-top:4px;display:flex;flex-direction:column;
+    border:1px solid var(--border);border-radius:8px;background:var(--card);
+    max-height:180px;overflow-y:auto}
+  .apick-list[hidden]{display:none}
   .arow-pick{display:flex;align-items:center;gap:8px;width:100%;padding:5px 8px;
     background:none;border:0;cursor:pointer;text-align:left;color:inherit;font:inherit}
   .arow-pick:hover{background:var(--card2)}
   .arow-pick[hidden]{display:none}
   .atick{width:11px;flex:none;font-size:11px;color:var(--fg)}
   .apick-new{align-self:flex-start}
+
+  /* The drawer's prompt, LAST and folded. The order is the decision: a first message
+     that is a pasted diff pushed every action off the end of the panel, so the facts
+     and the actions are above this and the fold is only offered when there is
+     something to unfold. The actions are INSIDE the body now rather than pinned to the
+     panel's foot, which is what put them below the prompt. */
+  .apanel-ask{margin-top:16px;border-top:1px solid var(--border);padding-top:12px}
+  .aask{font-size:12.5px;line-height:1.6;margin:0;white-space:pre-wrap;word-break:break-word}
+  .aask.clamp{display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
+  .apanel-acts{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:14px}
+
+  /* WHEN IT WAS READ BELONGS TO THE PROBE, not to the row of controls.
+     It sat between Tools and Probe again, which put a piece of state in the middle of a
+     line of buttons — so the eye had to step over it to get from one control to the next,
+     and Tools was pushed left of something that is not a control at all. Under the button
+     it annotates, where it reads as that button's answer. */
+  .aprobe{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+  .aprobe-at{font-size:11px;line-height:1.2;white-space:nowrap}

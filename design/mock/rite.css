@@ -360,4 +360,4 @@ body.near-left .side-rail button,.side-rail button:focus{opacity:1}
 .lblrow{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--border)}
 .lblrow:last-child{border-bottom:0}
 .lbldesc{flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lblpath{font-size:11px;color:var(--muted);flex:none}
+

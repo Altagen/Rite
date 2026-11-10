@@ -542,6 +542,27 @@ export function ConnectionForm({
             {errors.username && <p className="mt-1 text-sm text-red-500">{errors.username}</p>}
           </div>
 
+          {/* LABELS, HERE AND NOT UNDER "ADVANCED OPTIONS", which is where they were.
+              A label is how a machine is FOUND again — the same job as its name and its
+              host, which are the two fields above. It is also searchable: the library's
+              search reads it and the collection has a `Label ▾` filter on it, so a field
+              that feeds the search sat behind a fold called "advanced", under Folder and
+              Notes. The cost showed up as a question — "how do I add a label?" — and then
+              again when the first test for this field timed out with the form open and no
+              labels anywhere on it.
+
+              Folder and Notes stay advanced: one is a personal arrangement, the other is
+              prose, and neither is searched. */}
+          <div>
+            <LabelField
+              labels={labels}
+              onChange={setLabels}
+              vocabulary={labelOffers ?? []}
+              inputId="machine-labels-input"
+              testPrefix="machine-labels"
+            />
+          </div>
+
           {/* Authentication — shared with Quick SSH (password / key file / agent) */}
           <AuthSection
             value={auth}
@@ -681,19 +702,6 @@ export function ConnectionForm({
                   placeholder={t('connections.notesPlaceholder')}
                   rows={3}
                   className="w-full rounded border border-border bg-input px-3 py-2 text-foreground focus:border-primary focus:outline-none"
-                />
-              </div>
-
-              {/* Labels — the same field the agent manager uses, so the chip, the cap and
-                  the picker cannot drift between two screens. What is labelled is sealed
-                  with the rest of this record whatever the word's scope. */}
-              <div>
-                <LabelField
-                  labels={labels}
-                  onChange={setLabels}
-                  vocabulary={labelOffers ?? []}
-                  inputId="machine-labels-input"
-                  testPrefix="machine-labels"
                 />
               </div>
 

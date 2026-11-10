@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { ensureCollection, listMachines } from './support/localVault';
+import { createMachine, ensureCollection, listMachines } from './support/localVault';
 
 /**
  * THE FIELD THAT PUTS A LABEL ON SOMETHING, driven the way a person drives it.
@@ -16,18 +16,32 @@ import { ensureCollection, listMachines } from './support/localVault';
  * the harness. Same field, same gestures, reachable here.
  */
 
+/**
+ * Open the dropdown. The list used to be permanently expanded and is a popover now, so a
+ * test that wants a row says so — which is also the assertion that it is CLOSED until
+ * somebody asks, the whole reason for the change.
+ */
+const openList = async (page: import('@playwright/test').Page) => {
+  await page.getByTestId('machine-labels-input').click();
+  await expect(page.getByTestId('machine-labels-list')).toBeVisible();
+};
+
 const open = async (page: import('@playwright/test').Page, collection: string) => {
   await page.goto('/');
   const node = page.locator('.m-tnode', { hasText: collection }).first();
   await expect(node).toBeVisible({ timeout: 15_000 });
   await node.getByRole('button', { name: 'Add to collection' }).click();
   await page.getByRole('button', { name: 'New machine here' }).click();
-  // THE FIELD IS BEHIND A COLLAPSED <details>, which is how this spec found out: the
-  // first assertion timed out with the form open and no labels anywhere on it. Expanded
-  // here rather than worked around, so the test drives what a person sees — and the
-  // placement is its own question, raised separately.
-  await page.getByText('Advanced Options').click();
+  // VISIBLE WITHOUT UNFOLDING ANYTHING, which this spec is the reason for: it used to
+  // have to click "Advanced Options" to reach the field, and a test that works around a
+  // placement is a test that endorses it. A label is how a machine is found again, so it
+  // sits with the name and the host now.
   await expect(page.getByTestId('machine-labels-input')).toBeVisible();
+  await expect(page.getByText('Advanced Options')).toBeVisible();
+  await expect(
+    page.locator('details', { hasText: 'Advanced Options' }).getByTestId('machine-labels-input'),
+    'labels must not be inside the collapsed section',
+  ).toHaveCount(0);
 };
 
 test('a word in no vocabulary is still reachable, and only when asked for', async ({
@@ -37,11 +51,11 @@ test('a word in no vocabulary is still reachable, and only when asked for', asyn
   await ensureCollection(request, 'e2e-field');
   await open(page, 'e2e-field');
 
-  // Nothing is ON it. The LIST may well have rows — the instance vocabulary is offered
-  // inside every collection — so what is asserted is the count and the absence of chips,
-  // not an empty list, which would be a claim about which spec ran first.
+  // Nothing is ON it, and THE LIST IS CLOSED — which is what the dropdown bought: a form
+  // with ten fields does not carry a two-hundred-pixel box for a field nobody is using.
   await expect(page.getByTestId('machine-labels-count')).toHaveText('0 of 8');
   await expect(page.getByTestId('machine-labels-on')).toHaveCount(0);
+  await expect(page.getByTestId('machine-labels-list')).toHaveCount(0);
 
   // TYPING ALONE ADDS NOTHING. The box filters; creating is a named action under the
   // list, because a picker that creates as a side effect of typing is how `api` and
@@ -82,6 +96,7 @@ test('a label comes off, by the chip and by its row', async ({ page, request }) 
   await expect(page.getByTestId('machine-labels-on')).not.toContainText('web');
   // The word stays in the list — it is still a word this vault knows, and a row that
   // vanished mid-gesture would make taking one off feel like deleting it.
+  await openList(page);
   await expect(page.getByTestId('machine-labels-row-web')).toBeVisible();
   await expect(page.getByTestId('machine-labels-on-web')).toHaveCount(0);
 
@@ -89,6 +104,9 @@ test('a label comes off, by the chip and by its row', async ({ page, request }) 
   // and "what else could be", which two groups never did.
   await page.getByTestId('machine-labels-row-web').click();
   await expect(page.getByTestId('machine-labels-on-web')).toBeVisible();
+  // AND IT STAYS OPEN while several words are ticked: the wrapper's `onBlur` checks
+  // whether the focus went to a row inside it, so one visit can put three labels on.
+  await expect(page.getByTestId('machine-labels-list')).toBeVisible();
   await page.getByTestId('machine-labels-row-web').click();
   await expect(page.getByTestId('machine-labels-on-web')).toHaveCount(0);
 });
@@ -116,6 +134,7 @@ test('the search narrows the list, over the word and over what it means', async 
     },
   });
   await open(page, 'e2e-field-search');
+  await openList(page);
 
   await expect(page.getByTestId('machine-labels-row-fs-pci')).toBeVisible();
   await expect(page.getByTestId('machine-labels-row-fs-prod')).toBeVisible();
@@ -175,6 +194,7 @@ test('the cap is a count before it bites, and the rows say so when it does', asy
   await page.getByTestId('machine-labels-input').fill('a9');
   await expect(page.getByTestId('machine-labels-create')).toBeDisabled();
   await page.getByTestId('machine-labels-input').fill('');
+  await openList(page);
   await expect(page.getByTestId('machine-labels-row-a1')).toBeEnabled();
 
   await page.getByTestId('machine-labels-off-a1').click();
@@ -239,4 +259,120 @@ test('a declared word is picked in the spelling it was declared in', async ({ pa
     labels: string[];
   }[];
   expect(machines.find((m) => m.name === 'e2e-spelling-machine')?.labels).toEqual(['Postgres']);
+});
+
+/**
+ * THE LIST UNFOLDS IN FLOW AND IS NOT CLIPPED, which a popover could not manage here.
+ *
+ * The field sits inside a dialog whose body scrolls, and a scrolling box clips an
+ * absolutely-positioned child: the first version opened and was cut off after one row,
+ * with the paragraph underneath showing through beside it. No z-index reaches that — the
+ * clip is the overflow, not the stacking order. Held as a measurement against the nearest
+ * scrolling ancestor rather than as a screenshot, because what went wrong is geometry.
+ */
+test('the list is not cut off by the dialog that scrolls, and stops at six rows', async ({
+  page,
+  request,
+}) => {
+  const collection = await ensureCollection(request, 'e2e-field-tall');
+  // More words than the list can show, so the cap and the scroll are both real here.
+  await request.put(`/api/local/collections/${collection}`, {
+    data: {
+      name: 'e2e-field-tall',
+      labels: ['t-a', 't-b', 't-c', 't-d', 't-e', 't-f', 't-g', 't-h', 't-i', 't-j'],
+    },
+  });
+  await open(page, 'e2e-field-tall');
+  await openList(page);
+
+  const list = page.getByTestId('machine-labels-list');
+  // SIX ROWS OF HEIGHT, then it scrolls inside itself: a list that grew with the
+  // vocabulary would push Save off the bottom of the dialog on the two-hundredth word.
+  const height = (await list.boundingBox())!.height;
+  expect(height, 'the list must not grow with the vocabulary').toBeLessThanOrEqual(190);
+  expect(
+    await list.evaluate((el) => el.scrollHeight > el.clientHeight),
+    'and the rest must be reachable by scrolling it',
+  ).toBe(true);
+
+  // NOT CLIPPED by whatever scrolls above it — the defect this test exists for.
+  const cutBy = await list.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    let a = el.parentElement;
+    while (a) {
+      const s = getComputedStyle(a);
+      if (/auto|scroll|hidden/.test(s.overflowY)) {
+        const ar = a.getBoundingClientRect();
+        return r.bottom > ar.bottom + 1 ? Math.round(r.bottom - ar.bottom) : 0;
+      }
+      a = a.parentElement;
+    }
+    return 0;
+  });
+  expect(cutBy, 'the list is cut off by a scrolling ancestor').toBe(0);
+});
+
+/**
+ * A TAG IS A TAG, WHATEVER IT WAS LAST PUT ON.
+ *
+ * There were two vocabularies, split by the KIND of thing being labelled: a machine's
+ * form was offered the instance's words, its collections' and the ones on machines; a
+ * conversation's dialog was offered the instance's words and the ones on conversations.
+ * So a word put on a machine was never offered on a conversation and the reverse, and on
+ * a vault where only machines had been labelled the agent dialog opened onto an empty
+ * list — which reads exactly like a picker that will not open.
+ *
+ * The scope decides WHO MAY READ a word. It has never decided what the word may be put
+ * on, and splitting the offers that way made the picker forget half of what this person
+ * already uses. One vocabulary now, built once by the shell.
+ */
+test('a word used on a machine is offered on a conversation, and the reverse', async ({
+  page,
+  request,
+}) => {
+  const collection = await ensureCollection(request, 'e2e-shared-vocab');
+  // A word that exists ONLY because a machine wears it: nothing declares it anywhere.
+  //
+  // Through the route rather than through `createMachine`, which takes no `labels` and
+  // drops one silently — the first version of this test passed an option the helper
+  // ignores, so it asserted against a machine with no labels at all and blamed the app.
+  const machine = await createMachine(request, collection, { name: 'e2e-vocab-host' });
+  const put = await request.put(`/api/local/collections/${collection}/machines/${machine}`, {
+    data: { labels: ['wornbyamachine'] },
+  });
+  expect(put.ok(), `labelling the machine: ${put.status()}`).toBeTruthy();
+
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+
+  // The agent manager's own dialog is what has to offer it. It is reached with a probe,
+  // so the cheap half of the assertion is made on the machine form first: the word is in
+  // the shared vocabulary at all.
+  await open(page, 'e2e-shared-vocab');
+  await openList(page);
+  await expect(
+    page.getByTestId('machine-labels-row-wornbyamachine'),
+    'a word on a machine must be in the one vocabulary',
+  ).toBeVisible();
+
+  // And a word that exists only because a CONVERSATION wears it goes the other way. The
+  // marks document is this person's own, so it is written through the route the agent
+  // manager writes it through rather than by driving a probe.
+  // `/api/marks` and a `{version, marks}` document — the shape `marks-support.spec.ts`
+  // already pins. `/api/user/marks` is the accounts variant and answers nothing here.
+  const doc = JSON.stringify({
+    version: 1,
+    marks: [{ machine: '@local', tool: 'claude', id: 'e2e-vocab-chat', labels: ['wornbyachat'] }],
+  });
+  const wrote = await request.put('/api/marks', { data: { value: doc } });
+  expect(wrote.ok(), `writing the marks: ${wrote.status()}`).toBeTruthy();
+
+  await page.reload();
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await open(page, 'e2e-shared-vocab');
+  await openList(page);
+  await expect(
+    page.getByTestId('machine-labels-row-wornbyachat'),
+    'a word on a conversation must be offered on a machine too',
+  ).toBeVisible();
 });

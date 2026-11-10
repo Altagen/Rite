@@ -292,9 +292,13 @@ test('desktop mock: a conversation can be named and coloured, without losing the
   await page.locator('.menu .row', { hasText: /Modify/ }).click();
   await page.locator('#am-label').fill('The queue work');
   await page.locator('.swatches .sw').nth(2).click();
-  // A label, through the picker that replaced the comma-separated box: typing filters and
-  // CREATING IS A NAMED ACTION, never a side effect of the text.
+  // A label, through the picker that replaced the comma-separated box. THE LIST IS
+  // COLLAPSED until somebody asks for it — a form with ten fields does not carry a
+  // two-hundred-pixel box for a field nobody is using — so typing is what opens it, and
+  // CREATING IS A NAMED ACTION rather than a side effect of the text.
+  await expect(page.locator('.apick-list')).toBeHidden();
   await page.locator('#am-words').fill('queue');
+  await expect(page.locator('.apick-list')).toBeVisible();
   await page.locator('.apick-new').click();
   await page.locator('.backdrop [data-ok]').click();
 
@@ -359,6 +363,7 @@ test('desktop mock: a conversation can be named and coloured, without losing the
   const labelled = page.locator('.acard').filter({ has: page.locator('.alabel') });
   await labelled.getByRole('button', { name: 'More' }).click();
   await page.locator('.menu .row', { hasText: /Modify/ }).click();
+  await page.locator('#am-words').click();
   await page.locator('.arow-pick', { hasText: 'queue' }).click();
   await page.locator('.backdrop [data-ok]').click();
   await expect(page.locator('.alabel')).toHaveCount(0);
@@ -717,9 +722,24 @@ test('desktop mock: the drawer opens beside either layout, read-only, with room 
   // And the command that resumes it, in full, because that is the escape hatch.
   await expect(page.locator('.apanel-body')).toContainText('claude --resume');
 
-  // The other tab is the read that is a modal elsewhere, and nothing can be typed in.
-  await page.locator('.apanel-tab', { hasText: 'In effect' }).click();
-  await expect(page.locator('.apanel-body .aeff')).not.toHaveCount(0);
+  // THE FACTS AND THE ACTIONS COME BEFORE THE PROMPT, which is the decision this drawer
+  // exists to show: a first message that was a pasted diff pushed every action off the
+  // end of the panel, so the order was settled the other way on a real machine.
+  const facts = await page.locator('.afacts').boundingBox();
+  const acts = await page.locator('.apanel-acts').boundingBox();
+  const ask = await page.locator('.apanel-ask').boundingBox();
+  expect(facts!.y, 'the facts must be above the actions').toBeLessThan(acts!.y);
+  expect(acts!.y, 'the actions must be above the prompt').toBeLessThan(ask!.y);
+
+  // What is in effect is behind a BUTTON and not a tab: a tab implies the content is
+  // already there, and this is a second round trip for a different question.
+  await expect(page.locator('.apanel .aeff')).toHaveCount(0);
+  await page
+    .locator('.apanel')
+    .getByRole('button', { name: /skills, commands and hooks/i })
+    .click();
+  await expect(page.locator('.apanel .aeff')).not.toHaveCount(0);
+  // Read-only, so nothing in the drawer can be typed in.
   await expect(page.locator('.apanel input, .apanel textarea')).toHaveCount(0);
 
   // It follows the layout switch rather than belonging to one.
@@ -797,7 +817,7 @@ for (const shell of ['web', 'desktop'] as const) {
 }
 
 /**
- * The escape hatch has to still work tomorrow, and for one of the six it cannot:
+ * The escape hatch has to still work tomorrow, and for one of the seven it cannot:
  * Gemini resumes by POSITION in the current project's list, so the handle Rite could
  * copy is a number that will mean another conversation next week. ADR 0022 §5 says the
  * id is never typed and always reachable; measurement says that promise is not
@@ -837,8 +857,8 @@ test('desktop mock: a handle that is not durable says so', async ({ page }) => {
   await expect(page.locator('.apanel-body')).toContainText(/moves as the list changes/);
 
   // The copy control wears a COPY glyph. It wore the edit pencil, which reads as
-  // "rename this" on a button that copies — and the drawer now has a real rename
-  // beside it, so the two must not look alike.
+  // "rename this" on a button that copies — and Modify sits beside it, so the two must
+  // not look alike.
   const glyph = (name: string) =>
     page
       .locator('.apanel-acts')
@@ -846,7 +866,7 @@ test('desktop mock: a handle that is not durable says so', async ({ page }) => {
       .locator('svg path')
       .first()
       .getAttribute('d');
-  expect(await glyph('Index')).not.toBe(await glyph('Name'));
+  expect(await glyph('Index')).not.toBe(await glyph('Modify'));
   await page.locator('.acard', { hasText: 'Mock the agent manager' }).click();
   await expect(page.locator('.apanel-acts')).toContainText('Id');
 

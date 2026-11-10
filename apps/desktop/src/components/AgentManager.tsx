@@ -154,6 +154,16 @@ interface Props {
    * there. The manager does not do it itself — opening a pane is the shell's business.
    */
   onOpenFile: (machine: ConnectionInfo | null, path: string) => void;
+  /**
+   * EVERY WORD THIS PERSON CAN BE OFFERED, built once by the shell.
+   *
+   * A word is a word wherever it was last used. This used to be assembled here from the
+   * declared list plus the marks, while the machine form got the declared list plus the
+   * collections — so a word put on a machine was never offered on a conversation and the
+   * reverse. The scope decides who may READ a word and has never decided what it may be
+   * put on.
+   */
+  vocabulary: LabelOffer[];
   /** This server's mode, for the gate. */
   mode: ServerMode | null;
 }
@@ -175,6 +185,7 @@ export function AgentManager({
   onResume,
   onNew,
   onOpenFile,
+  vocabulary,
   mode,
 }: Props) {
   const { t } = useTranslation();
@@ -545,48 +556,28 @@ export function AgentManager({
     return Array.from(seen).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
+  /* The vocabulary arrives whole from the shell — see the `vocabulary` prop. Two memos
+     used to live here, one deriving this person's words from the marks and one merging
+     them with the declared list, and between them they decided that a conversation's
+     vocabulary was a different thing from a machine's. It is not. */
+
   /**
-   * EVERY LABEL THIS PERSON HAS USED, which is the vocabulary and is not stored anywhere.
+   * The words the FILTER offers, which is a different question from what the picker does.
    *
-   * Derived from the marks document rather than kept beside it: a list of labels that
-   * exist but are on nothing is a list of labels that do nothing, and a stored one is a
-   * second collection to keep in step with the first. Used once, anywhere, and the word
-   * is offered everywhere — which is the whole of what a picker is for.
+   * A picker offers everything this person could put on something. A filter offers what
+   * is actually ON something, because a filter listing a word nothing carries is a filter
+   * that answers with an empty screen — and the reader cannot tell that from a bug.
    *
-   * From `marks` and not from `rows`: the rows are one machine's, and a label typed on a
-   * machine that has not been probed in this window is still a label this person uses.
+   * From the marks and not from `rows`: a label on a conversation that this window has
+   * not probed is still a label worth narrowing by, and the rows are one machine's.
    */
-  const vocabulary = useMemo(() => {
+  const usedLabels = useMemo(() => {
     const seen = new Map<string, string>();
     for (const m of marks) {
       for (const l of m.labels ?? []) if (!seen.has(l.toLowerCase())) seen.set(l.toLowerCase(), l);
     }
     return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
   }, [marks]);
-
-  /**
-   * What the rename dialog OFFERS: the declared words, then this person's own.
-   *
-   * THE DECLARED ONES BELONG HERE TOO, which is the whole reason a vocabulary is declared
-   * — once, so it is not retyped. They were offered on a machine's form and not on a
-   * conversation's dialog, so `pci` was a click on one screen and a retype on the other
-   * while both already resolved its COLOUR from the same declaration. That is the
-   * inconsistency, not a missing feature.
-   *
-   * Declared first, because `offersFrom` keeps the first spelling it sees: a word declared
-   * for the instance is offered the way it was declared, not the way somebody typed it on
-   * a conversation afterwards. A personal word is marked `personal`, so the chip says
-   * which are this person's own once there is more than one scope to tell apart.
-   */
-  const offers = useMemo(
-    () => [
-      ...(declared ?? []).map((w) => ({ ...w, scope: 'instance' as const })),
-      ...vocabulary
-        .filter((l) => !(declared ?? []).some((w) => w.label.toLowerCase() === l.toLowerCase()))
-        .map((label) => ({ label, scope: 'personal' as const })),
-    ],
-    [declared, vocabulary],
-  );
 
   /** One band per tool that reported something, in the shipped order. */
   const bands = useMemo(() => {
@@ -659,7 +650,7 @@ export function AgentManager({
       {renaming && (
         <RenameDialog
           row={renaming}
-          vocabulary={offers}
+          vocabulary={vocabulary}
           onClose={() => setRenaming(null)}
           onSave={(name, color, labels) => {
             // Neither a name nor a label takes the mark away rather than writing an entry
@@ -780,12 +771,12 @@ export function AgentManager({
                 testId="agent-named"
               />
             )}
-            {vocabulary.length > 0 && (
+            {usedLabels.length > 0 && (
               <Dropdown
                 value={label}
                 options={[
                   { value: '@any', label: t('agent.labelAny') },
-                  ...vocabulary.map((l) => ({ value: l, label: l })),
+                  ...usedLabels.map((l) => ({ value: l, label: l })),
                 ]}
                 onChange={setLabel}
                 label={t('agent.byLabel')}

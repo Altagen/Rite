@@ -112,23 +112,27 @@ export function LabelChip({
 /**
  * The labels on one thing: what is on it, what is left, and one click either way.
  *
- * THE COMMA-SEPARATED BOX IS GONE, and the reason is the question that replaced it:
- * "how do I add a label to a conversation?" — asked by the person who commissioned the
- * feature. A text field holding `api, URGENT` cannot say which words are already on the
- * thing and which remain, it offers no way to take one off but editing a string around
- * the commas, and it makes a vocabulary of long words something to retype.
+ * A DROPDOWN, WHICH IS THE THIRD SHAPE THIS FIELD HAS HAD. The first was a
+ * comma-separated text box, and the bill came in as a question from the person who
+ * commissioned it: "how do I add a label to a conversation?" A text field cannot say
+ * which words are already on the thing, offers no way to take one off but editing a
+ * string around the commas, and makes a long word something to retype.
  *
- * SO THE LIST IS THE INTERFACE, the shape GitLab and Kaneo both settled on. Every word on
- * offer gets a row, the rows that are ON are marked, and a row is a toggle — so "what is
- * on this" and "what else could be" are one list read once rather than two groups the
- * reader has to diff. The chips above repeat the answer in the form the rest of the app
- * uses, each with the one gesture a chip needs.
+ * The second was the list GitLab and Kaneo use, and it was right about the list and wrong
+ * about where to put it: permanently open, bordered, a couple of hundred pixels tall,
+ * inside a form that already has ten fields — and on a vault with nothing declared, an
+ * empty bordered box. The chips above it repeated what the ticks in it already said.
  *
- * THE TEXT BOX FILTERS, AND ONLY CREATES WHEN ASKED. A picker that is the only way in
- * decides what a person may call things, so a word that is in no vocabulary is still
- * reachable — but as a named action under the list, never as a side effect of typing. The
- * cap is a count on the label rather than a warning after the fact: "3 of 8" is readable
- * before it bites, and "at most 8" only ever appeared once something had been dropped.
+ * So the list is in a POPOVER now. It costs no height until somebody is choosing, which
+ * is what GitLab actually does, and the chips go back to being the only thing on screen
+ * when nothing is being chosen — which is the state a form spends all its time in.
+ *
+ * WHAT THE LIST ITSELF GETS RIGHT, kept from the second shape: every word on offer is a
+ * row, the rows that are ON are marked, and a row is a toggle — so "what is on this" and
+ * "what else could be" are one list read once rather than two groups the reader has to
+ * diff. The box filters and only creates when ASKED, never as a side effect of typing,
+ * which is how `api` and `api,` became two words. The cap is a count that can be read
+ * before it bites, where "at most 8" only ever appeared after something was dropped.
  */
 export function LabelField({
   labels,
@@ -148,6 +152,7 @@ export function LabelField({
 }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
   /**
    * Words created in THIS dialog, kept so they do not vanish when taken off again.
    *
@@ -182,13 +187,10 @@ export function LabelField({
 
   // Only when there is more than one, for the reason on `LabelChip`.
   const scopes = new Set(rows.map((v) => v.scope));
-  // What the offers declare, so a chip here wears the colour it will wear everywhere else
-  // rather than one derived here and nowhere else.
-  //
   // `scope` is this list's own business and not part of the word, so it is the only field
-  // named: the rest of the shape travels WHOLE. Rebuilt field by field, this dropped the
-  // description the moment one existed — which is the defect `e2e/vocab-parity-check.mjs`
-  // exists for, and it is the check that caught it here.
+  // named here: the rest of the shape travels WHOLE. Rebuilt field by field, this dropped
+  // the description the moment one existed — which is the defect
+  // `e2e/vocab-parity-check.mjs` exists for, and it is the check that caught it here.
   const declaredWords: VocabWord[] = rows.map(({ scope, ...word }) => word);
 
   const typed = cleanLabel(query);
@@ -222,8 +224,9 @@ export function LabelField({
         </span>
       </div>
 
-      {/* What is on it. Removable here as well as in the list, because a chip with an ×
-          is where a reader looks first and the list is where they look to compare. */}
+      {/* What is on it, and the only thing on screen while nothing is being chosen.
+          Removable here as well as in the list, because a chip with an × is where a
+          reader looks first and the list is where they look to compare. */}
       {labels.length !== 0 && (
         <div className="mt-1.5 flex flex-wrap gap-1" data-testid={`${testPrefix}-on`}>
           {labels.map((l) => (
@@ -244,86 +247,136 @@ export function LabelField({
         </div>
       )}
 
-      <input
-        id={inputId}
-        className="mt-1.5 h-8 w-full rounded-md border border-border bg-background px-2 text-sm"
-        placeholder={t('labels.pick')}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={(e) => {
-          // Enter takes the one obvious action and nothing else: the single row left
-          // after filtering, or the word being created. With several rows showing there
-          // is no obvious one, so it does nothing rather than guess.
-          if (e.key !== 'Enter') return;
-          e.preventDefault();
-          if (shown.length === 1) toggle(shown[0].label);
-          else if (creatable) toggle(creatable);
-        }}
-        data-testid={`${testPrefix}-input`}
-      />
+      {/* IN FLOW, NOT FLOATING, and that is not a preference — it is the only thing that
+          works here. This field lives inside a dialog whose body scrolls, and a scrolling
+          box CLIPS an absolutely-positioned child: the list opened and was cut off after
+          one row, with the paragraph underneath showing through beside it. No z-index
+          reaches that, because the clip is the overflow, not the stacking order. So the
+          list pushes the content below it down — which is also what "unfold" means to
+          anyone using it.
 
+          One `onBlur` on the wrapper rather than a document listener: `relatedTarget`
+          says whether the focus went to a row inside, so ticking several words in one
+          visit does not close it. */}
       <div
-        className="mt-1 max-h-44 overflow-y-auto rounded-md border border-border"
-        data-testid={`${testPrefix}-list`}
+        className="mt-1.5"
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+        }}
       >
-        {shown.length === 0 ? (
-          <div className="px-2 py-2 text-[11px] text-muted-foreground">
-            {q ? t('labels.noMatch', { query: query.trim() }) : t('labels.none')}
-          </div>
-        ) : (
-          shown.map((v) => {
-            const on = folded.includes(v.label.toLowerCase());
-            return (
+        <div className="relative">
+          <input
+            id={inputId}
+            className="h-8 w-full rounded-md border border-border bg-background px-2 pr-7 text-sm"
+            placeholder={t('labels.pick')}
+            value={query}
+            onFocus={() => setOpen(true)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                // Closes the list and nothing else: this field is inside a dialog, and an
+                // Escape that reached it would throw away everything the person typed.
+                e.stopPropagation();
+                setOpen(false);
+                return;
+              }
+              if (e.key !== 'Enter') return;
+              // Enter takes the one obvious action and nothing else: the single row left
+              // after filtering, or the word being created. With several rows showing there
+              // is no obvious one, so it does nothing rather than guess.
+              e.preventDefault();
+              if (shown.length === 1) toggle(shown[0].label);
+              else if (creatable) {
+                setCreated((c) => [...c, creatable]);
+                toggle(creatable);
+                setQuery('');
+              }
+            }}
+            data-testid={`${testPrefix}-input`}
+          />
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-label={t(open ? 'labels.hideList' : 'labels.showList')}
+            title={t(open ? 'labels.hideList' : 'labels.showList')}
+            className="absolute right-1 top-1 h-6 w-6 rounded text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            data-testid={`${testPrefix}-toggle`}
+          >
+            {open ? '▴' : '▾'}
+          </button>
+        </div>
+
+        {open && (
+          <div
+            // SIX ROWS AND THEN IT SCROLLS. A list that grows with the vocabulary pushes
+            // Save off the bottom of the dialog on the two-hundredth word; one that shows
+            // three makes a reader scroll to compare two. Six is what fits beside the
+            // field without moving the rest of the dialog much, and the rest scrolls.
+            className="mt-1 max-h-[11.25rem] overflow-y-auto rounded-md border border-border bg-background"
+            data-testid={`${testPrefix}-list`}
+          >
+            {shown.length === 0 && !creatable ? (
+              <div className="px-2 py-2 text-[11px] text-muted-foreground">
+                {q ? t('labels.noMatch', { query: query.trim() }) : t('labels.none')}
+              </div>
+            ) : (
+              shown.map((v) => {
+                const on = folded.includes(v.label.toLowerCase());
+                return (
+                  <button
+                    key={`${v.scope}:${v.label.toLowerCase()}`}
+                    type="button"
+                    // A row that cannot be turned on says so by being dim, not by being
+                    // absent: the word is still in the vocabulary and the reason is the
+                    // count above, which is on screen.
+                    disabled={!on && full}
+                    onClick={() => toggle(v.label)}
+                    className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted disabled:opacity-40"
+                    data-testid={`${testPrefix}-row-${v.label.toLowerCase()}`}
+                  >
+                    <span
+                      className="w-3 shrink-0 text-[11px] text-foreground"
+                      data-testid={on ? `${testPrefix}-on-${v.label.toLowerCase()}` : undefined}
+                    >
+                      {on ? '✓' : ''}
+                    </span>
+                    <LabelChip
+                      label={v.label}
+                      small
+                      scope={scopes.size === 1 ? undefined : v.scope}
+                      declared={declaredWords}
+                      testId={`${testPrefix}-word-${v.label.toLowerCase()}`}
+                    />
+                    {v.description && (
+                      <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+                        {v.description}
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+            {creatable && (
               <button
-                key={`${v.scope}:${v.label.toLowerCase()}`}
                 type="button"
-                // A row that cannot be turned on says so by being dim, not by being
-                // absent: the word is still in the vocabulary and the reason is the count
-                // above, which is on screen.
-                disabled={!on && full}
-                onClick={() => toggle(v.label)}
-                className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-muted disabled:opacity-40"
-                data-testid={`${testPrefix}-row-${v.label.toLowerCase()}`}
+                disabled={full}
+                onClick={() => {
+                  setCreated((c) => [...c, creatable]);
+                  toggle(creatable);
+                  setQuery('');
+                }}
+                className="w-full border-t border-border px-2 py-1.5 text-left text-[11px] text-primary hover:bg-muted disabled:opacity-40"
+                data-testid={`${testPrefix}-create`}
               >
-                <span
-                  className="w-3 shrink-0 text-[11px] text-foreground"
-                  data-testid={on ? `${testPrefix}-on-${v.label.toLowerCase()}` : undefined}
-                >
-                  {on ? '✓' : ''}
-                </span>
-                <LabelChip
-                  label={v.label}
-                  small
-                  scope={scopes.size === 1 ? undefined : v.scope}
-                  declared={declaredWords}
-                  testId={`${testPrefix}-word-${v.label.toLowerCase()}`}
-                />
-                {v.description && (
-                  <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-                    {v.description}
-                  </span>
-                )}
+                {t('labels.addWord', { word: creatable })}
               </button>
-            );
-          })
+            )}
+          </div>
         )}
       </div>
-
-      {creatable && (
-        <button
-          type="button"
-          disabled={full}
-          onClick={() => {
-            setCreated((c) => [...c, creatable]);
-            toggle(creatable);
-            setQuery('');
-          }}
-          className="mt-1 text-[11px] text-primary hover:underline disabled:opacity-40"
-          data-testid={`${testPrefix}-create`}
-        >
-          {t('labels.addWord', { word: creatable })}
-        </button>
-      )}
     </>
   );
 }

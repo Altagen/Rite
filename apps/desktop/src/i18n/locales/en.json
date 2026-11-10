@@ -1303,7 +1303,7 @@
     "askMore": "See more",
     "askLess": "See less",
     "context": "What is in effect",
-    "contextOpen": "Read what is in effect",
+    "contextOpen": "Skills, commands and hooks",
     "contextReading": "Reading…",
     "contextAccount": "Resolved on {account}",
     "contextSkills": "Skills",
@@ -1347,7 +1347,9 @@
     "pick": "Search or add a label",
     "ofMax": "{count} of {max}",
     "addWord": "+ Add \"{word}\"",
-    "removeOne": "Take {word} off"
+    "removeOne": "Take {word} off",
+    "showList": "Show the list",
+    "hideList": "Hide the list"
   },
   "connErr": {
     "retrying": "Retrying automatically…",

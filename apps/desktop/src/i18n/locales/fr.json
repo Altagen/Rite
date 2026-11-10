@@ -1303,7 +1303,7 @@
     "askMore": "Voir plus",
     "askLess": "Voir moins",
     "context": "Ce qui est en vigueur",
-    "contextOpen": "Lire ce qui est en vigueur",
+    "contextOpen": "Skills, commandes et hooks",
     "contextReading": "Lecture…",
     "contextAccount": "Résolu sur {account}",
     "contextSkills": "Skills",
@@ -1347,7 +1347,9 @@
     "pick": "Chercher ou ajouter un label",
     "ofMax": "{count} sur {max}",
     "addWord": "+ Ajouter « {word} »",
-    "removeOne": "Retirer {word}"
+    "removeOne": "Retirer {word}",
+    "showList": "Afficher la liste",
+    "hideList": "Masquer la liste"
   },
   "connErr": {
     "retrying": "Nouvelle tentative automatique…",

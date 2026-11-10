@@ -520,6 +520,20 @@ function dlgNewConn(collName,existing){const e=existing||{};const auth=e.authTyp
       <label class="field" style="flex:1"><span>Port</span><input class="inp" value="${e.port||22}"></label></div>
     <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>User</span><input class="inp" value="${e.user||''}" placeholder="deploy"></label>
       <label class="field" style="flex:1"><span>Authentication</span><select class="inp" id="nc-auth" onchange="ncAuth(this.value)"><option value="password" ${auth!=='publicKey'?'selected':''}>Password</option><option value="publicKey" ${auth==='publicKey'?'selected':''}>Public key</option></select></label></div>
+    ${(() => {
+      /* LABELS, WITH THE NAME AND THE HOST and not under an "Advanced" fold, which is
+         where the app had them until a reader asked how to add one. A label is how a
+         machine is FOUND again — the library's search reads it and the collection has a
+         `Label ▾` filter on it — so it sits with the two fields that answer the same
+         question. Folder and Notes stay further down: one is a personal arrangement, the
+         other is prose, and neither is searched.
+
+         `labelPickerHTML` comes from `agents.js` because in the code this is ONE
+         component shared with the agent dialog (`components/Labels.tsx`). A mock drawing
+         it twice would describe a drift that does not exist. */
+      return `<label class="field"><span>Labels</span>
+        ${labelPickerHTML(e.labels || [], agentVocabulary(), 'nc')}</label>`;
+    })()}
     <div id="nc-pw" style="${auth==='publicKey'?'display:none':''}"><label class="field"><span>Password</span><input class="inp" type="password" placeholder="${existing?'••••••••':'password'}"></label></div>
     <!-- A key means two things, and in a server context the member chooses which (ADR 0028).
          Carried: the key's text goes in the sealed record, so every member of the collection

@@ -102,6 +102,7 @@ import { offersFrom } from '../store/labelsFormat';
 import { LabelManager, type LabelTarget } from './LabelManager';
 import { acceptedVocab, formatVocab, type VocabWord } from '../store/labelsFormat';
 import { useInstanceLabels } from '../store/instanceLabels';
+import { useMarks } from '../store/marks';
 import {
   agentResumeArgv,
   agentResumeCmd,
@@ -894,6 +895,23 @@ export function Workspace({
    * word a collection agreed on is offered the way the collection wrote it, not the way
    * somebody happened to type it on a machine afterwards.
    */
+  /**
+   * A WORD IS A WORD, WHEREVER IT WAS LAST USED.
+   *
+   * The marks document is read here and not only in the agent manager, because the
+   * vocabulary offered on a MACHINE and the vocabulary offered on a CONVERSATION were two
+   * separate pools: a word put on a machine was never offered on a conversation, and the
+   * reverse. The scope decides WHO MAY READ a word; it has never decided what the word
+   * may be put on, and splitting the offers by the kind of thing being labelled made the
+   * picker forget half of what this person already uses.
+   */
+  const marks = useMarks((st) => st.marks);
+  const loadMarks = useMarks((st) => st.load);
+  const marksLoaded = useMarks((st) => st.loaded);
+  useEffect(() => {
+    if (!marksLoaded) void loadMarks();
+  }, [marksLoaded, loadMarks]);
+
   const instanceWords = useInstanceLabels((st) => st.words);
   const loadInstanceWords = useInstanceLabels((st) => st.load);
   const instanceWordsLoaded = useInstanceLabels((st) => st.loaded);
@@ -972,8 +990,13 @@ export function Workspace({
         ],
         'collection',
       ).filter((o) => !instanceWords.some((w) => w.label.toLowerCase() === o.label.toLowerCase())),
+      // AND THE WORDS ON CONVERSATIONS, which live in the marks document. Offering one on
+      // a machine puts it in that collection's sealed item, where its members can read it
+      // — the same thing typing it there would do, and the field always accepted any
+      // word, so this adds a click rather than an exposure.
+      ...offersFrom([marks.flatMap((m) => m.labels ?? [])], 'personal'),
     ],
-    [instanceWords, conns.collections, conns.connections],
+    [instanceWords, conns.collections, conns.connections, marks],
   );
 
   /** The last segment of a path, which is what a tab holding one file should be called. */
@@ -2657,6 +2680,7 @@ export function Workspace({
                         probeAgents={conns.probeAgents}
                         manageAgents={conns.manageAgents}
                         declared={declaredWords}
+                        vocabulary={labelOffers}
                         onResume={handleResumeAgent}
                         onOpenFile={handleOpenAgentFile}
                         onNew={(machine, adapter, cwd) =>

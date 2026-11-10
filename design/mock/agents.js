@@ -72,8 +72,10 @@
 
    Measured again on 2026-11-03, against the four of six installed on this machine, and
    three of the six list commands turned out not to work — they are corrected below, with
-   what each one got wrong. */
-/* The six commands, as the code now ships them (`utils/agentAdapters.ts`).
+   what each one got wrong. That paragraph is a RECORD OF THAT DAY and the counts in it
+   stay as they were: there were six adapters then. Antigravity is the seventh and carries
+   its own provenance on its own line. */
+/* The seven commands, as the code now ships them (`utils/agentAdapters.ts`).
 
    THREE OF THEM WERE WRONG HERE and said `measured`. Read off the installed binaries on
    2026-11-03: `sh` has no recursive glob, so Codex's `**` was one `*` over a layout that
@@ -846,7 +848,7 @@ function agentRowMenu(scopeId, toolId, sessionId, e) {
     // removes is the vendor's own transcript on the machine it was read on, which is why
     // the confirmation names the file rather than asking about "this conversation".
     ...(tool.removes
-      ? [{ icon: M.trash, danger: true, label: 'Delete this conversation…',
+      ? [{ icon: EXICON.trash, danger: true, label: 'Delete this conversation…',
            onclick: () => dlgAgentDelete(scopeId, toolId, sessionId) }]
       : []),
   ]);
@@ -1056,11 +1058,33 @@ const agentMark = (scopeId, toolId, id) => AGENT_MARKS[agentMarkKey(scopeId, too
    has to be set up before a label can be put on something, and a long word is clicked
    rather than retyped the second time. */
 const agentLabels = (scopeId, toolId, id) => agentMark(scopeId, toolId, id).labels || [];
+/* EVERY WORD THIS PERSON CAN BE OFFERED, and it is ONE list for every screen.
+ *
+ * A word is a word wherever it was last used. There were two pools here — the words on
+ * conversations for the agent dialog, the words on machines and collections for a
+ * machine's form — so a word put on one was never offered on the other, and the agent
+ * dialog opened onto an empty list on a vault where only machines had been labelled.
+ * The scope decides WHO MAY READ a word; it has never decided what the word may be put
+ * on. `Workspace.tsx` builds the same union in the app. */
 const agentVocabulary = () => {
   const seen = new Map();
-  for (const m of Object.values(AGENT_MARKS)) {
-    for (const w of m.labels || []) if (!seen.has(w.toLowerCase())) seen.set(w.toLowerCase(), w);
+  const add = (w) => {
+    if (w && !seen.has(w.toLowerCase())) seen.set(w.toLowerCase(), w);
+  };
+  // What is on conversations…
+  for (const m of Object.values(AGENT_MARKS)) for (const w of m.labels || []) add(w);
+  // …what is on machines, and what their collections declare.
+  try {
+    for (const c of allColls()) {
+      for (const w of c.labels || []) add(typeof w === 'string' ? w : w.label);
+      for (const m of c.conns || []) for (const w of m.labels || []) add(w);
+    }
+  } catch {
+    /* `allColls` belongs to the page, not to this file: the agents view is also opened
+       from pages that have no library, and an empty vocabulary is a real state. */
   }
+  // And the instance's own declared words, which the settings section manages.
+  for (const w of ['pci', 'prod', 'eu-west']) add(w);
   return [...seen.values()].sort((a, b) => a.localeCompare(b));
 };
 const agentLabelChip = (w) =>
@@ -1093,14 +1117,6 @@ function dlgAgentMark(scopeId, toolId, id) {
   // no way to take one off, and made a long word something to retype. That is the bill
   // the first shape came with, and it arrived as a question from the person who asked for
   // the feature: "how do I add a label to a conversation?"
-  const on = new Set(agentLabels(scopeId, toolId, id).map((w) => w.toLowerCase()));
-  const rows = [...new Set([...agentVocabulary(), ...agentLabels(scopeId, toolId, id)])]
-    .sort((a, b) => a.localeCompare(b))
-    .map((w) => `<button type="button" class="arow-pick ${on.has(w.toLowerCase()) ? 'on' : ''}"
-        data-w="${esc(w)}" onclick="agentPickLabel(this)">
-        <span class="atick">${on.has(w.toLowerCase()) ? '✓' : ''}</span>${agentLabelChip(w)}</button>`)
-    .join('');
-
   showModal({
     // NOT "Rename". It sets a name, a colour AND the labels, so naming it after one of
     // the three sent a reader looking for the other two somewhere else.
@@ -1113,13 +1129,7 @@ function dlgAgentMark(scopeId, toolId, id) {
           onclick="this.parentNode.querySelectorAll('.sw').forEach(x=>x.classList.remove('sel'));this.classList.add('sel');this.parentNode.dataset.c=''"></button>
         ${AGENT_COLORS.map(sw).join('')}</div></label>
       <label class="field"><span>Labels</span>
-        <div class="apick" data-on="${esc(agentLabels(scopeId, toolId, id).join(','))}">
-          <input class="inp inp-sm" id="am-words" placeholder="Search or add a label"
-            oninput="agentFilterLabels(this)">
-          <div class="apick-list">${rows || '<p class="muted" style="font-size:12px;margin:6px 2px">No label yet — type one and add it.</p>'}</div>
-          <button type="button" class="btn btn-ghost btn-sm apick-new" hidden
-            onclick="agentAddLabel(this)"></button>
-        </div></label>
+        ${labelPickerHTML(agentLabels(scopeId, toolId, id), agentVocabulary(), 'am')}</label>
       <p class="muted" style="font-size:12px;margin:2px 0 0;line-height:1.55">Kept in
       <b>${AGENT_MARK_HOME[agentMarkHomeOf(scopeId)]}</b>, where this machine’s own record lives. Personal,
       not shared.</p>`,
@@ -1139,6 +1149,48 @@ function dlgAgentMark(scopeId, toolId, id) {
 /* The picker's three gestures. A row toggles, the box filters, and creating is a NAMED
    action under the list rather than a side effect of typing — which is how `api` and
    `api,` became two words in the shape this replaced. */
+/* THE PICKER, AS A DROPDOWN — the shape the field ended up with after two others.
+ *
+ * First a comma-separated box, which could not say which words were already on the thing.
+ * Then this list, permanently open and bordered inside a form with ten fields — right
+ * about the list, wrong about where to put it. The list costs no height now until
+ * somebody is choosing, which is what GitLab actually does, and the chips are the only
+ * thing on screen the rest of the time.
+ *
+ * One function for every screen that picks labels, because in the code it is ONE
+ * component (`components/Labels.tsx`) and a mock that drew it twice would be describing a
+ * drift that does not exist. */
+function labelPickerHTML(on, vocab, idPrefix) {
+  const rows = [...new Set([...vocab, ...on])].sort((a, b) => a.localeCompare(b))
+    .map((w) => {
+      const marked = on.some((x) => x.toLowerCase() === w.toLowerCase());
+      return `<button type="button" class="arow-pick ${marked ? 'on' : ''}" data-w="${w}"
+        onclick="agentPickLabel(this)"><span class="atick">${marked ? '✓' : ''}</span>${agentLabelChip(w)}</button>`;
+    }).join('');
+  return `<div class="apick" data-on="${on.join(',')}">
+    ${on.length ? `<div class="alabels">${on.map(agentLabelChip).join('')}</div>` : ''}
+    <div class="apick-box">
+      <input class="inp inp-sm" id="${idPrefix}-words" placeholder="Search or add a label"
+        onfocus="labelListOpen(this,true)" oninput="agentFilterLabels(this)">
+      <button type="button" class="apick-caret" onclick="labelListOpen(this,null)">▾</button>
+    </div>
+    <div class="apick-list" hidden>${rows}</div>
+    <button type="button" class="btn btn-ghost btn-sm apick-new" hidden
+      onclick="agentAddLabel(this)"></button>
+  </div>`;
+}
+
+/* Open or close the list. `null` toggles. The caret and the field both reach it, and a
+   click on a row does NOT close it — ticking three words is one visit. */
+function labelListOpen(el, want) {
+  const box = el.closest('.apick');
+  const list = box.querySelector('.apick-list');
+  const open = want === null ? list.hidden : want;
+  list.hidden = !open;
+  box.querySelector('.apick-caret').textContent = open ? '▴' : '▾';
+  if (!open) box.querySelector('.apick-new').hidden = true;
+}
+
 function agentPickLabel(btn) {
   const box = btn.closest('.apick');
   const word = btn.dataset.w;
@@ -1243,53 +1295,90 @@ function agentRailHTML(bands, rows) {
    tab rather than as a redesign. The panel is READ-ONLY and stays short: ADR 0022 §8
    refuses a chat UI rebuilt over a vendor's TUI, and a preview that grew into a
    transcript reader would be that by a slower route. */
+/* THE DRAWER, AND ITS ORDER IS THE DECISION.
+ *
+ * It used to lead with the opening prompt and keep the actions at the bottom. That was
+ * settled the other way on a real machine: one conversation's first message was a pasted
+ * diff, and it pushed every action off the end of the panel — a conversation nobody could
+ * act on. So the facts and the actions are above, and the prompt is below, FOLDED, with
+ * the fold offered only when there is something to unfold.
+ *
+ * The branch is in the facts and not in the header, because it is read NOW rather than
+ * carried: a header reads as identity, and a branch is not one.
+ *
+ * And the skills/commands/hooks read is behind a BUTTON rather than a tab. A tab implies
+ * the content is already there; this one is a second SSH round trip for a different
+ * question — what is in effect for the DIRECTORY, not for the conversation — and most
+ * opens of this drawer are to resume something.
+ */
 function agentPanelHTML(r) {
   if (!r) return '';
   const { scope, tool, session: s } = r;
-  const tab = STATE.agentPanelTab || 'preview';
-  const t = (k, label) => `<button class="apanel-tab ${tab === k ? 'on' : ''}" onclick="STATE.agentPanelTab='${k}';renderMain()">${label}</button>`;
-  const body = tab === 'effect'
-    ? agentEffectHTML(scope, tool, s)
-    : `<div class="apanel-body">
-        <div class="ln"><span class="pr">❯</span> ${esc(s.ask)}</div>
-        <div class="ln di">  ${esc(s.tail || '')}</div>
-        <dl class="afacts">
-          <dt>Runs on</dt><dd class="mono">${esc(scope.name)} · ${esc(scope.sub)}</dd>
-          <dt>Directory</dt><dd class="mono">${esc(s.cwd)}</dd>
-          <dt>Branch</dt><dd class="mono">${esc(s.branch)} <span class="aidkind">read now</span></dd>
-          <dt>Last written</dt><dd>${esc(s.last)}</dd>
-          <dt>${tool.idKind === 'index' ? 'Index' : 'Conversation id'}</dt><dd class="mono">${esc(s.id)}${
-            tool.idKind === 'index'
-              ? ' <span class="aidkind warn">moves as the list changes</span>'
-              : ''}</dd>
-          <dt>Resumes with</dt><dd class="mono">${esc(agentResume(tool, s.id))}</dd>
-        </dl>
-        <p class="muted" style="font-size:11.5px;margin:14px 0 0;line-height:1.6">Read, never written, never
-          stored. The pane shows the real CLI.</p>
-      </div>`;
+  const mk = agentMark(scope.id, tool.id, s.id);
+  const whole = STATE.agentPanelWhole === s.id;
+  const folds = (s.ask || '').length > 180;
+  const ctxOpen = STATE.agentPanelCtx === s.id;
+
   return `<div class="apanel">
     <div class="apanel-h">
       <div class="grow">
-        <div class="apanel-t">${esc(s.project)} <span class="mono apanel-br">${esc(s.branch)}</span></div>
+        <div class="apanel-t">${esc(mk.label || s.project)}</div>
         <div class="apanel-sub mono">${esc(scope.name)} · ${esc(tool.name)}</div>
       </div>
       <button class="dcard-x" title="Close" onclick="agentPick(null)">✕</button>
     </div>
-    <div class="apanel-tabs">${t('preview', 'Preview')}${t('effect', 'In effect')}</div>
-    ${body}
-    <div class="apanel-acts">
-      <button class="btn btn-primary btn-sm" onclick="resumeAgent('${scope.id}','${tool.id}','${s.id}')">${ICON.play} Resume</button>
-      <button class="btn btn-ghost btn-sm" onclick="dlgAgentMark('${scope.id}','${tool.id}','${s.id}')"
-        title="Name this conversation, and give it a colour">${M.edit} Name</button>
-      <button class="btn btn-ghost btn-sm" onclick="agentCopyId('${s.id}',agentTool('${tool.id}'))">${IC_COPY} ${tool.idKind === 'index' ? 'Index' : 'Id'}</button>
-      <button class="btn btn-ghost btn-sm" onclick="agentCopyCmd(agentTool('${tool.id}'),'${s.id}')">${ICON.term} Command</button>
+
+    <div class="apanel-body">
+      <dl class="afacts">
+        <dt>Runs on</dt><dd class="mono">${esc(scope.name)} · ${esc(scope.sub)}</dd>
+        <dt>Directory</dt><dd class="mono">${esc(s.cwd)}</dd>
+        <dt>Branch</dt><dd class="mono">${esc(s.branch)} <span class="aidkind">read now</span></dd>
+        <dt>Last written</dt><dd>${esc(s.last)}</dd>
+        <dt>${tool.idKind === 'index' ? 'Index' : 'Conversation id'}</dt><dd class="mono">${esc(s.id)}${
+          tool.idKind === 'index'
+            ? ' <span class="aidkind warn">moves as the list changes</span>'
+            : ''}</dd>
+        <dt>Resumes with</dt><dd class="mono">${esc(agentResume(tool, s.id))}</dd>
+      </dl>
+      ${(mk.labels || []).length ? `<div class="alabels">${mk.labels.map(agentLabelChip).join('')}</div>` : ''}
+
+      <div class="apanel-acts">
+        <button class="btn btn-primary btn-sm" onclick="resumeAgent('${scope.id}','${tool.id}','${s.id}')">${ICON.play} Resume</button>
+        <button class="btn btn-ghost btn-sm" onclick="dlgAgentMark('${scope.id}','${tool.id}','${s.id}')"
+          title="Name this conversation, give it a colour, put labels on it">${M.edit} Modify</button>
+        <button class="btn btn-ghost btn-sm" onclick="agentCopyId('${s.id}',agentTool('${tool.id}'))">${IC_COPY} ${tool.idKind === 'index' ? 'Index' : 'Id'}</button>
+        <button class="btn btn-ghost btn-sm" onclick="agentCopyCmd(agentTool('${tool.id}'),'${s.id}')">${ICON.term} Command</button>
+        <span style="flex:1"></span>
+        ${tool.removes
+          ? `<button class="btn btn-ghost btn-sm" style="color:var(--red)" title="Delete this conversation"
+              onclick="dlgAgentDelete('${scope.id}','${tool.id}','${s.id}')">${EXICON.trash}</button>`
+          : ''}
+      </div>
+
+      <button class="btn btn-ghost btn-sm" style="margin-top:12px"
+        onclick="STATE.agentPanelCtx=${ctxOpen ? 'null' : `'${s.id}'`};renderMain()">
+        ${EXICON.shield} ${ctxOpen ? 'Hide' : 'Skills, commands and hooks'}</button>
+      ${ctxOpen ? agentEffectHTML(scope, tool, s) : ''}
+
+      <div class="apanel-ask">
+        <div class="eyebrow" style="margin-bottom:4px">First prompt</div>
+        <p class="aask ${whole || !folds ? '' : 'clamp'}">${esc(s.ask)}</p>
+        ${folds
+          ? `<button class="btn btn-ghost btn-sm" style="padding:0;height:auto"
+              onclick="STATE.agentPanelWhole=${whole ? 'null' : `'${s.id}'`};renderMain()">${whole ? 'See less' : 'See more'}</button>`
+          : ''}
+        ${s.tail ? `<div class="ln di" style="margin-top:8px">  ${esc(s.tail)}</div>` : ''}
+      </div>
+
+      <p class="muted" style="font-size:11.5px;margin:14px 0 0;line-height:1.6">Read, never written, never
+        stored. The pane shows the real CLI.</p>
     </div>
   </div>`;
 }
 
-/* The skills/commands/hooks read, as a tab instead of a modal. Same data and same
-   refusal to write; it is here because a panel that can hold it should, and because
-   this is the shape every later integration will take. */
+/* The skills/commands/hooks read, inside the drawer rather than in a modal. Same data
+   and the same refusal to write. Behind a button and not a tab: a tab implies the content
+   is already there, and this is a second round trip for a different question. */
 function agentEffectHTML(scope, tool, s) {
   const ctx = agentContextOf(scope.id, s.cwd);
   if (!ctx) {
@@ -1395,8 +1484,10 @@ function agentsViewHTML() {
           : 'All CLIs'} ${EXICON.chevD}</button>` : ''}
       <button class="btn btn-sm" onclick="agentScopePicker(event)" title="Choose the machine to look on">${M.machine} ${sc.name} ${EXICON.chevD}</button>
       <button class="btn btn-ghost btn-sm" onclick="dlgAgentTools()" title="Which agent CLIs Rite looks for">${EXICON.gear} Tools</button>
-      ${readable && probe ? `<span class="muted" style="font-size:12px" title="Discovery is one command over SSH — read on request, not continuously">read ${probe.at}</span>
-        <button class="btn btn-ghost btn-sm" onclick="agentProbeNow()">${M.refresh} Probe again</button>` : ''}
+      ${readable && probe ? `<div class="aprobe">
+        <button class="btn btn-ghost btn-sm" onclick="agentProbeNow()">${M.refresh} Probe again</button>
+        <span class="muted aprobe-at" title="Discovery is one command over SSH — read on request, not continuously">read ${probe.at}</span>
+      </div>` : ''}
     </div>
     ${body}
     ${broken ? `<div class="dgrid">${broken}</div>` : ''}

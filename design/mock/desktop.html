@@ -887,6 +887,20 @@ function dlgNewConn(collName,existing){const e=existing||{};
       <label class="field" style="flex:1"><span>Port</span><input class="inp" id="nc-port" value="${e.port||22}"></label></div>
     <div style="display:flex;gap:10px"><label class="field" style="flex:1"><span>User</span><input class="inp" id="nc-user" value="${e.user||''}" placeholder="deploy"></label>
       <label class="field" style="flex:1"><span>Authentication</span>${authSelect('nc',e)}</label></div>
+    ${(() => {
+      /* LABELS, WITH THE NAME AND THE HOST and not under an "Advanced" fold, which is
+         where the app had them until a reader asked how to add one. A label is how a
+         machine is FOUND again — the library's search reads it and the collection has a
+         `Label ▾` filter on it — so it sits with the two fields that answer the same
+         question. Folder and Notes stay further down: one is a personal arrangement, the
+         other is prose, and neither is searched.
+
+         `labelPickerHTML` comes from `agents.js` because in the code this is ONE
+         component shared with the agent dialog (`components/Labels.tsx`). A mock drawing
+         it twice would describe a drift that does not exist. */
+      return `<label class="field"><span>Labels</span>
+        ${labelPickerHTML(e.labels || [], agentVocabulary(), 'nc')}</label>`;
+    })()}
     ${authPanels('nc',e)}
     <label class="field"><span>Jump host <span class="muted" style="font-weight:400">(optional)</span></span>
       <select class="inp" id="nc-jump"><option value="">Direct — no jump</option>${allColls().map(c=>{const opts=(c.conns||[]).filter(m=>m.name!==e.name).map(m=>`<option value="${m.name}" ${e.jump===m.name?'selected':''}>${m.name} — ${m.user?m.user+'@':''}${m.host}</option>`).join('');return opts?`<optgroup label="${c.name}">${opts}</optgroup>`:'';}).join('')}</select>
@@ -903,7 +917,7 @@ function dlgNewConn(collName,existing){const e=existing||{};
     ${(()=>{const c=allColls().find(x=>x.name===collName);return c&&c.shared?`<p class="muted" style="font-size:12px;margin:6px 0 0">${EXICON.users} Shared collection — saving re-encrypts for all ${c.members.length} members (needs write access · RBAC).</p>`:'';})()}`,
   onConfirm:(m)=>{const g=s=>m.querySelector(s);
     const _aid=g('#nc-agent-id'),_afwd=g('#nc-agent-fwd'),_atype=g('#nc-auth').value;
-    const rec={name:(g('#nc-name').value||'').trim()||'machine',protocol:g('#nc-proto').value,host:(g('#nc-host').value||'').trim(),port:Number(g('#nc-port').value)||22,user:(g('#nc-user').value||'').trim(),authType:_atype,agentIdentity:_atype==='agent'&&_aid?_aid.value:undefined,agentForward:_atype==='agent'&&_afwd?_afwd.checked:undefined,color:__pickColor,notes:(g('#nc-notes').value||'').trim(),sshKeepAliveOverride:g('#nc-ka').value==='on'?'enabled':'disabled',sshKeepAliveInterval:Number((g('#nc-kai').querySelector('input')||{}).value)||30,hc:g('#nc-hc').value==='off'?false:undefined,jump:(g('#nc-jump').value||'')||undefined,preconnect:(g('#nc-preconnect').value||'').trim()||undefined};
+    const rec={name:(g('#nc-name').value||'').trim()||'machine',protocol:g('#nc-proto').value,host:(g('#nc-host').value||'').trim(),port:Number(g('#nc-port').value)||22,user:(g('#nc-user').value||'').trim(),authType:_atype,agentIdentity:_atype==='agent'&&_aid?_aid.value:undefined,agentForward:_atype==='agent'&&_afwd?_afwd.checked:undefined,color:__pickColor,notes:(g('#nc-notes').value||'').trim(),labels:(g('.apick').dataset.on||'').split(',').filter(Boolean),sshKeepAliveOverride:g('#nc-ka').value==='on'?'enabled':'disabled',sshKeepAliveInterval:Number((g('#nc-kai').querySelector('input')||{}).value)||30,hc:g('#nc-hc').value==='off'?false:undefined,jump:(g('#nc-jump').value||'')||undefined,preconnect:(g('#nc-preconnect').value||'').trim()||undefined};
     if(existing){Object.assign(existing,rec);}
     else{const cn=allColls().find(c=>c.name===g('#nc-coll').value);if(cn){if(!cn.conns)cn.conns=[];cn.conns.push({...rec,last:'just now'});}}
     renderAll();toast(existing?'Machine updated':`Machine saved to ${g('#nc-coll').value}`);}});}
@@ -1158,11 +1172,16 @@ const PREFS=[
         ['eu-west','Frankfurt and Dublin',''],
         ['client-acme','Under the ACME contract','#7c9cf5'],
       ];
+      /* THE HEX IS NOT A COLUMN. The mock showed `#f7768e`, or the words "from the word"
+         where nobody had chosen one — internal detail promoted to a column the app never
+         had. The chip already carries the colour, and the hex is the business of whoever
+         is editing, which is what Edit opens. Chip, what it means, and the two actions:
+         the same row `LabelManager.tsx` draws. */
       const row = ([w,d,c])=>`<div class="lblrow">
         <span class="alabel" style="--lc:${c||'var(--muted)'}">${w}</span>
-        <span class="lbldesc">${d}</span>
-        <span class="lblpath mono">${c||'from the word'}</span>
-        <button class="btn btn-ghost btn-sm">Edit</button></div>`;
+        <span class="lbldesc">${d||'—'}</span>
+        <button class="btn btn-ghost btn-sm">Edit</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--red)">Remove</button></div>`;
       return `<h4>Labels</h4>
         <div class="lbltools">
           <input class="inp inp-sm" style="flex:1;max-width:280px" placeholder="Search label or description">
