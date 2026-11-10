@@ -26,6 +26,14 @@ import { resolve } from 'node:path';
  * and writes it with `innerHTML`, which was a live reflected XSS — a link that ran script
  * in whoever opened it — and `design/mock/esc.js` is the fix. The page is still in the
  * repository, so the guard stays until the folder goes, and then both go together.
+ *
+ * ITS LESSON IS ALREADY CARRIED WITHOUT IT. The statement worth holding about the product
+ * is an inventory rather than a payload: React escapes what it renders, so the app is safe
+ * here except where it opts out, and `e2e/html-sinks-check.mjs` holds that there is
+ * exactly one opt-out, that it goes through the escaper, and that nothing shows a value
+ * read off the URL. `e2e/board-markup-check.mjs` holds the escaper itself and
+ * `accounts.spec.ts` holds the component in a browser. What is left here guards these
+ * pages, not the product.
  */
 
 const mock = (name: string) =>

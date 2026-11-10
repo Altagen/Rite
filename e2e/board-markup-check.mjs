@@ -8,6 +8,11 @@
  * `replace` calls, and their ORDER is the whole security property. Swap two of them
  * and `<img onerror=…>` reaches the DOM of every member of that collection.
  *
+ * This file holds the FUNCTION. That there is exactly one caller of it, that the caller
+ * does not bypass it, and that nothing in the app renders a value read off the URL are
+ * the surrounding statements, and they are `e2e/html-sinks-check.mjs` — a correct escaper
+ * nobody calls is worth nothing.
+ *
  * Loads apps/desktop/src/utils/board.ts directly: Node strips the types and the module
  * imports nothing at runtime, so this tests the shipped code rather than a copy of it —
  * the same arrangement split-format-check uses.
