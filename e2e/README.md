@@ -59,7 +59,7 @@ browser — is the reason `e2e/gate.sh` is not one container from end to end.
 | Command | What it covers |
 |---|---|
 | `sh e2e/run-checks.sh` | Rust ↔ browser crypto parity, then the server policies (RBAC, enrollment, collections, health-check, dashboard) — each against a fresh accounts server |
-| `npx playwright test --project=mock` | the UX mock in `design/mock`, opened from disk — no server |
+| `npx playwright test --project=mock` | one guard left on `design/mock`: the reflected XSS in `setup.html`. The design itself is held against the shipped screens now — `agent-cards`, `agent-panel`, `settings-surfaces`, `wave1-dashboard` |
 | `npx playwright test --project=chromium` | the local-vault suite (needs the harness) |
 | `npx playwright test --project=accounts` | server mode on :1422 — **serial**, each test builds on the last, so `-g` on a single one will fail at setup |
 | `npx playwright test --project=proxy` | an attached client through the mux (:1424 → :1423) |

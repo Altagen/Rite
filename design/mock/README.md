@@ -1,8 +1,9 @@
-# Rite — UX dev mock
+# Rite — UX dev mock (being retired)
 
-The **living UX prototype** for the Rite client. It is the source-of-truth for
-the interface/UX: **prototype every UI/UX change here first**, then transpose it
-into the real app (`apps/desktop`). It evolves alongside the app.
+The UX prototype for the Rite client, and for two releases the source of truth for the
+interface: a change was drawn here first, then transposed into the real app
+(`apps/desktop`). That arrangement is ending — see **It is no longer the source of
+truth** below — and new screens are previewed in the app itself rather than drawn here.
 
 ## Two shells, two mocks
 
@@ -37,18 +38,22 @@ xdg-open design/mock/desktop.html   # the desktop shell
 Everything is mock (no real backend) — clicks toast, dialogs are illustrative,
 data lives in memory. It exists to *feel* placement, flows, and dialogs.
 
-**It is checked like the app.** `e2e/tests/mock.spec.ts` (the `mock` Playwright project,
-no server, the pages opened from disk) opens both entry pages, requires the same dashboard
-cards and a working Board in each, fails on any console error, walks the ADR 0019
-precedence table row by row — including what the refusal says — and holds the agent
-manager to each state it exists to make speakable. Run it with
-`npx playwright test --project=mock`; it also clicks **every control the agent surface
-added**, because a mock that throws on a click nobody exercised is the same silence in a
-smaller place. `task e2e` covers it too, along with the three
-places the same rule is checked against the real app: the local vault (`dashboard-probe-gate`),
-the web UI (`accounts`) and an attached client (`proxy`). The mock is the source of
-truth for UI/UX, and until now nothing told anyone when it broke: that silence is how the
-web UI ended up with a dashboard nobody had decided on.
+**IT IS NO LONGER THE SOURCE OF TRUTH, AND IT IS ON ITS WAY OUT.** It was checked like
+the app for two releases (`e2e/tests/mock.spec.ts`), and that is what settled the
+question: a checked drawing still disagreed with the product. It showed a git branch on
+an agent card and a turn count after the code had measured both and refused them, listed
+six adapters while seven shipped, kept the admin console out of the overlay nav the shell
+gives it, and offered a two-level machine picker nobody built. Every one of those passed
+its tests.
+
+So the decisions moved to the screens that ship, one by one, and the tests moved with
+them — `e2e/tests/mock.spec.ts` names where each went. What is left here is one guard, on
+the reflected XSS in `setup.html`, and it goes when these pages do.
+
+**What replaced it** is the real UI in a preview: `?shell=desktop` renders the desktop
+shell and `?harness=app` a browser signed into an instance, both on the real components
+against `utils/mockBackend.ts` (`utils/devHarness.ts` says how). A screen drawn there is
+the screen that ships, so it cannot drift from it.
 
 ## Divergences (web ↔ desktop)
 

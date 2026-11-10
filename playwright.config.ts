@@ -79,9 +79,13 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
       dependencies: ['setup'],
     },
-    // The UX mock (design/mock) — plain pages opened from disk, so no server and no
-    // vault setup. It runs here rather than on its own because the mock is the source
-    // of truth for UI/UX and had nothing watching it (ADR 0019).
+    // `design/mock` — plain pages opened from disk, so no server and no vault setup.
+    //
+    // It held the whole of UI/UX once (ADR 0019) and holds ONE test now: the reflected
+    // XSS in `setup.html`. Every design decision it used to carry is asked of the screen
+    // that ships instead, because a checked drawing still disagreed with the product —
+    // `e2e/tests/mock.spec.ts` names where each one went. This project goes when the
+    // folder does.
     {
       name: 'mock',
       testMatch: /mock\.spec\.ts/,
