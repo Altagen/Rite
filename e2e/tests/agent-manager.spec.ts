@@ -46,6 +46,11 @@ test('the manager is a view, names the machine, and says it has not looked yet',
   await page.getByTestId('agent-machine').click();
   await page.getByRole('option', { name: 'e2e-agent-host' }).click();
 
+  // The picker is OURS, not the platform's: a native <select> paints its own list in the
+  // operating system's colours and drops a white panel into a dark app. (`Dropdown.tsx`
+  // is the one this and the dashboard share.)
+  await expect(page.getByTestId('agent-manager').locator('select')).toHaveCount(0);
+
   // Chosen, and still not read — and the screen says so with the machine's name in it,
   // because "not probed" without a subject is a sentence about nothing.
   await expect(page.getByTestId('agent-not-probed')).toContainText('e2e-agent-host');
@@ -56,6 +61,56 @@ test('the manager is a view, names the machine, and says it has not looked yet',
   await page.getByTestId('nav-agents-close').click();
   await expect(page.getByTestId('agent-manager')).toHaveCount(0);
   await expect(page.getByTestId('nav-agents')).toHaveCount(0);
+});
+
+/**
+ * A MACHINE RITE COULD NOT GET INTO IS NOT AN EMPTY MACHINE, and the difference is the
+ * whole test. "0 conversations" asserts something about the host; what happened is that
+ * nobody got to look. So the failure is shown with the machine's name in it and the
+ * reason the host gave, and NOTHING else is claimed: no band, no card, and not a line
+ * about adapters "not looked for yet" either — the probe did not skip them, it never
+ * got in.
+ *
+ * This replaced a "no access" badge that was wrong twice over: wrong in its WORD, since
+ * "no access" reads as a permission the reader lacks and sends them looking for a key
+ * they already hold, and wrong in its SOURCE, since it was drawn from stored state
+ * rather than from what the last attempt came back with. Only trying reveals a refused
+ * credential.
+ */
+test('a machine that refuses the key is reported as unread, and nothing is claimed', async ({
+  page,
+  request,
+}) => {
+  const collection = await ensureCollection(request, 'e2e-agents');
+  await createMachine(request, collection, { name: 'e2e-agent-refuses', password: 'not-the-one' });
+
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('toolbar-agents').click();
+  await page.getByTestId('agent-machine').click();
+  await page.getByRole('option', { name: 'e2e-agent-refuses' }).click();
+  await page.getByTestId('agent-probe').click();
+
+  // Named, and dated by being the answer to a press: the reason comes from the host,
+  // so what is pinned is that one is shown at all, not the wording of an SSH library.
+  const note = page.getByTestId('agent-error');
+  await expect(note).toBeVisible({ timeout: 30_000 });
+  await expect(note).toContainText('e2e-agent-refuses');
+  // And it carries the reason the host gave, which is the part a reader can act on.
+  // Measured as "more than the title", not matched against a sentence: the words are an
+  // SSH library's and pinning them would fail on a dependency bump while saying nothing.
+  const title = 'Could not read e2e-agent-refuses';
+  expect(
+    (await note.innerText()).trim().length,
+    'the note names the machine and gives no reason',
+  ).toBeGreaterThan(title.length + 8);
+
+  // Nothing offered, and nothing claimed.
+  await expect(page.locator('[data-testid^="agent-card-"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid^="agent-band-"]')).toHaveCount(0);
+  await expect(page.getByTestId('agent-not-looked')).toHaveCount(0);
+  await expect(page.getByTestId('agent-empty')).toHaveCount(0);
+  await expect(page.getByTestId('agent-manager')).not.toContainText(/0 conversation/);
 });
 
 test('a browser is offered no local machine, and the route refuses it nothing', async ({

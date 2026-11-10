@@ -36,6 +36,20 @@ esac
 STUB
 chmod 755 /usr/local/bin/claude
 
+# A SECOND STUB, INSTALLED AND UNABLE TO ANSWER. `opencode session list` exits non-zero
+# here, which is the one tool state with something to do about it: the binary is there,
+# so "not installed" is the wrong thing to show, and the manager has to name the status
+# and what it printed instead. It is the state a silent surface gets wrong in the way
+# that costs an hour — "no conversations" for a tool that never got to look.
+cat > /usr/local/bin/opencode <<'STUB'
+#!/bin/sh
+case "$1" in
+  --version) echo "0.0.0-harness (opencode)" ;;
+  *) echo "the harness stub has no session server"; exit 3 ;;
+esac
+STUB
+chmod 755 /usr/local/bin/opencode
+
 # A repository for the live read to answer about, in this user's own home.
 rm -rf "$H/work"
 mkdir -p "$H/work"
@@ -121,4 +135,4 @@ git -C "$H/work" -c user.email=harness@example.invalid -c user.name=harness \
   commit -q -m 'the project layer'
 
 chown -R riteuser:riteuser "$H/.claude" "$H/work"
-echo "[agent-stubs] claude stub on PATH, 3 conversations, two context layers under $H"
+echo "[agent-stubs] claude + a failing opencode on PATH, 3 conversations, two context layers under $H"
