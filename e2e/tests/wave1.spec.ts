@@ -212,6 +212,21 @@ test('a snippet runs in the focused pane', async ({ page, request }) => {
   // Running types the command into the pane and presses Enter for you.
   await row.getByTitle('Run on this pane').click();
   await expect(page.locator('.xterm-rows')).toContainText('RITE_SNIPPET_OK', { timeout: 20_000 });
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+
+  // The same library is offered by the divider, under its own heading: "run my saved
+  // command in a NEW pane" is the same intent as "open a preset", and a snippet that
+  // could only run in the pane already focused would make it a different feature.
+  await page.getByTestId('split-more').first().click();
+  const splitMenu = page.getByRole('menu');
+  await expect(splitMenu).toContainText('Snippets');
+  await splitMenu.getByText('e2e-hello', { exact: true }).click();
+  await expect(page.locator('.xterm-screen')).toHaveCount(2, { timeout: 20_000 });
+  // Found by content: a split puts the new pane beside the one it divided, so the
+  // newest pane is not the last one in the DOM.
+  await expect(page.locator('.xterm-rows').filter({ hasText: 'RITE_SNIPPET_OK' })).toHaveCount(2, {
+    timeout: 20_000,
+  });
 });
 
 test('the machine dashboard probes the host and degrades gracefully', async ({ page, request }) => {
@@ -267,6 +282,10 @@ test('a split opens a plain terminal, and a preset opens a named one', async ({
   await page.getByTestId('split-more').first().click();
   const menu = page.getByRole('menu');
   await expect(menu).toBeVisible();
+  // The plain terminal heads the list, so the menu is a superset of the button beside
+  // it rather than a second, unrelated feature. Asserted on the first ROW: a preset
+  // named "Terminal something" further down would satisfy a search by text.
+  await expect(menu.getByRole('button').first()).toContainText('Terminal');
   await menu.getByText('Split presets…').click();
 
   const dialog = page.getByRole('dialog', { name: 'Split presets' });
@@ -493,6 +512,7 @@ test('a preset is editable, and a layout opens from the tab strip', async ({ pag
   // it goes: a footer "Close" answers the question the corner already answers, and a
   // "Cancel" beside it would be a lie.
   await expect(dialog.getByTestId('layout-panes')).toHaveCount(0);
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
 });
 
@@ -1210,4 +1230,77 @@ test('the layouts menu fits on screen when its button is mid-page', async ({ pag
   const last = menu.getByText('L12', { exact: true });
   await last.scrollIntoViewIfNeeded();
   await expect(last).toBeInViewport();
+});
+
+/**
+ * EDITING A PRESET REWRITES THE PRESET BLOCKS AND NOTHING ELSE.
+ *
+ * The workspace document holds two features that describe a setup — `[[preset]]` for the
+ * split menu and `[[layout]]` for a saved arrangement — plus a `[terminal]` section. A
+ * list of two fields is the easiest thing in the world to save by regenerating the
+ * document from the parse, and that throws away the comments, the blank lines and the
+ * order somebody chose, along with every layout and setting in the same file. So the
+ * dialog SPLICES, and this is the test that says so.
+ *
+ * `design/mock/` held this decision and asserted it against a drawing of the dialog,
+ * where the document was a string in a page. It is asked of the shipped dialog here,
+ * through the document the shipped one writes — seeded over the API, read back after.
+ */
+test('editing a preset leaves the rest of the document as it was typed', async ({
+  page,
+  request,
+}) => {
+  const seeded = [
+    '# a comment somebody typed',
+    '[[preset]]',
+    'name = "Logs"',
+    'command = "journalctl -f"',
+    '',
+    '[[layout]]',
+    'name = "Morning"',
+    'startup = false',
+    '',
+    '[[layout.pane]]',
+    'name = "left"',
+    'command = "htop"',
+    '',
+    '[terminal]',
+    'copyMode = "select"',
+    '',
+  ].join('\n');
+  const put = await request.put('/api/layouts', { data: { value: seeded } });
+  expect(put.ok(), `seeding the document: ${put.status()}`).toBeTruthy();
+
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  // The split menu belongs to a PANE, so there has to be one. A local terminal is the
+  // cheapest: this test is about the document, not about what runs in it.
+  await page.getByRole('button', { name: 'Terminal', exact: true }).click();
+  await expect(page.locator('.xterm-screen').first()).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId('split-more').first().click();
+  await page.getByRole('menu').getByText('Split presets…').click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+
+  // The document was read, not ignored: the preset it declares is the list.
+  await expect(dialog.locator('li').filter({ hasText: 'Logs' })).toHaveCount(1);
+
+  await dialog.getByTestId('preset-name').fill('Journal');
+  await dialog.getByTestId('preset-command').fill('journalctl -f --since today');
+  await dialog.getByTestId('add-preset').click();
+  await expect(dialog.locator('li').filter({ hasText: 'Journal' })).toHaveCount(1);
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+
+  const after = await (await request.get('/api/layouts')).json();
+  const text = (after.text ?? after.value ?? '') as string;
+
+  // The new block is in, and the preset that was already there is still there: a
+  // rewrite that kept the file valid by emptying it would pass every other line here.
+  expect(text, 'the preset that was added is not in the document').toContain('"Journal"');
+  expect(text, 'the preset that was already there was rewritten away').toContain('"Logs"');
+  // …and everything that was not a preset is still there, verbatim.
+  expect(text, 'the layout was rewritten away').toContain('name = "Morning"');
+  expect(text, 'the pane went with it').toContain('command = "htop"');
+  expect(text, 'the terminal section was rewritten away').toContain('copyMode = "select"');
+  expect(text, "somebody's comment was rewritten away").toContain('# a comment somebody typed');
 });

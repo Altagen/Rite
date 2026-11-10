@@ -794,6 +794,64 @@ test('a collection Board round-trips its cards, and the server only sees ciphert
 });
 
 /**
+ * A note card is the one place the app writes HTML out of text somebody else typed.
+ *
+ * On a server a board belongs to a collection, so a note is written by whoever can edit
+ * that collection and read by every other member — through `dangerouslySetInnerHTML` in
+ * `BoardModal`. `mdMini` is what stands between those two facts, and
+ * `e2e/board-markup-check.mjs` holds the function itself. What a unit check cannot see is
+ * whether the component still goes through it: a `card.text` dropped straight into that
+ * prop, or a second sink added beside it, passes every assertion in that file.
+ *
+ * So this is the same property asserted at the other end — against the component, in a
+ * browser, on a card that really round-tripped the server. Three halves, because each
+ * fails on its own: nothing ran, nothing the author did not write is in the DOM, and the
+ * text is still shown as the characters it is made of (an over-eager fix that escaped the
+ * value at its SOURCE would pass the first two and print entities on the screen).
+ */
+test('a note card carrying markup is read as text, not as markup', async ({ page }) => {
+  await signInCarol(page);
+  await openPersonalBoard(page);
+
+  const board = page.getByRole('dialog', { name: 'Board' });
+  await expect(board).toBeVisible({ timeout: 15_000 });
+
+  // `<img src=x onerror=…>` and not `<script>`: a script tag assigned through innerHTML
+  // never executes, so it would pass whatever the component did with it.
+  const payload = '<img src=x onerror="window.__xss = 1">';
+  await board.getByRole('button', { name: /Add card/ }).click();
+  await board.getByRole('button', { name: /Note — / }).click();
+  await page.getByLabel('Title').fill('e2e-note');
+  await page.getByLabel(/^Text/).fill(`${payload}\n**bold** and \`code\``);
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+
+  // The note's body is in the card's own screen, not on the tile: a tile shows a preview,
+  // and a preview is plain text in both views.
+  await board.getByText('e2e-note', { exact: true }).click();
+  const note = page.locator('.board-note');
+  await expect(note).toBeVisible();
+
+  // Nothing ran…
+  expect(
+    await page.evaluate(() => (window as unknown as { __xss?: number }).__xss),
+  ).toBeUndefined();
+  // …nothing the author did not write reached the DOM…
+  await expect(note.locator('img')).toHaveCount(0);
+  // …the text is still on screen, as the characters it is made of…
+  await expect(note).toContainText(payload);
+  // …and the two tags the card IS allowed to produce still render, so the escaping did
+  // not take the feature with it.
+  await expect(note.locator('b')).toHaveText('bold');
+  await expect(note.locator('code')).toHaveText('code');
+
+  // Leave the board as it was found: this project shares one instance, and the test above
+  // asserts what the collection's blob does and does not contain.
+  await page.getByTestId('board-card-remove').click();
+  await expect(board.getByText('e2e-note', { exact: true })).toHaveCount(0);
+  await board.getByRole('button', { name: 'Done' }).click();
+});
+
+/**
  * The server's half of the dashboard gate, seen from a browser (ADR 0019 §3, §6).
  *
  * In the web UI a refusal is *enforcement*, not a preference: the browser cannot open SSH,
@@ -929,8 +987,11 @@ test('the probing cards refresh on their own, never faster than the client floor
  * rides along — and its first entry, "Terminals", replaced the ✕ rather than joining it.
  * A nav of four destinations says where you are going; a Close only says "not here".
  *
- * `design/mock/full-data.js` (`overlayNavHTML`) is the same list in the prototype, and
- * `mock.spec.ts` holds it to the same rules.
+ * The nav is written once (`components/accountsNav.tsx`) and rides every overlay bar, so
+ * this is the only place it can be asked what it offers. The prototype's own copy of the
+ * list (`design/mock/full-data.js`) was held to these rules too, until the drawing stopped
+ * agreeing with the product: it kept the console out of the nav, which is not what the
+ * shell shipped — `closeAdmin` above leaves the console BY the nav's first entry.
  */
 test('an overlay page carries the nav, which is also the way back', async ({ page }) => {
   // Wide enough that OverflowNav keeps the entries inline: this test is about what the
@@ -995,6 +1056,33 @@ test('an overlay page carries the nav, which is also the way back', async ({ pag
   await page.keyboard.press('Escape');
   await expect(page.locator('.fixed.inset-0.z-50 > header.m-appbar')).toHaveCount(0);
 });
+/**
+ * THE CONSOLE ENTRY IS A ROLE GATE, not decoration.
+ *
+ * The nav is written once (`components/accountsNav.tsx`) and rides every overlay bar, so
+ * the entry that leads to instance-wide settings is offered by the same list as Teams and
+ * Collections — one `canManage` away from being offered to everybody. The server refuses a
+ * plain user's admin calls either way (`e2e/rbac-hierarchy-check.mjs`), which is what makes
+ * this a UI test and not a security one: a door that opens onto a refusal is still a door
+ * nobody should be shown.
+ */
+test('a plain user is offered the pages and not the console', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await signInCarol(page);
+  await page.getByRole('button', { name: 'Collections', exact: true }).click();
+
+  const bar = page.locator('.fixed.inset-0.z-50 > header.m-appbar');
+  await expect(bar).toHaveCount(1);
+  // The pages she can travel between are there, so this is not a nav that failed to render.
+  await expect(bar.getByRole('button', { name: 'Collections', exact: true })).toHaveCount(1);
+  await expect(bar.getByRole('button', { name: 'Terminals', exact: true })).toHaveCount(1);
+  // And the console is not, by either of the two names the shells give it.
+  await expect(bar.getByRole('button', { name: /^(Admin|Organization)$/ })).toHaveCount(0);
+
+  await bar.getByRole('button', { name: 'Terminals', exact: true }).click();
+  await expectWorkspace(page);
+});
+
 /**
  * The web UI's settings say what they can, and offer nothing they cannot do.
  *
@@ -1752,10 +1840,7 @@ test('host-key trust is per member: listing, and forgetting, are private', async
   // Forgetting is as private as trusting. Carol's delete must not reach admin's row.
   expect((await forget(carol)).status(), 'carol forgets her own').toBe(204);
   expect(harness(await listFor(carol)), "carol's row is gone").toBeUndefined();
-  expect(
-    harness(await listFor(admin)),
-    'admin still trusts the host carol forgot',
-  ).toBeTruthy();
+  expect(harness(await listFor(admin)), 'admin still trusts the host carol forgot').toBeTruthy();
 
   // And forgetting what was never yours is not a deletion — which is what lets a UI tell
   // "gone" from "was never yours" instead of reporting a success that did nothing.

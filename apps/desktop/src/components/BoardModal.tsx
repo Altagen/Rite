@@ -477,8 +477,11 @@ function CardDetail({
               {t('board.edit')}
             </button>
             <div className="flex-1" />
+            {/* A tile carries a quick remove with the same accessible name, so the two
+                are told apart by this id rather than by the words on them. */}
             <button
               onClick={onRemove}
+              data-testid="board-card-remove"
               className="rounded px-2.5 py-1 text-xs text-red-500 hover:bg-muted"
             >
               {t('board.remove')}
