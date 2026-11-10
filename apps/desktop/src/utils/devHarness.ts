@@ -1,5 +1,21 @@
 /**
- * Dev-only harness for the browser mock (`vite dev`, no Rust backend).
+ * Dev-only harness for the browser mock (no Rust backend).
+ *
+ * TOGETHER WITH `applyDevShell` THIS REPLACES `design/mock/`. That folder held a
+ * hand-written copy of the screens so a shape could be looked at without a binary, and it
+ * drifted every time the real screens moved — because a copy always does. The real
+ * components render here instead, with invented answers from `utils/mockBackend`, and
+ * there is nothing left to keep in step.
+ *
+ * TWO AXES, WHICH THE TWO MOCK PAGES CONFLATED INTO TWO FILES:
+ *
+ *   ?shell=desktop  the native shell around a local vault  (was desktop.html)
+ *   ?harness=app    a browser signed into an instance      (was web.html)
+ *   ?harness=admin  the same browser, on the console
+ *
+ * They are independent: the shell is whether wry injected a token, the context is
+ * whether the server runs accounts. One switch per axis rather than one page per
+ * combination somebody thought to draw.
  *
  * A real server session needs vault crypto the mock can't produce, so the
  * accounts surfaces (server workspace, Teams, Collections, Administration) are
@@ -37,6 +53,47 @@ export function harnessTarget(): string | null {
 /** True whenever a harness surface is requested — the mock reads this to behave as a server. */
 export function harnessOn(): boolean {
   return harnessTarget() !== null;
+}
+
+const SHELL_KEY = 'rite-dev-shell';
+
+/**
+ * WHICH SHELL THE PREVIEW SHOULD PRETEND TO BE — `?shell=desktop`, or nothing for web.
+ *
+ * This is what replaced `design/mock/desktop.html` and `design/mock/web.html`. The two
+ * pages existed because the mock had no way to be one or the other, so it was written
+ * twice; the real app already decides from `window.__RITE_TOKEN__` and
+ * `__RITE_CONTEXT__`, which the native shell injects. Setting them here makes
+ * `isNativeShell()` true and every screen that branches on it — the vault pastille, the
+ * local library, focus mode, the Labels section of Settings — render as the desktop does.
+ *
+ * Nothing simulated: the components are the shipped ones and the branch is the shipped
+ * branch. What is invented is only which side of it this tab is on.
+ */
+export function shellTarget(): 'desktop' | 'web' {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return 'web';
+  const raw = new URLSearchParams(location.search).get('shell');
+  if (raw !== null) return raw === 'desktop' ? 'desktop' : 'web';
+  try {
+    return sessionStorage.getItem(SHELL_KEY) === 'desktop' ? 'desktop' : 'web';
+  } catch {
+    return 'web';
+  }
+}
+
+/** Put the preview in the desktop shell's skin, if it was asked for. Call before render. */
+export function applyDevShell(): void {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return;
+  if (shellTarget() !== 'desktop') return;
+  try {
+    sessionStorage.setItem(SHELL_KEY, 'desktop');
+  } catch {
+    // Same as the harness: the query-param path still works for one load.
+  }
+  // The two globals the native shell injects (ADR 0014 phase 4). A token the mock never
+  // checks and a context naming the vault this window was opened for.
+  window.__RITE_TOKEN__ = 'dev-preview';
+  window.__RITE_CONTEXT__ = { kind: 'local', label: 'Preview vault' };
 }
 
 /** Seed a synthetic admin session and route to the requested surface. Call once at boot. */

@@ -9,6 +9,64 @@
 
 const now = () => Math.floor(Date.now() / 1000);
 
+/**
+ * A LOCAL VAULT'S CONTENTS, invented.
+ *
+ * These are the fixtures `design/mock/full-data.js` used to carry, moved to where they
+ * feed the real components instead of a parallel drawing of them. Mutable, because the
+ * preview is for clicking around: creating a machine has to show up in the library.
+ */
+let localCollections: {
+  id: string;
+  name: string;
+  color: string | null;
+  createdAt: number;
+  folders: { name: string; color: string | null }[];
+  hc: boolean | null;
+  labels: (string | { label: string; color?: string; description?: string })[];
+  hasBoard: boolean;
+}[] = [
+  {
+    id: 'lc-1',
+    name: 'Production',
+    color: '#f7768e',
+    createdAt: now() - 86_400 * 30,
+    folders: [{ name: 'Web servers', color: '#7c9cf5' }],
+    hc: null,
+    // Both stored shapes, because a word nobody coloured is a bare string and the
+    // picker has to read either — see `store/labelsFormat.ts`.
+    labels: ['eu-west', { label: 'pci', color: '#f7768e', description: 'Card data in scope' }],
+    hasBoard: false,
+  },
+  {
+    id: 'lc-2',
+    name: 'Home lab',
+    color: '#9ece6a',
+    createdAt: now() - 86_400 * 9,
+    folders: [],
+    hc: null,
+    labels: [],
+    hasBoard: false,
+  },
+];
+
+let localMachines: (MockConnection & { collectionId: string; labels?: string[] })[] = [];
+
+/** The instance vocabulary, which Settings edits and every picker is offered. */
+let instanceWords: { label: string; color?: string; description?: string }[] = [
+  { label: 'pci', color: '#f7768e', description: 'Card data in scope' },
+  { label: 'prod', color: '#e5b567', description: 'Serving real traffic' },
+  { label: 'eu-west' },
+];
+
+/** The marks document: a conversation's name, colour and labels (ADR 0022 §6). */
+let marksDoc = JSON.stringify({
+  version: 1,
+  marks: [
+    { machine: '@local', tool: 'claude', id: 'c-1', name: 'The queue work', labels: ['prod'] },
+  ],
+});
+
 // Dev harness (see utils/devHarness): when a `?harness` surface is requested, the mock
 // behaves as a shared server so the accounts/admin screens render standalone. The flag is
 // mirrored to sessionStorage because our navigate() drops the query on the first hop.
@@ -131,6 +189,7 @@ export async function mockInvoke(
   command: string,
   args?: Record<string, unknown>,
 ): Promise<unknown> {
+  const a = args ?? {};
   switch (command) {
     // --- Auth ---
     case 'is_first_run':
@@ -714,6 +773,86 @@ export async function mockInvoke(
     case 'resize_terminal':
     case 'disconnect_terminal':
       return null;
+
+    // ── A LOCAL VAULT (ADR 0018), which the preview had none of ─────────────────
+    //
+    // Everything below is what `design/mock/` used to draw by hand. The screens are the
+    // REAL components; only the answers are invented. A hand-drawn copy of a screen goes
+    // stale the week somebody changes the screen, and this cannot: there is one
+    // implementation and the preview is it.
+    case 'local_collections':
+      return localCollections;
+    case 'local_machines':
+      return localMachines.filter((m) => m.collectionId === (a.collectionId as string));
+    case 'local_create_collection': {
+      const made = {
+        id: `lc-${localCollections.length + 1}`,
+        name: (a.name as string) ?? 'New collection',
+        color: (a.color as string) ?? null,
+        createdAt: now(),
+        folders: [],
+        hc: null,
+        labels: [],
+        hasBoard: false,
+      };
+      localCollections.push(made);
+      return made;
+    }
+    case 'local_update_collection': {
+      const c = localCollections.find((x) => x.id === a.id);
+      if (c) {
+        if (typeof a.name === 'string') c.name = a.name;
+        if (a.labels !== undefined) c.labels = a.labels as typeof c.labels;
+      }
+      return { ok: !!c };
+    }
+    case 'local_delete_collection':
+      localCollections = localCollections.filter((c) => c.id !== a.id);
+      return { ok: true };
+    case 'local_create_machine': {
+      const id = `lm-${localMachines.length + 1}`;
+      localMachines.push({
+        ...(a.record as Record<string, unknown>),
+        id,
+        collectionId: a.collectionId as string,
+      } as (typeof localMachines)[number]);
+      return { id };
+    }
+    case 'local_update_machine': {
+      const m = localMachines.find((x) => x.id === a.item);
+      if (m) Object.assign(m, a.record as Record<string, unknown>);
+      return { ok: !!m };
+    }
+    case 'local_delete_machine':
+      localMachines = localMachines.filter((m) => m.id !== a.item);
+      return { ok: true };
+    case 'local_machine_secret':
+      return { password: 'not-a-real-password' };
+    case 'local_board':
+      return { text: null };
+    case 'local_set_board':
+      return null;
+
+    // ── Labels and marks, the documents the pickers read ────────────────────────
+    case 'labels_get':
+      return { labels: instanceWords, support: 'vault' };
+    case 'labels_set':
+      instanceWords = (a.labels as typeof instanceWords) ?? [];
+      return null;
+    case 'get_marks':
+    case 'user_marks_get':
+      return { text: marksDoc, path: null };
+    case 'set_marks':
+    case 'user_marks_set':
+      marksDoc = (a.text as string) ?? (a.value as string) ?? marksDoc;
+      return null;
+
+    // ── Managing an agent conversation. Answers like a command that did nothing and
+    //    said so cleanly: the preview has no machine to remove a file on.
+    case 'agent_manage':
+    case 'agent_manage_local':
+    case 'agent_manage_quick':
+      return { stdout: '', stderr: '', exitStatus: 0 };
 
     default:
       console.warn(`[mockBackend] unhandled command: ${command}`);

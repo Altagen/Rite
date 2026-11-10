@@ -3,11 +3,14 @@ import App from './App';
 import { I18nProvider } from './i18n/i18n';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ConfirmDialog } from './components/ConfirmDialog';
-import { applyDevHarness } from './utils/devHarness';
+import { applyDevHarness, applyDevShell } from './utils/devHarness';
 import './index.css';
 
 // Dev-only: `?harness=admin|teams|collections|app` seeds a synthetic server session so the
 // accounts surfaces are browsable in the backend-less Vite mock. No-op in production.
+// Before the harness: which shell this preview is pretending to be decides what the
+// screens below branch on, and the harness's own routing reads some of it.
+applyDevShell();
 applyDevHarness();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
