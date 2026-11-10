@@ -1509,7 +1509,171 @@ def scenario_agentload(wid):
     shot("agentload-rail")
 
 
+def scenario_design(wid):
+    """WHAT ONLY THE REAL WEBVIEW CAN BREAK — geometry, in the binary, under WebKitGTK.
+
+    Run with RITE_BENCH_AGENTS=1, which seeds the conversations this needs.
+
+    Playwright drives the same React bundle this window renders, and that is where almost
+    every design regression is catchable. What it cannot say is whether WEBKITGTK lays it
+    out the same way: Playwright's chromium is not the engine that ships.
+
+    This exists because a defect got through exactly there. The label list was a popover,
+    absolutely positioned, inside a dialog whose body SCROLLS — and a scrolling box clips
+    an absolutely-positioned child, so the list opened and was cut off after one row. No
+    z-index reaches that; the clip is the overflow. It was found in a screenshot somebody
+    took, which is not a way to find things.
+
+    THE MODIFY DIALOG AND NOT THE MACHINE FORM, because this window opens with no vault:
+    there are no collections, so no machine form. The dialog is the screen the defect was
+    actually seen on, and the field in it is the same component either way.
+
+    Everything else belongs in the Playwright suite, which is faster and runs every gate.
+    """
+    print("\ndesign — geometry in the real webview")
+    focus(wid)
+    js("document.querySelector('[data-testid=toolbar-agents]')?.click(); 1")
+    time.sleep(0.8)
+    js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+    time.sleep(0.5)
+    js(
+        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+        "   .find(o => o.textContent.trim() === 'This machine'); if (o) o.click(); })()"
+    )
+    time.sleep(0.5)
+    js("document.querySelector('[data-testid=agent-probe]')?.click(); 1")
+    time.sleep(3.0)
+
+    cards = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+    if not check("the probe found conversations to act on", cards > 0, f"{cards} cards"):
+        shot("design-no-cards")
+        return
+
+    # Open the dialog that holds the field.
+    js(
+        "(() => { const b = document.querySelector('[data-testid^=agent-rename-]');"
+        " if (b) b.click(); })()"
+    )
+    time.sleep(0.8)
+    if not check(
+        "the modify dialog opens",
+        js("!!document.querySelector('[data-testid=agent-labels-input]')"),
+    ):
+        shot("design-no-dialog")
+        return
+
+    # FOCUS AND THEN CLICK, and the order matters here in a way it does not in chromium:
+    # `HTMLElement.click()` dispatches a click but is not required to move focus, and the
+    # list opens on focus. A person clicking with a mouse focuses; a script calling
+    # `.click()` may not. Reported either way below, so a failure says which of the two it
+    # was rather than leaving the reader to guess.
+    js(
+        "(() => { const i = document.querySelector('[data-testid=agent-labels-input]');"
+        " i.focus(); i.click(); return 1; })()"
+    )
+    time.sleep(0.5)
+    focused = js("document.activeElement?.dataset?.testid || document.activeElement?.tagName")
+    check("the field takes focus in this engine", focused == 'agent-labels-input', f"active: {focused}")
+    # The caret is the other way in, and it does not depend on focus at all.
+    if not js("!!document.querySelector('[data-testid=agent-labels-list]')"):
+        js("document.querySelector('[data-testid=agent-labels-toggle]')?.click(); 1")
+        time.sleep(0.4)
+        check(
+            "and the caret opens it when focus did not",
+            js("!!document.querySelector('[data-testid=agent-labels-list]')"),
+        )
+
+    # THE DEFECT, MEASURED: does what opened fit inside whatever scrolls above it?
+    cut = js(
+        "(() => { const l = document.querySelector('[data-testid=agent-labels-list]');"
+        " if (!l) return 'missing';"
+        " const r = l.getBoundingClientRect();"
+        " if (r.height < 4) return 'collapsed';"
+        " let a = l.parentElement;"
+        " while (a) { const s = getComputedStyle(a);"
+        "   if (/auto|scroll|hidden/.test(s.overflowY)) { const ar = a.getBoundingClientRect();"
+        "     return r.bottom > ar.bottom + 1 ? Math.round(r.bottom - ar.bottom) : 0; }"
+        "   a = a.parentElement; }"
+        " return 0; })()"
+    )
+    check("the list opens and nothing above it cuts it off", cut == 0, f"cut by {cut}")
+
+    # WORDS FIRST, OR THE MEASUREMENT IS OF NOTHING. This window opens with no vault, so
+    # the vocabulary starts empty and an empty list is 33px — which passes a "does not
+    # grow" check whether the cap works or not. That is the assertion agreeing with a
+    # default, so the scenario makes the list long enough to be wrong about.
+    for i in range(8):
+        js(
+            "(() => { const i = document.querySelector('[data-testid=agent-labels-input]');"
+            " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"
+            "   'value').set;"
+            f" set.call(i, 'bench-{i}');"
+            " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+        )
+        time.sleep(0.25)
+        js("document.querySelector('[data-testid=agent-labels-create]')?.click(); 1")
+        time.sleep(0.25)
+
+    rows = js("document.querySelectorAll('[data-testid^=agent-labels-row-]').length")
+    check("the words it created are rows", rows >= 8, f"{rows} rows")
+    tall = js(
+        "(() => { const l = document.querySelector('[data-testid=agent-labels-list]');"
+        " return l ? Math.round(l.getBoundingClientRect().height) : -1; })()"
+    )
+    # Six rows of room, then it scrolls inside itself rather than pushing Save off the end.
+    check("the list stops at six rows and scrolls", 120 < tall <= 190, f"{tall}px")
+    check(
+        "and the rest is reachable by scrolling it",
+        js(
+            "(() => { const l = document.querySelector('[data-testid=agent-labels-list]');"
+            " return !!l && l.scrollHeight > l.clientHeight; })()"
+        ),
+    )
+
+    # Re-measured with the list at full height, which is when a clip would actually bite.
+    cut = js(
+        "(() => { const l = document.querySelector('[data-testid=agent-labels-list]');"
+        " if (!l) return 'missing';"
+        " const r = l.getBoundingClientRect(); let a = l.parentElement;"
+        " while (a) { const s = getComputedStyle(a);"
+        "   if (/auto|scroll|hidden/.test(s.overflowY)) { const ar = a.getBoundingClientRect();"
+        "     return r.bottom > ar.bottom + 1 ? Math.round(r.bottom - ar.bottom) : 0; }"
+        "   a = a.parentElement; }"
+        " return 0; })()"
+    )
+    check("and a full list is still not cut off", cut == 0, f"cut by {cut}")
+
+    # AND THE DIALOG'S OWN CONTROLS STILL TAKE THEIR CLICKS with the list open, which is
+    # the other half of the same question: `elementFromPoint` reads hit-testing directly,
+    # where a click cannot tell "covered" apart from "not there".
+    covered = js(
+        "(() => { const d = document.querySelector('[data-testid=agent-rename-dialog]');"
+        " if (!d) return ['no dialog'];"
+        " const out = [];"
+        " for (const b of Array.from(d.querySelectorAll('button'))) {"
+        "   const r = b.getBoundingClientRect(); if (!r.width || !r.height) continue;"
+        "   const x = r.left + r.width / 2, y = r.top + r.height / 2;"
+        "   if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) continue;"
+        # Scrolled away inside a list is not covered. `e2e/tests/support/hitTest.ts`
+        # carries the same rule and the reasoning for it.
+        "   let clipped = false;"
+        "   for (let a = b.parentElement; a; a = a.parentElement) {"
+        "     const cs = getComputedStyle(a);"
+        "     if (!/auto|scroll/.test(cs.overflowY) && !/auto|scroll/.test(cs.overflowX)) continue;"
+        "     const ar = a.getBoundingClientRect();"
+        "     clipped = y < ar.top || y > ar.bottom || x < ar.left || x > ar.right; break; }"
+        "   if (clipped) continue;"
+        "   const hit = document.elementFromPoint(x, y);"
+        "   if (hit !== b && !b.contains(hit) && !(hit && hit.contains(b)))"
+        "     out.push((b.textContent || '?').trim().slice(0, 16)); }"
+        " return out; })()"
+    )
+    check("every control in the dialog receives its own clicks", covered == [], f"{covered}")
+    print("  shot     ", shot("design-labels"))
+
+
 SCENARIOS = {
+    "design": scenario_design,
     "probe": scenario_probe,
     "size": scenario_size,
     "accents": scenario_accents,

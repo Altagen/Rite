@@ -64,6 +64,20 @@ export async function coveredControls(page: Page, scope: string): Promise<Covere
       const y = r.top + r.height / 2;
       if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
 
+      // SCROLLED AWAY IS NOT COVERED. A control inside a list that scrolls can have its
+      // centre outside what that list shows, and `elementFromPoint` then answers with
+      // whatever is painted there — which reads as a defect and is not one. The same
+      // reasoning as the viewport test above, one container in.
+      let clipped = false;
+      for (let a = el.parentElement; a && !clipped; a = a.parentElement) {
+        const s = getComputedStyle(a);
+        if (!/auto|scroll/.test(s.overflowY) && !/auto|scroll/.test(s.overflowX)) continue;
+        const ar = a.getBoundingClientRect();
+        clipped = y < ar.top || y > ar.bottom || x < ar.left || x > ar.right;
+        break;
+      }
+      if (clipped) continue;
+
       const hit = document.elementFromPoint(x, y);
       // Its own descendant answering is normal — a button draws an icon and a span.
       // So is an ancestor: a control inside a padded wrapper can legitimately report it.
