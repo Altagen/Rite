@@ -14,9 +14,7 @@
  * also what keeps one member's hosts from telling another where they connect. The wording
  * says so, impersonally like every other label, because a list that read as instance-wide
  * would teach the wrong model.
- *
- * Mirrors `design/mock/desktop.html` → Settings → SSH, which is the source of truth for
- * the shape (ADR 0019).
+
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';

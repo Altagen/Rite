@@ -1,5 +1,5 @@
 /**
- * Machine status pastille (ADR 0017). Two layers, matching design/mock:
+ * Machine status pastille (ADR 0017). Two layers:
  *  - Active (governed probing): a warm glowing dot when reachable, a calm hollow ring
  *    when there's no response (down is a normal state, NOT an error — never red), an
  *    amber pulse while a check is in flight. Driven by an on-demand "Check".

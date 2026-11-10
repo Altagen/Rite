@@ -2,8 +2,7 @@
  * Identity pastille (accounts context) — who is signed in and where, with the personal
  * actions behind it. The chrome is `HeaderPastille`, shared with the local-vault context so
  * the same corner of the same bar reads the same way whichever context a window holds.
- *
- * Matches the profile chip in design/mock/web.html and desktop.html.
+
  */
 
 import { useTranslation } from '../i18n/i18n';

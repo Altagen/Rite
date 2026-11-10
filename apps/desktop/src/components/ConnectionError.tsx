@@ -1,5 +1,5 @@
 /**
- * Full-page connection / error states (design/mock/errors.html). Shown when the app can't
+ * Full-page connection / error states. Shown when the app can't
  * boot or the session is gone — every failure path gets a clear message and a safe way
  * forward, never a blank screen or a raw stack. A dropped connection mid-session uses the
  * non-blocking OfflineBanner instead; this is the takeover for "can't proceed" cases.

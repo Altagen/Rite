@@ -1,8 +1,8 @@
 /**
  * Discover (ADR 0016) — collections offered to the teams I'm in, grouped by team, with
  * request-access. Discovery labels are plaintext (RBAC-gated to the team), NOT the encrypted
- * name; the machines stay end-to-end encrypted until a key-holder grants me. Mirrors the
- * "Discover" tab of design/mock/collections.html.
+ * name; the machines stay end-to-end encrypted until a key-holder grants me. It is the "Discover" tab of the
+ * collections page.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';

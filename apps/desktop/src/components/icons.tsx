@@ -1,12 +1,10 @@
 /**
- * Icon set — the SVG paths from the design mock (design/mock/rite.js +
- * full-data.js + the per-mock `M` set), as React components, so the app matches
- * the mock's iconography. All are stroked (fill:none, 2px, round caps), 24×24.
+ * Icon set — one stroked family as React components, so every glyph in the app is
+ * drawn the same way: fill:none, 2px, round caps, 24×24.
  *
- * `IconRefresh` has no counterpart in the mock yet: it marks the live read in the agent
- * panel, which the mock has not caught up with either (see design/mock/README.md). Drawn
- * in the same single-path, stroked style so the mock can adopt this one rather than
- * inventing a second.
+ * `IconRefresh` marks the live read in the agent panel, drawn in the same single-path,
+ * stroked style as the rest — a second style for one glyph is how an icon set stops
+ * being one.
  */
 
 type IconProps = { className?: string };

@@ -961,7 +961,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
                 {/* Quick SSH is the server's to forbid (`quickSshAllowed`), and when it does the
                   row says so instead of vanishing: the preference is still this person's, the
                   button stays hidden either way, and someone looking for it gets an answer. The
-                  probe-cards row above answers the same way, and so does design/mock/web.html. */}
+                  probe-cards row above answers the same way. */}
                 <SettingsToggle
                   title={t('settings.toolbarQuickSsh')}
                   hint={

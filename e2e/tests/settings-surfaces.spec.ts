@@ -4,8 +4,8 @@ import { openSettings } from './support/headerBar';
 /**
  * WHAT SETTINGS OFFERS IN EACH SHELL, read off the shipped component.
  *
- * This is what `e2e/settings-rail-check.mjs` used to ask of `design/mock/desktop.html`
- * and `design/mock/web.html`. Those two pages existed because the mock had no way to be
+ * This is what `e2e/settings-rail-check.mjs` used to ask of the two mock pages (deleted).
+ * They existed because the mock had no way to be
  * one shell or the other, and comparing them compared two hand-written copies — so the
  * check passed for two releases while host-key verification sat under Security in the app
  * and under SSH in the mock. A reader looking for an SSH setting under SSH did not find
@@ -91,7 +91,7 @@ test('the desktop shell offers the sections only a native window can', async ({ 
 
   const { rail } = await surface(page);
   // A local vault in a native window can show every section there is, which is the
-  // property `design/mock/desktop.html` was drawn to describe.
+  // property the mock was drawn to describe.
   expect(rail, 'the rail is empty, so this test is measuring nothing').not.toEqual([]);
   expect(rail).toContain('Labels');
 });

@@ -1,6 +1,6 @@
 /**
- * The small context chrome the mock puts on every vault/server row
- * (`design/mock/desktop.html` — `.tag locked|unlocked|server`, `.badge`, `.curtag`).
+ * The small context chrome on every vault/server row: the state tag (locked, unlocked,
+ * server), the badge, and the tag for the context this window holds.
  *
  * A vault is "open" only where we can know it: the window you are looking at. Any
  * other vault in the roster reads "locked", which is the truth in the ordinary

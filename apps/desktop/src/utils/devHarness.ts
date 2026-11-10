@@ -1,7 +1,7 @@
 /**
  * Dev-only harness for the browser mock (no Rust backend).
  *
- * TOGETHER WITH `applyDevShell` THIS REPLACES `design/mock/`. That folder held a
+ * TOGETHER WITH `applyDevShell` THIS REPLACED `design/mock/`, now deleted. That folder held a
  * hand-written copy of the screens so a shape could be looked at without a binary, and it
  * drifted every time the real screens moved — because a copy always does. The real
  * components render here instead, with invented answers from `utils/mockBackend`, and

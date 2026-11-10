@@ -1,5 +1,5 @@
 /**
- * Collection view (ADR 0016, transposed from design/mock) — a collection opened
+ * Collection view (ADR 0016) — a collection opened
  * in the main area as cards/list. Header (icon, name, role, member/share button),
  * a toolbar (filter, sort, grid/list, + Machine), and the machines grouped by the
  * collection's shared sub-folders. Purely presentational over the connections the

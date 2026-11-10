@@ -1,5 +1,5 @@
 /**
- * Member picker (ADR 0016), transposed from design/mock — one dialog for both
+ * Member picker (ADR 0016) — one dialog for both
  * creating a shared collection and managing an existing one's sharing.
  *
  * Layout mirrors the mock: (optional) name + colour, "add from team" chips that

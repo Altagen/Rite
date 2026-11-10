@@ -1,7 +1,7 @@
 /**
- * Library sidebar (ADR 0014 — navigation skeleton, transposed from design/mock).
+ * Library sidebar (ADR 0014 — navigation skeleton).
  *
- * A tree of the saved connections in the target model (design/mock): personal
+ * A tree of the saved connections: personal
  * folders → machines, then first-class **collection** nodes (ADR 0016) — each with
  * its own icon, colour and role badge — whose machines are folder-grouped inside.
  * Personal machines carry no `collectionId`; a machine with one is rendered under

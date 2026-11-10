@@ -1,6 +1,6 @@
 /**
  * Typed HTTP transport errors + a global "unauthorized" hook, so callers and the app shell
- * can react to connection/session failures (design/mock/errors.html) instead of surfacing a
+ * can react to connection/session failures instead of surfacing a
  * raw message. Kept dependency-free (no store import) to avoid cycles with httpRoutes.
  */
 

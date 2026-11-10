@@ -450,11 +450,12 @@ check('and the allow-list has no stale entry', () => {
 /*
  * The interface addresses nobody.
  *
- * `e2e/mock-register-check.mjs` holds this for the mock, and its header says why: the
- * app's 122 strings were rewritten to address nobody while the mock kept 258 of them, so
- * the mock became the place the old register would come back from. Nothing held it on
- * THIS side afterwards, and two strings survived the sweep — "A shell we didn't find" and
- * "We'll keep trying on our own". The owner found them by reading the screen.
+ * This was held for the mock first, by a check of its own, and that check's reason is
+ * worth keeping now that both it and the mock are gone: the app's 122 strings were
+ * rewritten to address nobody while the mock kept 258 of them, so the mock became the
+ * place the old register would come back from. Nothing held it on THIS side afterwards,
+ * and two strings survived the sweep — "A shell we didn't find" and "We'll keep trying on
+ * our own". The owner found them by reading the screen.
  *
  * A label, not prose: the interface states what a thing is, and a sentence with a speaker
  * and a listener in it is a different product talking about itself.

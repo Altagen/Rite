@@ -9,9 +9,8 @@
  * ragged ones). The two shells serve the same bundle, so this was never per-shell CSS:
  * it was fourteen sections inventing fourteen layouts.
  *
- * `design/mock/rite.css` (`.settings-row`) is the shape being matched: what the setting
- * is on the left, the control that changes it on the right, one hairline between rows
- * and none under the last.
+ * One shape, for all fourteen: what the setting is on the left, the control that changes
+ * it on the right, one hairline between rows and none under the last.
  */
 
 import type { ReactNode } from 'react';

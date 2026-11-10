@@ -19,9 +19,9 @@ table are in place, so the SFTP pane and the Agent Manager can be built when the
 turn comes rather than after a refactor.
 
 The **Agent Manager** is the next major feature, ahead of Phase 2. Its shape is
-settled in ADR 0022 and prototyped in `design/mock/agents.js`: the manager is a view,
-an agent session is a pane, and agents run on a machine from your library, never
-inside the server container. What is left is the code.
+settled in ADR 0022: the manager is a view, an agent session is a pane, and agents run
+on a machine from the library, never inside the server container. What is left is the
+code.
 
 ---
 
@@ -395,15 +395,21 @@ but an icon. This is something no SSH client does, and it sits directly on what
 0.2.3 shipped — dashboard cards, the Board, and client-execute (ADR 0012), which
 already runs a command on the *local* machine from either shell.
 
-**This is an AI feature, so it gets mocked before it gets built** — in
-`design/mock/`, as the dashboard was, so the shape is argued over on screen
-rather than in a pull request. An ADR follows the mock, and code follows the ADR.
+**This is an AI feature, so the shape gets looked at before it gets built** — argued
+over on screen rather than in a pull request, with an ADR after it and code after that.
 
-Two things the code has since settled that the mock has not caught up with, and it owes
-them: the **detail panel** (the mock has a row menu and a mark dialog, no panel — and the
-panel's order, facts and actions above a folded prompt, is a decision taken on a real
-machine), and **delete**. The rule holds in both directions: the mock leads when it is
-ahead, and it is corrected from the code when the code has measured something it had not.
+WHERE IT IS LOOKED AT CHANGED IN 0.2.9. It used to be `design/mock/`, a hand-written
+copy of the screens; that folder is deleted, and the preview is the app itself —
+`?shell=desktop` for the desktop shell, `?harness=app` for a browser signed into an
+instance, both rendering the REAL components against invented answers
+(`utils/mockBackend.ts`, `utils/devHarness.ts`). It needs no binary and no server, which
+is what the mock was for.
+
+The reason for the change is the two-way rule the mock needed and the preview does not.
+A drawing can be ahead of the code or behind it, so "mock first" had to come with "and
+the mock is corrected from the code when the code has measured something it had not" —
+and the mock still shipped a release showing a git branch the code had refused and six
+adapters where seven existed. A preview cannot disagree with the screen it IS.
 
 - [x] **PTY + exec in `rite-core`** — **done.** An agent pane runs a *named program*, not
       a command typed into a shell: over SSH the resume line travels with the channel, and

@@ -10,8 +10,8 @@ import { test, expect } from '@playwright/test';
  * permanent arrow, which puts a button on top of the output it was meant to stay out of.
  *
  * So the arrow reads the pointer instead (no element over the terminal at all), and is
- * `pointer-events-none` while hidden. `design/mock/rite.css` carries the same rule for
- * `.side-rail`, and `mock.spec.ts` holds the prototype to it.
+ * `pointer-events-none` while hidden. The mock carried the same rule for `.side-rail`
+ * and a test of its own; this one is what is left of the pair.
  */
 test('the sidebar reveal arrow follows the pointer and is click-through when hidden', async ({
   page,

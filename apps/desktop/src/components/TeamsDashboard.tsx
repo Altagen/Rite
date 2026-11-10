@@ -3,7 +3,7 @@
  * rosters), master-detail. For each team: its members with Manager/Member roles, the
  * collections offered to it (discovery — open if a member, request access if not), and
  * leave-team. Managing who's in a team is the org/team-admin console; this is the member's
- * view. Mirrors design/mock/teams.html.
+ * view.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

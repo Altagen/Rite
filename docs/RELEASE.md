@@ -182,7 +182,6 @@ Then check the three records are current, because nothing else will:
   from it rather than ticked
 - every ADR the code cites exists in the decisions repository, and a decision taken
   during the release has one
-- `design/mock/` describes the shipped screens, not the previous ones
 
 ### 2. Update Version
 

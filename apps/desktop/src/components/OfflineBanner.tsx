@@ -1,5 +1,5 @@
 /**
- * Non-blocking connection banner (design/mock/errors.html). Mid-session, a dropped network is
+ * Non-blocking connection banner. Mid-session, a dropped network is
  * a banner over the app — not a full-page takeover — because your work is still there waiting
  * to resume. Driven by the browser's online/offline events; auto-hides when back online.
  */

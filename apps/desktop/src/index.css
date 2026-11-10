@@ -28,7 +28,7 @@
 }
 
 @layer base {
-  /* Palette aligned with the design mock (design/mock/rite.css): a bluish dark
+  /* One palette, and this is it: a bluish dark
      ground, cards a touch lighter for depth, and a periwinkle accent. */
   :root {
     /* Rite ships a single dark palette. Declaring it tells the engine to render
@@ -73,7 +73,7 @@
   }
   body {
     @apply bg-background text-foreground;
-    /* Match the design mock's base density (design/mock/rite.css body). Chrome
+    /* The base density for the whole app. Chrome
        elements inherit this; Tailwind text-* utilities set their own size. */
     font-size: 14px;
     line-height: 1.45;
@@ -92,9 +92,8 @@
      the checkboxes before any test did.
 
      `color-scheme: dark` above covers what no page can style (a <select>'s open
-     list); these rules cover what a page can. Shapes from design/mock/rite.css —
-     `input.inp, select.inp` for the boxes, `.scroll::-webkit-scrollbar` for the
-     bars — so the prototype and both shells describe one control each.
+     list); these rules cover what a page can — the boxes and the scrollbars — so both
+     shells describe one control each.
      ------------------------------------------------------------------------ */
 
   /* The closed box is ours; the open list stays the engine's, in both engines. The
@@ -211,9 +210,8 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Design-mock component classes (design/mock/rite.css), mapped onto the app's
-   theme tokens so the chrome matches the mock. Used by the workspace header and
-   the library sidebar. Dark, terminal-forward.
+   The app's own chrome classes, mapped onto the theme tokens. Used by the
+   workspace header and the library sidebar. Dark, terminal-forward.
    --------------------------------------------------------------------------- */
 @layer components {
   /* buttons */
@@ -258,7 +256,7 @@
     font-size: 13px;
     border-radius: 7px;
   }
-  /* The nav entry for the surface you are already on (design/mock/rite.css .btn.nav-on).
+  /* The nav entry for the surface you are already on.
      Marked rather than dropped: a nav that hides its own entry shifts the others under
      the cursor each time you move. */
   .m-btn.nav-on,

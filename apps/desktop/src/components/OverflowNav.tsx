@@ -1,5 +1,5 @@
 /**
- * Progressive header overflow (matches design/mock/web.html fitBar). Renders a set of nav
+ * Progressive header overflow. Renders a set of nav
  * actions inline and, when the appbar runs out of room, collapses them one at a time — from
  * the end — into a "⋯" menu, so the row never wraps and the identity pastille stays pinned
  * right. Measurement is imperative (scrollWidth vs clientWidth on the appbar, which must be

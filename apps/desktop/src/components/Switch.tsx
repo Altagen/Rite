@@ -7,7 +7,7 @@
  * shell, the browser's own in a tab. Same bundle, same account, two different controls,
  * which is exactly what the two shells must never look like.
  *
- * `design/mock/rite.css` (`.toggle`) is the shape: a pill with a knob that slides.
+ * The shape is a pill with a knob that slides, drawn in one place: `SwitchPill` below.
  *
  * `role="switch"` rather than `checkbox` because that is what it looks like and what it
  * is — on or off, applied at once, no form to submit. The accessible name is passed

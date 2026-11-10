@@ -201,8 +201,7 @@ export function Workspace({
   // Sidebar state
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   // Whether the pointer is near the left edge, which is the only thing that shows the
-  // reveal arrow for a collapsed library (see the arrow below, and `.side-rail` in
-  // design/mock/rite.css — the mock has read this way all along).
+  // reveal arrow for a collapsed library (see the arrow below).
   const [nearLeftEdge, setNearLeftEdge] = useState(false);
   // Focus mode (client/native only): hide the header so terminals fill the screen. `active` + the
   // auto-collapse-sidebar preference live in a small store; `reveal` is local (hover-to-peek).
@@ -542,8 +541,8 @@ export function Workspace({
   const [installedShells, setInstalledShells] = useState<string[]>([]);
 
   // The shells this picker offers. One list for the whole app (`utils/shells.ts`),
-  // which is also the mock's (design/mock/desktop.html SHELLS) — this is the second
-  // time these two have drifted, and last time it was the names and the icons.
+  // which was two lists until they drifted twice — the names and the icons, the
+  // last time.
   const shells = SHELL_CANDIDATES;
 
   // Store Quick SSH connection info for later saving
