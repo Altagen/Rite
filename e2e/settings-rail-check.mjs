@@ -1,15 +1,17 @@
 /**
- * The mock's Settings rail is the app's Settings rail.
+ * What the Settings rail PROMISES, read off the component that draws it.
  *
  * The rail is how a setting is found at all — scrolling stopped working at fourteen
- * sections — so a section the mock does not have is a section the design does not describe,
- * and a section the mock alone has is a promise nothing keeps. They drifted: the app split
- * Clipboard into its own entry and the mocks kept it as a line inside Security, where
- * nobody looks for it.
+ * sections — so the questions worth pinning are: does every entry resolve to a word, is a
+ * section that a server must not offer marked so, and is a row that was argued about in
+ * the section it was given.
  *
- * Compared by LABEL rather than by id, because the ids already disagree harmlessly (`shell`
- * in the app, `terminals` in the mock) while a label is what a reader sees. Presence, not
- * order: the order is a design call, and pinning it would fail for a reason nobody acted on.
+ * WHAT THIS NO LONGER DOES IS COMPARE TWO DRAWINGS. It used to hold `design/mock/*.html`
+ * against this component, and comparing a copy to the original is how host-key
+ * verification sat under Security in the app and under SSH in the drawing for two
+ * releases with nothing failing: the comparison was of RAILS, and the rows were where the
+ * drift was. `e2e/tests/settings-surfaces.spec.ts` asks the same questions of the real
+ * screen in both shells, where the answer cannot be a copy of itself.
  *
  * Run: node e2e/settings-rail-check.mjs
  */
@@ -49,12 +51,6 @@ function appRail() {
   }));
 }
 
-/** The mock page's rail labels. */
-const mockRail = (page) =>
-  [...read(`design/mock/${page}.html`).matchAll(/\{ id:'[a-z]+', label:'([^']+)'/g)].map(
-    (m) => m[1],
-  );
-
 const rail = appRail();
 
 check('every rail entry resolves to a label', () => {
@@ -63,35 +59,6 @@ check('every rail entry resolves to a label', () => {
     nameless.map((r) => r.id),
     [],
     'a rail entry points at a missing key',
-  );
-});
-
-console.log('\nthe desktop mock has every section the desktop app can show:');
-
-check('desktop', () => {
-  const have = mockRail('desktop');
-  // The desktop is a machine with a vault, so it can show all of them.
-  const missing = rail.filter((r) => !have.includes(r.label)).map((r) => r.label);
-  assert.deepEqual(missing, [], `absent from design/mock/desktop.html: ${missing.join(', ')}`);
-});
-
-console.log('\nand the web mock has every section a browser can show:');
-
-check('web', () => {
-  const have = mockRail('web');
-  // A browser has no native window and no local vault, so focus mode, the master password
-  // and the danger zone are absent BY DESIGN — and must stay absent rather than drift in.
-  const expected = rail.filter((r) => !r.native && !r.local && !r.vault);
-  const missing = expected.filter((r) => !have.includes(r.label)).map((r) => r.label);
-  assert.deepEqual(missing, [], `absent from design/mock/web.html: ${missing.join(', ')}`);
-  const forbidden = rail
-    .filter((r) => r.native || r.local || r.vault)
-    .filter((r) => have.includes(r.label))
-    .map((r) => r.label);
-  assert.deepEqual(
-    forbidden,
-    [],
-    `a browser cannot show these, so the mock must not: ${forbidden.join(', ')}`,
   );
 });
 
@@ -106,88 +73,6 @@ check('Labels is local-only, so a server never shows it in user settings', () =>
   const labels = rail.find((r) => r.label === 'Labels');
   assert.ok(labels, 'the rail no longer has a Labels section');
   assert.equal(labels.local, true, 'Labels must be marked `local` or a server will show it');
-});
-
-/* And a section existing in both mocks was not enough either. Clipboard was its own rail
-   entry in both pages, so the check above passed — while the desktop offered the copy
-   convention and the web page did not have the row at all. The app has one Settings
-   component for both shells, so a section with no `native`/`local`/`vault` flag shows the
-   SAME controls in a browser as on the desktop. A mock that disagrees is describing a
-   product that does not exist.
-
-   Compared by the TITLE of each `prefRow`, which is what a reader scans for, and only for
-   the sections a browser can show. Not the markup: the two pages legitimately build some
-   rows differently, and pinning the HTML would fail on cosmetics nobody acted on. */
-/* Rows that exist in both pages under DIFFERENT names, because they are about different
-   things even though they sit in the same section. Named here with the reason, so the
-   check stays blunt about everything else: a row missing from one page is drift until
-   someone writes down why it is not.
-
-   Keyed both ways, since the check looks from each side in turn. */
-const SAME_ROW_OTHER_WORDS = {
-  // A browser locks a SESSION; a desktop locks a VAULT. Not the same object.
-  'Auto-lock vault': 'Auto-lock session',
-  'Auto-lock session': 'Auto-lock vault',
-  // The desktop names the instance THIS WINDOW is connected to; the web page names what
-  // the server it is served by speaks. Two different facts about two different hosts.
-  Server: 'API',
-  API: 'Server',
-};
-
-/* Rows that exist on ONE page on purpose, each with the decision that put it there. A
-   row missing from the other page is drift until it is written down here — which is the
-   point: these entries are the record, and adding one is a deliberate act rather than a
-   way to quiet the check. */
-const ONE_SHELL_ONLY = {
-  // ADR 0031 and `shellControls()`: the default shell is the desktop client's own. A
-  // browser has no machine of its own, so the instance chooses and offers its list.
-  'Shell picker': 'desktop',
-  Shell: 'desktop',
-  'Another shell': 'desktop',
-  'Local shell': 'web',
-  'Server shell': 'web',
-  // 0.2.8: the web UI has no directory row at all — every terminal there opens in the
-  // image's WORKDIR, and a field would offer directories the member cannot write.
-  'Preset terminal folder': 'desktop',
-  Folder: 'desktop',
-  // A browser has no window to strip; the rail entry is already `native`.
-  'Focus mode': 'desktop',
-  // ADR 0025: server management is web-only.
-  'Teams and Collections': 'web',
-};
-
-function mockRows(page) {
-  const src = read(`design/mock/${page}.html`);
-  const out = new Map();
-  // Each section runs from its own `{ id:'x', label:'Y', body:()=>` to the next one.
-  const heads = [...src.matchAll(/\{ id:'([a-z]+)', label:'([^']+)', body:\(\)=>/g)];
-  heads.forEach((h, i) => {
-    const body = src.slice(h.index, i + 1 < heads.length ? heads[i + 1].index : src.length);
-    out.set(h[2], [...body.matchAll(/prefRow\(\s*'([^']+)'/g)].map((m) => m[1]).sort());
-  });
-  return out;
-}
-
-check('a section both shells can show offers the same rows in both mocks', () => {
-  const desk = mockRows('desktop');
-  const web = mockRows('web');
-  const shared = rail.filter((r) => !r.native && !r.local && !r.vault);
-  const drifted = [];
-  for (const r of shared) {
-    const a = desk.get(r.label);
-    const b = web.get(r.label);
-    if (!a || !b) continue; // absence is the assertion above's job, not this one
-    const only = (x, y, side) =>
-      x.filter((t) => !y.includes(t) && !SAME_ROW_OTHER_WORDS[t] && ONE_SHELL_ONLY[t] !== side);
-    const dOnly = only(a, b, 'desktop');
-    const wOnly = only(b, a, 'web');
-    if (dOnly.length || wOnly.length) {
-      drifted.push(
-        `${r.label}: desktop only [${dOnly.join(', ')}] · web only [${wOnly.join(', ')}]`,
-      );
-    }
-  }
-  assert.deepEqual(drifted, [], `the two mocks disagree:\n        ${drifted.join('\n        ')}`);
 });
 
 /* A section existing on both sides was never enough. Host-key verification sat in the app's
