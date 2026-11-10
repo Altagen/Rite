@@ -120,6 +120,18 @@ const ConnectionInfoSchema = z.object({
   color: z.string().nullable().optional(),
   icon: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  /**
+   * The labels this machine carries. ZOD STRIPS WHAT IT DOES NOT DECLARE, and this was
+   * not declared — so every machine read through this schema came back without them,
+   * however faithfully the core had sealed and returned them.
+   *
+   * It was invisible from both ends. `machine-labels.spec.ts` asserts against the ROUTE
+   * and passed throughout; the screens that use them — the chips on a card, the library's
+   * search, the collection's `Label ▾` filter, the picker's offers — all read an empty
+   * list and had nothing to show, which looks like "nothing is labelled" rather than like
+   * a bug. Found by a picker that offered no words for a machine that visibly had one.
+   */
+  labels: z.array(z.string()).optional(),
   sshKeepAliveOverride: z.string().nullable().optional(),
   sshKeepAliveInterval: z.number().nullable().optional(),
   preconnect: z.string().nullable().optional(),
