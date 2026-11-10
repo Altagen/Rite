@@ -219,7 +219,7 @@ export function Settings({ onClose, connections, libraryReadable }: SettingsProp
   const hasVault = useAuthStore((a) => a.isFirstRun) === false;
   // ADR 0019: the toggle below can only narrow the server's answer, so when the server
   // already says no the switch is told it changes nothing rather than pretending to.
-  const probesVerdict = probeVerdict({ mode: serverMode ?? null, userWants: true });
+  const probesVerdict = probeVerdict({ mode: serverMode ?? null, userWants: true, native });
   const probesRefusedByServer = !probesVerdict.allowed && probesVerdict.by === 'server';
   const [shellDraft, setShellDraft] = useState('');
   useEffect(() => {

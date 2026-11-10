@@ -28,6 +28,29 @@ test.beforeEach(async ({ request }) => {
   await request.put('/api/settings/host_key_verification_mode', { data: { value: 'accept' } });
 });
 
+/**
+ * THE FOUR CARDS, IN THE ORDER THE SCREEN IS READ IN.
+ *
+ * The order is a decision and not an accident: what the machine IS (overview), then what
+ * it is reachable through (forwards), then what it runs — and the last two are the
+ * governed pair, so they sit together at the foot where a refusal reads as one absence
+ * rather than two holes in the middle. Nothing held this but the drawing of it, which is
+ * how a card can be moved by a refactor of the JSX and nobody notice.
+ *
+ * Read off the headings, which is what the cards are named by for a screen reader too —
+ * so a card that lost its heading fails here rather than becoming an unnamed panel.
+ */
+test('the dashboard offers four cards, in one order', async ({ page, request }) => {
+  await createConnection(request, 'e2e-dash-order');
+  await page.goto('/');
+  await page.getByText('e2e-dash-order').click();
+
+  const cards = page.getByRole('heading', { level: 3 });
+  await expect(cards).toHaveText(['Overview', 'Port forwarding', 'Containers', 'Services'], {
+    timeout: 30_000,
+  });
+});
+
 test('containers card lists what the host runs, with per-row actions', async ({
   page,
   request,

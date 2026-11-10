@@ -9,7 +9,6 @@
  * by mounting a dashboard and inferring the rule from what rendered.
  */
 
-import { isNativeShell } from './nativeShell';
 import type { DashboardPolicy, ServerMode } from './backend';
 
 export type ProbeVerdict =
@@ -27,12 +26,19 @@ export interface ProbeInputs {
   mode: (Pick<ServerMode, 'accounts'> & { dashboardPolicy?: DashboardPolicy }) | null;
   /** The per-device preference (`displayPrefs.machineProbes`). */
   userWants: boolean;
-  /** Override for tests; defaults to the real shell detection. */
-  native?: boolean;
+  /**
+   * Whether this is the desktop shell, passed in rather than detected here.
+   *
+   * It is what makes this module importable on its own — `e2e/dashboard-verdict-check.mjs`
+   * walks ADR 0019 §5 row by row through Node's type stripping, which only works while
+   * nothing here imports anything at runtime. The sibling rule (`layoutsPolicy.ts`) takes
+   * the same argument for the same reason, and the two call sites say `isNativeShell()`.
+   */
+  native: boolean;
 }
 
 export function probeVerdict({ mode, userWants, native }: ProbeInputs): ProbeVerdict {
-  const inDesktop = native ?? isNativeShell();
+  const inDesktop = native;
 
   // A standalone vault has no authority to consult: it is the user's vault, their
   // network, their machines. Only their own preference applies.
