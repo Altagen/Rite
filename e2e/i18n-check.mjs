@@ -242,6 +242,19 @@ const ALLOWED = new Map([
     'utils/mockBackend.ts: [ternary-else] Demo connection — browser preview only',
     'mock fixture data',
   ],
+  // The rest of that library, from the release that gave the preview a local vault and a
+  // second shell: collection and machine names, an agent's first message, a note card's
+  // body. Same reason as the three above — a fixture in the reader's language reads as
+  // real data, and these are answers invented for a screen nobody can connect anything to.
+  ['utils/mockBackend.ts: [ternary-else] Web servers', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] Home lab', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] Card data in scope', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] Serving real traffic', 'mock fixture data'],
+  ['utils/mockBackend.ts: [ternary-else] The queue work', 'mock fixture data'],
+  // The vault the preview pretends to hold. It is a fixture's name in a dev-only harness:
+  // the shipped shell reads this from the window the native shell injected.
+  ['utils/devHarness.ts: [ternary-else] Preview vault', 'mock fixture data'],
+  ['utils/devHarness.ts: [prop] Preview vault', 'mock fixture data'],
   // A bounds comparison: `clientX > rect.right || clientY < rect.top` is a `>`, words
   // and a `<`, which is what the jsx-tail pattern is looking for.
   ['components/TerminalManager.tsx: [jsx-tail] rect.right || clientY', 'source code, not text'],
