@@ -228,7 +228,21 @@ code.
       colleagues name their key files differently, so one of them will have to move a file.
       The override weakens nothing (the key is still required); it costs a second place to
       look when a connection fails, which is why it waits for a real complaint
-- [ ] Export connections (encrypted backup)
+- [ ] Export connections (encrypted backup) — machines, collections, the vocabulary and
+      the workspace document: what lives in the vault AS A RECORD. **Not what Rite
+      remembers about a conversation.** A machine is imported, so its labels work by
+      construction; a conversation is DISCOVERED on a host, so a name keyed to
+      `(machine, tool, id)` is a bet on transcripts the import cannot see — and the reader
+      has to probe that machine to find the conversations again anyway, which is the work
+      the import would have been saving them. Carrying them would buy a machine-id remap,
+      an `@local` case that is dead by definition, a partial-import case, and a report
+      about rows nobody can check. The screen says it in one line instead: the names and
+      labels given to conversations stay on this machine.
+      Reopen it when somebody asks for it, and it will be cheap — the enrichments live in
+      the vault (ADR 0022 §6), not in a file beside the binary.
+      COPYING A VAULT IS NOT EXPORTING, and the difference is deliberate: `vault.db` moved
+      to another computer carries its marks, because they are in it. The export is a
+      document of what is being brought over, not a copy of the bytes.
 - [ ] Import connections — an ssh_config import exists; this is about reading back a
       Rite export, which has no object until `Export connections` above exists
 - [ ] Advanced search and filter — the label filter and the search over labels ship; this
