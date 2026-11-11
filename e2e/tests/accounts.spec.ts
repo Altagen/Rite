@@ -1057,6 +1057,69 @@ test('an overlay page carries the nav, which is also the way back', async ({ pag
   await expect(page.locator('.fixed.inset-0.z-50 > header.m-appbar')).toHaveCount(0);
 });
 /**
+ * A COLLECTION'S OWN WORDS, DECLARED ON A SERVER — which had no write path at all.
+ *
+ * ADR 0016's addendum gives a collection a vocabulary of its own, sealed in its header
+ * beside its name, readable by its members and nobody else. The local vault's source has
+ * written that header since collections were unified; the accounts source never did. So
+ * every screen gated on it was dark here: the inline rename dialog opened and could not
+ * save, the collection's `Labels` button was absent, and the one scope a member owns
+ * could be declared nowhere on a server.
+ *
+ * The path existed on the other side — the Collections page rewrites this same header to
+ * change a colour — so what was missing was this end of it.
+ *
+ * SEALED IS THE HALF A ROUTE TEST CANNOT SEE. The words go in the header, under the
+ * collection's meta key, so the server stores ciphertext and the check at the bottom is
+ * that its own listing does not contain the word anybody typed.
+ */
+test('a collection declares its own words on a server, and the server cannot read them', async ({
+  page,
+  request,
+}) => {
+  await signInCarol(page);
+
+  // Into the collection's own view, where the words are declared — a collection belongs
+  // to its members, so the surface is the collection in both shells.
+  await page.locator('.m-nm', { hasText: 'Personal' }).first().click();
+  const labels = page.getByTestId('cview-labels');
+  await expect(labels, "an owner is offered her collection's vocabulary").toBeVisible({
+    timeout: 15_000,
+  });
+  await labels.click();
+
+  const manager = page.getByTestId('collection-labels-dialog');
+  await expect(manager).toBeVisible();
+  await manager.getByTestId('label-manager-new').click();
+  await manager.getByTestId('label-row-word').fill('acct-sealed-word');
+  await manager.getByTestId('label-row-description').fill('declared on a server');
+  await manager.getByTestId('label-row-done').click();
+  await manager.getByTestId('label-manager-save').click();
+  await expect(manager.getByTestId('label-row-acct-sealed-word')).toBeVisible();
+  await page.getByTestId('collection-labels-close').click();
+
+  // It survives the round trip: reopened, the word is in the list with what it means.
+  await page.getByTestId('cview-labels').click();
+  await expect(page.getByTestId('collection-labels-dialog')).toContainText('acct-sealed-word');
+  await expect(page.getByTestId('collection-labels-dialog')).toContainText('declared on a server');
+  await page.getByTestId('collection-labels-close').click();
+
+  // And the server holds it as ciphertext. `nameEnc` is the whole header — the name, the
+  // colour, the folders and now the words — so a word in the clear here would mean the
+  // instance could read what its members agreed to call things.
+  const token = await login(request, 'carol', CAROL_NEW);
+  const cols = (await (
+    await request.get(`${BASE}/api/collections`, { headers: auth(token) })
+  ).json()) as { nameEnc: string }[];
+  expect(cols.length).toBeGreaterThan(0);
+  for (const c of cols) {
+    expect(c.nameEnc, 'a declared word must never be in the clear').not.toContain(
+      'acct-sealed-word',
+    );
+  }
+});
+
+/**
  * THE CONSOLE ENTRY IS A ROLE GATE, not decoration.
  *
  * The nav is written once (`components/accountsNav.tsx`) and rides every overlay bar, so

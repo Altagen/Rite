@@ -41,6 +41,7 @@ import {
 } from '../utils/collectionCrypto';
 import type { CollectionRole, QuickEndpoint } from '../utils/backend';
 import type { CollectionHeader, CollectionFolder } from '../utils/collectionHeader';
+import { readCollectionHeader, writeCollectionHeader } from '../utils/collectionHeader';
 import { type BoardCard, parseBoard } from '../utils/board';
 
 /**
@@ -760,6 +761,42 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     [],
   );
 
+  /**
+   * The collection's header, rewritten: its name, its colour, its health-check opt-out
+   * and — when given — the vocabulary it declares.
+   *
+   * THE SERVER HAD NO WRITE PATH FOR THIS AT ALL, which was not a decision: the local
+   * vault's source has had one since collections were unified, and every screen that
+   * edits a collection is gated on it. So on a server the inline rename dialog opened and
+   * could not save, the collection's `Labels` button was absent, and a collection's own
+   * words — the scope ADR 0016's addendum gives to its members — could be declared
+   * nowhere. The Collections page writes this same header to change a colour
+   * (`patchHeader`), so the path existed and only this end of it was missing.
+   *
+   * SPREAD AND NOT REBUILT. `personal` marks the auto-provisioned collection and is how
+   * Personal is found at all; `folders` is the shared structure. A header assembled field
+   * by field here would drop both, which is the kind of loss that reads as data
+   * corruption and is one missing line.
+   *
+   * `labels` absent keeps what is stored, as the contract says: the rename dialog sends
+   * no vocabulary and must not clear one.
+   */
+  const renameCollection = useCallback<NonNullable<ConnectionsSource['renameCollection']>>(
+    async (id, name, color, hc, labels) => {
+      if (!publicKey || !privateKey) throw new Error('session keys unavailable');
+      const { metaKey, header } = await readCollectionHeader(id, publicKey, privateKey);
+      await writeCollectionHeader(id, metaKey, {
+        ...header,
+        name,
+        color,
+        hc,
+        ...(labels !== undefined ? { labels } : {}),
+      });
+      await refresh();
+    },
+    [publicKey, privateKey, refresh],
+  );
+
   return {
     connections,
     selectedConnectionId,
@@ -771,6 +808,7 @@ export function useAccountsConnectionsSource(): ConnectionsSource {
     update,
     reveal,
     writableCollections,
+    renameCollection,
     collections: collectionList,
     readBoard,
     saveBoard,
