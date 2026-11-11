@@ -1261,7 +1261,7 @@
     "quiet": "{count} sessions with no question",
     "quietHint": "A run delegated by the tool itself, or one left at the prompt. They carry a date and an id.",
     "modify": "Modify",
-    "renamePlaceholder": "A name of this person's own",
+    "renamePlaceholder": "A name of its own",
     "renameClear": "Remove the name",
     "renameCancel": "Cancel",
     "renameSave": "Save",
