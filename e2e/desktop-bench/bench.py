@@ -1143,9 +1143,9 @@ def scenario_agentload(wid):
     #
     # DRIVEN AS A LIST, NOT AS A STRING. The field was a comma-separated box and the person
     # who asked for the feature could not find it, could not tell which words were already
-    # on the conversation, and had no way to take one off. It is a filter, a list of rows
-    # that toggle, and a named create action now — so this drives the gestures a reader has
-    # rather than the parser a string needed.
+    # on the conversation, and had no way to take one off. It is a filter over a list of
+    # rows that toggle now — so this drives the gestures a reader has rather than the
+    # parser a string needed.
     js(f"document.querySelector('[data-testid=\"{card}\"]')?.click(); 1")
     time.sleep(0.5)
 
@@ -1162,18 +1162,32 @@ def scenario_agentload(wid):
         "[data-testid^=label-]')).map(s => s.textContent.trim())"
     )
 
-    # This home has no declared vocabulary and this conversation has no mark, so there is
-    # nothing to pick from — the create action is the only way in, and it has to be there.
-    type_into("agent-labels-input", "api")
+    # THE FIELD CANNOT INVENT A WORD, so the words are declared first — through the route
+    # Settings writes, which on a machine with no vault is a file this computer owns. That
+    # is the only place a word is declared in this context, and the picker offers exactly
+    # what has been.
+    js(
+        "fetch('/api/admin/labels', { method: 'PUT',"
+        " headers: { 'content-type': 'application/json' },"
+        " body: JSON.stringify({ labels: ['api', 'URGENT'] }) }).then(r => r.status)"
+    )
+    time.sleep(0.8)
+    # Reopened, because the vocabulary is read when a screen first needs it: the dialog on
+    # screen was built before the declaration landed.
+    js("document.querySelector('[data-testid=agent-rename-cancel]')?.click(); 1")
     time.sleep(0.4)
-    check("a word in no vocabulary is still reachable",
-          js("!!document.querySelector('[data-testid=agent-labels-create]')"))
-    js("document.querySelector('[data-testid=agent-labels-create]')?.click(); 1")
+    js("location.reload(); 1")
+    time.sleep(3.0)
+    js(f"document.querySelector('[data-testid=\"{card}\"]')?.click(); 1")
+    time.sleep(0.6)
+    js("document.querySelector('[data-testid=agent-labels-input]')?.click(); 1")
     time.sleep(0.4)
-    # The case that was TYPED is what is kept, here and all the way to the document.
-    type_into("agent-labels-input", "URGENT")
+    check("a word declared for this computer is offered here",
+          js("!!document.querySelector('[data-testid=agent-labels-row-api]')"))
+    js("document.querySelector('[data-testid=agent-labels-row-api]')?.click(); 1")
     time.sleep(0.4)
-    js("document.querySelector('[data-testid=agent-labels-create]')?.click(); 1")
+    # The case it was DECLARED in is what is kept, here and all the way to the document.
+    js("document.querySelector('[data-testid=agent-labels-row-urgent]')?.click(); 1")
     time.sleep(0.4)
     chips = js(on_now)
     check("what is on the conversation is on screen as chips", chips == ["api", "URGENT"], f"got {chips}")
@@ -1601,21 +1615,28 @@ def scenario_design(wid):
     # WORDS FIRST, OR THE MEASUREMENT IS OF NOTHING. This window opens with no vault, so
     # the vocabulary starts empty and an empty list is 33px — which passes a "does not
     # grow" check whether the cap works or not. That is the assertion agreeing with a
-    # default, so the scenario makes the list long enough to be wrong about.
-    for i in range(8):
-        js(
-            "(() => { const i = document.querySelector('[data-testid=agent-labels-input]');"
-            " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"
-            "   'value').set;"
-            f" set.call(i, 'bench-{i}');"
-            " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
-        )
-        time.sleep(0.25)
-        js("document.querySelector('[data-testid=agent-labels-create]')?.click(); 1")
-        time.sleep(0.25)
+    # default, so the scenario declares enough words for the list to be wrong about.
+    #
+    # Declared through the route Settings writes, because the field cannot invent a word:
+    # on a machine with no vault that list is a file this computer owns, which is the one
+    # place a word is declared in this context.
+    js(
+        "fetch('/api/admin/labels', { method: 'PUT',"
+        " headers: { 'content-type': 'application/json' },"
+        " body: JSON.stringify({ labels: ["
+        + ", ".join(f"'bench-{i}'" for i in range(8))
+        + "] }) }).then(r => r.status)"
+    )
+    time.sleep(0.8)
+    js("location.reload(); 1")
+    time.sleep(3.0)
+    js(f"document.querySelector('[data-testid=\"{card}\"]')?.click(); 1")
+    time.sleep(0.6)
+    js("document.querySelector('[data-testid=agent-labels-input]')?.click(); 1")
+    time.sleep(0.5)
 
     rows = js("document.querySelectorAll('[data-testid^=agent-labels-row-]').length")
-    check("the words it created are rows", rows >= 8, f"{rows} rows")
+    check("the declared words are rows", rows >= 8, f"{rows} rows")
     tall = js(
         "(() => { const l = document.querySelector('[data-testid=agent-labels-list]');"
         " return l ? Math.round(l.getBoundingClientRect().height) : -1; })()"

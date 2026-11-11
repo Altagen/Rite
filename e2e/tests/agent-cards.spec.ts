@@ -232,15 +232,32 @@ test('a conversation is given a name, a colour and labels, without losing the as
   page,
   request,
 }) => {
+  // DECLARED FIRST, on the collection, because the dialog cannot invent a word: a label
+  // is declared in one page per scope and the picker offers exactly what has been. The
+  // seeded machine's collection is where a vault's own words live.
+  const collection = await ensureCollection(request, 'e2e-agent-cards');
+  const declared = await request.put(`/api/local/collections/${collection}`, {
+    data: { name: 'e2e-agent-cards', labels: ['cardspec'] },
+  });
+  expect(declared.ok(), `declaring cardspec: ${declared.status()}`).toBeTruthy();
+
   await probed(page, request);
   await page.getByTestId(`agent-rename-${LONG}`).click();
   await expect(page.getByTestId('agent-rename-dialog')).toBeVisible();
 
   await page.getByTestId('agent-rename-input').fill('The queue work');
   await page.getByTestId('agent-color-f7768e').click();
+  // THE SAME VOCABULARY AS A MACHINE'S, which is the point: `cardspec` was declared on a
+  // collection and is offered on a conversation, because the scope says who may READ a
+  // word and never what it may be put on.
   await page.getByTestId('agent-labels-input').click();
-  await page.getByTestId('agent-labels-input').fill('cardspec');
-  await page.getByTestId('agent-labels-create').click();
+  await page.getByTestId('agent-labels-row-cardspec').click();
+  await expect(page.getByTestId('agent-labels-on-cardspec')).toBeVisible();
+  // Fold the list before reaching for Save: it unfolds IN FLOW, so an open list sits
+  // between the field and the buttons it pushed down. Escape closes the list and nothing
+  // else — the field stops it from reaching the dialog, which would throw the rest away.
+  await page.getByTestId('agent-labels-input').press('Escape');
+  await expect(page.getByTestId('agent-labels-list')).toHaveCount(0);
   await page.getByTestId('agent-rename-save').click();
 
   const card = page.getByTestId(`agent-card-${LONG}`);

@@ -1344,9 +1344,8 @@
     "clash": "{word} is already in this list",
     "readOnly": "Read-only: this collection is shared for reading.",
     "inherited": "Also available here, declared elsewhere",
-    "pick": "Search or add a label",
+    "pick": "Search a label",
     "ofMax": "{count} of {max}",
-    "addWord": "+ Add \"{word}\"",
     "removeOne": "Take {word} off",
     "showList": "Show the list",
     "hideList": "Hide the list"

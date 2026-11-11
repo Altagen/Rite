@@ -26,6 +26,26 @@ const openList = async (page: import('@playwright/test').Page) => {
   await expect(page.getByTestId('machine-labels-list')).toBeVisible();
 };
 
+/**
+ * Declare words on a collection — the only way a word gets into the vocabulary now.
+ *
+ * The field invented words until 0.2.9 and most of this spec seeded itself through it.
+ * It cannot any more (`components/Labels.tsx`): a word is declared in one page per
+ * scope, by somebody entitled to, and the picker only ever offers what has been. So the
+ * fixture declares, which is also what a reader does.
+ */
+const declare = async (
+  request: import('@playwright/test').APIRequestContext,
+  collection: string,
+  name: string,
+  labels: (string | { label: string; description?: string })[],
+) => {
+  const res = await request.put(`/api/local/collections/${collection}`, {
+    data: { name, labels },
+  });
+  expect(res.ok(), `declaring ${labels.length} words: ${res.status()}`).toBeTruthy();
+};
+
 const open = async (page: import('@playwright/test').Page, collection: string) => {
   await page.goto('/');
   const node = page.locator('.m-tnode', { hasText: collection }).first();
@@ -44,11 +64,12 @@ const open = async (page: import('@playwright/test').Page, collection: string) =
   ).toHaveCount(0);
 };
 
-test('a word in no vocabulary is still reachable, and only when asked for', async ({
+test('the box filters, and a word nobody declared cannot be invented here', async ({
   page,
   request,
 }) => {
-  await ensureCollection(request, 'e2e-field');
+  const collection = await ensureCollection(request, 'e2e-field');
+  await declare(request, collection, 'e2e-field', ['fieldonly-one', 'fieldonly-two']);
   await open(page, 'e2e-field');
 
   // Nothing is ON it, and THE LIST IS CLOSED — which is what the dropdown bought: a form
@@ -57,36 +78,41 @@ test('a word in no vocabulary is still reachable, and only when asked for', asyn
   await expect(page.getByTestId('machine-labels-on')).toHaveCount(0);
   await expect(page.getByTestId('machine-labels-list')).toHaveCount(0);
 
-  // TYPING ALONE ADDS NOTHING. The box filters; creating is a named action under the
-  // list, because a picker that creates as a side effect of typing is how `api` and
-  // `api,` became two words.
-  //
-  // A WORD NOTHING ELSE IN THE SUITE DECLARES. These specs share one vault, and
-  // `instance-labels.spec.ts` declares `pci` INSTANCE-wide — which is offered inside
-  // every collection, so a word that looked creatable when this spec ran alone already
-  // had a row when the suite ran in order. The test was right about the field and wrong
-  // about the fixture.
-  await page.getByTestId('machine-labels-input').fill('fieldonly-one');
+  // THE BOX FILTERS, AND THAT IS ALL IT DOES. Typing narrows the declared list; it adds
+  // nothing, offers nothing to add, and Enter on a word nobody declared does nothing —
+  // a word is declared in one page per scope, never invented in a form.
+  await page.getByTestId('machine-labels-input').fill('fieldonly-t');
+  await expect(page.getByTestId('machine-labels-row-fieldonly-two')).toBeVisible();
+  await expect(page.getByTestId('machine-labels-row-fieldonly-one')).toHaveCount(0);
   await expect(page.getByTestId('machine-labels-on')).toHaveCount(0);
-  await expect(page.getByTestId('machine-labels-create')).toBeVisible();
-  await page.getByTestId('machine-labels-create').click();
 
-  await expect(page.getByTestId('machine-labels-on')).toContainText('fieldonly-one');
+  await page.getByTestId('machine-labels-input').fill('nothing-is-called-this');
+  await expect(page.getByTestId('machine-labels-list')).toContainText('nothing-is-called-this');
+  await expect(
+    page.getByTestId('machine-labels-create'),
+    'the field must offer no way to invent a word',
+  ).toHaveCount(0);
+  await page.getByTestId('machine-labels-input').press('Enter');
+  await expect(page.getByTestId('machine-labels-count')).toHaveText('0 of 8');
+  await expect(page.getByTestId('machine-labels-on')).toHaveCount(0);
+
+  // And one row left after filtering is the one Enter takes, which is the only thing it
+  // has ever done that is not a guess.
+  await page.getByTestId('machine-labels-input').fill('fieldonly-two');
+  await page.getByTestId('machine-labels-input').press('Enter');
+  await expect(page.getByTestId('machine-labels-on')).toContainText('fieldonly-two');
   await expect(page.getByTestId('machine-labels-count')).toHaveText('1 of 8');
-  // The word it created is a row now, and the row is the marked one.
-  await expect(page.getByTestId('machine-labels-on-fieldonly-one')).toBeVisible();
-  // And it is no longer offered as something to create, which would be a second control
-  // for what the row above already does.
-  await expect(page.getByTestId('machine-labels-create')).toHaveCount(0);
+  await expect(page.getByTestId('machine-labels-on-fieldonly-two')).toBeVisible();
 });
 
 test('a label comes off, by the chip and by its row', async ({ page, request }) => {
-  await ensureCollection(request, 'e2e-field');
-  await open(page, 'e2e-field');
+  const collection = await ensureCollection(request, 'e2e-field-off');
+  await declare(request, collection, 'e2e-field-off', ['api', 'web']);
+  await open(page, 'e2e-field-off');
 
+  await openList(page);
   for (const word of ['api', 'web']) {
-    await page.getByTestId('machine-labels-input').fill(word);
-    await page.getByTestId('machine-labels-create').click();
+    await page.getByTestId(`machine-labels-row-${word}`).click();
   }
   await expect(page.getByTestId('machine-labels-count')).toHaveText('2 of 8');
 
@@ -153,48 +179,55 @@ test('the search narrows the list, over the word and over what it means', async 
   await page.getByTestId('machine-labels-input').fill('card');
   await expect(page.getByTestId('machine-labels-row-fs-pci')).toBeVisible();
   await expect(page.getByTestId('machine-labels-row-fs-prod')).toHaveCount(0);
-  // `card` is still offered as a word to create, and that is right: it matched a
-  // DESCRIPTION, so nothing is called `card` yet. What must not be offered twice is a
-  // word that already has a row, which the next lines hold.
-  await expect(page.getByTestId('machine-labels-create')).toBeVisible();
-  await page.getByTestId('machine-labels-input').fill('fs-pci');
+  // Matching a DESCRIPTION and matching nothing read the same way now: the list says
+  // what was searched for and offers nothing to add. Nothing is called `card`, and that
+  // is not this field's problem to solve.
   await expect(page.getByTestId('machine-labels-create')).toHaveCount(0);
-  // AND FOLDED: a word is one word whatever case it is typed in, so a declared `fs-pci`
-  // is picked rather than created when `FS-PCI` is typed.
+
+  // AND FOLDED: a word is one word whatever case it is typed in, so `FS-PCI` finds the
+  // row that was declared `fs-pci` rather than reading as a word nobody has.
   await page.getByTestId('machine-labels-input').fill('FS-PCI');
   await expect(page.getByTestId('machine-labels-row-fs-pci')).toBeVisible();
-  await expect(page.getByTestId('machine-labels-create')).toHaveCount(0);
 
   await page.getByTestId('machine-labels-input').fill('nothing-is-called-this');
   await expect(page.getByTestId('machine-labels-list')).toContainText('nothing-is-called-this');
-  await expect(page.getByTestId('machine-labels-create')).toBeVisible();
+  await expect(page.getByTestId('machine-labels-create')).toHaveCount(0);
 });
 
 test('the cap is a count before it bites, and the rows say so when it does', async ({
   page,
   request,
 }) => {
-  await ensureCollection(request, 'e2e-field-cap');
+  const collection = await ensureCollection(request, 'e2e-field-cap');
+  // Nine declared, one more than a thing may carry, so the cap and the ninth row are
+  // both real here.
+  await declare(request, collection, 'e2e-field-cap', [
+    'a1',
+    'a2',
+    'a3',
+    'a4',
+    'a5',
+    'a6',
+    'a7',
+    'a8',
+    'a9',
+  ]);
   await open(page, 'e2e-field-cap');
 
+  await openList(page);
   for (const word of ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']) {
-    await page.getByTestId('machine-labels-input').fill(word);
-    await page.getByTestId('machine-labels-create').click();
+    await page.getByTestId(`machine-labels-row-${word}`).click();
   }
   await expect(page.getByTestId('machine-labels-count')).toHaveText('7 of 8');
   await expect(page.getByTestId('machine-labels-row-a1')).toBeEnabled();
 
-  await page.getByTestId('machine-labels-input').fill('a8');
-  await page.getByTestId('machine-labels-create').click();
+  await page.getByTestId('machine-labels-row-a8').click();
   await expect(page.getByTestId('machine-labels-count')).toHaveText('8 of 8');
 
   // DIM, NOT ABSENT. The word is still in the vocabulary and the reason is the count,
   // which is on screen — a row that disappeared at the cap would read as the word being
   // gone. A row already on stays live, because taking one off is the way out.
-  await page.getByTestId('machine-labels-input').fill('a9');
-  await expect(page.getByTestId('machine-labels-create')).toBeDisabled();
-  await page.getByTestId('machine-labels-input').fill('');
-  await openList(page);
+  await expect(page.getByTestId('machine-labels-row-a9')).toBeDisabled();
   await expect(page.getByTestId('machine-labels-row-a1')).toBeEnabled();
 
   await page.getByTestId('machine-labels-off-a1').click();
@@ -203,6 +236,7 @@ test('the cap is a count before it bites, and the rows say so when it does', asy
 
 test('what the field held is what the record carries', async ({ page, request }) => {
   const collection = await ensureCollection(request, 'e2e-field-save');
+  await declare(request, collection, 'e2e-field-save', ['saveme', 'SAVEME-TOO']);
   await open(page, 'e2e-field-save');
 
   await page.getByPlaceholder('My Server').fill('e2e-field-machine');
@@ -212,14 +246,12 @@ test('what the field held is what the record carries', async ({ page, request })
   // out that it was testing the save and not only the field.
   await page.getByPlaceholder('Password').fill('not-a-real-password');
 
-  // The case that was TYPED is what is kept: folding happens when words are compared,
-  // never when they are stored. WORDS NOTHING ELSE DECLARES, because `labelOffers` spans
-  // every collection in the vault — `pci` is on offer here thanks to another spec, and a
-  // word already on offer is picked rather than created.
-  for (const word of ['saveme', 'SAVEME-TOO']) {
-    await page.getByTestId('machine-labels-input').fill(word);
-    await page.getByTestId('machine-labels-create').click();
-  }
+  // The case it was DECLARED in is what is kept: folding happens when words are compared,
+  // never when they are stored. Two spellings, one of them shouted, both picked from the
+  // list — and the record carries them as the list has them.
+  await openList(page);
+  await page.getByTestId('machine-labels-row-saveme').click();
+  await page.getByTestId('machine-labels-row-saveme-too').click();
   await page.getByRole('button', { name: /save connection/i }).click();
   await expect(page.getByText('e2e-field-machine').first()).toBeVisible({ timeout: 15_000 });
 
@@ -243,7 +275,6 @@ test('a declared word is picked in the spelling it was declared in', async ({ pa
   // Typed in another case, and what goes on the machine is the DECLARED spelling — the
   // vocabulary is what names the word, so one word cannot end up stored three ways.
   await page.getByTestId('machine-labels-input').fill('postgres');
-  await expect(page.getByTestId('machine-labels-create')).toHaveCount(0);
   await page.getByTestId('machine-labels-row-postgres').click();
   await expect(page.getByTestId('machine-labels-on')).toContainText('Postgres');
 

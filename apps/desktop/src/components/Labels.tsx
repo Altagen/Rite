@@ -32,7 +32,6 @@ import { useTranslation } from '../i18n/i18n';
 import {
   LABELS_MAX,
   acceptedUpTo,
-  cleanLabel,
   labelColor,
   type LabelOffer,
   type LabelScope,
@@ -130,9 +129,18 @@ export function LabelChip({
  * WHAT THE LIST ITSELF GETS RIGHT, kept from the second shape: every word on offer is a
  * row, the rows that are ON are marked, and a row is a toggle — so "what is on this" and
  * "what else could be" are one list read once rather than two groups the reader has to
- * diff. The box filters and only creates when ASKED, never as a side effect of typing,
- * which is how `api` and `api,` became two words. The cap is a count that can be read
- * before it bites, where "at most 8" only ever appeared after something was dropped.
+ * diff. The cap is a count that can be read before it bites, where "at most 8" only ever
+ * appeared after something was dropped.
+ *
+ * AND IT NEVER CREATES A WORD. The box filters, and that is all it does. A word is
+ * DECLARED, in one page per scope and by somebody entitled to — an administrator for the
+ * instance, a collection's own editors for a collection, and Settings for a machine with
+ * no account, where the list is the computer's. A field that could also invent one made
+ * the vocabulary two things at once: a list somebody curated, and whatever had been typed
+ * into a form once. The second kind carries no description, no chosen colour and no scope,
+ * so it could not be found in the page that manages words — only by labelling something
+ * again. The offer here is therefore exactly what has been declared, plus what this thing
+ * already carries.
  */
 export function LabelField({
   labels,
@@ -153,23 +161,15 @@ export function LabelField({
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
-  /**
-   * Words created in THIS dialog, kept so they do not vanish when taken off again.
-   *
-   * A word typed here is in no vocabulary yet — nothing has been saved — so without this
-   * the × on its chip removed the word from the list along with the label, and the only
-   * way back was to type it a second time. That makes the × read as "delete the word"
-   * when it means "take it off this one", which is the distinction the whole list exists
-   * to draw. Found by the test for it, which asserted the row stays and was right.
-   */
-  const [created, setCreated] = useState<string[]>([]);
   const folded = labels.map((l) => l.toLowerCase());
   const full = labels.length >= LABELS_MAX;
 
-  // THE UNION, not the vocabulary: a word already on this thing, or created a moment ago,
-  // always has a row. Folded, so `PCI` and `pci` are never two rows for one word.
+  // THE UNION, not the vocabulary: a word already ON this thing always has a row, even
+  // when it has since been taken out of the list it was declared in — otherwise the only
+  // way to see it would be to take it off. Folded, so `PCI` and `pci` are never two rows
+  // for one word.
   const rows: LabelOffer[] = [...vocabulary];
-  for (const label of [...labels, ...created]) {
+  for (const label of labels) {
     if (!rows.some((v) => v.label.toLowerCase() === label.toLowerCase())) {
       rows.push({ label, scope: 'personal' });
     }
@@ -192,13 +192,6 @@ export function LabelField({
   // the description the moment one existed — which is the defect
   // `e2e/vocab-parity-check.mjs` exists for, and it is the check that caught it here.
   const declaredWords: VocabWord[] = rows.map(({ scope, ...word }) => word);
-
-  const typed = cleanLabel(query);
-  // A create action only for a word that is not already a row — otherwise it is a second
-  // control for something the list above does, which is how the New button beside the
-  // search box came to read as a compose row.
-  const creatable =
-    typed && !rows.some((v) => v.label.toLowerCase() === typed.toLowerCase()) ? typed : null;
 
   const put = (next: string[]) => onChange(acceptedUpTo(next, LABELS_MAX));
   const toggle = (label: string) => {
@@ -285,15 +278,11 @@ export function LabelField({
               }
               if (e.key !== 'Enter') return;
               // Enter takes the one obvious action and nothing else: the single row left
-              // after filtering, or the word being created. With several rows showing there
-              // is no obvious one, so it does nothing rather than guess.
+              // after filtering. With several rows showing there is no obvious one, and
+              // with none there is nothing to take — a word is DECLARED somewhere, never
+              // invented here.
               e.preventDefault();
               if (shown.length === 1) toggle(shown[0].label);
-              else if (creatable) {
-                setCreated((c) => [...c, creatable]);
-                toggle(creatable);
-                setQuery('');
-              }
             }}
             data-testid={`${testPrefix}-input`}
           />
@@ -318,7 +307,7 @@ export function LabelField({
             className="mt-1 max-h-[11.25rem] overflow-y-auto rounded-md border border-border bg-background"
             data-testid={`${testPrefix}-list`}
           >
-            {shown.length === 0 && !creatable ? (
+            {shown.length === 0 ? (
               <div className="px-2 py-2 text-[11px] text-muted-foreground">
                 {q ? t('labels.noMatch', { query: query.trim() }) : t('labels.none')}
               </div>
@@ -358,21 +347,6 @@ export function LabelField({
                   </button>
                 );
               })
-            )}
-            {creatable && (
-              <button
-                type="button"
-                disabled={full}
-                onClick={() => {
-                  setCreated((c) => [...c, creatable]);
-                  toggle(creatable);
-                  setQuery('');
-                }}
-                className="w-full border-t border-border px-2 py-1.5 text-left text-[11px] text-primary hover:bg-muted disabled:opacity-40"
-                data-testid={`${testPrefix}-create`}
-              >
-                {t('labels.addWord', { word: creatable })}
-              </button>
             )}
           </div>
         )}
