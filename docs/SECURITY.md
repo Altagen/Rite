@@ -139,12 +139,35 @@ The following are encrypted before storage:
 - Sync credentials
 
 ### Metadata (Not Encrypted)
-- Host names (for indexing and search)
 - Protocol types
-- Tags and groups
 - Last connection timestamp
 
-**Rationale**: Metadata needs to be searchable. Highly sensitive users can enable full database encryption.
+**Rationale**: what the database must index without a key. A machine's own record — its
+name, its host, its labels — is **not** in this list: it lives inside the collection's
+item, sealed under that collection's items key (ADR 0016), and the search runs on what the
+client has already opened.
+
+### Copying the vault is not exporting it
+
+`vault.db` is one file and copying it is a **complete** backup: everything is in it,
+sealed, including what Rite remembers about conversations. A copy is worth exactly what
+the master password is worth.
+
+| what you want | what to do |
+|---|---|
+| a snapshot before a risky operation | **copy the file** |
+| the same vault on another computer of yours | **copy the file** — but open it in one place at a time |
+| give machines or collections to somebody else | **export** — never hand over the file |
+
+Two reasons the copy is the wrong gesture for the third row. It carries **everything**,
+including every credential and every byte your master password reaches; and two people
+opening copies of one vault diverge with no merge and no warning — the last write wins, as
+it does for every document Rite keeps.
+
+An export is a document of what you chose to bring over: machines, collections, the
+vocabulary and the workspace document. It does not carry the names, colours and labels you
+gave to **conversations**: those are discovered on a host rather than stored as records,
+so they stay with the vault that read them (docs/ROADMAP.md says why).
 
 ### Keyring Integration
 - **Linux**: Secret Service API (GNOME Keyring, KWallet)

@@ -243,6 +243,12 @@ code.
       COPYING A VAULT IS NOT EXPORTING, and the difference is deliberate: `vault.db` moved
       to another computer carries its marks, because they are in it. The export is a
       document of what is being brought over, not a copy of the bytes.
+      **That difference ships with the feature or the feature is a trap**: a copy carries
+      every credential the master password reaches and diverges silently when two people
+      open one vault, where an export carries what was chosen. So this item is not done
+      until the distinction is in `docs/SECURITY.md` (it is, already), on the screen that
+      offers it — Settings, beside the vault's own section — and held by a test. A person
+      about to hand a colleague a file needs to be told which gesture they are making.
 - [ ] Import connections — an ssh_config import exists; this is about reading back a
       Rite export, which has no object until `Export connections` above exists
 - [ ] Advanced search and filter — the label filter and the search over labels ship; this
