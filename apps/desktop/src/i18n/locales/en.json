@@ -1207,6 +1207,7 @@
     "pickFirst": "Pick a machine",
     "count": "{count} conversations on {machine}",
     "countOne": "1 conversation on {machine}",
+    "readOnly": "Names, colours and labels are kept in a vault, and none is open here.",
     "notProbed": "{machine} has not been probed",
     "probe": "Probe {machine}",
     "probing": "Probing…",

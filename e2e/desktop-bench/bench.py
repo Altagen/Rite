@@ -1102,205 +1102,51 @@ def scenario_agentload(wid):
     )
     time.sleep(0.4)
 
-    # NAMING SOMEONE ELSE'S CONVERSATION (ADR 0022 §6). What it writes is a `[[mark]]`
-    # in the workspace document — the same support a layout rides — so the proof it
-    # worked is that the card reads differently after a reload would have cost nothing.
-    card = js(
-        "document.querySelector('[data-testid^=agent-rename-]')"
+    # NOTHING HERE MAY BE ENRICHED, because this window has no vault (ADR 0022 §6, as
+    # 0.2.9 amends it). A name, a colour and a label are what Rite REMEMBERS about
+    # somebody else's conversation, and they are sealed under a key — so with no vault
+    # there is nowhere honest to put them and the gestures are not drawn at all.
+    #
+    # THE ABSENCE IS THE ASSERTION, and it needs the line beside it: a screen that
+    # quietly loses its buttons reads as broken, which is why the manager says why once,
+    # where the count is.
+    check(
+        "no card offers to be renamed with no vault",
+        js("document.querySelectorAll('[data-testid^=agent-rename-]').length") == 0,
+    )
+    check(
+        "and the screen says why rather than leaving a hole",
+        js("!!document.querySelector('[data-testid=agent-read-only]')"),
+    )
+    said = js("document.querySelector('[data-testid=agent-read-only]')?.textContent || ''")
+    check("the line names the vault", "vault" in said.lower() or "coffre" in said.lower(),
+          f"got {said!r}")
+
+    # AND EVERYTHING THAT READS STILL WORKS, which is the other half of the rule: the
+    # cards are there, they can be opened, and a conversation can be resumed. Running an
+    # agent is not governed — anyone who can open a terminal pane types the same line.
+    check("the cards are still listed",
+          js("document.querySelectorAll('[data-testid^=agent-card-]').length") > 0)
+    check("and a conversation can still be resumed",
+          js("!!document.querySelector('[data-testid^=agent-resume-]')"))
+    first_card = js(
+        "document.querySelector('[data-testid^=agent-card-]')"
         "?.getAttribute('data-testid') || ''"
     )
-    check("a card offers a rename", card.startswith("agent-rename-"), f"got {card!r}")
-    js(f"document.querySelector('[data-testid=\"{card}\"]')?.click(); 1")
-    time.sleep(0.5)
-    check("and a dialog opens on it", js("!!document.querySelector('[data-testid=agent-rename-dialog]')"))
-    js(
-        "(() => { const i = document.querySelector('[data-testid=agent-rename-input]');"
-        " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;"
-        " set.call(i, 'le portage du worker');"
-        " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
-    )
-    time.sleep(0.3)
-    js("document.querySelector('[data-testid=agent-color-7c5cff]')?.click(); 1")
-    time.sleep(0.3)
-    js("document.querySelector('[data-testid=agent-rename-save]')?.click(); 1")
-    time.sleep(1.2)
-    named = js(
-        "Array.from(document.querySelectorAll('[data-testid^=agent-card-]'))"
-        ".some(c => c.textContent.includes('le portage du worker'))"
-    )
-    check("the card wears the name", named is True)
-    # The question it replaced is still under it: a name adds a handle, it does not hide
-    # what the conversation is.
-    both = js(
-        "Array.from(document.querySelectorAll('[data-testid^=agent-card-]'))"
-        ".some(c => c.textContent.includes('le portage du worker')"
-        "        && c.textContent.includes('Question 1'))"
-    )
-    check("and what the tool reported is still under it", both is True)
-
-    # LABELS, which answer the other question: a name is "which one is this", a label is
-    # "which group is this in", and there can be several.
-    #
-    # DRIVEN AS A LIST, NOT AS A STRING. The field was a comma-separated box and the person
-    # who asked for the feature could not find it, could not tell which words were already
-    # on the conversation, and had no way to take one off. It is a filter over a list of
-    # rows that toggle now — so this drives the gestures a reader has rather than the
-    # parser a string needed.
-    js(f"document.querySelector('[data-testid=\"{card}\"]')?.click(); 1")
-    time.sleep(0.5)
-
-    def type_into(testid, text):
-        js(
-            "(() => { const i = document.querySelector('[data-testid=" + testid + "]');"
-            " const set = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;"
-            " set.call(i, " + repr(text) + ");"
-            " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
-        )
-
-    on_now = (
-        "Array.from(document.querySelectorAll('[data-testid=agent-labels-on] span"
-        "[data-testid^=label-]')).map(s => s.textContent.trim())"
-    )
-
-    # THE FIELD CANNOT INVENT A WORD, so the words are declared first — through the route
-    # Settings writes, which on a machine with no vault is a file this computer owns. That
-    # is the only place a word is declared in this context, and the picker offers exactly
-    # what has been.
-    js(
-        "fetch('/api/admin/labels', { method: 'PUT',"
-        " headers: { 'content-type': 'application/json' },"
-        " body: JSON.stringify({ labels: ['api', 'URGENT'] }) }).then(r => r.status)"
-    )
-    time.sleep(0.8)
-    # Reopened, because the vocabulary is read when a screen first needs it: the dialog on
-    # screen was built before the declaration landed.
-    js("document.querySelector('[data-testid=agent-rename-cancel]')?.click(); 1")
-    time.sleep(0.4)
-    js("location.reload(); 1")
-    time.sleep(3.0)
-    js(f"document.querySelector('[data-testid=\"{card}\"]')?.click(); 1")
+    js(f"document.querySelector('[data-testid=\"{first_card}\"]')?.click(); 1")
     time.sleep(0.6)
-    js("document.querySelector('[data-testid=agent-labels-input]')?.click(); 1")
-    time.sleep(0.4)
-    check("a word declared for this computer is offered here",
-          js("!!document.querySelector('[data-testid=agent-labels-row-api]')"))
-    js("document.querySelector('[data-testid=agent-labels-row-api]')?.click(); 1")
-    time.sleep(0.4)
-    # The case it was DECLARED in is what is kept, here and all the way to the document.
-    js("document.querySelector('[data-testid=agent-labels-row-urgent]')?.click(); 1")
-    time.sleep(0.4)
-    chips = js(on_now)
-    check("what is on the conversation is on screen as chips", chips == ["api", "URGENT"], f"got {chips}")
-    # The cap is a count that can be read BEFORE it bites, which "at most 8" never was.
-    count = js("document.querySelector('[data-testid=agent-labels-count]')?.textContent.trim()")
-    check("the cap is a count", count == "2 of 8", f"got {count!r}")
+    check("the detail panel opens", js("!!document.querySelector('[data-testid=agent-detail]')"))
+    check(
+        "and offers no Modify",
+        js("!!document.querySelector('[data-testid=agent-detail-rename]')") is False,
+    )
+    shot("agentload-readonly")
 
-    # AND A WORD ON IT CAN COME OFF, which the comma box could not do at all.
-    js("document.querySelector('[data-testid=agent-labels-off-urgent]')?.click(); 1")
-    time.sleep(0.4)
-    check("the chip's × takes it off", js(on_now) == ["api"], f"got {js(on_now)}")
-    # Back on through its row, which is the other half of the same list: a row that is on
-    # is marked, so "what is on" and "what is left" are one list read once.
-    js("document.querySelector('[data-testid=agent-labels-row-urgent]')?.click(); 1")
-    time.sleep(0.4)
-    check("and its row puts it back", js(on_now) == ["api", "URGENT"], f"got {js(on_now)}")
-    check("a row that is on is marked",
-          js("!!document.querySelector('[data-testid=agent-labels-on-urgent]')"))
-
-    js("document.querySelector('[data-testid=agent-rename-save]')?.click(); 1")
-    time.sleep(1.2)
-    worn = js(
-        "Array.from(document.querySelectorAll('[data-testid^=agent-card-]'))"
-        ".filter(c => c.querySelector('[data-testid=label-api]')).length"
-    )
-    check("the card wears its labels", worn == 1, f"{worn} cards")
-
-    # The colour is DERIVED from the label's own text, so it is the same word that decides
-    # it on every machine — nothing stored, nothing to keep in step.
-    two = js(
-        "(() => { const c = document.querySelector('[data-testid=label-api]');"
-        " const u = document.querySelector('[data-testid=label-urgent]');"
-        " return c && u ? [getComputedStyle(c).color, getComputedStyle(u).color] : []; })()"
-    )
-    check("two labels are two colours", len(two) == 2 and two[0] != two[1], f"got {two}")
-
-    # And a label is something to filter by, like a name.
-    js("document.querySelector('[data-testid=agent-label]')?.click(); 1")
-    time.sleep(0.4)
-    js(
-        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
-        "   .find(o => o.textContent.trim() === 'URGENT'); if (o) o.click(); })()"
-    )
-    time.sleep(0.6)
-    only = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
-    check("filtering by a label leaves that one conversation", only == 1, f"{only} cards")
-    js("document.querySelector('[data-testid=agent-label]')?.click(); 1")
-    time.sleep(0.4)
-    js(
-        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
-        "   .find(o => o.textContent.trim() === 'Any'); if (o) o.click(); })()"
-    )
-    time.sleep(0.5)
-
-    # A LABEL ALREADY USED IS PICKED, NOT RETYPED — which is the whole point of a long
-    # one. The vocabulary is derived from the marks, so `api` is on offer everywhere the
-    # moment it has been used once.
-    second = js(
-        "(() => { const rs = Array.from(document.querySelectorAll('[data-testid^=agent-rename-]'));"
-        " const b = rs[1]; if (!b) return ''; b.click(); return b.getAttribute('data-testid'); })()"
-    )
-    check("a second conversation opens its dialog", second.startswith("agent-rename-"), f"got {second!r}")
-    time.sleep(0.5)
-    offered = js(
-        "Array.from(document.querySelectorAll('[data-testid^=agent-labels-word-]'))"
-        ".map(b => b.textContent.trim())"
-    )
-    # This home has no declared vocabulary, so what is offered is exactly this person's own
-    # words. The declared ones join them on a machine that has any — they were offered on a
-    # machine's form and not here, which was an inconsistency rather than a missing feature.
-    check("the labels already used are offered as rows", sorted(offered) == ["URGENT", "api"], f"got {offered}")
-    # NONE OF THEM IS MARKED, because this conversation carries none — the thing the
-    # comma-separated box could not say.
-    check("and none is marked on a conversation that carries none",
-          js("!document.querySelector('[data-testid^=agent-labels-on-]')"))
-    js("document.querySelector('[data-testid=agent-labels-row-api]')?.click(); 1")
-    time.sleep(0.4)
-    chips = js(on_now)
-    check("picking one adds it without typing", chips == ["api"], f"got {chips}")
-    check("and its row is now the marked one",
-          js("!!document.querySelector('[data-testid=agent-labels-on-api]')"
-             " && !document.querySelector('[data-testid=agent-labels-on-urgent]')"))
-    # The search filters on the word, so a vocabulary of two hundred is still navigable.
-    type_into("agent-labels-input", "urg")
-    time.sleep(0.4)
-    rows = js("document.querySelectorAll('[data-testid^=agent-labels-row-]').length")
-    check("the search narrows the list", rows == 1, f"{rows} rows")
-    shot("agentload-labels")
-    js("document.querySelector('[data-testid=agent-rename-cancel]')?.click(); 1")
-    time.sleep(0.4)
-
-    # AND THE NAME IS SOMETHING TO FILTER BY, which is what a name is for on a list of
-    # seventy-three. A FILTER and not a second grouping: the band per CLI stays the
-    # structure of the page, so narrowing by name does not cost the tool a card is under.
-    js("document.querySelector('[data-testid=agent-named]')?.click(); 1")
-    time.sleep(0.4)
-    js(
-        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
-        "   .find(o => o.textContent.trim() === 'le portage du worker'); if (o) o.click(); })()"
-    )
-    time.sleep(0.6)
-    only = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
-    check("filtering by the name leaves that one conversation", only == 1, f"{only} cards")
-    bands_left = js("document.querySelectorAll('[data-testid^=agent-band-]').length")
-    check("and it is still under its own tool", bands_left == 1, f"{bands_left} bands")
-    shot("agentload-named")
-    js("document.querySelector('[data-testid=agent-named]')?.click(); 1")
-    time.sleep(0.4)
-    js(
-        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
-        "   .find(o => o.textContent.trim() === 'Any'); if (o) o.click(); })()"
-    )
-    time.sleep(0.5)
+    # THE FILTERS THAT NARROW BY WHAT A PERSON WROTE — by name, by label — are not
+    # exercised here any more, and cannot be: they need marks, marks need a vault, and
+    # this window has none. `label-field.spec.ts` and `agent-cards.spec.ts` drive both
+    # against a vault in chromium; what is left for a WebKitGTK bench to say about them
+    # is geometry, which `scenario_design` measures on a window that opens one.
 
     # EVERY MACHINE AT ONCE, which is the entry no single-machine tool has. It never
     # probes: it is every answer already held, so with one machine read it says one.
@@ -1538,14 +1384,51 @@ def scenario_design(wid):
     z-index reaches that; the clip is the overflow. It was found in a screenshot somebody
     took, which is not a way to find things.
 
-    THE MODIFY DIALOG AND NOT THE MACHINE FORM, because this window opens with no vault:
-    there are no collections, so no machine form. The dialog is the screen the defect was
-    actually seen on, and the field in it is the same component either way.
+    THE MODIFY DIALOG AND NOT THE MACHINE FORM: it is the screen the defect was actually
+    seen on, and the field in it is the same component either way.
+
+    IT OPENS A VAULT FIRST, which it did not have to before 0.2.9. A name, a colour and a
+    label are sealed under a key, so with no vault the manager offers no Modify at all and
+    there is no dialog to measure (`a_window_with_no_vault_keeps_no_marks_and_no_words`
+    holds that at the route, and `scenario_agentload` holds it on the screen). So this one
+    sets a master password on the way in — which is also closer to the window a reader is
+    looking at when they hit this geometry.
 
     Everything else belongs in the Playwright suite, which is faster and runs every gate.
     """
     print("\ndesign — geometry in the real webview")
     focus(wid)
+
+    # A VAULT FIRST, because what this measures lives behind one. The setup screen is a
+    # modal on the workspace (base-first, ADR 0014), reached from the vault pastille; its
+    # two password fields are `#password` and `#confirmPassword`, and the submit is the
+    # form's only one. Driven by id rather than by test id because this screen has none —
+    # it is the first thing a person ever sees and nothing automated had needed it.
+    opened = js("!!document.querySelector('[data-testid=agent-read-only]')")
+    js("document.querySelector('[data-testid=vault-pastille]')?.click(); 1")
+    time.sleep(0.5)
+    js(
+        "(() => { const b = Array.from(document.querySelectorAll('button'))"
+        "   .find(b => /vault/i.test(b.textContent || '')); if (b) b.click(); })()"
+    )
+    time.sleep(0.8)
+    if js("!!document.querySelector('#password')"):
+        for sel, value in (("#password", "bench-vault-123"), ("#confirmPassword", "bench-vault-123")):
+            js(
+                "(() => { const i = document.querySelector('" + sel + "');"
+                " const set = Object.getOwnPropertyDescriptor("
+                "   window.HTMLInputElement.prototype, 'value').set;"
+                " set.call(i, 'bench-vault-123');"
+                " i.dispatchEvent(new Event('input', { bubbles: true })); })()"
+            )
+            time.sleep(0.3)
+        js("document.querySelector('form button[type=submit]')?.click(); 1")
+        time.sleep(2.5)
+    check(
+        "a vault is open, which is what a name and a label need",
+        js("!document.querySelector('[data-testid=agent-read-only]')") or not opened,
+    )
+
     js("document.querySelector('[data-testid=toolbar-agents]')?.click(); 1")
     time.sleep(0.8)
     js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")

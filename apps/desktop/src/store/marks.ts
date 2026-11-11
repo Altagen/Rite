@@ -15,10 +15,15 @@
  *   - And one parse error took both down: a `[[mark]]` nobody could write by hand still
  *     sat in the same document as the layout that opens in the morning.
  *
- * TWO SUPPORTS, like the document beside it (ADR 0027): a file on this machine, or a
- * blob sealed under the user's key that the server stores and cannot read. The support is
- * decided by the context and not by a preference — a local vault has no account to seal
- * under, and a browser has no filesystem — so there is no third gate here.
+ * TWO SUPPORTS, AND NEITHER IS A FILE: the vault's own sealed document, or a blob sealed
+ * under the user's key that a server stores and cannot read. The support is decided by the
+ * context and not by a preference, so there is no gate here.
+ *
+ * AND WITH NO VAULT, NO SUPPORT AT ALL. It was a JSON file on the device for one
+ * unreleased cycle, which made this the only place Rite wrote a person's own annotations
+ * in the clear — a labelled conversation names a project and a customer. The binary
+ * executes; the vault remembers. An agent is still found, read and resumed without one;
+ * it cannot be named or labelled, because there is nowhere honest to keep that.
  *
  * NO POLICY. An instance governs whether Rite generates traffic on a user's behalf
  * (`agent_policy`); a label somebody wrote on their own screen is not that, and an
@@ -55,8 +60,12 @@ const seal = (key: Uint8Array, text: string): Promise<string> =>
 interface MarksState {
   marks: Mark[];
   loaded: boolean;
-  /** Which support answered, for a reader that needs to say where a name is kept. */
-  support: 'file' | 'account' | null;
+  /**
+   * Which support answered, or `null` when there is none — which is a window with no
+   * vault, and the signal every screen uses to offer no enrichment rather than to offer
+   * one that cannot be kept.
+   */
+  support: 'vault' | 'account' | null;
   load: () => Promise<void>;
   /** Name a conversation, or take its name away by passing `null`. */
   set: (mark: Mark | (Omit<Mark, 'name' | 'color'> & { name: null })) => Promise<void>;
@@ -87,21 +96,33 @@ export const useMarks = create<MarksState>((set, get) => ({
     }
     try {
       const file = await Backend.Marks.get();
-      const text = file.text ?? '';
-      set({ marks: text ? read(text) : [], loaded: true, support: 'file' });
+      // `null` is the route saying there is no support here, which an empty document is
+      // not: a fresh vault answers with `''`. Told apart, because one means "nothing named
+      // yet" and the other means "naming is not available at all".
+      if (file.text === null || file.text === undefined) {
+        set({ marks: [], loaded: true, support: null });
+        return;
+      }
+      set({ marks: file.text ? read(file.text) : [], loaded: true, support: 'vault' });
     } catch {
       set({ loaded: true, support: null });
     }
   },
 
   set: async (mark) => {
+    const { userKey } = useServerSession.getState();
+    // REFUSED HERE AND NOT ONLY ON SCREEN. The manager offers no way to reach this
+    // without a vault, and a store that would have written anyway is one route away from
+    // putting a person's annotation somewhere it cannot be sealed.
+    if (!userKey && get().support === null) {
+      throw new Error('marks: no vault to keep this in');
+    }
     const next = withMark(get().marks, mark);
     const text = formatMarks(next);
-    const { userKey } = useServerSession.getState();
     if (userKey) await Backend.UserMarks.set(await seal(userKey, text));
     else await Backend.Marks.put(text);
     // Written first, then held: a name that failed to reach its support must not be on
     // screen as though it had.
-    set({ marks: next, support: userKey ? 'account' : 'file' });
+    set({ marks: next, support: userKey ? 'account' : 'vault' });
   },
 }));

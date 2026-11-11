@@ -4038,42 +4038,25 @@ fn layouts_file(accounts: bool) -> Option<std::path::PathBuf> {
     if accounts { None } else { layouts_path() }
 }
 
-/// Where the names a person gave to conversations live, beside the workspace document.
-///
-/// A FILE OF ITS OWN AND NOT A TABLE IN THAT ONE (ADR 0022 §6). A mark is keyed to a
-/// conversation id on a machine, and a vendor's tool rotates those away; a layout is
-/// durable configuration a person writes and reads. Rite may prune what it owns and must
-/// not prune a config file, so the two cannot share a document — and fifty marks in a
-/// file whose useful content is thirty lines buries the part that is edited.
-///
-/// JSON, because nobody edits this one by hand: that removes a parser, a block walk and
-/// every syntax error they can produce.
-fn marks_path() -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|d| d.join("rite").join("marks.json"))
-}
-
 /// Where this context keeps the marks document, which is decided by WHERE THE KEY IS.
 ///
-/// Three supports and no preference between them (ADR 0022 §6):
+/// TWO SUPPORTS, AND NO THIRD (ADR 0022 §6, amended in 0.2.9):
 ///
 ///   - a server account seals it client-side under the reader's own key, at
 ///     `/api/user/marks`. This route has nothing to offer there.
 ///   - A LOCAL VAULT IS A VAULT. The master key exists and this process is holding it, so
-///     the document is sealed with it and kept in the vault's own database. It was a JSON
-///     file in the clear for one release, which is the gap this closes: a labelled
-///     conversation names a project and a customer.
-///   - no vault open at all has nothing to seal with, so the file stays the answer. That
-///     is not a weaker choice, it is the only one — and it is a file on the person's own
-///     machine.
-///
-/// The two are different documents on purpose, not two views of one. A conversation
-/// labelled inside the vault is not readable with the vault closed, which is the same rule
-/// the library already follows, and the alternative — reading both forever — would make the
-/// plaintext file a live support again and undo the sealing.
+///     the document is sealed with it and kept in the vault's own database.
+///   - and with no vault at all there is NO SUPPORT. Not a file in the clear, which is
+///     what this was for one unreleased cycle: a labelled conversation names a project and
+///     a customer, and the one place Rite wrote a person's own annotations unsealed was
+///     this file. The binary executes; the vault remembers. An agent can still be found,
+///     read and resumed with no vault — it cannot be enriched, because there is nowhere
+///     honest to put the enrichment.
 enum MarksSupport {
     Account,
     Vault([u8; 32]),
-    File(std::path::PathBuf),
+    /// No vault here, so nothing may be written and nothing is read.
+    None,
 }
 
 async fn marks_support(state: &ServerState) -> MarksSupport {
@@ -4085,10 +4068,7 @@ async fn marks_support(state: &ServerState) -> MarksSupport {
     if let Ok(key) = state.auth.get_master_key().await {
         return MarksSupport::Vault(*key.as_bytes());
     }
-    match marks_path() {
-        Some(path) => MarksSupport::File(path),
-        None => MarksSupport::Account,
-    }
+    MarksSupport::None
 }
 
 async fn get_marks(State(state): State<ServerState>) -> Result<Json<Value>, AppError> {
@@ -4107,22 +4087,9 @@ async fn get_marks(State(state): State<ServerState>) -> Result<Json<Value>, AppE
                 json!({ "text": text.unwrap_or_default(), "path": null }),
             ))
         }
-        // THE PATH THE SUPPORT DECIDED, and not one computed again here. It was
-        // `File(_)` and then a second call to `marks_file(state.accounts)`, so the file
-        // reported and the file read were two answers from two functions that happened to
-        // agree — `dead_code` on an unread field is what pointed at it. `LabelsSupport`
-        // below already does it this way.
-        MarksSupport::File(path) => {
-            let text = match tokio::fs::read_to_string(&path).await {
-                Ok(t) => t,
-                // Nothing named yet is the normal state of a fresh install, not a failure.
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
-                Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display()).into()),
-            };
-            Ok(Json(
-                json!({ "text": text, "path": path.display().to_string() }),
-            ))
-        }
+        // `null`, which the client reads as "there is no support here" — the same answer
+        // an account gets, for the same reason: this route is not where those marks live.
+        MarksSupport::None => Ok(Json(json!({ "text": null, "path": null }))),
     }
 }
 
@@ -4144,18 +4111,9 @@ async fn put_marks(
             .await?;
             Ok(StatusCode::NO_CONTENT)
         }
-        // The same path the read used, for the same reason.
-        MarksSupport::File(path) => {
-            if let Some(dir) = path.parent() {
-                tokio::fs::create_dir_all(dir)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("creating {}: {e}", dir.display()))?;
-            }
-            tokio::fs::write(&path, &req.value)
-                .await
-                .map_err(|e| anyhow::anyhow!("writing {}: {e}", path.display()))?;
-            Ok(StatusCode::NO_CONTENT)
-        }
+        // Nothing to seal with, so nothing is written. The screen does not offer the
+        // gesture at all; this is the answer to whoever calls the route anyway.
+        MarksSupport::None => Ok(StatusCode::NOT_FOUND),
     }
 }
 
@@ -4174,14 +4132,7 @@ const DESCRIPTION_MAX: usize = 120;
 
 /// Where the instance vocabulary lives, which is decided by WHO READS IT.
 ///
-/// FOUR CASES, and the fourth was missing — which showed up as a 409 on a window that had
-/// never set a master password, under a Save button the screen had drawn anyway. The
-/// reasoning that produced it was wrong twice: "no vault means no collections means
-/// nothing to label" forgets that a CONVERSATION is labelled in that context too (its
-/// marks go to a file on the device, ADR 0022 §6), and a screen must not offer a button
-/// that can only fail.
-///
-/// The three real supports are the ones marks already have, for the same reasons:
+/// THREE CASES, AND ONE REFUSAL:
 ///
 ///   - `Instance` — a server. Every member reads the list, so it is a plaintext row: a
 ///     word everyone may read and use has nothing to hide from this process, and sealing
@@ -4189,22 +4140,22 @@ const DESCRIPTION_MAX: usize = 120;
 ///     secret is which machine wears a word, and that stays in the collection's item.
 ///   - `Vault` — a local vault, which is an instance of Rite with collections under it.
 ///     The only reader is the owner, so it is sealed under the master key.
-///   - `File` — no master password has ever been set. Nothing exists to seal with, so it
-///     is a file on this person's own machine, beside their marks. Not a weaker choice:
-///     the only one.
+///   - `Locked` — a vault EXISTS and is closed. Not a support but an answer: writing
+///     elsewhere would split one person's vocabulary across two places depending on
+///     whether they had unlocked. Refused, with a sentence that says which.
+///   - `None` — no vault has ever been created here. There is nowhere to put a word and
+///     nothing to put one ON: no collections, no machines, and a conversation cannot be
+///     enriched without a vault either (ADR 0022 §6, amended in 0.2.9). The screen does
+///     not draw the section at all, which is why this is told apart from `Locked`.
 ///
-/// And `Locked` is not a support but an answer: a vault EXISTS and is closed, so writing
-/// to a file would split one person's vocabulary across two places depending on whether
-/// they had unlocked. Refused, with a sentence that says which.
+/// It was a FILE for one unreleased cycle, on the argument that a conversation could be
+/// labelled with no vault open. That argument died with the file the marks used: the
+/// binary executes, the vault remembers.
 enum LabelsSupport {
     Instance,
     Vault([u8; 32]),
-    File(std::path::PathBuf),
     Locked,
-}
-
-fn labels_path() -> Option<std::path::PathBuf> {
-    dirs::config_dir().map(|d| d.join("rite").join("labels.json"))
+    None,
 }
 
 async fn labels_support(state: &ServerState) -> LabelsSupport {
@@ -4217,10 +4168,7 @@ async fn labels_support(state: &ServerState) -> LabelsSupport {
     // A vault that exists and is shut is not a vault that is absent. Told apart here
     // because the answers differ: one is a file, the other is "unlock first".
     match state.auth.is_first_run().await {
-        Ok(true) => match labels_path() {
-            Some(path) => LabelsSupport::File(path),
-            None => LabelsSupport::Locked,
-        },
+        Ok(true) => LabelsSupport::None,
         _ => LabelsSupport::Locked,
     }
 }
@@ -4314,8 +4262,8 @@ impl LabelsSupport {
         match self {
             Self::Instance => "instance",
             Self::Vault(_) => "vault",
-            Self::File(_) => "file",
             Self::Locked => "locked",
+            Self::None => "none",
         }
     }
 }
@@ -4338,15 +4286,10 @@ async fn get_labels(State(state): State<ServerState>) -> Result<Json<Value>, App
             text.and_then(|t| serde_json::from_str::<Vec<VocabEntry>>(&t).ok())
                 .unwrap_or_default()
         }
-        LabelsSupport::File(path) => match tokio::fs::read_to_string(&path).await {
-            Ok(text) => serde_json::from_str::<Vec<VocabEntry>>(&text).unwrap_or_default(),
-            // Nothing declared yet is the normal state of a fresh install.
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-            Err(e) => return Err(anyhow::anyhow!("reading {}: {e}", path.display()).into()),
-        },
-        // Nothing to read rather than an error: the vocabulary is behind a vault that is
-        // shut, and the screen says so instead of showing an empty list as if it were one.
-        LabelsSupport::Locked => Vec::new(),
+        // Nothing to read rather than an error, in both: behind a vault that is shut, or
+        // behind no vault at all. The support's name is what lets the screen tell those
+        // apart — one says "open it", the other is not drawn.
+        LabelsSupport::Locked | LabelsSupport::None => Vec::new(),
     };
     Ok(Json(json!({ "labels": labels, "support": name })))
 }
@@ -4371,20 +4314,17 @@ async fn set_labels(
             )
             .await?
         }
-        LabelsSupport::File(path) => {
-            if let Some(dir) = path.parent() {
-                tokio::fs::create_dir_all(dir)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("creating {}: {e}", dir.display()))?;
-            }
-            tokio::fs::write(&path, &text)
-                .await
-                .map_err(|e| anyhow::anyhow!("writing {}: {e}", path.display()))?;
-        }
         LabelsSupport::Locked => {
             return Ok((
                 StatusCode::CONFLICT,
                 "this vault is locked: open it and the list is kept sealed with its key",
+            )
+                .into_response());
+        }
+        LabelsSupport::None => {
+            return Ok((
+                StatusCode::NOT_FOUND,
+                "a vault holds this list: there is none here to keep it in",
             )
                 .into_response());
         }
@@ -7240,7 +7180,99 @@ mod tests {
         assert_eq!(res.status(), StatusCode::OK);
     }
 
+    /// WITH NO VAULT, NOTHING IS KEPT — the other half of ADR 0022 §6 as 0.2.9 amends it.
+    ///
+    /// A name, a colour and a label are what Rite remembers about somebody else's
+    /// conversation, and they are sealed: under a vault's master key here, under the
+    /// reader's own on an account. With no vault there is nothing to seal with, and for
+    /// one unreleased cycle the answer was a JSON file in the clear — the only place Rite
+    /// wrote a person's own annotations unsealed. The binary executes; the vault
+    /// remembers.
+    ///
+    /// AT THE ROUTE AND NOT ONLY ON THE SCREEN. The manager draws no gesture that would
+    /// reach these, which is the half a reader sees; this is the half that holds when
+    /// something else calls them. Both are needed, and the screen's half is held by
+    /// `agent-manager.spec.ts`.
+    ///
+    /// A read answers `null` rather than failing: "there is no support here" is an
+    /// answer, and the client tells it from `""` — a fresh vault with nothing named yet.
     #[tokio::test]
+    async fn a_window_with_no_vault_keeps_no_marks_and_no_words() {
+        let app = build_router(test_state().await);
+
+        let ask = |app: axum::Router, method: Method, path: &'static str, body: &'static str| async move {
+            app.oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .header("host", "127.0.0.1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+        };
+
+        let read = ask(app.clone(), Method::GET, "/api/marks", "").await;
+        assert_eq!(
+            read.status(),
+            StatusCode::OK,
+            "a read is answered, not refused"
+        );
+        let body = axum::body::to_bytes(read.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            payload["text"],
+            Value::Null,
+            "null is 'no support here'; an empty document would be \"\""
+        );
+        assert_eq!(
+            payload["path"],
+            Value::Null,
+            "and above all not a file on the device"
+        );
+
+        let wrote = ask(
+            app.clone(),
+            Method::PUT,
+            "/api/marks",
+            r#"{"value":"{\"version\":1,\"marks\":[]}"}"#,
+        )
+        .await;
+        assert_eq!(
+            wrote.status(),
+            StatusCode::NOT_FOUND,
+            "a mark has nowhere to go, so the route says so instead of writing a file"
+        );
+
+        // The vocabulary is the same decision: a word is declared in a vault, and there
+        // is none here to declare it in.
+        let words = ask(app.clone(), Method::GET, "/api/labels", "").await;
+        assert_eq!(words.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(words.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let payload: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            payload["support"], "none",
+            "told apart from `locked`, which is a vault that EXISTS and is shut: one says \
+             open it, the other is a section the screen does not draw"
+        );
+        assert_eq!(payload["labels"], serde_json::json!([]));
+
+        let declared = ask(
+            app.clone(),
+            Method::PUT,
+            "/api/admin/labels",
+            r#"{"labels":["prod"]}"#,
+        )
+        .await;
+        assert_eq!(declared.status(), StatusCode::NOT_FOUND);
+    }
+
     /// The handshake ADR 0008 rests on, pinned to exact values.
     ///
     /// This test asserted only that the route answered 200 — under a name that claims it
@@ -7249,6 +7281,7 @@ mod tests {
     /// purpose: `version` is the release, `apiVersion` moves ONLY on a breaking change
     /// (0.2.4 added routes and fields, which are additive, so it does not move), and
     /// `minClient` is the oldest client this server still talks to.
+    #[tokio::test]
     async fn capabilities_reports_version() {
         let app = build_router(test_state().await);
         let res = app

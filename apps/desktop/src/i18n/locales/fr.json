@@ -1207,6 +1207,7 @@
     "pickFirst": "Choisir une machine",
     "count": "{count} conversations sur {machine}",
     "countOne": "1 conversation sur {machine}",
+    "readOnly": "Les noms, couleurs et étiquettes vivent dans un coffre, et aucun n'est ouvert ici.",
     "notProbed": "{machine} n’a pas été sondée",
     "probe": "Sonder {machine}",
     "probing": "Sondage…",

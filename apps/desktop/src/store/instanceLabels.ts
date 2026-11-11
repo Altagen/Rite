@@ -20,8 +20,14 @@ import { create } from 'zustand';
 import { Backend } from '../utils/backend';
 import { acceptedVocab, formatVocab, type VocabWord } from './labelsFormat';
 
-/** Where the list is kept, as the server reported it. `locked` ⇒ a write will be refused. */
-export type LabelsSupport = 'instance' | 'vault' | 'file' | 'locked';
+/**
+ * Where the list is kept, as the server reported it.
+ *
+ * `locked` ⇒ a vault exists and is shut, so a write will be refused and the screen says
+ * so. `none` ⇒ there is no vault here at all, and the screen is not drawn: a word has
+ * nowhere to be kept and nothing to be put on.
+ */
+export type LabelsSupport = 'instance' | 'vault' | 'locked' | 'none';
 
 interface InstanceLabelsState {
   /** The declared words, each with the colour somebody chose for it when there is one. */

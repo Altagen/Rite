@@ -145,15 +145,20 @@ const RAIL: {
   // the New-terminal button.
   { id: 'shell', i18n: 'settings.sec.shell' },
   { id: 'machines', i18n: 'settings.sec.machines' },
-  // The words declared above the collections. One section in both contexts, because a
-  // local vault has this scope too — it is an instance of Rite with collections under it.
-  // On a server the write is refused to anyone but an administrator, by the route.
+  // The words declared above the collections.
+  //
   // `local`, because THE SURFACE FOLLOWS THE OWNER. On a local vault this list is the
   // person's own, so it belongs with their settings; on a server it is the instance's, so
   // it belongs in the admin console — which is what ADR 0025 already does for every other
   // instance setting. A collection's own words are edited on the collection, in both
   // shells, and that half does not move.
-  { id: 'labels', i18n: 'labels.field', local: true },
+  //
+  // `vault`, because THE VAULT IS THE LOCAL INSTANCE. The list is sealed under its key,
+  // so with no vault there is nowhere to keep a word — and nothing to put one on either:
+  // no collections, no machines, and a conversation cannot be enriched without a vault
+  // (ADR 0022 §6). The section is absent rather than empty, like the master password and
+  // the danger zone beside it.
+  { id: 'labels', i18n: 'labels.field', local: true, vault: true },
   { id: 'security', i18n: 'settings.security' },
   { id: 'ssh', i18n: 'settings.sec.ssh' },
   { id: 'clipboard', i18n: 'settings.clipboard' },

@@ -1510,8 +1510,14 @@ export const BackendLabels = {
         // somebody did. Both shapes, because a list written before colours existed holds
         // strings and must keep working — `acceptedVocab` normalises what comes back.
         labels: z.array(VocabEntrySchema),
-        /** Which support answered. `locked` means a write will be refused. */
-        support: z.enum(['instance', 'vault', 'file', 'locked']).default('file'),
+        /**
+         * Which support answered. `locked` is a vault that is shut — a write is refused
+         * and the screen says so; `none` is no vault at all, and the screen is absent.
+         * The default is `none`: an older server that does not report one has no
+         * vocabulary this client can write, and drawing an editor over that was the
+         * defect this field exists for.
+         */
+        support: z.enum(['instance', 'vault', 'locked', 'none']).default('none'),
       }),
       {},
     ),

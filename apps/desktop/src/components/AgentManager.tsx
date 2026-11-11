@@ -299,6 +299,26 @@ export function AgentManager({
   const setMark = useMarks((st) => st.set);
   const loadMarks = useMarks((st) => st.load);
   const marksLoaded = useMarks((st) => st.loaded);
+  const marksSupport = useMarks((st) => st.support);
+  /**
+   * WHETHER THIS WINDOW MAY ADD ANYTHING TO WHAT IT READS.
+   *
+   * A name, a colour and a label are what Rite remembers about somebody else's
+   * conversation, and they are kept in a vault — sealed under its key locally, under the
+   * reader's own on an account. With no vault open there is no support and therefore
+   * nowhere honest to put them: the binary executes, the vault remembers.
+   *
+   * So the gestures that WRITE are not drawn here, rather than drawn and refused on
+   * press. Everything that reads stays: the probe, the cards, the detail panel, resuming,
+   * and starting a new conversation — which is running a program on a machine, not
+   * remembering something, and anyone who can open a terminal pane types the same line.
+   * Removing is the exception on the other side: it is the strongest modification offered,
+   * so it goes with the rest of them.
+   *
+   * Optimistic while the document is still loading, so the controls do not flash away and
+   * back on a window that has a vault.
+   */
+  const canEnrich = !(marksLoaded && marksSupport === null);
   // Read once, when the manager is first opened: nothing else in the app needs them, so
   // loading them at startup would be a request for a screen most sessions never visit.
   useEffect(() => {
@@ -693,6 +713,14 @@ export function AgentManager({
                     : t('agent.notProbed', { machine: where })
                 : t('agent.pickFirst')}
             </div>
+            {/* SAID ONCE, WHERE THE COUNT IS, and not on every card. The gestures that
+                write are absent rather than refused, so without this line their absence
+                reads as a screen that lost its buttons. */}
+            {!canEnrich && (
+              <div className="truncate text-xs text-amber-500" data-testid="agent-read-only">
+                {t('agent.readOnly')}
+              </div>
+            )}
           </div>
           <span className="flex-1" />
           <Dropdown
@@ -871,7 +899,7 @@ export function AgentManager({
                       setFolded((p) => ({ ...p, [b.adapter.id]: !(p[b.adapter.id] === true) }))
                     }
                     onResume={(r) => resume(r)}
-                    onRename={setRenaming}
+                    onRename={canEnrich ? setRenaming : undefined}
                     onOpen={setOpen1}
                     declared={declared}
                     onNew={
@@ -889,7 +917,7 @@ export function AgentManager({
                   active={railTool ?? bands[0]?.adapter.id ?? null}
                   onPick={setRailTool}
                   onResume={(r) => resume(r)}
-                  onRename={setRenaming}
+                  onRename={canEnrich ? setRenaming : undefined}
                   onOpen={setOpen1}
                   declared={declared}
                   onNew={
@@ -931,8 +959,8 @@ export function AgentManager({
             on={nameOf(open1.on)}
             onClose={() => setOpen1(null)}
             onResume={() => resume(open1)}
-            onRename={() => setRenaming(open1)}
-            onDelete={canRemove(open1) ? () => void remove(open1) : undefined}
+            onRename={canEnrich ? () => setRenaming(open1) : undefined}
+            onDelete={canEnrich && canRemove(open1) ? () => void remove(open1) : undefined}
             readFacts={() => readFacts(open1)}
             readContext={(cwd) => readContext(open1, cwd)}
             openFile={(path) =>
@@ -1052,7 +1080,8 @@ function Detail({
 
   onClose: () => void;
   onResume: () => void;
-  onRename: () => void;
+  /** Absent ⇒ there is no vault to keep a name in, so the action is not drawn. */
+  onRename?: () => void;
   /** Absent when this tool's listing names no file to remove. */
   onDelete?: () => void;
   /** Asks the machine what has changed. Resolves null when there is nothing to ask. */
@@ -1313,7 +1342,7 @@ function Detail({
           <IconPlay className="h-3.5 w-3.5" />
           {t('agent.resume')}
         </button>
-        {act('agent.modify', IconEdit, onRename, 'agent-detail-rename')}
+        {onRename && act('agent.modify', IconEdit, onRename, 'agent-detail-rename')}
         {act(
           'agent.detailCopyId',
           IconCopy,
@@ -1467,7 +1496,8 @@ function Card({
 }: {
   row: Row;
   onResume: () => void;
-  onRename: () => void;
+  /** Absent ⇒ nothing here may be named or labelled, so the pencil is not drawn. */
+  onRename?: () => void;
   onOpen: () => void;
   /** The words declared with a colour, so a chip here matches a chip anywhere else. */
   declared?: readonly VocabWord[];
@@ -1569,25 +1599,27 @@ function Card({
             />
           </svg>
         </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRename();
-          }}
-          title={t('agent.modify')}
-          className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-          data-testid={`agent-rename-${conv.id}`}
-        >
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M7 7h-.01M3 7V4a1 1 0 011-1h3l10 10-4 4L3 7z"
-            />
-          </svg>
-        </button>
+        {onRename && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRename();
+            }}
+            title={t('agent.modify')}
+            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+            data-testid={`agent-rename-${conv.id}`}
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 7h-.01M3 7V4a1 1 0 011-1h3l10 10-4 4L3 7z"
+              />
+            </svg>
+          </button>
+        )}
         <button
           type="button"
           onClick={(e) => {
@@ -1853,7 +1885,8 @@ function Band({
   folded: boolean;
   onFold: () => void;
   onResume: (row: Row) => void;
-  onRename: (row: Row) => void;
+  /** Absent ⇒ there is no vault to keep a name in, so no row offers to take one. */
+  onRename?: (row: Row) => void;
   onOpen: (row: Row) => void;
   /** Start one with this tool. Absent when the machine does not have it. */
   onNew?: () => void;
@@ -1886,7 +1919,7 @@ function Band({
           key={`${r.on}:${r.adapter.id}:${r.conv.id}`}
           row={r}
           onResume={() => onResume(r)}
-          onRename={() => onRename(r)}
+          onRename={onRename && (() => onRename(r))}
           onOpen={() => onOpen(r)}
           declared={declared}
           on={nameOf?.(r.on)}
@@ -1984,7 +2017,8 @@ function Rail({
   active: string | null;
   onPick: (id: string) => void;
   onResume: (row: Row) => void;
-  onRename: (row: Row) => void;
+  /** Absent ⇒ there is no vault to keep a name in, so no row offers to take one. */
+  onRename?: (row: Row) => void;
   onOpen: (row: Row) => void;
   /** Start one with the tool the rail is on. Absent when the machine lacks it. */
   onNew?: (adapter: ShippedAdapter) => void;
@@ -2033,7 +2067,7 @@ function Rail({
             key={`${r.on}:${r.adapter.id}:${r.conv.id}`}
             row={r}
             onResume={() => onResume(r)}
-            onRename={() => onRename(r)}
+            onRename={onRename && (() => onRename(r))}
             onOpen={() => onOpen(r)}
             declared={declared}
             on={nameOf?.(r.on)}
@@ -2059,7 +2093,8 @@ function RailRow({
 }: {
   row: Row;
   onResume: () => void;
-  onRename: () => void;
+  /** Absent ⇒ there is no vault to keep a name in, so the action is not drawn. */
+  onRename?: () => void;
   onOpen: () => void;
   /** The words declared with a colour, so a chip here matches a chip anywhere else. */
   declared?: readonly VocabWord[];
@@ -2131,25 +2166,27 @@ function RailRow({
           />
         </svg>
       </button>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onRename();
-        }}
-        title={t('agent.modify')}
-        className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted group-hover:opacity-100"
-        data-testid={`agent-rename-${conv.id}`}
-      >
-        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M7 7h-.01M3 7V4a1 1 0 011-1h3l10 10-4 4L3 7z"
-          />
-        </svg>
-      </button>
+      {onRename && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRename();
+          }}
+          title={t('agent.modify')}
+          className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted group-hover:opacity-100"
+          data-testid={`agent-rename-${conv.id}`}
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M7 7h-.01M3 7V4a1 1 0 011-1h3l10 10-4 4L3 7z"
+            />
+          </svg>
+        </button>
+      )}
       <button
         type="button"
         onClick={(e) => {
