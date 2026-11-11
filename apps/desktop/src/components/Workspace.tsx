@@ -998,6 +998,35 @@ export function Workspace({
     [instanceWords, conns.collections, conns.connections, marks],
   );
 
+  /**
+   * WHERE A WORD IS DECLARED for the machine a conversation was read on.
+   *
+   * The shell answers it because it holds the collections and owns the dialog. Three
+   * cases, and the third is why this returns a shape rather than a callback:
+   *
+   *   - a machine in a collection this person may write → that collection's own
+   *     vocabulary, opened ABOVE the mark dialog, which keeps every character typed in it;
+   *   - a machine in a collection they may only read → the name, and no way in: a link
+   *     that leads to a refusal is what the picker's create action was;
+   *   - this machine, which is in no collection → the vault's own list, in Settings. A
+   *     page, not a dialog, so reaching it would throw the dialog away: a sentence.
+   */
+  const declareFor = useCallback(
+    (machineId: string) => {
+      const machine = conns.connections.find((c) => c.id === machineId);
+      const collection = machine?.collectionId
+        ? (conns.collections ?? []).find((c) => c.id === machine.collectionId)
+        : undefined;
+      if (!collection) return { where: t('labels.settingsPlace') };
+      const writable = (conns.writableCollections ?? []).some((c) => c.id === collection.id);
+      return {
+        where: collection.name,
+        open: writable ? () => setLabelsCollection(collection.id) : undefined,
+      };
+    },
+    [conns.connections, conns.collections, conns.writableCollections, t],
+  );
+
   /** The last segment of a path, which is what a tab holding one file should be called. */
   const fileName = (path: string) => path.split('/').filter(Boolean).pop() ?? path;
 
@@ -2680,6 +2709,7 @@ export function Workspace({
                         manageAgents={conns.manageAgents}
                         declared={declaredWords}
                         vocabulary={labelOffers}
+                        declareFor={declareFor}
                         onResume={handleResumeAgent}
                         onOpenFile={handleOpenAgentFile}
                         onNew={(machine, adapter, cwd) =>
@@ -2733,6 +2763,8 @@ export function Workspace({
           reveal={conns.reveal}
           jumpCandidates={conns.connections}
           collectionTargets={conns.writableCollections}
+          // The collection's own vocabulary, over the form rather than instead of it.
+          onDeclareLabels={conns.renameCollection ? (id) => setLabelsCollection(id) : undefined}
           defaultCollectionId={formDefaultCollectionId}
           defaultFolder={formDefaultFolder}
           onClose={() => {

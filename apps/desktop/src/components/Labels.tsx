@@ -148,6 +148,7 @@ export function LabelField({
   vocabulary,
   inputId,
   testPrefix,
+  declare,
 }: {
   /** The labels currently on the thing. */
   labels: string[];
@@ -157,6 +158,21 @@ export function LabelField({
   inputId: string;
   /** Prefixes every `data-testid` here, so two screens' fields are told apart. */
   testPrefix: string;
+  /**
+   * WHERE A WORD IS DECLARED, since it is no longer declared here.
+   *
+   * The field only offers what some scope has declared, which leaves the reader with a
+   * question it refused to answer: where, then? `where` names the place. `open` is there
+   * when this screen can reach it WITHOUT COSTING ANYTHING — the collection's own
+   * vocabulary opens as a dialog above this one, so a half-filled form keeps every
+   * character while a word is declared behind it.
+   *
+   * Absent `open` means the place exists and reaching it would throw this away: a
+   * sentence then, never a control. The one case is a conversation on this machine,
+   * whose words are the vault's own and live in Settings — and Settings is a page, not
+   * a dialog that can sit over a dialog.
+   */
+  declare?: { where: string; open?: () => void };
 }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
@@ -348,6 +364,24 @@ export function LabelField({
                 );
               })
             )}
+            {declare &&
+              (declare.open ? (
+                <button
+                  type="button"
+                  onClick={declare.open}
+                  className="w-full border-t border-border px-2 py-1.5 text-left text-[11px] text-primary hover:bg-muted"
+                  data-testid={`${testPrefix}-declare`}
+                >
+                  {t('labels.declareIn', { where: declare.where })}
+                </button>
+              ) : (
+                <p
+                  className="border-t border-border px-2 py-1.5 text-[11px] text-muted-foreground"
+                  data-testid={`${testPrefix}-declared-in`}
+                >
+                  {t('labels.declaredIn', { where: declare.where })}
+                </p>
+              ))}
           </div>
         )}
       </div>

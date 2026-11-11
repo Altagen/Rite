@@ -40,6 +40,15 @@ interface ConnectionFormProps {
   // ADR 0016: shared collections the caller may save into (owner/editor). When
   // present (accounts context), the form offers a "save to collection" target.
   collectionTargets?: { id: string; name: string }[];
+  /**
+   * Open the vocabulary of the collection this machine is being saved into.
+   *
+   * The field offers declared words and declares none, so this is the answer to "where
+   * do I add one". A DIALOG OVER THIS ONE rather than a page: everything typed here is
+   * still here when it closes, which is the same reason this form refuses to close on a
+   * stray backdrop click.
+   */
+  onDeclareLabels?: (collectionId: string) => void;
   // Preselect this collection as the save target (e.g. opening the form from a
   // collection view). Only applies when creating.
   defaultCollectionId?: string | null;
@@ -66,6 +75,7 @@ export function ConnectionForm({
   reveal,
   jumpCandidates,
   collectionTargets,
+  onDeclareLabels,
   defaultCollectionId,
   defaultFolder,
   labelOffers,
@@ -560,6 +570,15 @@ export function ConnectionForm({
               vocabulary={labelOffers ?? []}
               inputId="machine-labels-input"
               testPrefix="machine-labels"
+              declare={
+                onDeclareLabels && collectionTargetId
+                  ? {
+                      where:
+                        collectionTargets?.find((c) => c.id === collectionTargetId)?.name ?? '',
+                      open: () => onDeclareLabels(collectionTargetId),
+                    }
+                  : undefined
+              }
             />
           </div>
 

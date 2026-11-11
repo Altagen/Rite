@@ -105,6 +105,58 @@ test('the box filters, and a word nobody declared cannot be invented here', asyn
   await expect(page.getByTestId('machine-labels-on-fieldonly-two')).toBeVisible();
 });
 
+/**
+ * THE FIELD SAYS WHERE A WORD IS DECLARED, since it no longer declares one itself.
+ *
+ * Removing the create action left the reader with a question the screen had stopped
+ * answering: where, then? The foot of the list answers it, and the answer is a WAY IN
+ * rather than a direction — the collection's own vocabulary opens as a dialog above this
+ * form, so everything typed into it is still there afterwards. A link that navigated
+ * would cost somebody a half-filled machine, which is the exact loss this form already
+ * refuses to take on a stray backdrop click.
+ */
+test('the list says where a word is declared, and getting there costs nothing', async ({
+  page,
+  request,
+}) => {
+  const collection = await ensureCollection(request, 'e2e-field-declare');
+  await declare(request, collection, 'e2e-field-declare', ['already-there']);
+  await open(page, 'e2e-field-declare');
+
+  // Something typed, to be sure it survives the detour.
+  await page.getByPlaceholder('My Server').fill('e2e-declare-machine');
+  await openList(page);
+
+  const declareRow = page.getByTestId('machine-labels-declare');
+  await expect(declareRow).toBeVisible();
+  // It names the place rather than saying "manage": the reader has to know WHICH
+  // vocabulary is about to open, because a word in the wrong scope is read by the wrong
+  // people.
+  await expect(declareRow).toContainText('e2e-field-declare');
+
+  await declareRow.click();
+  const manager = page.getByTestId('collection-labels-dialog');
+  await expect(manager).toBeVisible();
+
+  // Declare one from there, which is the whole point of the pointer.
+  await manager.getByTestId('label-manager-new').click();
+  await manager.getByTestId('label-row-word').fill('from-the-field');
+  await manager.getByTestId('label-row-done').click();
+  await manager.getByTestId('label-manager-save').click();
+  // Its own Close, not Escape: this dialog has no key handler, and the one thing a key
+  // must never do here is reach the form underneath and throw it away.
+  await page.getByTestId('collection-labels-close').click();
+  await expect(manager).toHaveCount(0);
+
+  // THE FORM IS STILL THERE, STILL FILLED. This is the assertion the shape was chosen
+  // for: the dialog opened OVER it, so nothing was unmounted and nothing was typed twice.
+  await expect(page.getByPlaceholder('My Server')).toHaveValue('e2e-declare-machine');
+
+  // And the word it declared is on offer now, without a reload.
+  await openList(page);
+  await expect(page.getByTestId('machine-labels-row-from-the-field')).toBeVisible();
+});
+
 test('a label comes off, by the chip and by its row', async ({ page, request }) => {
   const collection = await ensureCollection(request, 'e2e-field-off');
   await declare(request, collection, 'e2e-field-off', ['api', 'web']);

@@ -164,6 +164,17 @@ interface Props {
    * put on.
    */
   vocabulary: LabelOffer[];
+  /**
+   * Where a word is declared for the machine a conversation was read on, since this
+   * dialog declares none itself.
+   *
+   * THE SHELL ANSWERS IT, because it holds the collections and owns the dialog: a
+   * machine in a collection points at that collection's vocabulary, which opens above
+   * this one and costs nothing; a conversation on this machine has no collection, so its
+   * words are the vault's own and the answer is a sentence naming Settings — reaching it
+   * would close this dialog with a half-typed name in it.
+   */
+  declareFor?: (machineId: string) => { where: string; open?: () => void } | undefined;
   /** This server's mode, for the gate. */
   mode: ServerMode | null;
 }
@@ -186,6 +197,7 @@ export function AgentManager({
   onNew,
   onOpenFile,
   vocabulary,
+  declareFor,
   mode,
 }: Props) {
   const { t } = useTranslation();
@@ -671,6 +683,7 @@ export function AgentManager({
         <RenameDialog
           row={renaming}
           vocabulary={vocabulary}
+          declare={declareFor?.(renaming.on)}
           onClose={() => setRenaming(null)}
           onSave={(name, color, labels) => {
             // Neither a name nor a label takes the mark away rather than writing an entry
@@ -1659,12 +1672,15 @@ function Card({
 function RenameDialog({
   row,
   vocabulary,
+  declare,
   onClose,
   onSave,
 }: {
   row: Row;
   /** Every word on offer — declared above, or used by this person. Never required. */
   vocabulary: LabelOffer[];
+  /** Where one is declared, for the machine this conversation was read on. */
+  declare?: { where: string; open?: () => void };
   onClose: () => void;
   onSave: (name: string, color: string | undefined, labels: string[]) => void;
 }) {
@@ -1723,6 +1739,7 @@ function RenameDialog({
           vocabulary={vocabulary}
           inputId="agent-labels-input"
           testPrefix="agent-labels"
+          declare={declare}
         />
         <div className="mt-4 flex justify-end gap-2">
           {row.mark && (
