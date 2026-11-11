@@ -231,14 +231,6 @@ code.
 - [ ] Export connections (encrypted backup)
 - [ ] Import connections — an ssh_config import exists; this is about reading back a
       Rite export, which has no object until `Export connections` above exists
-- [x] **Host tags (in addition to collections)** — **done**, as labels (ADR 0016's
-      addendum). Three scopes, and the scope IS the confidentiality decision rather than a
-      setting beside it: instance-wide words are public and in the clear, a collection's
-      own stay in its sealed header, a person's own ride in the marks document. What is
-      LABELLED is always sealed whatever the word's scope, because a machine lives in a
-      collection. Search matches them, a word can carry a colour and a description, and
-      the picker is a list rather than a comma-separated box — the box could not say which
-      words were already on a thing.
 - [ ] Advanced search and filter — the label filter and the search over labels ship; this
       is the rest of it (ranges, negation, saved searches)
 
@@ -325,7 +317,6 @@ WebKitGTK. Whether the sheets survive `'self'` is a question about what the bund
 at runtime — xterm.js builds style elements of its own — so it gets measured in the
 tls-proxy suite rather than asserted.
 
-- [x] Inventory the sites and sort them — the table above
 - [ ] The 13 static sites into classes, and the hex back onto its token: no behaviour
       change, identical output
 - [ ] One mechanism for the 14 user-chosen colours instead of fourteen
@@ -333,7 +324,7 @@ tls-proxy suite rather than asserted.
       worth doing for readability, but it buys nothing on the CSP
 - [ ] `style-src-elem 'self'` beside the kept `style-src-attr 'unsafe-inline'` in
       `packages/rite-server/src/lib.rs`, with the tls-proxy suite proving the sheets and
-      xterm still load — independent of the four items above, and the only one that
+      xterm still load — independent of the three items above, and the only one that
       actually tightens anything
 
 ### 🌍 The server's refusals, as codes (Priority: LOW)
@@ -411,54 +402,8 @@ the mock is corrected from the code when the code has measured something it had 
 and the mock still shipped a release showing a git branch the code had refused and six
 adapters where seven existed. A preview cannot disagree with the screen it IS.
 
-- [x] **PTY + exec in `rite-core`** — **done.** An agent pane runs a *named program*, not
-      a command typed into a shell: over SSH the resume line travels with the channel, and
-      on this machine it is argv through `execvp`. Not the typed-after-a-delay shortcut: a
-      shell discards queued input while it sets the tty up, so an early send is *gone*,
-      which the split-preset work already proved and fixed once.
-- [x] **`local_terminal.rs`** — **done**, both halves. `cwd` arrived in 0.2.6 for splits;
-      the argv-direct spawn is `LocalProgram::{Shell, Script, Argv}` with
-      `LocalSession::run_program(events, argv, cwd)`, so a resume command reaches `execvp`
-      as written instead of being re-parsed by `sh -c`. An argv does not borrow the
-      shell's fallback resolution, which would have answered a missing CLI with an
-      anonymous `/bin/sh` prompt. ADR 0022 §7.2 and its addendum.
-- [x] **Agent pane**, not a menu — **done.** A registered kind under
-      `apps/desktop/src/panes/kinds/`, so an agent splits with plain terminals in the same
-      tab and the split tree learned nothing new.
-- [x] **Discover existing sessions** — **done**, with their project and the time they were
-      last written, newest first. **Not whether one is still running**, and that is a
-      refusal rather than a gap: a transcript written twenty seconds ago by a session that
-      has since exited is byte-for-byte one written by a session mid-answer.
-- [x] **Resume** a session in a pane, without the user ever seeing its id — **done.**
-- [x] **Per-tool adapter, isolated on purpose** — **done**, seven of them, five measured
-      against installed binaries. Three of the four commands the mock carried could not
-      work, which is the whole argument for the boundary. (ADR 0003's lesson, learned the
-      hard way: pin the constraint, never the incidental shape.)
-- [x] **A name and a colour of one's own** — **done.** A conversation a vendor filed under
-      a uuid gets a name the person gave it, in a document Rite owns
-      (`~/.config/rite/marks.json`, or a blob sealed under the account key). A mark rots
-      and a layout does not, which is why it is not in the workspace file.
-- [x] **Remove one, and start one** — **done.** A removal is the tool's own transcript
-      going away on the machine it was read on, behind a confirmation that names the file;
-      a start is the tool with no arguments in a directory that was asked for. Four of the
-      seven can remove — three listings name no file, and those show no button.
 - [ ] **Seed** a new agent with its context automatically, rather than pasting it — the
       directory is passed; the rest is the management layer below.
-- [x] **What is in effect — skills, commands and hooks** (ADR 0022 §6) — **done.** The
-      account's layer under the project's, resolved on that host under that account, every
-      row carrying its path, and a copy that lost to the project layer shown *losing*
-      rather than hidden. Read-only on purpose: a hook is a command that runs later,
-      unattended, and the editing story is **Open** — the file in a terminal pane on that
-      machine under the account already in use there. Nothing read is kept.
-      **One refusal:** the mock warned about a *shared account* and Rite cannot ask a
-      machine whether an account is shared, so what is shown is the account the read was
-      resolved under. The shared account stays an argument for read-only, which is what it
-      already is in the ADR.
-- [x] **What only the machine can say** — **done**, and not on a card: the working
-      directory, the branch it stands on now and whether that tree is clean are read when
-      the detail panel opens, and kept nowhere. A branch on a card is read as current and
-      goes stale at the next `git switch`. The read is bounded — `"cwd"` is in the first
-      64 KB of a transcript, measured against one that is 1.1 GB.
 - [ ] **The vendor's own name for a conversation** — Claude Code writes an `aiTitle` and
       6 of 8 transcripts here carry one. It is better than falling back to the first
       message, and it is in the LAST 64 KB, so it is a second bounded read per file rather
@@ -475,7 +420,7 @@ adapters where seven existed. A preview cannot disagree with the screen it IS.
 - [ ] **The management layer, deliberately after the basics** — stored pre-prompts,
       per-project conventions (a `CLAUDE.md` and its equivalents), pre-arranged agent
       set-ups. This is where a real advantage over running the CLI yourself would sit,
-      and it is explicitly *not* in the first mock: the basics come first, and what
+      and it is explicitly *not* in the first version: the basics come first, and what
       "plus" means gets argued once the basics are on screen.
 - [ ] Decide what *not* to do — this is adjacent to Rite's purpose, and the risk
       is becoming two half-products instead of one good one
