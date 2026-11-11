@@ -176,7 +176,7 @@ measurements. Trust `audit complete: every check ran` and nothing less.
 The gate's step 5 **destroys the `deploy_rite-data` volume and removes
 `deploy/admin_password.txt`**, so it must not run against an instance someone is using.
 
-Then check the three records are current, because nothing else will:
+Then check the two records are current, because nothing else will:
 
 - `docs/ROADMAP.md` holds only what is LEFT — anything this release shipped is deleted
   from it rather than ticked
@@ -185,15 +185,29 @@ Then check the three records are current, because nothing else will:
 
 ### 2. Update Version
 
-Bump the version in `Cargo.toml` (`[workspace.package] version`) and the two
-`package.json` files (root + `apps/desktop`). Regenerate `Cargo.lock` with
-`cargo check`.
+**SIX CARRIERS**, and this step named four of them until 0.2.9. The 0.2.7 bump moved
+five and left the Rust pin, which passed locally and failed in CI — that is what a
+carrier nobody lists costs.
 
-Commit:
+- `Cargo.toml` — `[workspace.package] version`
+- `package.json` and `apps/desktop/package.json`
+- `Cargo.lock` — regenerated with `cargo check`, and it holds the four workspace crates
+  only (`displaydoc` and `libdbus-sys` sit at their own 0.2.x from crates.io)
+- `INSTALL.md` — twice: the `VERSION=` a reader is told to fetch, and the image tag
+- `packages/rite-server/src/lib.rs` — `capabilities_reports_version` asserts the number
+  the server reports to a client
+
+Two checks stand behind the list, which is why a miss is caught rather than published:
+`e2e/version-check.mjs` holds the three manifests and INSTALL.md, `cargo test` holds the
+Rust pin, and both run in the gate.
+
+Commit on **develop** — the bump reaches main through the release PR like everything
+else:
 ```bash
-git add Cargo.toml Cargo.lock package.json apps/desktop/package.json
-git commit -m "chore(release): bump version to 0.2.0"
-git push origin main
+git add Cargo.toml Cargo.lock package.json apps/desktop/package.json INSTALL.md \
+  packages/rite-server/src/lib.rs
+git commit -m "chore(release): bump version to 0.2.9"
+git push origin develop
 ```
 
 ### 3. Create and Push Tag
