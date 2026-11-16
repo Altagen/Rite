@@ -592,7 +592,6 @@ profile exists, and it would teach the wrong shape in the meantime.
 ### 🎯 Power User Features (Priority: LOW)
 - [ ] Terminal search history
 - [ ] Command history sync across devices
-- [ ] Labels and pre-hook scripts
 - [ ] Custom scripts library
 - [ ] Per-host environment variables
 
