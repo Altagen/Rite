@@ -1292,45 +1292,17 @@ def scenario_agentload(wid):
     check("back on the one being deleted", open_card_with("Question 1 sur") is True)
     time.sleep(0.6)
 
-    # DELETING ONE, which is a vendor's file going away on a real machine. The card is
-    # expected to go with it, and the file is read back off the disk — a screen that
-    # dropped the row without the `rm` landing would pass every assertion but one.
-    path = js(
-        "(() => { const d = document.querySelector('[data-testid=agent-detail]');"
-        " const m = d.textContent.match(/\\/[^\\s]*\\.jsonl/); return m ? m[0] : ''; })()"
+    # DELETING ONE IS NOT OFFERED HERE, and that is the assertion. Removing a
+    # conversation is the strongest modification on this surface, so it goes with the
+    # rest of them when no vault is open (ADR 0033). The removal itself — the `rm` landing
+    # on the machine, the card going with it, and the name leaving the document Rite owns
+    # — is driven in `scenario_design`, which opens a vault on the way in.
+    check(
+        "deleting is not offered without a vault",
+        js("!document.querySelector('[data-testid=agent-detail-delete]')"),
     )
-    check("the panel names the file it would remove", path.endswith(".jsonl"), f"got {path!r}")
-    before = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
-    # The name given earlier landed on this same card, so the document Rite owns holds it
-    # now and must not hold it afterwards: a mark is keyed to a conversation id, and this
-    # is the one moment Rite knows for certain that one has rotted.
-    cid = os.path.basename(path)[: -len(".jsonl")]
-    marks_file = os.path.join(os.environ.get("HOME", ""), ".config/rite/marks.json")
-    marks_before = open(marks_file).read() if os.path.exists(marks_file) else ""
-    check("the name is in the document Rite owns", cid in marks_before, f"got {marks_before[:120]!r}")
-    js("document.querySelector('[data-testid=agent-detail-delete]')?.click(); 1")
-    time.sleep(0.6)
-    asked = js("document.querySelector('[data-testid=confirm-dialog]')?.textContent || ''")
-    # The path is IN the question, because it is the fact that settles it: one file, on
-    # one machine, named rather than described.
-    check("delete asks first, and names the file", path in asked, f"got {asked[:120]!r}")
-    js("document.querySelector('[data-testid=confirm-cancel]')?.click(); 1")
-    time.sleep(0.6)
-    check("and a cancel removes nothing", os.path.exists(path) and
-          js("document.querySelectorAll('[data-testid^=agent-card-]').length") == before)
-
-    js("document.querySelector('[data-testid=agent-detail-delete]')?.click(); 1")
-    time.sleep(0.6)
-    js("document.querySelector('[data-testid=confirm-accept]')?.click(); 1")
-    time.sleep(2.0)
-    check("the file is gone", not os.path.exists(path), path)
-    after = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
-    check("and the card went with it", after == before - 1, f"{before} -> {after}")
-    check("and the panel closed on what no longer exists",
-          js("!document.querySelector('[data-testid=agent-detail]')"))
-    marks_after = open(marks_file).read() if os.path.exists(marks_file) else ""
-    check("and the name went with it", cid not in marks_after, f"got {marks_after[:160]!r}")
-    shot("agentload-deleted")
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.4)
 
     # STARTING ONE, which is the other half: the tool run with no arguments, in the
     # directory that was named. The seeded fake binary prints its own `$PWD` and stays
@@ -1574,6 +1546,52 @@ def scenario_design(wid):
     )
     check("every control in the dialog receives its own clicks", covered == [], f"{covered}")
     print("  shot     ", shot("design-labels"))
+
+    # AND WHAT A REMOVAL DOES ON DISK, which moved here when the window that used to
+    # drive it stopped being allowed to: deleting a conversation is a modification, so it
+    # needs the vault this scenario now opens. The file is read back off the disk, because
+    # a screen that dropped the row without the `rm` landing would pass every assertion
+    # that only looks at the screen.
+    js("document.querySelector('[data-testid=agent-detail-close]')?.click(); 1")
+    time.sleep(0.3)
+    first = js(
+        "document.querySelector('[data-testid^=agent-card-]')"
+        "?.getAttribute('data-testid') || ''"
+    )
+    js(f"document.querySelector('[data-testid=\"{first}\"]')?.click(); 1")
+    time.sleep(0.8)
+    path = js(
+        "(() => { const d = document.querySelector('[data-testid=agent-detail]');"
+        " const m = d && d.textContent.match(/\\/[^\\s]*\\.jsonl/); return m ? m[0] : ''; })()"
+    )
+    if check("the panel names the file it would remove", path.endswith(".jsonl"), f"got {path!r}"):
+        before = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+        js("document.querySelector('[data-testid=agent-detail-delete]')?.click(); 1")
+        time.sleep(0.6)
+        asked = js("document.querySelector('[data-testid=confirm-dialog]')?.textContent || ''")
+        # The path is IN the question, because it is the fact that settles it: one file,
+        # on one machine, named rather than described.
+        check("delete asks first, and names the file", path in asked, f"got {asked[:120]!r}")
+        js("document.querySelector('[data-testid=confirm-cancel]')?.click(); 1")
+        time.sleep(0.6)
+        check(
+            "and a cancel removes nothing",
+            os.path.exists(path)
+            and js("document.querySelectorAll('[data-testid^=agent-card-]').length") == before,
+        )
+
+        js("document.querySelector('[data-testid=agent-detail-delete]')?.click(); 1")
+        time.sleep(0.6)
+        js("document.querySelector('[data-testid=confirm-accept]')?.click(); 1")
+        time.sleep(2.0)
+        check("the file is gone", not os.path.exists(path), path)
+        after = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
+        check("and the card went with it", after == before - 1, f"{before} -> {after}")
+        check(
+            "and the panel closed on what no longer exists",
+            js("!document.querySelector('[data-testid=agent-detail]')"),
+        )
+        shot("design-deleted")
 
 
 SCENARIOS = {
