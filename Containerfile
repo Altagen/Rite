@@ -21,7 +21,7 @@
 #   - pnpm                   from package.json `packageManager`, as CI does
 #   - cargo-audit            (Cargo Audit check)
 #   - go-task                (repo uses `task check`)
-FROM ubuntu:24.04
+FROM ubuntu:25.10
 
 ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_TERM_COLOR=always \
