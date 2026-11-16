@@ -1328,6 +1328,7 @@
     "scopeCollection": "This collection",
     "scopeInstance": "All collections",
     "instanceTitle": "Labels",
+    "saved": "Saved",
     "instanceSave": "Save the list",
     "instanceCap": "{count} words at most",
     "anyLabel": "Any label",

@@ -51,8 +51,18 @@ test('a label is declared with a colour and a description, and survives a reload
   await expect(page.getByTestId('label-row-pci')).toContainText('PCI-DSS in scope');
   await expect(page.getByTestId('label-manager-save')).toBeEnabled();
   await page.getByTestId('label-manager-save').click();
-  await expect(page.getByTestId('label-manager-save')).toBeDisabled();
+
+  // IT SAYS IT LANDED. The Save button is only drawn while there is a draft, so a
+  // successful write used to make it vanish and nothing else — and a button disappearing
+  // is what a button does when pressed, not evidence that the list reached its support.
+  // The owner read this screen and could not tell whether anything had been kept.
+  await expect(page.getByTestId('label-manager-saved')).toBeVisible();
   await expect(page.getByTestId('label-manager-error')).toHaveCount(0);
+
+  // And it goes away on its own: a mark that stayed would read as the state of the list
+  // rather than as the answer to one press.
+  await expect(page.getByTestId('label-manager-saved')).toHaveCount(0, { timeout: 5_000 });
+  await expect(page.getByTestId('label-manager-save')).toBeDisabled();
 
   // AND IT IS STILL THERE AFTER A RELOAD, which is the only assertion that proves the row
   // reached its support rather than a React state that looked convincing.

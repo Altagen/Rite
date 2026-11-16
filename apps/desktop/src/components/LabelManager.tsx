@@ -20,7 +20,7 @@
  * cost; today they would only add a control that can conceal the answer.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { LabelChip } from './Labels';
 import { MACHINE_SWATCHES } from '../theme/swatches';
@@ -88,6 +88,25 @@ export function LabelManager({
     setError(null);
   };
 
+  /**
+   * SAYING IT LANDED, for a second and a half.
+   *
+   * The Save button is drawn only while there is a draft, so a successful write made it
+   * vanish and nothing else happened — and a button disappearing is what a button does
+   * when it is pressed, not evidence that a list reached its support. The owner read the
+   * screen and could not tell whether the words had been kept.
+   *
+   * A word in the button's place rather than a toast: the eyes are already there, it
+   * needs no dismissing, and it cannot cover the row somebody is about to edit. The same
+   * shape the Board's copy button has.
+   */
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (!saved) return;
+    const timer = setTimeout(() => setSaved(false), 1800);
+    return () => clearTimeout(timer);
+  }, [saved]);
+
   const save = async () => {
     if (!draft || !target?.save) return;
     setBusy(true);
@@ -95,6 +114,7 @@ export function LabelManager({
       await target.save(draft);
       setDraft(null);
       setOpen(null);
+      setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -262,17 +282,25 @@ export function LabelManager({
           })}
         </span>
         <span className="flex-1" />
-        {!readOnly && (
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={draft === null || busy}
-            className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
-            data-testid="label-manager-save"
-          >
-            {t('labels.instanceSave')}
-          </button>
-        )}
+        {!readOnly &&
+          (saved && draft === null ? (
+            <span
+              className="rounded-md px-2.5 py-1 text-xs font-medium text-emerald-500"
+              data-testid="label-manager-saved"
+            >
+              {t('labels.saved')}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={draft === null || busy}
+              className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+              data-testid="label-manager-save"
+            >
+              {t('labels.instanceSave')}
+            </button>
+          ))}
       </div>
       {readOnly && (
         <p className="mt-2 text-[11px] text-amber-500" data-testid="label-manager-readonly">

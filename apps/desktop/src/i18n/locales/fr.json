@@ -1328,6 +1328,7 @@
     "scopeCollection": "Cette collection",
     "scopeInstance": "Toutes les collections",
     "instanceTitle": "Labels",
+    "saved": "Enregistré",
     "instanceSave": "Enregistrer la liste",
     "instanceCap": "{count} mots au maximum",
     "anyLabel": "Tous les labels",
