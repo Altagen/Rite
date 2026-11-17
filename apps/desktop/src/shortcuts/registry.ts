@@ -33,8 +33,7 @@ interface RegistryState {
 
 export const useCommandRegistry = create<RegistryState>((set) => ({
   handlers: {},
-  register: (id, handler) =>
-    set((s) => ({ handlers: { ...s.handlers, [id]: handler } })),
+  register: (id, handler) => set((s) => ({ handlers: { ...s.handlers, [id]: handler } })),
   unregister: (id) =>
     set((s) => {
       // Rebuilt without the key rather than set to undefined: `Object.keys` is what the

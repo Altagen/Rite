@@ -36,11 +36,7 @@ async function run(page: import('@playwright/test').Page, line: string) {
  * `packages/rite-core/tests/local_session.rs`, where it makes an assertion vacuous rather
  * than a wait early.
  */
-async function screenHolding(
-  page: import('@playwright/test').Page,
-  index: number,
-  needle: RegExp,
-) {
+async function screenHolding(page: import('@playwright/test').Page, index: number, needle: RegExp) {
   const rows = page.locator('.xterm-rows').nth(index);
   await expect(rows).toContainText(needle, { timeout: 20_000 });
   return rows.innerText();

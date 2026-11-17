@@ -49,8 +49,7 @@ test('switching tabs does not accumulate resize listeners', async ({ page }) => 
     await expect(panes(page).first()).toBeVisible({ timeout: 15_000 });
   }
 
-  const tally = () =>
-    page.evaluate(() => (window as unknown as { __tally: Tally }).__tally);
+  const tally = () => page.evaluate(() => (window as unknown as { __tally: Tally }).__tally);
   const start = await tally();
 
   // Four switches, so a leak of one per mount is unmistakable against the single pane

@@ -146,7 +146,7 @@ test('a local terminal in a remote context is served by the client', async ({ pa
  * directly, with the remote's own token, so a false pass is not possible — if the request
  * had been proxied, the remote would be holding the value.
  */
-test('the settings table is this machine\'s, not the instance\'s', async ({ page, request }) => {
+test("the settings table is this machine's, not the instance's", async ({ page, request }) => {
   await page.goto('/');
   await expect(page.getByText('Sign in to the server')).toBeVisible({ timeout: 15_000 });
   await page.locator('#username').fill('envadmin');

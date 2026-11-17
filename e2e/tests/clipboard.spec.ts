@@ -140,11 +140,14 @@ test('a paste carrying text still arrives whole and bracketed', async ({ page })
   await withNothingSelected(page);
   const from = sent.length;
 
-  await page.locator('.xterm-helper-textarea').first().evaluate((ta) => {
-    const dt = new DataTransfer();
-    dt.setData('text/plain', 'pasted-text');
-    ta.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
-  });
+  await page
+    .locator('.xterm-helper-textarea')
+    .first()
+    .evaluate((ta) => {
+      const dt = new DataTransfer();
+      dt.setData('text/plain', 'pasted-text');
+      ta.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
+    });
   await page.waitForTimeout(400);
 
   const flat = sent.slice(from).flat();
@@ -286,10 +289,9 @@ test('saving a typo in the editor leaves the convention in force', async ({
   // surviving half.
   await editor.getByRole('button', { name: /close/i }).last().click();
   await page.getByTestId('settings-nav-clipboard').click();
-  await expect(
-    page.getByTestId('copy-mode'),
-    'the typo changed nothing',
-  ).toHaveText('Select to copy');
+  await expect(page.getByTestId('copy-mode'), 'the typo changed nothing').toHaveText(
+    'Select to copy',
+  );
 
   await request.put('/api/layouts', { data: { value: '' } });
 });

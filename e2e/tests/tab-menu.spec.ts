@@ -98,14 +98,10 @@ test('a duplicate opens the same arrangement with new sessions', async ({ page, 
   // re-pointed the new panes at the old sessions would not have produced — and that is
   // the failure worth catching, because two panes claiming one session looks fine until
   // one of them closes.
-  await expect
-    .poll(() => sessionCount(request), { timeout: 30_000 })
-    .toBe(sessionsBefore + 2);
+  await expect.poll(() => sessionCount(request), { timeout: 30_000 }).toBe(sessionsBefore + 2);
 });
 
-test('closing the other tabs asks first, and a refusal leaves them standing', async ({
-  page,
-}) => {
+test('closing the other tabs asks first, and a refusal leaves them standing', async ({ page }) => {
   await page.goto('/');
   await newTab(page);
   await newTab(page);

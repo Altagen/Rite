@@ -281,10 +281,7 @@ const viaCopyEvent = (): boolean => {
  * the engine fires, never one a page can ask for. In an insecure context this does
  * nothing, which is why the mode that needs it is not the default.
  */
-const readClipboardInto = (
-  hand: (text: string) => void,
-  trace?: (what: string) => void,
-): void => {
+const readClipboardInto = (hand: (text: string) => void, trace?: (what: string) => void): void => {
   if (!navigator.clipboard?.readText) {
     trace?.('no clipboard to read — the context is not a secure one');
     return;

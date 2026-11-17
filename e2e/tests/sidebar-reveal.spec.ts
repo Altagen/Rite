@@ -59,9 +59,7 @@ test('the sidebar reveal arrow follows the pointer and is click-through when hid
  * viewport, which is exactly the case that broke. `relatedTarget: null` is what the pointer
  * crossing out of the document looks like.
  */
-test('the reveal arrow hides when the pointer leaves the window by the left', async ({
-  page,
-}) => {
+test('the reveal arrow hides when the pointer leaves the window by the left', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Hide sidebar' }).click();
   const arrow = page.getByTestId('sidebar-reveal');
