@@ -75,3 +75,4 @@ deploy/tls/
 # swallowed 65 MB of it into a commit once, which is why this line exists rather than a
 # reminder to be careful.
 /rite-*-dev
+__pycache__/

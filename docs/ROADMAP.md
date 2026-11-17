@@ -339,7 +339,13 @@ tls-proxy suite rather than asserted.
 
 - [ ] The 13 static sites into classes, and the hex back onto its token: no behaviour
       change, identical output
-- [ ] One mechanism for the 14 user-chosen colours instead of fourteen
+- [ ] One mechanism for the 14 user-chosen colours instead of fourteen. 0.2.9 did the
+      five that offer `MACHINE_SWATCHES` — the machine form, the two folder dialogs, the
+      vocabulary manager and a conversation's mark dialog all render `SwatchGrid` now.
+      What is left is the collection and avatar sites, which is the palette merge the
+      header of `theme/swatches.ts` calls a migration rather than an edit: the two lists
+      overlap in one colour, so the other sixteen each need a mapping for what is already
+      stored
 - [ ] Runtime geometry through a CSS variable on the element rather than a style string —
       worth doing for readability, but it buys nothing on the CSP
 - [ ] `style-src-elem 'self'` beside the kept `style-src-attr 'unsafe-inline'` in

@@ -143,9 +143,14 @@ test('the list says where a word is declared, and getting there costs nothing', 
   await manager.getByTestId('label-row-word').fill('from-the-field');
   await manager.getByTestId('label-row-done').click();
   await manager.getByTestId('label-manager-save').click();
-  // Its own Close, not Escape: this dialog has no key handler, and the one thing a key
-  // must never do here is reach the form underneath and throw it away.
-  await page.getByTestId('collection-labels-close').click();
+  // ESCAPE, AND NOT ITS OWN CLOSE, because Escape is what a person presses and it was the
+  // one key this arrangement could not survive. The machine form listens for it on
+  // `document`, so until this was fixed the form's handler is the one that answered: the
+  // dialog stayed open, the half-filled form was unmounted, and everything typed into it
+  // went with it — the exact loss the declare link exists to prevent. The top layer owns
+  // the key now (`escapeDisabled` on `<ConnectionForm>`), and the next two assertions are
+  // what says so.
+  await page.keyboard.press('Escape');
   await expect(manager).toHaveCount(0);
 
   // THE FORM IS STILL THERE, STILL FILLED. This is the assertion the shape was chosen

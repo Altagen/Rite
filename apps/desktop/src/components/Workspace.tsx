@@ -957,6 +957,22 @@ export function Workspace({
   /** The collection whose own vocabulary is open, or null. */
   const [labelsCollection, setLabelsCollection] = useState<string | null>(null);
 
+  // AND ESCAPE CLOSES IT, which is the other half of taking the key away from the machine
+  // form underneath: a dialog that ignores Escape while the layer below acts on it is how
+  // a half-filled form got thrown away. Topmost layer, so this one runs and the form's
+  // stands down (`escapeDisabled` on `<ConnectionForm>`).
+  useEffect(() => {
+    if (labelsCollection === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setLabelsCollection(null);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [labelsCollection]);
+
   /**
    * The one scope the collection dialog writes: that collection's own words.
    *
@@ -1025,6 +1041,14 @@ export function Workspace({
    *     that leads to a refusal is what the picker's create action was;
    *   - this machine, which is in no collection → the vault's own list, in Settings. A
    *     page, not a dialog, so reaching it would throw the dialog away: a sentence.
+   *
+   * AND TWICE IT SAYS NOTHING AT ALL, because a pointer is worth less than silence when it
+   * is wrong. `Settings → Labels` is drawn from a rail entry marked `local` and `vault`
+   * (`Settings.tsx`), so in a SERVER context that page does not exist — the words there
+   * belong to the instance and are administered from the instance panel, by somebody who
+   * may not be this person. And a collection id that matches nothing yet means the list
+   * has not arrived, not that the machine has no collection: naming Settings on the first
+   * render would be a sentence that changes once the fetch lands.
    */
   const declareFor = useCallback(
     (machineId: string) => {
@@ -1032,14 +1056,18 @@ export function Workspace({
       const collection = machine?.collectionId
         ? (conns.collections ?? []).find((c) => c.id === machine.collectionId)
         : undefined;
-      if (!collection) return { where: t('labels.settingsPlace') };
+      // Not yet loaded — say nothing rather than something that will change.
+      if (machine?.collectionId && !collection) return undefined;
+      if (!collection) {
+        return conns.isServerContext === true ? undefined : { where: t('labels.settingsPlace') };
+      }
       const writable = (conns.writableCollections ?? []).some((c) => c.id === collection.id);
       return {
         where: collection.name,
         open: writable ? () => setLabelsCollection(collection.id) : undefined,
       };
     },
-    [conns.connections, conns.collections, conns.writableCollections, t],
+    [conns.connections, conns.collections, conns.writableCollections, conns.isServerContext, t],
   );
 
   /** The last segment of a path, which is what a tab holding one file should be called. */
@@ -2780,6 +2808,9 @@ export function Workspace({
           collectionTargets={conns.writableCollections}
           // The collection's own vocabulary, over the form rather than instead of it.
           onDeclareLabels={conns.renameCollection ? (id) => setLabelsCollection(id) : undefined}
+          // The vocabulary dialog is layered over this form; Escape is its key, not
+          // the form's, or dismissing the dialog would discard everything typed here.
+          escapeDisabled={labelsCollection !== null}
           defaultCollectionId={formDefaultCollectionId}
           defaultFolder={formDefaultFolder}
           onClose={() => {

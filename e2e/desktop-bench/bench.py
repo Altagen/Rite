@@ -1366,6 +1366,11 @@ def scenario_design(wid):
     sets a master password on the way in — which is also closer to the window a reader is
     looking at when they hit this geometry.
 
+    IT LEAVES THE VAULT OPEN BEHIND IT, and `bench.py` runs the scenarios named on the
+    command line in order against ONE Rite process. So `design` before `agentload` breaks
+    `agentload`, whose own claim is that no card offers to be renamed WITHOUT a vault. No
+    scenario mutated vault state before 0.2.9 and order never mattered; it does now.
+
     Everything else belongs in the Playwright suite, which is faster and runs every gate.
     """
     print("\ndesign — geometry in the real webview")
@@ -1376,7 +1381,6 @@ def scenario_design(wid):
     # two password fields are `#password` and `#confirmPassword`, and the submit is the
     # form's only one. Driven by id rather than by test id because this screen has none —
     # it is the first thing a person ever sees and nothing automated had needed it.
-    opened = js("!!document.querySelector('[data-testid=agent-read-only]')")
     js("document.querySelector('[data-testid=vault-pastille]')?.click(); 1")
     time.sleep(0.5)
     js(
@@ -1396,22 +1400,30 @@ def scenario_design(wid):
             time.sleep(0.3)
         js("document.querySelector('form button[type=submit]')?.click(); 1")
         time.sleep(2.5)
+    def probe_this_machine():
+        """The manager, this machine, probed. Needed twice: a reload closes all of it."""
+        js("document.querySelector('[data-testid=toolbar-agents]')?.click(); 1")
+        time.sleep(0.8)
+        js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
+        time.sleep(0.5)
+        js(
+            "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
+            "   .find(o => o.textContent.trim() === 'This machine'); if (o) o.click(); })()"
+        )
+        time.sleep(0.5)
+        js("document.querySelector('[data-testid=agent-probe]')?.click(); 1")
+        time.sleep(3.0)
+
+    probe_this_machine()
+
+    # CHECKED HERE, AND NOT BEFORE THE MANAGER EXISTS. `agent-read-only` is the line the
+    # manager draws when it holds no key, so it is absent from a document that has no
+    # manager in it — asking before opening one reads absent either way and passes on a
+    # window with no vault at all, which is the assertion agreeing with a default.
     check(
         "a vault is open, which is what a name and a label need",
-        js("!document.querySelector('[data-testid=agent-read-only]')") or not opened,
+        js("!document.querySelector('[data-testid=agent-read-only]')"),
     )
-
-    js("document.querySelector('[data-testid=toolbar-agents]')?.click(); 1")
-    time.sleep(0.8)
-    js("document.querySelector('[data-testid=agent-machine]')?.click(); 1")
-    time.sleep(0.5)
-    js(
-        "(() => { const o = Array.from(document.querySelectorAll('[role=option]'))"
-        "   .find(o => o.textContent.trim() === 'This machine'); if (o) o.click(); })()"
-    )
-    time.sleep(0.5)
-    js("document.querySelector('[data-testid=agent-probe]')?.click(); 1")
-    time.sleep(3.0)
 
     cards = js("document.querySelectorAll('[data-testid^=agent-card-]').length")
     if not check("the probe found conversations to act on", cards > 0, f"{cards} cards"):
@@ -1485,8 +1497,14 @@ def scenario_design(wid):
     time.sleep(0.8)
     js("location.reload(); 1")
     time.sleep(3.0)
-    js(f"document.querySelector('[data-testid=\"{card}\"]')?.click(); 1")
-    time.sleep(0.6)
+    # THE RELOAD CLOSED THE MANAGER, so the way back in is the way in. A card id captured
+    # before it would name an element this document never had.
+    probe_this_machine()
+    js(
+        "(() => { const b = document.querySelector('[data-testid^=agent-rename-]');"
+        " if (b) b.click(); })()"
+    )
+    time.sleep(0.8)
     js("document.querySelector('[data-testid=agent-labels-input]')?.click(); 1")
     time.sleep(0.5)
 

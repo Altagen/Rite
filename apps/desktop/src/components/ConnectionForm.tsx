@@ -50,6 +50,8 @@ interface ConnectionFormProps {
    * stray backdrop click.
    */
   onDeclareLabels?: (collectionId: string) => void;
+  /** True while the caller has a dialog open above this form: Escape belongs to that one. */
+  escapeDisabled?: boolean;
   // Preselect this collection as the save target (e.g. opening the form from a
   // collection view). Only applies when creating.
   defaultCollectionId?: string | null;
@@ -77,6 +79,7 @@ export function ConnectionForm({
   jumpCandidates,
   collectionTargets,
   onDeclareLabels,
+  escapeDisabled,
   defaultCollectionId,
   defaultFolder,
   labelOffers,
@@ -150,7 +153,16 @@ export function ConnectionForm({
   const protocolDropdownRef = useRef<HTMLDivElement>(null);
 
   // Esc is the keyboard way out, now that a click outside is not one (see the backdrop).
+  //
+  // AND IT STANDS DOWN WHILE SOMETHING IS OPEN ABOVE IT. The listener is on `document`, so
+  // it fires for a key pressed anywhere — including inside the vocabulary dialog this form
+  // opens through `onDeclareLabels`, which is rendered by the WORKSPACE and layered over
+  // it. Escape there read as "close the machine form": the dialog stayed (its state is not
+  // here) and a half-filled form was unmounted with everything typed into it. That is the
+  // exact loss the declare link exists to prevent, so the owner of the top layer says when
+  // this one may listen.
   useEffect(() => {
+    if (escapeDisabled) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -159,7 +171,7 @@ export function ConnectionForm({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, escapeDisabled]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -571,15 +583,17 @@ export function ConnectionForm({
               vocabulary={labelOffers ?? []}
               inputId="machine-labels-input"
               testPrefix="machine-labels"
-              declare={
-                onDeclareLabels && collectionTargetId
-                  ? {
-                      where:
-                        collectionTargets?.find((c) => c.id === collectionTargetId)?.name ?? '',
-                      open: () => onDeclareLabels(collectionTargetId),
-                    }
-                  : undefined
-              }
+              // GATED ON THE NAME, not on the id: a preselected collection that is not in
+              // `collectionTargets` — read-only, or not fetched yet — used to render
+              // "Declare a word for …" with a blank where the name goes, and still open it.
+              declare={(() => {
+                const target = collectionTargetId
+                  ? collectionTargets?.find((c) => c.id === collectionTargetId)
+                  : undefined;
+                return onDeclareLabels && target
+                  ? { where: target.name, open: () => onDeclareLabels(target.id) }
+                  : undefined;
+              })()}
             />
           </div>
 
