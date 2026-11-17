@@ -29,6 +29,16 @@
  * selection. Each is the union of its own copies, so nothing already saved loses its
  * swatch and no stored colour changes how it renders.
  *
+ * SINCE LABELS, `MACHINE` IS ALSO DERIVED — `labelColor` falls back to
+ * `MACHINE[hash % MACHINE.length]` for a word nobody has coloured, which is what makes
+ * `urgent` the same colour on every machine and in every vault. So its LENGTH is
+ * load-bearing in a second way: adding a colour repaints every undeclared chip. Nothing
+ * is lost (no chosen colour moves, and a derived colour was never stored), but it is a
+ * visible shift, and it is why this list grows on purpose rather than by accident. It
+ * also means two Rite versions with different lengths derive differently — acceptable
+ * while the feature is one release old, and the reason to do any further growing in one
+ * go rather than a colour at a time.
+ *
  * Collapsing COLLECTION and MACHINE into one application palette is the next step and a
  * visual decision, not this one. The two overlap in exactly one colour — `#94a3b8`, the
  * grey both drifted to as their 8th — so the other sixteen would each need a mapping for
@@ -60,7 +70,22 @@ export const COLLECTION_SWATCHES = [
   '#94a3b8',
 ] as const;
 
-/** Chosen for a machine or a folder. The union of the two folder dialogs' and the form's. */
+/**
+ * Chosen for a machine, a folder or a label — and derived for a label nobody coloured.
+ *
+ * The first nine are the union of the two folder dialogs' and the machine form's, kept in
+ * their order so a stored colour still shows as selected. The seven after them were added
+ * when the palette started serving labels too: nine colours is a fleet of nine groups, and
+ * the two greys at the end of the first row are a hair apart because they are what two
+ * drifted copies each called "grey" — a picker where two swatches look alike spends a
+ * colour without buying one.
+ *
+ * Each addition is a hue the first nine do not hold, rather than a lighter version of one:
+ * a sky that is not the periwinkle, a steel that is not the sky, a deep green beside the
+ * bright one, a brown, a rose that is not the red, a mauve that is not the lilac, and an
+ * indigo. Chosen to stay apart at the size they are read at — a 12px chip with a coloured
+ * border, on a dark card.
+ */
 export const MACHINE_SWATCHES = [
   '#7c9cf5',
   '#9ece6a',
@@ -71,4 +96,11 @@ export const MACHINE_SWATCHES = [
   '#56c7c0',
   '#94a3b8',
   '#8b93a7',
+  '#7dcfff',
+  '#5e81ac',
+  '#4e9a74',
+  '#a1785c',
+  '#f7a8c4',
+  '#b48ead',
+  '#7a5cd6',
 ] as const;

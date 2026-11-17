@@ -379,7 +379,9 @@ function Row({
           className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm"
           data-testid="label-row-description"
         />
-        <div className="flex items-center gap-1">
+        {/* WRAPS, because the palette outgrew one row when it started serving labels:
+            sixteen swatches at 16px do not fit beside a 320px dialog. */}
+        <div className="flex flex-wrap items-center gap-1">
           {MACHINE_SWATCHES.map((c) => (
             <button
               key={c}

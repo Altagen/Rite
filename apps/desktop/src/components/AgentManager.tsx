@@ -1715,7 +1715,8 @@ function RenameDialog({
           }}
           data-testid="agent-rename-input"
         />
-        <div className="mt-3 flex items-center gap-1.5">
+        {/* Wraps: sixteen swatches are two rows in a dialog this narrow. */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
           {MARK_COLORS.map((c) => (
             <button
               key={c}
