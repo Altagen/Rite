@@ -15,8 +15,12 @@
  * does the transposition, so the array stays readable in source — the alternative was
  * writing it shade-major, which reads as noise.
  *
- * Centred, because it is the only thing on its line in three of the five dialogs and a
- * left-aligned block under a centred heading reads as a mistake.
+ * FULL WIDTH, COLUMNS EVENLY SHARED. Centring the block was the first shape and it left
+ * a margin of nothing on either side — eight columns of circles are 200px, a machine form
+ * is 670, and a small centred block in a wide panel reads as something that failed to
+ * load. The columns take an equal share of whatever width they are given instead, so the
+ * emptiness becomes the rhythm between them and the palette fills its line the way every
+ * other field on that form does.
  */
 
 import { useTranslation } from '../i18n/i18n';
@@ -63,10 +67,14 @@ export function SwatchGrid({
   const { t } = useTranslation();
   return (
     <div
-      // Four rows, columns flowing — see the note above. `justify-center` on the grid
-      // itself rather than on the parent, so a caller cannot forget it.
-      className="grid grid-flow-col justify-center gap-1.5"
-      style={{ gridTemplateRows: `repeat(4, minmax(0, 1fr))` }}
+      // Four rows, columns flowing — see the note above. The columns are implicit, so
+      // `gridAutoColumns` is what makes them share the width equally; `justify-items`
+      // keeps each circle in the middle of its share rather than against its left edge.
+      className="grid w-full grid-flow-col justify-items-center gap-1.5"
+      style={{
+        gridTemplateRows: `repeat(4, minmax(0, 1fr))`,
+        gridAutoColumns: 'minmax(0, 1fr)',
+      }}
       data-testid={`${testPrefix}-grid`}
     >
       {palette.map((hex) => (
