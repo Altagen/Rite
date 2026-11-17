@@ -904,20 +904,35 @@ export function Workspace({
    * may be put on, and splitting the offers by the kind of thing being labelled made the
    * picker forget half of what this person already uses.
    */
+  /**
+   * WHETHER THERE IS A KEY, which both documents below are read with — and read AGAIN
+   * whenever the answer changes.
+   *
+   * Reading once was the bug. The workspace renders before any vault is open
+   * (base-first, ADR 0014), so these two were fetched with no key, cached their refusal
+   * as `loaded`, and nothing re-read them when the vault opened a moment later. The
+   * screen then behaved for the rest of the session as though there were no vault: the
+   * agent manager offered no way to name anything, and the picker had no words — on a
+   * window whose vault was wide open. Found by the owner, on the build I handed him.
+   *
+   * Keyed on a boolean rather than on a counter, so it fires twice in a session rather
+   * than on every render: once at mount, once when a vault opens or shuts. A lock is the
+   * same event in the other direction and must also re-read — what was unsealed has to
+   * leave the screen with the key that opened it.
+   */
+  const hasKey = conns.isServerContext === true ? !!serverKeys.userKey : !isLocked && !isFirstRun;
+
   const marks = useMarks((st) => st.marks);
   const loadMarks = useMarks((st) => st.load);
-  const marksLoaded = useMarks((st) => st.loaded);
   useEffect(() => {
-    if (!marksLoaded) void loadMarks();
-  }, [marksLoaded, loadMarks]);
+    void loadMarks();
+  }, [loadMarks, hasKey]);
 
   const instanceWords = useInstanceLabels((st) => st.words);
   const loadInstanceWords = useInstanceLabels((st) => st.load);
-  const instanceWordsLoaded = useInstanceLabels((st) => st.loaded);
-  // Read once, when a screen first needs words. Nothing else in the app does.
   useEffect(() => {
-    if (!instanceWordsLoaded) void loadInstanceWords();
-  }, [instanceWordsLoaded, loadInstanceWords]);
+    void loadInstanceWords();
+  }, [loadInstanceWords, hasKey]);
 
   /**
    * Every word that has been DECLARED with a colour, nearest scope first.

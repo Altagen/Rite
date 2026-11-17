@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { ensureCollection, createMachine } from './support/localVault';
+import { lockVault, unlockVault } from './support/headerBar';
 
 /**
  * The agent manager, in a local vault (ADR 0022 §4).
@@ -61,6 +62,53 @@ test('the manager is a view, names the machine, and says it has not looked yet',
   await page.getByTestId('nav-agents-close').click();
   await expect(page.getByTestId('agent-manager')).toHaveCount(0);
   await expect(page.getByTestId('nav-agents')).toHaveCount(0);
+});
+
+/**
+ * THE SURFACE FOLLOWS THE KEY, and it did not — which is the defect this test exists for.
+ *
+ * What Rite remembers about a conversation is sealed in the vault, so the gestures that
+ * write it are drawn only while there is one open (ADR 0033). That answer was read ONCE,
+ * at startup. The workspace renders before any vault is open (base-first, ADR 0014), so
+ * the marks document was fetched with no key, cached its refusal, and nothing re-read it
+ * when the vault opened a moment later — the manager then offered no way to name anything
+ * for the rest of the session, on a window whose vault was wide open.
+ *
+ * It got through every test because no spec ever crossed that line: this suite's vault is
+ * created by `smoke.spec.ts` and is already open when any page loads. The owner found it
+ * in two minutes with the binary. So the test is the CROSSING, in both directions.
+ */
+test('locking takes the writing gestures away, and unlocking brings them back', async ({
+  page,
+  request,
+}) => {
+  const collection = await ensureCollection(request, 'e2e-agents');
+  await createMachine(request, collection, { name: 'e2e-agent-host' });
+
+  await page.goto('/');
+  await expect(page.getByTestId('vault-pastille')).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId('toolbar-agents').click();
+  await expect(page.getByTestId('agent-manager')).toBeVisible({ timeout: 15_000 });
+
+  // Open: the surface says nothing about vaults, because there is one.
+  await expect(page.getByTestId('agent-read-only')).toHaveCount(0);
+
+  // Locked, from the route, so the in-memory key really goes — the same gesture
+  // `unlock-roundtrip.spec.ts` uses to make its own verification real.
+  await request.post('/api/auth/lock');
+  await lockVault(page);
+  await expect(page.getByTestId('agent-read-only')).toBeVisible({ timeout: 15_000 });
+
+  // And back. THIS is the direction that was broken: the answer was cached, so the
+  // manager stayed read-only behind an open vault.
+  await unlockVault(page);
+  await page.locator('#password').fill('Rite-E2E-Str0ng!pass');
+  await page.locator('button[type="submit"]').click();
+  await expect(page.getByPlaceholder('Search connections…')).toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.getByTestId('agent-read-only'),
+    'the vault is open again, so the surface must stop saying it is not',
+  ).toHaveCount(0, { timeout: 15_000 });
 });
 
 /**
