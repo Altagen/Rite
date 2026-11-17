@@ -44,6 +44,22 @@ test('a label is declared with a colour and a description, and survives a reload
   await page.getByTestId('label-manager-new').click();
   await page.getByTestId('label-row-word').fill('pci');
   await page.getByTestId('label-row-description').fill('PCI-DSS in scope');
+  // THE PALETTE IS A GRID, AND ITS COLUMNS ARE THE FAMILIES. Thirty-two circles on one
+  // line is a pile, and a pile is scanned by reading every element. `MACHINE_SWATCHES` is
+  // written family by family, four shades each, and the grid runs its columns — so the
+  // four blues share a column and the first cyan starts the next one. Measured rather
+  // than screenshotted, because what is being held is an arrangement.
+  const at = async (hex: string) =>
+    (await page.getByTestId(`label-row-colour-${hex}`).boundingBox())!;
+  const blues = [await at('7dcfff'), await at('7c9cf5'), await at('5e81ac'), await at('3d59a1')];
+  expect(new Set(blues.map((b) => Math.round(b.x))).size, 'the four blues must be one column').toBe(
+    1,
+  );
+  expect(blues[1].y, 'and four rows deep').toBeGreaterThan(blues[0].y);
+  const cyan = await at('73daca');
+  expect(cyan.x, 'the next family starts the next column').toBeGreaterThan(blues[0].x);
+  expect(Math.round(cyan.y), 'at the top of it').toBe(Math.round(blues[0].y));
+
   await page.getByTestId('label-row-colour-f7768e').click();
   await page.getByTestId('label-row-done').click();
 

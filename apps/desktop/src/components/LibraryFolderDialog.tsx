@@ -6,6 +6,7 @@
 import { useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { MACHINE_SWATCHES } from '../theme/swatches';
+import { SwatchGrid } from './SwatchGrid';
 
 export function LibraryFolderDialog({
   initialName,
@@ -59,17 +60,14 @@ export function LibraryFolderDialog({
         />
 
         <label className="mb-1 block text-sm font-medium">{t('dlg.colour')}</label>
-        <div className="mb-5 flex flex-wrap gap-2">
-          {MACHINE_SWATCHES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setColor(c)}
-              className={`h-7 w-7 rounded-full ${color === c ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card' : ''}`}
-              style={{ backgroundColor: c }}
-              aria-label={t('dlg.colourAria', { hex: c })}
-            />
-          ))}
+        <div className="mb-5">
+          <SwatchGrid
+            palette={MACHINE_SWATCHES}
+            value={color}
+            onPick={setColor}
+            testPrefix="library-folder-colour"
+            size="large"
+          />
         </div>
 
         <div className="flex justify-end gap-2">

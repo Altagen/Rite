@@ -24,6 +24,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../i18n/i18n';
 import { LabelChip } from './Labels';
 import { MACHINE_SWATCHES } from '../theme/swatches';
+import { SwatchGrid } from './SwatchGrid';
 import {
   DESCRIPTION_MAX,
   INSTANCE_LABELS_MAX,
@@ -379,25 +380,15 @@ function Row({
           className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm"
           data-testid="label-row-description"
         />
-        {/* WRAPS, because the palette outgrew one row when it started serving labels:
-            sixteen swatches at 16px do not fit beside a 320px dialog. */}
-        <div className="flex flex-wrap items-center gap-1">
-          {MACHINE_SWATCHES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setColor(color === c ? undefined : c)}
-              aria-label={c}
-              data-testid={`label-row-colour-${c.slice(1)}`}
-              className={`h-4 w-4 rounded-full border ${
-                (color ?? labelColor(clean || word.label, MACHINE_SWATCHES)) === c
-                  ? 'border-foreground'
-                  : 'border-transparent'
-              }`}
-              style={{ background: c }}
-            />
-          ))}
-        </div>
+        {/* The shared grid (`components/SwatchGrid.tsx`), so this row cannot drift from
+            the machine form's. The value shown as chosen is the DERIVED colour when
+            nobody has chosen one — a word already has a colour before anybody picks. */}
+        <SwatchGrid
+          palette={MACHINE_SWATCHES}
+          value={color ?? labelColor(clean || word.label, MACHINE_SWATCHES)}
+          onPick={(hex) => setColor(color === hex ? undefined : hex)}
+          testPrefix="label-row-colour"
+        />
         <button
           type="button"
           onClick={() => onDone(null)}

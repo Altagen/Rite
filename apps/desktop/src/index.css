@@ -511,39 +511,6 @@
     }
   }
 
-  /* colour swatches */
-  .m-swatches {
-    display: flex;
-    gap: 9px;
-    flex-wrap: wrap;
-  }
-  .m-sw {
-    width: 28px;
-    height: 28px;
-    border-radius: 9px;
-    border: none;
-    cursor: pointer;
-    position: relative;
-    transition: 0.1s;
-  }
-  .m-sw:hover {
-    transform: scale(1.08);
-  }
-  .m-sw.sel {
-    outline: 2px solid hsl(var(--foreground));
-    outline-offset: 2px;
-  }
-  .m-sw.sel::after {
-    content: '✓';
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    color: #0a0e1a;
-    font-weight: 800;
-    font-size: 13px;
-  }
-
   /* floating menu (the + / ⋯ menus) */
   .m-menu {
     background: hsl(var(--card));

@@ -17,6 +17,7 @@ import type { QuickSSHConnectionInfo } from './QuickSSHModal';
 import { AuthSection } from './AuthSection';
 import { LabelField, type LabelOffer } from './Labels';
 import { MACHINE_SWATCHES } from '../theme/swatches';
+import { SwatchGrid } from './SwatchGrid';
 import {
   makeAuthState,
   storedAuthType,
@@ -642,18 +643,13 @@ export function ConnectionForm({
           {/* Colour */}
           <div>
             <label className="mb-1 block text-sm font-medium">{t('connections.color')}</label>
-            <div className="m-swatches">
-              {MACHINE_SWATCHES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`m-sw ${color === c ? 'sel' : ''}`}
-                  style={{ backgroundColor: c }}
-                  aria-label={t('dlg.colourAria', { hex: c })}
-                />
-              ))}
-            </div>
+            <SwatchGrid
+              palette={MACHINE_SWATCHES}
+              value={color}
+              onPick={setColor}
+              testPrefix="machine-colour"
+              size="large"
+            />
           </div>
 
           {/* Health-check (ADR 0017): a machine can opt out of active probing. */}

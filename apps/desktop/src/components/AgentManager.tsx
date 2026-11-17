@@ -53,6 +53,7 @@ import { LabelChip, LabelField, type LabelOffer } from './Labels';
 import type { VocabWord } from '../store/labelsFormat';
 import { keepAnswer, readAnswers, type Answer } from '../store/agentAnswers';
 import { MACHINE_SWATCHES } from '../theme/swatches';
+import { SwatchGrid } from './SwatchGrid';
 import { askConfirm } from '../utils/confirmPrompt';
 import {
   IconCopy,
@@ -1715,21 +1716,15 @@ function RenameDialog({
           }}
           data-testid="agent-rename-input"
         />
-        {/* Wraps: sixteen swatches are two rows in a dialog this narrow. */}
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          {MARK_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setColor(color === c ? undefined : c)}
-              aria-label={c}
-              data-testid={`agent-color-${c.slice(1)}`}
-              className={`h-5 w-5 rounded-full border ${
-                color === c ? 'border-foreground' : 'border-transparent'
-              }`}
-              style={{ background: c }}
-            />
-          ))}
+        {/* The shared grid: the same thirty-two, in the same arrangement, as the machine
+            form offers — a colour means the same thing on both screens. */}
+        <div className="mt-3">
+          <SwatchGrid
+            palette={MARK_COLORS}
+            value={color}
+            onPick={(hex) => setColor(color === hex ? undefined : hex)}
+            testPrefix="agent-color"
+          />
         </div>
         {/* The shared field (`components/Labels.tsx`): the library's machines get the same
             one, so the chip, the cap and the picker cannot drift between two screens. The
