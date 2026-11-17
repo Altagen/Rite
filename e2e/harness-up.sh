@@ -62,13 +62,26 @@ else
   # is mounted so the scripts (and any edit to them) come from the working tree.
   podman run -d --name "$NAME" --network=host -v "$REPO":/workspace:Z -w /workspace \
     "$IMAGE" bash -lc 'sh e2e/sshd-setup.sh && sleep infinity' >/dev/null
-  # Wait for sshd to accept connections before anything tries to use it.
+  # Wait for the SETUP, not for the port. Two reasons it cannot be the port alone:
+  # `--network=host` means this probe reaches the HOST's loopback, so an sshd left over
+  # from the container just removed answers it while the new one is still running apt —
+  # and `sshd-setup.sh` creates `riteuser` on its way, after which `agent-stubs.sh`
+  # chowns to it. Probing the port alone let that chown run first, and the gate died at
+  # step 2 with `chown: invalid user: 'riteuser:riteuser'`, which names neither the race
+  # nor the step that lost it.
   i=0
-  while [ "$i" -lt 30 ]; do
-    podman exec "$NAME" sh -c 'exec 3<>/dev/tcp/127.0.0.1/2222' 2>/dev/null && break
+  while [ "$i" -lt 60 ]; do
+    podman exec "$NAME" sh -c \
+      'id riteuser >/dev/null 2>&1 && exec 3<>/dev/tcp/127.0.0.1/2222' 2>/dev/null && break
     sleep 1
     i=$((i + 1))
   done
+  # And it SAYS SO when it never came up, rather than printing the ready line and leaving
+  # the next script to fail with something unrelated.
+  if [ "$i" -ge 60 ]; then
+    echo "[harness] $NAME never finished e2e/sshd-setup.sh — see: podman logs $NAME" >&2
+    exit 1
+  fi
   echo "[harness] $NAME started — sshd on 127.0.0.1:2222 (riteuser / ritepass123)"
 fi
 
