@@ -71,7 +71,11 @@ else
   # nor the step that lost it.
   i=0
   while [ "$i" -lt 60 ]; do
-    podman exec "$NAME" sh -c \
+    # BASH AND NOT SH, because `/dev/tcp` is a bash facility and `sh` here is dash: under
+    # `sh` this probe cannot succeed, which is what it had been quietly doing. The loop
+    # ran its thirty turns every time and the script printed its ready line anyway, so the
+    # wait was decorative — and that is what made the chown race below reachable at all.
+    podman exec "$NAME" bash -c \
       'id riteuser >/dev/null 2>&1 && exec 3<>/dev/tcp/127.0.0.1/2222' 2>/dev/null && break
     sleep 1
     i=$((i + 1))
