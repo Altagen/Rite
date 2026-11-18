@@ -1223,6 +1223,8 @@
     "layoutRailHint": "One CLI at a time, from a rail",
     "newestFirst": "newest first",
     "resume": "Resume",
+    "resumeIn": "Reopen in",
+    "resumeInPlaceholder": "the directory the channel lands in",
     "offTitle": "Discovery is off",
     "offWebui": "Turned off for the web UI by this server.",
     "offClients": "Turned off for clients by this server.",

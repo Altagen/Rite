@@ -1223,6 +1223,8 @@
     "layoutRailHint": "Une CLI à la fois, depuis un rail",
     "newestFirst": "récentes d’abord",
     "resume": "Reprendre",
+    "resumeIn": "Rouvrir dans",
+    "resumeInPlaceholder": "le répertoire où arrive le canal",
     "offTitle": "Découverte désactivée",
     "offWebui": "Désactivée pour l’interface web par ce serveur.",
     "offClients": "Désactivée pour les clients par ce serveur.",
