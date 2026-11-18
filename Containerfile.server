@@ -16,22 +16,28 @@
 # The Rust the project is pinned to (rust-toolchain.toml). A Containerfile cannot
 # read a file to choose its base image, so the release workflow passes this from
 # that file; the default below is for local builds and must track it.
-ARG RUST_VERSION=1.97.0
+ARG RUST_VERSION=1.100.0
 # The Node the project is pinned to (.node-version), for the same reason and with the
 # same obligation: `node:24-...` was a floating major, so the bundle this image ships
 # was built by whatever 24.x the registry held that day, while the host and CI were
 # held to an exact version. The Pins job checks this against .node-version.
-ARG NODE_VERSION=24.21.0
+ARG NODE_VERSION=26.13.1
 
 # --- Stage 1: build the frontend bundle ---
 FROM node:${NODE_VERSION}-bookworm-slim AS web
 ENV CI=true
-RUN corepack enable
 WORKDIR /app
 # Manifests first: `pnpm install` re-runs when dependencies change, not when a
-# component does. corepack reads `packageManager` from package.json, so the pnpm
-# version comes from the repository like everywhere else (ADR 0020's neighbours).
+# component does. `packageManager` in package.json is the one place the pnpm version is
+# written, so it comes from the repository like everywhere else (ADR 0020's neighbours).
+#
+# NOT COREPACK, since Node 26 dropped it: neither the official tarball nor this image
+# carries it any more (measured — `command -v corepack` is empty in
+# `node:26.13.1-bookworm-slim`), so `corepack enable` fails and takes the build with it.
+# The version is read out of the manifest and handed to npm instead, exactly as the
+# validation image does it.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN npm i -g "$(sed -n 's/.*"packageManager" *: *"\([^"]*\)".*/\1/p' package.json)"
 COPY apps/desktop/package.json apps/desktop/
 RUN pnpm install --frozen-lockfile
 COPY . .

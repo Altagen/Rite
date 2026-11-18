@@ -379,24 +379,17 @@ negotiate against. Cheap later, expensive to get wrong now, and nobody is readin
 - [ ] Performance optimization
 - [ ] Logging system (non-sensitive data)
 
-### 🧱 Toolchain moves, each waiting on a date rather than a decision (Priority: LOW)
+### 🧱 Toolchain moves, each blocked on something outside this repository (Priority: LOW)
 
-Both are measured and ready. They sit here because engaging them early costs more
-than waiting, not because anything is unresolved.
+Each is measured. They sit here because something upstream has to move first, not
+because anything is unresolved on our side.
 
-- [ ] **Ubuntu 24.04 → 26.04**, in `Containerfile` and every workflow's `runs-on`, in one
-      commit. Already measured: the image builds from `ubuntu:26.04` with
-      `libwebkit2gtk-4.1-dev` 2.52.6 and `libgtk-3-dev` 3.24.52 — no forced gtk4 move — and
-      the full Rust gate passes in it (14 test binaries, 217 tests, `cargo audit` with the
-      same single allowed warning). Waiting on GitHub finishing its `ubuntu-latest`
-      rollout to 26.04, which runs to 2026-11-19, so the pin and the label agree instead of
-      leapfrogging. `e2e/ci-image-check.mjs` fails if the two sides are moved apart.
-      The release client matrix stays on `ubuntu-22.04`: the build host's glibc is the
-      floor of the shipped binary, and 26.04's 2.43 would refuse to start on the current
-      LTS.
-- [ ] **TypeScript 5.9 → 7.0, with @types/node 24 → 26**, one PR, scheduled for 0.3.0. Two
-      majors: expect real diagnostics changes across the frontend, which is a body of work
-      rather than a bump. Tracked in #255.
+- [ ] **TypeScript 6 → 7**, blocked upstream and NOT a scheduling choice. `typescript-eslint`
+      8.73 declares `>=4.8.4 <6.1.0`, and on TS 7 eslint does not produce diagnostics — it
+      crashes (`typescript-eslint does not support TypeScript 7.0`), so the gate loses its
+      lint step entirely rather than reporting findings. 0.2.9 took TypeScript 6.0.3 and
+      @types/node 26, which is the half that was ours. Reopen when typescript-eslint widens
+      its range. Tracked in #255.
 - [ ] **argon2 0.5 → 0.6**, its own PR. `password-hash` 0.6 redesigned the API rather than
       renaming it: `SaltString` has left the root and `hash_password` no longer takes the
       salt as a second argument, so this is a reworking of the password-hashing path

@@ -68,12 +68,16 @@ if [ -z "$IMAGE" ]; then
   # context beats shipping the working tree to the build daemon anyway.
   ctx=$(mktemp -d)
   cp target/release/rite-server "$ctx/"
-  # Ubuntu 24.04, matching the ISO-CI image that compiled the binary: it links against
-  # that glibc, and dropping it into bookworm (2.36) fails at load with GLIBC_2.39 not
-  # found. Containerfile.server never meets this because it builds and runs on the same
+  # THE SAME UBUNTU AS `Containerfile`, and not a version that merely once matched it.
+  # The binary was compiled a dozen lines above inside the ISO-CI image, so it links
+  # against that glibc: dropping it into an older distribution fails at load with
+  # `GLIBC_2.x not found` — bookworm (2.36) could not take a 24.04 build, and 24.04
+  # (2.39) cannot take a 26.04 one. The pair drifted exactly that way when the image
+  # moved to 26.04 and this fixture stayed, so `ci-image-check` now holds them together.
+  # Containerfile.server never meets this because it builds and runs on the same
   # distribution — which is the reason it is the real recipe and this is a test fixture.
   cat > "$ctx/Containerfile" <<'CONTAINERFILE'
-FROM ubuntu:24.04
+FROM ubuntu:26.04
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --home-dir /home/rite --shell /usr/sbin/nologin rite
